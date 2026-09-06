@@ -34,6 +34,12 @@ import org.junit.jupiter.api.Test;
  * <p>The second claim is that <b>none of it is an error</b>. Not released, a tag the host cannot
  * read, a recipe that will not parse — each is a 200 carrying a sentence, because the page asking
  * this question is drawing a panel and "we could not ask" is a thing it can say.
+ *
+ * <p>The third is about <b>which</b> file at the tag is read. A migrated repository declares one
+ * {@code .config/qits/release.yml} and carries no pipeline files at all; a tag cut before that
+ * migration carries the two old ones and always will, because a tree is immutable. So both readings
+ * are permanent, the configuration is asked for first, and where it answers it is the whole answer —
+ * the tests below pin each half and the precedence between them.
  */
 @QuarkusTest
 public class ReleaseArtifactsTest {
@@ -44,6 +50,7 @@ public class ReleaseArtifactsTest {
   private static final String RELEASED_SHA = "9f1c2b3d4e5f60718293a4b5c6d7e8f901234567";
   private static final String MERGED_SHA = "20c377ee71fabe6f32429d1506989efecec7798b";
 
+  private static final String CONFIG = ".config/qits/release.yml";
   private static final String RECIPE = ".config/qits/ci-event-release.yml";
   private static final String QA_RECIPE = ".config/qits/ci-event-release-request.yml";
   private static final String DEPLOYMENTS = ".config/qits/deployments.yml";
@@ -219,6 +226,134 @@ public class ReleaseArtifactsTest {
     tree(Map.of(QA_RECIPE, "event: ReleaseRequestChanged\nsteps:\n  - script: ./mvnw verify\n"));
 
     given().get(artifactsOf(id)).then().statusCode(200).body("artifacts", hasSize(0));
+  }
+
+  /**
+   * <b>The release configuration is the same declaration in a file that is no longer a pipeline.</b>
+   * Its {@code artifacts:} block is read entry for entry as the recipe's was, and the keys around it
+   * — the archetype it names, the two step slots qits-ci composes from, and a per-artifact {@code
+   * sbom:} path — are passed over rather than refused. This reader owns one question and must not
+   * fail a panel over a key the composer added.
+   *
+   * <p>{@code userflows: true} is the other half: it says the bundle is published under this
+   * repository's own name, which is what a composed pipeline has to publish to, since the archetype
+   * has nothing but {@code QITS_CI_REPO_NAME} to interpolate.
+   */
+  @Test
+  public void aReleaseConfigurationDeclaresTheArtifactsAndItsUserflowBundleByFlag() {
+    String id = release();
+    tree(
+        Map.of(
+            DEPLOYMENTS,
+            "resources: []\n",
+            CONFIG,
+            """
+            archetype: java-service
+            release-request:
+              - image: qits/build-images/maven-base:latest
+                script: ./mvnw verify
+            release:
+              - image: qits/build-images/node-docker-base:latest
+                build: true
+                script: buildctl build --opt target=binary
+            artifacts:
+              - { type: docker, name: qits/qits-thing, sbom: .sbom/sbom.json }
+              - { type: maven, name: eu.wohlben.qits:qits-thing-domain }
+            userflows: true
+            """));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("detail", nullValue())
+        .body("deployable", equalTo(true))
+        .body("artifacts.type", contains("docker", "maven", "userflows"))
+        .body(
+            "artifacts.name",
+            contains(
+                "qits/qits-thing",
+                "eu.wohlben.qits:qits-thing-domain",
+                "@userflows/qits-thing-service"))
+        .body("artifacts.version", contains(VERSION, VERSION, MERGED_SHA));
+  }
+
+  /**
+   * <b>A named site is why the key is not only a flag.</b> The repository and its bundle genuinely
+   * differ — {@code qits-projects-service} publishes {@code @userflows/qits-projects} — and stating
+   * the site is what the substring hunt through the QA recipe used to have to discover. Phase 3's
+   * archetypes publish to exactly this name.
+   */
+  @Test
+  public void aReleaseConfigurationCanNameTheSiteItsBundleIsPublishedUnder() {
+    String id = release();
+    tree(
+        Map.of(
+            CONFIG,
+            """
+            artifacts:
+              - { type: docker, name: qits/qits-thing }
+            userflows: qits-thing
+            """));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("artifacts.type", contains("docker", "userflows"))
+        .body("artifacts.name", contains("qits/qits-thing", "@userflows/qits-thing"))
+        .body("artifacts.version", contains(VERSION, MERGED_SHA));
+  }
+
+  /**
+   * <b>The configuration wins outright, and reading both would be the bug.</b> A repository
+   * migrating in one commit can leave a legacy recipe at a tag — qits-ci skips it with a WARN on the
+   * pipeline side — and the two files were never written to agree, so answering out of both would
+   * publish an artifact list no release ever produced. The old declaration is simply not consulted,
+   * userflow line included.
+   */
+  @Test
+  public void aTagCarryingBothDeclarationsIsAnsweredOutOfTheConfigurationAlone() {
+    String id = release();
+    tree(
+        Map.of(
+            CONFIG,
+            "artifacts:\n  - { type: docker, name: qits/qits-thing-composed }\n",
+            RECIPE,
+            "event: SCMRelease\nartifacts:\n  - { type: docker, name: qits/qits-thing-legacy }\n",
+            QA_RECIPE,
+            """
+            event: ReleaseRequestChanged
+            steps:
+              - script: |
+                  curl -X PUT "$QITS_DOCS_URL/@userflows/qits-thing/-/$QITS_CI_SHA"
+            """));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("detail", nullValue())
+        .body("artifacts", hasSize(1))
+        .body("artifacts.name", contains("qits/qits-thing-composed"));
+  }
+
+  /**
+   * A configuration that will not parse is said out loud for the reason the recipe's is: the
+   * difference between "this published nothing" and "we cannot read what it published" is the whole
+   * reason {@code detail} exists. Still a 200 — a repository's file is not this service's error.
+   */
+  @Test
+  public void aReleaseConfigurationThatWillNotParseIsASentenceAndNeverAShorterList() {
+    String id = release();
+    tree(Map.of(CONFIG, "archetype: java-service\nartifacts: a-string-is-not-a-list\n"));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("artifacts", hasSize(0))
+        .body("detail", containsString("release declaration"));
   }
 
   /**
