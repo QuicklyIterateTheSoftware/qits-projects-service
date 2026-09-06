@@ -287,6 +287,9 @@ public class AutoReleaseTest {
         commit.sha(),
         announced.commitSha(),
         "the event says what the tag points at, and it agrees with the pending row");
+    // And what the release was worth: the ask's own value, ridden onto the event unchanged. MEDIUM
+    // here because nothing stated one, which is the shape every release before this field had.
+    assertEquals("MEDIUM", announced.priority());
 
     // And this service's own half: the tag joins the repository's implicit source set until
     // something merges it to main, so every other open request is a superset of what is shipping.

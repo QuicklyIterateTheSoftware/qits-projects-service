@@ -33,6 +33,12 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * — an API that let a caller drop one would let somebody release a step backwards from what is
  * already shipping.
  *
+ * <p><b>Priority is a property of a participating branch, not of the request.</b> It is declared
+ * when the branch is put on ({@code priority} on the create and the add-source bodies, {@code
+ * MEDIUM} where nobody says) and re-stated afterwards through {@code …/sources/priority}; what the
+ * request answers with is the max over its named branches. Nothing acts on it yet — it is carried
+ * down the chain as data for the queue-ordering feature to read.
+ *
  * <p><b>Two reads hang off a single request and neither is a column.</b> {@code …/commits} is the
  * fold's own range, read out of the repository's mirror, and {@code …/artifacts} is what the
  * released tag's tree declares was published. Both exist because "the release landed" is the
@@ -66,9 +72,15 @@ public class ReleaseRequestController {
    *     bearer names the service rather than the person at the door. Blank falls back to the
    *     caller's own identity. Every caller here already holds admin or system, so stating an
    *     actor is not an escalation.
+   * @param priority how urgently the named branch wants to be released — {@code LOWEST}, {@code
+   *     LOW}, {@code MEDIUM}, {@code HIGH}, {@code HIGHER} or {@code BLOCKING}. Optional: absent is
+   *     {@code MEDIUM}, and a word naming no priority is a 400. It is stated <b>per branch</b>, so
+   *     the implied {@code main} takes the default rather than this value. On the converge arm —
+   *     asking again for a branch that already participates — an absent priority leaves the stored
+   *     one alone, so a re-ask never downgrades an escalation.
    */
   public static record CreateReleaseRequest(
-      @NotBlank String branch, @NotBlank String summary, String requester) {
+      @NotBlank String branch, @NotBlank String summary, String requester, String priority) {
     public record Response(ReleaseRequestDto request) {}
   }
 
@@ -86,11 +98,18 @@ public class ReleaseRequestController {
   public CreateReleaseRequest.Response create(
       @PathParam("repoId") String repoId, CreateReleaseRequest body) {
     return new CreateReleaseRequest.Response(
-        releaseRequests.request(repoId, body.branch(), body.summary(), actorFor(body.requester())));
+        releaseRequests.request(
+            repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority()));
   }
 
-  /** @param branch another branch to fold into this request. */
-  public static record AddReleaseRequestSource(@NotBlank String branch, String requester) {
+  /**
+   * @param branch another branch to fold into this request.
+   * @param priority how urgently that branch wants to be released, or absent for {@code MEDIUM}.
+   *     Adding a branch already on the request with a priority re-states it; adding it with none
+   *     leaves the stored one alone, so a retried add never downgrades an escalation.
+   */
+  public static record AddReleaseRequestSource(
+      @NotBlank String branch, String requester, String priority) {
     public record Response(ReleaseRequestDto request) {}
   }
 
@@ -109,7 +128,43 @@ public class ReleaseRequestController {
       @PathParam("requestId") String requestId,
       AddReleaseRequestSource body) {
     return new AddReleaseRequestSource.Response(
-        releaseRequests.addSource(requestId, body.branch(), actorFor(body.requester())));
+        releaseRequests.addSource(
+            requestId, body.branch(), actorFor(body.requester()), body.priority()));
+  }
+
+  /**
+   * @param branch which named source to re-price — <b>in the body and not the path</b>, because a
+   *     branch name contains slashes ({@code feature/checkout}) and a path segment that carried one
+   *     would have to be encoded by every caller and decoded by this one.
+   * @param priority the new urgency: {@code LOWEST}, {@code LOW}, {@code MEDIUM}, {@code HIGH},
+   *     {@code HIGHER} or {@code BLOCKING}. Required here — this route exists to state a value, so
+   *     there is no "said nothing" arm to fall back to.
+   * @param requester whom the caller acts for, the same attribution-as-data the other routes take.
+   */
+  public static record SetReleaseSourcePriority(
+      @NotBlank String branch, @NotBlank String priority, String requester) {
+    public record Response(ReleaseRequestDto request) {}
+  }
+
+  @POST
+  @Path("/{requestId}/sources/priority")
+  @Operation(
+      summary = "Re-state how urgently one of a request's branches wants to be released",
+      description =
+          "Priority is per participating branch and the request answers with the max over them, so"
+              + " raising one branch raises the request. Nothing is re-folded and no event is"
+              + " published: the same branches are folded onto the same backing branch, so the sha"
+              + " the gates are evaluating has not moved. The value reaches the platform with the"
+              + " release itself, which reads the sources live. A branch the request does not name"
+              + " is a 404, a word naming no priority is a 400, and a RELEASED or WITHDRAWN request"
+              + " is a 409. Implicit tag sources carry no priority and cannot be addressed here.")
+  public SetReleaseSourcePriority.Response setSourcePriority(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      SetReleaseSourcePriority body) {
+    return new SetReleaseSourcePriority.Response(
+        releaseRequests.updateSourcePriority(
+            requestId, body.branch(), body.priority(), actorFor(body.requester())));
   }
 
   /** The stated actor, or the caller's own identity when none is stated. */

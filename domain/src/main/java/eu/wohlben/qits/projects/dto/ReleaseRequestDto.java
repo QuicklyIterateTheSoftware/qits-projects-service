@@ -21,6 +21,13 @@ import java.util.List;
  * implicit released tags the repository has in flight — with {@code implicit} telling them apart.
  * Only the named ones are caller-managed.
  *
+ * <p><b>{@code priority} is the request's EFFECTIVE priority: the max over its named branch
+ * sources.</b> Urgency is stated per participating branch — each was put on the request by somebody
+ * with their own reason — so the request's own answer is the highest of them, which is the only
+ * reading that cannot lose an escalation. Derived on every read rather than stored, never null
+ * ({@code MEDIUM} where nothing says otherwise), and a word rather than a closed set, because the
+ * vocabulary may grow. The implicit tag sources are not in the max: they carry no priority at all.
+ *
  * <p>{@code conflict} is populated on a CONFLICTED request and null on every other, so a caller
  * never has to ask a second question to find out what to resolve.
  *
@@ -49,6 +56,7 @@ public record ReleaseRequestDto(
     String repoName,
     String backingBranch,
     List<ReleaseRequestSourceDto> sources,
+    String priority,
     String mergedSha,
     String state,
     String summary,

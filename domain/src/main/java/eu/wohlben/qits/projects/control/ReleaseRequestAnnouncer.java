@@ -38,6 +38,12 @@ public interface ReleaseRequestAnnouncer {
    * @param mergedSha the tip of the fold: what to build, gate and release
    * @param changedAt when the merge landed — the event's {@code occurredAt}, not the moment the
    *     announcement is made
+   * @param priority the request's <b>effective</b> priority at the moment of the fold — the max
+   *     over its named branch sources, as the constant's own name. Nullable, and an implementation
+   *     must publish without it rather than refuse: nothing acts on it yet, and a fold must never
+   *     fail over a field. It is a fold-time reading, so an escalation made after this event is
+   *     announced does not refire it — {@code SCMRelease}, which reads the sources live at release
+   *     time, is what carries the late one.
    */
   void onReleaseRequestChanged(
       String projectId,
@@ -46,5 +52,6 @@ public interface ReleaseRequestAnnouncer {
       String releaseRequestId,
       String backingBranch,
       String mergedSha,
-      Instant changedAt);
+      Instant changedAt,
+      String priority);
 }

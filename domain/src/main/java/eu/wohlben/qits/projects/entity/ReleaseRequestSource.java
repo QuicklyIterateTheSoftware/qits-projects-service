@@ -60,6 +60,18 @@ public class ReleaseRequestSource extends PanacheEntityBase implements CausedRow
   @Column(nullable = false, length = 512)
   public String name;
 
+  /**
+   * How urgently <b>this branch</b> wants to be released (V14). Declared at create or add-source
+   * time, updateable afterwards while the request is open, and {@code MEDIUM} where the caller said
+   * nothing — never null, so "did not say" and "said MEDIUM" are one state rather than two.
+   *
+   * <p>The request's own effective priority is the max over these rows and is <b>derived</b>, never
+   * stored: a column on the request could disagree with the sources it is a max of.
+   */
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 32)
+  public ReleasePriority priority;
+
   @Column(name = "added_at", nullable = false)
   public Instant addedAt;
 
