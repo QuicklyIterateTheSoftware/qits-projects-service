@@ -39,14 +39,42 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * same reason: a panel that says "we could not ask" is useful and a 500 is not. The only refusal is
  * a request id that names nothing.
  *
- * <p><b>Absent is not empty-with-an-excuse.</b> A repository with no {@link #RELEASE_RECIPE} at all
- * publishes nothing and gets no {@code detail} — every SPA on this platform is in that case, and
- * putting a sentence there would turn the ordinary answer into a warning.
+ * <p><b>Two file kinds are read, and {@link #SLOT_CONFIG} is asked first.</b> A migrated repository
+ * declares its release as configuration — one {@code .config/qits/release.yml} whose {@code
+ * artifacts:} block is the same declaration and whose {@code userflows:} key replaces the substring
+ * hunt below — and the pipelines it used to spell out are composed by qits-ci from a wrapper-owned
+ * archetype, so the two legacy files are not in that repository's tree at all. Asking for the new
+ * file first is what makes the migration invisible here: where it answers, it is the whole answer
+ * and no legacy path runs, so a repository migrating mid-flight never has two declarations read into
+ * one list.
+ *
+ * <p><b>The legacy read is not deprecated, it is permanent.</b> The tree at a tag is immutable, so
+ * a release made before its repository migrated still carries the two old files and nothing will
+ * ever put a {@code release.yml} in that tree — and answering for old releases forever is this
+ * class's entire point. The fallback goes when the last pre-migration tag stops being interesting,
+ * which is to say never.
+ *
+ * <p><b>Absent is not empty-with-an-excuse.</b> A repository declaring none of the three files at
+ * all publishes nothing and gets no {@code detail} — every SPA on this platform was in that case,
+ * and putting a sentence there would turn the ordinary answer into a warning.
  */
 @ApplicationScoped
 public class ReleaseArtifacts {
 
   private static final Logger LOG = Logger.getLogger(ReleaseArtifacts.class);
+
+  /**
+   * The repository's release configuration, and the first thing looked for at the tag.
+   *
+   * <p>It is not a pipeline: qits-ci composes the two release triggers from this file and a
+   * wrapper-owned archetype recipe, so what is here is declaration alone. Two keys are read —
+   * {@code artifacts:}, entry-for-entry what {@link #RELEASE_RECIPE} used to carry, and {@code
+   * userflows:}. Everything else it may carry ({@code archetype:}, {@code release-request:}, {@code
+   * release:}, and a per-artifact {@code sbom:} path) is the composer's business and is passed over
+   * here rather than refused: this reader must not become a second schema owner that fails a panel
+   * over a key it was never told about.
+   */
+  static final String SLOT_CONFIG = ".config/qits/release.yml";
 
   /** The release pipeline's own declaration of what it publishes — {@code artifacts:} is read. */
   static final String RELEASE_RECIPE = ".config/qits/ci-event-release.yml";
@@ -54,7 +82,8 @@ public class ReleaseArtifacts {
   /**
    * The per-release-request QA pipeline. It is read for one substring and never parsed: what is
    * wanted from it is whether this repository publishes a userflow bundle, and that is a shell line
-   * inside a step rather than anything the recipe declares.
+   * inside a step rather than anything the recipe declares. {@link #SLOT_CONFIG}'s {@code
+   * userflows:} key is the declaration that retires the hunt — for the tags that have it.
    */
   static final String QA_RECIPE = ".config/qits/ci-event-release-request.yml";
 
@@ -135,6 +164,32 @@ public class ReleaseArtifacts {
     boolean deployable = tree.value().contains(ReleaseFinalization.DEPLOYMENTS_MANIFEST);
 
     List<ReleaseArtifactDto> artifacts = new ArrayList<>();
+    if (tree.value().contains(SLOT_CONFIG)) {
+      ReleaseGitHost.Answer<String> config = file(host, repoId, rev, SLOT_CONFIG);
+      if (config == null || !config.ok()) {
+        return nothing(
+            released,
+            deployable,
+            "The release configuration could not be read: "
+                + (config == null ? "the git host could not be asked" : config.detail()));
+      }
+      try {
+        Map<String, Object> document = document(config.value());
+        artifacts.addAll(declared(document, released.version()));
+        userflows(document, released).ifPresent(artifacts::add);
+      } catch (RuntimeException e) {
+        LOG.debugf(
+            "The release configuration of %s at %s does not parse: %s", repoId, rev, e.toString());
+        return nothing(
+            released,
+            deployable,
+            "The release configuration does not read as a release declaration");
+      }
+      // The configured file is the whole declaration. A repository migrating mid-flight may still
+      // carry a legacy recipe at this tag, and reading it too would answer one release's artifacts
+      // out of two declarations that were never written to agree.
+      return answer(released, deployable, artifacts);
+    }
     if (tree.value().contains(RELEASE_RECIPE)) {
       ReleaseGitHost.Answer<String> recipe = file(host, repoId, rev, RELEASE_RECIPE);
       if (recipe == null || !recipe.ok()) {
@@ -153,6 +208,12 @@ public class ReleaseArtifacts {
       }
     }
     userflows(host, repoId, rev, tree.value(), released).ifPresent(artifacts::add);
+    return answer(released, deployable, artifacts);
+  }
+
+  /** What one release published, with nothing to explain. */
+  private static ReleaseArtifactsDto answer(
+      Released released, boolean deployable, List<ReleaseArtifactDto> artifacts) {
     return new ReleaseArtifactsDto(
         released.version(),
         released.releasedSha(),
@@ -199,6 +260,46 @@ public class ReleaseArtifacts {
         new ReleaseArtifactDto("userflows", name, released.mergedSha()));
   }
 
+  /**
+   * The bundle {@link #SLOT_CONFIG} <b>declares</b>, which is the same fact one paragraph up said
+   * out loud instead of left to be found in a shell line.
+   *
+   * <p>Two spellings, because the two cases are genuinely different facts. {@code userflows: true}
+   * says "this repository publishes its bundle under its own name", and the site is then the
+   * repository's name — which is what a composed pipeline publishes to, since the archetype has
+   * nothing else to interpolate. {@code userflows: <site>} states the site, and it is there for the
+   * repositories whose bundle is not named after them: {@code qits-projects-service} publishes
+   * {@code @userflows/qits-projects}, so its file says {@code userflows: qits-projects}. Absent, and
+   * {@code false}, are both "no bundle" — which is most repositories.
+   *
+   * <p>Anything else under the key is thrown rather than passed over, the same stance {@link
+   * #declared} takes: a list or a mapping there is a file whose author meant something this reader
+   * cannot see, and quietly dropping a bundle is the failure {@code detail} exists to avoid.
+   *
+   * <p><b>Its version is still the fold's sha and not the calver</b>, for the reason the legacy
+   * reading gives: the bundle is published per release request, at {@code $QITS_CI_SHA}.
+   */
+  private static Optional<ReleaseArtifactDto> userflows(
+      Map<String, Object> document, Released released) {
+    Object declared = document.get("userflows");
+    if (declared == null || Boolean.FALSE.equals(declared)) {
+      return Optional.empty();
+    }
+    String site;
+    if (Boolean.TRUE.equals(declared)) {
+      site = text(released.repoName());
+    } else if (declared instanceof Map || declared instanceof List) {
+      throw new IllegalArgumentException("userflows is neither a flag nor a site name");
+    } else {
+      site = text(declared);
+    }
+    if (site == null || released.mergedSha() == null) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new ReleaseArtifactDto("userflows", USERFLOWS_SCOPE + site, released.mergedSha()));
+  }
+
   /** {@link ReleaseGitHost#file} with the port's must-not-throw promise held to. */
   private ReleaseGitHost.Answer<String> file(
       ReleaseGitHost host, String repoId, String rev, String path) {
@@ -211,26 +312,42 @@ public class ReleaseArtifacts {
   }
 
   /**
-   * The {@code artifacts:} list of a release recipe, as {@link ReleaseArtifactDto}s at the released
-   * version.
-   *
-   * <p>SnakeYAML's {@link SafeConstructor} — plain maps and lists, never an arbitrary class out of
-   * repository content — the posture {@link QitsConfigParser} states and the reason it is worth
-   * restating: this file comes from a repository and is not trusted input.
+   * The {@code artifacts:} list of a release recipe or a release configuration, as {@link
+   * ReleaseArtifactDto}s at the released version. <b>One reading serves both files</b>, because the
+   * block is the same block — that sameness is what made the migration a file move rather than a
+   * translation, and it is worth keeping.
    *
    * <p>Anything that is not a list of mappings with a {@code type} and a {@code name} is thrown
    * rather than skipped, so the caller can say "the recipe does not parse" instead of quietly
-   * answering a shorter list than the repository declares.
+   * answering a shorter list than the repository declares. An entry's <b>other</b> keys are passed
+   * over, not refused — a configuration's {@code sbom:} path is a fact about how the pipeline builds
+   * the artifact and says nothing about where the artifact went, which is the only question here.
    */
   private static List<ReleaseArtifactDto> declared(String yaml, String version) {
+    return declared(document(yaml), version);
+  }
+
+  /**
+   * One repository-authored YAML document as plain maps and lists, or a throw.
+   *
+   * <p>{@link SafeConstructor} — never an arbitrary class out of repository content — the posture
+   * {@link QitsConfigParser} states and the reason it is worth restating: this file comes from a
+   * repository and is not trusted input. An empty document is a mapping with nothing in it, which
+   * is what makes "declares no artifacts" and "declares nothing at all" the same answer.
+   */
+  private static Map<String, Object> document(String yaml) {
     Object root = new Yaml(new SafeConstructor(new LoaderOptions())).load(yaml);
     if (root == null) {
-      return List.of();
+      return Map.of();
     }
     if (!(root instanceof Map<?, ?> document)) {
       throw new IllegalArgumentException("the document root is not a mapping");
     }
-    Object declared = asMap(document).get("artifacts");
+    return asMap(document);
+  }
+
+  private static List<ReleaseArtifactDto> declared(Map<String, Object> document, String version) {
+    Object declared = document.get("artifacts");
     if (declared == null) {
       return List.of();
     }
