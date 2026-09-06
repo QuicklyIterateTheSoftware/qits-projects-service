@@ -34,7 +34,7 @@ public class RepositoryMcpToolsTest {
   private static RequestSpecification authenticated() {
     return given()
         .header("X-Qits-User", "mcp-test")
-        .header("X-Qits-Roles", "qits:admin,qits-platform:admin,qits:system,qits-platform:system");
+        .header("X-Qits-Roles", "qits:admin,qits:system,qits-platform:system");
   }
 
   /** Isolate cloned repos in a temp dir, like the controller tests. */
