@@ -131,7 +131,8 @@ public class EventWireReflectionTest {
    * ScmReleaseContractTest} over there declares a local record whose components are copied from this
    * one and runs it through the same {@code CanonicalJson}; nothing in either build can see the
    * other, so this assertion and that transcription are the two ends of the contract. A change here
-   * is a change there, in the same campaign — which {@code commitSha} was.
+   * is a change there, in the same campaign — which {@code commitSha} was, and which {@code
+   * priority} is.
    */
   @Test
   public void theReplicatedReleaseEventKeepsTheWireNameAndTheFiveFieldsItAlwaysHad() {
@@ -139,23 +140,23 @@ public class EventWireReflectionTest {
     assertEquals(
         java.util.List.of(
             "eventId", "projectId", "repository", "repositoryName", "branch", "version",
-            "commitSha", "occurredAt"),
+            "commitSha", "occurredAt", "priority"),
         java.util.Arrays.stream(SCMRelease.class.getRecordComponents())
             .map(java.lang.reflect.RecordComponent::getName)
             .toList(),
-        "the five qits-workspaces' record carried, in their order, plus commitSha — eventId and"
-            + " occurredAt are components the canonical mix-in keeps out of the payload, leaving"
-            + " the six a consumer selects on");
+        "the five qits-workspaces' record carried, in their order, plus commitSha and priority —"
+            + " eventId and occurredAt are components the canonical mix-in keeps out of the"
+            + " payload, leaving the seven a consumer selects on");
   }
 
   /**
    * <b>Additive means the wire form of an old release is byte-identical.</b> The five original
-   * fields are what every existing consumer selects on, and the new component may not disturb one of
+   * fields are what every existing consumer selects on, and neither new component may disturb one of
    * them; and because {@code CanonicalJson} includes {@code NON_NULL} only, an event published
-   * without a {@code commitSha} — a replay from before this field, or any publisher that has not
-   * grown it — carries no such key at all rather than a null. That absence is the compatibility arm
-   * qits-ci's trigger engine falls back on, so it is pinned here at the source rather than only
-   * asserted at the consumer.
+   * without a {@code commitSha} or a {@code priority} — a replay from before those fields, or any
+   * publisher that has not grown them — carries no such key at all rather than a null. That absence
+   * is the compatibility arm qits-ci's trigger engine falls back on, so it is pinned here at the
+   * source rather than only asserted at the consumer.
    */
   @Test
   public void aReleaseWithoutACommitShaIsTheOlderPayloadExactly() throws Exception {
@@ -170,7 +171,8 @@ public class EventWireReflectionTest {
                     "release/9f2c1a7e",
                     "2026.905.60215",
                     "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
-                    java.time.Instant.parse("2026-09-05T06:02:15Z"))));
+                    java.time.Instant.parse("2026-09-05T06:02:15Z"),
+                    "HIGH")));
     var without =
         mapper.readTree(
             eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
@@ -181,16 +183,23 @@ public class EventWireReflectionTest {
                     "release/9f2c1a7e",
                     "2026.905.60215",
                     null,
-                    java.time.Instant.parse("2026-09-05T06:02:15Z"))));
+                    java.time.Instant.parse("2026-09-05T06:02:15Z"),
+                    null)));
 
     assertEquals(
         "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
         withSha.get("commitSha").asText(),
         "the new coordinate is on the wire when there is one");
+    assertEquals(
+        "HIGH", withSha.get("priority").asText(), "and so is what the release was worth");
     assertTrue(
         !without.has("commitSha"),
         "NON_NULL: an absent commit sha is an absent KEY, which is what a pre-field replay looks"
             + " like and what the consumer's fallback is written against");
+    assertTrue(
+        !without.has("priority"),
+        "the same for the priority: nothing states one on a replay, and a consumer must read that"
+            + " as 'the release said nothing' rather than as a value");
     for (String field :
         java.util.List.of("branch", "projectId", "repository", "repositoryName", "version")) {
       assertEquals(

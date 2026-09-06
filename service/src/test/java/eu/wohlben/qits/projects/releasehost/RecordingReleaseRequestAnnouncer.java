@@ -23,7 +23,8 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
       String releaseRequestId,
       String backingBranch,
       String mergedSha,
-      Instant changedAt) {}
+      Instant changedAt,
+      String priority) {}
 
   private final List<Announced> announced = Collections.synchronizedList(new ArrayList<>());
 
@@ -50,9 +51,17 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
       String releaseRequestId,
       String backingBranch,
       String mergedSha,
-      Instant changedAt) {
+      Instant changedAt,
+      String priority) {
     announced.add(
         new Announced(
-            projectId, repoId, repoName, releaseRequestId, backingBranch, mergedSha, changedAt));
+            projectId,
+            repoId,
+            repoName,
+            releaseRequestId,
+            backingBranch,
+            mergedSha,
+            changedAt,
+            priority));
   }
 }

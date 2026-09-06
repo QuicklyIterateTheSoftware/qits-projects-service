@@ -2,10 +2,12 @@ package eu.wohlben.qits.projects.releasehost;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -323,6 +325,164 @@ public class ReleaseRequestSourcesTest {
     row.releasedAt = Instant.now();
     row.persist();
     return row;
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // What each participant is worth
+  // -------------------------------------------------------------------------------------------
+
+  /** Re-state one named source's urgency — body-addressed, because branch names hold slashes. */
+  private io.restassured.response.ValidatableResponse setPriority(
+      String id, String branch, String priority) {
+    return given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"" + branch + "\",\"priority\":\"" + priority + "\"}")
+        .post(base() + "/" + id + "/sources/priority")
+        .then();
+  }
+
+  /**
+   * <b>The request's priority is the MAX over its named branches</b>, which is the only reading
+   * that cannot lose an escalation: a BLOCKING branch folded in beside a MEDIUM one is a blocking
+   * release. The implicit tag source is in no max at all — it has no row, so it has no urgency of
+   * its own, and its release already stated whatever it was worth.
+   */
+  @Test
+  public void theRequestsPriorityIsTheMaxOverItsBranchesAndAnImplicitTagHasNone() {
+    QuarkusTransaction.requiringNew().run(() -> pendingTag("2026.901.120000"));
+    String id = create("work");
+    given().get(base() + "/" + id).then().body("request.priority", equalTo("MEDIUM"));
+
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"work-two\",\"priority\":\"HIGHER\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(200)
+        .body("request.priority", equalTo("HIGHER"))
+        .body("request.sources.find { it.name == 'main' }.priority", equalTo("MEDIUM"))
+        .body("request.sources.find { it.name == 'work' }.priority", equalTo("MEDIUM"))
+        .body("request.sources.find { it.name == 'work-two' }.priority", equalTo("HIGHER"))
+        .body("request.sources.find { it.implicit }.priority", nullValue());
+
+    // A lower one beside it changes nothing: the max is the answer, not the last word.
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"work-three\",\"priority\":\"LOWEST\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(200)
+        .body("request.priority", equalTo("HIGHER"));
+  }
+
+  /**
+   * <b>Re-pricing a source folds nothing and announces nothing.</b> The same branches are folded
+   * onto the same backing branch, so the sha the gates are evaluating has not moved — a call to the
+   * git host would have no content behind it and a {@code ReleaseRequestChanged} would ask qits-ci
+   * for a second build of a commit it has already built. The value reaches the platform with the
+   * release, which reads the sources live.
+   */
+  @Test
+  public void restatingASourcesPriorityMovesTheMaxAndNothingElse() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    int foldsAfterCreate = merger.foldsOf("refs/heads/release/" + id).size();
+    announcer.reset();
+
+    setPriority(id, "work", "BLOCKING")
+        .statusCode(200)
+        .body("request.priority", equalTo("BLOCKING"))
+        .body("request.sources.find { it.name == 'work' }.priority", equalTo("BLOCKING"))
+        .body("request.sources.find { it.name == 'main' }.priority", equalTo("MEDIUM"))
+        .body("request.state", equalTo("PENDING"));
+
+    assertEquals(
+        foldsAfterCreate,
+        merger.foldsOf("refs/heads/release/" + id).size(),
+        "a priority is not content: the git host is asked for nothing");
+    assertEquals(merged, mergedShaOf(id), "and the request still gates the fold it was gating");
+    assertEquals(List.of(), announcer.announcedFor(id), "so there is nothing to announce");
+
+    // Down again, because an escalation that could not be taken back would be a one-way door.
+    setPriority(id, "work", "LOW").statusCode(200).body("request.priority", equalTo("MEDIUM"));
+  }
+
+  /** The three refusals, each naming what it could not do. */
+  @Test
+  public void repricingRefusesAnUnknownBranchAnUnknownWordAndASettledRequest() {
+    String id = create("work");
+
+    setPriority(id, "never-put-on-it", "HIGH")
+        .statusCode(404)
+        .body("message", containsString("never-put-on-it"));
+    setPriority(id, "work", "URGENT")
+        .statusCode(400)
+        .body("message", containsString("URGENT"))
+        .body("message", containsString("BLOCKING"));
+    // An implicit tag is not addressable here: it has no row, so it reads as a branch nobody named.
+    QuarkusTransaction.requiringNew().run(() -> pendingTag("2026.901.130000"));
+    setPriority(id, "2026.901.130000", "HIGH").statusCode(404);
+    given().get(base() + "/" + id).then().body("request.priority", equalTo("MEDIUM"));
+
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"reason\":\"moot\"}")
+        .post(base() + "/" + id + "/withdraw")
+        .then()
+        .statusCode(200);
+    setPriority(id, "work", "HIGH")
+        .statusCode(409)
+        .body("message", containsString("WITHDRAWN"));
+  }
+
+  /**
+   * <b>The fold's announcement carries the effective priority as it stood when the fold landed</b> —
+   * the reading qits-ci transcribes onto the run it starts. It is deliberately a snapshot: a later
+   * escalation does not refire this event, and what carries that one is the release.
+   */
+  @Test
+  public void aLandedFoldAnnouncesTheEffectivePriorityAtTheMomentItLanded() {
+    String id = create("work");
+    assertEquals("MEDIUM", announcer.announcedFor(id).get(0).priority());
+
+    announcer.reset();
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"work-two\",\"priority\":\"HIGH\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
+
+    List<RecordingReleaseRequestAnnouncer.Announced> events = announcer.announcedFor(id);
+    assertEquals(1, events.size(), "a new source is new content, so the fold is announced");
+    assertEquals("HIGH", events.get(0).priority(), "with the max the new source raised it to");
+  }
+
+  /**
+   * <b>What the release is asked for with is the max at RELEASE time</b>, escalations included:
+   * the value is computed live off the source rows rather than carried from the fold, so a branch
+   * added while the request waited on its gate reaches the tag and everything downstream of it.
+   * This is the ask {@code GitHostReleaseExecutor} rides onto {@code SCMRelease}.
+   */
+  @Test
+  public void theReleaseIsAskedForWithTheMaxAtReleaseTimeIncludingALateSource() {
+    String id = create("work");
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"work-late\",\"priority\":\"HIGHER\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
+
+    activeBuilds.answer(Optional.of(0));
+    greenVerdict(mergedShaOf(id));
+    awaitState(id, "RELEASED");
+
+    assertEquals(1, executor.calls().size());
+    assertEquals(
+        "HIGHER",
+        executor.calls().get(0).priority(),
+        "the late source is the highest, and the release is what it is worth");
   }
 
   // -------------------------------------------------------------------------------------------

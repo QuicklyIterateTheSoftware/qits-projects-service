@@ -19,5 +19,13 @@ package eu.wohlben.qits.projects.dto;
  *
  * <p>{@code ref} is the fully qualified name the git host is given ({@code refs/heads/main},
  * {@code refs/tags/2026.903.1}); {@code name} is the same thing as a person spells it.
+ *
+ * <p><b>{@code priority} is the branch's own urgency</b> — {@code LOWEST}, {@code LOW}, {@code
+ * MEDIUM}, {@code HIGH}, {@code HIGHER} or {@code BLOCKING}, and the vocabulary may grow, so a
+ * caller reads it as a word rather than as a closed set. Never null on a named source ({@code
+ * MEDIUM} is what a caller who stated nothing gets) and <b>always null on an implicit one</b>:
+ * a released tag has no row here and no urgency of its own, and it counts towards nothing. The
+ * request's own {@code priority} is the max over the named ones.
  */
-public record ReleaseRequestSourceDto(String kind, String name, String ref, boolean implicit) {}
+public record ReleaseRequestSourceDto(
+    String kind, String name, String ref, boolean implicit, String priority) {}

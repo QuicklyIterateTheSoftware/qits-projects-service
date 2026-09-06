@@ -1,0 +1,26 @@
+-- HOW URGENTLY A PARTICIPATING BRANCH WANTS TO BE RELEASED.
+--
+-- The signal a build queue reads when there is more to release than there is capacity to release
+-- it with. It sits on the SOURCE and not on the request: a request is an octopus merge of N
+-- branches, each put on it by somebody with their own reason, and one value on the request would
+-- make the last caller's urgency the whole fold's. What a request answers with is the MAX over its
+-- named branch sources — the only reading that cannot lose an escalation — and that is derived at
+-- read time rather than stored, so it can never disagree with the rows it is a max of.
+--
+-- NOT NULL WITH A BACKFILL, AND THEN NO DEFAULT. Every existing row is a branch somebody put on a
+-- request and none of them said anything, so `MEDIUM` — the value a caller who states nothing gets
+-- — is the honest answer for all of them; a nullable column would have made "did not say" and
+-- "said MEDIUM" two states nothing can tell apart. The default is dropped immediately after: it
+-- exists to fill the existing rows in one statement, and leaving it would let a future insert that
+-- forgot the column look deliberate.
+--
+-- NO CHECK CONSTRAINT, the house rule every other enum column here follows (`state`, `kind`): the
+-- value set is the application's to widen, and a constraint would make adding a priority a
+-- migration in every environment before the code that writes it can ship. varchar(32) matches the
+-- other @Enumerated(STRING) columns on this table.
+--
+-- IMPLICIT SOURCES HAVE NO ROW AND THEREFORE NO PRIORITY. A repository's released tags not yet
+-- merged to main are derived from released_tag_pending_merge (V12) and are never rows here, so
+-- they carry none, count towards no max, and the read surface answers null for them.
+alter table release_request_source add column priority varchar(32) not null default 'MEDIUM';
+alter table release_request_source alter column priority drop default;

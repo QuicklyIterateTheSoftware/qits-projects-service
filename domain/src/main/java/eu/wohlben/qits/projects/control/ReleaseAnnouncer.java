@@ -52,6 +52,11 @@ public interface ReleaseAnnouncer {
    *     an implementation must publish without it rather than refuse: it is the coordinate that lets
    *     a release pipeline check the released tree out, never a condition of the release.
    * @param occurredAt when the tag was accepted, which is when the release happened
+   * @param priority what this release was worth to whoever asked for it — the max over the
+   *     request's named branch sources, computed at release time so a late escalation reaches the
+   *     tag and the deployment. As the constant's own name; nullable, and an implementation
+   *     publishes without it rather than refusing, like {@code commitSha} above. Inert data today:
+   *     it is recorded downstream and reorders nothing.
    */
   void onReleased(
       String projectId,
@@ -60,5 +65,6 @@ public interface ReleaseAnnouncer {
       String branch,
       String version,
       String commitSha,
-      Instant occurredAt);
+      Instant occurredAt,
+      String priority);
 }

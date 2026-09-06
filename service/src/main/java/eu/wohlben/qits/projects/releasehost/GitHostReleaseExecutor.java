@@ -280,7 +280,8 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
               release.backingBranch(),
               version,
               tagged,
-              releasedAt);
+              releasedAt,
+              release.priority());
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the release of %s as %s", release.repoId(), version);
     }

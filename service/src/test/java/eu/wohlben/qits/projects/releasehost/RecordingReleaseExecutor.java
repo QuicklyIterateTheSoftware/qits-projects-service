@@ -36,7 +36,8 @@ public class RecordingReleaseExecutor implements ReleaseExecutor {
       String summary,
       String requester,
       List<String> namedSources,
-      String defaultBranch) {}
+      String defaultBranch,
+      String priority) {}
 
   /** By its OWN type, past the {@code @DefaultBean} this bean is currently beating. */
   @Inject GitHostReleaseExecutor real;
@@ -78,7 +79,8 @@ public class RecordingReleaseExecutor implements ReleaseExecutor {
             release.summary(),
             release.requester(),
             release.namedSources(),
-            release.defaultBranch()));
+            release.defaultBranch(),
+            release.priority()));
     return delegate.get() ? real.release(release) : outcome.get();
   }
 }

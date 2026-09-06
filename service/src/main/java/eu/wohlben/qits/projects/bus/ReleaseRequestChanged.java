@@ -36,10 +36,24 @@ import java.util.UUID;
  * — the two differ by however long the announcement took to be made, and the one that belongs in an
  * event log is when the thing happened.
  *
+ * <p><b>{@code priority} is the request's effective priority at the moment of the fold</b> — the max
+ * over its named branch sources ({@code LOWEST}, {@code LOW}, {@code MEDIUM}, {@code HIGH}, {@code
+ * HIGHER}, {@code BLOCKING}), carried as a plain string because no consumer of it is meant to hold
+ * a copy of this service's enum. <b>Additive and nullable</b>: {@code CanonicalJson} is {@code
+ * NON_NULL}, so an absent priority is an absent key and is exactly the shape every event published
+ * before this field has — a consumer that resolves it and finds nothing carries on as it did.
+ * Nothing acts on it yet; it is inherited down the chain as data, and the queue-ordering feature is
+ * what will read it.
+ *
+ * <p><b>A priority-only change does not refire this event</b>, and that is accepted rather than
+ * overlooked: this event says the backing branch has a new tip, and re-stating a source's urgency
+ * moves no ref. What carries a late escalation is {@code SCMRelease}, which reads the sources live
+ * at release time.
+ *
  * <p><b>{@code eventId} is a component, and that is safe.</b> It is generated when absent and final
  * once set, which gives the stability the idempotent {@code PUT} rests on, and the library keeps
  * everything {@link QitsEvent} declares out of the canonical payload — so identity travels in the
- * envelope and the payload is the six fields below.
+ * envelope and the payload is the fields below.
  *
  * <p><b>It lives here rather than in a published vocabulary module</b>, the ruling {@link
  * RepositoryRenamed} states and for the same reason: a jar this platform's Maven registry does not
@@ -62,7 +76,8 @@ public record ReleaseRequestChanged(
     String releaseRequestId,
     String backingBranch,
     String mergedSha,
-    Instant changedAt)
+    Instant changedAt,
+    String priority)
     implements QitsEvent {
 
   public ReleaseRequestChanged {
@@ -79,8 +94,18 @@ public record ReleaseRequestChanged(
       String releaseRequestId,
       String backingBranch,
       String mergedSha,
-      Instant changedAt) {
-    this(null, projectId, repoId, repoName, releaseRequestId, backingBranch, mergedSha, changedAt);
+      Instant changedAt,
+      String priority) {
+    this(
+        null,
+        projectId,
+        repoId,
+        repoName,
+        releaseRequestId,
+        backingBranch,
+        mergedSha,
+        changedAt,
+        priority);
   }
 
   @Override
