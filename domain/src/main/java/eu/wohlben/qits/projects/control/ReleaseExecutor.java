@@ -47,6 +47,11 @@ public interface ReleaseExecutor {
    *     wrapper's gitlink pins at each submodule's current default-branch head. Read off the
    *     catalog in the same transaction as the rest of the ask; empty means an ordinary release
    *     and no banking arm at all.
+   * @param priority the request's effective priority — the max over {@link #namedSources}' rows, as
+   *     the constant's own name. Computed <b>at release time</b> rather than carried from the fold,
+   *     so an escalation made while the request waited on its gate reaches the tag's announcement.
+   *     Nullable and inert: an executor rides it onto {@code SCMRelease} and decides nothing with
+   *     it.
    */
   record Release(
       String requestId,
@@ -59,7 +64,8 @@ public interface ReleaseExecutor {
       String requester,
       List<String> namedSources,
       String defaultBranch,
-      Map<String, Submodule> wrapperCatalog) {}
+      Map<String, Submodule> wrapperCatalog,
+      String priority) {}
 
   /** One catalog repository a wrapper's gitlink may pin: its storage id and its default branch. */
   record Submodule(String repoId, String mainBranch) {}

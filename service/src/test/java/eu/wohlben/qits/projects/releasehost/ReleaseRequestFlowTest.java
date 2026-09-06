@@ -126,6 +126,17 @@ public class ReleaseRequestFlowTest {
         .path("request.id");
   }
 
+  /** A create that states what the branch is worth, which the helper above deliberately does not. */
+  private io.restassured.response.ValidatableResponse createAt(String branch, String priority) {
+    return given()
+        .contentType(ContentType.JSON)
+        .body(
+            "{\"branch\":\"" + branch + "\",\"summary\":\"a gated release\",\"priority\":\""
+                + priority + "\"}")
+        .post(base())
+        .then();
+  }
+
   private void verdict(String name, String sha, String extra) {
     listener.onFrame(
         new EventFrame(
@@ -197,6 +208,92 @@ public class ReleaseRequestFlowTest {
         .get(base() + "/" + id)
         .then()
         .body("request.version", equalTo("2026.831.90000"));
+  }
+
+  /**
+   * <b>Priority is stated per branch and defaults to MEDIUM</b>, and the request answers with the
+   * max over its named branches. The implied {@code main} takes the default even when the branch
+   * beside it does not: the caller asked about their branch and said nothing about main, and a
+   * create that raised main would raise it for every other request of the repository too, since
+   * main is a named source of all of them.
+   */
+  @Test
+  public void aCreateStatesWhatItsBranchIsWorthAndMainKeepsTheDefault() {
+    activeBuilds.answer(Optional.of(1));
+    String plain = create("work");
+    given()
+        .get(base() + "/" + plain)
+        .then()
+        .body("request.priority", equalTo("MEDIUM"))
+        .body("request.sources.find { it.name == 'main' }.priority", equalTo("MEDIUM"))
+        .body("request.sources.find { it.name == 'work' }.priority", equalTo("MEDIUM"));
+
+    createAt("work-urgent", "HIGH")
+        .statusCode(200)
+        .body("request.priority", equalTo("HIGH"))
+        .body("request.sources.find { it.name == 'work-urgent' }.priority", equalTo("HIGH"))
+        .body(
+            "request.sources.find { it.name == 'main' }.priority",
+            equalTo("MEDIUM"));
+  }
+
+  /** A word naming no priority is a 400 naming the word, on both doors that take one. */
+  @Test
+  public void aWordThatNamesNoPriorityIsRefusedWithTheVocabulary() {
+    activeBuilds.answer(Optional.of(1));
+    createAt("work", "URGENT")
+        .statusCode(400)
+        .body("message", containsString("URGENT"))
+        .body("message", containsString("BLOCKING"));
+
+    // And the refusal is a refusal: nothing was opened on the way to it.
+    assertEquals(List.of(), idsAt("?state=all"));
+
+    String id = create("work");
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"work-two\",\"priority\":\"high\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(400)
+        .body("message", containsString("high"));
+    // The refused add put nothing on the request: main and work, as the create left it.
+    given().get(base() + "/" + id).then().body("request.sources.size()", equalTo(2));
+  }
+
+  /**
+   * <b>What the release is asked for with is the priority the sources have at RELEASE time.</b> A
+   * request can wait a whole pipeline on its gate, so the value is read live rather than carried
+   * from the fold — and the escalation below is made through the route that does not re-fold, which
+   * is exactly the case a fold-time reading would lose.
+   */
+  @Test
+  public void theReleaseCarriesThePriorityTheSourcesHaveWhenItRuns() {
+    activeBuilds.answer(Optional.of(1));
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    assertEquals("MEDIUM", announcer.announcedFor(id).get(0).priority(), "the fold's own reading");
+
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"work\",\"priority\":\"BLOCKING\"}")
+        .post(base() + "/" + id + "/sources/priority")
+        .then()
+        .statusCode(200)
+        .body("request.priority", equalTo("BLOCKING"));
+
+    activeBuilds.answer(Optional.of(0));
+    verdict("BuildSuccessful", merged, "");
+    awaitState(id, "RELEASED");
+
+    assertEquals(
+        "BLOCKING",
+        executor.calls().get(0).priority(),
+        "the escalation was made after the fold was announced and still reached the tag");
+    assertEquals(
+        1,
+        announcer.announcedFor(id).size(),
+        "and it refired nothing: no ref moved, so there is no new sha to build");
   }
 
   @Test

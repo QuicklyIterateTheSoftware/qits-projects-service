@@ -6,6 +6,7 @@ import eu.wohlben.qits.projects.dto.MergeConflictDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
+import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
@@ -213,9 +214,17 @@ public class ReleaseRequests {
    * <p>At most one open request per named branch, the merge-request shape kept: asking again for a
    * branch that already participates in an open request answers that request rather than opening a
    * second one, and adds nothing to it.
+   *
+   * @param priority how urgently the named branch wants to be released, or null/blank for {@code
+   *     MEDIUM}. The implied {@code main} row takes the default rather than the caller's word: the
+   *     caller asked about their branch and said nothing about main. On the <b>converge</b> arm an
+   *     absent priority changes nothing — re-asking for a branch must never silently downgrade the
+   *     urgency somebody escalated it to — and a stated one updates the branch's row.
    */
-  public ReleaseRequestDto request(String repoId, String branch, String summary, String requester) {
+  public ReleaseRequestDto request(
+      String repoId, String branch, String summary, String requester, String priority) {
     String named = requireBranch(branch);
+    ReleasePriority stated = statedPriority(priority);
     if (summary == null || summary.isBlank()) {
       throw new BadRequestException("A release request carries a summary");
     }
@@ -240,6 +249,11 @@ public class ReleaseRequests {
                     if (requester != null) {
                       open.requester = requester;
                     }
+                    if (stated != null) {
+                      sources
+                          .find(open.id, ReleaseRequestSource.Kind.BRANCH, named)
+                          .ifPresent(source -> source.priority = stated);
+                    }
                     open.updatedAt = Instant.now();
                     return open.id;
                   }
@@ -256,10 +270,17 @@ public class ReleaseRequests {
                   fresh.updatedAt = fresh.createdAt;
                   requests.persist(fresh);
                   // main first: it is the head the fold starts from, and the order sources are
-                  // added in is the order they become parents.
-                  addSourceRow(fresh.id, main, null);
-                  if (!main.equals(named)) {
-                    addSourceRow(fresh.id, named, requester);
+                  // added in is the order they become parents. It is IMPLIED rather than asked
+                  // for, so it takes the default priority — unless the caller named it, in which
+                  // case that one row is the branch they spoke about.
+                  boolean mainWasNamed = main.equals(named);
+                  addSourceRow(
+                      fresh.id,
+                      main,
+                      null,
+                      mainWasNamed ? orDefault(stated) : ReleasePriority.DEFAULT);
+                  if (!mainWasNamed) {
+                    addSourceRow(fresh.id, named, requester, orDefault(stated));
                   }
                   return fresh.id;
                 });
@@ -275,26 +296,87 @@ public class ReleaseRequests {
    * <p>Only <b>named</b> sources are caller-managed. The implicit tag sources are derived from what
    * the repository has in flight and an API that let a caller drop one would let somebody release a
    * step backwards from what is already shipping.
+   *
+   * @param priority how urgently this branch wants to be released, or null/blank for {@code
+   *     MEDIUM}. On the idempotent arm — the branch is already a source — a stated priority updates
+   *     the row it names and an absent one leaves it exactly where it was, so a retried add never
+   *     downgrades an escalation. Neither re-folds: a priority is not content.
    */
-  public ReleaseRequestDto addSource(String requestId, String branch, String actor) {
+  public ReleaseRequestDto addSource(
+      String requestId, String branch, String actor, String priority) {
     String named = requireBranch(branch);
+    ReleasePriority stated = statedPriority(priority);
     boolean added =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
                   ReleaseRequest row = requireOpenForChange(requestId);
-                  if (sources
-                      .find(row.id, ReleaseRequestSource.Kind.BRANCH, named)
-                      .isPresent()) {
+                  ReleaseRequestSource existing =
+                      sources.find(row.id, ReleaseRequestSource.Kind.BRANCH, named).orElse(null);
+                  if (existing != null) {
+                    if (stated != null && stated != existing.priority) {
+                      existing.priority = stated;
+                      row.updatedAt = Instant.now();
+                    }
                     return false;
                   }
-                  addSourceRow(row.id, named, actor);
+                  addSourceRow(row.id, named, actor, orDefault(stated));
                   row.updatedAt = Instant.now();
                   return true;
                 });
     if (added) {
       remerge(requestId, "a source was added: " + named);
     }
+    return get(requestId);
+  }
+
+  /**
+   * Re-state how urgently one named branch of an open request wants to be released. The request's
+   * effective priority — the max over its named sources — follows on the next read.
+   *
+   * <p><b>Nothing is re-folded and nothing is announced.</b> The fold did not move: the same
+   * branches are folded onto the same backing branch and the sha is the one the gates are already
+   * evaluating, so asking the git host again would be a call with no content behind it and a {@code
+   * ReleaseRequestChanged} would ask qits-ci for a second build of a sha it has already built. The
+   * value reaches the platform on the next event that carries it anyway — {@code SCMRelease} reads
+   * the sources live at release time, so an escalation made while a request waits on its gate still
+   * arrives with the release. <b>The queue-ordering feature revisits this</b>: the moment something
+   * downstream orders by the value, a priority-only change becomes news and this arm needs a
+   * statement of its own.
+   *
+   * <p>Refusals, in the order they are met: a request that does not exist is a 404; a RELEASED or
+   * WITHDRAWN one is a 409 ({@link #requireOpenForChange}, because re-pricing what already
+   * concluded would rewrite a record); a branch this request does not name is a 404 naming it; and
+   * a word naming no priority is a 400 naming the word. Implicit tag sources are not addressable
+   * here — they have no row, and their urgency is the release they came from.
+   */
+  public ReleaseRequestDto updateSourcePriority(
+      String requestId, String branch, String priority, String actor) {
+    String named = requireBranch(branch);
+    ReleasePriority wanted = requirePriority(priority);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row = requireOpenForChange(requestId);
+              ReleaseRequestSource source =
+                  sources
+                      .find(row.id, ReleaseRequestSource.Kind.BRANCH, named)
+                      .orElseThrow(
+                          () ->
+                              new NotFoundException(
+                                  "Release request "
+                                      + requestId
+                                      + " has no named source "
+                                      + named));
+              if (source.priority == wanted) {
+                return;
+              }
+              LOG.infof(
+                  "Release request %s: source %s is %s now (was %s), asked by %s",
+                  requestId, named, wanted, source.priority, actor == null ? "an operator" : actor);
+              source.priority = wanted;
+              row.updatedAt = Instant.now();
+            });
     return get(requestId);
   }
 
@@ -620,7 +702,8 @@ public class ReleaseRequests {
       String backingBranch,
       String mergedSha,
       String supersededSha,
-      Instant changedAt) {}
+      Instant changedAt,
+      String priority) {}
 
   /**
    * Fold one request's sources onto its backing branch, and act on what came back. Package-private
@@ -778,7 +861,8 @@ public class ReleaseRequests {
                       row.backingBranch(),
                       row.mergedSha,
                       null,
-                      now);
+                      now,
+                      effectivePriorityOf(row.id).name());
                 }
                 default -> {
                   String superseded = row.mergedSha;
@@ -797,7 +881,8 @@ public class ReleaseRequests {
                       row.backingBranch(),
                       row.mergedSha,
                       superseded,
-                      now);
+                      now,
+                      effectivePriorityOf(row.id).name());
                 }
               }
             });
@@ -842,7 +927,8 @@ public class ReleaseRequests {
               folded.releaseRequestId(),
               folded.backingBranch(),
               folded.mergedSha(),
-              folded.changedAt());
+              folded.changedAt(),
+              folded.priority());
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the change to release request %s", folded.releaseRequestId());
     }
@@ -990,6 +1076,7 @@ public class ReleaseRequests {
                           && row.state != ReleaseRequest.State.FAILED)) {
                     return null;
                   }
+                  List<ReleaseRequestSource> named = sources.listByRequest(row.id);
                   return new ReleaseExecutor.Release(
                       row.id,
                       row.repoId,
@@ -999,9 +1086,12 @@ public class ReleaseRequests {
                       row.mergedSha,
                       row.summary,
                       row.requester,
-                      sources.listByRequest(row.id).stream().map(source -> source.name).toList(),
+                      named.stream().map(source -> source.name).toList(),
                       mainOf(row.repoId),
-                      wrapperCatalogOf(row.repoId, row.projectId));
+                      wrapperCatalogOf(row.repoId, row.projectId),
+                      // Read LIVE, here and not at the fold: a request can wait a whole pipeline on
+                      // its gate, and an escalation made in that window has to reach the tag.
+                      effectivePriorityOf(named).name());
                 });
     if (ask == null) {
       return;
@@ -1270,7 +1360,11 @@ public class ReleaseRequests {
     for (ReleaseRequestSource source : named) {
       all.add(
           new ReleaseRequestSourceDto(
-              source.kind.name(), source.name, "refs/heads/" + source.name, false));
+              source.kind.name(),
+              source.name,
+              "refs/heads/" + source.name,
+              false,
+              source.priority == null ? null : source.priority.name()));
     }
     for (ReleasedTagPendingMerge tag : implicit) {
       all.add(
@@ -1278,7 +1372,10 @@ public class ReleaseRequests {
               ReleaseRequestSource.Kind.RELEASED_TAG.name(),
               tag.tagName,
               "refs/tags/" + tag.tagName,
-              true));
+              true,
+              // An implicit source has no row and therefore no priority of its own: its urgency
+              // was the release it came from, and it counts towards no max.
+              null));
     }
     return new ReleaseRequestDto(
         row.id,
@@ -1286,6 +1383,7 @@ public class ReleaseRequests {
         repoName,
         row.backingBranch(),
         List.copyOf(all),
+        effectivePriorityOf(named).name(),
         row.mergedSha,
         row.state.name(),
         row.summary,
@@ -1317,7 +1415,8 @@ public class ReleaseRequests {
     return List.copyOf(refs);
   }
 
-  private void addSourceRow(String requestId, String branch, String actor) {
+  private void addSourceRow(
+      String requestId, String branch, String actor, ReleasePriority priority) {
     ReleaseRequestSource source = new ReleaseRequestSource();
     source.id = UUID.randomUUID().toString();
     source.requestId = requestId;
@@ -1325,7 +1424,53 @@ public class ReleaseRequests {
     source.name = branch;
     source.addedAt = Instant.now();
     source.addedBy = actor;
+    source.priority = priority;
     sources.persist(source);
+  }
+
+  /**
+   * The request's effective priority: the max over its <b>named</b> sources, {@code MEDIUM} where
+   * it has none. Read inside whatever transaction is already open — it is one query on the same
+   * datasource — and never stored, so it cannot disagree with the rows it is a max of.
+   */
+  private ReleasePriority effectivePriorityOf(String requestId) {
+    return effectivePriorityOf(sources.listByRequest(requestId));
+  }
+
+  /** The same max over rows already in hand — the read paths, which fetch them anyway. */
+  private static ReleasePriority effectivePriorityOf(List<ReleaseRequestSource> named) {
+    return ReleasePriority.max(named.stream().map(source -> source.priority).toList());
+  }
+
+  /**
+   * What a caller said about priority, or null where they said nothing. Null is not {@code MEDIUM}
+   * here on purpose: the converge and idempotent arms have to tell "did not say" from "said
+   * MEDIUM", because only the second may move a stored value.
+   */
+  private static ReleasePriority statedPriority(String priority) {
+    if (priority == null || priority.isBlank()) {
+      return null;
+    }
+    return requirePriority(priority);
+  }
+
+  /** A priority the caller must have named — the update arm, where absent is nothing to do. */
+  private static ReleasePriority requirePriority(String priority) {
+    return ReleasePriority.of(priority == null ? null : priority.trim())
+        .orElseThrow(
+            () ->
+                new BadRequestException(
+                    "Unknown release priority: "
+                        + priority
+                        + ". Name one of "
+                        + Arrays.stream(ReleasePriority.values())
+                            .map(Enum::name)
+                            .collect(Collectors.joining(", "))
+                        + "."));
+  }
+
+  private static ReleasePriority orDefault(ReleasePriority stated) {
+    return stated == null ? ReleasePriority.DEFAULT : stated;
   }
 
   private ReleaseRequest requireOpenForChange(String id) {

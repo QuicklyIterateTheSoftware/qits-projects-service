@@ -60,11 +60,20 @@ import java.util.UUID;
  * the event carries both — the id for anyone joining back to the registry, the name for anyone
  * selecting on it. Nullable: a repository with no alias costs the event a field, never the release.
  *
+ * <p><b>{@code priority} is the seventh, and it is additive on exactly the same terms.</b> It is
+ * what this release was worth to whoever asked for it — the max over the release request's named
+ * branch sources, computed at release time so an escalation made while the request waited on its
+ * gate still reaches the tag. A plain string ({@code LOWEST}, {@code LOW}, {@code MEDIUM}, {@code
+ * HIGH}, {@code HIGHER}, {@code BLOCKING}), because no consumer of it is meant to hold a copy of
+ * this service's enum, and nullable, so an older event and an announcer with nothing to say are the
+ * same absent key. <b>It reorders nothing today</b>: qits-ci transcribes it and qits-deployments
+ * records it, both display-only, and the queue-ordering feature is what will act on it.
+ *
  * <p><b>{@code eventId} and {@code occurredAt} are components and stay out of the payload.</b> The
  * library's canonical serializer excludes everything {@link QitsEvent} declares, and these two
  * accessors are those declarations — so identity and time travel in the envelope and the payload is
- * exactly the fields {@code branch}, {@code commitSha}, {@code projectId}, {@code repository},
- * {@code repositoryName}, {@code version}. Reading a payload back therefore yields a fresh id and a
+ * exactly the fields {@code branch}, {@code commitSha}, {@code priority}, {@code projectId}, {@code
+ * repository}, {@code repositoryName}, {@code version}. Reading a payload back therefore yields a fresh id and a
  * null time, which is correct: a received event's identity and clock are the envelope's.
  *
  * <p>It lives in {@code service/…/bus/} rather than a published vocabulary module, the {@link
@@ -84,6 +93,9 @@ import java.util.UUID;
  *     is a clone target where {@code branch} is a deleted ref and {@code version} alone is not a
  *     commit.
  * @param occurredAt when the tag was accepted, which is when the release happened
+ * @param priority what this release was worth to whoever asked for it — the release request's
+ *     effective priority at release time, or null. Inert data: it is recorded downstream and orders
+ *     nothing yet.
  */
 public record SCMRelease(
     UUID eventId,
@@ -93,7 +105,8 @@ public record SCMRelease(
     String branch,
     String version,
     String commitSha,
-    Instant occurredAt)
+    Instant occurredAt,
+    String priority)
     implements QitsEvent {
 
   public SCMRelease {
@@ -110,7 +123,17 @@ public record SCMRelease(
       String branch,
       String version,
       String commitSha,
-      Instant occurredAt) {
-    this(null, projectId, repository, repositoryName, branch, version, commitSha, occurredAt);
+      Instant occurredAt,
+      String priority) {
+    this(
+        null,
+        projectId,
+        repository,
+        repositoryName,
+        branch,
+        version,
+        commitSha,
+        occurredAt,
+        priority);
   }
 }

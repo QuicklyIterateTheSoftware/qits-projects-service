@@ -43,9 +43,17 @@ public class ReleaseRequestChangedAnnouncer implements ReleaseRequestAnnouncer {
       String releaseRequestId,
       String backingBranch,
       String mergedSha,
-      Instant changedAt) {
+      Instant changedAt,
+      String priority) {
     bus.publish(
         new ReleaseRequestChanged(
-            projectId, repoId, repoName, releaseRequestId, backingBranch, mergedSha, changedAt));
+            projectId,
+            repoId,
+            repoName,
+            releaseRequestId,
+            backingBranch,
+            mergedSha,
+            changedAt,
+            priority));
   }
 }
