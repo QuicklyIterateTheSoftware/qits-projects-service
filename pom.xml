@@ -96,8 +96,8 @@
              cached maven layer — so the resolution the pin governs was never actually performed. A
              green build that resolved nothing is not evidence that it could, which is the whole
              reason to name a release here. qits-githost cut one on 2026-08-12 and this is it. -->
-        <qits.eventstream.version>2026.905.91315</qits.eventstream.version>
-        <qits.githost-events.version>2026.904.83221</qits.githost-events.version>
+        <qits.eventstream.version>2026.906.25410</qits.eventstream.version>
+        <qits.githost-events.version>2026.906.30110</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
              starts, now that it holds no docker socket. Framework-free — one class, four answers,
@@ -107,7 +107,7 @@
              PINNED AT A RELEASED CALVER, never a snapshot, for the reason spelled out above the
              vocabulary jar: a snapshot that resolves only from a warm docker layer and a
              developer's ~/.m2 is a red release waiting for whoever next edits a file. -->
-        <qits.containers-client.version>2026.905.201040</qits.containers-client.version>
+        <qits.containers-client.version>2026.906.23135</qits.containers-client.version>
 
         <!-- qits-integrations-quarkus ships two jars this repo consumes, released together, so they
              carry ONE version property rather than drifting apart:
