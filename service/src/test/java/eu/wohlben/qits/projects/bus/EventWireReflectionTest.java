@@ -210,6 +210,77 @@ public class EventWireReflectionTest {
   }
 
   /**
+   * The same additive pin, one event over, for the closure qits-ci orders its queue with.
+   *
+   * <p><b>{@code downstreamTechnicalComponents} is LAST and nullable, and null is not {@code [].}</b>
+   * A list travels as a JSON array in the order it was given — the order IS the answer, nearest
+   * first, and a consumer that re-sorted it would build in a different order — while null is an
+   * absent KEY, which is exactly the payload every {@code ReleaseRequestChanged} published before
+   * this field has. That absence is what qits-ci reads as "unknown, no constraint", so it is pinned
+   * here at the source as well as in that repository's hand-kept transcription. Every field the event
+   * already had must be byte-identical across the two, or the addition is not additive.
+   */
+  @Test
+  public void aChangeWithoutADownstreamClosureIsTheOlderPayloadExactly() throws Exception {
+    var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    var withList =
+        mapper.readTree(
+            eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                new ReleaseRequestChanged(
+                    "p-1",
+                    "r-1",
+                    "qits-ui-components-jslib",
+                    "9f2c1a7e",
+                    "release/9f2c1a7e",
+                    "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                    java.time.Instant.parse("2026-09-05T06:02:15Z"),
+                    "HIGH",
+                    java.util.List.of("qits-ci-frontend", "qits-ci-service"))));
+    var without =
+        mapper.readTree(
+            eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                new ReleaseRequestChanged(
+                    "p-1",
+                    "r-1",
+                    "qits-ui-components-jslib",
+                    "9f2c1a7e",
+                    "release/9f2c1a7e",
+                    "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                    java.time.Instant.parse("2026-09-05T06:02:15Z"),
+                    "HIGH",
+                    null)));
+
+    assertTrue(
+        withList.get("downstreamTechnicalComponents").isArray(),
+        "a closure travels as a JSON array, not as a joined string");
+    assertEquals(
+        java.util.List.of("qits-ci-frontend", "qits-ci-service"),
+        mapper.convertValue(
+            withList.get("downstreamTechnicalComponents"),
+            new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {}),
+        "in the order it was answered — nearest first is the whole point of carrying it");
+    assertTrue(
+        !without.has("downstreamTechnicalComponents"),
+        "NON_NULL: an unknown closure is an absent KEY, which is what a pre-field replay looks like"
+            + " and what qits-ci's fallback is written against");
+    for (String field :
+        java.util.List.of(
+            "projectId",
+            "repoId",
+            "repoName",
+            "releaseRequestId",
+            "backingBranch",
+            "mergedSha",
+            "changedAt",
+            "priority")) {
+      assertEquals(
+          withList.get(field),
+          without.get(field),
+          field + " moved with the closure, so the addition is not additive after all");
+    }
+  }
+
+  /**
    * The announcer is a BEAN, which is the whole of how {@code RepositoryService} finds it — an
    * {@code Instance<RepositoryAnnouncer>} that is unsatisfied announces nothing and says nothing
    * about it, which is correct as a configuration and wrong as an accident.

@@ -76,6 +76,14 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
   than a class in `releasehost/` because **it is not a release verb** — qits-workspaces' release door
   left on 2026-09-03 and stays gone; what travels here is a workspace-lifecycle fact. Do not grow a
   second verb here on the grounds that the address is configured again.
+- `service/…/maintenancehost/` — qits-maintenance, the same `@DefaultBean` HTTP-client shape once
+  more: the seam is `control/DownstreamComponents` and the whole of what lives here is ONE GET,
+  `/maintenance/api/repositories/{repoId}/downstream`, asked at fold time so
+  `ReleaseRequestChanged` can carry what is built on top of the repository. It is addressed by this
+  service's own repository row id, which is qits-maintenance's `catalogId`. Everything about it is
+  advisory: unset, unreachable, refused and 404 are one behaviour — a WARN and `Optional.empty()`,
+  which becomes an absent event key a consumer reads as "unknown". A 200 with an empty array is a
+  different answer (a leaf, `[]` on the wire) and the two must never be collapsed.
 - `epics/` — untouched by the extraction beyond its `<parent>`: its own package, its own error
   types, its own datasource, its own physical database (`qits_epics`) and its own Flyway lineage. It
   depends on neither `domain` nor any auth module, and it should stay that way — it is the module

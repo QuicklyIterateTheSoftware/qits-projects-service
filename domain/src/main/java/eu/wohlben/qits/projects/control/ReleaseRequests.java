@@ -172,6 +172,8 @@ public class ReleaseRequests {
 
   @Inject Instance<ReleasedBranchWorkspaces> releasedBranchWorkspaces;
 
+  @Inject Instance<DownstreamComponents> downstreamComponents;
+
   /**
    * The publish phase, called on the worker the instant a release lands: a repository that declares
    * no deployment has nothing to wait for and its tag is merged to {@code main} there and then.
@@ -928,9 +930,45 @@ public class ReleaseRequests {
               folded.backingBranch(),
               folded.mergedSha(),
               folded.changedAt(),
-              folded.priority());
+              folded.priority(),
+              downstreamOf(folded));
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the change to release request %s", folded.releaseRequestId());
+    }
+  }
+
+  /**
+   * What is built on top of this repository, for the announcement to carry — asked here rather than
+   * inside the fold's transaction, beside the run cancellation and for that call's reasons: it is an
+   * HTTP round trip into another context, made after the merge has already landed.
+   *
+   * <p><b>Null is a first-class answer and is not the same as an empty list.</b> No implementation,
+   * a port that answered empty ("could not ask") and a port that threw all produce null, which the
+   * event turns into an absent key — exactly the shape every announcement made before this field had
+   * — and the consumer reads as "unknown". An empty list means the question was asked and this
+   * repository is a leaf, which is real information and travels as such.
+   *
+   * <p>Its own try/catch rather than the announcement's, so a port bug costs the enrichment and never
+   * the event: the announcement is the thing that makes qits-ci build the fold at all, and it must go
+   * out whatever the closure lookup did.
+   */
+  private List<String> downstreamOf(Folded folded) {
+    if (!downstreamComponents.isResolvable()) {
+      return null;
+    }
+    try {
+      return downstreamComponents
+          .get()
+          .downstreamOf(folded.repoId(), folded.repoName())
+          .orElse(null);
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and must not cost the announcement.
+      LOG.warnf(
+          e,
+          "Could not read what is downstream of %s for release request %s",
+          folded.repoId(),
+          folded.releaseRequestId());
+      return null;
     }
   }
 

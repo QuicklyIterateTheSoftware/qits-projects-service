@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Tells the rest of the platform that a release request's <b>content</b> changed — a new fold landed
@@ -44,6 +45,12 @@ public interface ReleaseRequestAnnouncer {
    *     fail over a field. It is a fold-time reading, so an escalation made after this event is
    *     announced does not refire it — {@code SCMRelease}, which reads the sources live at release
    *     time, is what carries the late one.
+   * @param downstreamTechnicalComponents what is built on top of this repository, ordered
+   *     nearest-first, as {@link DownstreamComponents} answered at the moment of the fold. Nullable,
+   *     and an implementation must publish without it rather than refuse: null means the question
+   *     could not be asked and an empty list means it was asked and this repository is a leaf — two
+   *     different facts, and a consumer must be able to tell them apart. It is advisory throughout;
+   *     its one reader orders a build queue with it and never refuses a build over it.
    */
   void onReleaseRequestChanged(
       String projectId,
@@ -53,5 +60,6 @@ public interface ReleaseRequestAnnouncer {
       String backingBranch,
       String mergedSha,
       Instant changedAt,
-      String priority);
+      String priority,
+      List<String> downstreamTechnicalComponents);
 }

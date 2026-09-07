@@ -6,6 +6,7 @@ import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Turns a landed fold into {@link ReleaseRequestChanged} and hands it to the bus — the second thing
@@ -44,7 +45,8 @@ public class ReleaseRequestChangedAnnouncer implements ReleaseRequestAnnouncer {
       String backingBranch,
       String mergedSha,
       Instant changedAt,
-      String priority) {
+      String priority,
+      List<String> downstreamTechnicalComponents) {
     bus.publish(
         new ReleaseRequestChanged(
             projectId,
@@ -54,6 +56,7 @@ public class ReleaseRequestChangedAnnouncer implements ReleaseRequestAnnouncer {
             backingBranch,
             mergedSha,
             changedAt,
-            priority));
+            priority,
+            downstreamTechnicalComponents));
   }
 }
