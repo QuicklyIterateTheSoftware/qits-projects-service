@@ -60,6 +60,12 @@ public class AuditEntry extends PanacheEntityBase implements CausedRow {
    * The owning epic id for every row (an epic's own rows carry their own id). Lets the epic audit
    * endpoint query the whole subtree's history by a single column — surviving deletion of the live
    * rows, which live-row joins could not.
+   *
+   * <p><b>It is the subtree key, not a foreign key</b>, and V4's tickets are what make the
+   * distinction visible: a {@link Ticket} belongs to no epic, so its rows and its comments' rows
+   * carry the <em>ticket's</em> id here. The column keeps its name because renaming an applied
+   * migration's column across a live log buys nothing — what it has always meant is "the root this
+   * change hangs under", and a ticket is its own root exactly as an epic is.
    */
   @Column(name = "epic_id", nullable = false)
   public String epicId;

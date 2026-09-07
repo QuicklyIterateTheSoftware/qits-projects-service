@@ -264,7 +264,14 @@ public class RepositoryMcpToolsTest {
                       "remove_feature",
                       "add_task",
                       "update_task",
-                      "remove_task")) {
+                      "remove_task",
+                      // The ticket write tools (TicketMcpTools) for the same reason, and
+                      // transition_ticket is the one worth naming: an unattended run must not
+                      // declare somebody else's bug resolved.
+                      "create_ticket",
+                      "update_ticket",
+                      "transition_ticket",
+                      "add_ticket_comment")) {
                 assertFalse(
                     names.contains(mutating),
                     "read-only run still exposes mutating tool " + mutating + ": " + names);
@@ -276,6 +283,9 @@ public class RepositoryMcpToolsTest {
                   names.contains("listRepositories"), "read-only tool wrongly hidden: " + names);
               assertTrue(names.contains("list_epics"), "read-only tool wrongly hidden: " + names);
               assertTrue(names.contains("get_epic"), "read-only tool wrongly hidden: " + names);
+              assertTrue(
+                  names.contains("list_tickets"), "read-only tool wrongly hidden: " + names);
+              assertTrue(names.contains("get_ticket"), "read-only tool wrongly hidden: " + names);
             })
         .thenAssertResults();
   }
@@ -332,6 +342,15 @@ public class RepositoryMcpToolsTest {
                       "add_task",
                       "update_task",
                       "remove_task",
+                      // TicketMcpTools — the small-scoped work beside the plan. The transition IS
+                      // here, unlike the epics': resolving a ticket is a statement about work that
+                      // is done, and it is reversible.
+                      "list_tickets",
+                      "get_ticket",
+                      "create_ticket",
+                      "update_ticket",
+                      "transition_ticket",
+                      "add_ticket_comment",
                       // RefinementDesignMcpTools — the frozen designs of a refinement. No resolve
                       // tool: accepting a proposal is a human act in the Design tab.
                       "list_designs",

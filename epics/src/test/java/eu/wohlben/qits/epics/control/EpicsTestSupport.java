@@ -4,15 +4,21 @@ import eu.wohlben.qits.epics.persistence.AuditRepository;
 import eu.wohlben.qits.epics.persistence.EpicRepository;
 import eu.wohlben.qits.epics.persistence.FeatureRepository;
 import eu.wohlben.qits.epics.persistence.TaskRepository;
+import eu.wohlben.qits.epics.persistence.TicketCommentRepository;
+import eu.wohlben.qits.epics.persistence.TicketRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
- * Base for epics control-layer tests: wipes all four tables before each test in FK-safe order so
- * every case starts from an empty planning DB. Runs against an embedded postgres this module's
- * suite spawns as a child process (see {@code testdb/EmbeddedPg} and
+ * Base for epics control-layer tests: wipes every table before each test in FK-safe order so every
+ * case starts from an empty planning DB. Runs against an embedded postgres this module's suite
+ * spawns as a child process (see {@code testdb/EmbeddedPg} and
  * src/test/resources/application.properties) — no docker, no auth variant.
+ *
+ * <p>The order is the FK graph read leaves-first, and the two roots are independent: comments
+ * before tickets, tasks before features before epics. A new table wiped in the wrong place fails
+ * with a constraint violation rather than a wrong answer, which is the failure worth having.
  */
 public abstract class EpicsTestSupport {
 
@@ -20,6 +26,8 @@ public abstract class EpicsTestSupport {
   @Inject FeatureRepository featureRepository;
   @Inject TaskRepository taskRepository;
   @Inject AuditRepository auditRepository;
+  @Inject TicketRepository ticketRepository;
+  @Inject TicketCommentRepository ticketCommentRepository;
 
   @BeforeEach
   void wipe() {
@@ -27,6 +35,8 @@ public abstract class EpicsTestSupport {
         .run(
             () -> {
               auditRepository.deleteAll();
+              ticketCommentRepository.deleteAll();
+              ticketRepository.deleteAll();
               taskRepository.deleteAll();
               featureRepository.deleteAll();
               epicRepository.deleteAll();

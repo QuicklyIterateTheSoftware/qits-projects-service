@@ -44,6 +44,11 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    *
    * <p>{@code propose_design} joins them: a proposal is a row a person then has to read and rule
    * on, and an unattended run must not fill the Design tab with work nobody asked for.
+   *
+   * <p>The four ticket write tools are here on the same reading, and {@code transition_ticket} is
+   * the one worth naming: an unattended run steered by an untrusted commit message must not be able
+   * to declare somebody else's bug resolved, which is a statement people act on. Filing tickets
+   * nobody asked for is the {@code propose_design} objection again.
    */
   private static final Set<String> MUTATING_TOOLS =
       Set.of(
@@ -60,7 +65,11 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "add_task",
           "update_task",
           "remove_task",
-          "propose_design");
+          "propose_design",
+          "create_ticket",
+          "update_ticket",
+          "transition_ticket",
+          "add_ticket_comment");
 
   @Inject HttpServerRequest request;
 

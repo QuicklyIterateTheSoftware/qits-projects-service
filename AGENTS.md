@@ -556,6 +556,56 @@ list. Features and tasks keep their slugs, because the new epic and its features
 successor *epic's* slug cannot, because its scope is the project and the old row still holds it, so
 it mints the next free suffix like any other create.
 
+## Tickets
+
+A **second root beside `Epic`, not a row under it** (V4). A ticket is a bug or an improvement small
+enough that a plan would be overhead: `Ticket` + `TicketComment`, project-scoped exactly as an epic
+is, with the same slug rule (minted from the title at create, unique within the project, never
+re-derived) and no join to the epic tree anywhere. A ticket that turns out to need a plan is an epic
+somebody writes, not a foreign key somebody sets.
+
+**Almost everything here is the epics module's idiom applied again** — `TicketService` on
+`ReadPatience`/`WritePatience` with no `@Transactional`, in-service cascade delete so each removed
+comment gets its own audit row, the `value` + `clear*` pairing on the two nullable fields, a target
+naming no status answering 409 while an absent one answers 400. Three things are *different*, and
+each one is a decision rather than a simplification:
+
+- **Nothing freezes.** `EpicLifecycle`'s whole subject is which fields a phase still permits,
+  because an epic carries a scope that was committed to. `TicketLifecycle` has no `requireOpen` and
+  must not grow one: a resolved ticket stays editable, commentable and reopenable, and the
+  alternative — refusing writes once resolved — only means filing a duplicate whenever a resolution
+  turns out to be wrong. `OPEN ↔ RESOLVED` both ways, no terminal status.
+- **`created_by` and `author` are columns, and they are STAMPED.** Every other actor in this module
+  lives only in the audit log. These two are duplicated onto the live rows because a ticket list
+  wants a reporter and a thread wants a writer without a join per row — and they are read from the
+  request identity at the seam (`EpicsPrincipal.changedBy`, or the MCP session's), never from a
+  request body, so nobody can file as somebody else. An edit does not re-stamp either: who wrote it
+  and who last changed it are different facts, and the second one is the log's.
+- **The MCP surface HAS the transition.** `EpicMcpTools` deliberately exposes no lifecycle move,
+  because freezing a plan is a human decision about committing to scope. `transition_ticket` is on
+  the server, because resolving a ticket is a statement about work that is done — which the agent
+  that did it is the one who knows — and it is reversible, so a wrong answer costs a click. All four
+  ticket write tools are in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`, which fails closed;
+  deleting is on neither surface, since an agent that could delete what it disagrees with could
+  erase the record of its own mistake.
+
+**`AuditEntry.epic_id` is the subtree key, not a foreign key**, and tickets are what make that
+visible: a `TICKET` row and every `TICKET_COMMENT` row under it carry the *ticket's* id there, so
+"the whole history of this thing" stays one indexed query and still answers after the live rows are
+gone. The column is not renamed — renaming it across an applied lineage and a live log buys a better
+word and nothing else. V4 also widens `auditentry`'s entity-type check constraint, which V1 wrote
+inline and unnamed, so the drop names postgres' derived `auditentry_entity_type_check` and the
+replacement is named `ck_audit_entity_type`.
+
+**Comments read oldest first** (`created_at`, id tie-break) — the opposite of the audit log's
+newest-first, and deliberately: a log is scanned from the top, a conversation is read from the
+start.
+
+The SSE topic is its own (`ProjectChangeHint.Topic.TICKETS`, `tickets` on the wire) and every ticket
+and comment mutation fires it, through `TicketChangeHints` — a sibling bean to `EpicChangeHints`
+rather than four more methods on it, because the two announce different channels. Firing on `EPICS`
+would redraw a board because somebody commented on a bug.
+
 ## Project agent harness
 
 One container per project, holding a clone of that project's wrapper repository and running

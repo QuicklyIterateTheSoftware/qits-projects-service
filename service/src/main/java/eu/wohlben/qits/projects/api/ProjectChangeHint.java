@@ -20,6 +20,13 @@ public record ProjectChangeHint(String projectId, Topic topic) {
     /** An epic, feature or task of this project was created, changed, moved or removed. */
     EPICS,
     /**
+     * A ticket of this project, or one of its comments, was created, changed, transitioned or
+     * removed. A topic of its own rather than a second producer on {@link #EPICS}: tickets and
+     * epics are sibling roots on separate screens, so one channel would redraw a board because
+     * somebody commented on a bug.
+     */
+    TICKETS,
+    /**
      * A per-project refinement agent's live activity changed. Nothing fires it yet — it is on the
      * wire contract from the start so the frontend can subscribe to it before the agent registry
      * exists, rather than needing a second protocol change later.

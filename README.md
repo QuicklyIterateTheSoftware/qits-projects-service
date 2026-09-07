@@ -30,7 +30,7 @@ Concretely:
 | the project's domain | a `{domain, type, value}` dns record embedded on `Project` — required when a project is created, offered to a nameserver through a port nothing implements today, and a **declared placeholder**: when a service owns domain configuration the embeddable and its three columns go (`ProjectDnsRecord`, `main-environment-plan.md` §1) |
 | `.qits-config.yml` | ingestion of the repository's own committed configuration, degrading loudly and never blocking |
 | remote-login | an interactive PTY sign-in against a repository's backup remote, so a push can prompt for credentials — a `java.lang.foreign` pseudo-terminal (`ForeignPty`) with git launched onto it by `setsid --ctty`, which is the one thing this service needs from the host besides git itself |
-| `epics/` | the planning module — epics → features → tasks + an audit log, on its own datasource, depending on nothing else here |
+| `epics/` | the planning module — epics → features → tasks, tickets → comments, and one audit log over both, on its own datasource, depending on nothing else here |
 
 ## What it deliberately does NOT own
 
