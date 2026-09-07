@@ -21,6 +21,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -123,6 +124,14 @@ public class ProjectService {
   @Inject Instance<ProjectDomainRegistrar> domainRegistrars;
 
   /**
+   * SEAM: telling the platform that a project exists — and that one stopped existing — is an event,
+   * and events leave over a bus this module does not know about. Optional like every port here:
+   * absent, a project is still created and still deleted and simply announces nothing, which is what
+   * {@code domain}'s own suite runs as. See {@link ProjectAnnouncer}.
+   */
+  @Inject Instance<ProjectAnnouncer> projectAnnouncers;
+
+  /**
    * Creates a project with its slug <b>derived</b> from {@code name} (see {@link #slugify}) — the
    * convenience form for callers that have no slug of their own to give (the cli seeds, tests).
    *
@@ -206,6 +215,11 @@ public class ProjectService {
     project.slug = resolveSlug(name, slug, project.id);
     project.description = description;
     project.dns = dns;
+    // A fresh row is born ANNOUNCED: #announce publishes ProjectCreated the moment this transaction
+    // commits, so leaving the column null would put every new project on ProjectAnnounceBackfill's
+    // list and announce it a second time at the next boot. Rows predating V15 are the ones that are
+    // genuinely null, and they are the backfill's whole selection.
+    project.announcedAt = Instant.now();
     projectRepository.persist(project);
 
     createWrapperRepository(project, wrapperUrl);
@@ -213,7 +227,7 @@ public class ProjectService {
   }
 
   /**
-   * Tells the creation port the project exists — its domain.
+   * Tells the creation ports the project exists — the platform at large, and its domain.
    *
    * <p>Called after the creating transaction commits, so an implementation that reads the project
    * back sees it. <b>Every failure is swallowed</b>: a project must never fail to exist because a
@@ -221,13 +235,19 @@ public class ProjectService {
    * worse off than one whose record appears a boot later. An absent implementation is a supported
    * configuration.
    *
-   * <p>The registrar is skipped, silently, for a project with no record — that is the documented
-   * "no domain" state, not a failure to configure one.
+   * <p><b>The two ports are gated differently, on purpose.</b> The registrar is skipped, silently,
+   * for a project with no record — that is the documented "no domain" state, not a failure to
+   * configure one. The <b>announcement is made for every project</b>, record or not: {@code
+   * ProjectCreated} says a project exists and carries the slug, and a project's slug is what the
+   * platform edge derives its hosts from whether or not this row happens to name a dns record of its
+   * own. Gating the announcement on {@code dns} would make an unrelated placeholder field decide
+   * whether the platform ever hears about a project.
    *
    * <p>A project no longer announces a deployment environment. qits-cd owns environments now: they
    * are deliberate tiers created over its own REST surface, not one per project.
    */
   private void announce(Project project) {
+    announceCreated(project);
     if (project.dns == null) {
       return;
     }
@@ -238,6 +258,32 @@ public class ProjectService {
       } catch (RuntimeException e) {
         LOG.warnf(e, "Domain registration for project %s failed", project.id);
       }
+    }
+  }
+
+  /** Fire and forget, outside every transaction and never able to fail a creation. */
+  private void announceCreated(Project project) {
+    if (!projectAnnouncers.isResolvable()) {
+      return;
+    }
+    try {
+      projectAnnouncers
+          .get()
+          .onProjectCreated(project.id, project.slug, project.name, project.announcedAt);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not announce the creation of project %s", project.id);
+    }
+  }
+
+  /** Fire and forget, outside every transaction and never able to fail a deletion. */
+  private void announceDeleted(String projectId, String slug, Instant deletedAt) {
+    if (!projectAnnouncers.isResolvable()) {
+      return;
+    }
+    try {
+      projectAnnouncers.get().onProjectDeleted(projectId, slug, deletedAt);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not announce the deletion of project %s", projectId);
     }
   }
 
@@ -464,24 +510,45 @@ public class ProjectService {
    * Deletes the project and every repository under it, wrapper included — and because each one goes
    * through {@link RepositoryService#deleteInternal}, every one of those repositories is deleted on
    * the git host too, history and all.
+   *
+   * <p><b>Not {@code @Transactional} any more</b>, and the shape is {@link #create}'s for {@link
+   * #create}'s reason: the rows go inside an explicit {@link QuarkusTransaction#requiringNew()}
+   * block and {@link ProjectAnnouncer} is told <em>after</em> it commits, so a consumer that reads
+   * the project back finds it gone rather than half gone. An interceptor on this method would put
+   * the announcement inside the transaction it is meant to follow, and a self-invoked
+   * {@code @Transactional} helper would not be intercepted at all.
+   *
+   * <p><b>The slug is read before the delete because afterwards there is nowhere to read it from.</b>
+   * {@code ProjectDeleted} carries it — it is what a consumer keyed its own derivation on ({@code
+   * *.<slug>.<domain>}) — and the row that held it is gone by the time the announcement is made.
+   *
+   * <p>Nothing inside the transaction changed: the git-host deletes still happen in it, and still
+   * fail the delete if the host refuses. Only the announcement is new, and it sits outside.
    */
-  @Transactional
   public void delete(String id) {
-    Project project = get(id);
-    // SEAM (migration-plan.md §6, project <-> featureflow): the monorepo deleted this project's
-    // flow configurations first, because their phase actions bind repository-scoped actions over an
-    // FK with no cascade. domain.featureflow is monolith-only and deferred (§9 item 6), so neither
-    // the entity nor its table exists in this context's database and there is nothing to delete
-    // ahead of the repositories.
-    // Delegate to RepositoryService.delete (not a raw row delete) so each repository's containers
-    // and on-disk clone are torn down too — otherwise deleting a project (e.g. a seed reset) leaks
-    // them as orphans.
-    // deleteInternal, not delete: the wrapper refuses a standalone delete (it is the project root),
-    // but it must go with the project it is the root of.
-    repositoryRepository.find("project.id", id).list().stream()
-        .map(r -> r.id)
-        .forEach(repositoryService::deleteInternal);
-    projectRepository.delete(project);
+    String slug = QuarkusTransaction.requiringNew().call(() -> get(id).slug);
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Project project = get(id);
+              // SEAM (migration-plan.md §6, project <-> featureflow): the monorepo deleted this
+              // project's flow configurations first, because their phase actions bind
+              // repository-scoped actions over an FK with no cascade. domain.featureflow is
+              // monolith-only and deferred (§9 item 6), so neither the entity nor its table exists
+              // in this context's database and there is nothing to delete ahead of the repositories.
+              // Delegate to RepositoryService.delete (not a raw row delete) so each repository's
+              // containers and on-disk clone are torn down too — otherwise deleting a project (e.g.
+              // a seed reset) leaks them as orphans.
+              // deleteInternal, not delete: the wrapper refuses a standalone delete (it is the
+              // project root), but it must go with the project it is the root of.
+              repositoryRepository.find("project.id", id).list().stream()
+                  .map(r -> r.id)
+                  .forEach(repositoryService::deleteInternal);
+              projectRepository.delete(project);
+            });
+
+    announceDeleted(id, slug, Instant.now());
   }
 
   public List<Repository> getRepositories(String projectId) {

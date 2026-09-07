@@ -1,0 +1,22 @@
+-- WHETHER THE PLATFORM HAS BEEN TOLD THIS PROJECT EXISTS.
+--
+-- `ProjectCreated` is announced the instant a creation commits, so from here on a row is born
+-- announced and this column is stamped by the insert itself. Every row that predates the event has
+-- nothing to stamp it — nobody was listening when it was created — and the platform edge derives a
+-- project's TLS SANs (`*.<slug>.<domain>`) from that announcement, so an unannounced project is one
+-- the edge cannot serve. `ProjectAnnounceBackfill` walks these at boot, publishes for each, and
+-- stamps it.
+--
+-- NULLABLE, WITH NO BACKFILL IN THE MIGRATION. The backfill is an ANNOUNCEMENT and not an update:
+-- it has to publish before it may claim to have published, and a migration cannot publish. So every
+-- existing row arrives here null — "not announced yet" — which is the true state and the boot after
+-- this migration is what changes it. Filling the column in DDL would tell the edge, permanently and
+-- silently, that it had already been told.
+--
+-- NO DEFAULT, for the same reason: an insert that forgot the column must look unannounced rather
+-- than announced. The one insert that stamps it is `ProjectService.persistProject`, which stamps it
+-- because the create path announces immediately afterwards.
+--
+-- NO INDEX. The selection (`announced_at is null`) is read once per boot over a table with a
+-- handful of rows in it, and it goes to zero rows the moment the backfill has run.
+alter table Project add column announced_at timestamp(6) with time zone;

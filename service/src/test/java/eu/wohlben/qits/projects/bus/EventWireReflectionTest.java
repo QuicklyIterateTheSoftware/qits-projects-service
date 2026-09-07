@@ -57,6 +57,9 @@ public class EventWireReflectionTest {
   /** And the third, which is the release itself. */
   @Inject Instance<SCMReleaseAnnouncer> shippedScmReleaseAnnouncer;
 
+  /** And the fourth, which publishes both ends of a project's life. */
+  @Inject Instance<ProjectLifecycleAnnouncer> shippedProjectAnnouncer;
+
   @Test
   public void theRegisteredTargetsAreExactlyTheTypesThatCrossTheWire() {
     RegisterForReflection registration =
@@ -71,14 +74,16 @@ public class EventWireReflectionTest {
             RepositoryRenamed.class,
             ReleaseRequestChanged.class,
             SCMRelease.class,
+            ProjectCreated.class,
+            ProjectDeleted.class,
             BuildStatusListener.BuildVerdictPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
             EventEnvelope.class,
             EventFrame.class),
         Set.of(registration.targets()),
         "the four SCM records and the two bound consumption payloads in, RepositoryRenamed,"
-            + " ReleaseRequestChanged and SCMRelease out, the PUT body, the frame — a twelfth"
-            + " wire type means a line here");
+            + " ReleaseRequestChanged, SCMRelease and the two project lifecycle events out, the PUT"
+            + " body, the frame — a fourteenth wire type means a line here");
   }
 
   /**
@@ -104,6 +109,24 @@ public class EventWireReflectionTest {
         "SCMReleaseAnnouncer publishes this — the event qits-workspaces used to publish and this"
             + " service does since the release became a tag; the WIRE name is the simple class"
             + " name, so a consumer cannot tell the two apart and must not have to");
+    assertTrue(
+        targets.contains(ProjectCreated.class),
+        "ProjectLifecycleAnnouncer publishes this, and the platform edge derives a project's TLS"
+            + " SANs from the slug it carries — unregistered, the edge never learns a project"
+            + " exists and the create itself succeeds");
+    assertTrue(
+        targets.contains(ProjectDeleted.class),
+        "and its closing half, without which the edge holds names it can never retire");
+  }
+
+  /**
+   * The project lifecycle announcer, by its OWN type past its {@code @DefaultBean} — the port's
+   * injection point is won by the suite's {@code RecordingProjectAnnouncer}, so asking for the port
+   * here would prove nothing about what ships.
+   */
+  @Test
+  public void theProjectLifecycleAnnouncerShipsAsABean() {
+    assertTrue(!shippedProjectAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
   }
 
   @Test

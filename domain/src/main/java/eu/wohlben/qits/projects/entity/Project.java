@@ -11,6 +11,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -89,6 +90,23 @@ public class Project extends PanacheEntityBase implements CausedRow {
    * null field, which is what makes both of those the same thing to every reader.
    */
   @Embedded public ProjectDnsRecord dns;
+
+  /**
+   * When the platform was told this project exists ({@code ProjectCreated}), or {@code null} for a
+   * project it has not been told about yet.
+   *
+   * <p><b>Not a timestamp anybody reads for its value</b> — it is a one-way latch with a moment
+   * attached. Its only reader is {@code ProjectAnnounceBackfill}, whose selection is {@code
+   * announced_at is null}, and its only writers are the create path (which stamps it on the insert,
+   * because a creation announces itself immediately afterwards) and the backfill (which stamps it
+   * <em>after</em> the announcement it stands for has been made, never before).
+   *
+   * <p>Null on every row that predates V15, which is the honest state: nothing was listening when
+   * those projects were created, and the platform edge — which derives a project's TLS SANs from the
+   * announcement — has never heard of them.
+   */
+  @Column(name = "announced_at")
+  public Instant announcedAt;
 
   @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
   public List<Repository> repositories;

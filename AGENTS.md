@@ -239,6 +239,32 @@ HTTP server they never wanted, because vertx-http rides in with the jar. That is
   the release), and crash-safety is the **catch-up** half of `ReleaseFinalization.sweep()`, which
   re-asks the deployability question of every ungated `released_tag_pending_merge` row — one cheap
   tree listing per release in flight, and the thing that heals anything stranded.
+- **`ProjectCreated` / `ProjectDeleted` are the project's own lifecycle, and the slug is the whole
+  point of them.** `bus/ProjectLifecycleAnnouncer` over the `control/ProjectAnnouncer` port, from
+  `ProjectService.create` and `.delete`. Payloads are `{projectId, slug, projectName, createdAt}`
+  and `{projectId, slug, deletedAt}` — pinned by `ProjectLifecycleContractTest`, because the platform
+  edge derives a project's TLS SANs (`*.<slug>.<domain>`) from those literals and no vocabulary jar
+  carries the type. Four rules ride with them, and the first is not about projects at all:
+  - **A payload field may not spell one of the envelope's words** — `signature`, `name`, `eventId`,
+    `occurredAt`. `QitsEvent.name()` is a default method the `CanonicalJson` mix-in `@JsonIgnore`s,
+    and Jackson matches a mix-in to a record's accessor **by name**, so a component called `name`
+    has the getter `name()` and is **dropped from every payload with nothing failing anywhere**.
+    Measured here: the display name was `name` in the first draft and published three keys where it
+    meant four. It is `projectName` for that reason and no other.
+  - **Both announcements are made AFTER the transaction**, which is why `delete` stopped being
+    `@Transactional` and drives its rows through an explicit `QuarkusTransaction.requiringNew()` the
+    way `create` always has. A self-invoked `@Transactional` helper would not be intercepted at all.
+    `delete` reads the slug *before* the block, because afterwards there is nowhere left to read it.
+  - **Every project is announced, with a dns record or without one.** The `ProjectDomainRegistrar`
+    loop beside it is gated on `project.dns`; the announcement is not, and gating it would let an
+    unrelated placeholder field decide whether the platform ever hears about a project.
+  - **`startup/ProjectAnnounceBackfill` catches up what predates the event**, latched by
+    `Project.announced_at` (V15): create stamps the column on the insert, the backfill selects the
+    nulls, and it **publishes before it stamps** — a crash in between re-publishes into an
+    idempotent projection next boot, while the reverse order would lose the announcement for ever.
+    It is dark when `qits.eventstream.enabled` is false (`%dev`, `%test`), because a stamp written
+    against an event that never left is exactly the unrecoverable half; the suite drives
+    `backfill()` directly.
 - **`bus/EventWireReflection` is the native-image registration**, and `EventWireReflectionTest`
   guards its completeness against the registered listener beans. Read that class's javadoc before
   adding a wire type; the failure it prevents is invisible to every JVM test by construction.

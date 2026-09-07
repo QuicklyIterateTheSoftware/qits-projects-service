@@ -53,6 +53,13 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * same event to every consumer — which is exactly why it needs a line of its own here, and why the
  * absence would look like the release flow working and nothing downstream ever hearing about it.
  *
+ * <p>{@link ProjectCreated} and {@link ProjectDeleted} are the fourth and fifth published ones, and
+ * the first pair: they are the two ends of one lifecycle and a consumer takes both or neither. What
+ * rests on them is the platform edge's TLS — every host a project is served under is {@code
+ * *.<slug>.<domain>}, and the slug these carry is the only place that derivation can come from. An
+ * unregistered payload here is an edge that never learns a project exists, with the create itself
+ * succeeding and nothing anywhere saying so.
+ *
  * <p>{@link DeploymentActiveListener.DeploymentActivePayload} is the second bound consumption and
  * the same shape as the first: qits-deployments' vocabulary jar is not on this classpath (the
  * platform's Maven registry serves nothing under that coordinate), so the wire type this binary has
@@ -88,6 +95,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       RepositoryRenamed.class,
       ReleaseRequestChanged.class,
       SCMRelease.class,
+      ProjectCreated.class,
+      ProjectDeleted.class,
       BuildStatusListener.BuildVerdictPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
       EventEnvelope.class,
