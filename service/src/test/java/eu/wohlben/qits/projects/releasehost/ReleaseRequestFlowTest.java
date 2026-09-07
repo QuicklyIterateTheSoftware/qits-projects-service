@@ -65,6 +65,8 @@ public class ReleaseRequestFlowTest {
 
   @Inject RecordingReleasedBranchWorkspaces releasedBranchWorkspaces;
 
+  @Inject eu.wohlben.qits.projects.maintenancehost.FakeDownstreamComponents downstream;
+
   private String repoId;
   private String projectId;
 
@@ -75,6 +77,7 @@ public class ReleaseRequestFlowTest {
     merger.reset();
     announcer.reset();
     releasedBranchWorkspaces.reset();
+    downstream.reset();
     repoId = "release-repo-" + UUID.randomUUID();
     projectId = "release-project-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
@@ -294,6 +297,68 @@ public class ReleaseRequestFlowTest {
         1,
         announcer.announcedFor(id).size(),
         "and it refired nothing: no ref moved, so there is no new sha to build");
+  }
+
+  /**
+   * <b>The announcement carries what is built on top of this repository, in the order it was given.</b>
+   * The order is the answer — nearest first — because the one consumer of the field runs an upstream
+   * repository's request before a downstream one's, so a projection that sorted would be a different
+   * build order. The closure is asked for by the repository the request is FOR, which is the row id
+   * qits-maintenance catalogues under.
+   */
+  @Test
+  public void theAnnouncementCarriesTheDownstreamClosureInTheOrderItWasGiven() {
+    activeBuilds.answer(Optional.of(1));
+    downstream.answer(Optional.of(List.of("qits-ci-frontend", "qits-ci-service")));
+
+    String id = create("work");
+
+    assertEquals(
+        List.of("qits-ci-frontend", "qits-ci-service"),
+        announcer.announcedFor(id).get(0).downstreamTechnicalComponents(),
+        "nearest first, exactly as the closure answered");
+    assertEquals(
+        List.of(repoId),
+        downstream.asked().stream()
+            .map(eu.wohlben.qits.projects.maintenancehost.FakeDownstreamComponents.Asked::repoId)
+            .toList(),
+        "asked once, about the repository the request folds for");
+  }
+
+  /**
+   * <b>Nothing answering is a NULL field and not an empty one.</b> The port answers "could not ask"
+   * — no address, an unreachable qits-maintenance, a route that has not shipped — and the
+   * announcement carries null, which {@code CanonicalJson}'s NON_NULL turns into an absent key: byte
+   * for byte the event every publisher made before this field existed, and what a consumer reads as
+   * "unknown". This is also the posture every other test in this class runs in.
+   */
+  @Test
+  public void aClosureNobodyCouldAnswerIsANullFieldAndNotAnEmptyOne() {
+    activeBuilds.answer(Optional.of(1));
+
+    String id = create("work");
+
+    org.junit.jupiter.api.Assertions.assertNull(
+        announcer.announcedFor(id).get(0).downstreamTechnicalComponents(),
+        "could not ask is not 'there is nothing downstream'");
+  }
+
+  /**
+   * <b>And a leaf is an empty list that travels.</b> "We asked, and nothing on this platform is built
+   * on this repository" is real information — it tells the queue this run constrains no other — so it
+   * must be distinguishable from the case above, at this seam and on the wire.
+   */
+  @Test
+  public void aRepositoryNothingIsBuiltOnAnnouncesAnEmptyClosure() {
+    activeBuilds.answer(Optional.of(1));
+    downstream.answer(Optional.of(List.of()));
+
+    String id = create("work");
+
+    assertEquals(
+        List.of(),
+        announcer.announcedFor(id).get(0).downstreamTechnicalComponents(),
+        "a leaf says so; only 'could not ask' is null");
   }
 
   @Test

@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.bus;
 
 import eu.wohlben.qits.eventstream.QitsEvent;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -45,6 +46,23 @@ import java.util.UUID;
  * Nothing acts on it yet; it is inherited down the chain as data, and the queue-ordering feature is
  * what will read it.
  *
+ * <p><b>{@code downstreamTechnicalComponents} is what is built on top of this repository</b> — the
+ * downstream closure as qits-maintenance's dependency graph answered it at the moment of the fold,
+ * traced to the end rather than one hop, and <b>ordered nearest-first</b> (depth ascending, then
+ * name). The names are repositories as this service's catalogue spells them.
+ *
+ * <p><b>Additive and nullable, and null is not the empty list.</b> {@code CanonicalJson} is {@code
+ * NON_NULL}, so an absent closure is an absent KEY — byte for byte the shape every event published
+ * before this field has, which is what makes a replay and an older publisher indistinguishable from
+ * a lookup that could not be made. {@code null} means <b>unknown</b>: no address configured, an
+ * unreachable qits-maintenance, a route not shipped yet, an answer that would not parse. {@code []}
+ * means <b>asked, and this repository is a leaf</b> — nothing is built on it. A consumer must read
+ * an absent key as unknown and never as an error, and must not collapse the two.
+ *
+ * <p><b>It is advisory.</b> Its one reader is qits-ci's queue ordering, which uses it to run an
+ * upstream repository's release request before a downstream one's; a missing, stale or wrong closure
+ * costs an order, never a build. Nothing here may be read as permission or as a gate.
+ *
  * <p><b>A priority-only change does not refire this event</b>, and that is accepted rather than
  * overlooked: this event says the backing branch has a new tip, and re-stating a source's urgency
  * moves no ref. What carries a late escalation is {@code SCMRelease}, which reads the sources live
@@ -77,7 +95,8 @@ public record ReleaseRequestChanged(
     String backingBranch,
     String mergedSha,
     Instant changedAt,
-    String priority)
+    String priority,
+    List<String> downstreamTechnicalComponents)
     implements QitsEvent {
 
   public ReleaseRequestChanged {
@@ -95,7 +114,8 @@ public record ReleaseRequestChanged(
       String backingBranch,
       String mergedSha,
       Instant changedAt,
-      String priority) {
+      String priority,
+      List<String> downstreamTechnicalComponents) {
     this(
         null,
         projectId,
@@ -105,7 +125,8 @@ public record ReleaseRequestChanged(
         backingBranch,
         mergedSha,
         changedAt,
-        priority);
+        priority,
+        downstreamTechnicalComponents);
   }
 
   @Override
