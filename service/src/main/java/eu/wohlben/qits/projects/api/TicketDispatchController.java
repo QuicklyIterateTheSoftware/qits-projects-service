@@ -151,10 +151,29 @@ public class TicketDispatchController {
   }
 
   /**
-   * The agent's first turn. Three things are said on purpose and none of them is decoration: read
-   * the ticket over MCP rather than working from the preamble, keep <em>one</em> comment current
-   * instead of stacking notes under it, and treat the work as unfinished until it is released — the
-   * platform's own definition of done, and the one an agent left to itself gets wrong.
+   * The agent's first turn. Four things are said on purpose and none of them is decoration: read the
+   * ticket over MCP rather than working from the preamble, keep <em>one</em> comment current instead
+   * of stacking notes under it, treat the work as unfinished until it is released — the platform's
+   * own definition of done, and the one an agent left to itself gets wrong — and then resolve the
+   * ticket.
+   *
+   * <p><b>The resolve is conditional and hangs off the release, which is why it is the last
+   * sentence.</b> Without it a dispatched agent that finished cleanly left an OPEN ticket behind and
+   * a person had to notice and close it; with it worded as a habit, an agent that was blocked or
+   * only half-released would close one that is not done, which is worse. So the sentence names both
+   * arms — resolved once released, left OPEN with the gap said on the thread otherwise — and says
+   * that resolving is reversible through the same door. That last clause is what gives an unsure
+   * agent a cheap correct move instead of a coin flip.
+   *
+   * <p>Two seams have to hold for this to be an instruction rather than a dead letter, and both are
+   * checked rather than assumed. qits-workspace-daemon's {@code AgentLaunchService} lists {@code
+   * transition_ticket} in its {@code TICKET_RESOLUTION_TOOLS} bucket, so the tool exists for a kimi
+   * session too (there {@code enabledTools} is the whole surface, not a pre-approval). And a
+   * dispatch keeps connecting <em>without</em> the {@code agentReadOnly=true} marker — it goes
+   * through the daemon's {@code launchChat}, which never sets it — so {@link
+   * eu.wohlben.qits.projects.mcp.ReadOnlyRepositoryToolFilter} still hides all five ticket writes
+   * from an unattended run. If a dispatch ever starts marking itself read-only, this sentence goes
+   * silent along with the thread comments.
    */
   static String instruction(Ticket ticket) {
     return "Work on ticket \""
@@ -170,7 +189,12 @@ public class TicketDispatchController {
         + " and keep that same comment current with update_ticket_comment as you go:"
         + " short is better for that comment."
         + " Your work is only done once your changes are fully released — integrate the workspace"
-        + " and see the release through, and say so on the thread when it is.";
+        + " and see the release through, and say so on the thread when it is."
+        + " Once it is released, resolve the ticket with transition_ticket (target RESOLVED) as the"
+        + " last step; if you could not finish it — blocked, refused, or released only in part —"
+        + " leave it OPEN and say on the thread what is missing. Resolving is reversible and"
+        + " reopening is the same door, so leaving it open when you are unsure is the cheap correct"
+        + " answer.";
   }
 
   /**

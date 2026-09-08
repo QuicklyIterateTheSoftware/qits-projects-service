@@ -639,10 +639,21 @@ Three things travel with it:
   from the row (`# Ticket: <title>`, a type/status/assignee/reporter line, the description), the
   shape `RefinementService.preamble` carries; the agent's first turn then sends it to read the
   ticket *live* with `get_ticket`, because the thread moves and those bytes do not.
-- **The agent is told what "done" means here.** Report on the thread with `add_ticket_comment` and
-  keep that **one** comment current with `update_ticket_comment`; the work is not finished until the
-  changes are **released**, not merely merged. Both are the platform's own conventions and an agent
-  left to itself gets the second one wrong.
+- **The agent is told what "done" means here, and told to say so on the ticket.** Report on the
+  thread with `add_ticket_comment` and keep that **one** comment current with
+  `update_ticket_comment`; the work is not finished until the changes are **released**, not merely
+  merged; and once they are, **resolve the ticket with `transition_ticket`**. All three are the
+  platform's own conventions and an agent left to itself gets the last two wrong — until 2026-09-08
+  the instruction stopped at "released" and every successful dispatch left an OPEN ticket for a
+  person to notice and close by hand. The resolve is **conditional and last**: an agent that was
+  blocked, refused or released only in part leaves the ticket OPEN and says on the thread what is
+  missing, and the sentence names that resolving is reversible through the same door so an unsure
+  agent has a cheap correct move. Two seams make it an instruction rather than a dead letter, and
+  both are stated in `instruction(...)`'s javadoc: qits-workspace-daemon lists `transition_ticket`
+  in its own `TICKET_RESOLUTION_TOOLS` bucket (on the kimi path `enabledTools` is the whole tool
+  surface, so an unlisted tool does not exist), and a dispatch keeps connecting **without**
+  `agentReadOnly=true`, so `ReadOnlyRepositoryToolFilter` still fences all five ticket writes off
+  every unattended run.
 - **A dispatch that succeeded stamps the thread; one that failed writes nothing.** The comment is
   stamped from the caller's identity like any other, and a re-dispatch that qits-workspaces answered
   `SKIPPED_RUNNING` says it found an agent already working rather than claiming a second one. A

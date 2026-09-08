@@ -125,6 +125,15 @@ public class TicketDispatchControllerTest {
     assertTrue(
         asked.instruction().contains("fully released"),
         "and that the work is not done until it is released");
+    assertTrue(
+        asked.instruction().contains("transition_ticket"),
+        "and to resolve the ticket itself rather than leaving it for somebody to notice");
+    assertTrue(
+        asked.instruction().contains("RESOLVED"),
+        "naming the status, since the tool takes a target");
+    assertTrue(
+        asked.instruction().contains("leave it OPEN"),
+        "the other arm: an unfinished run must not close the ticket");
     assertTrue(asked.instruction().contains(ticketId), "and where to read the ticket itself");
 
     asAdmin("mallory")
