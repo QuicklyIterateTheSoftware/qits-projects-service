@@ -34,7 +34,21 @@ final class EpicLifecycle {
           EpicStatus.IMPLEMENTED,
           EnumSet.of(EpicStatus.SUPERSEDED));
 
+  /**
+   * The statuses in which an epic's work is over. Not the same question as "what may this status
+   * move to": {@link EpicStatus#IMPLEMENTED} still has a legal move ({@link EpicStatus#SUPERSEDED}),
+   * and is resolved all the same. This is what an assembling layer asks before tearing down
+   * anything the epic was still holding.
+   */
+  private static final Set<EpicStatus> RESOLVED =
+      EnumSet.of(EpicStatus.IMPLEMENTED, EpicStatus.SUPERSEDED, EpicStatus.ABANDONED);
+
   private EpicLifecycle() {}
+
+  /** Whether {@code status} says the epic's work is over — see {@link #RESOLVED}. */
+  static boolean resolves(EpicStatus status) {
+    return RESOLVED.contains(status);
+  }
 
   /** The status named by {@code value}, or empty when it names none. */
   static Optional<EpicStatus> parse(String value) {

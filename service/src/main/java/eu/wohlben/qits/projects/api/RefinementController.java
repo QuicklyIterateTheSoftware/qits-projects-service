@@ -81,9 +81,13 @@ public class RefinementController {
   }
 
   /**
-   * Tear the refinement down: container, volume, credential, branch, row. The epic's ABANDONED
-   * transition is the caller's separate call on the epics surface, exactly as it was against
-   * qits-workspaces.
+   * Tear the refinement down: container, volume, credential, branch, row — and nothing else. It
+   * says "this refinement is over", never "this epic is over": the epic stays where it is and a
+   * later Refine starts a fresh one.
+   *
+   * <p>Resolving the epic is the other direction and no longer needs this door at all —
+   * {@code EpicResolutions} discards on the way to a terminal status, so a client that means "done
+   * with this epic" makes the transition call alone.
    */
   @POST
   @Path("/{id}/discard")

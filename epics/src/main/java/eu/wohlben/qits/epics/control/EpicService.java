@@ -53,6 +53,30 @@ public class EpicService {
    */
   public record Transition(Epic epic, Epic successor) {}
 
+  /**
+   * What a {@link #transition} to {@code target} would be: the epic as it stands, the status it
+   * would move to, and whether that status {@linkplain EpicLifecycle#resolves resolves} it.
+   *
+   * <p>It exists so a caller can act <em>before</em> the move on something the epic is still
+   * holding — the refinement container, in the assembling service — and still refuse an illegal
+   * move first. Every rejection is the transition's own, thrown here rather than one step later: a
+   * 409'd move that had already torn a refinement down would be the worse half of the bug this
+   * answers. The move is then re-checked inside {@link #transition}, which is where it is decided;
+   * this is a preview and never a reservation.
+   */
+  public record PlannedTransition(Epic epic, EpicStatus target, boolean resolving) {}
+
+  /** The preview of a move — see {@link PlannedTransition}. */
+  public PlannedTransition planTransition(String id, String target) {
+    Validations.requireText(target, "target");
+    Epic epic = get(id);
+    EpicStatus to =
+        EpicLifecycle.parse(target)
+            .orElseThrow(() -> new ConflictException("Unknown epic status: " + target));
+    EpicLifecycle.requireTransition(epic.status, to);
+    return new PlannedTransition(epic, to, EpicLifecycle.resolves(to));
+  }
+
   public List<Epic> listByProject(String projectId) {
     return listByProject(projectId, null);
   }
