@@ -16,7 +16,6 @@ import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
-import eu.wohlben.qits.projects.gitmirror.AheadBehind;
 import eu.wohlben.qits.projects.gitmirror.GitMirrorException;
 import eu.wohlben.qits.projects.gitmirror.PushOutcome;
 import eu.wohlben.qits.projects.gitmirror.RepoMirror;
@@ -82,6 +81,7 @@ public class RefinementService {
   @Inject RefinementCommissions commissions;
   @Inject TechnicalProcessRegistry processes;
   @Inject RefinementChangePublisher changes;
+  @Inject RefinementDrift drift;
 
   /**
    * One permit per refinement, so the ladder is serialized without serializing the service. A
@@ -175,8 +175,11 @@ public class RefinementService {
 
   /**
    * A project's refinements with their live halves and <b>no git drift</b> — the list redraws on
-   * every activity hint, and a mirror refresh plus a merge preview per row is the single-row read's
-   * price, not a listing's.
+   * every activity hint, and the strip that renders drift is on the single row's page, not here.
+   *
+   * <p>The light projection costs nothing now that {@link #view} costs nothing either: the
+   * difference is no longer a fetch per row, it is that a listing does not ask {@link
+   * RefinementDrift} for a row and therefore never schedules a pass for one nobody has opened.
    */
   public List<RefinementView> listByProject(String projectId) {
     return QuarkusTransaction.requiringNew().call(() -> store.listByProject(projectId)).stream()
@@ -271,6 +274,7 @@ public class RefinementService {
     deleteBranchQuietly(refinement);
     QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
     lastErrors.remove(id);
+    drift.forget(id);
     LOG.infof("Discarded refinement %s (epic %s)", id, refinement.epicId);
   }
 
@@ -403,25 +407,12 @@ public class RefinementService {
     Boolean clean =
         "RUNNING".equals(runtimeStatus) ? registry.clean(id).orElse(null) : null;
 
-    Integer ahead = null;
-    Integer behind = null;
-    boolean conflicts = false;
-    try {
-      RepoMirror mirror = mirrors.of(refinement.repositoryId);
-      mirror.refresh();
-      AheadBehind drift =
-          mirror.aheadBehind(
-              "refs/heads/" + refinement.parent, "refs/heads/" + refinement.branch);
-      if (!AheadBehind.UNKNOWN.equals(drift)) {
-        ahead = drift.ahead();
-        behind = drift.behind();
-        if (ahead != null && behind != null && ahead > 0 && behind > 0) {
-          conflicts = wouldConflict(mirror, refinement);
-        }
-      }
-    } catch (RuntimeException e) {
-      LOG.debugf("Could not compute drift for refinement %s: %s", id, e.getMessage());
-    }
+    // Read, never computed. This used to be a mirror refresh — a git fetch, or a full clone when
+    // the mirror was cold, which is precisely the state a just-created refinement leaves it in — so
+    // the one read the refining page opens with was the one that could block on the wire. It is a
+    // cache lookup now, answering null ("not known yet") until the background pass has an answer
+    // and firing GIT_STATUS when it gets one. See RefinementDrift.
+    RefinementDrift.Drift gitDrift = driftOf(refinement);
 
     RefinementDaemonRegistry.DaemonInfo daemon = registry.lookup(id).orElse(null);
     return new RefinementView(
@@ -429,9 +420,9 @@ public class RefinementService {
         runtimeStatus,
         runtimeError,
         clean,
-        ahead,
-        behind,
-        conflicts,
+        gitDrift.ahead(),
+        gitDrift.behind(),
+        gitDrift.conflictsWithParent(),
         registry.agentActivity(id).orElse(null),
         daemon == null ? null : daemon.connectedAt(),
         daemon == null ? null : daemon.daemonVersion(),
@@ -508,14 +499,17 @@ public class RefinementService {
     }
   }
 
-  private boolean wouldConflict(RepoMirror mirror, Refinement refinement) {
+  /**
+   * The drift half of a projection, and it cannot fail the read. {@link RefinementDrift#of} does no
+   * git work and does not throw by contract; the catch is there so that a future one could not turn
+   * an advisory number into a 500 on the page's opening request.
+   */
+  private RefinementDrift.Drift driftOf(Refinement refinement) {
     try {
-      return !mirror
-          .previewMerge(
-              "refs/heads/" + refinement.branch, "refs/heads/" + refinement.parent)
-          .clean();
+      return drift.of(refinement);
     } catch (RuntimeException e) {
-      return false; // never a false warning
+      LOG.debugf("Could not read the drift of refinement %s: %s", refinement.id, e.getMessage());
+      return RefinementDrift.Drift.UNKNOWN;
     }
   }
 

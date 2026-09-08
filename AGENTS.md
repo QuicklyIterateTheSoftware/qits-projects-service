@@ -902,6 +902,24 @@ and the technical-process stream. The suite's seams are `FakeRefinementRuntime` 
 `FakeRefinementCredentials`, winning over the `@DefaultBean` adapters exactly as the agent fakes do
 — and read through METHODS, never public fields, because a client proxy does not proxy field access.
 
+**No read on that surface performs a git operation, and the single-row read is where that had to be
+fixed.** `RefinementService.view()` opened with `mirror.refresh()` until 2026-09-08 — a `git fetch`
+warm, a **full clone cold**, and cold is exactly what cutting `refining/<slug>` leaves the mirror,
+so the first read of a brand-new refinement was the slowest read this service had and the refining
+page rendered nothing until it answered. Measured live that day: the listing 12 ms, an established
+row 18 ms, a **freshly created row 139 ms** — with a warm mirror, and unbounded without one.
+`RefinementDrift` holds the three numbers (`ahead`, `behind`, `conflictsWithParent`) as a cached
+fact instead: `of()` answers what was last computed and schedules a background pass when that is
+missing or older than `qits.projects.refinement.drift-staleness-ms` (30s), and it reads the cache
+*before* it decides to schedule, so what a caller gets never depends on a worker's timing. Three
+rules ride with it — a cold mirror degrades to `null`, "not known yet", and never to a slow
+response; a pass that could not ask keeps the previous answer and re-stamps it, so an unreachable
+host is retried once a window rather than once a read; and a drift that **changed** fires the
+existing per-row `GIT_STATUS` hint, which the daemon already publishes for clean/dirty and the SPA
+already maps to "re-read this row", so a late arrival needs no new channel and no poll. The frontend
+half of the same defect is qits-spa-projects 2026.908.183933, which stopped withholding the page's
+first paint on this read.
+
 **Designs are frozen HTML kept with the refinement** (`refinement_design`, V5) — one self-contained
 document per page, styles inline, cascading from the row like the draft and attachments do.
 `RefinementDesigns` holds the writes and `/refinements/{id}/designs` serves them; a list leaves the
