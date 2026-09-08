@@ -220,6 +220,27 @@ public class TicketMcpTools {
     return new CommentDetail(comment.id, comment.author, comment.body, comment.createdAt);
   }
 
+  @McpServer("repository")
+  @Tool(
+      name = "update_ticket_comment",
+      description =
+          "Rewrite a remark already on a ticket's thread. Use it to correct or extend the note you"
+              + " left earlier once you know more — an edit is honest where a second comment"
+              + " contradicting the first leaves the next reader to work out which one still"
+              + " holds. The body is the whole of what an edit changes: it replaces the remark"
+              + " outright, it moves the comment's updatedAt, and it does NOT move the author —"
+              + " who wrote a remark and who last changed it are different facts, and the second"
+              + " one is the audit log's.")
+  public CommentDetail updateTicketComment(
+      @ToolArg(description = "id of a comment on a ticket in this project") String id,
+      @ToolArg(description = "the remark as it should now read, Markdown; it replaces the old body")
+          String body) {
+    requireCommentInProject(id);
+    TicketComment comment = ticketService.updateComment(id, body, changedBy());
+    announce();
+    return new CommentDetail(comment.id, comment.author, comment.body, comment.createdAt);
+  }
+
   // --- Scoping --------------------------------------------------------------
 
   /**
@@ -232,6 +253,20 @@ public class TicketMcpTools {
       throw new NotFoundException("Ticket not found in this project: " + ticketId);
     }
     return ticket;
+  }
+
+  /**
+   * Ensures {@code commentId} names a comment on a ticket of the scoped project — the same check
+   * one row deeper, and the refusal names the <em>comment</em> rather than the ticket it hangs
+   * under, because that is the id the caller supplied and the only one it should learn anything
+   * about.
+   */
+  private TicketComment requireCommentInProject(String commentId) {
+    TicketComment comment = ticketService.getComment(commentId);
+    if (!scope.requireProjectId().equals(ticketService.get(comment.ticketId).projectId)) {
+      throw new NotFoundException("Ticket comment not found in this project: " + commentId);
+    }
+    return comment;
   }
 
   // --- Plumbing -------------------------------------------------------------

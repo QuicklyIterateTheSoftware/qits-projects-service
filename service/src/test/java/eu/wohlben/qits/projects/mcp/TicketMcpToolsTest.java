@@ -1,7 +1,9 @@
 package eu.wohlben.qits.projects.mcp;
 
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.api.ProjectController;
@@ -79,6 +81,27 @@ public class TicketMcpToolsTest {
         .connect();
   }
 
+  /**
+   * A client scoped to {@code projectId} and <em>named</em>: it sends the {@code X-Qits-User} the
+   * edge forwards, which is the only thing that ever produces a principal in a deployed service and
+   * therefore the only thing a stamped attribution can be tested through.
+   */
+  private McpStreamableTestClient clientAs(String projectId, String user) {
+    return McpAssured.newStreamableClient()
+        .setStateless()
+        .setMcpPath("/projects/mcp")
+        .setAdditionalHeaders(
+            msg -> {
+              MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+              headers.add(ProjectScope.PROJECT_HEADER, projectId);
+              headers.add("X-Qits-User", user);
+              headers.add("X-Qits-Roles", "qits:admin");
+              return headers;
+            })
+        .build()
+        .connect();
+  }
+
   /** A client carrying the read-only marker an autonomous launch stamps into its MCP URL. */
   private McpStreamableTestClient readOnlyClient(String projectId) {
     return McpAssured.newStreamableClient()
@@ -97,6 +120,12 @@ public class TicketMcpToolsTest {
   /** Call one tool and hand its response to {@code check}. */
   private void call(String projectId, String tool, Map<String, Object> args, Check check) {
     client(projectId).when().toolsCall(tool, args, check::accept).thenAssertResults();
+  }
+
+  /** The same, from a session the edge has named. */
+  private void callAs(
+      String projectId, String user, String tool, Map<String, Object> args, Check check) {
+    clientAs(projectId, user).when().toolsCall(tool, args, check::accept).thenAssertResults();
   }
 
   /** The single-tool assertion shape, so a call site reads as one statement. */
@@ -267,6 +296,105 @@ public class TicketMcpToolsTest {
         });
   }
 
+  // --- Editing a remark -----------------------------------------------------
+
+  /**
+   * One field of the single comment on {@code ticketId}, read back over REST: the tool result
+   * carries the author but not the timestamps, and {@code updatedAt} is half of what an edit is.
+   */
+  private String soleComment(String ticketId, String field) {
+    return authenticated()
+        .when()
+        .get("/projects/api/tickets/{id}/comments", ticketId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .extract()
+        .path("entries[0].comment." + field);
+  }
+
+  @Test
+  public void editsARemarkAndLeavesItsAuthorAlone() {
+    // The front desk's own use case: an agent that came back knowing more corrects the note it
+    // left, instead of stacking a contradiction under it for the next reader to arbitrate.
+    String projectId = createProject("Ticket Front Desk");
+    String ticketId = createTicket(projectId, "Reported by somebody", "BUG");
+
+    String[] commentId = new String[1];
+    callAs(
+        projectId,
+        "reporter",
+        "add_ticket_comment",
+        Map.of("ticketId", ticketId, "body", "It fails on Tuesdays"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          // The author is the session's principal, never a tool argument.
+          assertTrue(body.contains("\"reporter\""), "the author is stamped from the header: " + body);
+          commentId[0] = idIn(body);
+        });
+    String writtenAt = soleComment(ticketId, "updatedAt");
+
+    callAs(
+        projectId,
+        "front-desk",
+        "update_ticket_comment",
+        Map.of("id", commentId[0], "body", "It fails on Tuesdays and on Fridays"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains("and on Fridays"), "the body must be replaced: " + body);
+          assertTrue(
+              body.contains("\"reporter\""),
+              "an edit records who changed it in the log, never by rewriting the attribution: "
+                  + body);
+          assertFalse(body.contains("front-desk"), "the editor is not the author: " + body);
+        });
+
+    assertEquals("reporter", soleComment(ticketId, "author"), "the author must survive an edit");
+    assertNotEquals(writtenAt, soleComment(ticketId, "updatedAt"), "an edit must move updatedAt");
+  }
+
+  @Test
+  public void reportsAnUnknownCommentIdAsAToolError() {
+    String projectId = createProject("Ticket Ghost Remark");
+    call(
+        projectId,
+        "update_ticket_comment",
+        Map.of("id", "no-such-comment", "body", "correcting nothing"),
+        response -> {
+          assertTrue(response.isError(), "an id naming no comment must not read as an edit");
+          assertTrue(text(response).contains("Ticket comment not found"), text(response));
+        });
+  }
+
+  @Test
+  public void refusesACommentOutsideTheScopedProject() {
+    String projectA = createProject("Remark Owner");
+    String ticketInA = createTicket(projectA, "Owned", "BUG");
+    String[] commentId = new String[1];
+    call(
+        projectA,
+        "add_ticket_comment",
+        Map.of("ticketId", ticketInA, "body", "found it here"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          commentId[0] = idIn(text(response));
+        });
+    String projectB = createProject("Remark Stranger");
+
+    // A comment is checked back to the scope through the ticket it hangs under, exactly as a ticket
+    // is checked back through its project — and the refusal names the comment, which is the id the
+    // caller supplied and the only one it should learn anything about.
+    call(
+        projectB,
+        "update_ticket_comment",
+        Map.of("id", commentId[0], "body", "not yours to edit"),
+        response -> {
+          assertTrue(response.isError(), "cross-project access must be refused");
+          assertTrue(text(response).contains("not found in this project"), text(response));
+        });
+  }
+
   // --- The lifecycle --------------------------------------------------------
 
   @Test
@@ -363,7 +491,8 @@ public class TicketMcpToolsTest {
   @Test
   public void aReadOnlySessionSeesTheReadsAndNoneOfTheWrites() {
     // An unattended read-only run may look at the tickets — that is often what it was launched to
-    // work from — and may not file, edit, comment on or resolve one.
+    // work from — and may not file, edit, comment on or resolve one, nor rewrite a remark somebody
+    // else put on the thread.
     String projectId = createProject("Ticket ReadOnly");
     readOnlyClient(projectId)
         .when()
@@ -372,7 +501,11 @@ public class TicketMcpToolsTest {
               var names = page.tools().stream().map(t -> t.name()).toList();
               for (String mutating :
                   List.of(
-                      "create_ticket", "update_ticket", "transition_ticket", "add_ticket_comment")) {
+                      "create_ticket",
+                      "update_ticket",
+                      "transition_ticket",
+                      "add_ticket_comment",
+                      "update_ticket_comment")) {
                 assertFalse(
                     names.contains(mutating),
                     "read-only run still exposes mutating tool " + mutating + ": " + names);

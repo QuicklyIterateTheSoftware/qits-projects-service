@@ -584,10 +584,13 @@ each one is a decision rather than a simplification:
 - **The MCP surface HAS the transition.** `EpicMcpTools` deliberately exposes no lifecycle move,
   because freezing a plan is a human decision about committing to scope. `transition_ticket` is on
   the server, because resolving a ticket is a statement about work that is done — which the agent
-  that did it is the one who knows — and it is reversible, so a wrong answer costs a click. All four
-  ticket write tools are in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`, which fails closed;
-  deleting is on neither surface, since an agent that could delete what it disagrees with could
-  erase the record of its own mistake.
+  that did it is the one who knows — and it is reversible, so a wrong answer costs a click.
+  `update_ticket_comment` is there for the front desk's sake — an agent that came back knowing more
+  corrects its own earlier note rather than stacking a contradiction under it — and it obeys the
+  rule above rather than bending it: an edit moves `updatedAt` and never `author`. All five ticket
+  write tools are in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`, which fails closed; deleting is
+  on neither surface, since an agent that could delete what it disagrees with could erase the record
+  of its own mistake.
 
 **`AuditEntry.epic_id` is the subtree key, not a foreign key**, and tickets are what make that
 visible: a `TICKET` row and every `TICKET_COMMENT` row under it carry the *ticket's* id there, so

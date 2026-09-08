@@ -267,11 +267,13 @@ public class RepositoryMcpToolsTest {
                       "remove_task",
                       // The ticket write tools (TicketMcpTools) for the same reason, and
                       // transition_ticket is the one worth naming: an unattended run must not
-                      // declare somebody else's bug resolved.
+                      // declare somebody else's bug resolved. update_ticket_comment rewrites a
+                      // remark already on the thread, which is somebody else's words.
                       "create_ticket",
                       "update_ticket",
                       "transition_ticket",
-                      "add_ticket_comment")) {
+                      "add_ticket_comment",
+                      "update_ticket_comment")) {
                 assertFalse(
                     names.contains(mutating),
                     "read-only run still exposes mutating tool " + mutating + ": " + names);
@@ -351,6 +353,7 @@ public class RepositoryMcpToolsTest {
                       "update_ticket",
                       "transition_ticket",
                       "add_ticket_comment",
+                      "update_ticket_comment",
                       // RefinementDesignMcpTools — the frozen designs of a refinement. No resolve
                       // tool: accepting a proposal is a human act in the Design tab.
                       "list_designs",
