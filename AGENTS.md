@@ -70,12 +70,26 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
 - `service/…/idphost/` — qits-idp's commission API, the same adapter shape one directory over: the
   seam is `agenthost/AgentCredentials` and the whole of what lives here is one `@DefaultBean` HTTP
   client. See "The commissioned credential".
-- `service/…/workspacehost/` — qits-workspaces, and one `@DefaultBean` HTTP client again: the seam is
-  `control/ReleasedBranchWorkspaces` and the whole of what lives here is the POST a release makes,
-  after it has already landed, to say that a branch it deleted is gone. A package of its own rather
-  than a class in `releasehost/` because **it is not a release verb** — qits-workspaces' release door
-  left on 2026-09-03 and stays gone; what travels here is a workspace-lifecycle fact. Do not grow a
-  second verb here on the grounds that the address is configured again.
+- `service/…/workspacehost/` — qits-workspaces, and `@DefaultBean` HTTP clients again. A package of
+  its own rather than classes in `releasehost/` because **neither is a release verb** —
+  qits-workspaces' release door left on 2026-09-03 and stays gone; what travels here are
+  workspace-lifecycle facts and asks. **Two seams, one per class, and the split is the failure
+  contract rather than the address:**
+  - `control/ReleasedBranchWorkspaces` → `HttpReleasedBranchWorkspaces`: the POST a release makes,
+    after it has already landed, to say that a branch it deleted is gone. Fire-and-forget, **never
+    throws**.
+  - `control/WorkspaceAgentDispatch` → `HttpWorkspaceAgentDispatch`: the POST a ticket's "Assign
+    agent" makes to `/workspaces/api/agent-dispatches`, which stands an aggregate workspace on
+    `ticket/<slug>` and launches an agent in it. A **request somebody is waiting on**, so it throws
+    a `DomainException` — 502 for the exchange, 503 for a hop with no address or no credential.
+
+  That is why the second one is a new class and not a second method on the first: two verbs with
+  opposite failure contracts do not share a class, and the standing rule stays — do not grow a verb
+  onto `HttpReleasedBranchWorkspaces` on the grounds that the address is configured again. The
+  address itself is `qits.projects.workspaces-url`, shipped **unset** and falling back to
+  `qits.projects.release-requests.workspaces-url`, which already ships set and is what every
+  environment injects; the dispatch reads the honest name and costs no configuration change to reach
+  it.
 - `service/…/maintenancehost/` — qits-maintenance, the same `@DefaultBean` HTTP-client shape once
   more: the seam is `control/DownstreamComponents` and the whole of what lives here is ONE GET,
   `/maintenance/api/repositories/{repoId}/downstream`, asked at fold time so
@@ -608,6 +622,32 @@ The SSE topic is its own (`ProjectChangeHint.Topic.TICKETS`, `tickets` on the wi
 and comment mutation fires it, through `TicketChangeHints` — a sibling bean to `EpicChangeHints`
 rather than four more methods on it, because the two announce different channels. Firing on `EPICS`
 would redraw a board because somebody commented on a bug.
+
+**A ticket can be handed to an agent, and that door is the one ticket route not in `epics.api`.**
+`POST /projects/api/tickets/{id}/dispatch-agent` (`projects/api/TicketDispatchController`) stands an
+aggregate workspace on `ticket/<slug>` at the project's **wrapper** — a ticket names no repository,
+so the whole estate is the answer and `branchTree` is true — and launches a coding agent in it over
+the `control/WorkspaceAgentDispatch` port. It lives in `projects.api` because it needs `domain` (the
+project, the wrapper, the port) and the **epics jar depends on `domain` nowhere and must keep not
+depending on it**; the service layer may cross, which is the crossing `ProjectTicketsController`
+already makes. `EpicsPrincipal` is public for that one caller rather than copied into a second
+package.
+
+Three things travel with it:
+
+- **The preamble is a snapshot and the instruction is the brief.** The workspace goal is rendered
+  from the row (`# Ticket: <title>`, a type/status/assignee/reporter line, the description), the
+  shape `RefinementService.preamble` carries; the agent's first turn then sends it to read the
+  ticket *live* with `get_ticket`, because the thread moves and those bytes do not.
+- **The agent is told what "done" means here.** Report on the thread with `add_ticket_comment` and
+  keep that **one** comment current with `update_ticket_comment`; the work is not finished until the
+  changes are **released**, not merely merged. Both are the platform's own conventions and an agent
+  left to itself gets the second one wrong.
+- **A dispatch that succeeded stamps the thread; one that failed writes nothing.** The comment is
+  stamped from the caller's identity like any other, and a re-dispatch that qits-workspaces answered
+  `SKIPPED_RUNNING` says it found an agent already working rather than claiming a second one. A
+  failure surfaces on the door instead — 502 from the far side, 503 with no workspaces context at all
+  — because a comment saying an agent is on it when none is would be worse than the error.
 
 ## Project agent harness
 

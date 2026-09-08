@@ -1191,6 +1191,11 @@ components:
       properties:
         technicalProcessId:
           type: string
+    Response59:
+      type: object
+      properties:
+        dispatch:
+          $ref: "#/components/schemas/TicketAgentDispatchDto"
     Response6:
       type: object
       properties:
@@ -1301,6 +1306,20 @@ components:
         hint:
           type: string
         hintTarget:
+          type: string
+    TicketAgentDispatchDto:
+      type: object
+      properties:
+        workspaceRowId:
+          type: integer
+          format: int64
+        repositoryId:
+          type: string
+        branch:
+          type: string
+        fresh:
+          type: boolean
+        agentLaunch:
           type: string
     TicketCommentDto:
       type: object
@@ -4157,6 +4176,31 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+  /projects/api/tickets/{id}/dispatch-agent:
+    post:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response59"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Dispatch Agent
+      tags:
+      - Ticket Dispatch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/tickets/{id}/transition:
     post:
       parameters:
@@ -4249,4 +4293,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.907.200950
+  version: 2026.908.52426
