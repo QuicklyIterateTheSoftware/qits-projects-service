@@ -126,6 +126,19 @@ public class EpicMcpTools {
       String repositoryId,
       String dependsOnTaskId) {}
 
+  /**
+   * What {@link #markTaskImplemented} answers: the task plus the marker it just wrote.
+   *
+   * <p>A record of its own rather than an {@code implementedAt} field on {@link TaskSummary}. That
+   * shape is what {@code add_task}, {@code update_task} and the removal report return, and none of
+   * them can ever carry a marker — {@code update_task} is refused outright once the epic leaves
+   * REFINING, which is the only phase in which a marker can be written at all. Widening the shared
+   * record would put a field on three tools that is null by construction, and a model reading a
+   * null there would reasonably conclude the task is not implemented when nothing was asked.
+   */
+  public record TaskImplemented(
+      String id, String slug, String title, String repositoryId, Instant implementedAt) {}
+
   // --- Epics ----------------------------------------------------------------
 
   @McpServer("repository")
@@ -156,8 +169,9 @@ public class EpicMcpTools {
       description =
           "Read one epic of this project in full: its description plus every feature and, under"
               + " each, every task. Use it before editing a draft, so the tree you extend is the"
-              + " one that exists. The implemented markers it reports are set by people as work"
-              + " ships — they are not yours to write.")
+              + " one that exists. The implemented markers it reports are set as work ships and are"
+              + " not part of a draft; if you are the agent implementing this epic, record one with"
+              + " mark_task_implemented.")
   public EpicDetail getEpic(
       @ToolArg(description = "id of an epic in this project") String id) {
     Epic epic = requireEpicInProject(id);
@@ -336,7 +350,8 @@ public class EpicMcpTools {
       description =
           "Change a task of a REFINING epic. Omitted fields keep their current value. Refused once"
               + " the owning epic leaves REFINING. The implemented marker is not editable here —"
-              + " that is recorded by people as work ships.")
+              + " that is recorded by people as work ships, or with mark_task_implemented by the"
+              + " agent implementing the epic.")
   public TaskSummary updateTask(
       @ToolArg(description = "id of a task in this project") String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
@@ -354,6 +369,51 @@ public class EpicMcpTools {
             id, title, description, dependsOnTaskId, false, null, false, changedBy());
     announce();
     return summarize(task);
+  }
+
+  /**
+   * The marker an <b>implementing</b> agent sets, and deliberately a tool of its own rather than a
+   * widening of {@link #updateTask}.
+   *
+   * <p>That tool's description says "the implemented marker is not editable here — that is recorded
+   * by people as work ships", and it stays exactly as true as it was. It is a stance about the
+   * <em>refining</em> agent: one that is drafting a plan must not also be able to declare parts of
+   * that plan shipped, or the scope and the progress have the same author. The agent this tool is
+   * for is a different one on a different branch — dispatched by {@code EpicDispatchController} onto
+   * an epic that is already frozen — and it reports on work it actually did. Two agents, two
+   * stances, two tools; the refusal in {@code update_task} is not softened, it is pointed at its
+   * neighbour.
+   *
+   * <p>The guard is the lifecycle's own and not a second copy of it: this lands on {@code
+   * TaskService.update}'s marker arm alone ({@code touchesMarker} true, {@code touchesScope} false),
+   * so {@code EpicLifecycle.requireImplementation} is what runs and its message is what a REFINING
+   * or finished epic answers with.
+   *
+   * <p><b>This is an interim and it is written to be easy to remove.</b> Nothing on the platform
+   * derives these markers today — no listener sets one when a task's work merges — so a dispatched
+   * agent has no way to record progress except by being asked to. What replaces it is a
+   * merge-derived marker: a consumer that reads a landed change back to the task it implements and
+   * stamps {@code implementedAt} from the merge. On the day that exists, this tool goes and nothing
+   * else changes — the marker's semantics are identical either way, the same column with the same
+   * meaning, and only the writer moves from a prompt to an event.
+   */
+  @McpServer("repository")
+  @Tool(
+      name = "mark_task_implemented",
+      description =
+          "Record that a task's work has landed. Accepted only while the owning epic is in"
+              + " IMPLEMENTATION — a task of a REFINING epic has nothing to mark yet, and one of a"
+              + " finished epic is already settled. This is the marker a dispatched implementing"
+              + " agent sets as it goes: mark each task as its work lands, rather than all of them"
+              + " at the end.")
+  public TaskImplemented markTaskImplemented(
+      @ToolArg(description = "id of a task in this project") String id) {
+    requireTaskInProject(id);
+    Task task =
+        taskService.update(id, null, null, null, false, Instant.now(), false, changedBy());
+    announce();
+    return new TaskImplemented(
+        task.id, task.slug, task.title, task.repositoryId, task.implementedAt);
   }
 
   @McpServer("repository")

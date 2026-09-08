@@ -40,7 +40,13 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    *
    * <p>The epic write tools are here for the same reason: an unattended run must not rewrite the
    * project's plan. The refinement agent that owns them connects without the marker, so its own
-   * surface is unchanged.
+   * surface is unchanged. {@code mark_task_implemented} is the newest of them and belongs here on a
+   * slightly different reading than its neighbours: it does not edit the plan at all, it declares
+   * one of its tasks shipped. That is a statement people act on — a board reads it as progress and
+   * an epic's "done" is derived from it — so an unattended run steered by an untrusted commit
+   * message must not be able to make it. The implementing agent that owns it is dispatched through
+   * {@code EpicDispatchController} and connects without the marker, exactly as the refinement agent
+   * does.
    *
    * <p>{@code propose_design} joins them: a proposal is a row a person then has to read and rule
    * on, and an unattended run must not fill the Design tab with work nobody asked for.
@@ -68,6 +74,7 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "add_task",
           "update_task",
           "remove_task",
+          "mark_task_implemented",
           "propose_design",
           "create_ticket",
           "update_ticket",

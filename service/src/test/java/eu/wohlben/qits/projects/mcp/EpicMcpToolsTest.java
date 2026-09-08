@@ -362,11 +362,89 @@ public class EpicMcpToolsTest {
         });
   }
 
+  // --- The implemented marker ----------------------------------------------
+
+  /** A feature with one task under {@code epicId}, and the task's id. */
+  private String addTask(String projectId, String epicId, String repoId, String title) {
+    String[] featureId = new String[1];
+    call(
+        projectId,
+        "add_feature",
+        Map.of("epicId", epicId, "title", "Slice for " + title),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          featureId[0] = idIn(text(response));
+        });
+    String[] taskId = new String[1];
+    call(
+        projectId,
+        "add_task",
+        Map.of("featureId", featureId[0], "repositoryId", repoId, "title", title),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          taskId[0] = idIn(text(response));
+        });
+    return taskId[0];
+  }
+
+  @Test
+  public void marksATaskImplementedOnceItsEpicIsBeingImplemented() {
+    String projectId = createProject("Marking");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Ship it");
+    String taskId = addTask(projectId, epicId, repoId, "Land the column");
+    freeze(epicId);
+
+    call(
+        projectId,
+        "mark_task_implemented",
+        Map.of("id", taskId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains(taskId), "the tool answers about the task it marked: " + body);
+          assertTrue(
+              body.contains("implementedAt"),
+              "and the marker is the field the dedicated result exists to carry: " + body);
+        });
+
+    // The stamp itself is read back off the row rather than parsed out of the tool's JSON, so this
+    // asserts the write and not a serialization shape.
+    authenticated()
+        .when()
+        .get("/projects/api/tasks/" + taskId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("task.implementedAt", org.hamcrest.Matchers.notNullValue());
+  }
+
+  @Test
+  public void refusesToMarkATaskOfAnEpicThatIsStillADraft() {
+    String projectId = createProject("MarkingTooSoon");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Not started");
+    String taskId = addTask(projectId, epicId, repoId, "Nothing has landed");
+
+    // The refusal is EpicLifecycle.requireImplementation's own — this tool adds no second copy of
+    // the rule, it lands on TaskService.update's marker arm and lets the lifecycle answer.
+    call(
+        projectId,
+        "mark_task_implemented",
+        Map.of("id", taskId),
+        response -> {
+          assertTrue(response.isError(), "a draft's task has nothing shipped to record");
+          assertTrue(
+              text(response).contains("Implemented markers need an epic in IMPLEMENTATION"),
+              text(response));
+        });
+  }
+
   // --- The surface ----------------------------------------------------------
 
   @Test
   public void exposesNoTransitionTool() {
-    // Freezing a draft is a human act in the UI. Nothing on this server may move a status.
+    // Freezing a draft is a human act in the UI. Nothing on this server may move a status — and
+    // that is unchanged by mark_task_implemented, which reports work rather than moving a phase.
     String projectId = createProject("NoFreeze");
     client(projectId)
         .when()
@@ -375,6 +453,8 @@ public class EpicMcpToolsTest {
               var names = page.tools().stream().map(t -> t.name()).toList();
               assertFalse(names.contains("transition_epic"), names.toString());
               assertFalse(names.contains("supersede_epic"), names.toString());
+              assertFalse(names.contains("mark_epic_implemented"), names.toString());
+              assertTrue(names.contains("mark_task_implemented"), names.toString());
             })
         .thenAssertResults();
   }

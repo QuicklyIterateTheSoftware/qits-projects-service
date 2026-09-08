@@ -265,6 +265,10 @@ public class RepositoryMcpToolsTest {
                       "add_task",
                       "update_task",
                       "remove_task",
+                      // mark_task_implemented on a slightly different reading: it does not edit
+                      // the plan, it declares one of its tasks shipped — a statement people act
+                      // on, and not one an unattended run may make.
+                      "mark_task_implemented",
                       // The ticket write tools (TicketMcpTools) for the same reason, and
                       // transition_ticket is the one worth naming: an unattended run must not
                       // declare somebody else's bug resolved. update_ticket_comment rewrites a
@@ -344,6 +348,10 @@ public class RepositoryMcpToolsTest {
                       "add_task",
                       "update_task",
                       "remove_task",
+                      // ... and mark_task_implemented, the one write an IMPLEMENTING agent makes
+                      // on this surface. Still no transition tool: reporting a task shipped is not
+                      // moving a phase, and the epic's own close stays a human act in the UI.
+                      "mark_task_implemented",
                       // TicketMcpTools — the small-scoped work beside the plan. The transition IS
                       // here, unlike the epics': resolving a ticket is a statement about work that
                       // is done, and it is reversible.

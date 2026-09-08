@@ -1,12 +1,8 @@
 package eu.wohlben.qits.projects.refinementhost;
 
 import eu.wohlben.qits.epics.control.EpicService;
-import eu.wohlben.qits.epics.control.FeatureService;
-import eu.wohlben.qits.epics.control.TaskService;
 import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
@@ -69,8 +65,7 @@ public class RefinementService {
   private static final Logger LOG = Logger.getLogger(RefinementService.class);
 
   @Inject EpicService epics;
-  @Inject FeatureService features;
-  @Inject TaskService tasks;
+  @Inject EpicOutline outline;
   @Inject ProjectService projects;
   @Inject RepositoryService repositories;
   @Inject GitMirrorRegistry mirrors;
@@ -525,35 +520,12 @@ public class RefinementService {
     return label.length() <= 64 ? label : label.substring(0, 64);
   }
 
-  /** The chat preamble, the same markdown the SPA used to build browser-side. */
+  /**
+   * The chat preamble, the same markdown the SPA used to build browser-side — {@link EpicOutline}
+   * under the verb this flow uses. The rendering moved there when the epic dispatch grew a second
+   * caller for it; the only thing that differs between the two is the heading word.
+   */
   private String preamble(Epic epic) {
-    StringBuilder text = new StringBuilder();
-    text.append("# Refine: ").append(epic.title).append("\n\n");
-    if (epic.description == null || epic.description.isBlank()) {
-      text.append("_This draft has no description yet._\n");
-    } else {
-      text.append(epic.description).append("\n");
-    }
-    text.append("\n## Outline as it stands\n\n");
-    List<Feature> outline = features.listByEpic(epic.id);
-    if (outline.isEmpty()) {
-      text.append("_No features drafted yet._\n");
-      return text.toString();
-    }
-    for (Feature feature : outline) {
-      text.append("- **").append(feature.title).append("**");
-      if (feature.description != null && !feature.description.isBlank()) {
-        text.append(" — ").append(feature.description);
-      }
-      text.append("\n");
-      for (Task task : tasks.listByFeature(feature.id)) {
-        text.append("  - ").append(task.title);
-        if (task.description != null && !task.description.isBlank()) {
-          text.append(" — ").append(task.description);
-        }
-        text.append("\n");
-      }
-    }
-    return text.toString();
+    return outline.render(epic, "Refine");
   }
 }

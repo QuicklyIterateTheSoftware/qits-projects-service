@@ -465,6 +465,20 @@ components:
           $ref: "#/components/schemas/Outcome"
         warning:
           type: string
+    EpicAgentDispatchDto:
+      type: object
+      properties:
+        workspaceRowId:
+          type: integer
+          format: int64
+        repositoryId:
+          type: string
+        branch:
+          type: string
+        fresh:
+          type: boolean
+        agentLaunch:
+          type: string
     EpicDto:
       type: object
       properties:
@@ -976,14 +990,24 @@ components:
     Response27:
       type: object
       properties:
+        dispatch:
+          $ref: "#/components/schemas/EpicAgentDispatchDto"
+    Response28:
+      type: object
+      properties:
         project:
           $ref: "#/components/schemas/ProjectDto"
-    Response28:
+    Response29:
       type: object
       properties:
         repositoryId:
           type: string
-    Response29:
+    Response3:
+      type: object
+      properties:
+        epic:
+          $ref: "#/components/schemas/EpicDto"
+    Response30:
       type: object
       properties:
         projectId:
@@ -996,19 +1020,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntryOutcome"
-    Response3:
-      type: object
-      properties:
-        epic:
-          $ref: "#/components/schemas/EpicDto"
-    Response30:
+    Response31:
       type: object
       properties:
         domain:
           $ref: "#/components/schemas/DomainOutcome"
         domainDetail:
           type: string
-    Response31:
+    Response32:
       type: object
       properties:
         entries:
@@ -1017,24 +1036,24 @@ components:
             $ref: "#/components/schemas/Entry5"
         wrapper:
           $ref: "#/components/schemas/WrapperView"
-    Response32:
+    Response33:
       type: object
       properties:
         entries:
           type: array
           items:
             $ref: "#/components/schemas/Entry7"
-    Response33:
+    Response34:
       type: object
       properties:
         project:
           $ref: "#/components/schemas/ProjectDto"
-    Response34:
+    Response35:
       type: object
       properties:
         success:
           type: boolean
-    Response35:
+    Response36:
       type: object
       properties:
         repository:
@@ -1043,14 +1062,14 @@ components:
           type: string
         wrapperPath:
           type: string
-    Response36:
+    Response37:
       type: object
       properties:
         project:
           $ref: "#/components/schemas/ProjectDto"
         wrapper:
           $ref: "#/components/schemas/RepositoryDto"
-    Response37:
+    Response38:
       type: object
       properties:
         projectId:
@@ -1058,20 +1077,13 @@ components:
         scheduled:
           type: integer
           format: int32
-    Response38:
+    Response39:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
         projectId:
           type: string
-    Response39:
-      type: object
-      properties:
-        requests:
-          type: array
-          items:
-            $ref: "#/components/schemas/ReleaseRequestDto"
     Response4:
       type: object
       properties:
@@ -1080,8 +1092,10 @@ components:
     Response40:
       type: object
       properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseRequestDto"
     Response41:
       type: object
       properties:
@@ -1090,15 +1104,15 @@ components:
     Response42:
       type: object
       properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response43:
+      type: object
+      properties:
         requests:
           type: array
           items:
             $ref: "#/components/schemas/ReleaseRequestDto"
-    Response43:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
     Response44:
       type: object
       properties:
@@ -1112,14 +1126,19 @@ components:
     Response46:
       type: object
       properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response47:
+      type: object
+      properties:
         technicalProcessId:
           type: string
-    Response47:
+    Response48:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
-    Response48:
+    Response49:
       type: object
       properties:
         repository:
@@ -1128,11 +1147,6 @@ components:
           type: string
         changed:
           type: boolean
-    Response49:
-      type: object
-      properties:
-        technicalProcessId:
-          type: string
     Response5:
       type: object
       properties:
@@ -1146,20 +1160,20 @@ components:
     Response51:
       type: object
       properties:
+        technicalProcessId:
+          type: string
+    Response52:
+      type: object
+      properties:
         repositories:
           type: array
           items:
             $ref: "#/components/schemas/RepositoryCoordinatesDto"
-    Response52:
+    Response53:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
-    Response53:
-      type: object
-      properties:
-        success:
-          type: boolean
     Response54:
       type: object
       properties:
@@ -1168,34 +1182,34 @@ components:
     Response55:
       type: object
       properties:
+        success:
+          type: boolean
+    Response56:
+      type: object
+      properties:
         builds:
           type: array
           items:
             $ref: "#/components/schemas/CommitBuildStatusDto"
-    Response56:
+    Response57:
       type: object
       properties:
         branches:
           type: array
           items:
             $ref: "#/components/schemas/BranchDto"
-    Response57:
+    Response58:
       type: object
       properties:
         repositoryId:
           type: string
         scheduled:
           type: boolean
-    Response58:
+    Response59:
       type: object
       properties:
         technicalProcessId:
           type: string
-    Response59:
-      type: object
-      properties:
-        dispatch:
-          $ref: "#/components/schemas/TicketAgentDispatchDto"
     Response6:
       type: object
       properties:
@@ -1203,6 +1217,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AuditEntryDto"
+    Response60:
+      type: object
+      properties:
+        dispatch:
+          $ref: "#/components/schemas/TicketAgentDispatchDto"
     Response7:
       type: object
       properties:
@@ -1626,6 +1645,31 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+  /projects/api/epics/{id}/dispatch-agent:
+    post:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response27"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Dispatch Agent
+      tags:
+      - Epic Dispatch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/epics/{id}/transition:
     post:
       parameters:
@@ -1825,7 +1869,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response32"
+                $ref: "#/components/schemas/Response33"
         "401":
           description: Not Authorized
         "403":
@@ -1850,7 +1894,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response36"
+                $ref: "#/components/schemas/Response37"
         "409":
           description: The supplied slug already names another project — slugs are
             unique
@@ -1886,7 +1930,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response27"
+                $ref: "#/components/schemas/Response28"
         "401":
           description: Not Authorized
         "403":
@@ -1912,7 +1956,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response33"
+                $ref: "#/components/schemas/Response34"
         "401":
           description: Not Authorized
         "403":
@@ -1936,7 +1980,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response34"
+                $ref: "#/components/schemas/Response35"
         "401":
           description: Not Authorized
         "403":
@@ -2133,7 +2177,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response30"
+                $ref: "#/components/schemas/Response31"
         "404":
           description: No such project
         "401":
@@ -2194,7 +2238,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response39"
+                $ref: "#/components/schemas/Response40"
         "401":
           description: Not Authorized
         "403":
@@ -2219,7 +2263,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response31"
+                $ref: "#/components/schemas/Response32"
         "401":
           description: Not Authorized
         "403":
@@ -2250,7 +2294,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response35"
+                $ref: "#/components/schemas/Response36"
         "400":
           description: "Neither or both of url/name, an unplaceable archetype, a name\
             \ that carries no role suffix when no archetype is stated, a name already\
@@ -2286,7 +2330,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response38"
+                $ref: "#/components/schemas/Response39"
         "400":
           description: "An id or name outside the adoptable shape, archetype PROJECT\
             \ (the wrapper's, which this route does not own), or an unusable url"
@@ -2321,7 +2365,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response37"
+                $ref: "#/components/schemas/Response38"
         "404":
           description: No such project
         "401":
@@ -2360,7 +2404,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response28"
+                $ref: "#/components/schemas/Response29"
         "404":
           description: "No such project, or no repository by that name"
         "401":
@@ -2395,7 +2439,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response29"
+                $ref: "#/components/schemas/Response30"
         "400":
           description: The project has no wrapper repository
         "404":
@@ -3119,7 +3163,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response51"
+                $ref: "#/components/schemas/Response52"
         "401":
           description: Not Authorized
         "403":
@@ -3159,7 +3203,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response48"
+                $ref: "#/components/schemas/Response49"
         "400":
           description: "An invalid name, a name another repository in this project\
             \ already answers to, or the project's wrapper repository (whose name\
@@ -3188,7 +3232,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response52"
+                $ref: "#/components/schemas/Response53"
         "401":
           description: Not Authorized
         "403":
@@ -3220,7 +3264,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response54"
+                $ref: "#/components/schemas/Response55"
         "401":
           description: Not Authorized
         "403":
@@ -3244,7 +3288,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response58"
+                $ref: "#/components/schemas/Response59"
         "401":
           description: Not Authorized
         "403":
@@ -3273,7 +3317,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response57"
+                $ref: "#/components/schemas/Response58"
         "404":
           description: No such repository
         "401":
@@ -3305,7 +3349,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response53"
+                $ref: "#/components/schemas/Response54"
         "401":
           description: Not Authorized
         "403":
@@ -3329,7 +3373,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response56"
+                $ref: "#/components/schemas/Response57"
         "401":
           description: Not Authorized
         "403":
@@ -3394,7 +3438,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response55"
+                $ref: "#/components/schemas/Response56"
         "401":
           description: Not Authorized
         "403":
@@ -3499,7 +3543,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response47"
+                $ref: "#/components/schemas/Response48"
         "401":
           description: Not Authorized
         "403":
@@ -3526,7 +3570,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response50"
+                $ref: "#/components/schemas/Response51"
         "401":
           description: Not Authorized
         "403":
@@ -3551,7 +3595,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response49"
+                $ref: "#/components/schemas/Response50"
         "401":
           description: Not Authorized
         "403":
@@ -3586,7 +3630,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response42"
+                $ref: "#/components/schemas/Response43"
         "401":
           description: Not Authorized
         "403":
@@ -3624,7 +3668,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response44"
+                $ref: "#/components/schemas/Response45"
         "401":
           description: Not Authorized
         "403":
@@ -3656,7 +3700,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response43"
+                $ref: "#/components/schemas/Response44"
         "401":
           description: Not Authorized
         "403":
@@ -3776,7 +3820,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response45"
+                $ref: "#/components/schemas/Response46"
         "401":
           description: Not Authorized
         "403":
@@ -3823,7 +3867,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response41"
+                $ref: "#/components/schemas/Response42"
         "401":
           description: Not Authorized
         "403":
@@ -3867,7 +3911,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response40"
+                $ref: "#/components/schemas/Response41"
         "401":
           description: Not Authorized
         "403":
@@ -3894,7 +3938,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response46"
+                $ref: "#/components/schemas/Response47"
         "401":
           description: Not Authorized
         "403":
@@ -4190,7 +4234,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response59"
+                $ref: "#/components/schemas/Response60"
         "401":
           description: Not Authorized
         "403":
@@ -4293,4 +4337,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.908.81637
+  version: 2026.908.195413

@@ -570,6 +570,60 @@ list. Features and tasks keep their slugs, because the new epic and its features
 successor *epic's* slug cannot, because its scope is the project and the old row still holds it, so
 it mints the next free suffix like any other create.
 
+### Starting implementation dispatches an agent
+
+**"Start implementation" is not a status move any more.** `POST /projects/api/epics/{id}/dispatch-agent`
+(`projects/api/EpicDispatchController`) freezes the scope *and* stands an implementing agent up on
+it, in one press — the ticket door's shape one planning level higher, so read
+`TicketDispatchController` first: everything the two share is explained there. The workspace is the
+project's **wrapper** with `branchTree` true, on `epic/<epicSlug>`, because an epic spans the estate
+and names no single component (its *tasks* name repositories, one each, and no one of them is what
+the epic is about). It lives in `projects.api` for the ticket door's reason: it needs `domain`, and
+the epics jar depends on `domain` nowhere.
+
+Four things are rules rather than details:
+
+- **The transition comes first and the dispatch second, and that order is load-bearing.**
+  `mark_task_implemented` is only open while the owning epic is in `IMPLEMENTATION`, so a dispatch
+  that raced the transition would hand the agent a tool its own epic refuses — discovered halfway
+  through the first task, from inside a container, with no way to fix it. The cost of that order is
+  accepted deliberately: a dispatch that then fails leaves the epic in implementation with no agent
+  on it, which is a *legitimate* state (the scope really is frozen) and a re-pressable one, since the
+  far side adopts the workspace already standing on the branch. What runs **before** the transition
+  is only what is knowable without attempting anything — the epic (404), a status whose work is over
+  (409), a project with no wrapper (409), and no workspaces context at all (503).
+- **A re-press is the retry, so `IMPLEMENTATION` is not a refusal.** The transition runs only from
+  `REFINING`; an epic already in implementation is dispatched onto as it stands, because
+  `EpicService.planTransition` would 409 on `IMPLEMENTATION→IMPLEMENTATION` and a door whose retry
+  answered 409 would strand a failed dispatch. `IMPLEMENTED`, `SUPERSEDED` and `ABANDONED` are a 409
+  naming the status. The move goes through `EpicResolutions` and never `EpicService.transition` —
+  and since `REFINING→IMPLEMENTATION` does not resolve, no refinement is discarded here.
+- **Nothing is written on the epic.** That is the whole difference from the ticket door, which
+  stamps a comment: an epic has no thread, and its *description is the plan*, so a dispatch appending
+  its own bookkeeping to it would be this door editing somebody's plan. What lands is the `EPICS`
+  hint on the status move and the returned DTO — a failed dispatch has written nothing to undo.
+- **The preamble is a snapshot and the instruction is the brief.** `refinementhost/EpicOutline`
+  renders both this door's `# Implement: <title>` and a refinement's `# Refine: <title>`; the heading
+  verb is the only thing they disagree about, and one renderer is why they cannot drift. The
+  instruction sends the agent to `get_epic` for the live tree, to work the features and tasks in
+  `dependsOn` order, to mark each task with `mark_task_implemented` **as it lands**, and to treat the
+  work as unfinished until the changes are **released**. Its closing move stops short of the epic's
+  own close: the agent reports, and *Mark implemented* stays a person's press — declaring an epic
+  done stamps every unimplemented feature and task in one transaction, which is a decision about
+  scope and not a report about work.
+
+**`mark_task_implemented` on `EpicMcpTools` is a dedicated tool and a deliberate interim.** It is not
+a widening of `update_task`, whose refusal ("the implemented marker is not editable here") is a
+stance about the *refining* agent and stays intact — one that is drafting a plan must not also be
+able to declare parts of it shipped. Two agents, two stances, two tools. It lands on
+`TaskService.update`'s marker arm alone, so `EpicLifecycle.requireImplementation` is the guard that
+runs and its message is what a draft's task answers with, and it returns its own small result record
+rather than widening `TaskSummary` (which three tools return and none of which can ever carry a
+marker). It is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`: an unattended run steered by an
+untrusted commit message must not declare somebody's task shipped. **It goes when merge-derived
+markers exist** — a consumer that reads a landed change back to the task it implements — and the
+marker's semantics are identical either way; only the writer moves from a prompt to an event.
+
 ## Tickets
 
 A **second root beside `Epic`, not a row under it** (V4). A ticket is a bug or an improvement small
