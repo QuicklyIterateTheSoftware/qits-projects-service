@@ -867,6 +867,17 @@ Where it differs from the agent harness, each difference is the domain line:
   in that order; the agent harness deliberately has no removal at all. `RefinementCommissions`
   decommissions at the explicit seams; `RefinementCommissionReconcile` reaps `refinement`-kind idp
   clients no row claims (its own CONTEXT_KIND, invisible to the agent reconcile and vice versa).
+- **Resolving the epic is what calls that verb, and it is a rule of the service rather than a
+  browser dance.** `refinementhost/EpicResolutions` is the only thing a door may use to move an
+  epic's status: it previews the move (`EpicService.planTransition`, which throws every refusal the
+  transition would), discards the refinement when the target **resolves** the epic — `IMPLEMENTED`,
+  `SUPERSEDED`, `ABANDONED`, never the `REFINING→IMPLEMENTATION` freeze — and only then transitions.
+  The order is the point: a resolved epic must never own a workspace nothing can reach, so a failed
+  teardown leaves a still-refining epic with a UI to retry from. Until 2026-09-08 the cleanup was
+  `refining-page.ts` discarding before transitioning, and only for `ABANDONED`: the epics board, the
+  REST API and any machine caller all leaked a container, a volume, a commissioned credential and a
+  `refining/<slug>` branch, and `findOrCreate` refuses a non-`REFINING` epic so the stranded row
+  could not even be adopted back. Do not call `EpicService.transition` from a door again.
 - **The ensure ladder runs off the request thread** (`RefinementService`): the browser gets a
   technical-process id to watch instead of a request that hangs behind an image pull. One
   `Semaphore` permit per row — a semaphore and not a lock, because the permit is taken on the

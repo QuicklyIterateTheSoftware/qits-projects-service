@@ -1,6 +1,7 @@
 package eu.wohlben.qits.epics.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -179,6 +180,34 @@ class EpicLifecycleTest extends EpicsTestSupport {
     // The stored word is IMPLEMENTED — "DONE" names no status at all.
     assertThrows(ConflictException.class, () -> epicService.transition(epic.id, "DONE", "t"));
     assertThrows(ConflictException.class, () -> epicService.transition(epic.id, "refining", "t"));
+  }
+
+  // --- the preview ---------------------------------------------------------------------------
+
+  /**
+   * The preview an assembling layer asks before tearing down what the epic still holds. Every
+   * refusal is the transition's own and lands here, one step early — the whole point being that a
+   * move about to be refused must not have discarded anything first.
+   */
+  @Test
+  void planTransitionAnswersWhatTheMoveWouldBeAndRefusesWhatTheMoveWould() {
+    Epic epic = epic();
+
+    var freeze = epicService.planTransition(epic.id, "IMPLEMENTATION");
+    assertEquals(EpicStatus.IMPLEMENTATION, freeze.target());
+    assertEquals(epic.id, freeze.epic().id);
+    assertFalse(freeze.resolving(), "the scope freeze does not resolve the epic");
+
+    assertTrue(epicService.planTransition(epic.id, "ABANDONED").resolving());
+    assertThrows(
+        ConflictException.class, () -> epicService.planTransition(epic.id, "IMPLEMENTED"));
+    assertThrows(ConflictException.class, () -> epicService.planTransition(epic.id, "DONE"));
+    // The preview reserves nothing: the epic is where it was, and the move still runs.
+    assertEquals(EpicStatus.REFINING, epicService.get(epic.id).status);
+
+    Epic frozen = frozen();
+    assertTrue(epicService.planTransition(frozen.id, "IMPLEMENTED").resolving());
+    assertTrue(epicService.planTransition(frozen.id, "SUPERSEDED").resolving());
   }
 
   // --- the supersede copy --------------------------------------------------------------------

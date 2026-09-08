@@ -9,6 +9,7 @@ import eu.wohlben.qits.epics.dto.FeatureDto;
 import eu.wohlben.qits.epics.mapper.AuditEntryMapper;
 import eu.wohlben.qits.epics.mapper.EpicMapper;
 import eu.wohlben.qits.epics.mapper.FeatureMapper;
+import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -32,6 +33,8 @@ import java.util.List;
 public class EpicController {
 
   @Inject EpicService epicService;
+
+  @Inject EpicResolutions epicResolutions;
 
   @Inject FeatureService featureService;
 
@@ -79,6 +82,10 @@ public class EpicController {
    * freeze), {@code IMPLEMENTED} (shipped: stamps every feature and task still unimplemented),
    * {@code SUPERSEDED} or {@code ABANDONED}. A move the lifecycle does not allow, and a target
    * naming no status, both answer 409 with a message.
+   *
+   * <p>It goes through {@link EpicResolutions} rather than straight to {@code EpicService}, because
+   * a move that resolves the epic has to tear its refinement down first — see that class for the
+   * order and for what the browser-side version of it used to leak.
    */
   public record TransitionEpicRequest(String target) {
     /** The epic in its new status, plus the successor draft a supersede spawned (null otherwise). */
@@ -90,7 +97,7 @@ public class EpicController {
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
     var result =
-        epicService.transition(id, request.target(), EpicsPrincipal.changedBy(identity));
+        epicResolutions.transition(id, request.target(), EpicsPrincipal.changedBy(identity));
     // A supersede spawns a second epic in the same project, so one hint still covers both rows.
     hints.fire(result.epic().projectId);
     return new TransitionEpicRequest.Response(
