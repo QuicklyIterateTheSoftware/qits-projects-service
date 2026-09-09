@@ -95,6 +95,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       RepositoryRenamed.class,
       ReleaseRequestChanged.class,
       SCMRelease.class,
+      SCMReleaseFinalized.class,
       ProjectCreated.class,
       ProjectDeleted.class,
       BuildStatusListener.BuildVerdictPayload.class,

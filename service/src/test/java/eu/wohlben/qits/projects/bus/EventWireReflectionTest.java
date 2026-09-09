@@ -74,6 +74,7 @@ public class EventWireReflectionTest {
             RepositoryRenamed.class,
             ReleaseRequestChanged.class,
             SCMRelease.class,
+            SCMReleaseFinalized.class,
             ProjectCreated.class,
             ProjectDeleted.class,
             BuildStatusListener.BuildVerdictPayload.class,
@@ -82,8 +83,9 @@ public class EventWireReflectionTest {
             EventFrame.class),
         Set.of(registration.targets()),
         "the four SCM records and the two bound consumption payloads in, RepositoryRenamed,"
-            + " ReleaseRequestChanged, SCMRelease and the two project lifecycle events out, the PUT"
-            + " body, the frame — a fourteenth wire type means a line here");
+            + " ReleaseRequestChanged, the two halves of a release (SCMRelease and"
+            + " SCMReleaseFinalized) and the two project lifecycle events out, the PUT body, the"
+            + " frame — a fifteenth wire type means a line here");
   }
 
   /**
@@ -109,6 +111,12 @@ public class EventWireReflectionTest {
         "SCMReleaseAnnouncer publishes this — the event qits-workspaces used to publish and this"
             + " service does since the release became a tag; the WIRE name is the simple class"
             + " name, so a consumer cannot tell the two apart and must not have to");
+    assertTrue(
+        targets.contains(SCMReleaseFinalized.class),
+        "SCMReleaseFinalizedAnnouncer publishes this — the release's OTHER half, said when the"
+            + " released tag reaches main. It is the only statement anything on this platform makes"
+            + " about the default branch moving: qits-githost's REST merge door publishes nothing by"
+            + " design, and SCMRelease is the tag, minutes earlier and before main went anywhere");
     assertTrue(
         targets.contains(ProjectCreated.class),
         "ProjectLifecycleAnnouncer publishes this, and the platform edge derives a project's TLS"

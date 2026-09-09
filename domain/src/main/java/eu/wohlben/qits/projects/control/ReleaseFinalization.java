@@ -100,6 +100,13 @@ public class ReleaseFinalization {
 
   @Inject Instance<BackingBranchMerger> mergers;
 
+  /**
+   * The one thing this class announces: that a released tag reached the default branch. Optional and
+   * {@code Instance}-resolved like every port here — absent is a supported configuration, and a
+   * deployment without it finalizes exactly as it did before the event existed.
+   */
+  @Inject Instance<ReleaseFinalizedAnnouncer> finalizedAnnouncers;
+
   @Inject Instance<ReleaseGitHost> gitHosts;
 
   /**
@@ -305,7 +312,14 @@ public class ReleaseFinalization {
    * remember.
    */
   private void merge(String rowId) {
-    record Ask(String repoId, String tagName, String sha, String target, boolean owed) {}
+    record Ask(
+        String repoId,
+        String repoName,
+        String projectId,
+        String tagName,
+        String sha,
+        String target,
+        boolean owed) {}
     Ask ask =
         QuarkusTransaction.requiringNew()
             .call(
@@ -317,11 +331,17 @@ public class ReleaseFinalization {
                             row ->
                                 new Ask(
                                     row.repoId,
+                                    // Both read HERE, inside the one transaction this method opens,
+                                    // and carried on the ask: the announcement is made after the
+                                    // merge with nothing open, and a lazy read out there would be a
+                                    // detached entity rather than a name.
+                                    repoNameOf(row.repoId),
+                                    projectOf(row.repoId),
                                     row.tagName,
                                     row.releasedSha,
                                     "refs/heads/" + mainOf(row.repoId),
                                     true))
-                        .orElse(new Ask(null, null, null, null, false)));
+                        .orElse(new Ask(null, null, null, null, null, null, false)));
     if (!ask.owed()) {
       return;
     }
@@ -361,6 +381,13 @@ public class ReleaseFinalization {
       return;
     }
     landed(rowId);
+    // ANNOUNCED HERE, before the bookkeeping and outside every transaction. The ref has moved the
+    // instant the git host answered, so a statement gated on what follows would be silent about a
+    // merge that really happened — the SCMRelease rule, one phase later. It is also the only
+    // statement anything makes about main moving: qits-githost's REST merge door publishes nothing
+    // by design, and SCMRelease is the tag, minutes earlier and before this branch went anywhere.
+    announceFinalized(ask.projectId(), ask.repoId(), ask.repoName(), ask.target(), ask.tagName(),
+        outcome.sha());
     // The row's own merged_at is stamped THERE and only there — one writer of that column — and the
     // repository's open requests re-fold without this tag, which is content-idempotent and usually
     // answers `unchanged`.
@@ -368,6 +395,50 @@ public class ReleaseFinalization {
     LOG.infof(
         "The released tag %s of %s reached %s (%s)",
         ask.tagName(), ask.repoId(), ask.target(), outcome.result());
+  }
+
+  /**
+   * Say that the default branch has this release, and never let saying so cost the merge.
+   *
+   * <p>The port is optional like every other here, so an unresolvable one is silence rather than a
+   * failure. It is wrapped besides: the merge is already done and irreversible by the time this
+   * runs, so a bus that will not take the event must not turn a landed release into a retried one —
+   * {@code ReleaseRequestSweep.sweepFinalizations} would re-ask a merge that has already happened,
+   * and the row's {@code merged_at} would never be stamped.
+   */
+  private void announceFinalized(
+      String projectId,
+      String repoId,
+      String repoName,
+      String target,
+      String version,
+      String mergedSha) {
+    if (!finalizedAnnouncers.isResolvable()) {
+      return;
+    }
+    try {
+      finalizedAnnouncers
+          .get()
+          .onReleaseFinalized(
+              projectId, repoId, repoName, target, version, mergedSha, Instant.now());
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e, "Could not announce that %s of %s reached %s", version, repoId, target);
+    }
+  }
+
+  /** The repository's registered name, or null — the coordinate a consumer keyed by name reads. */
+  private String repoNameOf(String repoId) {
+    return repositories.findByIdOptional(repoId).flatMap(names::nameFor).orElse(null);
+  }
+
+  /** The project the repository belongs to, or null where it has none. */
+  private String projectOf(String repoId) {
+    return repositories
+        .findByIdOptional(repoId)
+        .map(repository -> repository.project)
+        .map(project -> project.id)
+        .orElse(null);
   }
 
   /** The attempt landed: the row keeps no stale reason for a failure it recovered from. */
