@@ -110,6 +110,46 @@ class AgentCapabilityRelayTest {
   }
 
   /**
+   * <b>No body and no capabilities are DIFFERENT answers, and the live defect was reading the first
+   * as the second's neighbour — broken.</b>
+   *
+   * <p>Asserted as outcomes rather than as row counts because neither writes a row: what separates
+   * them is only whether the relay asks again, and a count cannot see that. An empty body is a
+   * daemon that has not finished booting ({@code NOT_READY}, retried); a body naming no capabilities
+   * is an older daemon that answered ({@code ABSENT}, terminal and quiet); a body that is present
+   * and will not parse is the two sides disagreeing about a contract ({@code BROKEN}, loud and
+   * terminal). Handing "" to Jackson collapses the first into the third — {@code
+   * MismatchedInputException: No content to map due to end-of-input} — which is exactly what shipped
+   * in 2026.909.130640 and left the catalogue empty on every container start.
+   */
+  @Test
+  void anEmptyBodyIsNotReadyWhileABodyNamingNoCapabilitiesIsAbsent() {
+    assertEquals(
+        AgentCapabilityRelay.Outcome.Kind.NOT_READY,
+        relay.ingest(PROJECT_ID, "").kind(),
+        "an empty body says nothing about capabilities, so it cannot end the window");
+    assertEquals(
+        AgentCapabilityRelay.Outcome.Kind.NOT_READY,
+        relay.ingest(PROJECT_ID, "   \n ").kind(),
+        "whitespace is no more of an answer than nothing is");
+    assertEquals(
+        AgentCapabilityRelay.Outcome.Kind.NOT_READY,
+        relay.ingest(PROJECT_ID, null).kind());
+
+    assertEquals(
+        AgentCapabilityRelay.Outcome.Kind.ABSENT,
+        relay.ingest(PROJECT_ID, """
+            {"agents":["CLAUDE","KIMI"],"defaultAgent":"CLAUDE"}
+            """).kind(),
+        "an older daemon ANSWERED: terminal and quiet, not retried");
+
+    assertEquals(
+        AgentCapabilityRelay.Outcome.Kind.BROKEN,
+        relay.ingest(PROJECT_ID, "<html>not this contract</html>").kind(),
+        "a body that is present and will not parse is still loud and still terminal");
+  }
+
+  /**
    * The two blanks the relay fills, and the reason it is allowed to.
    *
    * <p>The image version is half the key the catalogue stores under and this host chose the pin it

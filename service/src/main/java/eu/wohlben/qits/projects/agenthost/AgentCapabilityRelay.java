@@ -62,11 +62,20 @@ import org.jboss.logging.Logger;
  * is sent from <em>inside</em> the clone, still ahead of the bind and the probe, and it is not sent
  * at all on a reconnect — so there is no better moment to fire at, and inventing one is a protocol
  * change in another repository that would strand every container already running. What there is
- * instead is an answer that distinguishes the two states: an unwired agent surface answers
- * <b>503</b>, an unbound one answers nothing at all, and a wired one answers the report. Those are
- * retried; every other outcome is terminal on the first attempt, so a warm container (whose
- * {@code /workspace} is already populated, and whose API is therefore up almost at once) still
- * records on attempt one and an older daemon is still quiet exactly once.
+ * instead is an answer that distinguishes the states: an unwired agent surface answers <b>503</b>, an
+ * unbound one answers nothing at all, and a booting one answers <b>2xx with an empty body</b> —
+ * measured live, and the shape that actually presents through this tunnel. Those are retried; every
+ * other outcome is terminal on the first attempt, so a warm container (whose {@code /workspace} is
+ * already populated, and whose API is therefore up almost at once) still records on attempt one and
+ * an older daemon is still quiet exactly once.
+ *
+ * <p><b>An empty body is not a malformed one, and conflating them cost a second release.</b> The
+ * first fix (2026.909.130640) classified by status and then handed whatever came back to Jackson, so
+ * that empty 2xx produced {@code MismatchedInputException: No content to map due to end-of-input}
+ * and landed in the <em>broken</em> arm — a terminal WARN. One attempt, no retry, and the only line
+ * in the log said the daemon was speaking a contract this service could not read, which was the
+ * opposite of true. A body that is absent says nothing about capabilities and can never be the reason
+ * to stop asking; only a body genuinely present and unparseable is broken.
  *
  * <p><b>The window is bounded and the give-up is loud.</b> {@code relay-attempts} reads with an
  * exponential backoff capped at {@code relay-retry-max-ms} — about four minutes shipped — and a
@@ -325,11 +334,27 @@ public class AgentCapabilityRelay {
   }
 
   /**
-   * Decode one {@code /agents/available} body and record it. Package-private so the three answers
-   * this has to tell apart — a full report, an older daemon's, and something that is not this
-   * contract at all — are testable without standing a container and a tunnel up to produce them.
+   * Decode one {@code /agents/available} body and record it. Package-private so the four answers
+   * this has to tell apart — a full report, an older daemon's, nothing at all, and something that is
+   * not this contract — are testable without standing a container and a tunnel up to produce them.
+   *
+   * <p><b>No body is "not ready", and it is a DIFFERENT answer from a body naming no
+   * capabilities.</b> That distinction cost a live release: the second is an older daemon that
+   * answered ({@code {"agents":[…],"defaultAgent":"CLAUDE"}} — absent, terminal, quiet), while the
+   * first is a daemon that has not finished booting, and handing {@code ""} to Jackson produces
+   * "No content to map due to end-of-input" — measured live 2026-09-09 as the ONLY line the relay
+   * logged, on every container start, from the arm that then refused to ask again. An empty answer
+   * is not a statement about capabilities, so it can never be the reason to stop asking.
    */
   Outcome ingest(String projectId, String body) {
+    if (body == null || body.isBlank()) {
+      // Checked before Jackson, and it has to be: end-of-input is a MismatchedInputException like
+      // any other and would land in the terminal WARN below, which is exactly the defect.
+      LOG.debugf(
+          "project %s answered %s with no body; its agent surface is not up yet",
+          projectId, AVAILABLE_PATH);
+      return Outcome.notReady("the daemon answered with an empty body");
+    }
     CapabilityReportRequest report;
     try {
       report = json.readValue(body, CapabilityReportRequest.class);
@@ -423,10 +448,17 @@ public class AgentCapabilityRelay {
             projectId, Integer.valueOf(status), AVAILABLE_PATH);
         return Outcome.notReady("the daemon answered " + status + " for " + AVAILABLE_PATH);
       }
-      if (buffer == null) {
-        return Outcome.notReady("the daemon answered " + status + " with no body");
+      // An empty 2xx is NOT ready, never broken. The status is read from the response object above,
+      // so nothing non-2xx can reach here disguised as an empty body; what does reach here is a
+      // 200 whose body never arrived, which is what a daemon mid-boot looks like through the tunnel.
+      String answer = buffer == null ? null : buffer.toString();
+      if (answer == null || answer.isBlank()) {
+        LOG.debugf(
+            "project %s answered %d for %s with an empty body; its agent surface is not up yet",
+            projectId, Integer.valueOf(status), AVAILABLE_PATH);
+        return Outcome.notReady("the daemon answered " + status + " with an empty body");
       }
-      return ingest(projectId, buffer.toString());
+      return ingest(projectId, answer);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return Outcome.notReady("interrupted");
