@@ -74,6 +74,8 @@ class AgentTunnelProxyTest {
 
   @Inject AgentTunnels tunnels;
 
+  @Inject AgentCapabilityRelay relay;
+
   @TestHTTPResource("/")
   URL root;
 
@@ -91,6 +93,17 @@ class AgentTunnelProxyTest {
   private record Seen(String method, String uri, String authorization, String host) {}
 
   private final CompletableFuture<Seen> seen = new CompletableFuture<>();
+
+  /**
+   * The capability relay's own read, kept apart from {@link #seen}.
+   *
+   * <p>Two futures rather than one because the relay is a <b>second</b> caller of this same daemon,
+   * arriving on its own initiative rather than on a browser's — and it really did race the request
+   * the proxy test asserts and win. Splitting them is what lets one fixture prove both hops; it is
+   * also why the relay does not fire automatically under test (see {@code
+   * %test.qits.projects.agent-capabilities.relay-enabled}) and is driven explicitly below.
+   */
+  private final CompletableFuture<Seen> capabilityRead = new CompletableFuture<>();
 
   /** The nonce the host minted, captured off the {@code OpenStream} so it can be replayed. */
   private final CompletableFuture<String> mintedNonce = new CompletableFuture<>();
@@ -125,12 +138,23 @@ class AgentTunnelProxyTest {
             .createHttpServer()
             .requestHandler(
                 request -> {
-                  seen.complete(
+                  Seen observed =
                       new Seen(
                           request.method().name(),
                           request.uri(),
                           request.getHeader("Authorization"),
-                          request.getHeader("Host")));
+                          request.getHeader("Host"));
+                  if (request.uri().endsWith("/" + AgentCapabilityRelay.AVAILABLE_PATH)) {
+                    capabilityRead.complete(observed);
+                    // The body an OLDER daemon answers: the harness list it has always answered and
+                    // none of the three members the capability feature added. Absent, not broken.
+                    request
+                        .response()
+                        .putHeader("Content-Type", "application/json")
+                        .end("{\"agents\":[\"CLAUDE\"],\"defaultAgent\":\"CLAUDE\"}");
+                    return;
+                  }
+                  seen.complete(observed);
                   request
                       .response()
                       .putHeader("Content-Type", "application/json")
@@ -250,6 +274,38 @@ class AgentTunnelProxyTest {
         "localhost:13338",
         request.host(),
         "the authority is pinned, so it does not move with the tunnel's ephemeral port");
+  }
+
+  /**
+   * The capability relay's hop, over the same tunnel and with the same bearer.
+   *
+   * <p>It belongs in this class because this is where a fake daemon exists to be asked, and because
+   * the two things worth pinning about the relay's read are exactly this class's subjects: it
+   * addresses the daemon at the <b>full proxied path</b> — a bare {@code /agents/available} would
+   * 404, since the daemon serves its API under the prefix it was told is its own address — and it
+   * presents qits' own bearer rather than nothing.
+   *
+   * <p>The daemon here answers as an <b>older</b> one, which is the ordinary case until both daemons
+   * are released: the harness list and none of {@code imageVersion}, {@code reportedBy} or {@code
+   * capabilities}. The relay must record nothing and raise nothing.
+   */
+  @Test
+  void theCapabilityRelayReadsAgentsAvailableThroughTheTunnelWithTheBearerSet() throws Exception {
+    String project = UUID.randomUUID().toString();
+    int apiPort = startDaemonApi();
+    connectAsDaemon(project, apiPort);
+
+    // What AgentDaemonRegistry does on Hello, driven by hand: the automatic firing is dark under
+    // test so it cannot race the assertions above.
+    relay.readAndIngest(project);
+
+    Seen request = capabilityRead.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    assertEquals("GET", request.method());
+    assertEquals(
+        ContainerProxyPath.base(project) + AgentCapabilityRelay.AVAILABLE_PATH,
+        request.uri(),
+        "the full proxied path: the daemon serves its API under the prefix it was told is its own");
+    assertEquals("Bearer qits-projects-daemon", request.authorization());
   }
 
   @Test

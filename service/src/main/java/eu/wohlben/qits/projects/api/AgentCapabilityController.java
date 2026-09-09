@@ -107,7 +107,48 @@ public class AgentCapabilityController {
                   "The image build the container runs. Blank is allowed and means the reporter"
                       + " could not name it; reports then share one row per harness.")
           String imageVersion,
-      List<HarnessCapabilityReport> capabilities) {}
+      List<HarnessCapabilityReport> capabilities) {
+
+    /**
+     * This report as the rows the catalogue stores.
+     *
+     * <p><b>On the record rather than in the resource method, and that placement is the point.</b>
+     * The ingest body <em>is</em> the daemons' contract, and this door's whole argument is that a
+     * relay which reshapes it is a third place the contract can drift. There are two relays — this
+     * service's own {@code agenthost/AgentCapabilityRelay} and qits-workspaces' — and the in-process
+     * one cannot go through {@link #report} at all: the class is {@code @RolesAllowed} and the relay
+     * runs on a background thread with no identity, so the interceptor refuses it. A pure function on
+     * the body is what lets both arrive at the same rows without a second translation and without
+     * either of them holding a credential to call itself with.
+     */
+    public List<AgentHarnessCapabilityDto> reports() {
+      if (capabilities == null) {
+        return List.of();
+      }
+      return capabilities.stream()
+          .map(
+              r ->
+                  new AgentHarnessCapabilityDto(
+                      r.harness(),
+                      // The image version is one per report, not one per harness: every binary in a
+                      // container came out of the same image.
+                      imageVersion,
+                      r.harnessVersion(),
+                      r.models(),
+                      r.modelsEnumerated(),
+                      r.effortSupported(),
+                      r.effortLevels(),
+                      r.authenticated(),
+                      r.authDetail(),
+                      r.probeFailed(),
+                      r.probeDetail(),
+                      reportedBy,
+                      null,
+                      false,
+                      List.of()))
+          .toList();
+    }
+  }
 
   /** What was recorded. */
   public record CapabilityReportResponse(
@@ -138,32 +179,7 @@ public class AgentCapabilityController {
   @PUT
   @Consumes(MediaType.APPLICATION_JSON)
   public CapabilityReportResponse report(CapabilityReportRequest request) {
-    List<AgentHarnessCapabilityDto> reports =
-        request.capabilities() == null
-            ? List.of()
-            : request.capabilities().stream()
-                .map(
-                    r ->
-                        new AgentHarnessCapabilityDto(
-                            r.harness(),
-                            // The image version is one per report, not one per harness: every
-                            // binary in a container came out of the same image.
-                            request.imageVersion(),
-                            r.harnessVersion(),
-                            r.models(),
-                            r.modelsEnumerated(),
-                            r.effortSupported(),
-                            r.effortLevels(),
-                            r.authenticated(),
-                            r.authDetail(),
-                            r.probeFailed(),
-                            r.probeDetail(),
-                            request.reportedBy(),
-                            null,
-                            false,
-                            List.of()))
-                .toList();
     return new CapabilityReportResponse(
-        capabilities.record(request.reportedBy(), request.imageVersion(), reports));
+        capabilities.record(request.reportedBy(), request.imageVersion(), request.reports()));
   }
 }

@@ -132,15 +132,41 @@ public class AgentSurfaceConfigurationService {
    * make it launch a session that looks configured and is not.
    */
   public AgentConfigurationDocumentDto document() {
+    return document(Instant.now().toString());
+  }
+
+  /**
+   * The same document, stamped with <b>when the store last changed</b> rather than with now — what
+   * qits-projects injects into its own agent container's spec.
+   *
+   * <p>The difference is one field and it is load-bearing. These bytes travel in the container spec
+   * qits-containers hashes, and {@code AgentContainerFactory.forRestart} sends {@code
+   * Recreate.ifChanged}: a spec that differs from the stored one is a container <em>replacement</em>.
+   * A wall clock in the document would differ on every call, so every wake would replace the
+   * container instead of starting it in place — precisely the defect that repo carried while
+   * qits-containers had no start verb, reintroduced through a timestamp. {@code
+   * AgentContainerFactoryTest.aRestartPermitsAReplacementAndIsOtherwiseTheSameRequest} is what
+   * notices.
+   *
+   * <p>Stamping the last edit is also the more honest answer for an injected document: the container
+   * holds a configuration that is as old as the last change to it, not as old as the moment somebody
+   * pressed a button. Everything else that can move the document — a catalog entry's url, a resolved
+   * credential — moves the bytes themselves, so this field carries no obligation to notice it.
+   *
+   * <p>A store nobody has written yet stamps the empty string rather than an invented instant.
+   */
+  public AgentConfigurationDocumentDto documentForContainerSpec() {
+    return document(revisions.latestChangeAt().map(Instant::toString).orElse(""));
+  }
+
+  private AgentConfigurationDocumentDto document(String generatedAt) {
     List<AgentDocumentSurfaceDto> surfaces = new ArrayList<>();
     for (AgentSurfaceConfigurationDto configuration : listAll()) {
       surfaces.add(
           new AgentDocumentSurfaceDto(configuration, catalog.resolve(configuration.surface())));
     }
     return new AgentConfigurationDocumentDto(
-        AgentConfigurationDocumentDto.CURRENT_VERSION,
-        Instant.now().toString(),
-        List.copyOf(surfaces));
+        AgentConfigurationDocumentDto.CURRENT_VERSION, generatedAt, List.copyOf(surfaces));
   }
 
   /** One surface's revision trail, newest first. */

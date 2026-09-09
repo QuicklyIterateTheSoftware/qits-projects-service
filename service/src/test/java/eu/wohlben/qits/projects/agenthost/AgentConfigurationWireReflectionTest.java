@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.agenthost;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import eu.wohlben.qits.projects.api.AgentCapabilityController;
 import eu.wohlben.qits.projects.dto.AgentCapabilityCatalogueDto;
 import eu.wohlben.qits.projects.dto.AgentCapabilityImageVersionDto;
 import eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto;
@@ -47,12 +48,15 @@ public class AgentConfigurationWireReflectionTest {
             AgentCapabilityCatalogueDto.class,
             AgentHarnessCapabilityDto.class,
             AgentCapabilityImageVersionDto.class,
+            AgentCapabilityController.CapabilityReportRequest.class,
+            AgentCapabilityController.HarnessCapabilityReport.class,
             AgentHarness.class,
             AgentPermissionMode.class),
         Set.of(registration.targets()),
         "the document and its surfaces, the built-in and external MCP shapes, the capability"
-            + " catalogue, and the two enums the configuration serializes — a further type on any"
-            + " of them means a line here");
+            + " catalogue, the ingest records the relay deserializes outside a request, and the two"
+            + " enums the configuration serializes — a further type on any of them means a line"
+            + " here");
   }
 
   /**
@@ -77,7 +81,9 @@ public class AgentConfigurationWireReflectionTest {
           AgentResolvedMcpServerDto.class,
           AgentCapabilityCatalogueDto.class,
           AgentHarnessCapabilityDto.class,
-          AgentCapabilityImageVersionDto.class
+          AgentCapabilityImageVersionDto.class,
+          AgentCapabilityController.CapabilityReportRequest.class,
+          AgentCapabilityController.HarnessCapabilityReport.class
         }) {
       for (var component : type.getRecordComponents()) {
         Class<?> componentType = component.getType();

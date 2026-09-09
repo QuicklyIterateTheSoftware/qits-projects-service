@@ -5,14 +5,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.containers.client.ContainersWire.EnsureRequest;
 import eu.wohlben.qits.containers.client.ContainersWire.PolicyType;
 import eu.wohlben.qits.containers.client.ContainersWire.Recreate;
 import eu.wohlben.qits.containers.client.ContainersWire.SharedMount;
 import eu.wohlben.qits.containers.client.ContainersWire.Spec;
 import eu.wohlben.qits.containers.client.ContainersWire.VolumeMount;
+import eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -159,6 +163,53 @@ class AgentContainerFactoryTest {
     assertEquals("13338", env.get("QITS_PROJECTS_DAEMON_API_PORT"));
     assertEquals("13337", env.get("QITS_PROJECTS_DAEMON_HOOKS_PORT"));
     assertEquals("/claude-home", env.get("QITS_PROJECTS_DAEMON_CLAUDE_MOUNT"));
+  }
+
+  /**
+   * The container is born holding what its sessions are configured to run as.
+   *
+   * <p>Two variables, and both are addressed to the shared harness library rather than to this
+   * daemon — hence no {@code QITS_PROJECTS_DAEMON_} prefix, the same reason {@code
+   * QITS_REPOSITORY_MCP_URL} carries none. The path is <em>told</em>, like the claude mount and the
+   * hooks port; the document travels beside it because nothing in the orchestrator's wire can
+   * materialize a host file and this service holds no docker socket, so the daemon writes it at boot
+   * from the value it was created with.
+   */
+  @Test
+  void bornWithTheResolvedAgentConfigurationAndThePathToPutItAt() throws Exception {
+    Map<String, String> env = spec().env();
+
+    assertEquals("/tmp/qits/agent-configuration.json", env.get("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH"));
+    JsonNode document = new ObjectMapper().readTree(env.get("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION"));
+    assertEquals(
+        AgentConfigurationDocumentDto.CURRENT_VERSION,
+        document.get("version").asInt(),
+        "a daemon reading a shape it does not understand must be able to say so at boot");
+    List<String> surfaces = new ArrayList<>();
+    document.get("surfaces").forEach(s -> surfaces.add(s.get("configuration").get("surface").asText()));
+    // The two this container serves, and every other surface besides — which is the container
+    // door's own decision, argued in AgentConfigurationController: a container that turns out to
+    // serve a surface the creator did not predict is better off holding a configuration for it.
+    assertTrue(surfaces.contains("project.epics"), surfaces.toString());
+    assertTrue(surfaces.contains("project.tickets"), surfaces.toString());
+  }
+
+  /**
+   * The document must not carry a wall clock, and this is the assertion that says why in one place.
+   *
+   * <p>These bytes are hashed into the spec qits-containers stores. {@code forRestart} sends {@code
+   * Recreate.ifChanged}, so a document that differed on every render would make every wake a
+   * container replacement — the defect this repo already carried once, reintroduced through a
+   * timestamp. {@code documentForContainerSpec} stamps the store's last change instead, which is
+   * also what makes the epic's "an edit applies to the next container" work: the bytes move when the
+   * configuration moves, and at no other time.
+   */
+  @Test
+  void theDocumentIsStampedWithTheStoresLastChangeRatherThanWithNow() {
+    assertEquals(
+        spec().env().get("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION"),
+        spec().env().get("QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION"),
+        "a wall clock in here turns every wake into a container replacement");
   }
 
   @Test

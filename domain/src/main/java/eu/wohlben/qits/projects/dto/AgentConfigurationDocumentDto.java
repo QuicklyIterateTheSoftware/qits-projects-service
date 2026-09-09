@@ -20,10 +20,24 @@ import java.util.List;
  *     how old the configuration it holds is, which is the only honest way to read a snapshot
  * <p><b>It is the only shape that carries a credential.</b> Each surface's attached external MCP
  * servers arrive fully rendered — url and header value — so a container needs no second lookup and
- * never holds a qits-configuration reference it would have to resolve from inside a workspace. That
- * is also why the delivery is a mounted file rather than an environment variable, and why this
- * document must not be logged, echoed into an event, or answered to anyone but a container's
+ * never holds a qits-configuration reference it would have to resolve from inside a workspace. So
+ * this document must not be logged, echoed into an event, or answered to anyone but a container's
  * provisioner and an operator.
+ *
+ * <p><b>It reaches a container as an environment variable and lands on disk inside it, which is not
+ * what the epic assumed and is the only shape available.</b> The epic settled on a mounted file, on
+ * the strength of the credential above and of a boot-time validation naming a key. Neither host that
+ * creates a container can produce one: both qits-projects and qits-workspaces reach the docker
+ * daemon through qits-containers, whose {@code Spec} carries {@code volumeMounts} and {@code
+ * sharedMounts} and <em>no</em> way to materialize a host file — and neither service holds a docker
+ * socket or writes to the docker host's filesystem at all. So the document travels in the spec's
+ * env, beside a second variable naming the path, and the daemon writes it there at boot before
+ * handing that path to the shared library's {@code readFrom}. Everything the epic decided survives
+ * intact — the file the library validates at boot, the path passed in by the host, the snapshot
+ * taken at creation, and the recreate-only reach — and the one thing that changes is that the bytes
+ * ride the env rather than a bind mount. The cost is honest and worth writing down: a value in env
+ * is readable in {@code docker inspect}, which a mounted file would not be. This container's env
+ * already carries {@code QITS_COMMISSIONED_CLIENT_SECRET} on the same terms.
  *
  * @param surfaces every surface, resolved; a surface with no row carries its shipped default
  */

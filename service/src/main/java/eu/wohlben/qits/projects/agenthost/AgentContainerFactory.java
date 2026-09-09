@@ -6,7 +6,10 @@ import eu.wohlben.qits.containers.client.ContainersWire.Recreate;
 import eu.wohlben.qits.containers.client.ContainersWire.Security;
 import eu.wohlben.qits.containers.client.ContainersWire.SharedMount;
 import eu.wohlben.qits.containers.client.ContainersWire.Spec;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.containers.client.ContainersWire.VolumeMount;
+import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.GitIdentity;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -46,6 +49,13 @@ import org.jboss.logging.Logger;
  * volume and the two build caches carry the same names qits-workspaces uses, so a one-time
  * {@code claude} login and a dependency downloaded by any container are seen by every other one.
  * Diverging the names here would give a project agent its own unauthenticated agent home.
+ *
+ * <p><b>It also carries what the container's sessions are configured to run as.</b> The resolved
+ * agent configuration document — every session surface, built from this service's own store in
+ * process — goes in as {@link #AGENT_CONFIGURATION_ENV} beside the path the daemon is to put it at,
+ * so a container is <em>born</em> knowing how {@code project.epics} and {@code project.tickets} are
+ * steered rather than asking at launch. {@link #agentConfiguration()} carries the whole of why it is
+ * env rather than the mounted file the epic specified, and what that costs.
  *
  * <p><b>The checkout is the one volume this workload owns.</b> {@code qits_project_<projectId>} is a
  * {@link VolumeMount}, so the orchestrator claims a row for it and creates it before the container
@@ -260,7 +270,43 @@ public class AgentContainerFactory {
   @ConfigProperty(name = "qits.projects.daemon-hooks-port", defaultValue = "13337")
   int daemonHooksPort;
 
+  /**
+   * Where the agent configuration document lands inside the container — the path the daemon hands
+   * the shared harness library's {@code AgentConfigurationDocument.readFrom}, so the library keeps
+   * reading no configuration of its own.
+   *
+   * <p><b>It is told, not derived</b>, exactly like {@link #claudeMount} and {@link
+   * #daemonHooksPort} one field up: those two are the shape this extends, and they are the shape the
+   * epic named when it said the path is passed in by the daemon.
+   *
+   * <p><b>Under {@code /tmp} because the daemon writes it, and it writes it because nothing can
+   * mount it.</b> See {@link #agentConfiguration()} for why the bytes ride the environment; the
+   * consequence here is that the file is <em>derived</em> state materialized at every boot from a
+   * value the container was created with, never durable state. {@code /tmp} says that, and it is the
+   * one place writable by the arbitrary host uid this container runs as — {@code /workspace} is the
+   * project's git checkout and a stray file there would show up in somebody's {@code git status},
+   * and {@code /claude-home} is the platform-wide credential volume, where a per-container document
+   * would be written over by every other container on the estate.
+   *
+   * <p>Blank switches the injection off entirely: neither variable is set and the daemon falls back
+   * to the library's shipped constants, which is the same state every container created before this
+   * shipped is in.
+   */
+  @ConfigProperty(
+      name = "qits.projects.agent-configuration-path",
+      defaultValue = "/tmp/qits/agent-configuration.json")
+  String agentConfigurationPath;
+
   @Inject GitIdentity gitIdentity;
+
+  /**
+   * The store the document is built from. <b>In-process, never a fetch</b> — the store lives in this
+   * service, so qits-workspaces' hop over the network has no counterpart here.
+   */
+  @Inject AgentSurfaceConfigurationService surfaces;
+
+  /** How the document is serialized into the spec. The injected mapper, so the shape is one shape. */
+  @Inject ObjectMapper json;
 
   /**
    * Where the container's own platform credential comes from — commissioned for a fresh container,
@@ -271,6 +317,28 @@ public class AgentContainerFactory {
 
   static final String MAVEN_MOUNT = "/caches/m2";
   static final String PNPM_MOUNT = "/caches/pnpm";
+
+  /**
+   * The document itself, and where the daemon is to materialize it.
+   *
+   * <p><b>Both or neither.</b> A path naming a file nothing wrote must fail the daemon at boot
+   * rather than read as "this container was given no configuration" — which is a real and different
+   * state (every container created before this shipped is in it) and must stay distinguishable.
+   *
+   * <p><b>The names carry this daemon's own prefix, matching the arrangement qits-workspaces-service
+   * landed</b> (qits-workspaces-service 38534c4, {@code QITS_WORKSPACE_DAEMON_AGENT_CONFIGURATION}
+   * and {@code …_PATH}). The <em>library</em> needs no shared spelling: each daemon reads its own
+   * environment and hands the library a path, so {@code
+   * AgentConfigurationDocument.readFrom(String)} stays one contract. What must not diverge is the
+   * shape — two variables, both or neither, the bytes plus the path — and it does not.
+   *
+   * <p>Append-only once a container exists, like the two path contracts in this class.
+   */
+  public static final String AGENT_CONFIGURATION_ENV = "QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION";
+
+  /** Where the daemon writes {@link #AGENT_CONFIGURATION_ENV} before it starts anything. */
+  public static final String AGENT_CONFIGURATION_PATH_ENV =
+      "QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH";
 
   /**
    * The {@code qits.managed} value every container here carries.
@@ -437,6 +505,12 @@ public class AgentContainerFactory {
     env.put("QITS_PROJECTS_DAEMON_API_PORT", Integer.toString(daemonApiPort));
     env.put("QITS_PROJECTS_DAEMON_HOOKS_PORT", Integer.toString(daemonHooksPort));
     env.put("QITS_PROJECTS_DAEMON_CLAUDE_MOUNT", claudeMount);
+    // What this container's sessions are configured to run as, and where the daemon is to put it.
+    // Built from the store in-process; see agentConfiguration() for why both halves travel here.
+    if (agentConfigurationPath != null && !agentConfigurationPath.isBlank()) {
+      env.put(AGENT_CONFIGURATION_PATH_ENV, agentConfigurationPath);
+      env.put(AGENT_CONFIGURATION_ENV, agentConfiguration());
+    }
     // The one MCP server a launch in this container attaches: this service, at /projects/mcp, where
     // the epic tools live. Stated rather than derived — see the field's javadoc.
     //
@@ -550,6 +624,59 @@ public class AgentContainerFactory {
     return agentMcpUrl
         .filter(url -> !url.isBlank())
         .orElseGet(() -> "http://" + ownHost + ":" + ownPort + "/projects/mcp");
+  }
+
+  /**
+   * The whole resolved agent configuration document, serialized — what a container is born with.
+   *
+   * <p>The two surfaces this container serves are {@code project.epics} and {@code project.tickets};
+   * what goes in is <b>every</b> surface anyway, which is the container door's own decision and its
+   * javadoc carries the argument (a container that turns out to serve a surface the creator did not
+   * predict is better off holding a configuration for it than falling back to constants).
+   *
+   * <p><b>It is built here rather than fetched.</b> The store is in this service, so there is no hop
+   * to make and no failure policy to write for one; this is the same code path {@code
+   * AgentConfigurationController} answers with, one method along, so operator and container cannot
+   * be told two different things.
+   *
+   * <p><b>It can fail, loudly, by design.</b> A surface attaching an external MCP server whose
+   * qits-configuration credential does not resolve throws out of {@code document()} naming the key
+   * and the surface — and that failure is allowed to reach {@code AgentContainers.ensure}, which
+   * reports the container {@code FAILED} with the reason on {@code failureDetail}. That is the right
+   * end of the trade here and it differs from qits-workspaces' on purpose: over there the document
+   * arrives over the network from a peer that can simply be down, so refusing to create the
+   * workspace would trade a configuration outage for a work outage. Here the build reaches a
+   * database this service already cannot run without, and the one way it fails is a catalog entry
+   * somebody attached with a credential that is not there — a configuration error a person made,
+   * that a person can undo, and that would otherwise become an agent talking to a server that 401s
+   * on its first tool call.
+   *
+   * <p><b>The bytes ride the environment because nothing can mount a file here.</b>
+   * {@code ContainersWire.Spec} carries {@code volumeMounts} and {@code sharedMounts} and no way to
+   * materialize host content, and this service holds no docker socket and writes nothing to the
+   * docker host — so the mounted file the epic specified cannot be produced by either host that
+   * creates a container. The daemon writes {@link #AGENT_CONFIGURATION_ENV} to {@link
+   * #agentConfigurationPath} at boot and hands the library that path, which keeps every decision the
+   * epic made and moves only the transport. {@code AgentConfigurationDocumentDto}'s javadoc carries
+   * the full argument and the cost.
+   *
+   * <p><b>Stamped with the store's last change, not with now</b> — {@code
+   * documentForContainerSpec()} — because these bytes are hashed into the spec and a wall clock in
+   * there would turn every wake into a container replacement. Which is also the mechanism the epic's
+   * "recreate only" reach is made of, from the other side: an edit changes these bytes, so the next
+   * wake's {@code Recreate.ifChanged} replaces the container and the edit takes effect. Nothing
+   * pushes, nothing polls, and there is no staleness flag.
+   */
+  private String agentConfiguration() {
+    try {
+      return json.writeValueAsString(surfaces.documentForContainerSpec());
+    } catch (JsonProcessingException e) {
+      // Not a container that starts without its configuration: this is our own record failing to
+      // serialize, which is a defect in this service and not a condition to degrade around. The
+      // message names no value — the document carries resolved credentials.
+      throw new IllegalStateException(
+          "Could not serialize the agent configuration document for a project agent container", e);
+    }
   }
 
   /** The configured zone, or this service's own default zone when blank. */

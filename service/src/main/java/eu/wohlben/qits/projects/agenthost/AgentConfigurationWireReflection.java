@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.dto.AgentHarnessCapabilityDto;
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
 import eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto;
 import eu.wohlben.qits.projects.dto.AgentResolvedMcpServerDto;
+import eu.wohlben.qits.projects.api.AgentCapabilityController;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import eu.wohlben.qits.projects.entity.AgentHarness;
 import eu.wohlben.qits.projects.entity.AgentPermissionMode;
@@ -26,9 +27,10 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  *       resource's return types, so that path would survive without this class;
  *   <li>the document is <b>also serialized outside a request</b>, and increasingly so: {@code
  *       control/AgentSurfaceConfigurationService} writes a configuration through the injected {@code
- *       ObjectMapper} into every revision-trail snapshot, and the feature after this one writes the
- *       whole document to a file this service mounts into its own agent container. Neither is a
- *       resource method, and the second is not even a request.
+ *       ObjectMapper} into every revision-trail snapshot; {@code AgentContainerFactory} serializes
+ *       the whole document into the spec of its own agent container; and {@code
+ *       AgentCapabilityRelay} reads a daemon's report back through the same mapper. None of the
+ *       three is a resource method, and none of them is even inside a request.
  * </ul>
  *
  * <p><b>A JVM test cannot catch a missing entry</b> — on a JVM these types reflect whether anyone
@@ -60,6 +62,13 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       AgentCapabilityCatalogueDto.class,
       AgentHarnessCapabilityDto.class,
       AgentCapabilityImageVersionDto.class,
+      // The ingest door's request records. They are a REST *parameter* type rather than a return
+      // type, and on top of that AgentCapabilityRelay DESERIALIZES them through the injected
+      // ObjectMapper outside any request — it reads a daemon's /agents/available body into exactly
+      // this shape before handing it to the door. That second path is this class's whole subject,
+      // and a record with no components found is a relay that silently records nothing.
+      AgentCapabilityController.CapabilityReportRequest.class,
+      AgentCapabilityController.HarnessCapabilityReport.class,
       AgentHarness.class,
       AgentPermissionMode.class
     })

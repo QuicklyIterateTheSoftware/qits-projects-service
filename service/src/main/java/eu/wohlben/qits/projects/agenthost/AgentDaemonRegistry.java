@@ -63,6 +63,13 @@ public class AgentDaemonRegistry {
    */
   @Inject Instance<AgentTunnels> tunnels;
 
+  /**
+   * The harness capability relay, fired once per {@link Hello}. An {@code Instance<>} for the same
+   * reason as {@link #tunnels}: it reaches back through {@link AgentTunnels} to this registry, and it
+   * must be optional so a topology without it is a registry that still works.
+   */
+  @Inject Instance<AgentCapabilityRelay> capabilityRelay;
+
   private final ConcurrentHashMap<String, DaemonConnection> clients = new ConcurrentHashMap<>();
 
   /**
@@ -234,6 +241,14 @@ public class AgentDaemonRegistry {
           client.capabilityVersion = hello.capabilityVersion();
         }
         connection.sendTextAndAwait(codec.encode(new Ack()));
+        // A container has started and its daemon is reachable — the one moment both are true, and
+        // the only one from which the harness capability report can be read at all (the daemon's
+        // API binds loopback). It returns at once and runs off this event loop; see the relay.
+        // Null when this registry was built by hand rather than by the container — the unit suite
+        // does exactly that, and a hello it drives must not die on an optional collaborator.
+        if (capabilityRelay != null && capabilityRelay.isResolvable()) {
+          capabilityRelay.get().onDaemonHello(projectId);
+        }
       }
       case Heartbeat ignored -> {
         /* liveness only — the touch above is the whole handling */

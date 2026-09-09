@@ -766,6 +766,8 @@ one wrong fails silently: no url leaves the daemon idle, no token leaves its API
     QITS_PROJECTS_DAEMON_HOOKS_PORT      13337
     QITS_PROJECTS_DAEMON_CLAUDE_MOUNT    /claude-home
     QITS_REPOSITORY_MCP_URL              the one MCP server a launch attaches — this service
+    QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION       the resolved document — see "Injecting the document"
+    QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH  where the daemon writes it before it starts anything
     QITS_COMMISSIONED_CLIENT_ID          this container's OWN idp client — absent with no idp
     QITS_COMMISSIONED_CLIENT_SECRET      its secret, answered once and stored here
     QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL  the idp token endpoint used before dial-home
@@ -1071,6 +1073,110 @@ from a machine-driven document build carries neither honestly, so with the named
 read is not attempted and the document fails naming the key. **Nothing in that package logs a value
 at any level** — a log line names the key, the status code or the exception, and the value is not
 interpolated into any message, including an exception's.
+
+### Injecting the document into the project's agent container
+
+**A project agent container is born holding what its sessions run as.** `AgentContainerFactory`
+builds the resolved document from the store **in process** — no fetch, because the store is here —
+and puts it in the container's spec beside the path it is to land at. The two surfaces this
+container serves are `project.epics` and `project.tickets`; what goes in is *every* surface, which
+is the container door's own decision and its javadoc carries the argument.
+
+    QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION       the whole resolved document, serialized
+    QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH  /tmp/qits/agent-configuration.json
+                                                   (qits.projects.agent-configuration-path)
+
+- **Both or neither.** A path naming a file nothing wrote must fail the daemon at boot rather than
+  read as "this container was given no configuration" — which is a real and different state (every
+  container created before this shipped is in it) and has to stay distinguishable.
+- **The shape is the estate's, landed first by qits-workspaces-service (38534c4)**, whose pair is
+  `QITS_WORKSPACE_DAEMON_AGENT_CONFIGURATION` / `…_PATH` at the same `/tmp` path. The names carry
+  each daemon's own prefix and that costs the library nothing: each daemon reads its own environment
+  and hands the library a **path**, so `AgentConfigurationDocument.readFrom(String)` stays one
+  contract. What must not diverge is the shape — two variables, both or neither, bytes plus path —
+  and it does not. Append-only once a container exists, like the two path contracts above.
+- **It is an environment variable and not the mounted file the epic specified, because nothing here
+  can mount one.** `ContainersWire.Spec` carries `volumeMounts` and `sharedMounts` and *no* way to
+  materialize host content, and this service holds no docker socket and writes nothing to the docker
+  host at all — so neither host that creates a container (this one or qits-workspaces, which uses the
+  same client) can produce the file. The daemon writes it at boot from the value it was created with
+  and hands that path to the library's `readFrom`, so every decision the epic made survives — the
+  file the library validates at boot, the path passed in by the host, the snapshot taken at creation,
+  the recreate-only reach — and only the transport moves. **The cost is stated rather than hidden**:
+  a value in env is readable in `docker inspect` and the document carries resolved external-MCP
+  credentials. This container's env already carries `QITS_COMMISSIONED_CLIENT_SECRET` on those terms.
+- **`/tmp` because that file is derived, not durable**, and because it is the one place writable by
+  the arbitrary host uid the container runs as: `/workspace` is the project's git checkout (a stray
+  file there lands in somebody's `git status`) and `/claude-home` is the platform-wide credential
+  volume every other container mounts, where a per-container document would be overwritten.
+- **The document is stamped with the store's last change, never with `now`, and that is
+  load-bearing.** `AgentSurfaceConfigurationService.documentForContainerSpec()` reads the newest
+  revision instant instead of the wall clock the container door uses. These bytes are hashed into the
+  spec qits-containers stores, and `forRestart` sends `Recreate.ifChanged`: a document that differed
+  on every render would make **every wake a container replacement** — the exact defect this repo
+  carried while that service had no start verb, reintroduced through a timestamp.
+  `AgentContainerFactoryTest.aRestartPermitsAReplacementAndIsOtherwiseTheSameRequest` is what
+  notices. Nothing else needs a stamp: a catalog entry's url or a resolved credential changing moves
+  the bytes themselves.
+  <br>**qits-workspaces solves the same problem by storing the document on the workspace row**
+  (38534c4) — it has to, because over there the document arrives from a *fetch* and re-fetching per
+  ensure would be a new answer every time. Here the document is built from a database this service
+  owns, so making the build deterministic is the whole fix and there is no column to keep in step.
+  Same rule, different half of it: the spec must be reproducible from what the container already is.
+- **That same hash IS the epic's "an edit applies to the next container".** A store edit changes the
+  document, so the next wake's `ifChanged` replaces the container and the edit takes effect. No push,
+  no poll, no staleness flag, and nothing in the UI about it.
+- **A document that cannot be built fails the ensure, loudly.** A surface attaching an external MCP
+  server whose qits-configuration credential does not resolve throws out of `document()` naming the
+  key and the surface, and that reaches `AgentContainers.ensure`, which reports the container
+  `FAILED` with the reason on `failureDetail`. **This is deliberately the opposite of
+  qits-workspaces' policy**, and the difference is what fails: over there the document arrives over
+  the network from a peer that can be down, so refusing to create the workspace would trade a
+  configuration outage for a work outage. Here the build reaches a database this service already
+  cannot run without, and the only way it fails is a catalog entry somebody attached with a
+  credential that is not there — a configuration error a person made and can undo, which would
+  otherwise become an agent talking to a server that 401s on its first tool call.
+- Blank `qits.projects.agent-configuration-path` switches the whole injection off: neither variable
+  is set and the daemon falls back to the library's shipped constants, which is the state every
+  container created before this shipped is in.
+
+### The capability relay: this service's one call site of the ingest door
+
+`PUT /agent-capabilities` was built as a **relay** whose body is byte-identical to a daemon's
+`GET /agents/available`, and `agenthost/AgentCapabilityRelay` is qits-projects' carrier of it for its
+own agent container. qits-workspaces writes the matching one for a workspace's.
+
+- **It fires on the daemon's `Hello`**, from `AgentDaemonRegistry`, on a virtual thread. That is the
+  one moment that is both "a container has started" and "its daemon is reachable", which is the pair
+  the read needs — the daemon binds loopback and is only addressable through `AgentTunnels`. It is
+  structurally off every request path: **not** from `AgentContainers.ensure` (which returns while the
+  container is still pulling an image, long before any daemon has spoken, so a relay there would
+  either block the browser or read nothing) and **not** from the capability GET, which is the
+  editor's and must never wait on a container. The one process spawn per harness happens inside the
+  container at its own boot, not here.
+- **The read goes through the tunnel like everything else**, at
+  `/projects/container/<projectId>/agents/available` — the full proxied path, because no hop rewrites
+  one and the daemon serves its API under the address it was told is its own. It presents the same
+  `qits.projects.daemon-api-token` bearer `ContainerProxyRoute` sets.
+- **Absent is quiet, broken is loud.** Until both daemons are released the ordinary answer carries
+  none of `imageVersion`, `reportedBy` or `capabilities` — DEBUG, no row, no failure, and the
+  catalogue keeps answering the shipped fallback, which is a state it is designed to be in. A body
+  that will not parse, or one naming a harness this platform does not know, is a WARN. A non-2xx is
+  absence, not a failure: there is no caller to report a status code to. **Nothing here throws into
+  its caller and nothing here can fail a container start.**
+- **It writes through `AgentCapabilityCatalogueService` in process, but not around the door's
+  mapping.** A loopback PUT would need this service to hold a machine bearer for one of its own
+  roles and would traverse the whole auth stack to reach the same method; calling
+  `AgentCapabilityController.report` directly is not available either — the class is `@RolesAllowed`,
+  the interceptor runs on an in-process call too, and a virtual thread reacting to a control socket
+  carries no identity (measured: `UnauthorizedException`, which is the door working correctly). So
+  the translation moved onto the body record itself, `CapabilityReportRequest.reports()`, a pure
+  function the door and the relay share. **Do not write a second one** — that is the third place the
+  contract can drift, which is what the ingest door exists to prevent.
+- **Two blanks are filled and only two.** `imageVersion` from this host's own image pin and
+  `reportedBy` from the project, *when the daemon named neither*. The image version is half the key
+  the catalogue stores under and this service chose the pin, so a report keyed on the empty string is
+  one that cannot be told apart from another build's. A daemon that names them wins, always.
 
 ## Refinement containers
 
