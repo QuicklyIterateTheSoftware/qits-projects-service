@@ -900,6 +900,65 @@ it again — deliberately not automatic, since the `/workspace` volume a remove 
 uncommitted work lives. The detail is a field and not a sixth `AgentRuntimeStatus`: the SPA switches
 on those five strings and they are a published contract.
 
+### Agent surface configuration
+
+**What a session runs as is a row here now, not a constant in a daemon.** A *session surface* is
+where in the product a session was started from — `project.epics`, `project.tickets`, `epic.chat`,
+`epic.agent`, `workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch` — and one
+configuration per surface, **platform-wide**, holds the harness, model, effort, remote control,
+permission mode, activity tracking, the system prompt, the initial prompt, and which of the three
+built-in MCP servers attach with what narrowing. Schema in `V16`; entities, store and shipped
+defaults in `domain`; two controllers and the boot seed in `service`.
+
+- **The seed is the safety.** `control/AgentSurfaceDefaults` carries the eight surfaces seeded from
+  what the two daemons hardcode today, so turning the store on changes nothing: the tickets desk's
+  text block byte for byte, an **empty** system prompt on the epics desk (a value, not an absence),
+  skip-permissions everywhere because every launch renders it unconditionally, and per surface
+  exactly the servers its host daemon's `serversFor` attaches at the scope it launches with.
+  `AgentSurfaceDefaultsTest` asserts every one of those against the daemons' literals **copied in**
+  — deliberately not derived, and it names the file and line each came from.
+  <br>**The real test is not written yet and the class says so.** What this feature wants is each
+  seeded configuration rendered through `eu.wohlben.qits:qits-coding-agents` and compared against
+  what that library renders with no configuration at all; the library is still being extracted from
+  the two daemons and is not published, so the literals stand in until it is. The TODO names the
+  task and the coordinate.
+- **Two surprises in the seed, both faithful.** Remote control is seeded **on for chat and off for
+  interactive**, the opposite of the intuition: `--remote-control` is dropped under `--print`, so
+  both daemons enable it over the SDK control channel in `claudeChatProtocol` and an interactive
+  launch enables nothing. And the two composed surfaces carry **different** bootstrap sentences
+  ("this project" vs "this workspace"), because their two daemons spell the constant differently.
+- **A read never 404s.** A surface with no row answers its shipped default; a surface outside the
+  vocabulary answers a neutral one with **no** servers. That is what lets a daemon ship ahead of
+  this store and a ninth surface be added one repository at a time — which is also why
+  `surface_key` carries no check constraint and why the seed is a boot bean
+  (`startup/AgentSurfaceSeed`, insert-if-absent) rather than an `insert` in V16. A DDL seed would
+  have made the constants and the rows two copies free to disagree.
+- **The pre-approval tool lists are stored per attachment and are not operator-editable.** Storing
+  them is forced rather than chosen: the two daemons' lists for the *same* `repository` key differ
+  (the workspace one carries four write exceptions), so a constant keyed by server could not seed
+  both. The editor's write body has no field for them and `validated()` strips whatever a request
+  carried; a write keeps what the row held and falls back to the shipped constant.
+- **Two doors, and they are different subjects.** `api/AgentSurfaceConfigurationController`
+  (`/agent-surfaces`, `qits:admin`) is the editor's — list, read, replace, plus the revision trail;
+  it validates a known harness, a known permission mode, an MCP attachment naming a server that
+  exists, and the same server attached twice (both harnesses render one `key → config` object, so a
+  repeat silently displaces). `api/AgentConfigurationController` (`/agent-configuration`,
+  `qits:admin` + `qits:system`) is the container's — one versioned snapshot of **every** surface,
+  which qits-workspaces fetches at provision and this service will read for its own agent container.
+  A snapshot, not a subscription: a container keeps what it was born with and an edit applies to the
+  next one, deliberately and with nothing in the UI about staleness.
+- **The revision trail is `AuditEntry`'s shape**, because that is this estate's answer for edited
+  text with a history and an author: append-only, one row per write, the principal beside a JSON
+  snapshot of the whole configuration afterwards, and **not** foreign-keyed to the row it describes
+  so a retired surface's history survives it.
+- **The attachment set is replaced by an explicit delete–flush–insert**, not a cascaded collection.
+  The unique `(surface_key, server_key)` constraint is why: a Hibernate flush is free to insert
+  before it deletes, which turns a no-op edit into a constraint violation.
+- **`agenthost/AgentConfigurationWireReflection` is the native-image registration**, the third
+  member of `bus/EventWireReflection`'s family. The REST return type would have been registered
+  anyway; what would not is the same records going through the injected `ObjectMapper` outside a
+  request — every revision snapshot today, and the mounted document next.
+
 ## Refinement containers
 
 One container per REFINING epic — the refining route's whole backend, which used to be an ordinary

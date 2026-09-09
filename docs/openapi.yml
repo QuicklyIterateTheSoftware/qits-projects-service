@@ -38,6 +38,18 @@ components:
           type: string
         archetype:
           $ref: "#/components/schemas/RepositoryArchetype"
+    AgentConfigurationDocumentDto:
+      type: object
+      properties:
+        version:
+          type: integer
+          format: int32
+        generatedAt:
+          type: string
+        surfaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSurfaceConfigurationDto"
     AgentContainerResponse:
       type: object
       properties:
@@ -46,6 +58,33 @@ components:
           type: object
           description: "The project's agent container, as this service last observed\
             \ it."
+    AgentHarness:
+      type: string
+      enum:
+      - CLAUDE
+      - KIMI
+    AgentMcpAttachmentDto:
+      type: object
+      properties:
+        server:
+          type: string
+        narrowProject:
+          type: boolean
+        narrowRepository:
+          type: boolean
+        narrowWorkspace:
+          type: boolean
+        readOnly:
+          type: boolean
+        allowedTools:
+          type: array
+          items:
+            type: string
+    AgentPermissionMode:
+      type: string
+      enum:
+      - SKIP_PERMISSIONS
+      - PROMPT
     AgentRuntimeStatus:
       type: string
       enum:
@@ -54,6 +93,33 @@ components:
       - PROVISIONING
       - FAILED
       - ABSENT
+    AgentSurfaceConfigurationDto:
+      type: object
+      properties:
+        surface:
+          type: string
+        harness:
+          $ref: "#/components/schemas/AgentHarness"
+        model:
+          type: string
+        effort:
+          type: string
+        remoteControl:
+          type: boolean
+        permissionMode:
+          $ref: "#/components/schemas/AgentPermissionMode"
+        activityTracking:
+          type: boolean
+        systemPrompt:
+          type: string
+        initialPrompt:
+          type: string
+        mcpServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentMcpAttachmentDto"
+        shipped:
+          type: boolean
     AttachmentDto:
       type: object
       properties:
@@ -574,6 +640,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AttachmentDto"
+    McpAttachmentRequest:
+      type: object
+      properties:
+        server:
+          type: string
+          description: "repository, observability or actions"
+        narrowProject:
+          type: boolean
+        narrowRepository:
+          type: boolean
+        narrowWorkspace:
+          type: boolean
+        readOnly:
+          type: boolean
+          description: Append agentReadOnly=true — the autonomous fence.
     MergeConflictDto:
       type: object
       properties:
@@ -1239,6 +1320,26 @@ components:
       properties:
         feature:
           $ref: "#/components/schemas/FeatureDto"
+    RevisionDto:
+      type: object
+      properties:
+        id:
+          type: string
+        surface:
+          type: string
+        changedBy:
+          type: string
+        changedAt:
+          $ref: "#/components/schemas/Instant"
+        snapshot:
+          type: string
+    RevisionListResponse:
+      type: object
+      properties:
+        revisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevisionDto"
     SaveRequest:
       type: object
       required:
@@ -1270,6 +1371,48 @@ components:
           pattern: \S
         requester:
           type: string
+    SurfaceListResponse:
+      type: object
+      properties:
+        surfaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSurfaceConfigurationDto"
+          description: "Every known surface, resolved; shipped defaults where no row\
+            \ exists."
+        builtInServers:
+          type: array
+          items:
+            type: string
+          description: The MCP servers this platform can attach — the reserved keys.
+    SurfaceUpdateRequest:
+      type: object
+      properties:
+        harness:
+          type: string
+        model:
+          type: string
+          description: Empty means the harness's own default.
+        effort:
+          type: string
+          description: Empty renders no --effort.
+        remoteControl:
+          type: boolean
+        permissionMode:
+          type: string
+          description: SKIP_PERMISSIONS or PROMPT
+        activityTracking:
+          type: boolean
+        systemPrompt:
+          type: string
+          description: Appended to the harness's own. Empty is a value.
+        initialPrompt:
+          type: string
+          description: A turn pushed at session start. Empty pushes none.
+        mcpServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpAttachmentRequest"
     SyncStatusDto:
       type: object
       properties:
@@ -1482,6 +1625,127 @@ components:
       openIdConnectUrl: http://qits-platform-idp:8080/idp/.well-known/openid-configuration
       description: Authentication
 paths:
+  /projects/api/agent-configuration:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfigurationDocumentDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Document
+      tags:
+      - Agent Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
+  /projects/api/agent-surfaces:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurfaceListResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: List
+      tags:
+      - Agent Surface Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/agent-surfaces/{surface}:
+    put:
+      parameters:
+      - name: surface
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SurfaceUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSurfaceConfigurationDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Update
+      tags:
+      - Agent Surface Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    get:
+      parameters:
+      - name: surface
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSurfaceConfigurationDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Get
+      tags:
+      - Agent Surface Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/agent-surfaces/{surface}/revisions:
+    get:
+      parameters:
+      - name: surface
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionListResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Revisions
+      tags:
+      - Agent Surface Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/epics/{epicId}/features:
     get:
       parameters:
@@ -4337,4 +4601,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.908.195413
+  version: 2026.908.210641
