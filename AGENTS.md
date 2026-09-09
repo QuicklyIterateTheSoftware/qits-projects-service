@@ -959,6 +959,119 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   anyway; what would not is the same records going through the injected `ObjectMapper` outside a
   request — every revision snapshot today, and the mounted document next.
 
+### The harness capability catalogue
+
+**What fills the model and effort dropdowns is discovered, never hardcoded.** The valid values belong
+to the harness binary inside the image: they differ per harness and change when the image is rebuilt.
+So a daemon probes its harnesses once at container start, reports through `GET /agents/available`,
+and this service caches the report — `V17`, `entity/AgentHarnessCapability`,
+`control/AgentCapabilityCatalogueService`, `api/AgentCapabilityController` at `/agent-capabilities`
+(`qits:admin` + `qits:system`).
+
+- **Two doors on one noun, facing opposite directions.** The `PUT` is the daemon's report and is the
+  **only** writer; there is no editor door onto this store and there must not be one, because a
+  hand-typed model list is exactly the hardcoded catalogue this feature removes. The `GET` is the
+  editor's and must never spawn a process or wait on a container — the editor is a platform-wide
+  route with no container in front of it — so it is one query and a fold.
+- **The ingest body IS the daemon's `/agents/available` body**, with `imageVersion`, `reportedBy` and
+  `capabilities[]` added; `agents` and `defaultAgent` may be present and are ignored. Pass-through
+  rather than a translated shape, so the relay (this service for its own agent container,
+  qits-workspaces for a workspace's) has no opinion to drift.
+- **Keyed by harness AND image version, and the union is refused on purpose.** Two containers can run
+  two builds at once, so merging their answers would offer a model set no single binary has. The
+  newest report wins **whole**, names its `imageVersion`, and the losers appear as
+  `otherImageVersions` — named, never folded in. **Newest by arrival, not by version string**: an
+  image version is a name, a report is an event, and only the second has a time.
+- **Three booleans, each distinct from an empty list.** `modelsEnumerated: false` — the harness has
+  no listing command and this is a shipped alias set (Claude Code), so the editor leads with the
+  free-text escape. `effortSupported: false` — no effort flag exists at all (Kimi), so the editor
+  shows **no** effort control rather than a disabled one carrying Claude's values. `probeFailed` —
+  these lists are a fallback rather than a reading of the binary, which the editor can say.
+- **An empty cache is supported, not degraded.** `control/AgentCapabilityDefaults` answers a harness
+  nobody has reported, flagged `shipped`, so the editor works on a fresh estate. Those values are a
+  deliberate **copy** of the library's, which is where the probes live; the copy is only ever read
+  while the cache is empty, so a drift lasts one container start rather than for ever. It reports
+  `authenticated: false` — fail-closed, since nobody has looked.
+
+### The external MCP server catalog
+
+**Servers this platform does not own, defined once and attached per surface.** `V18`;
+`entity/AgentMcpCatalogEntry` + `entity/AgentSurfaceExternalMcpAttachment`,
+`control/AgentMcpCatalogService`, `api/AgentMcpCatalogController` at `/agent-mcp-catalog`
+(`qits:admin`). A surface names the entries it attaches in its ordinary write body
+(`externalMcpServers`, keys only).
+
+- **A sibling attachment table, not a `kind` column.** A built-in attachment carries three narrowing
+  booleans, a read-only marker and a per-attachment tool list; an external one carries none of them —
+  the url is the entry's, there is no narrowing to apply to somebody else's server,
+  `agentReadOnly=true` is this platform's own marker, and the tools belong to the entry. One table
+  would have been five always-null columns and a discriminator deciding which half of the schema
+  applies.
+- **Three refusals on write, each closing a silent failure.** A reserved key (`repository`,
+  `observability`, `actions`) would displace a platform server in the rendered `key → config` object
+  and the session would look normal while talking to somebody else's server. A non-http(s) URL cannot
+  be carried: Kimi's ACP shape is `(key, url, tools)` with no place for a stdio command. And a
+  credential reference qits-configuration does not hold is a 400 naming it — but **"could not ask" is
+  a third answer**: an outage of that service is not a validation error, so the write is accepted
+  with a WARN and the strict gate stays where it protects a running agent.
+- **`AgentMcpCatalogEntryDto` never carries a value; `AgentResolvedMcpServerDto` is the only shape
+  that does.** The first goes into the editor's answers, revision snapshots and the OpenAPI document;
+  the second exists only inside `AgentDocumentSurfaceDto`, in the document mounted into a container.
+  `AgentMcpCatalogControllerTest.theEditorsAnswersNeverCarryAHeaderValue` is the load-bearing
+  negative here, and `theDocumentCarriesTheFullyRenderedServer` is the positive it pairs with.
+- **The document is version 2 and a surface is `{configuration, externalMcpServers}`.** The previous
+  feature answered both doors with one record so operator and container could not drift, and the
+  configuration record is still shared — what could not be shared is the *bytes*, because the
+  container needs a header value the editor must never see.
+- **An unresolvable reference fails the whole document build, naming the key and the surface.** Never
+  a partially-resolved document: a server rendered without its credential 401s on the agent's first
+  tool call, which surfaces as a confused agent hours later with nothing pointing back at the store.
+- **A delete is refused while any surface attaches the entry**, naming them — which is why
+  `agent_surface_external_mcp_attachment.catalog_key` carries no foreign key. An FK would make that
+  message unreachable and a 500 inevitable.
+- **`allowedTools` IS operator-editable here**, unlike the built-ins' shipped lists: the platform
+  ships no pre-approval constant for a server it has never heard of. Under
+  `--dangerously-skip-permissions` it is the only lever until the permission-mode knob is used.
+
+#### The credential key namespace: `env.<VAR>` under the reserved application `qits-agent-mcp`
+
+The epic left this open ("the config epic's declared keys are `env.`-prefixed because they render as
+container environment variables, and an MCP credential is not an env var of any app — pick a
+non-colliding namespace, or an operator-class entry, and write down which"). It is settled in
+`control/AgentMcpCatalog`, and the reasoning is short:
+
+- **It cannot be a new key prefix.** qits-configuration addresses a value by `(env, application,
+  key)` and its key grammar is **closed** — `ConfigurationKeys.requireKey` accepts `env.<VAR>` and
+  the four indexed families (`mounts[i]`, `publishes[i]`, `groups[i]`, `aliases[i]`) and answers 400
+  to everything else. A `secrets.` or `mcp.` key could not be *written* over there, and widening that
+  grammar is another repository's change.
+- **So it is the application segment** — the axis that is open (`requireApplication` checks a dns
+  label and nothing more) and, better, the axis the concern is actually about. The worry is not the
+  three characters `env`; it is that the key would be an environment variable **of an application**,
+  injected into that application's container by the deployer. Under `qits-agent-mcp`, which nothing
+  deploys, it is not: no deployer renders these keys anywhere, and no application's declaration can
+  collide with them. That is precisely an operator-class entry, spelled with the one grammar the
+  store has.
+- **The application name is a constant, deliberately not configurable.** A per-deployment namespace
+  would be a per-deployment place for a credential to hide.
+- **Forward-compatible with secrets by construction.** The entry is `plain` today because
+  qits-configuration's `secret` class does not exist yet, and that is accepted on purpose — *the
+  reference is the point*. When secrets land there the same `(application, key)` pair is served as a
+  secret, no field moves and no editor changes.
+- **The cost, stated rather than hidden:** `qits-agent-mcp` has no declaration, so its entries read
+  as `orphaned` in qits-configuration's own listing. That flag means "no declaration accounts for
+  this key", which is true and harmless — nothing is written or removed on the strength of it.
+
+The hop itself is `confighost/` — the fifth `@DefaultBean` HTTP client in this service, seam
+`control/McpCredentials`, address `qits.projects.agent-mcp.configuration-url` plus
+`-configuration-env` (**both unset shipped, and there is deliberately no default env**: a guessed one
+would read another tier's credential). **No header fallback**, unlike the ci and maintenance hops:
+qits-configuration's entry routes take `qits:admin` or `qits:system` and a forwarded `X-Qits-*` pair
+from a machine-driven document build carries neither honestly, so with the named oidc client off the
+read is not attempted and the document fails naming the key. **Nothing in that package logs a value
+at any level** — a log line names the key, the status code or the exception, and the value is not
+interpolated into any message, including an exception's.
+
 ## Refinement containers
 
 One container per REFINING epic — the refining route's whole backend, which used to be an ordinary

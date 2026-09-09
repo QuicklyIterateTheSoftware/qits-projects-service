@@ -38,6 +38,20 @@ components:
           type: string
         archetype:
           $ref: "#/components/schemas/RepositoryArchetype"
+    AgentCapabilityCatalogueDto:
+      type: object
+      properties:
+        harnesses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHarnessCapabilityDto"
+    AgentCapabilityImageVersionDto:
+      type: object
+      properties:
+        imageVersion:
+          type: string
+        reportedAt:
+          type: string
     AgentConfigurationDocumentDto:
       type: object
       properties:
@@ -49,7 +63,7 @@ components:
         surfaces:
           type: array
           items:
-            $ref: "#/components/schemas/AgentSurfaceConfigurationDto"
+            $ref: "#/components/schemas/AgentDocumentSurfaceDto"
     AgentContainerResponse:
       type: object
       properties:
@@ -58,11 +72,59 @@ components:
           type: object
           description: "The project's agent container, as this service last observed\
             \ it."
+    AgentDocumentSurfaceDto:
+      type: object
+      properties:
+        configuration:
+          $ref: "#/components/schemas/AgentSurfaceConfigurationDto"
+        externalMcpServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentResolvedMcpServerDto"
     AgentHarness:
       type: string
       enum:
       - CLAUDE
       - KIMI
+    AgentHarnessCapabilityDto:
+      type: object
+      properties:
+        harness:
+          type: string
+        imageVersion:
+          type: string
+        harnessVersion:
+          type: string
+        models:
+          type: array
+          items:
+            type: string
+        modelsEnumerated:
+          type: boolean
+        effortSupported:
+          type: boolean
+        effortLevels:
+          type: array
+          items:
+            type: string
+        authenticated:
+          type: boolean
+        authDetail:
+          type: string
+        probeFailed:
+          type: boolean
+        probeDetail:
+          type: string
+        reportedBy:
+          type: string
+        reportedAt:
+          type: string
+        shipped:
+          type: boolean
+        otherImageVersions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentCapabilityImageVersionDto"
     AgentMcpAttachmentDto:
       type: object
       properties:
@@ -80,11 +142,47 @@ components:
           type: array
           items:
             type: string
+    AgentMcpCatalogEntryDto:
+      type: object
+      properties:
+        key:
+          type: string
+        displayName:
+          type: string
+        url:
+          type: string
+        headerName:
+          type: string
+        credentialKey:
+          type: string
+        allowedTools:
+          type: array
+          items:
+            type: string
+        attachedBy:
+          type: array
+          items:
+            type: string
     AgentPermissionMode:
       type: string
       enum:
       - SKIP_PERMISSIONS
       - PROMPT
+    AgentResolvedMcpServerDto:
+      type: object
+      properties:
+        key:
+          type: string
+        url:
+          type: string
+        headerName:
+          type: string
+        headerValue:
+          type: string
+        allowedTools:
+          type: array
+          items:
+            type: string
     AgentRuntimeStatus:
       type: string
       enum:
@@ -118,6 +216,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentMcpAttachmentDto"
+        externalMcpServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentMcpCatalogEntryDto"
         shipped:
           type: boolean
     AttachmentDto:
@@ -190,6 +292,70 @@ components:
         behind:
           type: integer
           format: int32
+    CapabilityReportRequest:
+      type: object
+      properties:
+        reportedBy:
+          type: string
+          description: "Free text naming the reporting container — a daemon name,\
+            \ a workspace id. Display only."
+        imageVersion:
+          type: string
+          description: The image build the container runs. Blank is allowed and means
+            the reporter could not name it; reports then share one row per harness.
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/HarnessCapabilityReport"
+    CapabilityReportResponse:
+      type: object
+      properties:
+        recorded:
+          type: integer
+          format: int32
+          description: "How many (harness, image version) rows the report wrote."
+    CatalogEntryRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: What an operator reads in the list. Never rendered into a command.
+        url:
+          type: string
+          description: An http(s) URL. URL transport only — see the class javadoc.
+        headerName:
+          type: string
+          description: "The header the credential is presented in, typically Authorization.\
+            \ Empty means the server takes no credential."
+        credentialKey:
+          type: string
+          description: The qits-configuration key holding that header's value — `env.<VAR>`
+            under the reserved `qits-agent-mcp` application. Empty exactly when headerName
+            is. The value lives there and never here.
+        allowedTools:
+          type: array
+          items:
+            type: string
+          description: "The tools pre-approved on this server. Operator-editable,\
+            \ unlike the built-in servers' shipped lists: the platform ships no constant\
+            \ for a server it has never heard of. Empty pre-approves nothing."
+    CatalogListResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentMcpCatalogEntryDto"
+        reservedKeys:
+          type: array
+          items:
+            type: string
+          description: Keys an entry may not claim — the platform's own servers.
+        credentialApplication:
+          type: string
+          description: "The qits-configuration application every credentialKey lives\
+            \ under. Reserved: nothing deploys under it, so these keys are never rendered\
+            \ into any application's environment."
     CommitBuildStatusDto:
       type: object
       properties:
@@ -587,6 +753,49 @@ components:
           $ref: "#/components/schemas/Instant"
         updatedAt:
           $ref: "#/components/schemas/Instant"
+    HarnessCapabilityReport:
+      type: object
+      properties:
+        harness:
+          type: string
+          description: CLAUDE or KIMI
+        harnessVersion:
+          type: string
+          description: What the binary answers for --version. Empty when unread.
+        models:
+          type: array
+          items:
+            type: string
+          description: "Model ids or aliases, in the order the harness enumerated\
+            \ them."
+        modelsEnumerated:
+          type: boolean
+          description: False when the harness has no listing command and `models`
+            is a shipped alias set — Claude Code. The editor then leads with the free-text
+            escape.
+        effortSupported:
+          type: boolean
+          description: "False when the harness has no effort flag at all — Kimi. The\
+            \ editor shows no effort control, not a disabled one carrying the other\
+            \ harness's values."
+        effortLevels:
+          type: array
+          items:
+            type: string
+          description: Effort levels. Ignored when effortSupported is false.
+        authenticated:
+          type: boolean
+          description: Whether anybody is signed in on this container's credential
+            volume.
+        authDetail:
+          type: string
+          description: What the harness said about that. Never a credential.
+        probeFailed:
+          type: boolean
+          description: True when the probe fell back rather than reading the binary.
+        probeDetail:
+          type: string
+          description: Why it fell back. Empty when it did not.
     Instant:
       type: string
       format: date-time
@@ -1413,6 +1622,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/McpAttachmentRequest"
+        externalMcpServers:
+          type: array
+          items:
+            type: string
+          description: "Catalog keys of the external MCP servers this surface attaches.\
+            \ Keys only — everything about a server (url, header, pre-approved tools)\
+            \ belongs to the catalog entry, which is defined once at /agent-mcp-catalog\
+            \ and attached here many times."
     SyncStatusDto:
       type: object
       properties:
@@ -1625,6 +1842,53 @@ components:
       openIdConnectUrl: http://qits-platform-idp:8080/idp/.well-known/openid-configuration
       description: Authentication
 paths:
+  /projects/api/agent-capabilities:
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CapabilityReportRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilityReportResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Report
+      tags:
+      - Agent Capability Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCapabilityCatalogueDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Catalogue
+      tags:
+      - Agent Capability Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
   /projects/api/agent-configuration:
     get:
       responses:
@@ -1645,6 +1909,105 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+  /projects/api/agent-mcp-catalog:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogListResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: List
+      tags:
+      - Agent Mcp Catalog Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/agent-mcp-catalog/{key}:
+    put:
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogEntryRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentMcpCatalogEntryDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Save
+      tags:
+      - Agent Mcp Catalog Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    get:
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentMcpCatalogEntryDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Get
+      tags:
+      - Agent Mcp Catalog Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    delete:
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Delete
+      tags:
+      - Agent Mcp Catalog Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/agent-surfaces:
     get:
       responses:

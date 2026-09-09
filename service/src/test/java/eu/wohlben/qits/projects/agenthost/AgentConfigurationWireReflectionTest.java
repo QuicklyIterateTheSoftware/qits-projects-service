@@ -3,8 +3,14 @@ package eu.wohlben.qits.projects.agenthost;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import eu.wohlben.qits.projects.dto.AgentCapabilityCatalogueDto;
+import eu.wohlben.qits.projects.dto.AgentCapabilityImageVersionDto;
 import eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto;
+import eu.wohlben.qits.projects.dto.AgentDocumentSurfaceDto;
+import eu.wohlben.qits.projects.dto.AgentHarnessCapabilityDto;
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
+import eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto;
+import eu.wohlben.qits.projects.dto.AgentResolvedMcpServerDto;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import eu.wohlben.qits.projects.entity.AgentHarness;
 import eu.wohlben.qits.projects.entity.AgentPermissionMode;
@@ -33,13 +39,20 @@ public class AgentConfigurationWireReflectionTest {
     assertEquals(
         Set.of(
             AgentConfigurationDocumentDto.class,
+            AgentDocumentSurfaceDto.class,
             AgentSurfaceConfigurationDto.class,
             AgentMcpAttachmentDto.class,
+            AgentMcpCatalogEntryDto.class,
+            AgentResolvedMcpServerDto.class,
+            AgentCapabilityCatalogueDto.class,
+            AgentHarnessCapabilityDto.class,
+            AgentCapabilityImageVersionDto.class,
             AgentHarness.class,
             AgentPermissionMode.class),
         Set.of(registration.targets()),
-        "the document, a surface, an attachment and the two enums those two serialize — a sixth"
-            + " type on the document means a line here");
+        "the document and its surfaces, the built-in and external MCP shapes, the capability"
+            + " catalogue, and the two enums the configuration serializes — a further type on any"
+            + " of them means a line here");
   }
 
   /**
@@ -54,7 +67,18 @@ public class AgentConfigurationWireReflectionTest {
             AgentConfigurationWireReflection.class
                 .getAnnotation(RegisterForReflection.class)
                 .targets());
-    for (Class<?> type : new Class<?>[] {AgentConfigurationDocumentDto.class, AgentSurfaceConfigurationDto.class, AgentMcpAttachmentDto.class}) {
+    for (Class<?> type :
+        new Class<?>[] {
+          AgentConfigurationDocumentDto.class,
+          AgentDocumentSurfaceDto.class,
+          AgentSurfaceConfigurationDto.class,
+          AgentMcpAttachmentDto.class,
+          AgentMcpCatalogEntryDto.class,
+          AgentResolvedMcpServerDto.class,
+          AgentCapabilityCatalogueDto.class,
+          AgentHarnessCapabilityDto.class,
+          AgentCapabilityImageVersionDto.class
+        }) {
       for (var component : type.getRecordComponents()) {
         Class<?> componentType = component.getType();
         boolean handled =

@@ -338,6 +338,11 @@ public final class AgentSurfaceDefaults {
         systemPrompt,
         initialPrompt,
         servers,
+        // NO EXTERNAL MCP SERVERS ON ANY SHIPPED SURFACE, and there never can be one. The catalog is
+        // operator-defined and starts empty; a shipped default naming an entry would name a row
+        // nobody has created. External servers are attached by an edit, deliberately, and that is
+        // also what keeps a fresh estate rendering byte-identically to the daemons' constants.
+        List.of(),
         true);
   }
 
@@ -419,6 +424,7 @@ public final class AgentSurfaceDefaults {
         true,
         "",
         "",
+        List.of(),
         List.of(),
         true);
   }

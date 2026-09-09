@@ -81,7 +81,14 @@ public class AgentSurfaceConfigurationController {
       @Schema(description = "Appended to the harness's own. Empty is a value.") String systemPrompt,
       @Schema(description = "A turn pushed at session start. Empty pushes none.")
           String initialPrompt,
-      List<McpAttachmentRequest> mcpServers) {}
+      List<McpAttachmentRequest> mcpServers,
+      @Schema(
+              description =
+                  "Catalog keys of the external MCP servers this surface attaches. Keys only —"
+                      + " everything about a server (url, header, pre-approved tools) belongs to"
+                      + " the catalog entry, which is defined once at /agent-mcp-catalog and"
+                      + " attached here many times.")
+          List<String> externalMcpServers) {}
 
   /** The listing body. */
   public record SurfaceListResponse(
@@ -139,7 +146,8 @@ public class AgentSurfaceConfigurationController {
                                 a.narrowWorkspace(),
                                 a.readOnly(),
                                 List.of()))
-                    .toList());
+                    .toList(),
+            request.externalMcpServers());
     return surfaces.save(surface, wanted, EpicsPrincipal.changedBy(identity));
   }
 

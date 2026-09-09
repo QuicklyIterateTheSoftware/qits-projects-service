@@ -3,17 +3,21 @@ package eu.wohlben.qits.projects.control;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto;
+import eu.wohlben.qits.projects.dto.AgentDocumentSurfaceDto;
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
+import eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import eu.wohlben.qits.projects.entity.AgentHarness;
 import eu.wohlben.qits.projects.entity.AgentPermissionMode;
 import eu.wohlben.qits.projects.entity.AgentSurfaceConfiguration;
 import eu.wohlben.qits.projects.entity.AgentSurfaceConfigurationRevision;
+import eu.wohlben.qits.projects.entity.AgentSurfaceExternalMcpAttachment;
 import eu.wohlben.qits.projects.entity.AgentSurfaceMcpAttachment;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.error.InternalServerErrorException;
 import eu.wohlben.qits.projects.persistence.AgentSurfaceConfigurationRepository;
 import eu.wohlben.qits.projects.persistence.AgentSurfaceConfigurationRevisionRepository;
+import eu.wohlben.qits.projects.persistence.AgentSurfaceExternalMcpAttachmentRepository;
 import eu.wohlben.qits.projects.persistence.AgentSurfaceMcpAttachmentRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -56,7 +60,11 @@ public class AgentSurfaceConfigurationService {
 
   @Inject AgentSurfaceMcpAttachmentRepository attachments;
 
+  @Inject AgentSurfaceExternalMcpAttachmentRepository externalAttachments;
+
   @Inject AgentSurfaceConfigurationRevisionRepository revisions;
+
+  @Inject AgentMcpCatalogService catalog;
 
   @Inject ObjectMapper json;
 
@@ -88,7 +96,7 @@ public class AgentSurfaceConfigurationService {
       AgentSurfaceConfiguration row = stored.get(key);
       answer.add(
           row != null
-              ? toDto(row, bySurface.getOrDefault(key, List.of()))
+              ? toDto(row, bySurface.getOrDefault(key, List.of()), catalog.attachedTo(key))
               : AgentSurfaceDefaults.shippedDefault(key));
     }
     return List.copyOf(answer);
@@ -99,7 +107,7 @@ public class AgentSurfaceConfigurationService {
     String key = requireSurfaceKey(surfaceKey);
     return configurations
         .findByIdOptional(key)
-        .map(row -> toDto(row, attachments.forSurface(key)))
+        .map(row -> toDto(row, attachments.forSurface(key), catalog.attachedTo(key)))
         .orElseGet(() -> AgentSurfaceDefaults.shippedDefault(key));
   }
 
@@ -110,10 +118,29 @@ public class AgentSurfaceConfigurationService {
    * can serve is the caller's knowledge, the document is a handful of kilobytes, and a container
    * that turns out to serve a surface the fetcher did not predict is better off holding a
    * configuration for it than falling back to the library's constants.
+   *
+   * <p><b>This is where credentials are read, and the only place.</b> Each surface's attached catalog
+   * entries are rendered whole — url and header value — so a container needs no second lookup and
+   * never holds a qits-configuration reference it would have to resolve from inside a workspace. A
+   * reference that cannot be resolved throws out of here and the whole document fails, naming the key
+   * and the surface: a partially-resolved document handed to a container would be a server that 401s
+   * on the agent's first tool call, which surfaces as a confused agent hours later rather than as an
+   * error anybody reads.
+   *
+   * <p>The failure is deliberately whole-document rather than per-surface. A container is created
+   * with one document for every surface it may serve; dropping one surface's servers quietly would
+   * make it launch a session that looks configured and is not.
    */
   public AgentConfigurationDocumentDto document() {
+    List<AgentDocumentSurfaceDto> surfaces = new ArrayList<>();
+    for (AgentSurfaceConfigurationDto configuration : listAll()) {
+      surfaces.add(
+          new AgentDocumentSurfaceDto(configuration, catalog.resolve(configuration.surface())));
+    }
     return new AgentConfigurationDocumentDto(
-        AgentConfigurationDocumentDto.CURRENT_VERSION, Instant.now().toString(), listAll());
+        AgentConfigurationDocumentDto.CURRENT_VERSION,
+        Instant.now().toString(),
+        List.copyOf(surfaces));
   }
 
   /** One surface's revision trail, newest first. */
@@ -189,9 +216,24 @@ public class AgentSurfaceConfigurationService {
       attachments.persist(entity);
       written.add(entity);
     }
+
+    // The external set is replaced the same way and for the same reason: its own unique
+    // (surface_key, catalog_key) constraint, and a half-applied set of servers is not a state
+    // anybody asked for. They are written after the built-ins because that is their render order.
+    externalAttachments.clearSurface(key);
+    externalAttachments.flush();
+    int externalPosition = 0;
+    for (AgentMcpCatalogEntryDto entry : wanted.externalMcpServers()) {
+      AgentSurfaceExternalMcpAttachment entity = new AgentSurfaceExternalMcpAttachment();
+      entity.id = UUID.randomUUID().toString();
+      entity.surfaceKey = key;
+      entity.catalogKey = entry.key();
+      entity.position = externalPosition++;
+      externalAttachments.persist(entity);
+    }
     configurations.flush();
 
-    AgentSurfaceConfigurationDto saved = toDto(row, written);
+    AgentSurfaceConfigurationDto saved = toDto(row, written, catalog.attachedTo(key));
     AgentSurfaceConfigurationRevision revision = new AgentSurfaceConfigurationRevision();
     revision.id = UUID.randomUUID().toString();
     revision.surfaceKey = key;
@@ -232,6 +274,13 @@ public class AgentSurfaceConfigurationService {
    * <p>The duplicate check is not fussiness. Both harnesses render the attached servers into one
    * {@code key → config} object, so a second entry under the same key silently replaces the first
    * and the session ends up talking through whichever narrowing happened to be last.
+   *
+   * <p><b>External attachments are validated on the same terms, one table over.</b> A named catalog
+   * entry must exist — an attachment naming nothing would fail every container provision that
+   * reaches it — and no key may be attached twice. The two vocabularies cannot collide with each
+   * other because {@code AgentMcpCatalog} refuses the three reserved names at the catalog's own
+   * write door, which is where that rule belongs: one refusal, at the point somebody types the name,
+   * rather than a check repeated at every attachment.
    */
   public AgentSurfaceConfigurationDto validated(
       String surfaceKey,
@@ -243,7 +292,8 @@ public class AgentSurfaceConfigurationService {
       boolean activityTracking,
       String systemPrompt,
       String initialPrompt,
-      List<AgentMcpAttachmentDto> mcpServers) {
+      List<AgentMcpAttachmentDto> mcpServers,
+      List<String> externalMcpServers) {
     AgentHarness parsedHarness =
         parse(AgentHarness.class, harness)
             .orElseThrow(
@@ -274,6 +324,27 @@ public class AgentSurfaceConfigurationService {
         throw new BadRequestException("MCP server attached twice: " + server);
       }
     }
+    List<String> external = externalMcpServers == null ? List.of() : externalMcpServers;
+    List<String> known = catalog.knownKeys();
+    List<AgentMcpCatalogEntryDto> attachedEntries = new ArrayList<>();
+    for (String candidate : external) {
+      String entryKey = candidate == null ? "" : candidate.trim();
+      if (!known.contains(entryKey)) {
+        throw new BadRequestException(
+            "No MCP catalog entry `"
+                + entryKey
+                + "`"
+                + (known.isEmpty()
+                    ? ". The catalog is empty — define the server first."
+                    : " (defined: " + String.join(", ", known) + ")"));
+      }
+      if (!seen.add(entryKey)) {
+        throw new BadRequestException("MCP server attached twice: " + entryKey);
+      }
+      // Read back rather than trusting the request body: the request names a key and nothing else,
+      // and everything about the server — url, header, tools — belongs to the catalog entry.
+      attachedEntries.add(catalog.get(entryKey));
+    }
     return new AgentSurfaceConfigurationDto(
         requireSurfaceKey(surfaceKey),
         parsedHarness,
@@ -296,6 +367,7 @@ public class AgentSurfaceConfigurationService {
                         a.readOnly(),
                         List.of()))
             .toList(),
+        attachedEntries,
         false);
   }
 
@@ -304,7 +376,9 @@ public class AgentSurfaceConfigurationService {
   // -------------------------------------------------------------------------------------------
 
   static AgentSurfaceConfigurationDto toDto(
-      AgentSurfaceConfiguration row, List<AgentSurfaceMcpAttachment> attachments) {
+      AgentSurfaceConfiguration row,
+      List<AgentSurfaceMcpAttachment> attachments,
+      List<AgentMcpCatalogEntryDto> externalServers) {
     return new AgentSurfaceConfigurationDto(
         row.surfaceKey,
         row.harness,
@@ -327,6 +401,7 @@ public class AgentSurfaceConfigurationService {
                         a.readOnly,
                         a.allowedToolList()))
             .toList(),
+        externalServers,
         false);
   }
 

@@ -246,7 +246,15 @@ public class AgentSurfaceConfigurationControllerTest {
         .body("message", containsString("attached twice"));
   }
 
-  /** The container's door: one snapshot, every surface, versioned. */
+  /**
+   * The container's door: one snapshot, every surface, versioned.
+   *
+   * <p><b>A document surface is {@code {configuration, externalMcpServers}}</b> since the external
+   * MCP catalog landed, which is what version 2 says. The wrapper is not decoration: the resolved
+   * external servers carry credentials and had nowhere honest to sit inside a record the editor also
+   * reads, so the configuration stayed one record and the credential-bearing half went beside it,
+   * behind this door alone.
+   */
   @Test
   public void theContainerDoorAnswersTheWholeDocument() {
     JsonPath document =
@@ -258,14 +266,23 @@ public class AgentSurfaceConfigurationControllerTest {
             .extract()
             .jsonPath();
 
-    assertThat(document.getInt("version"), is(1));
+    assertThat(document.getInt("version"), is(2));
     assertThat(document.getString("generatedAt"), notNullValue());
     assertThat(
-        document.getList("surfaces.surface", String.class), hasItem("project.tickets"));
-    assertThat(document.getList("surfaces.surface", String.class), hasItem("ticket.dispatch"));
+        document.getList("surfaces.configuration.surface", String.class), hasItem("project.tickets"));
     assertThat(
-        document.getString("surfaces.find { it.surface == 'project.tickets' }.systemPrompt"),
+        document.getList("surfaces.configuration.surface", String.class), hasItem("ticket.dispatch"));
+    assertThat(
+        document.getString(
+            "surfaces.find { it.configuration.surface == 'project.tickets' }"
+                + ".configuration.systemPrompt"),
         is(AgentSurfaceDefaults.TICKETS_DESK_PROMPT));
+    // No catalog entry is attached anywhere by default, so no credential is read to build this.
+    assertThat(
+        document.getList(
+            "surfaces.find { it.configuration.surface == 'project.tickets' }.externalMcpServers",
+            Object.class),
+        is(List.of()));
   }
 
   private static Map<String, Object> update(

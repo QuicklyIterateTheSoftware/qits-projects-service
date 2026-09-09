@@ -1,7 +1,13 @@
 package eu.wohlben.qits.projects.agenthost;
 
+import eu.wohlben.qits.projects.dto.AgentCapabilityCatalogueDto;
+import eu.wohlben.qits.projects.dto.AgentCapabilityImageVersionDto;
 import eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto;
+import eu.wohlben.qits.projects.dto.AgentDocumentSurfaceDto;
+import eu.wohlben.qits.projects.dto.AgentHarnessCapabilityDto;
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
+import eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto;
+import eu.wohlben.qits.projects.dto.AgentResolvedMcpServerDto;
 import eu.wohlben.qits.projects.dto.AgentSurfaceConfigurationDto;
 import eu.wohlben.qits.projects.entity.AgentHarness;
 import eu.wohlben.qits.projects.entity.AgentPermissionMode;
@@ -40,8 +46,20 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 @RegisterForReflection(
     targets = {
       AgentConfigurationDocumentDto.class,
+      AgentDocumentSurfaceDto.class,
       AgentSurfaceConfigurationDto.class,
       AgentMcpAttachmentDto.class,
+      // The external MCP catalog. AgentMcpCatalogEntryDto travels by both paths — a REST return type
+      // and a revision snapshot through the injected ObjectMapper — and AgentResolvedMcpServerDto by
+      // the second only: it appears nowhere but inside the document written to a file and mounted
+      // into a container, which is the exact shape this class exists for.
+      AgentMcpCatalogEntryDto.class,
+      AgentResolvedMcpServerDto.class,
+      // The capability catalogue. A REST return type today; on the list because it is the same
+      // family and because a cached catalogue written to a file is the obvious next use of it.
+      AgentCapabilityCatalogueDto.class,
+      AgentHarnessCapabilityDto.class,
+      AgentCapabilityImageVersionDto.class,
       AgentHarness.class,
       AgentPermissionMode.class
     })
