@@ -1169,14 +1169,27 @@ own agent container. qits-workspaces writes the matching one for a workspace's.
   `relay-attempts` (12) reads on a backoff capped at `relay-retry-max-ms` (30s), about four minutes,
   sleeping on the virtual thread. The `inFlight` guard is held for the whole window, so a flapping
   daemon cannot stack windows.
-- **The status split is the fix, and it keeps "absent is quiet" intact.** A **404** is a daemon that
-  does not serve the route: absence, terminal, quiet. A **503** — what `ProjectsApi` answers on every
-  agent route while `agentLaunch` is null — and a hop that failed outright are **not ready** and are
-  asked again. A body that *parses* with no `capabilities` is an older daemon that answered, so it is
-  terminal and quiet on attempt one; a warm container (populated `/workspace`, API up almost at once)
-  still records on attempt one too. **A window that ends unanswered is a WARN naming the project and
-  what the last attempt saw** — the whole point of bounding it, since every other arm is DEBUG and
-  that silence is exactly how this ran unseen for a release.
+- **The classification is the fix, and it keeps "absent is quiet" intact.** A **404** is a daemon
+  that does not serve the route: absence, terminal, quiet. A **503** (what `ProjectsApi` answers on
+  every agent route while `agentLaunch` is null), a hop that failed outright, and a **2xx with an
+  empty body** are **not ready** and are asked again. A body that *parses* with no `capabilities` is
+  an older daemon that answered, so it is terminal and quiet on attempt one; a warm container
+  (populated `/workspace`, API up almost at once) still records on attempt one too. **A window that
+  ends unanswered is a WARN naming the project and what the last attempt saw** — the whole point of
+  bounding it, since every other arm is DEBUG and that silence is exactly how this ran unseen for a
+  release.
+- **An empty body is NOT a malformed one, and conflating them cost a second release
+  (2026.909.130640).** That fix classified by status and then handed everything 2xx to Jackson — but
+  the shape the daemon's boot window actually presents through this tunnel is a **200 with nothing in
+  it**, not a 503 and not a failed hop. Jackson answers `MismatchedInputException: No content to map
+  due to end-of-input`, which landed in the *broken* arm: a terminal WARN, one attempt, no retry.
+  Live on 2026-09-09 the entire log for every container start was the HELLO line and that WARN,
+  saying the daemon spoke a contract this service could not read — the opposite of true. So the blank
+  check runs **before** Jackson, in `ingest` as well as in `read`, and the rule is: a body that is
+  absent says nothing about capabilities and can never be the reason to stop asking; only a body
+  genuinely present and unparseable is broken. `AgentCapabilityRelayTest` pins the three apart as
+  outcomes (`NOT_READY` / `ABSENT` / `BROKEN`) rather than as row counts, because none of them writes
+  a row and what separates them is only whether the relay asks again.
 - **The read goes through the tunnel like everything else**, at
   `/projects/container/<projectId>/agents/available` — the full proxied path, because no hop rewrites
   one and the daemon serves its API under the address it was told is its own. It presents the same

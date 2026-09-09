@@ -119,6 +119,12 @@ class AgentTunnelProxyTest {
    */
   private final AtomicInteger unwiredAnswersRemaining = new AtomicInteger();
 
+  /**
+   * How many more times {@code /agents/available} answers <b>200 with an empty body</b> — the shape
+   * the daemon's boot window actually presented as live, and the one that must not read as broken.
+   */
+  private final AtomicInteger emptyAnswersRemaining = new AtomicInteger();
+
   /** How many times the relay has actually asked, so a retry can be counted rather than inferred. */
   private final AtomicInteger availableReads = new AtomicInteger();
 
@@ -167,6 +173,12 @@ class AgentTunnelProxyTest {
                   if (request.uri().endsWith("/" + AgentCapabilityRelay.AVAILABLE_PATH)) {
                     capabilityRead.complete(observed);
                     availableReads.incrementAndGet();
+                    if (emptyAnswersRemaining.getAndDecrement() > 0) {
+                      // What the real daemon's boot window presents as through the tunnel: a 200
+                      // with nothing in it. Measured live 2026-09-09 — the arm that cost a release.
+                      request.response().end("");
+                      return;
+                    }
                     if (unwiredAnswersRemaining.getAndDecrement() > 0) {
                       // Byte for byte what the real daemon answers between binding its API and
                       // finishing its harness probe — ProjectsApi answers 503 while agentLaunch is
@@ -236,6 +248,19 @@ class AgentTunnelProxyTest {
     controlSocket.writeTextMessage(
         encode(new Hello(id, "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "test", null)));
     acked.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+  }
+
+  /** A full, current {@code /agents/available} body keyed on the given image version. */
+  private static String reportNaming(String imageVersion) {
+    return """
+        {"agents":["CLAUDE"],"defaultAgent":"CLAUDE",
+         "reportedBy":"project-agent/x","imageVersion":"%s",
+         "capabilities":[{"harness":"CLAUDE","harnessVersion":"2.1.226",
+           "models":["opus","sonnet"],"modelsEnumerated":false,
+           "effortSupported":true,"effortLevels":["low","high"],
+           "authenticated":true,"authDetail":"","probeFailed":false,"probeDetail":""}]}
+        """
+        .formatted(imageVersion);
   }
 
   private String encode(Hello hello) {
@@ -360,46 +385,89 @@ class AgentTunnelProxyTest {
     String project = UUID.randomUUID().toString();
     String imageVersion = "2026.909.tunnelrelay-" + UUID.randomUUID();
     unwiredAnswersRemaining.set(2);
-    availableBody =
-        """
-        {"agents":["CLAUDE"],"defaultAgent":"CLAUDE",
-         "reportedBy":"project-agent/x","imageVersion":"%s",
-         "capabilities":[{"harness":"CLAUDE","harnessVersion":"2.1.226",
-           "models":["opus","sonnet"],"modelsEnumerated":false,
-           "effortSupported":true,"effortLevels":["low","high"],
-           "authenticated":true,"authDetail":"","probeFailed":false,"probeDetail":""}]}
-        """
-            .formatted(imageVersion);
+    availableBody = reportNaming(imageVersion);
 
     int apiPort = startDaemonApi();
     connectAsDaemon(project, apiPort);
 
     relay.relay(project);
 
-    assertEquals(
-        3,
-        availableReads.get(),
-        "two 503s are not an answer: the relay asks again until the daemon's surface is up");
+    assertTrue(
+        availableReads.get() >= 3,
+        "two 503s are not an answer: the relay asks again until the daemon's surface is up, so it"
+            + " read at least three times, not once");
     AgentHarnessCapability row = capabilities.find("CLAUDE", imageVersion).orElseThrow();
     assertEquals("2.1.226", row.harnessVersion);
     assertTrue(row.authenticated);
   }
 
   /**
-   * The other half of the same rule, and the one that keeps "absent is quiet" intact: a daemon that
-   * <em>answers</em> without capabilities is an older daemon, not a booting one, so it is read once
-   * and let be. Without this the retry would turn every pre-probe container into twelve reads and a
-   * WARN.
+   * <b>The regression that cost the second release.</b> A daemon answering {@code 200} with an empty
+   * body is booting, not broken, and must be asked again.
+   *
+   * <p>The first fix classified by status and handed everything 2xx to Jackson, so this exact answer
+   * produced {@code MismatchedInputException: No content to map due to end-of-input} and landed in
+   * the terminal <em>broken</em> WARN. Live on 2026-09-09 that pair — the HELLO line and this WARN —
+   * was the entire log for every container start, the retry never engaged, and the catalogue kept a
+   * hand-made PUT's {@code reportedAt} across two container recreates.
+   *
+   * <p>It is a separate test from the 503 one deliberately: the two are different bytes off the same
+   * boot window, the empty one is the shape that actually presents through this tunnel, and a single
+   * test covering "not ready" generically is what would have let this through again.
    */
   @Test
-  void anOlderDaemonThatAnswersIsReadOnceAndNotRetried() throws Exception {
+  void anEmptyAnswerIsBootingRatherThanBrokenAndIsAskedAgain() throws Exception {
     String project = UUID.randomUUID().toString();
+    String imageVersion = "2026.909.emptybody-" + UUID.randomUUID();
+    emptyAnswersRemaining.set(2);
+    availableBody = reportNaming(imageVersion);
+
     int apiPort = startDaemonApi();
     connectAsDaemon(project, apiPort);
 
     relay.relay(project);
 
-    assertEquals(1, availableReads.get(), "an answer with no capabilities is absent, and terminal");
+    assertTrue(
+        availableReads.get() >= 3,
+        "an empty body is not an answer about capabilities, so it cannot end the window: the relay"
+            + " read at least three times, not once");
+    AgentHarnessCapability row = capabilities.find("CLAUDE", imageVersion).orElseThrow();
+    assertEquals("2.1.226", row.harnessVersion);
+  }
+
+  /**
+   * The other half of the same rule, and the one that keeps "absent is quiet" intact: a daemon that
+   * <em>answers</em> without capabilities is an older daemon, not a booting one, so it is terminal
+   * and the window ends. Without this the retry would turn every pre-probe container into twelve
+   * reads and a WARN.
+   *
+   * <p>Asserted as the <b>outcome of one attempt</b> rather than as a read count, and that is a
+   * finding rather than a convenience: under full-suite load a first read through a freshly opened
+   * tunnel does sometimes come back empty even against this healthy fixture, so the relay correctly
+   * asks again and a count of "exactly one" is not a property of the classification at all. The
+   * classification is what this pins — {@code ABSENT}, which {@link AgentCapabilityRelay#relay} ends
+   * the window on — while {@code AgentCapabilityRelayTest} pins it apart from {@code NOT_READY} and
+   * {@code BROKEN} at the ingest level.
+   */
+  @Test
+  void anOlderDaemonThatAnswersIsAbsentRatherThanNotReady() throws Exception {
+    String project = UUID.randomUUID().toString();
+    int apiPort = startDaemonApi();
+    connectAsDaemon(project, apiPort);
+
+    // Read until the daemon has actually answered something, which is what the relay's own window
+    // does; a transient empty read is NOT_READY by design and is not what this test is about.
+    AgentCapabilityRelay.Outcome outcome = relay.readAndIngest(project);
+    for (int attempt = 0;
+        attempt < 5 && outcome.kind() == AgentCapabilityRelay.Outcome.Kind.NOT_READY;
+        attempt++) {
+      outcome = relay.readAndIngest(project);
+    }
+
+    assertEquals(
+        AgentCapabilityRelay.Outcome.Kind.ABSENT,
+        outcome.kind(),
+        "an answer with no capabilities is absent, and absent ends the window");
   }
 
   @Test
