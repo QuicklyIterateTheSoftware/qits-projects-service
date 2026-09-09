@@ -1147,13 +1147,36 @@ is the container door's own decision and its javadoc carries the argument.
 own agent container. qits-workspaces writes the matching one for a workspace's.
 
 - **It fires on the daemon's `Hello`**, from `AgentDaemonRegistry`, on a virtual thread. That is the
-  one moment that is both "a container has started" and "its daemon is reachable", which is the pair
-  the read needs — the daemon binds loopback and is only addressable through `AgentTunnels`. It is
-  structurally off every request path: **not** from `AgentContainers.ensure` (which returns while the
-  container is still pulling an image, long before any daemon has spoken, so a relay there would
-  either block the browser or read nothing) and **not** from the capability GET, which is the
+  first moment the container is reachable at all — the daemon binds loopback and is only addressable
+  through `AgentTunnels`, so a live control socket is the earliest evidence there is anything to ask.
+  It is structurally off every request path: **not** from `AgentContainers.ensure` (which returns
+  while the container is still pulling an image, long before any daemon has spoken, so a relay there
+  would either block the browser or read nothing) and **not** from the capability GET, which is the
   editor's and must never wait on a container. The one process spawn per harness happens inside the
   container at its own boot, not here.
+- **`Hello` is NOT the moment the daemon can answer, and the read is retried because of it.**
+  Measured live 2026-09-09 (service 2026.909.115344, daemon 2026.909.114544): the probe answered a
+  complete report through the tunnel, the ingest door recorded it, and a genuine fresh `Hello` filled
+  nothing for minutes. The cause is on the other side of the socket and is structural rather than a
+  narrow race — `ControlSocket.start()` kicks the boot self-clone onto a worker and dials home **in
+  parallel**, and it is that worker which, when the clone finishes, calls `wireCapabilities()`: probe
+  the harnesses, *then* `projectsApi.start()`, the loopback bind. So at `Hello` the daemon's API is
+  not listening at all, its own dial-back finds nothing on `127.0.0.1:13338`, the read fails at
+  DEBUG, and nothing ever asks again. **There is no better moment to fire at**: no frame announces
+  the bind, `Provisioned` is sent from *inside* the clone (still ahead of the bind and the probe) and
+  is not sent at all on a reconnect, and inventing one is a protocol change that would strand every
+  container already running. So the relay keeps asking **while the daemon says "not yet"** —
+  `relay-attempts` (12) reads on a backoff capped at `relay-retry-max-ms` (30s), about four minutes,
+  sleeping on the virtual thread. The `inFlight` guard is held for the whole window, so a flapping
+  daemon cannot stack windows.
+- **The status split is the fix, and it keeps "absent is quiet" intact.** A **404** is a daemon that
+  does not serve the route: absence, terminal, quiet. A **503** — what `ProjectsApi` answers on every
+  agent route while `agentLaunch` is null — and a hop that failed outright are **not ready** and are
+  asked again. A body that *parses* with no `capabilities` is an older daemon that answered, so it is
+  terminal and quiet on attempt one; a warm container (populated `/workspace`, API up almost at once)
+  still records on attempt one too. **A window that ends unanswered is a WARN naming the project and
+  what the last attempt saw** — the whole point of bounding it, since every other arm is DEBUG and
+  that silence is exactly how this ran unseen for a release.
 - **The read goes through the tunnel like everything else**, at
   `/projects/container/<projectId>/agents/available` — the full proxied path, because no hop rewrites
   one and the daemon serves its API under the address it was told is its own. It presents the same
@@ -1162,8 +1185,9 @@ own agent container. qits-workspaces writes the matching one for a workspace's.
   none of `imageVersion`, `reportedBy` or `capabilities` — DEBUG, no row, no failure, and the
   catalogue keeps answering the shipped fallback, which is a state it is designed to be in. A body
   that will not parse, or one naming a harness this platform does not know, is a WARN. A non-2xx is
-  absence, not a failure: there is no caller to report a status code to. **Nothing here throws into
-  its caller and nothing here can fail a container start.**
+  never a failure reported to anyone — there is no caller to report a status code to — but it is no
+  longer all one answer either; see the status split below. **Nothing here throws into its caller and
+  nothing here can fail a container start.**
 - **It writes through `AgentCapabilityCatalogueService` in process, but not around the door's
   mapping.** A loopback PUT would need this service to hold a machine bearer for one of its own
   roles and would traverse the whole auth stack to reach the same method; calling

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.projects.entity.AgentHarnessCapability;
+import eu.wohlben.qits.projects.persistence.AgentHarnessCapabilityRepository;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonCodec;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.Hello;
@@ -28,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -76,6 +79,8 @@ class AgentTunnelProxyTest {
 
   @Inject AgentCapabilityRelay relay;
 
+  @Inject AgentHarnessCapabilityRepository capabilities;
+
   @TestHTTPResource("/")
   URL root;
 
@@ -107,6 +112,21 @@ class AgentTunnelProxyTest {
 
   /** The nonce the host minted, captured off the {@code OpenStream} so it can be replayed. */
   private final CompletableFuture<String> mintedNonce = new CompletableFuture<>();
+
+  /**
+   * How many more times {@code /agents/available} answers 503 before it answers {@link
+   * #availableBody} — the daemon's own boot window, made deterministic.
+   */
+  private final AtomicInteger unwiredAnswersRemaining = new AtomicInteger();
+
+  /** How many times the relay has actually asked, so a retry can be counted rather than inferred. */
+  private final AtomicInteger availableReads = new AtomicInteger();
+
+  /**
+   * What a wired {@code /agents/available} answers. The default is an <b>older</b> daemon's — the
+   * harness list and none of the three members the capability feature added.
+   */
+  private volatile String availableBody = "{\"agents\":[\"CLAUDE\"],\"defaultAgent\":\"CLAUDE\"}";
 
   @AfterEach
   void tearDown() {
@@ -146,12 +166,22 @@ class AgentTunnelProxyTest {
                           request.getHeader("Host"));
                   if (request.uri().endsWith("/" + AgentCapabilityRelay.AVAILABLE_PATH)) {
                     capabilityRead.complete(observed);
-                    // The body an OLDER daemon answers: the harness list it has always answered and
-                    // none of the three members the capability feature added. Absent, not broken.
+                    availableReads.incrementAndGet();
+                    if (unwiredAnswersRemaining.getAndDecrement() > 0) {
+                      // Byte for byte what the real daemon answers between binding its API and
+                      // finishing its harness probe — ProjectsApi answers 503 while agentLaunch is
+                      // still null. "Not yet", and the whole reason this relay retries.
+                      request
+                          .response()
+                          .setStatusCode(503)
+                          .putHeader("Content-Type", "application/json")
+                          .end("{\"error\":\"Coding agents are not available yet\"}");
+                      return;
+                    }
                     request
                         .response()
                         .putHeader("Content-Type", "application/json")
-                        .end("{\"agents\":[\"CLAUDE\"],\"defaultAgent\":\"CLAUDE\"}");
+                        .end(availableBody);
                     return;
                   }
                   seen.complete(observed);
@@ -306,6 +336,70 @@ class AgentTunnelProxyTest {
         request.uri(),
         "the full proxied path: the daemon serves its API under the prefix it was told is its own");
     assertEquals("Bearer qits-projects-daemon", request.authorization());
+  }
+
+  /**
+   * <b>The regression.</b> A daemon that has said {@code Hello} but cannot yet answer must be asked
+   * again, and the report it eventually gives must land in the catalogue.
+   *
+   * <p>Measured live on 2026-09-09 and green in every suite: the relay read once, on {@code Hello},
+   * which is the one moment {@code ControlSocket.start()} guarantees the daemon cannot answer — it
+   * dials home in parallel with its boot self-clone, and it is the clone's worker that probes the
+   * harnesses and only then binds the loopback API. So the read failed, at DEBUG, and nothing ever
+   * asked again. The catalogue served the shipped fallback for the life of the container while the
+   * daemon held a complete, correct report the whole time.
+   *
+   * <p>The fixture answers <b>503</b> twice before answering the report, which is what the real
+   * daemon answers between its bind and its probe finishing ({@code ProjectsApi} 503s every agent
+   * route while {@code agentLaunch} is null). The window before the bind — where the daemon's own
+   * dial-back finds nothing on loopback — reaches this class as a failed hop and is classified
+   * identically; 503 is the arm that can be reproduced in milliseconds.
+   */
+  @Test
+  void aDaemonThatIsNotWiredYetIsAskedAgainUntilItReports() throws Exception {
+    String project = UUID.randomUUID().toString();
+    String imageVersion = "2026.909.tunnelrelay-" + UUID.randomUUID();
+    unwiredAnswersRemaining.set(2);
+    availableBody =
+        """
+        {"agents":["CLAUDE"],"defaultAgent":"CLAUDE",
+         "reportedBy":"project-agent/x","imageVersion":"%s",
+         "capabilities":[{"harness":"CLAUDE","harnessVersion":"2.1.226",
+           "models":["opus","sonnet"],"modelsEnumerated":false,
+           "effortSupported":true,"effortLevels":["low","high"],
+           "authenticated":true,"authDetail":"","probeFailed":false,"probeDetail":""}]}
+        """
+            .formatted(imageVersion);
+
+    int apiPort = startDaemonApi();
+    connectAsDaemon(project, apiPort);
+
+    relay.relay(project);
+
+    assertEquals(
+        3,
+        availableReads.get(),
+        "two 503s are not an answer: the relay asks again until the daemon's surface is up");
+    AgentHarnessCapability row = capabilities.find("CLAUDE", imageVersion).orElseThrow();
+    assertEquals("2.1.226", row.harnessVersion);
+    assertTrue(row.authenticated);
+  }
+
+  /**
+   * The other half of the same rule, and the one that keeps "absent is quiet" intact: a daemon that
+   * <em>answers</em> without capabilities is an older daemon, not a booting one, so it is read once
+   * and let be. Without this the retry would turn every pre-probe container into twelve reads and a
+   * WARN.
+   */
+  @Test
+  void anOlderDaemonThatAnswersIsReadOnceAndNotRetried() throws Exception {
+    String project = UUID.randomUUID().toString();
+    int apiPort = startDaemonApi();
+    connectAsDaemon(project, apiPort);
+
+    relay.relay(project);
+
+    assertEquals(1, availableReads.get(), "an answer with no capabilities is absent, and terminal");
   }
 
   @Test

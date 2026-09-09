@@ -8,8 +8,10 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -29,16 +31,50 @@ import org.jboss.logging.Logger;
  * <h2>Where it runs, and where it deliberately does not</h2>
  *
  * <p><b>On the daemon's {@code Hello}</b>, from {@link AgentDaemonRegistry}, on a virtual thread.
- * That is the one moment that is both "a container has started" and "its daemon is reachable" —
- * which is exactly the pair the read needs, since the daemon binds loopback and is only addressable
- * through {@link AgentTunnels}. It is also, structurally, off every request path: nothing a person
- * presses reaches this class, so no editor read and no container ensure can be slowed by it, and the
- * process spawns the probe costs happen inside the container at its own boot, not here.
+ * That is the first moment the container is reachable at all — the daemon binds loopback and is only
+ * addressable through {@link AgentTunnels}, so a control socket is the earliest evidence there is
+ * anything to ask. It is also, structurally, off every request path: nothing a person presses reaches
+ * this class, so no editor read and no container ensure can be slowed by it, and the process spawns
+ * the probe costs happen inside the container at its own boot, not here.
  *
  * <p><b>Not from {@code AgentContainers.ensure}.</b> An ensure returns while the container is still
  * pulling an image and long before the daemon has said anything, so a relay there would either block
  * the browser behind a boot or read nothing. Not from the capability GET either: that route is the
  * editor's and must never wait on a container.
+ *
+ * <h2>{@code Hello} is not "the daemon can answer this", and that is the defect this retry fixes</h2>
+ *
+ * <p>Measured live on 2026-09-09 (qits-projects-service 2026.909.115344, qits-projects-daemon
+ * 2026.909.114544): the daemon's probe answered a complete report through the tunnel, the ingest door
+ * recorded it, and yet a genuine fresh {@code Hello} filled nothing — the catalogue kept answering
+ * the shipped fallback for minutes. The reason is on the other side of the socket and is structural
+ * rather than a race in the ordinary sense. {@code ControlSocket.start()} kicks the boot self-clone
+ * onto a worker and dials home <em>in parallel</em>, and it is the worker that, when the clone
+ * finishes, calls {@code wireCapabilities()} — which probes the harnesses <b>and only then</b> calls
+ * {@code projectsApi.start()}, the loopback bind. So at the instant of {@code Hello} the daemon's API
+ * is not listening at all: the tunnel opens, the stream is requested, the daemon's own dial-back
+ * finds nothing on {@code 127.0.0.1:13338}, and the read fails. One attempt, at the one moment the
+ * daemon guarantees it cannot answer, and every later moment — when the answer is complete and
+ * correct — nobody asks again.
+ *
+ * <p><b>So the read is retried, and the retry is condition-driven rather than a poll.</b> The
+ * daemon offers no frame that says "my API is up and my harnesses are probed" — {@code Provisioned}
+ * is sent from <em>inside</em> the clone, still ahead of the bind and the probe, and it is not sent
+ * at all on a reconnect — so there is no better moment to fire at, and inventing one is a protocol
+ * change in another repository that would strand every container already running. What there is
+ * instead is an answer that distinguishes the two states: an unwired agent surface answers
+ * <b>503</b>, an unbound one answers nothing at all, and a wired one answers the report. Those are
+ * retried; every other outcome is terminal on the first attempt, so a warm container (whose
+ * {@code /workspace} is already populated, and whose API is therefore up almost at once) still
+ * records on attempt one and an older daemon is still quiet exactly once.
+ *
+ * <p><b>The window is bounded and the give-up is loud.</b> {@code relay-attempts} reads with an
+ * exponential backoff capped at {@code relay-retry-max-ms} — about four minutes shipped — and a
+ * window that ends without an answer is a <b>WARN naming the project and what the last attempt
+ * saw</b>. That line is the whole point of the bound: a relay that silently found no tunnel for ever
+ * is the green-while-dead shape this feature exists to remove, and it is what let this defect run
+ * unseen with every arm below DEBUG. The {@link #inFlight} guard is held for the whole window, so a
+ * flapping daemon reconnecting six times in a minute still has exactly one read in flight.
  *
  * <h2>Absent is quiet, malformed is loud</h2>
  *
@@ -119,12 +155,73 @@ public class AgentCapabilityRelay {
   boolean enabled;
 
   /**
-   * Projects with a relay in flight. A guard and not a cache: the far side is an upsert per
-   * {@code (harness, image version)}, so relaying twice writes the same row twice and costs nothing
-   * but the round trip — what would actually hurt is a flapping daemon stacking reads on a container
-   * that is already struggling.
+   * How many times the read may be attempted before the window is given up on, the first included.
+   * Twelve with the shipped backoff is roughly four minutes, which is a boot self-clone of a wrapper
+   * and its submodules with room to spare. One turns the retry off without turning the relay off.
+   */
+  @ConfigProperty(name = "qits.projects.agent-capabilities.relay-attempts", defaultValue = "12")
+  int attempts;
+
+  /** The first wait after a "not ready" answer; it doubles from here. */
+  @ConfigProperty(
+      name = "qits.projects.agent-capabilities.relay-retry-initial-ms",
+      defaultValue = "2000")
+  long retryInitialMs;
+
+  /** The ceiling the doubling stops at, so a long clone is polled at a steady slow rate. */
+  @ConfigProperty(name = "qits.projects.agent-capabilities.relay-retry-max-ms", defaultValue = "30000")
+  long retryMaxMs;
+
+  /**
+   * Projects with a relay in flight — <b>for the whole retry window</b>, not for one read. A guard
+   * and not a cache: the far side is an upsert per {@code (harness, image version)}, so relaying
+   * twice writes the same row twice and costs nothing but the round trip — what would actually hurt
+   * is a flapping daemon stacking reads, and stacking *windows* is how that would happen now.
    */
   private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+
+  /** Set at shutdown so a sleeping window stops rather than reading into a closing container set. */
+  private volatile boolean stopped;
+
+  @PreDestroy
+  void stop() {
+    stopped = true;
+  }
+
+  /**
+   * What one attempt produced. Three of the four are terminal; only {@link Kind#NOT_READY} is worth
+   * asking again, and separating it from {@link Kind#ABSENT} is what keeps an older daemon quiet on
+   * the first attempt while a daemon that has not finished booting is waited for.
+   */
+  record Outcome(Kind kind, String detail) {
+
+    enum Kind {
+      /** A report was decoded and written. Done. */
+      RECORDED,
+      /** The daemon serves the route and named no capabilities: an older one. Quiet, and done. */
+      ABSENT,
+      /** Not this contract, or a harness the platform does not know. Loud, and done. */
+      BROKEN,
+      /** Nothing answered, or the answer said "not yet". Ask again. */
+      NOT_READY
+    }
+
+    static Outcome recorded(String detail) {
+      return new Outcome(Kind.RECORDED, detail);
+    }
+
+    static Outcome absent(String detail) {
+      return new Outcome(Kind.ABSENT, detail);
+    }
+
+    static Outcome broken(String detail) {
+      return new Outcome(Kind.BROKEN, detail);
+    }
+
+    static Outcome notReady(String detail) {
+      return new Outcome(Kind.NOT_READY, detail);
+    }
+  }
 
   /**
    * A daemon has said hello for {@code projectId}: go and ask it what its harnesses can do.
@@ -145,7 +242,7 @@ public class AgentCapabilityRelay {
         .start(
             () -> {
               try {
-                readAndIngest(projectId);
+                relay(projectId);
               } catch (RuntimeException e) {
                 // A background read of an advisory catalogue. Nothing downstream of here is worth a
                 // stack trace on a container start.
@@ -159,22 +256,72 @@ public class AgentCapabilityRelay {
   }
 
   /**
-   * Read, decode, record. Every arm ends in a log line and none of them in an exception.
+   * The whole window: read, and keep reading while the daemon says "not yet", up to
+   * {@link #attempts}.
    *
-   * <p>Package-private and synchronous, so a suite that already stands a fake daemon behind a real
-   * tunnel can drive the whole hop — {@link AgentTunnelProxyTest} — without waiting on a virtual
-   * thread and without the {@link #enabled} gate that keeps the automatic firing dark under test.
+   * <p>Package-private and synchronous so a suite standing a fake daemon behind a real tunnel can
+   * drive it — {@link AgentTunnelProxyTest} — without the virtual thread and without the
+   * {@link #enabled} gate that keeps the automatic firing dark under test.
+   *
+   * <p>It sleeps on a <b>virtual</b> thread, which parks rather than holding a carrier, so the cost
+   * of a window that never succeeds is one continuation and twelve loopback GETs. Nothing waits on
+   * it and nothing it does can fail a container start.
    */
-  void readAndIngest(String projectId) {
-    AgentTunnels.TunnelOrigin origin = tunnels.originFor(projectId).orElse(null);
-    if (origin == null) {
-      LOG.debugf("No tunnel to project %s; no capability report read", projectId);
+  void relay(String projectId) {
+    int limit = Math.max(1, attempts);
+    long wait = Math.max(1L, retryInitialMs);
+    Outcome last = Outcome.notReady("no attempt was made");
+    for (int attempt = 1; attempt <= limit && !stopped; attempt++) {
+      last = readAndIngest(projectId);
+      if (last.kind() != Outcome.Kind.NOT_READY) {
+        return;
+      }
+      if (attempt == limit || !pause(wait)) {
+        break;
+      }
+      wait = Math.min(Math.max(1L, retryMaxMs), wait * 2);
+    }
+    if (stopped) {
       return;
     }
-    String body = read(projectId, origin);
-    if (body != null) {
-      ingest(projectId, body);
+    // The one line that makes a future occurrence of this defect visible. Every arm of this relay is
+    // deliberately quiet, which is exactly how it came to fill nothing for a whole release without
+    // leaving a trace above DEBUG; a bounded window that ends unanswered is not quiet.
+    LOG.warnf(
+        "Gave up reading the harness capability report from project %s after %d attempt(s): %s."
+            + " The catalogue keeps what it has (the shipped fallback, if this container is the"
+            + " first). The next Hello from this project relays again.",
+        projectId, Integer.valueOf(limit), last.detail());
+  }
+
+  /** Sleep, answering whether the window may continue. */
+  private boolean pause(long millis) {
+    try {
+      Thread.sleep(Duration.ofMillis(millis));
+      return !stopped;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
     }
+  }
+
+  /**
+   * One attempt: read, decode, record. Every arm ends in a log line and none of them in an
+   * exception.
+   *
+   * <p>Package-private and synchronous for {@link AgentTunnelProxyTest}, which drives a single
+   * attempt where the retry would only slow the assertion down.
+   */
+  Outcome readAndIngest(String projectId) {
+    AgentTunnels.TunnelOrigin origin = tunnels.originFor(projectId).orElse(null);
+    if (origin == null) {
+      // Retryable, and it is the arm that most needs to be: the tunnel is opened on demand from the
+      // live control socket, so an empty answer here means the daemon has gone away again rather
+      // than that this project has no capabilities to report.
+      LOG.debugf("No tunnel to project %s; no capability report read", projectId);
+      return Outcome.notReady("no tunnel to the project's agent container");
+    }
+    return read(projectId, origin);
   }
 
   /**
@@ -182,7 +329,7 @@ public class AgentCapabilityRelay {
    * this has to tell apart — a full report, an older daemon's, and something that is not this
    * contract at all — are testable without standing a container and a tunnel up to produce them.
    */
-  void ingest(String projectId, String body) {
+  Outcome ingest(String projectId, String body) {
     CapabilityReportRequest report;
     try {
       report = json.readValue(body, CapabilityReportRequest.class);
@@ -191,16 +338,17 @@ public class AgentCapabilityRelay {
       LOG.warnf(
           "project %s answered %s with a body this service cannot read as a capability report: %s",
           projectId, AVAILABLE_PATH, malformed.toString());
-      return;
+      return Outcome.broken("the body is not a capability report: " + malformed);
     }
     if (report == null || report.capabilities() == null || report.capabilities().isEmpty()) {
       // The ordinary case until the daemons are released: an older /agents/available answers the
-      // harness list and nothing else. Absent, and absent is fine.
+      // harness list and nothing else. Absent, and absent is fine — and terminal, because this is a
+      // daemon that answered rather than one that is not up yet.
       LOG.debugf(
           "project %s reports no harness capabilities yet (a daemon older than the probe);"
               + " the catalogue keeps what it has",
           projectId);
-      return;
+      return Outcome.absent("the daemon named no capabilities");
     }
     CapabilityReportRequest filled =
         new CapabilityReportRequest(
@@ -213,24 +361,32 @@ public class AgentCapabilityRelay {
       LOG.infof(
           "Recorded %d harness capability report(s) from project %s's agent container",
           Integer.valueOf(recorded), projectId);
+      return Outcome.recorded("recorded " + recorded + " report(s)");
     } catch (RuntimeException refused) {
       // The door refuses an unknown harness. That is the two sides disagreeing about a vocabulary,
       // which is loud by the same rule that makes an unparseable body loud.
       LOG.warnf(
           "project %s's capability report was refused by the ingest door: %s",
           projectId, refused.toString());
+      return Outcome.broken("the ingest door refused the report: " + refused);
     }
   }
 
   /**
-   * One GET through the tunnel, or null when there is nothing to read.
+   * One GET through the tunnel, classified.
    *
    * <p>The client is the tunnel's own and must be — {@link AgentTunnels} carries what sharing one
-   * would cost. A non-2xx is treated as absence rather than as a failure: a daemon that does not
-   * serve this route at all is exactly the state this relay is written to tolerate, and there is no
-   * caller to report a status code to.
+   * would cost.
+   *
+   * <p><b>The status codes are read, and the split is the fix.</b> A <b>404</b> is a daemon that does
+   * not serve this route at all, which is absence and terminal — asking a second time gets the same
+   * answer for ever. Anything else non-2xx is <b>not ready</b>: the daemon's own API answers 503
+   * ("Coding agents are not available yet") for the whole window between its bind and its harness
+   * probe finishing, and treating that as absence is precisely what made this relay fill nothing. A
+   * hop that failed outright — which is what an unbound loopback API looks like from here, since the
+   * daemon's dial-back finds nothing to pipe to — is not ready for the same reason.
    */
-  private String read(String projectId, AgentTunnels.TunnelOrigin origin) {
+  private Outcome read(String projectId, AgentTunnels.TunnelOrigin origin) {
     String path = ContainerProxyPath.base(projectId) + AVAILABLE_PATH;
     try {
       HttpClientResponse response =
@@ -254,19 +410,29 @@ public class AgentCapabilityRelay {
               .toCompletionStage()
               .toCompletableFuture()
               .get(timeoutMs, TimeUnit.MILLISECONDS);
-      if (response.statusCode() / 100 != 2) {
+      int status = response.statusCode();
+      if (status == 404) {
         LOG.debugf(
-            "project %s answered %d for %s; no capability report to record",
-            projectId, Integer.valueOf(response.statusCode()), AVAILABLE_PATH);
-        return null;
+            "project %s does not serve %s (404); no capability report to record",
+            projectId, AVAILABLE_PATH);
+        return Outcome.absent("the daemon answered 404 for " + AVAILABLE_PATH);
       }
-      return buffer == null ? null : buffer.toString();
+      if (status / 100 != 2) {
+        LOG.debugf(
+            "project %s answered %d for %s; its agent surface is not up yet",
+            projectId, Integer.valueOf(status), AVAILABLE_PATH);
+        return Outcome.notReady("the daemon answered " + status + " for " + AVAILABLE_PATH);
+      }
+      if (buffer == null) {
+        return Outcome.notReady("the daemon answered " + status + " with no body");
+      }
+      return ingest(projectId, buffer.toString());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return null;
+      return Outcome.notReady("interrupted");
     } catch (Exception e) {
       LOG.debugf("Could not read %s from project %s: %s", AVAILABLE_PATH, projectId, e.toString());
-      return null;
+      return Outcome.notReady("could not reach the daemon: " + e);
     }
   }
 
