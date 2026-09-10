@@ -366,7 +366,16 @@ public class RepositoryMcpToolsTest {
                       // tool: accepting a proposal is a human act in the Design tab.
                       "list_designs",
                       "get_design",
-                      "put_design"),
+                      "put_design",
+                      // DossierMcpTools — the epic's long form. Pages are written in place like a
+                      // design is, and a figure is inlined rather than uploaded, so there is no
+                      // proposal verb here either.
+                      "list_dossier_pages",
+                      "get_dossier_page",
+                      "put_dossier_page",
+                      "move_dossier_page",
+                      "remove_dossier_page",
+                      "inline_figure"),
                   java.util.Set.copyOf(names),
                   "unexpected tool surface: " + names);
             })
