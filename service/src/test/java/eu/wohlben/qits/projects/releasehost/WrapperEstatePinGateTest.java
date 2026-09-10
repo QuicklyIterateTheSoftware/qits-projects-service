@@ -29,9 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -192,25 +190,39 @@ public class WrapperEstatePinGateTest {
   // -----------------------------------------------------------------------------------------
 
   /**
-   * Arming is where the ask is made, and it is made <b>once per named source branch</b>. A request
-   * folds N branches and each of them has its own tree with its own pins, so each needs its own
-   * commit — one bump carrying every stale pin of that branch, and no bump at all for a branch with
-   * none. The member with no release is in the wrapper's declaration throughout and appears in no
-   * change: it is not part of the estate this release pins.
+   * Arming is where the ask is made, and it is made <b>once per branch this request releases</b>. A
+   * request folds N branches and each of them has its own tree with its own pins, so each needs its
+   * own commit — one bump carrying every stale pin of that branch, and no bump at all for a branch
+   * with none. The member with no release is in the wrapper's declaration throughout and appears in
+   * no change: it is not part of the estate this release pins.
+   *
+   * <p><b>The assertion names the branches rather than counting them</b>, and that is the point of
+   * the shape: {@code main} is a named source of every request, so a count is satisfied by asking
+   * for the wrong branch — which is exactly the defect this pair of tests was written for. The
+   * named branches are the whole list, in the order they were put on the request.
    */
   @Test
-  public void armingAWrapperRequestAsksMaintenanceOncePerNamedSource() {
+  public void armingAWrapperRequestAsksMaintenanceOncePerBranchItReleases() {
     stageWrapperAt("main", STALE_PIN);
     stageWrapperAt("work", STALE_PIN);
+    stageWrapperAt("also", STALE_PIN);
 
     String id = create(wrapperRepoId, "work", "wohlben");
     assertNotNull(mergedShaOf(wrapperRepoId, id), "the create folds the sources at once");
+    assertEquals(
+        List.of("work"),
+        estatePins.branchesAsked(),
+        "the fold's other source is main, and main is never a target");
+
+    // A second branch put on the request re-folds it, and the new fold's ask names both branches.
+    estatePins.reset();
+    addSource(wrapperRepoId, id, "also");
+    assertEquals(
+        List.of("work", "also"),
+        estatePins.branchesAsked(),
+        "one bump per branch this request releases, in source order, and still never main");
 
     List<FakeEstatePins.Asked> asked = estatePins.asked();
-    assertEquals(2, asked.size(), "one bump per named source, and no more: " + asked);
-    assertEquals(
-        Set.of("main", "work"),
-        asked.stream().map(FakeEstatePins.Asked::branch).collect(Collectors.toSet()));
     for (FakeEstatePins.Asked ask : asked) {
       assertEquals(wrapperName, ask.repositoryName(), "addressed by the catalogue name");
       assertEquals(
@@ -223,6 +235,41 @@ public class WrapperEstatePinGateTest {
       assertEquals(STALE_PIN, change.from(), "what the tree holds now, for the commit message");
       assertEquals(MEMBER_VERSION, change.to(), "the member's latest released version");
     }
+  }
+
+  /**
+   * <b>The repository's default branch is a source of the fold and never a target of a bump</b>, and
+   * a stale {@code main} is where that had to be said. Every request folds {@code main} first, so it
+   * is a BRANCH source like any other — but it is the one source no release consumes, and it is
+   * protected: a bump asked for it fails on the push, and the request then waits for ever on a
+   * commit that is never coming ("the estate pins are being written; <sha> re-arms when they land").
+   * Observed live on {@code qits-qits}, two TARGETED bumps for one request — {@code epic/…}
+   * succeeded with four pins, {@code main} failed.
+   *
+   * <p>So: {@code main}'s pins are stale here and the branch being released carries current ones.
+   * Nothing is asked, and the estate gate opens rather than holding on somebody else's branch.
+   */
+  @Test
+  public void aStaleDefaultBranchIsNeverAskedAboutBecauseItIsASourceAndNotATarget() {
+    stageWrapperAt("main", STALE_PIN);
+    stageWrapperAt("work", MEMBER_RELEASED_SHA);
+
+    String id = create(wrapperRepoId, "work", "wohlben");
+    String merged = mergedShaOf(wrapperRepoId, id);
+
+    assertEquals(
+        List.of(),
+        estatePins.branchesAsked(),
+        "main is stale and is still not asked about: a bump onto a protected branch cannot land");
+
+    verdict(wrapperRepoId, merged);
+
+    var request = request(wrapperRepoId, id);
+    assertEquals("PENDING", request.getString("state"));
+    assertEquals(
+        "Waiting for a person to approve " + merged.substring(0, 10),
+        request.getString("detail"),
+        "the estate gate passed, rather than holding for a commit nobody was ever going to make");
   }
 
   /**
@@ -408,6 +455,16 @@ public class WrapperEstatePinGateTest {
             .path("request.id");
     requestIds.add(id);
     return id;
+  }
+
+  /** A second branch on an open request — the door, because the re-fold is what re-arms the gate. */
+  private void addSource(String repoId, String id, String branch) {
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"" + branch + "\"}")
+        .post(base(repoId) + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
   }
 
   private io.restassured.path.json.JsonPath request(String repoId, String id) {
