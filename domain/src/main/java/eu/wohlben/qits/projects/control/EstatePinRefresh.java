@@ -28,16 +28,26 @@ import org.jboss.logging.Logger;
  *
  * <h2>What it computes</h2>
  *
- * <p>For each of the request's <b>named source branches</b>, it reads that branch's {@code
- * .gitmodules}, and for every entry it declares it compares the gitlink the branch's tree holds
- * against the sha of the sibling's latest released version. The difference is the ask. A branch whose
- * pins already name what its members released asks for nothing; a branch with differences gets one
- * bump carrying all of them.
+ * <p>For each <b>branch this request releases</b> — its named source branches <em>minus</em> the
+ * repository's default branch — it reads that branch's {@code .gitmodules}, and for every entry it
+ * declares it compares the gitlink the branch's tree holds against the sha of the sibling's latest
+ * released version. The difference is the ask. A branch whose pins already name what its members
+ * released asks for nothing; a branch with differences gets one bump carrying all of them.
  *
  * <p><b>Only named sources.</b> The implicit tag sources have no branch to write to — they are tags,
  * and a tag is not somewhere pins get committed — and their content reaches the fold through the
  * merge anyway. {@code ReleaseRequestSource.Kind.BRANCH} is therefore the whole population, which is
  * also why an implicit source having no row at all costs this class nothing.
+ *
+ * <p><b>And not the default branch, which is a source and never a target.</b> Every request folds
+ * {@code main} first — it is the head the fold starts from — so it is a BRANCH source like any
+ * other, and it is the one source no release consumes; {@code ReleaseRequests}' own "the branches
+ * this release deleted" reading subtracts it for the same reason. Asking qits-maintenance to write
+ * pins onto it is wrong twice over: {@code main} is not a branch that wants to be released, and it
+ * is protected, so the bump's push fails and the request waits for ever on a commit that is never
+ * coming. Measured live on {@code qits-qits}: one TARGETED bump onto {@code epic/…} succeeded with
+ * four pins while the one onto {@code main} failed, and the request sat on "the estate pins are
+ * being written" with nothing left to re-arm it. What is pinned is the work.
  *
  * <p><b>A sibling with no release yet is simply not in the estate.</b> A submodule that has never
  * been released has no version to pin at, and pinning it to a branch head would be this service
@@ -99,6 +109,9 @@ public class EstatePinRefresh {
   /** The one path that says a fold declares submodules. It is the file git itself reads. */
   private static final String GITMODULES = ".gitmodules";
 
+  /** What a repository's default branch is when its row does not say — {@code ReleaseRequests}'. */
+  private static final String DEFAULT_MAIN = "main";
+
   @Inject ReleaseRequestRepository requests;
 
   @Inject ReleaseRequestSourceRepository sources;
@@ -122,7 +135,8 @@ public class EstatePinRefresh {
    *
    * @param repoName the wrapper as the catalogue names it — the address {@link EstatePins} takes,
    *     and the reason this is read here rather than at the adapter
-   * @param branches the named source branches, in the order they were put on the request
+   * @param branches the branches this request releases — its named sources in the order they were
+   *     put on it, without the repository's default branch, which is a source and not a target
    */
   private record Facts(
       String requestId,
@@ -346,10 +360,18 @@ public class EstatePinRefresh {
     // Null is carried rather than turned into a null Facts: an unnamed wrapper is a wrapper this
     // gate applies to and cannot answer for, which is a HOLD with a reason and not "no opinion".
     String repoName = names.nameFor(repository).orElse(null);
+    // THE DEFAULT BRANCH IS A SOURCE AND IS NOT A TARGET — the class javadoc has the whole of why.
+    // Read the way ReleaseRequests reads it, blank included, so the two cannot disagree about which
+    // branch this is.
+    String main =
+        repository.mainBranch == null || repository.mainBranch.isBlank()
+            ? DEFAULT_MAIN
+            : repository.mainBranch;
     List<String> branches =
         sources.listByRequest(requestId).stream()
             .filter(source -> source.kind == ReleaseRequestSource.Kind.BRANCH)
             .map(source -> source.name)
+            .filter(name -> !main.equals(name))
             .toList();
     return new Facts(
         row.id, row.repoId, repository.project.id, repoName, row.mergedSha, branches);
