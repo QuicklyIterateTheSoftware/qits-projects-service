@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.api;
 import eu.wohlben.qits.projects.control.ReleaseArtifacts;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.dto.ReleaseArtifactsDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -45,10 +46,22 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * beginning of a person's question rather than the end of it, and both answer 200 with a sentence
  * where they cannot answer with a list — see their operations below.
  *
- * <p><b>Two callers, two roles, on every route</b>: a person driving a release from a browser, and
- * the machine peers the door split brings (qits-workspaces creating requests on behalf of its
- * callers, the train's scripts). A method-level {@code @RolesAllowed} <b>replaces</b> the
- * class-level one, so both are spelled at the class and no method narrows it.
+ * <p><b>Two callers, two roles, on almost every route</b>: a person driving a release from a browser,
+ * and the machine peers the door split brings (the maintenance bump, qits-workspaces creating
+ * requests on behalf of its callers, the train's scripts). A method-level {@code @RolesAllowed}
+ * <b>replaces</b> the class-level one rather than adding to it — the defect class this repository
+ * watches — so both are spelled at the class and every read and every ordinary write is open to
+ * both.
+ *
+ * <p><b>The two exceptions are {@code approve} and {@code decline}, which are {@code qits:admin}
+ * alone, and the narrowing is the feature rather than a hardening.</b> {@code qits:system} can ask
+ * for a release and can withdraw one — those are asks, and a machine is entitled to make them — but
+ * it cannot sign off the estate. A wrapper release moves the whole platform's version, and the
+ * approval gate exists precisely because a green build is not, on its own, a decision that it should
+ * happen; <b>a gate a machine could satisfy is not this gate</b>. Leaving these two on the class pair
+ * would have let the same bump robot that opened the request approve it, which is a gate whose
+ * subject is also its judge. {@code GET /approvals} stays on the class pair: reading who decided is
+ * not deciding, and a machine assembling a release report has an honest reason to ask.
  */
 @Path("/repositories/{repoId}/release-requests")
 @Produces(MediaType.APPLICATION_JSON)
@@ -196,6 +209,122 @@ public class ReleaseRequestController {
     String actor = identity.isAnonymous() ? null : identity.getPrincipal().getName();
     return new WithdrawReleaseRequest.Response(
         releaseRequests.withdraw(requestId, body == null ? null : body.reason(), actor));
+  }
+
+  /**
+   * @param mergedSha the fold being approved — <b>required</b>, and the whole reason this body
+   *     exists rather than the route being a bare POST. A person approves content: they read what
+   *     the fold brought in and said yes to <em>that</em>. A push landing between the reading and
+   *     the click re-folds the request onto content they have never seen, and a door that took the
+   *     sha off the row would transfer their yes to it silently. So the caller states what it is
+   *     approving, and a sha that is no longer current is a 409 <b>naming the one that is</b> — so
+   *     the SPA can say what changed and offer the re-read rather than reporting a conflict.
+   * @param note what to put on the record, or absent for nothing. Optional here and rarely used: an
+   *     approval usually says nothing, which is why only the sha is {@code @NotBlank}.
+   */
+  public static record ApproveReleaseRequest(@NotBlank String mergedSha, String note) {
+    public record Response(ReleaseRequestDto request) {}
+  }
+
+  @POST
+  @Path("/{requestId}/approve")
+  @jakarta.annotation.security.RolesAllowed("qits:admin")
+  @Operation(
+      summary = "Sign off this request's current fold, so it may release",
+      description =
+          "The person's half of the second gate: where the repository's releases have to be approved"
+              + " — today the project wrapper — a request that has passed every build gate still"
+              + " waits for this. mergedSha is required and names the fold being approved; a stale"
+              + " one answers 409 naming the fold the request is on now, because an approval is a"
+              + " statement about content and a push may have landed while the page was open. The"
+              + " gate is re-asked immediately, so a fold whose build is already green releases on"
+              + " the click. 409 also for a request that has concluded or is already being"
+              + " released, for one with no fold yet, and for a repository that needs no approval at"
+              + " all — approving what has no gate is a caller error, not a no-op. qits:admin only:"
+              + " a machine may ask for a release and withdraw one, and may not sign off the"
+              + " estate.")
+  public ApproveReleaseRequest.Response approve(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      ApproveReleaseRequest body) {
+    return new ApproveReleaseRequest.Response(
+        releaseRequests.approve(
+            requestId,
+            body == null ? null : body.mergedSha(),
+            body == null ? null : body.note(),
+            decider()));
+  }
+
+  /**
+   * @param mergedSha the fold being declined, on exactly the terms {@link ApproveReleaseRequest}
+   *     states — a no is a statement about content too, and refusing a fold the decider never read
+   *     is as wrong as approving one.
+   * @param note why. Optional, like the approval's, and this is the one that should usually be
+   *     there: the sentence becomes the request's own {@code detail}, so it is what the person who
+   *     has to answer the decline reads first.
+   */
+  public static record DeclineReleaseRequest(@NotBlank String mergedSha, String note) {
+    public record Response(ReleaseRequestDto request) {}
+  }
+
+  @POST
+  @Path("/{requestId}/decline")
+  @jakarta.annotation.security.RolesAllowed("qits:admin")
+  @Operation(
+      summary = "Refuse this request's current fold, answerably",
+      description =
+          "The request is REJECTED carrying the decider's own sentence as its detail. This is NOT a"
+              + " withdrawal and the two must not be read as degrees of the same thing: a decline"
+              + " judges CONTENT and is answerable by a new fold — push a fix onto a participating"
+              + " branch, the request re-folds, the decision no longer names the fold it is on, and"
+              + " it is pending both gates again — while withdraw judges the ASK, is terminal, frees"
+              + " the branches and makes the next release ask mint a fresh request. Same body and"
+              + " same refusals as approve, mergedSha included. No unattended-gate ticket is filed:"
+              + " a person just said no, so somebody is watching by definition. qits:admin only.")
+  public DeclineReleaseRequest.Response decline(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      DeclineReleaseRequest body) {
+    return new DeclineReleaseRequest.Response(
+        releaseRequests.decline(
+            requestId,
+            body == null ? null : body.mergedSha(),
+            body == null ? null : body.note(),
+            decider()));
+  }
+
+  /**
+   * Who is deciding. Deliberately <b>not</b> {@link #actorFor(String)}: the other routes take an
+   * optional stated actor because their machine callers act on somebody's behalf and attribution is
+   * data there, while a decision's actor is the gate's whole subject and a body field would let a
+   * caller sign somebody else's name to it. There is no anonymous arm either — these two routes are
+   * {@code qits:admin}, so an unauthenticated call is refused at the mechanism and never reaches
+   * this method.
+   */
+  private String decider() {
+    return identity.getPrincipal().getName();
+  }
+
+  public static record ListReleaseRequestApprovals() {
+    public record Response(List<ReleaseRequestApprovalDto> approvals) {}
+  }
+
+  @GET
+  @Path("/{requestId}/approvals")
+  @Operation(
+      summary = "Every decision made about this request, newest first",
+      description =
+          "The trail across every fold the request has ever had, superseded ones included — what was"
+              + " refused, what was changed in answer to it and what was accepted in the end. Each"
+              + " entry names the mergedSha it judged, which is what says which fold it was about;"
+              + " compare it against the request's current mergedSha to see which entry still"
+              + " counts (at most one does, the newest at that sha). Rows are never edited and never"
+              + " deleted, so a change of mind is a further entry rather than a correction. An empty"
+              + " list is the ordinary answer for a request nobody has decided on and for one whose"
+              + " repository is not approval-gated; only an unknown request is a 404.")
+  public ListReleaseRequestApprovals.Response approvals(
+      @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    return new ListReleaseRequestApprovals.Response(releaseRequests.approvals(requestId));
   }
 
   public static record ListReleaseRequests() {

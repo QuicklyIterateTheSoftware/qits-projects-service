@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.control;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
 import eu.wohlben.qits.projects.dto.MergeConflictDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
@@ -152,6 +153,14 @@ import org.jboss.logging.Logger;
  * of it is the <em>primary</em> gate in the sense that matters here: it decides whether the question
  * is asked at all, and everything downstream of it is unchanged by the day it starts answering
  * differently.
+ *
+ * <p><b>The decision arrives through {@link #approve} and {@link #decline}, and both name the fold
+ * they are about.</b> The stated {@code mergedSha} is what makes an approval a statement about
+ * content rather than about a request: a page left open while somebody pushed must not sign off an
+ * estate its reader never saw, so a stale sha is refused with the current one in the message. Both
+ * doors then ask the gate again outside their own transaction, so an approval releases on the click
+ * and a decline rejects on it, rather than at the sweep's next pass. {@link #approvals} is the trail
+ * they leave.
  *
  * <p><b>Why it sits AFTER the build gate.</b> A red gating verdict rejects the request before
  * anybody is asked, so nobody is ever put in front of a fold CI has already failed — the most
@@ -475,6 +484,258 @@ public class ReleaseRequests {
               row.updatedAt = Instant.now();
             });
     return get(id);
+  }
+
+  /**
+   * <b>Approve this request's current fold</b> — the person's half of the second gate, and the one
+   * verb on this class whose whole content is a person's judgement rather than a fact about a
+   * repository.
+   *
+   * <p>See {@link #decide} for every refusal and for why the stated {@code mergedSha} is required.
+   * What is worth saying here is what happens <em>after</em> the row lands: the gate is asked again,
+   * so a fold whose build is already green releases on the click rather than at the sweep's next
+   * pass. That is the difference between a door and a suggestion — a person who has just approved a
+   * release watches for it to start, and a request that sat PENDING for another thirty seconds would
+   * read as an approval that did not take.
+   *
+   * @param mergedSha the fold being approved, as the caller last saw it. Not optional; see {@link
+   *     #decide}.
+   * @param note what they want on the record, or null/blank for nothing. An approval often says
+   *     nothing, which is why this is nullable where {@code mergedSha} is not.
+   * @param actor who decided — the forwarded principal, and the point of the whole gate.
+   */
+  public ReleaseRequestDto approve(String id, String mergedSha, String note, String actor) {
+    return decide(id, mergedSha, note, actor, ReleaseRequestApproval.Decision.APPROVED);
+  }
+
+  /**
+   * <b>Decline this request's current fold.</b> The mirror of {@link #approve} and, deliberately,
+   * <em>not</em> a second withdraw: a decline is answerable and a withdrawal is not.
+   *
+   * <p>What it lands is a REJECTED request carrying the decider's own sentence — and REJECTED is a
+   * state a request comes back from. Pushing a fix onto one of its branches re-folds it, the new
+   * merged sha leaves the decline behind (a decision names the fold it judged, so nothing has to be
+   * cleared), and the request is PENDING again waiting for both gates afresh. That is the ordinary
+   * way to answer a decline, and it is the same move that answers a red build. {@link #withdraw} is
+   * the other verb and it is terminal: it says the ask itself was moot, frees the branches, and the
+   * next release ask mints a fresh request rather than reviving this one.
+   *
+   * <p>So the two are not ranked and a caller must not treat one as a stronger form of the other.
+   * "Not this content" is a decline; "not this release" is a withdrawal.
+   */
+  public ReleaseRequestDto decline(String id, String mergedSha, String note, String actor) {
+    return decide(id, mergedSha, note, actor, ReleaseRequestApproval.Decision.DECLINED);
+  }
+
+  /**
+   * The one path both doors take, because they differ in <b>exactly one value</b> — the word written
+   * into the row — and in nothing else. Every refusal below protects both verbs equally: there is no
+   * sense in which declining is the safer half that could be let through a check approving is held
+   * by, and two copies of five refusals is how one of them comes to be five and the other four.
+   *
+   * <p>Refusals, in the order they are met, and each of them a 409 rather than a 404 or a 400
+   * because in every case the caller named something real and asked for something that cannot be
+   * done to it:
+   *
+   * <ol>
+   *   <li><b>The request does not exist</b> — a 404, the only one here, since nothing was named.
+   *   <li><b>It is not open.</b> RELEASED and WITHDRAWN have concluded and a decision about them
+   *       would be a decision about a record. READY refuses too, which the other write paths do not
+   *       do: a READY request has passed both gates and has been handed to the worker, so there is
+   *       no gate left to answer and an approval landing beside an execution already in flight would
+   *       be a row nothing ever reads. PENDING, REJECTED, FAILED and CONFLICTED are all decidable —
+   *       a request rejected by a decline is exactly the one somebody may want to approve after a
+   *       conversation, and a re-fold of any of them puts the decision to work.
+   *   <li><b>The repository has no approval gate.</b> A caller error rather than a no-op, and
+   *       loudly: a door that quietly recorded an approval nobody would ever read is a door an
+   *       operator believes they have used. It is also the exact shape of a UI showing an Approve
+   *       button on a repository that never needed one, which is a bug worth hearing about.
+   *   <li><b>The request has no fold yet.</b> There is nothing to have an opinion about — no content
+   *       has been computed — and an approval with no sha would be a standing yes to whatever this
+   *       request becomes next, which is the one thing the whole design refuses.
+   *   <li><b>The stated fold is not the current one</b>, and this is the point of the parameter.
+   * </ol>
+   *
+   * <p><b>Why {@code mergedSha} is a required argument and not read off the row.</b> A person
+   * approves <em>content</em>: they opened the request, read what the fold brought in, and said yes
+   * to that. A push landing between the reading and the click re-folds the request onto content they
+   * have never seen, and a door that took the sha from the row would silently transfer their yes to
+   * it — which is precisely the escalation the approval gate exists to prevent, arriving through the
+   * approval gate itself. So the caller states what it is approving and a mismatch refuses. <b>The
+   * refusal names the current sha</b>, so the SPA can say "this changed while you were reading — here
+   * is what it is now" and offer the re-read, rather than "conflict" and a shrug.
+   *
+   * <p><b>The write is one transaction and the re-evaluation is outside it</b>, the shape every
+   * ledger arrival in this class already has: {@link #evaluate} opens its own transaction, reaches
+   * {@link ActiveBuilds} over HTTP and may enqueue an execution, none of which belongs inside the
+   * transaction that recorded a decision. <b>Both verbs call it</b>, and the symmetry is not
+   * decorative — {@code evaluate} is the only place a decision becomes a state, so without the call
+   * an approval would not release and a decline would not reject until the sweep came round. The
+   * request the caller gets back has already been through the gate.
+   *
+   * <p>A decline of a fold CI has not vouched for is therefore recorded and leaves the request
+   * PENDING, still saying it is waiting for a verdict — the build gate is asked first and a decision
+   * cannot jump it. The row is not wasted: it is the current decision at that fold, so the moment
+   * the build lands green the request rejects with the person's sentence.
+   */
+  private ReleaseRequestDto decide(
+      String id,
+      String mergedSha,
+      String note,
+      String actor,
+      ReleaseRequestApproval.Decision decision) {
+    String fold = requireStatedFold(mergedSha, decision);
+    String said = (note == null || note.isBlank()) ? null : note.trim();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row =
+                  requests
+                      .findByIdOptional(id)
+                      .orElseThrow(
+                          () -> new NotFoundException("Release request not found: " + id));
+              requireDecidable(row, decision);
+              if (!approvalPolicy.requiresApproval(row.repoId)) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + id
+                        + " releases a repository that needs no approval, so there is nothing here"
+                        + " to "
+                        + verb(decision)
+                        + ".");
+              }
+              if (row.mergedSha == null) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + id
+                        + " has not been folded yet, so there is no content to "
+                        + verb(decision)
+                        + ".");
+              }
+              if (!row.mergedSha.equals(fold)) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + id
+                        + " is on "
+                        + row.mergedSha
+                        + " now, not "
+                        + fold
+                        + "; re-read it and "
+                        + verb(decision)
+                        + " the fold you are looking at.");
+              }
+              ReleaseRequestApproval approval = new ReleaseRequestApproval();
+              approval.id = UUID.randomUUID().toString();
+              approval.requestId = row.id;
+              approval.mergedSha = row.mergedSha;
+              approval.decision = decision;
+              approval.actor = actor == null || actor.isBlank() ? "an operator" : actor.trim();
+              approval.note = said;
+              approval.decidedAt = Instant.now();
+              approval.persist();
+              // A decision is movement, and the project worklist is ordered by this column: a
+              // request somebody has just answered belongs at the top of it whether or not the gate
+              // that follows changes the state.
+              row.updatedAt = approval.decidedAt;
+              LOG.infof(
+                  "Release request %s %s by %s at %s",
+                  id, decision, approval.actor, shortSha(row.mergedSha));
+            });
+    evaluate(id, null);
+    return get(id);
+  }
+
+  /**
+   * <b>A decision names a fold, so a caller that named none has not made one.</b> A 400 rather than
+   * one of {@link #decide}'s 409s, and the difference is real: every refusal there is about the
+   * state of a request that exists, while this is a request body with a required field missing —
+   * most plausibly a caller that has not been taught the parameter at all, and which would otherwise
+   * meet a mismatch message naming a sha it never sent.
+   */
+  private static String requireStatedFold(
+      String mergedSha, ReleaseRequestApproval.Decision decision) {
+    if (mergedSha == null || mergedSha.isBlank()) {
+      throw new BadRequestException(
+          "State the mergedSha you are about to " + verb(decision) + "; a decision names a fold.");
+    }
+    return mergedSha.trim();
+  }
+
+  /**
+   * The states a decision may be made in — everything that is still open, plus the two blocked ones
+   * a decision is the way out of. See {@link #decide}'s second refusal for the argument; this is
+   * deliberately <b>not</b> {@link #requireOpenForChange}, which lets READY through because adding a
+   * source to a request the worker is about to execute is a race the re-fold settles, while
+   * approving one is a row nothing would ever read.
+   */
+  private static void requireDecidable(
+      ReleaseRequest row, ReleaseRequestApproval.Decision decision) {
+    if (row.state == ReleaseRequest.State.READY) {
+      throw new DomainException(
+          409,
+          "Release request "
+              + row.id
+              + " has passed its gates and is being released; there is nothing left to "
+              + verb(decision)
+              + ".");
+    }
+    if (row.state == ReleaseRequest.State.RELEASED
+        || row.state == ReleaseRequest.State.WITHDRAWN) {
+      throw new DomainException(
+          409,
+          "Release request "
+              + row.id
+              + " is already "
+              + row.state
+              + "; a request that has concluded cannot be "
+              + (decision == ReleaseRequestApproval.Decision.APPROVED ? "approved" : "declined")
+              + ".");
+    }
+  }
+
+  /** The verb a caller used, so a refusal is a sentence about what they asked for. */
+  private static String verb(ReleaseRequestApproval.Decision decision) {
+    return decision == ReleaseRequestApproval.Decision.APPROVED ? "approve" : "decline";
+  }
+
+  /**
+   * <b>One request's whole decision trail, newest first</b> — every fold it has ever had, not just
+   * the one it is on.
+   *
+   * <p>It is a separate read from {@link #get} rather than a list on the request DTO for two
+   * reasons, and only the second is about cost. The first is that they answer different questions:
+   * the request's five approval fields are the <em>position</em> at the current fold, which is what
+   * a gate and a badge need, and this is the <em>argument</em> — what was refused, what was changed
+   * in answer to it, and what was accepted in the end. The second is that a release-request list is
+   * the busiest read this service has and nothing on it wants a per-row history.
+   *
+   * <p>Rows about superseded folds are in the answer deliberately: they are most of what makes it
+   * worth reading, and the {@code mergedSha} on each entry is what says which fold was judged. A
+   * request nobody has decided on answers an empty list, and so does one whose repository was never
+   * gated — an empty trail is not an error and never a 404. The request itself not existing is.
+   */
+  public List<ReleaseRequestApprovalDto> approvals(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              if (requests.findByIdOptional(id).isEmpty()) {
+                throw new NotFoundException("Release request not found: " + id);
+              }
+              return approvals.listByRequest(id).stream()
+                  .map(
+                      row ->
+                          new ReleaseRequestApprovalDto(
+                              row.id,
+                              row.mergedSha,
+                              row.decision.name(),
+                              row.actor,
+                              row.note,
+                              row.decidedAt))
+                  .toList();
+            });
   }
 
   /** One request, as the API answers it. */
