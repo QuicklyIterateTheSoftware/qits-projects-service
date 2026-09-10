@@ -1,6 +1,9 @@
 package eu.wohlben.qits.epics.control;
 
 import eu.wohlben.qits.epics.persistence.AuditRepository;
+import eu.wohlben.qits.epics.persistence.DossierAssetRepository;
+import eu.wohlben.qits.epics.persistence.DossierPageAssetRepository;
+import eu.wohlben.qits.epics.persistence.DossierPageRepository;
 import eu.wohlben.qits.epics.persistence.EpicRepository;
 import eu.wohlben.qits.epics.persistence.FeatureRepository;
 import eu.wohlben.qits.epics.persistence.TaskRepository;
@@ -28,6 +31,9 @@ public abstract class EpicsTestSupport {
   @Inject AuditRepository auditRepository;
   @Inject TicketRepository ticketRepository;
   @Inject TicketCommentRepository ticketCommentRepository;
+  @Inject DossierPageRepository dossierPageRepository;
+  @Inject DossierAssetRepository dossierAssetRepository;
+  @Inject DossierPageAssetRepository dossierPageAssetRepository;
 
   @BeforeEach
   void wipe() {
@@ -37,6 +43,9 @@ public abstract class EpicsTestSupport {
               auditRepository.deleteAll();
               ticketCommentRepository.deleteAll();
               ticketRepository.deleteAll();
+              dossierPageAssetRepository.deleteAll();
+              dossierAssetRepository.deleteAll();
+              dossierPageRepository.deleteAll();
               taskRepository.deleteAll();
               featureRepository.deleteAll();
               epicRepository.deleteAll();

@@ -366,7 +366,7 @@ public class RepositoryMcpToolsTest {
                       // tool: accepting a proposal is a human act in the Design tab.
                       "list_designs",
                       "get_design",
-                      "propose_design"),
+                      "put_design"),
                   java.util.Set.copyOf(names),
                   "unexpected tool surface: " + names);
             })

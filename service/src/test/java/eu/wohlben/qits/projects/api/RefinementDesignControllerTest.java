@@ -6,9 +6,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.projects.entity.RefinementDesign;
 import eu.wohlben.qits.projects.persistence.RefinementDesignRepository;
-import eu.wohlben.qits.projects.refinementhost.RefinementDesigns;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -17,19 +15,17 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The refinement designs REST surface: capture, list, read, both resolutions of a proposal, the
- * size cap, the per-refinement scoping, and the cascade a discard leaves behind.
+ * The refinement designs REST surface: capture, list, read, the in-place rewrite and its version
+ * check, the size cap, the per-refinement scoping, and the cascade a discard leaves behind.
  *
- * <p>Proposals are made through {@link RefinementDesigns} rather than over REST, because that is
- * where they come from in life: the REST POST is a person capturing a page and is always ACTIVE,
- * and only the MCP tool proposes.
+ * <p>There is no lifecycle left to test. A design is a document written and rewritten in place, so
+ * what stands where the resolve cases were is the 409: a write carrying a version somebody has
+ * already moved past is refused, and the refusal carries the current document.
  */
 @QuarkusTest
 public class RefinementDesignControllerTest {
 
   @Inject RefinementDesignRepository store;
-
-  @Inject RefinementDesigns designs;
 
   private static final String DOC =
       "<!doctype html><html><body style=\"margin:0\">Checkout</body></html>";
@@ -97,16 +93,20 @@ public class RefinementDesignControllerTest {
         .path("id");
   }
 
-  private String resolve(long refinementId, String designId, String mode, int expected) {
+  /** A write onto an existing design, at whatever version the caller believes is current. */
+  private io.restassured.response.Response update(
+      long refinementId, String designId, String title, String html, long version) {
+    Map<String, Object> body = new java.util.HashMap<>();
+    body.put("title", title);
+    body.put("version", version);
+    if (html != null) {
+      body.put("html", html);
+    }
     return given()
         .contentType(ContentType.JSON)
-        .body(Map.of("mode", mode))
+        .body(body)
         .when()
-        .post(base(refinementId) + "/" + designId + "/resolve")
-        .then()
-        .statusCode(expected)
-        .extract()
-        .asString();
+        .put(base(refinementId) + "/" + designId);
   }
 
   private static String htmlOf(long refinementId, String designId) {
@@ -122,7 +122,7 @@ public class RefinementDesignControllerTest {
   // --- Capture and read -----------------------------------------------------
 
   @Test
-  public void aCapturedDesignIsActiveAndCarriesItsDocumentOnlyOnTheSingleRead() {
+  public void aCapturedDesignStartsAtVersionZeroAndCarriesItsDocumentOnlyOnTheSingleRead() {
     long id = openRefinement("Design Capture");
 
     String designId =
@@ -133,7 +133,7 @@ public class RefinementDesignControllerTest {
             .post(base(id))
             .then()
             .statusCode(201)
-            .body("status", equalTo("ACTIVE"))
+            .body("version", equalTo(0))
             .body("htmlBytes", equalTo(DOC.length()))
             .body("createdBy", notNullValue())
             .body("html", nullValue())
@@ -162,76 +162,65 @@ public class RefinementDesignControllerTest {
     long id = openRefinement("Design Rename");
     String designId = capture(id, "Draft", DOC);
 
-    given()
-        .contentType(ContentType.JSON)
-        .body(Map.of("title", "Checkout, second pass"))
-        .when()
-        .put(base(id) + "/" + designId)
+    update(id, designId, "Checkout, second pass", null, 0)
         .then()
         .statusCode(200)
-        .body("title", equalTo("Checkout, second pass"));
+        .body("title", equalTo("Checkout, second pass"))
+        .body("version", equalTo(1));
+
+    // The document is untouched by a rename that carried no html.
+    assertTrue(DOC.equals(htmlOf(id, designId)), "a rename must leave the document alone");
 
     given().when().delete(base(id) + "/" + designId).then().statusCode(204);
     given().when().get(base(id) + "/" + designId).then().statusCode(404);
   }
 
-  // --- Proposals ------------------------------------------------------------
+  // --- Writing in place ----------------------------------------------------
 
   @Test
-  public void replacingAProposalOverwritesTheOriginalAndTakesTheProposalAway() {
-    long id = openRefinement("Design Replace");
-    String original = capture(id, "Checkout", DOC);
-    RefinementDesign proposal =
-        designs.propose(id, "Roomier", REVISED, "The summary needed air.", original, "mcp-agent");
+  public void aDesignIsRewrittenInPlaceAndItsVersionMovesWithIt() {
+    long id = openRefinement("Design Rewrite");
+    String designId = capture(id, "Checkout", DOC);
+
+    update(id, designId, "Checkout", REVISED, 0)
+        .then()
+        .statusCode(200)
+        .body("id", equalTo(designId))
+        .body("version", equalTo(1));
+
+    assertTrue(REVISED.equals(htmlOf(id, designId)), "the design must carry the rewrite");
+  }
+
+  @Test
+  public void aWriteCarryingAStaleVersionIsRefusedWithTheCurrentDesign() {
+    long id = openRefinement("Design Contested");
+    String designId = capture(id, "Checkout", DOC);
+
+    update(id, designId, "Checkout", REVISED, 0).then().statusCode(200);
+
+    // A second writer composed against version 0, which has been overtaken.
+    update(id, designId, "Checkout", DOC, 0)
+        .then()
+        .statusCode(409)
+        .body("current.version", equalTo(1))
+        .body("current.html", equalTo(REVISED));
+
+    // Nothing was merged: the first write still stands.
+    assertTrue(REVISED.equals(htmlOf(id, designId)), "a refused write must change nothing");
+  }
+
+  @Test
+  public void aWriteOnAnExistingDesignMustCarryAVersion() {
+    long id = openRefinement("Design Versionless");
+    String designId = capture(id, "Checkout", DOC);
 
     given()
         .contentType(ContentType.JSON)
-        .body(Map.of("mode", "REPLACE"))
+        .body(Map.of("title", "Checkout"))
         .when()
-        .post(base(id) + "/" + proposal.id + "/resolve")
+        .put(base(id) + "/" + designId)
         .then()
-        .statusCode(200)
-        .body("id", equalTo(original))
-        .body("status", equalTo("ACTIVE"));
-
-    assertTrue(REVISED.equals(htmlOf(id, original)), "the original must carry the revision");
-    given().when().get(base(id) + "/" + proposal.id).then().statusCode(404);
-  }
-
-  @Test
-  public void keepingAProposalMakesItADesignOfItsOwn() {
-    long id = openRefinement("Design Keep");
-    String original = capture(id, "Checkout", DOC);
-    RefinementDesign proposal =
-        designs.propose(id, "A second take", REVISED, "Worth having both.", original, "mcp-agent");
-
-    given()
-        .contentType(ContentType.JSON)
-        .body(Map.of("mode", "KEEP"))
-        .when()
-        .post(base(id) + "/" + proposal.id + "/resolve")
-        .then()
-        .statusCode(200)
-        .body("id", equalTo(proposal.id))
-        .body("status", equalTo("ACTIVE"))
-        .body("note", nullValue());
-
-    // The original is untouched: keeping is not replacing.
-    assertTrue(DOC.equals(htmlOf(id, original)), "the original must be left alone");
-  }
-
-  @Test
-  public void resolvingSomethingThatIsNotAProposalIsRefused() {
-    long id = openRefinement("Design Settled");
-    String designId = capture(id, "Checkout", DOC);
-    resolve(id, designId, "KEEP", 409);
-  }
-
-  @Test
-  public void anUnknownResolutionIsRejected() {
-    long id = openRefinement("Design Mode");
-    String designId = capture(id, "Checkout", DOC);
-    resolve(id, designId, "ACCEPT", 400);
+        .statusCode(400);
   }
 
   // --- Limits and scoping ---------------------------------------------------

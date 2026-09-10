@@ -624,6 +624,65 @@ untrusted commit message must not declare somebody's task shipped. **It goes whe
 markers exist** — a consumer that reads a landed change back to the task it implements — and the
 marker's semantics are identical either way; only the writer moves from a prompt to an event.
 
+## The dossier
+
+**The epic's long form, and it belongs to the EPIC rather than to the refinement that produced it**
+(`dossier_page`, epics V5; `dossier_asset` + `dossier_page_asset`, V6). The epic's description is the
+value pitch; a dossier page is the breakdown, with examples, sketches and framed designs. It is
+written on the refining route, using the rest of that route — but storing it beside `refinement`
+would cascade it away on a discard, and the plan has to outlive the container: implementation reads
+it months later, when no refinement is open at all.
+
+Being in the epics module is the point, not a filing decision: `DossierService` inherits the
+`REFINING`-only guard `EpicLifecycle` already applies to features and tasks (**reuse it, never
+restate the condition**), an `AuditEntry` per create/update/move/delete under the epic's own id, and
+the `CausationStamp` listener.
+
+- **Flat, and nothing may add a `parent_id`.** The nav's second level is the *current* page's own
+  `h1`/`h2`/`h3`, derived in the browser from the rendered DOM and stored nowhere. It cannot drift
+  from the page because it *is* the page.
+- **Slug at create, never re-derived** — `?tab=dossier&page=<slug>` is in URLs people have sent each
+  other. A rename changes the title alone.
+- **`version` stands where an acceptance step would be.** Nobody accepts a write on this route, so a
+  person editing in the SPA while an agent writes from a prompt is the ordinary case: a stale write
+  answers **409 carrying the current page**, body included, and never a merge. `StaleWriteException`
+  (one per module: `epics.error` and `projects.error`) is what the two exception mappers put
+  `current` on the wire for. Both doors carry it — `DossierController` and `DossierMcpTools`
+  (`list_dossier_pages`, `get_dossier_page`, `put_dossier_page`, `move_dossier_page`,
+  `remove_dossier_page`, `inline_figure`), all six write tools in `ReadOnlyRepositoryToolFilter`.
+- **A figure is COPIED into the epic when it is inlined, keeping its id.** Both sources — a
+  `refinement_prompt_attachment` and a `refinement_design` — cascade away on a discard, so a link
+  would break every dossier the day its refinement went. `DossierAssetService.copyFrom` writes the
+  copy under the **source's own id**, which is what keeps a written markdown URL valid for ever,
+  makes re-inlining idempotent, and makes the Sketch/Design tabs' `inUse` flag one id join.
+  `syncReferences` runs inside every page save: rewrite `dossier_page_asset`, then delete any asset
+  no page names any more — reference counting, not a sweeper, so the dossier is self-contained at
+  every instant. The bytes are a **snapshot**: rewriting a design upstream does not change a page
+  that already argued from it.
+- **The module boundary is `service`'s to cross, not epics'.** `refinementhost/DossierFigures` reads
+  the source (domain's database) and hands `copyFrom` bytes, mime and label; the epics module still
+  sees nothing of `domain`. It also validates the source against **this** epic's refinement — a
+  figure from somebody else's is a 404, which is the boundary that keeps copy-on-reference from
+  becoming a cross-epic reference by accident.
+
+### The one hardened content route
+
+`GET /epics/{epicId}/dossier-assets/{assetId}/content` (`epics/api/DossierAssetController`) is the
+single place this estate serves agent-authored HTML, and it does **not** lift `RefinementDesign`'s
+prohibition — it scopes it. The Design tab still renders from a JSON field; what is served here is a
+*copy*, in the epics database, with
+
+    Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'
+    X-Content-Type-Options: nosniff
+    Cache-Control: private, max-age=3600
+
+on **every** response whatever the kind — an asset is addressed by id and the kind is a column, so a
+route that read its own hardening off a database value would be one bad row away from serving a
+document unsandboxed. The CSP `sandbox` **directive** is what carries the safety, not the iframe
+attribute: the browser applies it to the response, so the document lands in an opaque origin even
+when the URL is opened directly, which is the case the attribute cannot cover. The SPA sets the
+attribute too, never with `allow-same-origin`.
+
 ## Tickets
 
 A **second root beside `Epic`, not a row under it** (V4). A ticket is a bug or an improvement small
@@ -1320,14 +1379,23 @@ There is deliberately **no content route**. Agent-authored HTML served same-orig
 door into the platform's own session, so the bytes only ever travel as a JSON field and the SPA
 renders them in a sandboxed iframe with scripts off. Do not add a `text/html` route here.
 
-**A row is ACTIVE or PROPOSED, and only a person crosses that line.** A REST capture is ACTIVE at
-once; the three MCP tools on the `repository` server (`list_designs`, `get_design`,
-`propose_design`) let a refinement agent read the designs and propose a revision, which lands
-PROPOSED with the agent's note on it. `POST …/{designId}/resolve` is the decision: `REPLACE` copies
-the proposal onto the design it revises and drops the proposal, `KEEP` makes the proposal a design
-of its own, and discarding is a plain `DELETE`. `propose_design` is in
-`ReadOnlyRepositoryToolFilter`'s mutating set — an unattended run must not fill the tab with work
-nobody asked for.
+**A design is a document, not a proposal, and there is no lifecycle at all** (V20, 2026-09-10).
+`status`, `based_on_design_id` and `note` are dropped columns; a `version` column stands where the
+review flow did. A REST `POST` creates and a `PUT` rewrites in place; the three MCP tools on the
+`repository` server are `list_designs`, `get_design` and `put_design` (create-or-update). What
+replaced the person's decision is the **version check**: a write carrying a version somebody has
+already moved past is a **409 carrying the current row**, document included, and never a merge —
+`error/StaleWriteException` is the type and `ProjectsExceptionMapper` is what puts `current` in the
+body. The gate on the draft is the epic's own `REFINING → IMPLEMENTATION` transition, which a
+person controls and which freezes the whole plan at once.
+
+Three things ride with the removal. **The column drop lost no document**: a row that stood at
+PROPOSED simply became a design in the list. **`propose_design` was renamed rather than kept as an
+alias** — a live tool other sessions call, so an in-flight agent's call failed once, which is better
+than a tool whose name states a lifecycle that is gone. And `put_design` is still in
+`ReadOnlyRepositoryToolFilter`'s mutating set, on a *stronger* reading than before: a write is live
+in the tab the moment it lands, so an unattended run holding it could overwrite a document somebody
+is working from.
 
 ## The container orchestrator
 

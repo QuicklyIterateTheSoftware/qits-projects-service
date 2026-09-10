@@ -141,7 +141,7 @@ public class RefinementDesignMcpToolsTest {
               var names = page.tools().stream().map(t -> t.name()).toList();
               assertTrue(names.contains("list_designs"), names.toString());
               assertTrue(names.contains("get_design"), names.toString());
-              assertTrue(names.contains("propose_design"), names.toString());
+              assertTrue(names.contains("put_design"), names.toString());
             })
         .thenAssertResults();
   }
@@ -198,7 +198,7 @@ public class RefinementDesignMcpToolsTest {
           assertFalse(response.isError(), text(response));
           String body = text(response);
           assertTrue(body.contains(designId), body);
-          assertTrue(body.contains("\"ACTIVE\""), body);
+          assertTrue(body.contains("\"version\""), body);
           assertFalse(body.contains("<!doctype"), "a listing must not carry documents: " + body);
         });
 
@@ -213,43 +213,73 @@ public class RefinementDesignMcpToolsTest {
   }
 
   @Test
-  public void proposesARevisionAPersonThenKeeps() {
-    String projectId = createProject("Design Propose");
+  public void writesADesignAndThenRewritesItInPlace() {
+    String projectId = createProject("Design Write");
     String epicId = createEpic(projectId, "Roomier epic");
     long refinementId = openRefinement(epicId);
-    String original = capture(refinementId, "Checkout");
     String revised = "<!doctype html><html><body>Checkout, roomier</body></html>";
 
-    String[] proposalId = new String[1];
+    String[] designId = new String[1];
     call(
         projectId,
-        "propose_design",
-        Map.of(
-            "epicId", epicId,
-            "title", "Roomier checkout",
-            "html", revised,
-            "note", "The summary needed air.",
-            "basedOnDesignId", original),
+        "put_design",
+        Map.of("epicId", epicId, "title", "Roomier checkout", "html", revised),
         response -> {
           assertFalse(response.isError(), text(response));
           String body = text(response);
-          assertTrue(body.contains("\"PROPOSED\""), "an agent cannot make it active: " + body);
-          proposalId[0] = idIn(body);
+          assertTrue(body.contains("\"version\" : 0") || body.contains("\"version\":0"), body);
+          designId[0] = idIn(body);
         });
 
-    // The person's decision, over REST — the tool set has no way to reach it.
-    authenticated()
-        .contentType(ContentType.JSON)
-        .body(Map.of("mode", "KEEP"))
-        .when()
-        .post(
-            "/projects/api/refinements/"
-                + refinementId
-                + "/designs/"
-                + proposalId[0]
-                + "/resolve")
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .body("status", org.hamcrest.Matchers.equalTo("ACTIVE"));
+    // A rewrite in place: same id, next version. Nobody accepted anything in between.
+    call(
+        projectId,
+        "put_design",
+        Map.of(
+            "epicId", epicId,
+            "title", "Roomier checkout",
+            "html", revised + "<!-- again -->",
+            "designId", designId[0],
+            "version", 0),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains(designId[0]), body);
+          assertTrue(body.contains("\"version\" : 1") || body.contains("\"version\":1"), body);
+        });
+  }
+
+  @Test
+  public void aRewriteCarryingAStaleVersionIsRefused() {
+    String projectId = createProject("Design Stale");
+    String epicId = createEpic(projectId, "Contested epic");
+    long refinementId = openRefinement(epicId);
+    String designId = capture(refinementId, "Checkout");
+
+    // Somebody else writes first, so version 0 is no longer the current one.
+    call(
+        projectId,
+        "put_design",
+        Map.of(
+            "epicId", epicId,
+            "title", "Checkout",
+            "html", "<!doctype html><html><body>First</body></html>",
+            "designId", designId,
+            "version", 0),
+        response -> assertFalse(response.isError(), text(response)));
+
+    call(
+        projectId,
+        "put_design",
+        Map.of(
+            "epicId", epicId,
+            "title", "Checkout",
+            "html", "<!doctype html><html><body>Second</body></html>",
+            "designId", designId,
+            "version", 0),
+        response -> {
+          assertTrue(response.isError(), "a stale write must be refused, never merged");
+          assertTrue(text(response).contains("written since you read it"), text(response));
+        });
   }
 }
