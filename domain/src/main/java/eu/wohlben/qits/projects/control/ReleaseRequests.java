@@ -207,6 +207,17 @@ public class ReleaseRequests {
 
   @Inject ReleaseRequestApprovalRepository approvals;
 
+  /**
+   * The estate gate's two halves, in the approval gate's own shape one field up — the thing that
+   * refreshes a wrapper's gitlink pins, and the memory of what the last refresh established about the
+   * fold it established it for. Both are this module's own beans rather than ports: the port is
+   * {@link EstatePins}, and it is behind {@link EstatePinRefresh} where its absence is a hold rather
+   * than a decision this class has to make.
+   */
+  @Inject EstatePinRefresh estatePinRefresh;
+
+  @Inject EstatePinLedger estatePinLedger;
+
   @Inject RepositoryRepository repositories;
 
   @Inject RepositoryNameRepository names;
@@ -481,6 +492,7 @@ public class ReleaseRequests {
               row.retryable = false;
               row.updatedAt = Instant.now();
             });
+    estatePinLedger.forget(id);
     return get(id);
   }
 
@@ -1095,9 +1107,41 @@ public class ReleaseRequests {
         cancel(folded.repoId(), folded.releaseRequestId(), folded.supersededSha());
       }
       announce(folded);
+      refreshEstatePins(folded.releaseRequestId());
     }
     if (outcome.folded()) {
       evaluate(id);
+    }
+  }
+
+  /**
+   * <b>The arming seam of the estate gate.</b> A fold that produced something new is a request that
+   * has just been armed onto content nobody has looked at, and for a wrapper that content includes a
+   * set of gitlink pins that may be older than what its members have released. This is where that is
+   * put right.
+   *
+   * <p><b>One seam covers both triggers, which is why it is here and not at two call sites.</b>
+   * {@link #request} folds on creation and that first fold produces a {@link Folded}; every re-arm
+   * goes through {@link #apply}'s merged arm, which produces one too. So "the request was created"
+   * and "the request was re-armed" are the same event seen from this line, and a third trigger added
+   * later gets the refresh for free as long as it re-folds — which is the only way a request's
+   * content ever changes.
+   *
+   * <p>It runs <b>before</b> {@link #evaluate} does, so the very first gate pass after a fold already
+   * has an answer to read: a wrapper whose pins were current releases on the same pass it always
+   * did, rather than holding once for a fact that was already true.
+   *
+   * <p>Outside every transaction, its own try/catch, never able to fail a fold — {@link #cancel}'s
+   * posture beside it, and for the same reason: the merge has already landed, and no enrichment of a
+   * landed fold may undo it. The refresh promises not to throw; this is the belt.
+   */
+  private void refreshEstatePins(String requestId) {
+    try {
+      estatePinRefresh.refresh(requestId);
+    } catch (RuntimeException e) {
+      // It says it must not throw; a throw is a bug in it and must not cost the fold. The request
+      // then holds, because absence of a note is the hold.
+      LOG.warnf(e, "Could not refresh the estate pins of release request %s", requestId);
     }
   }
 
@@ -1347,6 +1391,10 @@ public class ReleaseRequests {
     // database and belongs nowhere near the transaction that decides a gate. Null on every
     // evaluation that does not reject an unattended request, which is nearly all of them.
     AtomicReference<UnattendedGateTickets.Rejection> unattended = new AtomicReference<>();
+    // Carried out of the transaction the same way and for the same reason: the answer to "was it the
+    // estate gate that held this?" is decided inside, and what it triggers is an HTTP round trip
+    // into qits-maintenance that belongs nowhere near the transaction that decided a gate.
+    AtomicReference<Boolean> estateHeld = new AtomicReference<>(false);
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -1423,6 +1471,23 @@ public class ReleaseRequests {
                         active + " CI run(s) are still in flight for " + shortSha(row.mergedSha));
                     return false;
                   }
+                  // THE ESTATE GATE, and its position is an argument rather than a convenience.
+                  // A wrapper release is the estate's own version moving, so it may not ship pins
+                  // older than what its members have released; the ledger holds a POSITIVE record
+                  // that, as of THIS fold, they are current, and no record is a hold. It sits after
+                  // the build gate and immediately before the approval gate because a person
+                  // approves a specific fold: asking somebody to sign off an estate whose pins are
+                  // about to be rewritten would invalidate their answer the moment the bump lands,
+                  // so the pin gate has to be the one that holds first. The red-gating arm above is
+                  // deliberately unchanged — a red build on a fold that is about to be superseded
+                  // still rejects, exactly as it did, because a rejection is answerable and a
+                  // wrongly-released estate is not.
+                  if (approvalPolicy.isEstateWrapper(row.repoId)
+                      && !estatePinLedger.fresh(row.id, row.mergedSha)) {
+                    waiting(row, estateDetail(row));
+                    estateHeld.set(true);
+                    return false;
+                  }
                   // THE SECOND GATE, and it is deliberately the last thing asked. Everything above
                   // is the build gate; a red verdict has already rejected, so nobody is ever asked
                   // to sign off a fold CI has failed. Same transaction, same thread — this is two
@@ -1459,9 +1524,45 @@ public class ReleaseRequests {
     if (unattended.get() != null) {
       fileUnattendedGateTicket(unattended.get());
     }
+    if (Boolean.TRUE.equals(estateHeld.get())) {
+      // THE RETRY, and it is the whole of what makes a qits-maintenance outage self-healing. The
+      // refresh is idempotent per (request, fold), so a request already waiting on a bump costs a
+      // map lookup here; one whose refresh could not be made asks again. That is the existing
+      // thirty-second sweep doing it — no new schedule, no new mechanism, and nothing to remember to
+      // start after a restart, since a restart empties the ledger and every open wrapper request
+      // comes back through this line.
+      refreshEstatePins(id);
+    }
     if (ready) {
       enqueueExecution(id);
     }
+  }
+
+  /**
+   * What a wrapper request held by the estate gate says about itself — and it distinguishes the two
+   * cases the ledger can tell apart, because they are different sentences to whoever is reading.
+   *
+   * <p>A pending bump is the platform doing something: the pins are being written and the commit will
+   * re-arm this request, so the right thing for a reader to do is wait. Anything else is this service
+   * saying it could not establish the estate at all — no qits-maintenance configured, one that could
+   * not be reached, a git-host read that failed — and the right thing for a reader to do is look at
+   * the log. Collapsing the two into one sentence would make an outage indistinguishable from work in
+   * progress.
+   *
+   * <p>Routed through {@link #waiting} like every other holding sentence, so it is
+   * idempotent-by-sentence: the sweep re-evaluates every open request every thirty seconds and
+   * re-stamping {@code updatedAt} would re-sort the worklist on every tick for no news. That is why
+   * neither branch interpolates a time or a bump id.
+   */
+  private String estateDetail(ReleaseRequest row) {
+    EstatePinLedger.Note note = estatePinLedger.noteFor(row.id).orElse(null);
+    boolean writing =
+        note != null
+            && note.state() == EstatePinLedger.State.PENDING_BUMP
+            && row.mergedSha.equals(note.foldSha());
+    return writing
+        ? "The estate pins are being written; " + shortSha(row.mergedSha) + " re-arms when they land"
+        : "The estate pins could not be refreshed for " + shortSha(row.mergedSha);
   }
 
   /**
@@ -1724,6 +1825,10 @@ public class ReleaseRequests {
 
   private void settle(
       String id, ReleaseRequest.State state, String detail, String version, boolean retryable) {
+    // The estate note is about a fold that is no longer being gated, so it goes — that is what keeps
+    // the ledger the size of the open work rather than of the history. Dropping it on a FAILED
+    // request costs one re-ask on the retry, which is the direction this whole feature errs in.
+    estatePinLedger.forget(id);
     QuarkusTransaction.requiringNew()
         .run(
             () ->

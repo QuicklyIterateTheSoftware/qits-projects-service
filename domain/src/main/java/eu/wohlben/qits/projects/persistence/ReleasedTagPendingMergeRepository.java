@@ -78,4 +78,30 @@ public class ReleasedTagPendingMergeRepository
   public Optional<ReleasedTagPendingMerge> findByRequest(String requestId) {
     return list("releaseRequestId = ?1", requestId).stream().findFirst();
   }
+
+  /**
+   * <b>The newest release this service knows of for one repository</b>, merged or not — which is to
+   * say, the version a wrapper's gitlink should be pinned at.
+   *
+   * <p>The newest row is the answer because <b>rows here are never deleted</b>. Reaching {@code
+   * main} stamps {@code mergedAt} and leaves the row standing, so this table is the record of which
+   * releases happened rather than only of which are in flight; {@link #listPending} narrows to the
+   * second question and this one deliberately does not. Ordering is by {@code releasedAt} rather
+   * than by {@code tagName}, because a calver is a name and only the instant is a time — string
+   * ordering happens to agree with it today and would stop agreeing the moment a version is stamped
+   * any other way.
+   *
+   * <p><b>The writer's caveat travels with the reader.</b> {@code ReleaseRequests} populates this
+   * table going forward only, so a platform that released before it existed holds tags with no row
+   * at all. Such a repository answers empty here — "no release yet" — and a caller pinning an estate
+   * skips it. That is the safe direction and the only honest one: the alternative is inventing a
+   * version for a release this service cannot see, and a pin is not a thing to guess at.
+   *
+   * <p>{@code list} and not {@code find}, for {@link #findByRequest}'s reason one method up: the
+   * one-argument {@code find("repoId = ?1", x)} binds to this class's own two-String {@code find}
+   * overload instead of to Panache's query form.
+   */
+  public Optional<ReleasedTagPendingMerge> latestReleased(String repoId) {
+    return list("repoId = ?1 order by releasedAt desc", repoId).stream().findFirst();
+  }
 }

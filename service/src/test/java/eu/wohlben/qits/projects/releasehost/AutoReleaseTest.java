@@ -422,6 +422,12 @@ public class AutoReleaseTest {
         \turl = ../qits-thing-stray.git
         """);
     tree.put("README.md", "the estate");
+    // The ESTATE GATE reads the wrapper's source branches, not its fold: it compares what each
+    // branch pins against what the members have released, and holds the request while it cannot.
+    // The siblings here have released nothing this service has a record of, so the comparison finds
+    // nothing to move — but the branches still have to be readable, or the gate cannot say that.
+    gitHost.tree("refs/heads/main", tree);
+    gitHost.tree("refs/heads/work", tree);
     return tree;
   }
 

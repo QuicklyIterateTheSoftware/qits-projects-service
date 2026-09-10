@@ -63,6 +63,15 @@ public class ReleaseRequestApprovalGateTest {
 
   @Inject RecordingBackingBranchMerger merger;
 
+  /**
+   * Not a subject here, and injected precisely so that it is not one. The <b>estate gate</b> sits in
+   * front of the approval gate and holds a wrapper request whose gitlink pins it cannot read, so the
+   * fixture's wrapper is staged as a real one — an alias to be addressed by, and two source branches
+   * that declare no submodules and therefore pin no estate. Every request here then passes that gate
+   * on its first look and what holds it is the gate this class is about.
+   */
+  @Inject RecordingReleaseGitHost gitHost;
+
   private String projectId;
   private String wrapperRepoId;
   private String plainRepoId;
@@ -75,7 +84,12 @@ public class ReleaseRequestApprovalGateTest {
     activeBuilds.reset();
     executor.reset();
     merger.reset();
+    gitHost.reset();
     requestIds.clear();
+    // A wrapper whose branches declare no submodules: the estate gate reads them, finds nothing
+    // pinned and lets every request here through to the gate under test. See the field's javadoc.
+    gitHost.tree("refs/heads/main", java.util.Map.of("README.md", "no estate here"));
+    gitHost.tree("refs/heads/work", java.util.Map.of("README.md", "no estate here"));
     // A green build with nothing still in flight, so the build gate is out of the way in every test
     // here and what holds a request is only ever the approval gate.
     activeBuilds.answer(Optional.of(0));
@@ -90,12 +104,14 @@ public class ReleaseRequestApprovalGateTest {
               project.name = "approval-gate";
               project.slug = "approval-gate-" + UUID.randomUUID();
               project.persist();
-              persistRepository(project, wrapperRepoId, RepositoryArchetype.PROJECT);
+              // The wrapper is ALIASED: a wrapper is a name-addressed thing, and the estate gate
+              // holds one it cannot address. The plain repository needs no name here.
+              alias(project, persistRepository(project, wrapperRepoId, RepositoryArchetype.PROJECT));
               persistRepository(project, plainRepoId, RepositoryArchetype.SERVICE);
             });
   }
 
-  private static void persistRepository(
+  private static eu.wohlben.qits.projects.entity.Repository persistRepository(
       Project project, String repoId, RepositoryArchetype archetype) {
     Repository repository = new Repository();
     repository.id = repoId;
@@ -103,6 +119,16 @@ public class ReleaseRequestApprovalGateTest {
     repository.mainBranch = "main";
     repository.archetype = archetype;
     repository.persist();
+    return repository;
+  }
+
+  private static void alias(Project project, Repository repository) {
+    eu.wohlben.qits.projects.entity.RepositoryName name =
+        new eu.wohlben.qits.projects.entity.RepositoryName();
+    name.project = project;
+    name.repository = repository;
+    name.name = "approval-gate-approval-gate";
+    name.persist();
   }
 
   /**
