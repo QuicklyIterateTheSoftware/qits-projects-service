@@ -38,7 +38,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
@@ -173,6 +175,23 @@ public class ReleaseRequests {
   @Inject Instance<ReleasedBranchWorkspaces> releasedBranchWorkspaces;
 
   @Inject Instance<DownstreamComponents> downstreamComponents;
+
+  @Inject Instance<UnattendedGateTickets> gateTickets;
+
+  /**
+   * The requesters that are <b>machines</b>, and therefore the requests nobody is waiting on. A
+   * request carries the forwarded identity of whoever asked; qits-maintenance deliberately sends
+   * none, so its bumps are attributed to its own machine principal and land here. Comma-separated,
+   * matched exactly, and a platform that names none simply files no tickets.
+   *
+   * <p>Configuration rather than a constant because the identity is an OIDC client name and a
+   * platform may run a second robot; it is not a switch for turning the behaviour off, which is what
+   * leaving the port unimplemented does.
+   */
+  @ConfigProperty(
+      name = "qits.projects.release-requests.unattended-requesters",
+      defaultValue = "qits-platform-maintenance")
+  List<String> unattendedRequesters;
 
   /**
    * The publish phase, called on the worker the instant a release lands: a repository that declares
@@ -1011,6 +1030,10 @@ public class ReleaseRequests {
    * request whose fold moved between the two reads is simply evaluated against the newer one.
    */
   void evaluate(String id, String verdictSha) {
+    // Filled INSIDE the gate transaction and acted on outside it: a ticket write is another module's
+    // database and belongs nowhere near the transaction that decides a gate. Null on every
+    // evaluation that does not reject an unattended request, which is nearly all of them.
+    AtomicReference<UnattendedGateTickets.Rejection> unattended = new AtomicReference<>();
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -1046,6 +1069,21 @@ public class ReleaseRequests {
                             + " for "
                             + row.mergedSha;
                     row.updatedAt = Instant.now();
+                    if (isUnattended(row) && row.projectId != null) {
+                      unattended.set(
+                          new UnattendedGateTickets.Rejection(
+                              row.id,
+                              row.projectId,
+                              row.repoId,
+                              row.repoName,
+                              sources.listByRequest(row.id).stream().map(s -> s.name).toList(),
+                              row.mergedSha,
+                              redGating.runId(),
+                              redGating.status(),
+                              row.detail,
+                              row.requester,
+                              row.gateTicketId));
+                    }
                     return false;
                   }
                   boolean vouched =
@@ -1077,9 +1115,69 @@ public class ReleaseRequests {
                   row.updatedAt = Instant.now();
                   return true;
                 });
+    if (unattended.get() != null) {
+      fileUnattendedGateTicket(unattended.get());
+    }
     if (ready) {
       enqueueExecution(id);
     }
+  }
+
+  /**
+   * Is this a request <b>nobody is waiting on</b>? The whole test is who asked: a person's forwarded
+   * identity is a person who watches their request, and a machine principal is the tail of an
+   * automated night with no reader at the end of it.
+   *
+   * <p>A request with no requester at all is <b>not</b> unattended. It is an unattributed call, made
+   * by something this service could not name, and inventing an owner for it either way is a guess —
+   * so it keeps the behaviour it always had.
+   */
+  private boolean isUnattended(ReleaseRequest row) {
+    return row.requester != null && unattendedRequesters.contains(row.requester);
+  }
+
+  /**
+   * Put the red gate in front of a person, and remember the ticket it went to.
+   *
+   * <p>Two things are load-bearing here and both are about not making it worse. The port is
+   * <b>optional</b> — with no implementation the gate has still rejected and the API still says the
+   * request is unattended, which is exactly what this platform did before — and the whole call is
+   * wrapped, because a ticket store having a bad day must never turn into an exception on the bus
+   * consumption or the sweep thread that decided the gate.
+   *
+   * <p>An empty answer leaves the stored link alone rather than clearing it: "could not file" and
+   * "there is no ticket" are different facts, and clearing on the first would file a duplicate the
+   * moment the store came back.
+   */
+  private void fileUnattendedGateTicket(UnattendedGateTickets.Rejection rejection) {
+    if (!gateTickets.isResolvable()) {
+      LOG.infof(
+          "Release request %s was rejected with nobody watching it (%s); no ticket sink is"
+              + " configured, so it is only on the request: %s",
+          rejection.requestId(), rejection.requester(), rejection.detail());
+      return;
+    }
+    String ticketId;
+    try {
+      ticketId = gateTickets.get().rejected(rejection).orElse(null);
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and must not reach the gate.
+      LOG.warnf(e, "Could not file the gate-failure ticket for release request %s",
+          rejection.requestId());
+      return;
+    }
+    if (ticketId == null || ticketId.equals(rejection.existingTicketId())) {
+      return;
+    }
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                requests
+                    .findByIdOptional(rejection.requestId())
+                    .ifPresent(row -> row.gateTicketId = ticketId));
+    LOG.infof(
+        "Release request %s was rejected with nobody watching it; filed ticket %s",
+        rejection.requestId(), ticketId);
   }
 
   private void enqueueExecution(String id) {
@@ -1171,6 +1269,7 @@ public class ReleaseRequests {
       // ReleaseFinalization's catch-up sweep is for.
       finalization.onReleased(ask.repoId(), outcome.version());
       resolveWorkspacesOnReleasedBranches(ask, outcome);
+      sayItHealed(ask, outcome.version());
     } else {
       settle(id, ReleaseRequest.State.FAILED, outcome.detail(), null, outcome.retryable());
       LOG.warnf(
@@ -1212,6 +1311,44 @@ public class ReleaseRequests {
       LOG.warnf(
           e, "Could not resolve the workspaces of the branches released by request %s",
           ask.requestId());
+    }
+  }
+
+  /**
+   * The request that a ticket was filed about has released after all — said on that ticket's thread,
+   * and nothing more.
+   *
+   * <p><b>The ticket is deliberately left OPEN.</b> A green build says this fold passes now; it does
+   * not say that whatever a person added to the thread in the meantime is handled, and a machine
+   * that files a report is a much cheaper thing to be wrong about than a machine that closes one.
+   * Somebody reading "this released as 2026.910.104616" and resolving it costs one press; a ticket
+   * auto-resolved over a discussion nobody finished costs the discussion.
+   *
+   * <p>Last on the release path, after the row is RELEASED, and wrapped like every other call out
+   * here: a release that has already happened must never be failed by a ticket store.
+   */
+  private void sayItHealed(ReleaseExecutor.Release ask, String version) {
+    if (!gateTickets.isResolvable()) {
+      return;
+    }
+    String ticketId =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests
+                        .findByIdOptional(ask.requestId())
+                        .map(row -> row.gateTicketId)
+                        .orElse(null));
+    if (ticketId == null) {
+      return;
+    }
+    try {
+      gateTickets.get().released(ticketId, ask.requestId(), ask.repoName(), version);
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and must not touch a settled release.
+      LOG.warnf(
+          e, "Could not close the loop on ticket %s for released request %s",
+          ticketId, ask.requestId());
     }
   }
 
@@ -1426,6 +1563,8 @@ public class ReleaseRequests {
         row.state.name(),
         row.summary,
         row.requester,
+        isUnattended(row),
+        row.gateTicketId,
         row.detail,
         conflictOf(row),
         row.version,

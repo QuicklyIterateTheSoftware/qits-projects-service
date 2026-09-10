@@ -1,0 +1,14 @@
+-- The ticket filed for a red gate on a request NOBODY IS WATCHING, remembered on the request so a
+-- second failure is a comment rather than a second ticket. A request re-folds and re-gates on every
+-- push to a participating branch, on a sibling's release and on every pending tag reaching main, so
+-- one stuck repository goes red many times over -- and a ticket per verdict would be a ticket storm
+-- on exactly the repository somebody is already trying to fix.
+--
+-- One column and no join: a request is per (repository, branch) by construction, because asking to
+-- release a branch that already participates in an open request converges on that request rather
+-- than opening a second one, so the request row IS the dedupe key the ticket wanted.
+--
+-- It is a ticket id in the epics database, which is a DIFFERENT physical database -- so no foreign
+-- key exists to declare, and none is wanted: a ticket somebody deletes leaves a dangling link that
+-- reads as "there is no open ticket" and files a fresh one, which is the correct behaviour.
+alter table release_request add column gate_ticket_id varchar(255);

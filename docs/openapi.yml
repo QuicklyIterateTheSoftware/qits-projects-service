@@ -1070,6 +1070,10 @@ components:
           type: string
         requester:
           type: string
+        unattended:
+          type: boolean
+        gateTicketId:
+          type: string
         detail:
           type: string
         conflict:
@@ -4964,4 +4968,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.909.115344
+  version: 2026.910.95716

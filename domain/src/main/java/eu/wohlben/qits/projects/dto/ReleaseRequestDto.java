@@ -44,6 +44,15 @@ import java.util.List;
  * on a merge that will not apply. Null on every request that has not released, where there is
  * nothing to have reached {@code main}.
  *
+ * <p><b>{@code unattended} says nobody is waiting on this request.</b> It is derived, never stored:
+ * true where the {@code requester} is one of the platform's machine identities — a maintenance bump
+ * asked for this release and stopped — and it is the difference between a REJECTED request somebody
+ * is answering and one that is simply stuck with no reader. A listing that shows both as "rejected"
+ * is how a repository stops moving for four hours without anybody noticing. It is true whatever the
+ * state, because who asked does not change when the gate does; a caller that wants "unowned AND
+ * blocked" reads it together with {@code state}. {@code gateTicketId} is the ticket filed for such a
+ * rejection — null until one is, and null for ever on a request a person opened.
+ *
  * <p>{@code repoName} is the repository's public name — null where it has none. It rides along
  * because a request read outside its repository's own page (the project-wide list) has nothing else
  * to name the repository with, and an opaque id is not a thing to show a person. The project list
@@ -61,6 +70,8 @@ public record ReleaseRequestDto(
     String state,
     String summary,
     String requester,
+    boolean unattended,
+    String gateTicketId,
     String detail,
     MergeConflictDto conflict,
     String version,

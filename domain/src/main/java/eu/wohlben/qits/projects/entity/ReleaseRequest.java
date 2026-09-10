@@ -138,6 +138,23 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   /** The calver the release door answered with, once RELEASED. */
   @Column public String version;
 
+  /**
+   * The ticket filed because this request's gate went red with <b>nobody watching</b> — see {@code
+   * UnattendedGateTickets}. Null on every request that has never been rejected unattended, and it is
+   * the dedupe key: a further red verdict is a comment on this ticket rather than a second one.
+   *
+   * <p>Not cleared by a re-arm and not cleared by the release. A re-arm is a fold nobody has judged
+   * yet and clearing the link there would file a fresh ticket the moment the same build fails again;
+   * a release is a "this released as {version}" comment on the thread, which is a thing to say on
+   * the ticket rather than a reason to forget it. What ends the link is the ticket being RESOLVED —
+   * asked at the far side, at the moment the next failure needs to know.
+   *
+   * <p>It names a row in the <b>epics</b> database. There is no foreign key because there cannot be
+   * one, and a ticket somebody deleted reads as "there is no open ticket" and files a fresh one.
+   */
+  @Column(name = "gate_ticket_id")
+  public String gateTicketId;
+
   @Column(name = "created_at", nullable = false)
   public Instant createdAt;
 
