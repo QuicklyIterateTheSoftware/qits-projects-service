@@ -53,6 +53,26 @@ import java.util.List;
  * blocked" reads it together with {@code state}. {@code gateTicketId} is the ticket filed for such a
  * rejection — null until one is, and null for ever on a request a person opened.
  *
+ * <p><b>The approval fields are the SECOND gate, and every one of them is derived at the request's
+ * current {@code mergedSha} and never stored on the request row.</b> {@code approvalRequired} is
+ * {@code ApprovalPolicy}'s answer about the repository; {@code approvalState} is {@code
+ * NOT_REQUIRED}, {@code WAITING}, {@code APPROVED} or {@code DECLINED}, a word rather than a closed
+ * set like {@code state} and {@code priority} beside it, because the vocabulary may grow. Deriving
+ * rather than storing is the whole point: a policy change has to reach the requests that are already
+ * open — the day a second archetype starts needing a person, every PENDING request of one does, at
+ * once — and a stored copy would be a second answer that went on saying {@code NOT_REQUIRED} until
+ * something remembered to rewrite it. A stored copy of the <em>decision</em> would be worse still,
+ * because it would have to be cleared on every re-fold, and the whole design of the approval record
+ * is that the sha on it makes that unnecessary.
+ *
+ * <p>{@code approvedBy}, {@code approvedAt} and {@code approvalNote} are the newest decision at that
+ * same sha, and they are <b>null together</b> where there is none — a repository nobody has to ask,
+ * a fold nobody has judged, and a fold whose earlier decisions were all made against a sha the
+ * request has moved past, which are one answer on purpose. <b>They carry whichever decision is
+ * current, a decline included</b>, and they keep the approving names rather than gaining a second
+ * neutral trio: {@code approvalState} already says which it was, and two sets of the same three
+ * fields is how a caller comes to read one and miss the other.
+ *
  * <p>{@code repoName} is the repository's public name — null where it has none. It rides along
  * because a request read outside its repository's own page (the project-wide list) has nothing else
  * to name the repository with, and an opaque id is not a thing to show a person. The project list
@@ -73,6 +93,11 @@ public record ReleaseRequestDto(
     boolean unattended,
     String gateTicketId,
     String detail,
+    boolean approvalRequired,
+    String approvalState,
+    String approvedBy,
+    Instant approvedAt,
+    String approvalNote,
     MergeConflictDto conflict,
     String version,
     String releasedSha,

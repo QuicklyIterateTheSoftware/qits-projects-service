@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
 import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -15,6 +16,7 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestApprovalRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
@@ -119,6 +121,47 @@ import org.jboss.logging.Logger;
  * frees a build agent, it does not decide anything. See {@link #evaluate(String, String)} and {@link
  * QaRunCancellations}.
  *
+ * <h2>The approval gate</h2>
+ *
+ * <p><b>Some releases need a person to say yes, and that is a second gate rather than a clause of
+ * the first.</b> Where {@link ApprovalPolicy} says this repository's releases have to be approved —
+ * today that is the wrapper, whose release is the estate's own version moving — a request that has
+ * passed every build-gate arm still does not become READY until somebody has decided about it. The
+ * decision is a {@link eu.wohlben.qits.projects.entity.ReleaseRequestApproval} row: APPROVED lets it
+ * through, DECLINED rejects it with the decider's own sentence, and no row at all holds it PENDING
+ * saying so.
+ *
+ * <p><b>It is correlated to {@code mergedSha}, exactly as the build gate is, and that is what makes
+ * it cost nothing to invalidate.</b> A decision names the fold it was made about, so anything that
+ * re-folds this request lands a new sha and the old decision stops matching — no column to clear, no
+ * path that has to remember to clear it, and no way for an approval of one content to authorise
+ * another. Pushing a fix onto a declined request is the ordinary way to answer it, the same move
+ * that answers a red build.
+ *
+ * <p><b>Nothing about it is stored on the request.</b> Whether approval is required is asked of
+ * {@link ApprovalPolicy} on every evaluation and on every read, and the decision is read out of the
+ * approval table at the current sha. That is deliberate rather than incidental: the policy is a seam
+ * whose rule is going to change, and a stored answer would leave the requests that are already open
+ * holding the old one. What the API answers is derived the same way, for the same reason — see
+ * {@link ReleaseRequestDto}.
+ *
+ * <p><b>Its rule is a placeholder and its position is not.</b> {@link ApprovalPolicy} tests the
+ * archetype today; what replaces it is the primary quality gate — the step that asks whether the
+ * change did what it set out to do — after which a person is asked when that gate cannot vouch for
+ * the work, whatever the repository is. So this gate is the escalation seam, and the policy in front
+ * of it is the <em>primary</em> gate in the sense that matters here: it decides whether the question
+ * is asked at all, and everything downstream of it is unchanged by the day it starts answering
+ * differently.
+ *
+ * <p><b>Why it sits AFTER the build gate.</b> A red gating verdict rejects the request before
+ * anybody is asked, so nobody is ever put in front of a fold CI has already failed — the most
+ * expensive thing a gate can waste is a person's attention, and asking for a sign-off on a broken
+ * build spends it on a decision that cannot matter. The same order is why a request waiting for CI
+ * says so rather than asking for an approval it would have to re-ask after the next fold. A
+ * <b>decline is not an unattended-gate ticket</b> for the mirror-image reason: a person just said
+ * no, so by definition somebody is watching, and {@link UnattendedGateTickets} stays wired to red
+ * builds alone.
+ *
  * <h2>The release</h2>
  *
  * <p><b>Execution happens off every other thread.</b> A READY request is handed to the one-thread
@@ -146,6 +189,16 @@ public class ReleaseRequests {
   @Inject ReleaseRequestSourceRepository sources;
 
   @Inject ReleasedTagPendingMergeRepository pendingTags;
+
+  /**
+   * The approval gate's two halves — the policy that says whether a person has to be asked, and the
+   * rows that say what one answered. Both are read on every evaluation and on every read of a
+   * request, and neither is cached: see the approval gate in this class's javadoc for why nothing
+   * about it may be stored on the request row.
+   */
+  @Inject ApprovalPolicy approvalPolicy;
+
+  @Inject ReleaseRequestApprovalRepository approvals;
 
   @Inject RepositoryRepository repositories;
 
@@ -439,7 +492,8 @@ public class ReleaseRequests {
                   row.repoName,
                   sources.listByRequest(id),
                   implicitFor(row.repoId),
-                  pendingTags.findByRequest(id).orElse(null));
+                  pendingTags.findByRequest(id).orElse(null),
+                  approvalOf(row));
             });
   }
 
@@ -1110,6 +1164,34 @@ public class ReleaseRequests {
                         active + " CI run(s) are still in flight for " + shortSha(row.mergedSha));
                     return false;
                   }
+                  // THE SECOND GATE, and it is deliberately the last thing asked. Everything above
+                  // is the build gate; a red verdict has already rejected, so nobody is ever asked
+                  // to sign off a fold CI has failed. Same transaction, same thread — this is two
+                  // reads of tables this service owns, and approving is itself a re-evaluation
+                  // trigger, so a door that records a decision calls evaluate() after its write and
+                  // the request settles here on the next pass.
+                  if (approvalPolicy.requiresApproval(row.repoId)) {
+                    ReleaseRequestApproval decision =
+                        approvals.latestFor(row.id, row.mergedSha).orElse(null);
+                    if (decision == null) {
+                      // No decision about THIS fold. A decision about a superseded one is the same
+                      // answer: the re-arm carries the invalidation, so there is nothing to clear.
+                      waiting(
+                          row, "Waiting for a person to approve " + shortSha(row.mergedSha));
+                      return false;
+                    }
+                    if (decision.decision == ReleaseRequestApproval.Decision.DECLINED) {
+                      row.state = ReleaseRequest.State.REJECTED;
+                      row.detail = declinedDetail(decision);
+                      row.updatedAt = Instant.now();
+                      // NO unattended-gate ticket, and that is the whole difference from a red
+                      // build: a person just said no, so somebody is demonstrably watching. Filing
+                      // them a ticket about their own decision is noise on the one repository where
+                      // a human is already engaged.
+                      return false;
+                    }
+                    // APPROVED: fall through, exactly as a green gating verdict does.
+                  }
                   row.state = ReleaseRequest.State.READY;
                   row.detail = null;
                   row.updatedAt = Instant.now();
@@ -1489,6 +1571,14 @@ public class ReleaseRequests {
    * release in flight, and it carries the sha the tag points at just as an already-merged one does.
    * Filtering it out is what used to make the answer say "there is no such release" for exactly the
    * releases somebody is watching.
+   *
+   * <p><b>The approval gate is answered in the same batched shape and for the same reason.</b> It is
+   * derived per read rather than stored, so it is two more questions per row and would be two more
+   * queries per row if it were asked naively — on the project-wide worklist, which is the busiest
+   * read this class has. So the policy is asked once per <b>distinct repository</b> (the page's rows
+   * are usually a handful of repositories, and the answer cannot differ within one) and the
+   * decisions come back in one query, keyed on each request's own current fold — see {@link
+   * ReleaseRequestApprovalRepository#currentForEach}.
    */
   private List<ReleaseRequestDto> decorate(
       List<ReleaseRequest> rows, Map<String, String> currentNames) {
@@ -1504,6 +1594,18 @@ public class ReleaseRequests {
     Map<String, ReleasedTagPendingMerge> released =
         pendingTags.listByRequests(ids).stream()
             .collect(Collectors.toMap(tag -> tag.releaseRequestId, tag -> tag, (a, b) -> a));
+    Map<String, Boolean> approvalRequired =
+        rows.stream()
+            .map(row -> row.repoId)
+            .distinct()
+            .collect(
+                Collectors.toMap(repoId -> repoId, repoId -> approvalPolicy.requiresApproval(repoId)));
+    Map<String, ReleaseRequestApproval> decisions =
+        approvals.currentForEach(
+            rows.stream()
+                .filter(row -> row.mergedSha != null)
+                .collect(
+                    Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a)));
     return rows.stream()
         .map(
             row ->
@@ -1512,8 +1614,78 @@ public class ReleaseRequests {
                     currentNames.getOrDefault(row.repoId, row.repoName),
                     named.getOrDefault(row.id, List.of()),
                     implicit.getOrDefault(row.repoId, List.of()),
-                    released.get(row.id)))
+                    released.get(row.id),
+                    ApprovalView.of(
+                        approvalRequired.getOrDefault(row.repoId, false), decisions.get(row.id))))
         .toList();
+  }
+
+  /**
+   * The approval gate as a <b>read</b> answers it: whether a person had to be asked, what the newest
+   * decision at this request's current fold was, and who made it. Derived on every read out of the
+   * policy and the approval table, never out of the request row, because there is nothing about it
+   * on the request row — see the approval gate in this class's javadoc.
+   *
+   * <p>It is a record rather than five parameters threaded through {@link #dto} because both callers
+   * compute the same five things and only the number of queries differs, and because the invariant
+   * worth holding in one place is that {@code state} and the three decision fields can never
+   * disagree: they are made from the one decision or from its absence, together.
+   */
+  private record ApprovalView(
+      boolean required,
+      ReleaseRequest.ApprovalState state,
+      String actor,
+      Instant decidedAt,
+      String note) {
+
+    /**
+     * @param decision the newest decision at the request's <b>current</b> {@code mergedSha}, or null
+     *     where there is none — a fold nobody has judged, and one whose decisions were all made
+     *     against a sha the request has moved past, which are one answer on purpose.
+     */
+    static ApprovalView of(boolean required, ReleaseRequestApproval decision) {
+      if (!required) {
+        // Not asked, which is deliberately not the same word as approved. The decision fields stay
+        // null even where a row exists: a policy that stopped requiring approval must not leave the
+        // answer looking like somebody is still gating on it.
+        return new ApprovalView(false, ReleaseRequest.ApprovalState.NOT_REQUIRED, null, null, null);
+      }
+      if (decision == null) {
+        return new ApprovalView(true, ReleaseRequest.ApprovalState.WAITING, null, null, null);
+      }
+      ReleaseRequest.ApprovalState state =
+          decision.decision == ReleaseRequestApproval.Decision.DECLINED
+              ? ReleaseRequest.ApprovalState.DECLINED
+              : ReleaseRequest.ApprovalState.APPROVED;
+      return new ApprovalView(true, state, decision.actor, decision.decidedAt, decision.note);
+    }
+  }
+
+  /**
+   * The same derivation for a <b>single</b> request, where a batched read would be one query with
+   * one element in it. Called inside the caller's already-open transaction, like {@link
+   * #effectivePriorityOf(String)} beside it.
+   */
+  private ApprovalView approvalOf(ReleaseRequest row) {
+    boolean required = approvalPolicy.requiresApproval(row.repoId);
+    return ApprovalView.of(
+        required,
+        required && row.mergedSha != null
+            ? approvals.latestFor(row.id, row.mergedSha).orElse(null)
+            : null);
+  }
+
+  /**
+   * What a DECLINED request says, and it names the person: a machine gate's sentence is about a run,
+   * and this one is about somebody's judgement, so the actor is the first thing in it. The note is
+   * appended only where there is one — a decline with nothing said reads as the bare fact rather
+   * than as a sentence with an empty tail.
+   */
+  private static String declinedDetail(ReleaseRequestApproval decision) {
+    String note = decision.note == null ? null : decision.note.trim();
+    return "Declined by "
+        + decision.actor
+        + (note == null || note.isEmpty() ? "" : ": " + note);
   }
 
   private List<ReleasedTagPendingMerge> implicitFor(String repoId) {
@@ -1524,13 +1696,16 @@ public class ReleaseRequests {
    * @param released this request's own released tag, or null where it produced none — an unreleased
    *     request, and a release made before {@code released_tag_pending_merge} existed. Both of its
    *     fields on the answer are therefore null together with it.
+   * @param approval the approval gate as of this read, already derived — passed in rather than
+   *     computed here so that the list path can answer a whole page in a fixed number of queries.
    */
   private ReleaseRequestDto dto(
       ReleaseRequest row,
       String repoName,
       List<ReleaseRequestSource> named,
       List<ReleasedTagPendingMerge> implicit,
-      ReleasedTagPendingMerge released) {
+      ReleasedTagPendingMerge released,
+      ApprovalView approval) {
     List<ReleaseRequestSourceDto> all = new ArrayList<>();
     for (ReleaseRequestSource source : named) {
       all.add(
@@ -1566,6 +1741,11 @@ public class ReleaseRequests {
         isUnattended(row),
         row.gateTicketId,
         row.detail,
+        approval.required(),
+        approval.state().name(),
+        approval.actor(),
+        approval.decidedAt(),
+        approval.note(),
         conflictOf(row),
         row.version,
         released == null ? null : released.releasedSha,

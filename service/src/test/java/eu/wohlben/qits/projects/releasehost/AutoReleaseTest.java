@@ -13,6 +13,7 @@ import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
@@ -22,6 +23,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -102,7 +104,11 @@ public class AutoReleaseTest {
             });
   }
 
-  /** Open requests must not outlive this class: {@code sweep()} walks every open row. */
+  /**
+   * Open requests must not outlive this class: {@code sweep()} walks every open row. The approval
+   * rows go with them by hand — they have no foreign key to the request, deliberately, so nothing
+   * cascades them away.
+   */
   @AfterEach
   void dropTheFixture() {
     QuarkusTransaction.requiringNew()
@@ -110,8 +116,15 @@ public class AutoReleaseTest {
             () -> {
               ReleaseRequest.delete("projectId = ?1", projectId);
               ReleasedTagPendingMerge.delete("repoId = ?1", repoId);
+              if (!approvedRequestIds.isEmpty()) {
+                ReleaseRequestApproval.delete("requestId in ?1", approvedRequestIds);
+              }
             });
+    approvedRequestIds.clear();
   }
+
+  /** The requests this test approved, so their rows can be dropped again. */
+  private final List<String> approvedRequestIds = new ArrayList<>();
 
   // ---------------------------------------------------------------------------------------------
   // The fixture repository
@@ -227,8 +240,35 @@ public class AutoReleaseTest {
     gitHost.tree(mergedSha, tree);
     executor.passThrough();
     activeBuilds.answer(Optional.of(0));
+    approve(id, mergedSha);
     greenVerdict(mergedSha);
     return id;
+  }
+
+  /**
+   * Clear the <b>approval</b> gate as well as the build one. This class is about the executor and
+   * about nothing else, so it clears every gate a request has rather than choosing which ones to
+   * stage — and the wrapper cases below need it, because {@code ApprovalPolicy} asks for a person on
+   * exactly the archetype {@link #wrapperEstate()} turns the fixture into. For every other test here
+   * the row is inert: the policy says no approval is required, so nothing reads it.
+   *
+   * <p>Inserted directly because the doors that record a decision do not exist yet; {@code
+   * ReleaseRequestApprovalGateTest} is where the gate's own behaviour is asserted.
+   */
+  private void approve(String requestId, String sha) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequestApproval approval = new ReleaseRequestApproval();
+              approval.id = UUID.randomUUID().toString();
+              approval.requestId = requestId;
+              approval.mergedSha = sha;
+              approval.decision = ReleaseRequestApproval.Decision.APPROVED;
+              approval.actor = "ada";
+              approval.decidedAt = Instant.now();
+              approval.persist();
+              approvedRequestIds.add(requestId);
+            });
   }
 
   // ---------------------------------------------------------------------------------------------

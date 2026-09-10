@@ -40,6 +40,17 @@ import java.util.UUID;
  * {@code PENDING}; {@code WITHDRAWN} is reserved for an explicit withdrawal. Stored as a string with
  * no check constraint, the platform's usual reasoning — which is why CONFLICTED cost no DDL.
  *
+ * <p><b>{@code PENDING → READY} is now TWO gates, not one</b>, and only the first of them is made of
+ * verdicts. The build gate asks whether CI vouched for {@link #mergedSha}; the <b>approval gate</b>
+ * asks, where {@code ApprovalPolicy} says a person has to be asked at all, whether one has said yes
+ * about that same sha ({@link ReleaseRequestApproval}). Both have to pass for the state to move, and
+ * they are ordered rather than combined: the build gate rejects first, so a fold CI has already
+ * failed is never put in front of a person. Neither answer is a column here — the build gate reads
+ * {@code commit_build_status} and the approval gate reads {@code release_request_approval}, both
+ * correlated to {@code mergedSha}, so the re-arm invalidates both for free and there is nothing to
+ * clear. A request held by the approval gate is PENDING like any other, with {@link #detail} saying
+ * which of the two it is waiting on.
+ *
  * <p>A {@link CausedRow}: created on the request thread, so the stamp records what asked. Updates
  * (the re-merge, gate resolution, execution) are machine-driven and the stamp is insert-only — the
  * verdicts that resolved a request are their own caused rows in {@code commit_build_status}.
@@ -59,6 +70,30 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
     /** The sources cannot be folded; {@link #conflictDetail} says which paths and whose head. */
     CONFLICTED,
     WITHDRAWN
+  }
+
+  /**
+   * How the <b>approval</b> gate stands for this request, right now — the second gate's answer,
+   * beside {@link State}'s.
+   *
+   * <p><b>There is no column behind this and there must never be one.</b> It is derived per read
+   * from two facts that live elsewhere: whether {@code ApprovalPolicy} says this repository needs a
+   * person at all, and the newest {@link ReleaseRequestApproval} at the request's <em>current</em>
+   * {@link #mergedSha}. Storing it would be a second answer that a policy change could not reach —
+   * the day the policy widens, every already-open request has to start needing approval, and a
+   * stored word would go on saying {@code NOT_REQUIRED} until something remembered to rewrite it.
+   *
+   * <p>{@code NOT_REQUIRED} is the answer for the repositories that release on their gates alone,
+   * and it is deliberately not the same as {@code APPROVED}: nobody was asked. {@code WAITING} is a
+   * request that needs a person and has not had one at this fold — including one whose earlier
+   * decisions were all made against a sha it has since moved past, which is a fold nobody has looked
+   * at however much history it carries.
+   */
+  public enum ApprovalState {
+    NOT_REQUIRED,
+    WAITING,
+    APPROVED,
+    DECLINED
   }
 
   /** The prefix of every request's backing branch. Storage, in the sense that git refs are. */

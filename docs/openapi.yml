@@ -1076,6 +1076,16 @@ components:
           type: string
         detail:
           type: string
+        approvalRequired:
+          type: boolean
+        approvalState:
+          type: string
+        approvedBy:
+          type: string
+        approvedAt:
+          $ref: "#/components/schemas/Instant"
+        approvalNote:
+          type: string
         conflict:
           $ref: "#/components/schemas/MergeConflictDto"
         version:
@@ -4968,4 +4978,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.910.95716
+  version: 2026.910.124356
