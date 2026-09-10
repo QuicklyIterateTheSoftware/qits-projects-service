@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.projects.entity.RefinementDesign;
-import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.refinementhost.RefinementDesigns;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -21,16 +20,22 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * The refinement's frozen HTML designs — the Design tab's surface. A design is one self-contained
- * document with inline styles: either what the person sees (ACTIVE) or an agent's proposed revision
- * (PROPOSED), which only a person resolves.
+ * The refinement's HTML designs — the Design tab's surface. A design is one self-contained document
+ * with inline styles, written and rewritten in place: there is no proposal, no ACTIVE row and
+ * nobody who accepts a write. The gate on the draft is the epic's own {@code REFINING →
+ * IMPLEMENTATION} transition.
+ *
+ * <p>{@code POST} creates and {@code PUT} updates, and the update carries the {@code version} the
+ * caller last read. A stale one is a <b>409 carrying the current design</b>, document included, so
+ * the SPA can show what the write would have overwritten instead of dropping what somebody typed.
  *
  * <p>The document travels as a JSON field, and the list leaves it out: a design is bytes measured
  * in megabytes and a listing is drawn from titles and sizes.
  *
  * <p>There is deliberately NO {@code /content} route serving {@code text/html}: agent-authored HTML
  * served same-origin would be an XSS door, so the SPA renders each design in a sandboxed iframe
- * with scripts off.
+ * with scripts off. A <em>copy</em> of a design inlined into a dossier is served from one hardened
+ * route in the epics half of this service; these bytes are not.
  */
 @Path("/refinements/{id}/designs")
 @Produces(MediaType.APPLICATION_JSON)
@@ -49,19 +54,16 @@ public class RefinementDesignController {
   public record NewDesign(
       @NotBlank String title, @NotBlank String html, String sourceRoute, boolean truncated) {}
 
-  public record RenameDesign(@NotBlank String title) {}
-
-  public record ResolveDesign(@NotBlank String mode) {}
+  /** A write onto an existing design: the title always, the document when it changed. */
+  public record UpdateDesign(@NotBlank String title, String html, Long version, Boolean truncated) {}
 
   public record DesignDto(
       String id,
       String title,
-      String status,
-      String basedOnDesignId,
-      String note,
       String sourceRoute,
       int htmlBytes,
       boolean truncated,
+      long version,
       String createdBy,
       Instant createdAt,
       Instant updatedAt,
@@ -81,10 +83,12 @@ public class RefinementDesignController {
   public Response add(@PathParam("id") long id, NewDesign request) {
     refinements.get(id);
     RefinementDesign row =
-        designs.add(
+        designs.put(
             id,
+            null,
             request.title(),
             request.html(),
+            null,
             request.sourceRoute(),
             request.truncated(),
             createdBy());
@@ -99,21 +103,27 @@ public class RefinementDesignController {
     return dto(designs.get(id, designId), true);
   }
 
+  /**
+   * Rewrite a design in place. {@code html} may be omitted, which leaves the document alone and
+   * makes this a rename; {@code version} is what the caller last read and a stale one is a 409
+   * carrying the current design.
+   */
   @PUT
   @Path("/{designId}")
-  public DesignDto rename(
-      @PathParam("id") long id, @PathParam("designId") String designId, RenameDesign request) {
+  public DesignDto update(
+      @PathParam("id") long id, @PathParam("designId") String designId, UpdateDesign request) {
     refinements.get(id);
-    return dto(designs.rename(id, designId, request.title()), false);
-  }
-
-  /** The person's decision on a proposal: REPLACE the original, or KEEP it as its own design. */
-  @POST
-  @Path("/{designId}/resolve")
-  public DesignDto resolve(
-      @PathParam("id") long id, @PathParam("designId") String designId, ResolveDesign request) {
-    refinements.get(id);
-    return dto(designs.resolve(id, designId, modeOf(request.mode())), false);
+    RefinementDesign row =
+        designs.put(
+            id,
+            designId,
+            request.title(),
+            request.html(),
+            request.version(),
+            null,
+            request.truncated() != null && request.truncated(),
+            createdBy());
+    return dto(row, false);
   }
 
   @DELETE
@@ -121,14 +131,6 @@ public class RefinementDesignController {
   public void delete(@PathParam("id") long id, @PathParam("designId") String designId) {
     refinements.get(id);
     designs.delete(id, designId);
-  }
-
-  private static RefinementDesigns.Resolution modeOf(String mode) {
-    try {
-      return RefinementDesigns.Resolution.valueOf(mode);
-    } catch (IllegalArgumentException | NullPointerException e) {
-      throw new DomainException(400, "The resolution must be REPLACE or KEEP.");
-    }
   }
 
   /** The forwarded user, else the marker — a design row always names an author. */
@@ -143,12 +145,10 @@ public class RefinementDesignController {
     return new DesignDto(
         row.id,
         row.title,
-        row.status.name(),
-        row.basedOnDesignId,
-        row.note,
         row.sourceRoute,
         row.htmlBytes,
         row.truncated,
+        row.version,
         row.createdBy,
         row.createdAt,
         row.updatedAt,

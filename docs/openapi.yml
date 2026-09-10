@@ -563,12 +563,6 @@ components:
           type: string
         title:
           type: string
-        status:
-          type: string
-        basedOnDesignId:
-          type: string
-        note:
-          type: string
         sourceRoute:
           type: string
         htmlBytes:
@@ -576,6 +570,9 @@ components:
           format: int32
         truncated:
           type: boolean
+        version:
+          type: integer
+          format: int64
         createdBy:
           type: string
         createdAt:
@@ -1103,14 +1100,6 @@ components:
           type: boolean
         priority:
           type: string
-    RenameDesign:
-      type: object
-      required:
-      - title
-      properties:
-        title:
-          type: string
-          pattern: \S
     RenameRepositoryRequest:
       type: object
       required:
@@ -1163,14 +1152,6 @@ components:
           type: string
         lastBackup:
           $ref: "#/components/schemas/LastBackupDto"
-    ResolveDesign:
-      type: object
-      required:
-      - mode
-      properties:
-        mode:
-          type: string
-          pattern: \S
     Response:
       type: object
       properties:
@@ -1754,6 +1735,21 @@ components:
       properties:
         target:
           type: string
+    UpdateDesign:
+      type: object
+      required:
+      - title
+      properties:
+        title:
+          type: string
+          pattern: \S
+        html:
+          type: string
+        version:
+          type: integer
+          format: int64
+        truncated:
+          type: boolean
     UpdateEpicRequest:
       type: object
       required:
@@ -3300,7 +3296,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RenameDesign"
+              $ref: "#/components/schemas/UpdateDesign"
         required: true
       responses:
         "200":
@@ -3315,7 +3311,7 @@ paths:
           description: Not Allowed
         "400":
           description: Bad Request
-      summary: Rename
+      summary: Update
       tags:
       - Refinement Design Controller
       security:
@@ -3372,45 +3368,6 @@ paths:
         "403":
           description: Not Allowed
       summary: Delete
-      tags:
-      - Refinement Design Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/refinements/{id}/designs/{designId}/resolve:
-    post:
-      parameters:
-      - name: designId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ResolveDesign"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DesignDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Resolve
       tags:
       - Refinement Design Controller
       security:
@@ -4968,4 +4925,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.910.95716
+  version: 2026.910.124356
