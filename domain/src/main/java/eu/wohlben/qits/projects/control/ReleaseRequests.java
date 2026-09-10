@@ -13,7 +13,6 @@ import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
-import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
@@ -33,7 +32,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -1567,7 +1565,6 @@ public class ReleaseRequests {
                       row.requester,
                       named.stream().map(source -> source.name).toList(),
                       mainOf(row.repoId),
-                      wrapperCatalogOf(row.repoId, row.projectId),
                       // Read LIVE, here and not at the fold: a request can wait a whole pipeline on
                       // its gate, and an escalation made in that window has to reach the tag.
                       effectivePriorityOf(named).name());
@@ -2117,38 +2114,6 @@ public class ReleaseRequests {
         .map(repository -> repository.mainBranch)
         .filter(branch -> branch != null && !branch.isBlank())
         .orElse(DEFAULT_MAIN);
-  }
-
-  /**
-   * The project's other repositories by registered name, and only for a WRAPPER release — the
-   * catalog the executor banks the wrapper's gitlink pins from. Empty for every ordinary
-   * repository, which is what turns the banking arm off without a flag: an estate of nothing is
-   * nothing to pin.
-   *
-   * <p>The wrapper itself is excluded — a superproject does not pin itself — and a repository the
-   * name table has no row for is simply absent, because a gitlink needs the name {@code
-   * .gitmodules} declares and an unnamed row cannot be matched to one.
-   */
-  private Map<String, ReleaseExecutor.Submodule> wrapperCatalogOf(String repoId, String projectId) {
-    boolean wrapper =
-        repositories
-            .findByIdOptional(repoId)
-            .map(repository -> repository.archetype == RepositoryArchetype.PROJECT)
-            .orElse(false);
-    if (!wrapper || projectId == null) {
-      return Map.of();
-    }
-    Map<String, ReleaseExecutor.Submodule> catalog = new LinkedHashMap<>();
-    names
-        .namesByRepository(projectId)
-        .forEach(
-            (siblingId, name) -> {
-              if (siblingId.equals(repoId)) {
-                return;
-              }
-              catalog.put(name, new ReleaseExecutor.Submodule(siblingId, mainOf(siblingId)));
-            });
-    return Map.copyOf(catalog);
   }
 
   private String conflictJson(String target, List<BackingBranchMerger.Conflict> conflicts) {

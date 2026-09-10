@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * The arm that performs a release once its gates have passed.
@@ -14,6 +13,15 @@ import java.util.Map;
  * implementation does now is: stamp a version, rewrite the manifests at the fold, commit them onto
  * the backing branch, tag that commit, delete the branches the release consumed, and announce it.
  * {@code qits.projects.release-requests.workspaces-url} went with the door.
+ *
+ * <p><b>The ask says nothing about archetypes any more.</b> Until the pins moved into the fold, the
+ * WRAPPER's release carried a catalog of its project's other repositories with it, so that the
+ * executor could read each one's head and bank a gitlink for it in the release commit — which made
+ * {@code RepositoryArchetype.PROJECT} a question the <em>release path</em> had to ask, and made the
+ * estate that shipped something computed after the gate and after the person approving had read the
+ * fold. The pins are written onto the source branch now, before either, so the catalog went with the
+ * banking arm and this record is the same seven-and-a-bit facts for every repository the platform
+ * holds. What is released is a fold, and nothing here asks what kind of repository it came from.
  *
  * <p>A port in the house shape: {@code Instance}-resolved, absent supported — a deployment with no
  * executor leaves every READY request standing with a detail that says why, which is a visible
@@ -42,11 +50,6 @@ public interface ReleaseExecutor {
    *     success, <b>except</b> {@link #defaultBranch}, which is never deleted by anything
    * @param defaultBranch the repository's default branch, so the exclusion above is a fact rather
    *     than a guess at the string {@code "main"}
-   * @param wrapperCatalog non-empty only when the released repository is the project's WRAPPER:
-   *     the project's other repositories by registered name, so the executor can bank the
-   *     wrapper's gitlink pins at each submodule's current default-branch head. Read off the
-   *     catalog in the same transaction as the rest of the ask; empty means an ordinary release
-   *     and no banking arm at all.
    * @param priority the request's effective priority — the max over {@link #namedSources}' rows, as
    *     the constant's own name. Computed <b>at release time</b> rather than carried from the fold,
    *     so an escalation made while the request waited on its gate reaches the tag's announcement.
@@ -64,11 +67,7 @@ public interface ReleaseExecutor {
       String requester,
       List<String> namedSources,
       String defaultBranch,
-      Map<String, Submodule> wrapperCatalog,
       String priority) {}
-
-  /** One catalog repository a wrapper's gitlink may pin: its storage id and its default branch. */
-  record Submodule(String repoId, String mainBranch) {}
 
   /** Release the fold. Never throws; a failure is an {@link Outcome}. */
   Outcome release(Release release);

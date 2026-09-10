@@ -48,8 +48,24 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   /** Tag names the host already holds — the version-uniqueness refusal, staged. */
   private final List<String> taken = Collections.synchronizedList(new ArrayList<>());
 
-  /** Branch heads by {@code <repoId>@<branch>} — what a wrapper release banks its pins from. */
+  /** Branch heads by {@code <repoId>@<branch>} — the port's branch-resolution read, staged. */
   private final Map<String, Answer<String>> heads =
+      Collections.synchronizedMap(new LinkedHashMap<>());
+
+  /**
+   * Gitlink pins by {@code <rev>|<path>} — the mode-160000 entries of a staged tree. Kept beside the
+   * trees rather than in them, because a pin is not content: the file map is what {@code tree} and
+   * {@code file} answer from, and a gitlink has neither bytes nor a path a blob read could hit.
+   */
+  private final Map<String, Answer<String>> pins =
+      Collections.synchronizedMap(new LinkedHashMap<>());
+
+  /**
+   * Commits the fake's repositories hold, keyed {@code <repoName>@<sha>} — what {@code resolves}
+   * says yes to. A pin nobody staged is a pin the host cannot resolve, which is the guard's whole
+   * subject and the state a test gets by simply not staging one.
+   */
+  private final Map<String, Answer<Boolean>> resolvable =
       Collections.synchronizedMap(new LinkedHashMap<>());
 
   private final AtomicInteger commitCounter = new AtomicInteger();
@@ -83,9 +99,29 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     heads.put(repoId + "@" + branch, Answer.of(sha));
   }
 
-  /** Stage a branch whose head read fails — the arm that must refuse a partial bank. */
+  /** Stage a branch whose head read fails. */
   public void headUnreadable(String repoId, String branch, Answer<String> answer) {
     heads.put(repoId + "@" + branch, answer);
+  }
+
+  /** Pin {@code path} at {@code rev} to a commit, as a mode-160000 entry of that tree. */
+  public void pin(String rev, String path, String sha) {
+    pins.put(rev + "|" + path, Answer.of(sha));
+  }
+
+  /** Stage a pin read that fails, so the guard's classified refusal arm is reachable. */
+  public void pinUnreadable(String rev, String path, Answer<String> answer) {
+    pins.put(rev + "|" + path, answer);
+  }
+
+  /** Say that the repository named {@code repoName} holds {@code sha}. */
+  public void holds(String repoName, String sha) {
+    resolvable.put(repoName + "@" + sha, Answer.of(true));
+  }
+
+  /** Stage a resolution read that fails outright — neither a yes nor a no. */
+  public void resolutionUnreadable(String repoName, String sha, Answer<Boolean> answer) {
+    resolvable.put(repoName + "@" + sha, answer);
   }
 
   /**
@@ -117,6 +153,8 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     tags.clear();
     deletedBranches.clear();
     taken.clear();
+    pins.clear();
+    resolvable.clear();
     commitCounter.set(0);
     tagCollisions.set(0);
     treeFailure.set(null);
@@ -213,6 +251,27 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   public Answer<String> head(String repoId, String branch) {
     Answer<String> staged = heads.get(repoId + "@" + branch);
     return staged != null ? staged : Answer.failed("no-such-branch: " + branch + " of " + repoId);
+  }
+
+  /**
+   * The pin at a path, or an ok answer carrying null where nothing was staged — the port's own
+   * "nothing is pinned here", which is what a declared-but-unpinned entry looks like.
+   */
+  @Override
+  public Answer<String> gitlinkAt(String projectId, String repoName, String rev, String path) {
+    Answer<String> staged = pins.get(rev + "|" + path);
+    return staged != null ? staged : Answer.of(null);
+  }
+
+  /**
+   * Whether a repository holds a commit. Nothing staged is a plain <b>no</b> rather than a failure:
+   * this fake is a git host that holds only what a test put in it, and a pin naming a commit nobody
+   * put anywhere is exactly the broken estate the guard exists to catch.
+   */
+  @Override
+  public Answer<Boolean> resolves(String projectId, String repoName, String sha) {
+    Answer<Boolean> staged = resolvable.get(repoName + "@" + sha);
+    return staged != null ? staged : Answer.of(false);
   }
 
   @Override

@@ -34,6 +34,16 @@ import org.jboss.logging.Logger;
  *   DELETE /githost/api/repositories/{repoId}/branches/{name}
  * </pre>
  *
+ * <p>And <b>one route off that plane entirely</b>, the git plane's name-addressed directory listing:
+ *
+ * <pre>
+ *   GET    /git/{projectId}/{repoName}/tree/{rev}[/&lt;dir&gt;]
+ * </pre>
+ *
+ * It is the only read that can answer what a submodule gitlink pins and whether a pinned commit
+ * exists, and {@link #gitlinkAt} carries the argument for why the api plane cannot. It shares this
+ * class's credential and its classification and nothing else.
+ *
  * Hand-rolled {@code java.net.http}, this package's standing shape ({@link HttpBackingBranchMerger},
  * {@link HttpActiveBuilds}), and the same address and credential as the merge primitive:
  * {@code qits.projects.release-requests.githost-url}, <b>unset shipped</b>, and the {@code githost}
@@ -135,6 +145,74 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
                   "qits-githost answered 200 to a branch read with no sha: " + clip(body))
               : Answer.of(sha);
         });
+  }
+
+  /**
+   * The pinned commit at one path, read off the git plane's <b>name-addressed</b> directory listing
+   * — {@code GET /git/{projectId}/{repoName}/tree/{rev}[/<dir>]}, whose entries carry {@code sha}
+   * and {@code mode} for a gitlink and nothing extra for anything else.
+   *
+   * <p><b>Not the api-plane {@code /tree} this class's other reads use</b>, and it cannot be: that
+   * route walks recursively and drops every mode-160000 entry on the way out ("a submodule has no
+   * blob to show and no tree to descend into"), so a pin is not on its answer at any revision. The
+   * listing that carries pins is the one qits-platform-maintenance already scans them with, and it
+   * is served on the name scheme. Both content reads on the storage scheme are additionally gated
+   * behind {@code qits.githost.content-readers}, which is a configured list this service is not
+   * obliged to be on; the name-addressed pair carries no such gate, so reading by name is the
+   * cheaper posture as well as the only one that can reach a sibling repository at all.
+   *
+   * <p>One request per declared entry rather than one recursive walk, because the caller asks about
+   * the handful of paths {@code .gitmodules} names and a wrapper's tree is otherwise large. A 404 is
+   * the directory or the entry not being there, which is "nothing is pinned here" — a null value on
+   * an ok answer, exactly as the port promises.
+   */
+  @Override
+  public Answer<String> gitlinkAt(String projectId, String repoName, String rev, String path) {
+    int slash = path.lastIndexOf('/');
+    String directory = slash < 0 ? "" : path.substring(0, slash);
+    String name = slash < 0 ? path : path.substring(slash + 1);
+    return git(
+        "/tree/" + encode(rev) + (directory.isEmpty() ? "" : "/" + encodePath(directory)),
+        projectId,
+        repoName,
+        Answer.<String>of(null),
+        body -> {
+          for (JsonNode entry : MAPPER.readTree(body).path("entries")) {
+            if (!name.equals(entry.path("name").asText(null))) {
+              continue;
+            }
+            String sha = entry.path("sha").asText(null);
+            return "160000".equals(entry.path("mode").asText(""))
+                    && sha != null
+                    && !sha.isBlank()
+                ? Answer.of(sha)
+                : Answer.of(null); // There, but not a gitlink: a directory or a file at that path.
+          }
+          return Answer.of(null);
+        });
+  }
+
+  /**
+   * Whether a repository holds a commit, asked as the cheapest read that can only answer yes if it
+   * does: the root tree listing <b>at that sha</b>. The git host resolves the rev before it lists
+   * anything and answers 404 when it cannot, and a rev is "anything the repository holds, reachable
+   * from a ref or not" — which is the right question about a pin, since a submodule's pinned commit
+   * routinely sits behind a branch that has moved on.
+   *
+   * <p>A 404 is <b>false</b> rather than a failure, and it deliberately covers two cases with one
+   * word: the sha is not there, or no repository of that project answers to that name. Both are the
+   * same fact for a caller checking a pin — nothing on this host resolves what the fold declares —
+   * and a clone would fail on either in the same place. Everything else is classified as this class
+   * classifies every other answer.
+   */
+  @Override
+  public Answer<Boolean> resolves(String projectId, String repoName, String sha) {
+    return git(
+        "/tree/" + encode(sha),
+        projectId,
+        repoName,
+        Answer.<Boolean>of(false),
+        body -> Answer.of(true));
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -266,6 +344,56 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   /** What a 2xx body means, allowed to throw — a body that will not parse is a failure like any. */
   private interface Reader<T> {
     ReleaseGitHost.Answer<T> read(String body) throws Exception;
+  }
+
+  /**
+   * The name-addressed git plane's one round trip — {@code GET /git/{projectId}/{repoName}<tail>} —
+   * beside {@link #call}'s api-plane one rather than folded into it, because the two differ in every
+   * part that matters: a different base, a two-segment address instead of a storage id, and a 404
+   * that is an <b>answer</b> here rather than a failure. {@code notFound} is what that 404 means for
+   * this particular read, which is the only thing the two callers disagree about.
+   *
+   * <p>Same credential and same must-not-throw contract as everything else in this class: the {@code
+   * githost} client's bearer, no header fallback, and every exception classified into an answer.
+   */
+  private <T> Answer<T> git(
+      String tail, String projectId, String repoName, Answer<T> notFound, Reader<T> reader) {
+    if (githostUrl.isEmpty() || githostUrl.get().isBlank()) {
+      return Answer.failedRetryable(unconfigured());
+    }
+    Optional<String> token = bearer.token();
+    if (token.isEmpty()) {
+      return Answer.failedRetryable(noBearer());
+    }
+    String address =
+        githostUrl.get() + "/git/" + encode(projectId) + "/" + encode(repoName) + tail;
+    try {
+      HttpResponse<String> response =
+          client.send(
+              HttpRequest.newBuilder(URI.create(address))
+                  .timeout(CALL_TIMEOUT)
+                  .header("Authorization", "Bearer " + token.get())
+                  .GET()
+                  .build(),
+              HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() == 200) {
+        return reader.read(response.body());
+      }
+      if (response.statusCode() == 404) {
+        return notFound;
+      }
+      String detail =
+          "qits-githost answered " + response.statusCode() + ": " + clip(response.body());
+      return retryable(response.statusCode(), response.body())
+          ? Answer.failedRetryable(detail)
+          : Answer.failed(detail);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return Answer.failedRetryable("interrupted while asking qits-githost");
+    } catch (Exception e) {
+      LOG.warnf("qits-githost could not be reached (%s): %s", tail, e.toString());
+      return Answer.failedRetryable("qits-githost could not be reached: " + e);
+    }
   }
 
   private <T> Answer<T> call(Verb verb, String tail, String repoId, Reader<T> reader) {

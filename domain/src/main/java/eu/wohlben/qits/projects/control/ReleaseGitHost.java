@@ -73,7 +73,10 @@ public interface ReleaseGitHost {
    * @param ref the full {@code refs/heads/…} name
    * @param files path → the file's whole new content
    * @param gitlinks path → the full commit sha a submodule entry pins, written as a gitlink (mode
-   *     160000) tree entry. Empty everywhere but a wrapper release, which banks its estate here.
+   *     160000) tree entry. <b>The release path passes none.</b> A wrapper's pins are written onto
+   *     its source branch, before the gate and before anybody approves the fold, so the commit a
+   *     release makes carries the version bump and nothing else; this parameter stays because the
+   *     primitive is the git host's and a writer of pins is exactly what it is for.
    */
   Answer<String> commit(
       String repoId,
@@ -84,11 +87,49 @@ public interface ReleaseGitHost {
 
   /**
    * Where a branch of a repository stands right now — the sha its {@code refs/heads/<branch>}
-   * points at. The cross-repository read a wrapper release banks its gitlinks from: each
-   * submodule's default-branch head, asked of the host that owns the refs rather than guessed from
-   * anything cached here. A branch the host does not know is a failed answer, not a null.
+   * points at, asked of the host that owns the refs rather than guessed from anything cached here.
+   * A branch the host does not know is a failed answer, not a null.
    */
   Answer<String> head(String repoId, String branch);
+
+  /**
+   * The commit sha the mode-160000 entry at {@code path} pins, at {@code rev} of the repository
+   * registered as {@code repoName} in {@code projectId} — or an <b>ok answer carrying null</b> when
+   * nothing is pinned there.
+   *
+   * <p><b>Addressed by name, and it has to be.</b> {@link #tree} answers a commit's blobs and skips
+   * gitlinks outright — a submodule has no blob to read and no tree this host descends into — so
+   * the single fact a pin consists of, its sha, is on no answer that read can give. The listing
+   * that carries it is the git plane's directory read, which types a gitlink {@code commit} and
+   * hands back the {@code sha} and the {@code mode} beside it, and that route is addressed by
+   * project and repository name rather than by storage id. The asymmetry is the host's, not this
+   * port's, and hiding it behind a storage id here would mean inventing a lookup nobody owns.
+   *
+   * <p>A directory that is not there, an entry that is not there and an entry that is not a gitlink
+   * are all one answer — <b>nothing is pinned at this path</b> — and it is a null value rather than
+   * a failure. A {@code .gitmodules} section whose gitlink has not been committed yet is a fold
+   * somebody is still writing, and a port has no opinion about that; the caller decides what an
+   * unpinned declaration means.
+   */
+  Answer<String> gitlinkAt(String projectId, String repoName, String rev, String path);
+
+  /**
+   * Whether the repository registered as {@code repoName} in {@code projectId} holds {@code sha} —
+   * "does this commit exist", which is the whole of what can be asked about a pin.
+   *
+   * <p>A gitlink is recorded without ever being resolved: git writes the 40 hex characters it is
+   * given into the superproject's tree and neither fetches nor validates the object, because the
+   * object lives in another repository entirely. That is what makes a pin able to name a commit
+   * that is nowhere — a rewritten branch, a repository restored from an older copy, a sha somebody
+   * typed — and what makes the failure so late and so total: nothing notices until a clone runs
+   * {@code submodule update} and stops.
+   *
+   * <p><b>False is an answer, not a failure.</b> The host said, and it said no. A failed answer is
+   * the moment or the ask going wrong instead, and the two must not be confused: refusing a release
+   * because the git host was briefly unreachable is a different sentence from refusing it because
+   * the estate it declares does not exist.
+   */
+  Answer<Boolean> resolves(String projectId, String repoName, String sha);
 
   /**
    * What tagging said. {@link TagResult#ALREADY_EXISTS} is the one that is not a failure: it is the

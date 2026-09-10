@@ -234,10 +234,20 @@ public class AutoReleaseTest {
   private String mergedSha;
 
   private String releaseARequest(Map<String, String> tree) {
+    return releaseARequest(tree, fold -> {});
+  }
+
+  /**
+   * The same walk with a hook at the one moment a test can stage anything keyed by the FOLD: the
+   * merged sha is minted by the create and the release runs off the green verdict, so a gitlink pin
+   * — which belongs to a revision — has nowhere else to be put.
+   */
+  private String releaseARequest(Map<String, String> tree, java.util.function.Consumer<String> atFold) {
     String id = create("work");
     mergedSha = mergedShaOf(id);
     assertNotNull(mergedSha, "the create folds the sources at once");
     gitHost.tree(mergedSha, tree);
+    atFold.accept(mergedSha);
     executor.passThrough();
     activeBuilds.answer(Optional.of(0));
     approve(id, mergedSha);
@@ -369,16 +379,20 @@ public class AutoReleaseTest {
   // The wrapper's estate
   // ---------------------------------------------------------------------------------------------
 
-  private static final String LIB_HEAD = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-  private static final String SVC_HEAD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  private static final String LIB_PIN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  private static final String SVC_PIN = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+  private static final String LIB_PATH = "components/qits-thing/qits-thing-javalib";
+  private static final String SVC_PATH = "components/qits-thing/qits-thing-service";
 
   private String libId;
   private String svcId;
 
   /**
-   * The fixture repository becomes the project's WRAPPER with two named siblings — and one
-   * declared submodule the catalog does not know, which must be skipped rather than pinned or
-   * refused.
+   * The fixture repository becomes the project's WRAPPER — named, because the pins are read and
+   * resolved by project and repository name — with two named siblings and one declared submodule
+   * that is not pinned at all, which is a fold somebody is still writing rather than a release to
+   * refuse.
    */
   private Map<String, String> wrapperEstate() {
     libId = "estate-lib-" + UUID.randomUUID();
@@ -389,11 +403,10 @@ public class AutoReleaseTest {
               Repository wrapper = Repository.findById(repoId);
               wrapper.archetype = RepositoryArchetype.PROJECT;
               Project project = Project.findById(projectId);
+              alias(project, wrapper, "auto-release-auto-release");
               alias(project, sibling(project, libId, "main"), "qits-thing-javalib");
               alias(project, sibling(project, svcId, "trunk"), "qits-thing-service");
             });
-    gitHost.headOf(libId, "main", LIB_HEAD);
-    gitHost.headOf(svcId, "trunk", SVC_HEAD);
     Map<String, String> tree = new LinkedHashMap<>();
     tree.put(
         ".gitmodules",
@@ -429,39 +442,76 @@ public class AutoReleaseTest {
     alias.persist();
   }
 
-  @Test
-  public void aWrapperReleaseBanksItsEstateAsGitlinkPinsInTheReleaseCommit() {
-    String id = releaseARequest(wrapperEstate());
-    awaitState(id, "RELEASED");
-
-    assertEquals(1, gitHost.commits().size(), "the estate is one commit, the last before the tag");
-    RecordingReleaseGitHost.Commit commit = gitHost.commits().get(0);
-    assertEquals(Map.of(), commit.files(), "the wrapper renders no version; the commit is the pins");
-    assertEquals(
-        Map.of(
-            "components/qits-thing/qits-thing-javalib", LIB_HEAD,
-            "components/qits-thing/qits-thing-service", SVC_HEAD),
-        commit.gitlinks(),
-        "each declared submodule at its default branch's head; the stray one is skipped");
-    assertEquals(commit.sha(), gitHost.tags().get(0).sha(), "the tag names the banked estate");
+  /** The estate as the fold declares it: both pins committed, and both commits really there. */
+  private void pinsAt(String fold) {
+    gitHost.pin(fold, LIB_PATH, LIB_PIN);
+    gitHost.pin(fold, SVC_PATH, SVC_PIN);
+    gitHost.holds("qits-thing-javalib", LIB_PIN);
+    gitHost.holds("qits-thing-service", SVC_PIN);
   }
 
   @Test
-  public void anUnreadableSubmoduleHeadRefusesTheBankRatherThanPinningPartOfTheEstate() {
-    Map<String, String> tree = wrapperEstate();
-    gitHost.headUnreadable(
-        svcId, "trunk", ReleaseGitHost.Answer.failedRetryable("qits-githost answered 503"));
-    String id = releaseARequest(tree);
+  public void aWrapperReleaseTagsTheApprovedFoldAndMovesNoPin() {
+    String id = releaseARequest(wrapperEstate(), this::pinsAt);
+    awaitState(id, "RELEASED");
+
+    // The estate is in the fold, so a release has nothing to write: no version renders here, and
+    // the pins are content that was gated and approved rather than something computed after the
+    // fact. Before this arm was retired the same walk produced one commit carrying two gitlinks.
+    assertEquals(List.of(), gitHost.commits(), "a release rewrites no gitlink and bumps nothing");
+    assertEquals(1, gitHost.tags().size());
+    assertEquals(
+        mergedSha,
+        gitHost.tags().get(0).sha(),
+        "the tag names the fold the person approved, exactly");
+    assertEquals(
+        LIB_PIN,
+        gitHost.gitlinkAt(projectId, "auto-release-auto-release", mergedSha, LIB_PATH).value(),
+        "the pin is byte-identical to what was approved");
+    assertEquals(
+        SVC_PIN,
+        gitHost.gitlinkAt(projectId, "auto-release-auto-release", mergedSha, SVC_PATH).value(),
+        "and so is the second one");
+    assertEquals(
+        mergedSha,
+        releases.announced().get(0).commitSha(),
+        "a pins-only wrapper has no commit before its tag, so the fold IS the checkout target");
+  }
+
+  @Test
+  public void aPinNamingACommitNothingHoldsRefusesTheReleaseAndSaysWhichEntry() {
+    String id =
+        releaseARequest(
+            wrapperEstate(),
+            fold -> {
+              pinsAt(fold);
+              // The lib's pin now names a commit no repository on this host holds — a rewritten
+              // branch, a restored copy, a hand-edited entry. Git records it without resolving it,
+              // so nothing before this point can have noticed.
+              gitHost.pin(fold, LIB_PATH, "cccccccccccccccccccccccccccccccccccccccc");
+            });
     awaitState(id, "FAILED");
 
     String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
-    assertTrue(detail.contains("cannot be banked"), detail);
+    assertTrue(detail.contains("qits-thing-javalib"), detail);
+    assertTrue(detail.contains("cannot resolve"), detail);
     given()
         .get(base() + "/" + id)
         .then()
-        .body("request.retryable", org.hamcrest.Matchers.equalTo(true));
-    assertEquals(List.of(), gitHost.createdTags(), "half a bank must not release");
+        .body(
+            "request.retryable",
+            org.hamcrest.Matchers.equalTo(false));
+    assertEquals(List.of(), gitHost.createdTags(), "a broken estate must not be released");
     assertEquals(List.of(), gitHost.commits(), "and nothing was committed either");
+  }
+
+  @Test
+  public void aDeclaredSubmoduleTheFoldDoesNotPinYetIsNotARefusal() {
+    // The third section of the fixture's .gitmodules is declared and never pinned. That is an
+    // unfinished fold, not a lie about an estate, and the guard is about pins that do not resolve.
+    String id = releaseARequest(wrapperEstate(), this::pinsAt);
+    awaitState(id, "RELEASED");
+    assertEquals(1, gitHost.createdTags().size());
   }
 
   @Test
