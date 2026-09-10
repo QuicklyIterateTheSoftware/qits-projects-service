@@ -17,5 +17,11 @@ public enum AuditEntityType {
   TICKET,
 
   /** A {@link TicketComment}. Its rows carry the owning ticket's id as the subtree key. */
-  TICKET_COMMENT
+  TICKET_COMMENT,
+
+  /**
+   * A {@link DossierPage}. Unlike a ticket, it is not a root: its rows carry the OWNING EPIC's id in
+   * {@link AuditEntry#epicId}, so an epic's history keeps including what its pages did.
+   */
+  DOSSIER_PAGE
 }

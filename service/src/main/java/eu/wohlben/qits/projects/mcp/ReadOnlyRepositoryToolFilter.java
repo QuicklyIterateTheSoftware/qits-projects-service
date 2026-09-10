@@ -53,6 +53,12 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * run holding it could overwrite a document a person is working from — not merely fill the tab
    * with work nobody asked for.
    *
+   * <p>The dossier's four write tools ({@code put_dossier_page}, {@code move_dossier_page},
+   * {@code remove_dossier_page} and {@code inline_figure}) are here on the epic tools' reading: a
+   * dossier is the epic's long form, so rewriting one is rewriting the project's plan. Nothing here
+   * is accepted by anybody either, so an unattended run holding {@code put_dossier_page} could
+   * overwrite a page somebody is writing.
+   *
    * <p>The five ticket write tools are here on the same reading, and {@code transition_ticket} is
    * the one worth naming: an unattended run steered by an untrusted commit message must not be able
    * to declare somebody else's bug resolved, which is a statement people act on. Filing tickets
@@ -78,6 +84,10 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "remove_task",
           "mark_task_implemented",
           "put_design",
+          "put_dossier_page",
+          "move_dossier_page",
+          "remove_dossier_page",
+          "inline_figure",
           "create_ticket",
           "update_ticket",
           "transition_ticket",

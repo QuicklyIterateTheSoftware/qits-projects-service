@@ -34,6 +34,8 @@ public class RefinementPromptAttachmentController {
 
   @Inject RefinementPromptAttachments attachments;
 
+  @Inject eu.wohlben.qits.epics.control.DossierAssetService assets;
+
   public record NewAttachment(
       String mimeType, @NotBlank String label, @NotBlank String source, @NotBlank String dataBase64) {}
 
@@ -42,17 +44,30 @@ public class RefinementPromptAttachmentController {
       String mimeType,
       String label,
       String source,
+      /** Whether some dossier page of this refinement's epic inlines this sketch. */
+      boolean inUse,
       Instant createdAt,
       String dataBase64) {}
 
   public record ListResponse(List<AttachmentDto> attachments) {}
 
-  /** Oldest first, bytes included — one read paints the panel. Empty list, never a 404. */
+  /**
+   * Oldest first, bytes included — one read paints the panel. Empty list, never a 404.
+   *
+   * <p>Each row says whether a dossier page inlines it, in <b>one</b> query for the whole listing
+   * rather than one per row. The id match works because inlining copies a figure under the source's
+   * own id. What the flag means, and what the tab's tooltip says: a dangling sketch is safe to
+   * delete and an in-use one is not — its copy stays either way, but deleting the source loses the
+   * ability to re-inline a fresh version.
+   */
   @GET
   public ListResponse list(@PathParam("id") long id) {
-    refinements.get(id);
+    var refinement = refinements.get(id);
+    var rows = attachments.list(id);
+    java.util.Set<String> inUse =
+        assets.inUse(refinement.epicId, rows.stream().map(row -> row.id).toList());
     return new ListResponse(
-        attachments.list(id).stream().map(row -> dto(row, true)).toList());
+        rows.stream().map(row -> dto(row, true, inUse.contains(row.id))).toList());
   }
 
   /** 201 with the row sans bytes — the caller just sent them. */
@@ -94,11 +109,17 @@ public class RefinementPromptAttachmentController {
   }
 
   private static AttachmentDto dto(RefinementPromptAttachment row, boolean withBytes) {
+    return dto(row, withBytes, false);
+  }
+
+  private static AttachmentDto dto(
+      RefinementPromptAttachment row, boolean withBytes, boolean inUse) {
     return new AttachmentDto(
         row.id,
         row.mimeType,
         row.label,
         row.source.name(),
+        inUse,
         row.createdAt,
         withBytes ? Base64.getEncoder().encodeToString(row.bytes) : null);
   }

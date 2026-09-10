@@ -18,6 +18,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The refinement's HTML designs — the Design tab's surface. A design is one self-contained document
@@ -49,6 +50,8 @@ public class RefinementDesignController {
 
   @Inject RefinementDesigns designs;
 
+  @Inject eu.wohlben.qits.epics.control.DossierAssetService assets;
+
   @Inject SecurityIdentity identity;
 
   public record NewDesign(
@@ -60,6 +63,8 @@ public class RefinementDesignController {
   public record DesignDto(
       String id,
       String title,
+      /** Whether some dossier page of this refinement's epic inlines this design. */
+      boolean inUse,
       String sourceRoute,
       int htmlBytes,
       boolean truncated,
@@ -71,11 +76,21 @@ public class RefinementDesignController {
 
   public record ListResponse(List<DesignDto> designs) {}
 
-  /** Oldest first, without the documents. Empty list, never a 404. */
+  /**
+   * Oldest first, without the documents. Empty list, never a 404.
+   *
+   * <p>Each row says whether a dossier page inlines it, in <b>one</b> query for the whole listing
+   * rather than one per row. The id match works because inlining copies a figure under the source's
+   * own id, which is what makes "in use" answerable at all without a stored back-reference.
+   */
   @GET
   public ListResponse list(@PathParam("id") long id) {
-    refinements.get(id);
-    return new ListResponse(designs.list(id).stream().map(row -> dto(row, false)).toList());
+    var refinement = refinements.get(id);
+    List<RefinementDesign> rows = designs.list(id);
+    Set<String> inUse =
+        assets.inUse(refinement.epicId, rows.stream().map(row -> row.id).toList());
+    return new ListResponse(
+        rows.stream().map(row -> dto(row, false, inUse.contains(row.id))).toList());
   }
 
   /** 201 with the row sans html — the caller just sent it. */
@@ -142,9 +157,14 @@ public class RefinementDesignController {
   }
 
   private static DesignDto dto(RefinementDesign row, boolean withHtml) {
+    return dto(row, withHtml, false);
+  }
+
+  private static DesignDto dto(RefinementDesign row, boolean withHtml, boolean inUse) {
     return new DesignDto(
         row.id,
         row.title,
+        inUse,
         row.sourceRoute,
         row.htmlBytes,
         row.truncated,

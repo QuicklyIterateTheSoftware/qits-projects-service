@@ -233,6 +233,8 @@ components:
           type: string
         source:
           type: string
+        inUse:
+          type: boolean
         createdAt:
           $ref: "#/components/schemas/Instant"
         dataBase64:
@@ -245,6 +247,7 @@ components:
       - TASK
       - TICKET
       - TICKET_COMMENT
+      - DOSSIER_PAGE
     AuditEntryDto:
       type: object
       properties:
@@ -556,6 +559,11 @@ components:
           pattern: \S
         assignee:
           type: string
+    DeletePageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
     DesignDto:
       type: object
       properties:
@@ -563,6 +571,8 @@ components:
           type: string
         title:
           type: string
+        inUse:
+          type: boolean
         sourceRoute:
           type: string
         htmlBytes:
@@ -606,6 +616,29 @@ components:
       - NO_MATCHING_ZONE
       - NOT_CONFIGURED
       - FAILED
+    DossierPageDto:
+      type: object
+      properties:
+        id:
+          type: string
+        epicId:
+          type: string
+        slug:
+          type: string
+        title:
+          type: string
+        position:
+          type: integer
+          format: int32
+        body:
+          type: string
+        version:
+          type: integer
+          format: int64
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
     DraftDto:
       type: object
       properties:
@@ -793,6 +826,33 @@ components:
         probeDetail:
           type: string
           description: Why it fell back. Empty when it did not.
+    InlineFigureRequest:
+      type: object
+      required:
+      - sourceId
+      - kind
+      properties:
+        sourceId:
+          type: string
+          pattern: \S
+        kind:
+          type: string
+          pattern: \S
+    InlinedFigure:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        mimeType:
+          type: string
+        label:
+          type: string
+        url:
+          type: string
+        markdown:
+          type: string
     Instant:
       type: string
       format: date-time
@@ -825,6 +885,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LaunchPin"
+    ListPagesResponse:
+      type: object
+      properties:
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/DossierPageDto"
     ListResponse:
       type: object
       properties:
@@ -870,6 +937,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConflictedPath"
+    MovePage:
+      type: object
+      properties:
+        position:
+          type: integer
+          format: int32
     NewAttachment:
       type: object
       required:
@@ -904,6 +977,16 @@ components:
           type: string
         truncated:
           type: boolean
+    NewPage:
+      type: object
+      required:
+      - title
+      properties:
+        title:
+          type: string
+          pattern: \S
+        body:
+          type: string
     OpenRequest:
       type: object
       required:
@@ -1836,6 +1919,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Entry6"
+    WritePage:
+      type: object
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+        version:
+          type: integer
+          format: int64
   securitySchemes:
     SecurityScheme:
       type: openIdConnect
@@ -2106,6 +2199,259 @@ paths:
       summary: Revisions
       tags:
       - Agent Surface Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/epics/{epicId}/dossier:
+    get:
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPagesResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: List
+      tags:
+      - Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    post:
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPage"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Create
+      tags:
+      - Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/epics/{epicId}/dossier-assets:
+    post:
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InlineFigureRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InlinedFigure"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Inline
+      tags:
+      - Dossier Asset Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/epics/{epicId}/dossier-assets/{assetId}/content:
+    get:
+      parameters:
+      - name: assetId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {}
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Content
+      tags:
+      - Dossier Asset Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/epics/{epicId}/dossier/{pageId}:
+    put:
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pageId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WritePage"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Write
+      tags:
+      - Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    get:
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pageId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Get
+      tags:
+      - Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    delete:
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pageId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletePageResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Delete
+      tags:
+      - Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/epics/{epicId}/dossier/{pageId}/move:
+    post:
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: pageId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovePage"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Move
+      tags:
+      - Dossier Controller
       security:
       - SecurityScheme:
         - qits:admin
