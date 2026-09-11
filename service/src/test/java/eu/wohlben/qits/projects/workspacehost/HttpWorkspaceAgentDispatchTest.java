@@ -227,7 +227,9 @@ class HttpWorkspaceAgentDispatchTest {
     assertEquals(1, received.size(), "a page of rows is one call, never one call per row");
     Received request = received.get(0);
     assertEquals("GET", request.method());
-    assertEquals("/workspaces/api/workspaces/references", request.path());
+    // Under the dispatch door, whose class states qits:system — the person's door this used to
+    // sit on answered 403 to every call, which this class's own contract reports as "none".
+    assertEquals("/workspaces/api/agent-dispatches/references", request.path());
     assertEquals("Bearer machine-token", request.auth());
     // Every id asked about, each once — the repeat is dropped rather than asked twice.
     assertEquals("ticketId=t-7&ticketId=t-8&epicId=e-1", request.query());
