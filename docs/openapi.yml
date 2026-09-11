@@ -1147,6 +1147,23 @@ components:
           type: string
         decidedAt:
           $ref: "#/components/schemas/Instant"
+    ReleaseRequestChangesDto:
+      type: object
+      properties:
+        mergedSha:
+          type: string
+        base:
+          type: string
+        baseTag:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommitFileChangeDto"
+        truncated:
+          type: boolean
+        detail:
+          type: string
     ReleaseRequestCommitsDto:
       type: object
       properties:
@@ -4834,16 +4851,100 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/changes:
+    get:
+      summary: The files this request's fold changed
+      description: "Diffed against the newest release tag that does not contain the\
+        \ fold, resolved to one commit with merge-base — never mergedSha^1 (a re-fold's\
+        \ first parent is the previous fold, and a fast-forwarded fold is no merge\
+        \ commit at all) and never merge-base(mergedSha, main), which reports nothing\
+        \ once the release reaches main. base and baseTag name what was used; a repository\
+        \ that has never released is diffed against the empty tree. An empty list\
+        \ is never an error — detail says whether nothing has been folded yet, the\
+        \ fold is no longer in the repository's history, or the fold changed nothing.\
+        \ Over 2000 paths the answer is the first 2000 with truncated set and the\
+        \ total in detail."
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleaseRequestChangesDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/changes/diff:
+    get:
+      summary: The patch of one file in this request's fold
+      description: "The unified diff of path, against the same base …/changes lists:\
+        \ the newest release tag that does not contain the fold, resolved with merge-base,\
+        \ or the empty tree for a repository that has never released. An empty diff\
+        \ is never an error — a binary file, a pure rename, a fold that is not there\
+        \ any more and a patch over ~1 MiB all answer their change type with no text."
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: query
+        schema:
+          type: string
+          pattern: \S
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitFileDiffDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
   /projects/api/repositories/{repoId}/release-requests/{requestId}/commits:
     get:
       summary: The commits this request's fold brought in
-      description: "The range mergedSha^1..mergedSha — the first parent of an octopus\
-        \ merge is the branch it was folded onto, so what is left is exactly what\
-        \ the request's sources contributed. It stays the same answer after the release\
-        \ reaches main. The version bump is not in the list: the release commits the\
-        \ rewritten manifests ON TOP of the fold. An empty list is never an error\
-        \ — detail says whether nothing has been folded yet, the fold is no longer\
-        \ in the repository's history, or the fold genuinely added nothing."
+      description: "The fold minus every release tag that does not contain it — main\
+        \ only ever advances by merging released tags, so what is left is exactly\
+        \ what the request's sources contributed over what was already shipped. It\
+        \ stays the same answer after the release reaches main, which neither mergedSha^1\
+        \ nor a live read of main does. The version bump is not in the list: the release\
+        \ commits the rewritten manifests ON TOP of the fold. An empty list is never\
+        \ an error — detail says whether nothing has been folded yet, the fold is\
+        \ no longer in the repository's history, or the fold genuinely added nothing."
       parameters:
       - name: repoId
         in: path
