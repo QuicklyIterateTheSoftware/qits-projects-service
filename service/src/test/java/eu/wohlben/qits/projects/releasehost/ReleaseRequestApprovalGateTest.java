@@ -88,7 +88,7 @@ public class ReleaseRequestApprovalGateTest {
     requestIds.clear();
     // A wrapper whose branches declare no submodules: the estate gate reads them, finds nothing
     // pinned and lets every request here through to the gate under test. See the field's javadoc.
-    gitHost.tree("refs/heads/main", java.util.Map.of("README.md", "no estate here"));
+    gitHost.gatedTree("refs/heads/main", java.util.Map.of("README.md", "no estate here"));
     gitHost.tree("refs/heads/work", java.util.Map.of("README.md", "no estate here"));
     // A green build with nothing still in flight, so the build gate is out of the way in every test
     // here and what holds a request is only ever the approval gate.

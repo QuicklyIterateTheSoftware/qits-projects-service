@@ -1136,6 +1136,13 @@ components:
             $ref: "#/components/schemas/ReleaseArtifactDto"
         detail:
           type: string
+    ReleaseGateDto:
+      type: object
+      properties:
+        kind:
+          type: string
+        state:
+          type: string
     ReleaseRequestApprovalDto:
       type: object
       properties:
@@ -1220,6 +1227,10 @@ components:
           $ref: "#/components/schemas/Instant"
         approvalNote:
           type: string
+        gates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseGateDto"
         conflict:
           $ref: "#/components/schemas/MergeConflictDto"
         version:
@@ -5588,4 +5599,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.911.141938
+  version: 2026.911.163000

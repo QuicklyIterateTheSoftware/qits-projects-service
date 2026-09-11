@@ -417,7 +417,9 @@ public class WrapperEstatePinGateTest {
   /** The wrapper's declaration and its tree at one branch — one member released, one never. */
   private void stageWrapperAt(String branch, String pin) {
     String rev = "refs/heads/" + branch;
-    gitHost.tree(
+    // gatedTree, not tree: main is also where the gate set is read from, and a wrapper that lost its
+    // CI recipe by being staged here would be gated by nothing at all.
+    gitHost.gatedTree(
         rev,
         Map.of(
             ".gitmodules",

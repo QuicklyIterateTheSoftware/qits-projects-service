@@ -68,6 +68,11 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   private final Map<String, Answer<Boolean>> resolvable =
       Collections.synchronizedMap(new LinkedHashMap<>());
 
+  public RecordingReleaseGitHost() {
+    // A class that never calls reset() still has an ordinary repository's main to be gated by.
+    trees.put("refs/heads/main", new LinkedHashMap<>(GATED_MAIN));
+  }
+
   private final AtomicInteger commitCounter = new AtomicInteger();
 
   /** How many more tags answer {@code tag-exists} whatever they are named. */
@@ -84,9 +89,46 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   // Staging
   // ---------------------------------------------------------------------------------------------
 
+  /**
+   * The per-release-request CI recipe, and the reason it has a name here: its presence on a
+   * repository's {@code main} is the <b>CI gate</b>, which {@code ReleaseGates} reads through this
+   * fake. Almost every repository on the platform carries it, so {@link #reset} stages it — see
+   * {@link #GATED_MAIN}.
+   */
+  public static final String CI_RECIPE = ".config/qits/ci-event-release-request.yml";
+
+  /**
+   * What an ordinary repository's {@code main} looks like to the gate resolver: a release-request
+   * recipe and nothing else, so the CI gate applies and neither the approval nor the deployment gate
+   * does. <b>{@link #reset} stages it at {@code refs/heads/main}</b>, because that is the state
+   * almost every repository on this platform is in and the state every suite here was written
+   * against — a fake whose main could not be read would put every request in front of an unknown
+   * gate set instead.
+   *
+   * <p>A test wanting a different configuration stages {@code refs/heads/main} itself, which
+   * replaces this; one wanting an <em>unreadable</em> one calls {@link #mainUnreadable}.
+   */
+  public static final Map<String, String> GATED_MAIN = Map.of(CI_RECIPE, "steps: []\n");
+
   /** Put a tree at a sha — what a release will read its manifests out of. */
   public void tree(String sha, Map<String, String> files) {
     trees.put(sha, new LinkedHashMap<>(files));
+  }
+
+  /**
+   * The same, with the CI recipe added — for a test that stages {@code refs/heads/main} for some
+   * other reader (the estate gate reads the wrapper's branches) and does not mean to change which
+   * gates the repository configures.
+   */
+  public void gatedTree(String rev, Map<String, String> files) {
+    Map<String, String> tree = new LinkedHashMap<>(files);
+    tree.putAll(GATED_MAIN);
+    trees.put(rev, tree);
+  }
+
+  /** Leave {@code main} unreadable, so the gate set resolves UNKNOWN. */
+  public void mainUnreadable() {
+    trees.remove("refs/heads/main");
   }
 
   /** A tag name the host already holds, so the next attempt at it answers {@code tag-exists}. */
@@ -149,6 +191,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
 
   public void reset() {
     trees.clear();
+    trees.put("refs/heads/main", new LinkedHashMap<>(GATED_MAIN));
     commits.clear();
     tags.clear();
     deletedBranches.clear();
@@ -196,10 +239,19 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   // The port
   // ---------------------------------------------------------------------------------------------
 
+  /**
+   * <b>A scripted tree failure does not reach {@code refs/heads/main} while one is staged there.</b>
+   * Two different readers ask this verb now — a release reading the fold it is about to bump, and
+   * {@code ReleaseGates} reading what the repository configures — and {@link #failTreeWith} exists
+   * for the first. Letting it answer the second too would turn every test about a git host that
+   * could not be read at the release into a test about a request held by an unknown gate set, which
+   * is a different assertion and not the one those tests make. A test that wants the whole host
+   * unreadable calls {@link #mainUnreadable} as well.
+   */
   @Override
   public Answer<List<String>> tree(String repoId, String rev) {
     Answer<List<String>> failure = treeFailure.get();
-    if (failure != null) {
+    if (failure != null && !("refs/heads/main".equals(rev) && trees.containsKey(rev))) {
       return failure;
     }
     Map<String, String> tree = trees.get(rev);

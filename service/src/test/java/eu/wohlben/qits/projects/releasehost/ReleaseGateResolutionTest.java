@@ -100,8 +100,9 @@ public class ReleaseGateResolutionTest {
 
   @Test
   void aMainThatCannotBeReadIsUnknownAndNotAnEmptySet() {
-    // Nothing staged at refs/heads/main at all: the fake answers a failed listing, which is exactly
-    // "could not be asked" and must not read as "configures nothing".
+    // No readable main at all: the fake answers a failed listing, which is exactly "could not be
+    // asked" and must not read as "configures nothing".
+    gitHost.mainUnreadable();
     GateSet set = resolve();
     assertFalse(set.known());
     assertFalse(set.nothingToWaitOn());
@@ -132,7 +133,8 @@ public class ReleaseGateResolutionTest {
 
   @Test
   void anUnknownAnswerIsNeverHeldWhileAKnownOneIs() {
-    // Unknown first: nothing is staged, so the read fails.
+    // Unknown first: main cannot be read, so the resolve fails.
+    gitHost.mainUnreadable();
     assertFalse(gates.resolve(repoId).known());
     // The very next resolve asks again — retrying is exactly what fixes "could not ask".
     gitHost.tree(
