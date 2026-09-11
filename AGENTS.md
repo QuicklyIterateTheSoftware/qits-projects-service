@@ -605,9 +605,9 @@ Four things are rules rather than details:
 - **The epic dispatch names its epic and sends no preamble either**, the ticket door's rule one
   planning level up and for the sharper version of its reason: the tree moves under an
   implementation, so a rendering frozen at creation is stale the moment a task is marked.
-  `refinementhost/EpicOutline` therefore has **one caller left**, a refinement's `# Refine: <title>`;
-  the sibling ticket `the-refinement-preamble-should-be-a-shor` takes that one, and whichever lands
-  second deletes the class. The
+  **`refinementhost/EpicOutline` is deleted with it**: a refinement had already stopped storing a
+  render of its epic (see "Refinement containers"), so this door was its last caller and the class
+  had nobody left to render for. The
   instruction sends the agent to `get_epic` for the live tree, **to the dossier for the detail the
   epic leaves out**, to work the features and tasks in
   `dependsOn` order, to mark each task with `mark_task_implemented` **as it lands**, and to treat the
@@ -768,9 +768,10 @@ Three things travel with it:
   into the workspace goal — `# Ticket: <title>`, a type/status/assignee/reporter line, the
   description — and that copy served no reader well: the instruction sends the agent to read the
   ticket *live* with `get_ticket`, so the prose was stale by construction, and on the workspace page
-  it buried the one fact a person scanning the list wants. qits-workspaces carries the id as a field
-  (`workspace.ticket_id`, its `V5`) and resolves it with nothing; the workspaces SPA composes the
-  link, because that needs the platform's public origin, which a browser is told by
+  it buried the one fact a person scanning the list wants. **With this and the refinement's own
+  removal (V22), no stored render of a row is left on the platform.** qits-workspaces carries the id
+  as a field (`workspace.ticket_id`, its `V5`) and resolves it with nothing; the workspaces SPA
+  composes the link, because that needs the platform's public origin, which a browser is told by
   `/main-navigation` and no service here holds a key for.
 - **The agent is told what "done" means here, and told to say so on the ticket.** Report on the
   thread with `add_ticket_comment` and keep that **one** comment current with
@@ -1316,9 +1317,18 @@ Where it differs from the agent harness, each difference is the domain line:
 
 - **Keyed by epic, addressed by row id.** `refinement` (V4) holds one row per epic (unique), with
   the branch (`refining/<epicSlug>`), the parent (the wrapper's default branch — a refinement always
-  forks it, which is why there is no parent/child tree and no integrate door), the preamble computed
-  from the epic tree at create, and the commissioned credential — ON THE ROW, because
-  `Recreate.ifChanged` hashes the whole spec and a resume must reproduce the pair byte for byte.
+  forks it, which is why there is no parent/child tree and no integrate door), and the commissioned
+  credential — ON THE ROW, because `Recreate.ifChanged` hashes the whole spec and a resume must
+  reproduce the pair byte for byte.
+  <br>**Nothing about the epic is copied onto the row, and a `preamble` column that did it went in
+  V22.** It held `EpicOutline.render(epic, "Refine")` — title, description and the whole feature/task
+  tree — written once at create, never recomputed, and so a copy of the very draft the refinement
+  exists to edit. Its one reader was the SPA's prompt-rewrite helper, which passes it to the daemon as
+  that model call's context; `epic_id` is `text not null unique` and *is* the row's key, so the
+  refining page derives one line from the epic it has already resolved, at the moment it asks. The
+  `[preamble]` binding keeps its name down to the prompt panel because `POST /prompt-refinements` is
+  where the word comes from — renaming it here while the wire kept the old one would be two names for
+  one thing.
 - **A refinement runs no code.** `BOOTSTRAP_AUTORUN=false`, `SERVICES_AUTOSTART=false`, no
   `SERVICE_PROXY_BASE`, no actions MCP server — the tab set this backs has no Services or Actions
   tab, and its web view frames the deployed environment, not a dev server.

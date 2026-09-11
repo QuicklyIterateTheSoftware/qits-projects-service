@@ -91,10 +91,9 @@ import org.jboss.logging.Logger;
  * — which is exactly why the instruction below sends the agent to {@code get_epic} instead. The
  * workspaces SPA turns the id into a link; the preamble goes back to being a person's prose.
  *
- * <p>{@code refinementhost/EpicOutline} therefore has one caller left, the refinement's own
- * {@code # Refine:} rendering. It stays where it is: the sibling ticket
- * {@code the-refinement-preamble-should-be-a-shor} takes that one, and whichever lands second
- * deletes the class.
+ * <p><b>{@code refinementhost/EpicOutline} is deleted with it.</b> A refinement had already stopped
+ * storing a render of its epic ({@code V22}), so this door was its last caller and the class had
+ * nobody left to render for.
  *
  * <h2>Nothing is written on the epic</h2>
  *

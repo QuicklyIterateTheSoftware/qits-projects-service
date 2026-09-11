@@ -65,7 +65,6 @@ public class RefinementService {
   private static final Logger LOG = Logger.getLogger(RefinementService.class);
 
   @Inject EpicService epics;
-  @Inject EpicOutline outline;
   @Inject ProjectService projects;
   @Inject RepositoryService repositories;
   @Inject GitMirrorRegistry mirrors;
@@ -109,9 +108,14 @@ public class RefinementService {
   // ---- find or create ----------------------------------------------------------------------
 
   /**
-   * The refinement of {@code epicId}, created if the epic has none. Creation cuts (or adopts)
-   * {@code refining/<epicSlug>} on the project's wrapper and computes the chat preamble from the
-   * epic tree; both need the epic, so an unknown id 404s here and nothing is half-made.
+   * The refinement of {@code epicId}, created if the epic has none. Creation needs the epic itself
+   * — its status gates the open, and its slug names {@code refining/<epicSlug>} on the project's
+   * wrapper — so an unknown id 404s here and nothing is half-made.
+   *
+   * <p>Nothing about the epic is copied onto the row beyond that slug. The row names its epic in
+   * {@code epicId}, which is its unique key, and every reader that wants the epic's prose reads it
+   * live from there; a rendered snapshot taken here would describe the draft as it stood before the
+   * refinement that is about to edit it.
    */
   public Refinement findOrCreate(String epicId) {
     Optional<Refinement> existing =
@@ -137,7 +141,6 @@ public class RefinementService {
     refinement.branch = branch;
     refinement.parent = wrapper.mainBranch == null ? "main" : wrapper.mainBranch;
     refinement.label = label(epic.slug);
-    refinement.preamble = preamble(epic);
     refinement.createdAt = Instant.now();
     try {
       QuarkusTransaction.requiringNew().run(() -> store.persist(refinement));
@@ -518,14 +521,5 @@ public class RefinementService {
   static String label(String epicSlug) {
     String label = ("refining-" + epicSlug).replaceAll("[^A-Za-z0-9_-]+", "-");
     return label.length() <= 64 ? label : label.substring(0, 64);
-  }
-
-  /**
-   * The chat preamble, the same markdown the SPA used to build browser-side — {@link EpicOutline}
-   * under the verb this flow uses. The rendering moved there when the epic dispatch grew a second
-   * caller for it; the only thing that differs between the two is the heading word.
-   */
-  private String preamble(Epic epic) {
-    return outline.render(epic, "Refine");
   }
 }

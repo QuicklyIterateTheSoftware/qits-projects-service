@@ -110,7 +110,6 @@ public class RefinementLifecycleTest {
             .body("refinement.projectId", equalTo(projectId))
             .body("refinement.branch", equalTo("refining/sharper-onboarding"))
             .body("refinement.parent", equalTo("main"))
-            .body("refinement.preamble", notNullValue())
             .extract()
             .path("refinement.id");
 
