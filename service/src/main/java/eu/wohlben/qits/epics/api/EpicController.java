@@ -50,6 +50,13 @@ public class EpicController {
 
   @Inject EpicChangeHints hints;
 
+  /**
+   * Which live workspaces are on this epic — derived per read; see {@code DispatchedWorkspaces}.
+   * Only the detail read carries them: the writes below answer the row they changed, and an edit is
+   * not the question "who is working on this".
+   */
+  @Inject eu.wohlben.qits.projects.api.DispatchedWorkspaces dispatchedWorkspaces;
+
   // --- Epic ---
 
   public record GetEpicRequest() {
@@ -59,7 +66,8 @@ public class EpicController {
   @GET
   @Path("/{id}")
   public GetEpicRequest.Response get(@PathParam("id") String id) {
-    return new GetEpicRequest.Response(epicMapper.toDto(epicService.get(id)));
+    return new GetEpicRequest.Response(
+        dispatchedWorkspaces.decorate(epicMapper.toDto(epicService.get(id))));
   }
 
   public record UpdateEpicRequest(@NotBlank String title, String description) {

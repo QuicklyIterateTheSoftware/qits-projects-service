@@ -5,6 +5,7 @@ import eu.wohlben.qits.epics.dto.TicketCommentDto;
 import eu.wohlben.qits.epics.dto.TicketDto;
 import eu.wohlben.qits.epics.mapper.TicketCommentMapper;
 import eu.wohlben.qits.epics.mapper.TicketMapper;
+import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -38,16 +39,26 @@ public class TicketController {
 
   @Inject TicketChangeHints hints;
 
+  /** Which live workspaces are on this ticket — derived per read; see {@link DispatchedWorkspaces}. */
+  @Inject DispatchedWorkspaces dispatchedWorkspaces;
+
   // --- Ticket ---
 
   public record GetTicketRequest() {
     public record Response(TicketDto ticket) {}
   }
 
+  /**
+   * The detail read, and the one place a single ticket carries its workspaces. The writes below
+   * answer the row they changed and leave the field empty: an edit is not the question "who is
+   * working on this", and asking a sibling service on every keystroke's save would be a round trip
+   * bought for nothing — the client re-reads.
+   */
   @GET
   @Path("/{id}")
   public GetTicketRequest.Response get(@PathParam("id") String id) {
-    return new GetTicketRequest.Response(ticketMapper.toDto(ticketService.get(id)));
+    return new GetTicketRequest.Response(
+        dispatchedWorkspaces.decorate(ticketMapper.toDto(ticketService.get(id))));
   }
 
   /**

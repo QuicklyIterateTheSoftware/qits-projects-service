@@ -1,5 +1,6 @@
 package eu.wohlben.qits.epics.api;
 
+import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.epics.control.EpicService;
 import eu.wohlben.qits.epics.dto.EpicDto;
@@ -38,6 +39,9 @@ public class ProjectEpicsController {
 
   @Inject EpicChangeHints hints;
 
+  /** One lookup for the whole board — see {@link DispatchedWorkspaces}. */
+  @Inject DispatchedWorkspaces dispatchedWorkspaces;
+
   public record ListEpicsRequest() {
     public record Response(List<Entry> entries) {
       public record Entry(EpicDto epic) {}
@@ -52,9 +56,16 @@ public class ProjectEpicsController {
   public ListEpicsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
     projectService.get(projectId); // 404 if the project does not exist
+    // Mapped first, then decorated in one call: the workspaces lookup is asked once about the whole
+    // board, never once per epic.
     var entries =
-        epicService.listByProject(projectId, status).stream()
-            .map(e -> new ListEpicsRequest.Response.Entry(epicMapper.toDto(e)))
+        dispatchedWorkspaces
+            .decorateEpics(
+                epicService.listByProject(projectId, status).stream()
+                    .map(epicMapper::toDto)
+                    .toList())
+            .stream()
+            .map(ListEpicsRequest.Response.Entry::new)
             .toList();
     return new ListEpicsRequest.Response(entries);
   }

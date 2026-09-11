@@ -782,6 +782,10 @@ components:
           $ref: "#/components/schemas/Instant"
         updatedAt:
           $ref: "#/components/schemas/Instant"
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceReferenceDto"
     FeatureDto:
       type: object
       properties:
@@ -1885,6 +1889,10 @@ components:
           $ref: "#/components/schemas/Instant"
         updatedAt:
           $ref: "#/components/schemas/Instant"
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceReferenceDto"
     TransitionEpicRequest:
       type: object
       properties:
@@ -1984,6 +1992,18 @@ components:
       type: object
       properties:
         reason:
+          type: string
+    WorkspaceReferenceDto:
+      type: object
+      properties:
+        workspaceRowId:
+          type: integer
+          format: int64
+        repositoryId:
+          type: string
+        workspaceId:
+          type: string
+        branch:
           type: string
     WrapperView:
       type: object
@@ -5568,4 +5588,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.911.124615
+  version: 2026.911.141938

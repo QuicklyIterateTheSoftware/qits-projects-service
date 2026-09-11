@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.error.DomainException;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * A workspace with a coding agent already running in it, asked for on a branch of one repository —
@@ -115,4 +117,57 @@ public interface WorkspaceAgentDispatch {
    */
   Dispatch dispatchAgent(
       String repositoryId, String branch, boolean branchTree, Subject subject, String instruction);
+
+  /**
+   * A live workspace over there that names one of our rows as its subject — the {@link Subject} read
+   * back.
+   *
+   * @param workspaceRowId the workspace's row id at qits-workspaces
+   * @param repositoryId the repository it belongs to; the pair composes the link, exactly as on
+   *     {@link Dispatch}
+   * @param workspaceId the workspace's display label
+   * @param branch the branch it owns — {@code ticket/<slug>} or {@code epic/<slug>} for a dispatch
+   * @param ticketId the ticket it is for, or {@code null}
+   * @param epicId the epic it is for, or {@code null}
+   */
+  record Reference(
+      long workspaceRowId,
+      String repositoryId,
+      String workspaceId,
+      String branch,
+      String ticketId,
+      String epicId) {}
+
+  /**
+   * Which live workspaces are working on these tickets and epics — the question "Assign agent" has
+   * to be able to ask before it offers itself a second time.
+   *
+   * <h2>Derived per read, stored nowhere</h2>
+   *
+   * <p>A ticket does not point at a workspace and must not: a pointer has to be cleared when the
+   * workspace is integrated or discarded, and one that is only ever written disables its own button
+   * forever and links to a row nobody can open. The workspace is the thing that comes and goes, so
+   * the workspace carries the reference and this is a query over those references. Zero, one or
+   * several; the count decides the button and the rows are what the links point at.
+   *
+   * <p>What counts as live is the far side's to define and it defines it in one place — an ACTIVE
+   * workspace row, whatever its container is doing. Nothing here re-decides it.
+   *
+   * <h2>The failure contract is the opposite of {@link #dispatchAgent}'s, on purpose</h2>
+   *
+   * <p>That verb is a person pressing a button and waiting, so a failure has to reach them and it
+   * throws. This one <b>decorates a read</b> — a project's tickets panel, an epics board — and a
+   * lookup that threw would take a whole page down because a sibling service was restarting. <b>So
+   * an implementation must never throw: it warns and answers empty.</b> Empty is also the honest
+   * degraded answer, because it is exactly what this returned before the feature existed — every
+   * button live, which is the behaviour a reader already knows.
+   *
+   * <p>Batched for the same reason: the caller is one listing asking about every row on it, and a
+   * call per row would put a network hop inside a loop over a page.
+   *
+   * @param ticketIds the tickets asked about; may be empty
+   * @param epicIds the epics asked about; may be empty. Both empty answers empty without a call
+   * @return the live workspaces naming any of them, in no particular order; never null
+   */
+  List<Reference> workspacesReferencing(Collection<String> ticketIds, Collection<String> epicIds);
 }

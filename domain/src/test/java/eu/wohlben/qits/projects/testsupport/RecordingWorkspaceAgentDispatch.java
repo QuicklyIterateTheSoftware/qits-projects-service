@@ -6,6 +6,7 @@ import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Alternative;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -56,6 +57,34 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     return scripted;
   }
 
+  /** One reference lookup, exactly as the read door asked for it. */
+  public record Looked(List<String> ticketIds, List<String> epicIds) {}
+
+  private final List<Looked> lookups = new ArrayList<>();
+
+  private List<Reference> references = List.of();
+
+  /**
+   * The read half. It never throws, which is the port's contract and not this fake being kind: a
+   * lookup that failed would take down the listing it decorates, so an implementation warns and
+   * answers empty. A test that wants that case scripts {@link #willReference} with nothing.
+   */
+  @Override
+  public synchronized List<Reference> workspacesReferencing(
+      Collection<String> ticketIds, Collection<String> epicIds) {
+    lookups.add(new Looked(List.copyOf(ticketIds), List.copyOf(epicIds)));
+    return references;
+  }
+
+  public synchronized List<Looked> lookups() {
+    return List.copyOf(lookups);
+  }
+
+  /** What the next lookup answers, whatever it is asked about. */
+  public synchronized void willReference(Reference... found) {
+    this.references = List.of(found);
+  }
+
   public synchronized List<Dispatched> calls() {
     return List.copyOf(calls);
   }
@@ -84,6 +113,8 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    */
   public synchronized void reset() {
     calls.clear();
+    lookups.clear();
+    references = List.of();
     scripted = new Dispatch(41L, true, "SCHEDULED");
     failure = null;
   }

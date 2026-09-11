@@ -7,13 +7,20 @@ import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -92,6 +99,13 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    */
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
 
+  /**
+   * The bound on a reference lookup, and it is short where the dispatch's is generous: this one sits
+   * inside a page being drawn, so a far side that is slow must cost a second and a missing link —
+   * never the listing itself.
+   */
+  private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(3);
+
   private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
 
   /** This service's address for qits-workspaces. Unset falls back to the key below. */
@@ -166,6 +180,114 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
           branch, "qits-workspaces answered " + response.statusCode() + ": " + response.body());
     }
     return read(branch, response.body());
+  }
+
+  /**
+   * The read back: {@code GET /workspaces/api/workspaces/references?ticketId=…&epicId=…}, both
+   * parameters repeating, answering {@code {"entries":[{"workspace":{…}}]}}.
+   *
+   * <p><b>Nothing here throws, and that is the port's contract rather than this class being
+   * lenient.</b> A missing address, a missing credential, a far side that is away, a non-200 and an
+   * answer that will not parse all come out the same way: one WARN and an empty list. The caller is
+   * a tickets panel being drawn, and the degraded answer — every button live, no link — is exactly
+   * what the platform did before this read existed.
+   */
+  @Override
+  public List<Reference> workspacesReferencing(
+      Collection<String> ticketIds, Collection<String> epicIds) {
+    String query = query(ticketIds, epicIds);
+    if (query.isEmpty()) {
+      return List.of(); // asked about no rows — no call to make
+    }
+    Optional<String> base = address();
+    Optional<String> authorization = bearer.authorization();
+    if (base.isEmpty() || authorization.isEmpty()) {
+      LOG.debugf(
+          "No %s for qits-workspaces, so no workspace references are read",
+          base.isEmpty() ? "address" : "machine credential");
+      return List.of();
+    }
+    try {
+      HttpRequest request =
+          HttpRequest.newBuilder(
+                  URI.create(base.get() + "/workspaces/api/workspaces/references?" + query))
+              .timeout(LOOKUP_TIMEOUT)
+              .header("Accept", "application/json")
+              .header("Authorization", authorization.get())
+              .GET()
+              .build();
+      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() != 200) {
+        LOG.warnf(
+            "qits-workspaces answered %s to a workspace-reference lookup; reporting none: %s",
+            response.statusCode(), response.body());
+        return List.of();
+      }
+      return references(response.body());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOG.warn("Interrupted while reading workspace references; reporting none");
+      return List.of();
+    } catch (Exception e) {
+      LOG.warnf("Could not read workspace references, so none are reported: %s", e.toString());
+      return List.of();
+    }
+  }
+
+  /**
+   * The query string, with every blank and duplicate id dropped — a blank would ask about a row that
+   * cannot exist, and the same id twice would ask the same question twice. Empty means there is
+   * nothing to ask.
+   */
+  private static String query(Collection<String> ticketIds, Collection<String> epicIds) {
+    return Stream.concat(
+            named("ticketId", ticketIds).stream(), named("epicId", epicIds).stream())
+        .collect(Collectors.joining("&"));
+  }
+
+  private static List<String> named(String parameter, Collection<String> ids) {
+    if (ids == null) {
+      return List.of();
+    }
+    return ids.stream()
+        .filter(id -> id != null && !id.isBlank())
+        .distinct()
+        .map(id -> parameter + "=" + URLEncoder.encode(id, StandardCharsets.UTF_8))
+        .toList();
+  }
+
+  /**
+   * The entries, read as {@code Map}s like everything else this class exchanges. An entry missing
+   * the pair a link is composed from is skipped rather than carried as a half-row: a reference the
+   * browser cannot turn into an address is worse than one it never heard about.
+   */
+  private static List<Reference> references(String responseBody) throws Exception {
+    Map<?, ?> answer = MAPPER.readValue(responseBody, Map.class);
+    if (!(answer.get("entries") instanceof List<?> entries)) {
+      return List.of();
+    }
+    List<Reference> references = new ArrayList<>();
+    for (Object entry : entries) {
+      if (!(entry instanceof Map<?, ?> wrapper)
+          || !(wrapper.get("workspace") instanceof Map<?, ?> row)
+          || !(row.get("workspaceRowId") instanceof Number rowId)
+          || !(row.get("repositoryId") instanceof String repositoryId)) {
+        continue;
+      }
+      references.add(
+          new Reference(
+              rowId.longValue(),
+              repositoryId,
+              string(row.get("workspaceId")),
+              string(row.get("branch")),
+              string(row.get("ticketId")),
+              string(row.get("epicId"))));
+    }
+    return List.copyOf(references);
+  }
+
+  private static String string(Object value) {
+    return value instanceof String text ? text : null;
   }
 
   /**
