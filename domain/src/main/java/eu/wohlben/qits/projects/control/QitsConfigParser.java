@@ -126,8 +126,14 @@ public class QitsConfigParser {
         enumOf(RepositoryArchetype.class, m.get("archetype"), "archetype");
     // A committed config must not be able to promote its repository to the project's wrapper: that
     // role is derived from the project slug and owned by ProjectService.adoptWrapperRepository.
-    // Left
-    // open, any repository could mint a second wrapper just by committing a line of YAML.
+    // Left open, any repository could mint a second wrapper just by committing a line of YAML.
+    //
+    // IT USED TO GUARD THE APPROVAL GATE TOO, AND NO LONGER DOES. While ApprovalPolicy read the
+    // archetype, this refusal was also what stopped a repository voting itself into needing (or, by
+    // the same door, out of needing) a person's approval. Approval is configured now —
+    // .config/qits/release-requests.yml, read from main — so that reason is gone, and the refusal
+    // stays on the reason above alone: minting a second wrapper is its own problem, the wrapper is
+    // what pins the estate, and a role derived from the project slug is not a repository's to claim.
     if (archetype == RepositoryArchetype.PROJECT) {
       throw new QitsConfigException(
           "repository.archetype: PROJECT is reserved for a project's wrapper repository and cannot"

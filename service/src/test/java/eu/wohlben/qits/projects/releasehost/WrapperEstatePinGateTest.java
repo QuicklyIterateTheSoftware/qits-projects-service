@@ -418,10 +418,13 @@ public class WrapperEstatePinGateTest {
   private void stageWrapperAt(String branch, String pin) {
     String rev = "refs/heads/" + branch;
     // gatedTree, not tree: main is also where the gate set is read from, and a wrapper that lost its
-    // CI recipe by being staged here would be gated by nothing at all.
+    // CI recipe by being staged here would be gated by nothing at all. The wrapper's approval gate
+    // is a file on the same branch now rather than its archetype, so it is staged beside them.
     gitHost.gatedTree(
         rev,
         Map.of(
+            ".config/qits/release-requests.yml",
+            "manual-review: true\n",
             ".gitmodules",
             """
             [submodule "member-a"]

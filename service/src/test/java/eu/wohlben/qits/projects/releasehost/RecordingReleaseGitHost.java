@@ -131,6 +131,31 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     trees.remove("refs/heads/main");
   }
 
+  /**
+   * A tree belonging to ONE repository at one rev, which wins over the rev-keyed staging above.
+   *
+   * <p>The fake was keyed by rev alone because every reader here was a release, and a release is
+   * about one repository at a time. {@code ReleaseGates} broke that: a test with two repositories in
+   * it — a wrapper that requires manual review and a plain repository that does not — needs two
+   * different {@code refs/heads/main}s at once, and a rev-keyed map can only hold one.
+   */
+  public void treeFor(String repoId, String rev, Map<String, String> files) {
+    trees.put(repoId + "|" + rev, new LinkedHashMap<>(files));
+  }
+
+  /** {@link #treeFor} with the CI recipe added, so staging a main does not remove the CI gate. */
+  public void gatedTreeFor(String repoId, String rev, Map<String, String> files) {
+    Map<String, String> tree = new LinkedHashMap<>(files);
+    tree.putAll(GATED_MAIN);
+    trees.put(repoId + "|" + rev, tree);
+  }
+
+  /** The tree a reader of {@code (repoId, rev)} sees: this repository's own, else the rev's. */
+  private Map<String, String> treeOf(String repoId, String rev) {
+    Map<String, String> own = trees.get(repoId + "|" + rev);
+    return own != null ? own : trees.get(rev);
+  }
+
   /** A tag name the host already holds, so the next attempt at it answers {@code tag-exists}. */
   public void alreadyTagged(String name) {
     taken.add(name);
@@ -254,7 +279,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     if (failure != null && !("refs/heads/main".equals(rev) && trees.containsKey(rev))) {
       return failure;
     }
-    Map<String, String> tree = trees.get(rev);
+    Map<String, String> tree = treeOf(repoId, rev);
     return tree == null
         ? Answer.failed("no-such-rev: " + rev)
         : Answer.of(List.copyOf(tree.keySet()));
@@ -262,7 +287,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
 
   @Override
   public Answer<String> file(String repoId, String rev, String path) {
-    Map<String, String> tree = trees.get(rev);
+    Map<String, String> tree = treeOf(repoId, rev);
     if (tree == null) {
       return Answer.failed("no-such-rev: " + rev);
     }

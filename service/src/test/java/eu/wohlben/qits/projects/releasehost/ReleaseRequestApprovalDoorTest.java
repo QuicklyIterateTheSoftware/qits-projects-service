@@ -100,6 +100,17 @@ public class ReleaseRequestApprovalDoorTest {
     activeBuilds.answer(Optional.of(0));
     projectId = "approval-door-project-" + UUID.randomUUID();
     wrapperRepoId = "approval-door-wrapper-" + UUID.randomUUID();
+    // THE WRAPPER'S OWN MAIN SAYS IT REQUIRES A PERSON. Approval stopped being "is a wrapper" and
+    // became "says manual-review: true", so the fixture declares it where the platform's own wrapper
+    // declares it — in the repository's .config/qits/release-requests.yml. The plain repository
+    // beside it carries no such file and is the control, exactly as it was when the archetype
+    // decided this.
+    gitHost.gatedTreeFor(
+        wrapperRepoId,
+        "refs/heads/main",
+        java.util.Map.of(
+            "README.md", "no estate here",
+            ".config/qits/release-requests.yml", "manual-review: true\n"));
     plainRepoId = "approval-door-plain-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
         .run(
