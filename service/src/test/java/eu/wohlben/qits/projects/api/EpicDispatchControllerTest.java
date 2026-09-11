@@ -152,6 +152,15 @@ public class EpicDispatchControllerTest {
         asked.instruction().contains("get_epic"),
         "the agent is sent to read the epic live: " + asked.instruction());
     assertTrue(asked.instruction().contains(epicId), "and told which epic that is");
+    // The epic is the pitch and the dossier is the breakdown, so an agent that only reads the epic
+    // fills the gaps by guessing — and the guess arrives in the diff looking like a decision.
+    assertTrue(
+        asked.instruction().contains("get_dossier_page"),
+        "the agent is sent to the dossier for the detail the epic leaves out: "
+            + asked.instruction());
+    assertTrue(
+        asked.instruction().contains("read-only while the epic is in implementation"),
+        "and told it cannot correct the dossier from here, which is what the REFINING guard does");
     assertTrue(
         asked.instruction().contains("mark_task_implemented"),
         "and told to record each task as it lands");

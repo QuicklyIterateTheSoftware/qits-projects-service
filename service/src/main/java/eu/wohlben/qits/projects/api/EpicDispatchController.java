@@ -203,13 +203,37 @@ public class EpicDispatchController {
   }
 
   /**
-   * The agent's first turn. Five things are said on purpose, in this order, and none of them is
-   * decoration: read the epic over MCP rather than working from the preamble; work the features and
-   * their tasks in the order the {@code dependsOn} links describe; mark each task implemented
-   * <em>as it lands</em> rather than in a batch at the end, so a run that dies halfway leaves a true
-   * record of how far it got; treat the work as unfinished until it is released, which is the
-   * platform's own definition of done and the one an agent left to itself gets wrong; and then say
-   * so.
+   * The agent's first turn. Six things are said on purpose, in this order, and none of them is
+   * decoration: read the epic over MCP rather than working from the preamble; read the DOSSIER when
+   * a detail is unclear, because that is where the detail is; work the features and their tasks in
+   * the order the {@code dependsOn} links describe; mark each task implemented <em>as it lands</em>
+   * rather than in a batch at the end, so a run that dies halfway leaves a true record of how far it
+   * got; treat the work as unfinished until it is released, which is the platform's own definition
+   * of done and the one an agent left to itself gets wrong; and then say so.
+   *
+   * <p><b>The dossier sentence is there because the epic deliberately is not the whole plan.</b> An
+   * epic's description is the value pitch — short, and argued rather than specified — while the
+   * dossier is the breakdown, with examples, sketches and framed designs, written during refinement
+   * and kept with the epic precisely so implementation can read it months later. An agent that has
+   * only the epic in front of it fills the gaps by guessing, and the guess looks like a decision in
+   * the diff; being told where the detail lives converts that into a read. It names the two tools
+   * rather than the concept, because "consult the dossier" is not something a model can act on.
+   *
+   * <p>It also says the dossier is <b>read-only from here</b>, which is not a warning but an
+   * accurate description: {@code DossierService} guards every write behind the owning epic's {@code
+   * REFINING} phase, and this agent is dispatched onto an epic in {@code IMPLEMENTATION}, so
+   * {@code put_dossier_page} answers a refusal. Saying so stops a session from reading its own
+   * correction into the plan, and points it at the place a plan is corrected: say what is wrong in
+   * the report, where a person can act on it.
+   *
+   * <p><b>The pre-approval seam is different for this pair and is stated rather than assumed.</b>
+   * Unlike {@code mark_task_implemented}, the dossier reads are not in either daemon's {@code
+   * repository} bucket. Every surface ships {@code CLAUDE} with {@code SKIP_PERMISSIONS} today, so
+   * an unlisted <em>read</em> is reachable and this sentence is actionable as it stands. On the kimi
+   * path it would not be — {@code enabledTools} is the whole tool surface there — so a surface moved
+   * to kimi needs {@code list_dossier_pages} and {@code get_dossier_page} added to
+   * qits-workspace-daemon's read-only repository bucket (and to {@code AgentSurfaceDefaults}' copy
+   * of it) on the same day, or this paragraph becomes a dead letter the way that javadoc describes.
    *
    * <p><b>The closing move is conditional and last, and it deliberately stops short of the epic's
    * own close.</b> The agent reports that everything is marked and released — it does not move the
@@ -242,6 +266,12 @@ public class EpicDispatchController {
         + epic.id
         + ") — the description and its feature/task tree are the brief, so read it live rather than"
         + " trusting the preamble you were handed."
+        + " The epic is the pitch; its DOSSIER is the breakdown, with the examples and figures the"
+        + " description leaves out — list it with list_dossier_pages and read a page with"
+        + " get_dossier_page whenever a task's detail is unclear, before deciding it yourself."
+        + " The dossier is read-only while the epic is in implementation, so if it is wrong or"
+        + " silent on something you had to decide, say that in your report rather than trying to"
+        + " correct it."
         + " Work the features and their tasks in order, respecting the dependsOn links between"
         + " them."
         + " Mark each task implemented with mark_task_implemented as it lands, rather than in a"

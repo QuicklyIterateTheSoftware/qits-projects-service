@@ -605,12 +605,24 @@ Four things are rules rather than details:
 - **The preamble is a snapshot and the instruction is the brief.** `refinementhost/EpicOutline`
   renders both this door's `# Implement: <title>` and a refinement's `# Refine: <title>`; the heading
   verb is the only thing they disagree about, and one renderer is why they cannot drift. The
-  instruction sends the agent to `get_epic` for the live tree, to work the features and tasks in
+  instruction sends the agent to `get_epic` for the live tree, **to the dossier for the detail the
+  epic leaves out**, to work the features and tasks in
   `dependsOn` order, to mark each task with `mark_task_implemented` **as it lands**, and to treat the
   work as unfinished until the changes are **released**. Its closing move stops short of the epic's
   own close: the agent reports, and *Mark implemented* stays a person's press — declaring an epic
   done stamps every unimplemented feature and task in one transaction, which is a decision about
   scope and not a report about work.
+- **The dossier sentence names the two tools rather than the concept** (`list_dossier_pages`,
+  `get_dossier_page`), because "consult the dossier" is not something a model can act on. An epic's
+  description is the pitch and the dossier is the breakdown, so an agent given only the epic fills
+  the gaps by guessing and the guess arrives in the diff looking like a decision. It also says the
+  dossier is **read-only from here**, which is a description rather than a warning: `DossierService`
+  guards every write behind the epic's `REFINING` phase, so a session that finds the plan wrong
+  reports it instead of correcting it. Those two reads are **not** in either daemon's `repository`
+  pre-approval bucket — every surface ships CLAUDE with `SKIP_PERMISSIONS`, so an unlisted read is
+  reachable today. A surface moved to **kimi** needs them in qits-workspace-daemon's read-only bucket
+  and in `AgentSurfaceDefaults`' copy of it on the same day, or the sentence is the dead letter that
+  javadoc warns about.
 
 **`mark_task_implemented` on `EpicMcpTools` is a dedicated tool and a deliberate interim.** It is not
 a widening of `update_task`, whose refusal ("the implemented marker is not editable here") is a
