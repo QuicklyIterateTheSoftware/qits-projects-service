@@ -43,6 +43,9 @@ public class ReleaseRequestApprovalTest {
 
   @Inject ApprovalPolicy policy;
 
+  /** The gate configuration is read from the repository's main, and this is where main lives. */
+  @Inject RecordingReleaseGitHost gitHost;
+
   private String projectId;
   private String requestId;
 
@@ -146,16 +149,35 @@ public class ReleaseRequestApprovalTest {
         1, approvals.listByRequest(requestId).size(), "the history read still shows it");
   }
 
-  /** The seam's rule today: the wrapper needs a person, and nothing else does. */
+  /**
+   * <b>The seam's rule is the repository's own configuration, and the archetype no longer decides
+   * it.</b> Every archetype including PROJECT answers "no" while nothing says {@code manual-review:
+   * true} — which is the cutover's whole risk stated as a test: a wrapper that misses the file
+   * silently stops being reviewed.
+   */
   @Test
-  void onlyTheWrapperRequiresApproval() {
+  void noArchetypeRequiresApprovalOnItsOwn() {
+    gitHost.reset();
     for (RepositoryArchetype archetype : RepositoryArchetype.values()) {
-      boolean required = policy.requiresApproval(repoIdOf(archetype));
-      if (archetype == RepositoryArchetype.PROJECT) {
-        assertTrue(required, "a wrapper release is approved by a person");
-      } else {
-        assertFalse(required, archetype + " releases on its gates alone");
-      }
+      assertFalse(
+          policy.requiresApproval(repoIdOf(archetype)),
+          archetype + " releases on what it configures, and it configures no approval");
+    }
+  }
+
+  /** And what does decide it: the file, whatever the repository is. */
+  @Test
+  void manualReviewIsWhatRequiresApproval() {
+    gitHost.reset();
+    for (RepositoryArchetype archetype : RepositoryArchetype.values()) {
+      String repoId = repoIdOf(archetype);
+      gitHost.treeFor(
+          repoId,
+          "refs/heads/main",
+          java.util.Map.of(".config/qits/release-requests.yml", "manual-review: true\n"));
+      assertTrue(
+          policy.requiresApproval(repoId),
+          archetype + " requires a person because its own main says so");
     }
   }
 

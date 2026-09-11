@@ -93,13 +93,24 @@ public class ReleaseRequestApprovalDoorTest {
     requestIds.clear();
     // A wrapper whose branches declare no submodules: the estate gate reads them, finds nothing
     // pinned and lets every request here through to the gate under test. See the field's javadoc.
-    gitHost.tree("refs/heads/main", java.util.Map.of("README.md", "no estate here"));
+    gitHost.gatedTree("refs/heads/main", java.util.Map.of("README.md", "no estate here"));
     gitHost.tree("refs/heads/work", java.util.Map.of("README.md", "no estate here"));
     // Nothing in flight, so the build gate is out of the way and what holds a request here is only
     // ever the approval gate and the doors that answer it.
     activeBuilds.answer(Optional.of(0));
     projectId = "approval-door-project-" + UUID.randomUUID();
     wrapperRepoId = "approval-door-wrapper-" + UUID.randomUUID();
+    // THE WRAPPER'S OWN MAIN SAYS IT REQUIRES A PERSON. Approval stopped being "is a wrapper" and
+    // became "says manual-review: true", so the fixture declares it where the platform's own wrapper
+    // declares it — in the repository's .config/qits/release-requests.yml. The plain repository
+    // beside it carries no such file and is the control, exactly as it was when the archetype
+    // decided this.
+    gitHost.gatedTreeFor(
+        wrapperRepoId,
+        "refs/heads/main",
+        java.util.Map.of(
+            "README.md", "no estate here",
+            ".config/qits/release-requests.yml", "manual-review: true\n"));
     plainRepoId = "approval-door-plain-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
         .run(

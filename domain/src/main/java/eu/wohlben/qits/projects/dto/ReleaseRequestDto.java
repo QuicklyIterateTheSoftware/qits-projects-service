@@ -73,6 +73,15 @@ import java.util.List;
  * neutral trio: {@code approvalState} already says which it was, and two sets of the same three
  * fields is how a caller comes to read one and miss the other.
  *
+ * <p><b>{@code gates} is the whole set, and it is what the approval fields are one member of.</b>
+ * Each entry is a gate the repository <em>configures</em> together with what that gate says about
+ * this request's current fold — see {@link ReleaseGateDto}. It is derived on every read out of the
+ * repository's {@code main}, the ledger and the approval table, and no part of it is a column on the
+ * request row, for the approval fields' own reason one paragraph up. Three request states a reader
+ * can now tell apart that did not exist before: waiting on a build, waiting on a person, and waiting
+ * on nothing — the last being a repository that configured no gate, which is releasable at once and
+ * is not the same as unfinished.
+ *
  * <p>{@code repoName} is the repository's public name — null where it has none. It rides along
  * because a request read outside its repository's own page (the project-wide list) has nothing else
  * to name the repository with, and an opaque id is not a thing to show a person. The project list
@@ -98,6 +107,7 @@ public record ReleaseRequestDto(
     String approvedBy,
     Instant approvedAt,
     String approvalNote,
+    List<ReleaseGateDto> gates,
     MergeConflictDto conflict,
     String version,
     String releasedSha,

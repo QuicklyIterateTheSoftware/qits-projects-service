@@ -23,6 +23,20 @@ public class CommitBuildStatusRepository
   }
 
   /**
+   * Every verdict for several commits at once — the release-request listing's read, where asking per
+   * row would be a query per row on the busiest read this service has. Newest run first within each
+   * commit, exactly as {@link #findByCommit} answers, so a caller can group and read them the same
+   * way.
+   */
+  public List<CommitBuildStatus> findByCommits(List<String> commitShas) {
+    if (commitShas.isEmpty()) {
+      return List.of();
+    }
+    return list(
+        "commitSha in ?1 order by finishedAt desc, runId desc", List.copyOf(commitShas));
+  }
+
+  /**
    * Record one run's verdict, replacing whatever that run had — delete-then-insert, the {@code
    * AgentCredentialRepository.put} shape, so a replayed or corrected announcement converges on one
    * row per run rather than colliding with the primary key.
