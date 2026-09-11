@@ -61,6 +61,41 @@ public interface WorkspaceAgentDispatch {
   record Dispatch(long workspaceRowId, boolean fresh, String agentLaunch) {}
 
   /**
+   * What the dispatched workspace is <b>for</b>: the row this dispatch is about, named by id.
+   *
+   * <h2>Why an id and not the row rendered as prose</h2>
+   *
+   * <p>This used to be a {@code preamble} — the ticket's title, its status line and its whole
+   * description, or the epic's outline, rendered here and frozen into the workspace's goal at
+   * creation. That copy had no reader it served well. The instruction beside it already sends the
+   * agent to read the source live over MCP, so the prose was a stale second copy of something one
+   * tool call away, and on the workspace page it buried the one fact a person scanning the list
+   * wants: what this workspace is for. A reference is that fact, so it travels as a field.
+   *
+   * <p><b>The far side resolves neither id and renders neither.</b> It carries them, and the
+   * workspaces SPA turns one into a link — composing it needs this platform's public origin, which a
+   * browser is told by the navigation document and no service here holds a key for.
+   *
+   * <p>Two static factories rather than a public constructor: the members are same-typed and
+   * adjacent, and a dispatch filed under the wrong one is a link that opens somebody else's work.
+   *
+   * @param ticketId the ticket this dispatch is about, or {@code null}
+   * @param epicId the epic this dispatch is about, or {@code null}
+   */
+  record Subject(String ticketId, String epicId) {
+
+    /** A ticket dispatch. */
+    public static Subject ticket(String ticketId) {
+      return new Subject(ticketId, null);
+    }
+
+    /** An epic dispatch. */
+    public static Subject epic(String epicId) {
+      return new Subject(null, epicId);
+    }
+  }
+
+  /**
    * Make (or adopt) the workspace on {@code branch} and launch an agent in it.
    *
    * @param repositoryId the <b>catalog</b> repository id — this service's row id, which is what
@@ -70,12 +105,14 @@ public interface WorkspaceAgentDispatch {
    *     if it does not exist
    * @param branchTree whether the submodules are branched alongside the wrapper — true for the
    *     whole-estate aggregate a ticket needs
-   * @param preamble the workspace's goal, Markdown, rendered from the row the dispatch is about
+   * @param subject what the workspace is for — see {@link Subject}. There is deliberately no
+   *     {@code preamble} beside it: the workspace's goal is a person's prose, and neither door here
+   *     has a person's prose to send.
    * @param instruction the agent's first turn
    * @return what the far side made or adopted
    * @throws DomainException when the dispatch could not be made — 502 for a far side that refused,
    *     was unreachable or answered unreadably, 503 for a hop with no address or no credential
    */
   Dispatch dispatchAgent(
-      String repositoryId, String branch, boolean branchTree, String preamble, String instruction);
+      String repositoryId, String branch, boolean branchTree, Subject subject, String instruction);
 }

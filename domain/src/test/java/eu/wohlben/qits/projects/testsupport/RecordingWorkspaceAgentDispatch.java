@@ -33,7 +33,7 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
       String repositoryId,
       String branch,
       boolean branchTree,
-      String preamble,
+      Subject subject,
       String instruction) {}
 
   private final List<Dispatched> calls = new ArrayList<>();
@@ -47,9 +47,9 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
       String repositoryId,
       String branch,
       boolean branchTree,
-      String preamble,
+      Subject subject,
       String instruction) {
-    calls.add(new Dispatched(repositoryId, branch, branchTree, preamble, instruction));
+    calls.add(new Dispatched(repositoryId, branch, branchTree, subject, instruction));
     if (failure != null) {
       throw failure;
     }

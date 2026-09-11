@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.workspacehost;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -97,7 +98,12 @@ class HttpWorkspaceAgentDispatchTest {
 
     WorkspaceAgentDispatch.Dispatch made =
         against(base)
-            .dispatchAgent("repo-1", "ticket/puce-button", true, "# Ticket: Puce", "Work on it.");
+            .dispatchAgent(
+                "repo-1",
+                "ticket/puce-button",
+                true,
+                WorkspaceAgentDispatch.Subject.ticket("t-7"),
+                "Work on it.");
 
     assertEquals(41L, made.workspaceRowId());
     assertTrue(made.fresh());
@@ -112,8 +118,12 @@ class HttpWorkspaceAgentDispatchTest {
     assertEquals("repo-1", body.get("repositoryId"));
     assertEquals("ticket/puce-button", body.get("branch"));
     assertEquals(Boolean.TRUE, body.get("branchTree"));
-    assertEquals("# Ticket: Puce", body.get("preamble"));
+    assertEquals("t-7", body.get("ticketId"));
     assertEquals("Work on it.", body.get("instruction"));
+    // Only what the dispatch is about travels. No goal, because this door has no prose of its own —
+    // and no `epicId: null`, because an explicit null is this hop stating a subject it has not got.
+    assertFalse(body.containsKey("preamble"), "a dispatch states a goal nobody authored");
+    assertFalse(body.containsKey("epicId"), "the member that is unset is left off the body");
   }
 
   @Test
@@ -121,7 +131,7 @@ class HttpWorkspaceAgentDispatchTest {
     String base = startServer();
 
     against(null, base, Optional.of("Bearer machine-token"))
-        .dispatchAgent("repo-1", "ticket/x", true, "p", "i");
+        .dispatchAgent("repo-1", "ticket/x", true, WorkspaceAgentDispatch.Subject.ticket("t"), "i");
 
     assertEquals(1, received.size(), "an unset own key falls back to the release path's address");
   }
@@ -133,7 +143,7 @@ class HttpWorkspaceAgentDispatchTest {
             DomainException.class,
             () ->
                 against(null, "", Optional.of("Bearer machine-token"))
-                    .dispatchAgent("repo-1", "ticket/x", true, "p", "i"));
+                    .dispatchAgent("repo-1", "ticket/x", true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
     assertEquals(503, failure.statusCode());
   }
 
@@ -144,7 +154,7 @@ class HttpWorkspaceAgentDispatchTest {
     DomainException failure =
         assertThrows(
             DomainException.class,
-            () -> against(base, null, Optional.empty()).dispatchAgent("r", "b", true, "p", "i"));
+            () -> against(base, null, Optional.empty()).dispatchAgent("r", "b", true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
 
     assertEquals(503, failure.statusCode());
     assertTrue(received.isEmpty(), "a call this service cannot authenticate is one it does not make");
@@ -159,7 +169,7 @@ class HttpWorkspaceAgentDispatchTest {
     DomainException failure =
         assertThrows(
             DomainException.class,
-            () -> against(base).dispatchAgent("r", "ticket/x", true, "p", "i"));
+            () -> against(base).dispatchAgent("r", "ticket/x", true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
 
     assertEquals(502, failure.statusCode());
     assertTrue(failure.getMessage().contains("409"), failure.getMessage());
@@ -173,7 +183,7 @@ class HttpWorkspaceAgentDispatchTest {
     DomainException failure =
         assertThrows(
             DomainException.class,
-            () -> against(base).dispatchAgent("r", "ticket/x", true, "p", "i"));
+            () -> against(base).dispatchAgent("r", "ticket/x", true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
 
     assertEquals(502, failure.statusCode());
     assertTrue(failure.getMessage().contains("no workspace id"), failure.getMessage());
@@ -186,7 +196,7 @@ class HttpWorkspaceAgentDispatchTest {
             DomainException.class,
             () ->
                 against("http://127.0.0.1:1", null, Optional.of("Bearer t"))
-                    .dispatchAgent("r", "ticket/x", true, "p", "i"));
+                    .dispatchAgent("r", "ticket/x", true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
 
     assertEquals(502, failure.statusCode());
   }

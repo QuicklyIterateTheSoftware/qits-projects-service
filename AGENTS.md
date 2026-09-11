@@ -602,9 +602,12 @@ Four things are rules rather than details:
   stamps a comment: an epic has no thread, and its *description is the plan*, so a dispatch appending
   its own bookkeeping to it would be this door editing somebody's plan. What lands is the `EPICS`
   hint on the status move and the returned DTO — a failed dispatch has written nothing to undo.
-- **The preamble is a snapshot and the instruction is the brief.** `refinementhost/EpicOutline`
-  renders both this door's `# Implement: <title>` and a refinement's `# Refine: <title>`; the heading
-  verb is the only thing they disagree about, and one renderer is why they cannot drift. The
+- **The epic dispatch names its epic and sends no preamble either**, the ticket door's rule one
+  planning level up and for the sharper version of its reason: the tree moves under an
+  implementation, so a rendering frozen at creation is stale the moment a task is marked.
+  `refinementhost/EpicOutline` therefore has **one caller left**, a refinement's `# Refine: <title>`;
+  the sibling ticket `the-refinement-preamble-should-be-a-shor` takes that one, and whichever lands
+  second deletes the class. The
   instruction sends the agent to `get_epic` for the live tree, **to the dossier for the detail the
   epic leaves out**, to work the features and tasks in
   `dependsOn` order, to mark each task with `mark_task_implemented` **as it lands**, and to treat the
@@ -760,10 +763,15 @@ package.
 
 Three things travel with it:
 
-- **The preamble is a snapshot and the instruction is the brief.** The workspace goal is rendered
-  from the row (`# Ticket: <title>`, a type/status/assignee/reporter line, the description), the
-  shape `RefinementService.preamble` carries; the agent's first turn then sends it to read the
-  ticket *live* with `get_ticket`, because the thread moves and those bytes do not.
+- **The workspace is told what it is for, and is given no goal.** The dispatch carries the ticket's
+  **id** (`WorkspaceAgentDispatch.Subject.ticket`) and no preamble. It used to render the whole row
+  into the workspace goal — `# Ticket: <title>`, a type/status/assignee/reporter line, the
+  description — and that copy served no reader well: the instruction sends the agent to read the
+  ticket *live* with `get_ticket`, so the prose was stale by construction, and on the workspace page
+  it buried the one fact a person scanning the list wants. qits-workspaces carries the id as a field
+  (`workspace.ticket_id`, its `V5`) and resolves it with nothing; the workspaces SPA composes the
+  link, because that needs the platform's public origin, which a browser is told by
+  `/main-navigation` and no service here holds a key for.
 - **The agent is told what "done" means here, and told to say so on the ticket.** Report on the
   thread with `add_ticket_comment` and keep that **one** comment current with
   `update_ticket_comment`; the work is not finished until the changes are **released**, not merely

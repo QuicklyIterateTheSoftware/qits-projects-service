@@ -45,6 +45,16 @@ import org.jboss.logging.Logger;
  * <p>The slug is the branch segment for the reason it exists: minted at create and never
  * re-derived, so a retitled ticket keeps the branch its agent is already working on.
  *
+ * <h2>The workspace is told what it is for, and is given no goal</h2>
+ *
+ * <p>The dispatch carries the ticket's <b>id</b> ({@link WorkspaceAgentDispatch.Subject#ticket}) and
+ * no preamble. This door used to render the whole ticket — title, a type/status/assignee/reporter
+ * line and the full description — into the workspace's goal, and that copy served no reader well:
+ * the instruction below sends the agent to read the ticket live over MCP, so the prose was stale by
+ * construction, and on the workspace page it buried the one fact a person scanning the list wants.
+ * The workspaces SPA turns the id into a link; the preamble goes back to being what it is, a
+ * person's prose, authored where a person creates a workspace by hand.
+ *
  * <h2>What lands on the thread</h2>
  *
  * <p>A dispatch that succeeded writes one comment, stamped from the caller's identity exactly as a
@@ -95,7 +105,12 @@ public class TicketDispatchController {
     WorkspaceAgentDispatch.Dispatch made =
         dispatch
             .get()
-            .dispatchAgent(wrapper.id, branch, true, preamble(ticket), instruction(ticket));
+            .dispatchAgent(
+                wrapper.id,
+                branch,
+                true,
+                WorkspaceAgentDispatch.Subject.ticket(ticket.id),
+                instruction(ticket));
 
     String changedBy = EpicsPrincipal.changedBy(identity);
     tickets.addComment(ticket.id, comment(branch, made), changedBy);
@@ -126,33 +141,8 @@ public class TicketDispatchController {
   }
 
   /**
-   * The workspace's goal, Markdown — {@code RefinementService.preamble}'s shape one flow over. It is
-   * a snapshot for orientation and never the brief: the brief is the ticket itself, which is why the
-   * instruction sends the agent to read it live rather than trusting these bytes to stay current.
-   */
-  static String preamble(Ticket ticket) {
-    StringBuilder text = new StringBuilder();
-    text.append("# Ticket: ").append(ticket.title).append("\n\n");
-    text.append("_")
-        .append(ticket.type)
-        .append(" · ")
-        .append(ticket.status)
-        .append(" · assigned to ")
-        .append(blank(ticket.assignee) ? "nobody" : ticket.assignee)
-        .append(" · filed by ")
-        .append(blank(ticket.createdBy) ? "an unnamed caller" : ticket.createdBy)
-        .append("_\n\n");
-    if (blank(ticket.description)) {
-      text.append("_This ticket has no description._\n");
-    } else {
-      text.append(ticket.description).append("\n");
-    }
-    return text.toString();
-  }
-
-  /**
    * The agent's first turn. Four things are said on purpose and none of them is decoration: read the
-   * ticket over MCP rather than working from the preamble, keep <em>one</em> comment current instead
+   * ticket over MCP rather than working from what the workspace was handed, keep <em>one</em> comment current instead
    * of stacking notes under it, treat the work as unfinished until it is released — the platform's
    * own definition of done, and the one an agent left to itself gets wrong — and then resolve the
    * ticket.
@@ -208,9 +198,5 @@ public class TicketDispatchController {
           + "`; left it to carry on.";
     }
     return "Dispatched a coding agent to workspace `" + branch + "`.";
-  }
-
-  private static boolean blank(String value) {
-    return value == null || value.isBlank();
   }
 }

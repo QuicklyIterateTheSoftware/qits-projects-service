@@ -28,7 +28,7 @@ import org.jboss.logging.Logger;
  *   Content-Type: application/json
  *
  *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;", "branchTree": true,
- *    "preamble": "&lt;markdown&gt;", "instruction": "&lt;the agent's first turn&gt;"}
+ *    "ticketId": "…", "instruction": "&lt;the agent's first turn&gt;"}
  *
  *   -&gt; 200 {"workspace": {"id": 41, …}, "fresh": true,
  *           "agentLaunch": "SCHEDULED"|"SKIPPED_RUNNING", "technicalProcessId": "…"|null}
@@ -109,7 +109,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
       String repositoryId,
       String branch,
       boolean branchTree,
-      String preamble,
+      Subject subject,
       String instruction) {
     String base =
         address()
@@ -133,7 +133,15 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     body.put("repositoryId", repositoryId);
     body.put("branch", branch);
     body.put("branchTree", branchTree);
-    body.put("preamble", preamble);
+    // What the workspace is for, and no goal: a dispatch has no prose of its own to state, and the
+    // far side leaves a `preamble` it is not sent alone. Only the member that is set is sent —
+    // an explicit null would be this hop stating a subject it does not have.
+    if (subject != null && subject.ticketId() != null) {
+      body.put("ticketId", subject.ticketId());
+    }
+    if (subject != null && subject.epicId() != null) {
+      body.put("epicId", subject.epicId());
+    }
     body.put("instruction", instruction);
 
     HttpResponse<String> response;

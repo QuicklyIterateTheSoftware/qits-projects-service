@@ -10,7 +10,6 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
-import eu.wohlben.qits.projects.refinementhost.EpicOutline;
 import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -84,6 +83,19 @@ import org.jboss.logging.Logger;
  * board's own transition. Tearing that refinement down at this moment is a different ticket
  * ({@code 6cab37e4}); this door neither does it nor makes it harder to do.
  *
+ * <h2>The workspace is told what it is for, and is given no goal</h2>
+ *
+ * <p>The dispatch carries the epic's <b>id</b> ({@link WorkspaceAgentDispatch.Subject#epic}) and no
+ * preamble. This door used to render the epic under {@code # Implement:} with its whole feature/task
+ * outline into the workspace's goal, and those bytes froze at creation while the epic went on moving
+ * — which is exactly why the instruction below sends the agent to {@code get_epic} instead. The
+ * workspaces SPA turns the id into a link; the preamble goes back to being a person's prose.
+ *
+ * <p>{@code refinementhost/EpicOutline} therefore has one caller left, the refinement's own
+ * {@code # Refine:} rendering. It stays where it is: the sibling ticket
+ * {@code the-refinement-preamble-should-be-a-shor} takes that one, and whichever lands second
+ * deletes the class.
+ *
  * <h2>Nothing is written on the epic</h2>
  *
  * <p>An epic has no comment thread — that is the whole difference from the ticket door, which
@@ -104,8 +116,6 @@ public class EpicDispatchController {
   @Inject EpicService epics;
 
   @Inject EpicResolutions resolutions;
-
-  @Inject EpicOutline outline;
 
   @Inject ProjectService projects;
 
@@ -145,7 +155,14 @@ public class EpicDispatchController {
     }
 
     WorkspaceAgentDispatch.Dispatch made =
-        dispatch.get().dispatchAgent(wrapper.id, branch, true, preamble(epic), instruction(epic));
+        dispatch
+            .get()
+            .dispatchAgent(
+                wrapper.id,
+                branch,
+                true,
+                WorkspaceAgentDispatch.Subject.epic(epic.id),
+                instruction(epic));
 
     LOG.infof(
         "Dispatched an agent onto epic %s (%s) in workspace %s on %s",
@@ -190,21 +207,9 @@ public class EpicDispatchController {
   }
 
   /**
-   * The workspace's goal, Markdown — the epic under {@code # Implement:}, with its feature/task
-   * outline, rendered by the same {@link EpicOutline} a refinement opens with.
-   *
-   * <p>It is a <b>snapshot for orientation and never the brief</b>. These bytes are frozen into the
-   * container at creation while the epic goes on moving — a task marked implemented, a description
-   * corrected — which is exactly why the instruction below sends the agent to read the epic live
-   * with {@code get_epic} instead of working from what it was handed.
-   */
-  private String preamble(Epic epic) {
-    return outline.render(epic, "Implement");
-  }
-
-  /**
    * The agent's first turn. Six things are said on purpose, in this order, and none of them is
-   * decoration: read the epic over MCP rather than working from the preamble; read the DOSSIER when
+   * decoration: read the epic over MCP rather than working from what the workspace was handed; read
+   * the DOSSIER when
    * a detail is unclear, because that is where the detail is; work the features and their tasks in
    * the order the {@code dependsOn} links describe; mark each task implemented <em>as it lands</em>
    * rather than in a batch at the end, so a run that dies halfway leaves a true record of how far it
@@ -264,8 +269,7 @@ public class EpicDispatchController {
         + epic.slug
         + ") in this project. Read it first with get_epic (id "
         + epic.id
-        + ") — the description and its feature/task tree are the brief, so read it live rather than"
-        + " trusting the preamble you were handed."
+        + ") — the description and its feature/task tree are the brief."
         + " The epic is the pitch; its DOSSIER is the breakdown, with the examples and figures the"
         + " description leaves out — list it with list_dossier_pages and read a page with"
         + " get_dossier_page whenever a task's detail is unclear, before deciding it yourself."

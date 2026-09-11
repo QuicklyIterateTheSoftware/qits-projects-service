@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -23,7 +24,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>What it pins is the half of the flow this service owns, and there are three parts to that: the
  * <b>status move</b> the press makes, <b>what is asked for</b> (the wrapper's row id, {@code
- * epic/<slug>}, the whole-estate {@code branchTree}, and a preamble and instruction rendered from
+ * epic/<slug>}, the whole-estate {@code branchTree}, the epic's id and an instruction rendered from
  * the epic), and the <b>order</b> between the two — a re-press on an epic that is already in
  * implementation dispatches rather than answering 409, which is the whole retry story. The dispatch
  * itself is qits-workspaces' and is not simulated here.
@@ -142,11 +143,10 @@ public class EpicDispatchControllerTest {
     assertEquals("epic/planning-domain", asked.branch());
     assertTrue(asked.branchTree(), "the aggregate workspace is the whole point for an epic");
 
-    assertTrue(
-        asked.preamble().contains("# Implement: Planning domain"),
-        "the preamble titles the epic under the implementing verb: " + asked.preamble());
-    assertTrue(asked.preamble().contains("The spine of the plan."), "and carries its description");
-    assertTrue(asked.preamble().contains("Lifecycle"), "and the outline as it stands");
+    // The subject is a FIELD and the goal is left empty: the epic tree moves under an
+    // implementation, so a rendering of it frozen at creation is stale the moment a task is marked.
+    assertEquals(epicId, asked.subject().epicId(), "the dispatch names the epic it is about");
+    assertNull(asked.subject().ticketId(), "an epic dispatch names no ticket");
 
     assertTrue(
         asked.instruction().contains("get_epic"),

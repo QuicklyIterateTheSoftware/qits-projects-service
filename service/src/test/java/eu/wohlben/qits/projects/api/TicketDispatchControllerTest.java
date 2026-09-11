@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -21,7 +22,7 @@ import org.junit.jupiter.api.Test;
  * The ticket agent-dispatch door, REST-level and end to end against the recording port.
  *
  * <p>What it pins is the half of the flow this service actually owns: <b>what is asked for</b> — the
- * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, and a preamble and
+ * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, the ticket's id and an
  * instruction rendered from the ticket — and <b>what the ticket is left saying</b> afterwards. The
  * dispatch itself is qits-workspaces' and is not simulated here.
  *
@@ -110,11 +111,10 @@ public class TicketDispatchControllerTest {
     assertEquals("ticket/login-button-is-the-wrong-colour", asked.branch());
     assertTrue(asked.branchTree(), "the aggregate workspace is the whole point for a ticket");
 
-    assertTrue(
-        asked.preamble().contains("# Ticket: Login button is the wrong colour"),
-        "the preamble titles the ticket: " + asked.preamble());
-    assertTrue(asked.preamble().contains("It is puce."), "and carries its description");
-    assertTrue(asked.preamble().contains("BUG"), "and its type");
+    // The subject is a FIELD and the goal is left empty: the workspace names the ticket it is for,
+    // and no copy of a row that goes on moving is frozen into its preamble.
+    assertEquals(ticketId, asked.subject().ticketId(), "the dispatch names the ticket it is about");
+    assertNull(asked.subject().epicId(), "a ticket dispatch names no epic");
 
     assertTrue(
         asked.instruction().contains("add_ticket_comment"),
