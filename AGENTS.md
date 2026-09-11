@@ -603,8 +603,9 @@ Four things are rules rather than details:
   its own bookkeeping to it would be this door editing somebody's plan. What lands is the `EPICS`
   hint on the status move and the returned DTO — a failed dispatch has written nothing to undo.
 - **The preamble is a snapshot and the instruction is the brief.** `refinementhost/EpicOutline`
-  renders both this door's `# Implement: <title>` and a refinement's `# Refine: <title>`; the heading
-  verb is the only thing they disagree about, and one renderer is why they cannot drift. The
+  renders this door's `# Implement: <title>`, and is now its **only** caller: a refinement stopped
+  storing a render of its epic entirely (see "Refinement containers"), so the heading verb takes one
+  value and the class goes when this preamble does. The
   instruction sends the agent to `get_epic` for the live tree, **to the dossier for the detail the
   epic leaves out**, to work the features and tasks in
   `dependsOn` order, to mark each task with `mark_task_implemented` **as it lands**, and to treat the
@@ -761,9 +762,10 @@ package.
 Three things travel with it:
 
 - **The preamble is a snapshot and the instruction is the brief.** The workspace goal is rendered
-  from the row (`# Ticket: <title>`, a type/status/assignee/reporter line, the description), the
-  shape `RefinementService.preamble` carries; the agent's first turn then sends it to read the
-  ticket *live* with `get_ticket`, because the thread moves and those bytes do not.
+  from the row (`# Ticket: <title>`, a type/status/assignee/reporter line, the description); the
+  agent's first turn then sends it to read the ticket *live* with `get_ticket`, because the thread
+  moves and those bytes do not. It is the last stored render of a row on the platform — the
+  refinement's went in V22 — and the sibling ticket about emptying this one is open.
 - **The agent is told what "done" means here, and told to say so on the ticket.** Report on the
   thread with `add_ticket_comment` and keep that **one** comment current with
   `update_ticket_comment`; the work is not finished until the changes are **released**, not merely
@@ -1308,9 +1310,18 @@ Where it differs from the agent harness, each difference is the domain line:
 
 - **Keyed by epic, addressed by row id.** `refinement` (V4) holds one row per epic (unique), with
   the branch (`refining/<epicSlug>`), the parent (the wrapper's default branch — a refinement always
-  forks it, which is why there is no parent/child tree and no integrate door), the preamble computed
-  from the epic tree at create, and the commissioned credential — ON THE ROW, because
-  `Recreate.ifChanged` hashes the whole spec and a resume must reproduce the pair byte for byte.
+  forks it, which is why there is no parent/child tree and no integrate door), and the commissioned
+  credential — ON THE ROW, because `Recreate.ifChanged` hashes the whole spec and a resume must
+  reproduce the pair byte for byte.
+  <br>**Nothing about the epic is copied onto the row, and a `preamble` column that did it went in
+  V22.** It held `EpicOutline.render(epic, "Refine")` — title, description and the whole feature/task
+  tree — written once at create, never recomputed, and so a copy of the very draft the refinement
+  exists to edit. Its one reader was the SPA's prompt-rewrite helper, which passes it to the daemon as
+  that model call's context; `epic_id` is `text not null unique` and *is* the row's key, so the
+  refining page derives one line from the epic it has already resolved, at the moment it asks. The
+  `[preamble]` binding keeps its name down to the prompt panel because `POST /prompt-refinements` is
+  where the word comes from — renaming it here while the wire kept the old one would be two names for
+  one thing.
 - **A refinement runs no code.** `BOOTSTRAP_AUTORUN=false`, `SERVICES_AUTOSTART=false`, no
   `SERVICE_PROXY_BASE`, no actions MCP server — the tab set this backs has no Services or Actions
   tab, and its web view frames the deployed environment, not a dev server.

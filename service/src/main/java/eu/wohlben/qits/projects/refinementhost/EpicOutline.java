@@ -13,13 +13,15 @@ import java.util.List;
  * One epic rendered as Markdown — the heading, the description and the feature/task outline — for
  * the workspace goal an agent container opens with.
  *
- * <p>It exists because <b>two</b> flows now hand an agent the same epic: {@link RefinementService}
- * opens a refinement with {@code # Refine: <title>}, and {@code
+ * <p>It exists because two flows once handed an agent the same epic under headings that differed in
+ * exactly one word, and a second copy of the walk would have been two renderings of one epic free to
+ * drift apart. <b>One caller is left</b>: {@code
  * eu.wohlben.qits.projects.api.EpicDispatchController} stands an implementing workspace up with
- * {@code # Implement: <title>}. The two differ in exactly one word, so a second copy of the walk
- * would be two renderings of one epic free to drift apart — and the drift would be silent, because
- * neither is read by anything that could disagree with the other. The heading verb is the parameter;
- * everything below it is the epic.
+ * {@code # Implement: <title>}. {@link RefinementService} dropped its {@code "Refine"} call when
+ * {@code refinement.preamble} went — that row names its epic in {@code epicId}, and the one reader
+ * that wanted context now derives a line from it at the moment it asks rather than reading a render
+ * frozen at create. The heading verb is still the parameter; it just takes one value today, and if
+ * the dispatch preamble goes the same way this class goes with it.
  *
  * <p>It is a bean rather than a static helper because the walk needs {@link FeatureService} and
  * {@link TaskService}, and this module injects its collaborators rather than passing them.
@@ -39,8 +41,7 @@ public class EpicOutline {
    * The epic under {@code # <heading>: <title>}.
    *
    * @param epic the epic to render
-   * @param heading the verb in the heading — {@code "Refine"} or {@code "Implement"}, which is the
-   *     whole of what the two callers disagree about
+   * @param heading the verb in the heading — {@code "Implement"} from the only caller left
    */
   public String render(Epic epic, String heading) {
     StringBuilder text = new StringBuilder();

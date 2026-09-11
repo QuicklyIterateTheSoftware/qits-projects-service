@@ -74,14 +74,6 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   @Column(name = "label", nullable = false)
   public String label;
 
-  /**
-   * The context the refinement chat opens with: the epic's title, description and outline as
-   * markdown, computed from the epic tree when the refinement is created. Host-side metadata with
-   * no source inside the container.
-   */
-  @Column(name = "preamble", columnDefinition = "text")
-  public String preamble;
-
   /** The commissioned idp client this refinement's container holds, or null before any container. */
   @Column(name = "commissioned_client_id", columnDefinition = "text")
   public String commissionedClientId;

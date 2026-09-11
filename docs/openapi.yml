@@ -1079,8 +1079,6 @@ components:
           type: string
         label:
           type: string
-        preamble:
-          type: string
         runtimeStatus:
           type: string
         runtimeError:
@@ -5469,4 +5467,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.910.214726
+  version: 2026.911.101725
