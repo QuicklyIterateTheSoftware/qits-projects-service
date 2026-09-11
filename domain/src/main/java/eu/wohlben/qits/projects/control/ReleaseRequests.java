@@ -2,8 +2,11 @@ package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
+import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
+import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.MergeConflictDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
@@ -825,9 +828,10 @@ public class ReleaseRequests {
   }
 
   /**
-   * What this request's fold brought in — the commits of {@code mergedSha^1..mergedSha}, which is
-   * the octopus's own range and therefore exactly what the participants contributed over the branch
-   * it was folded onto.
+   * What this request's fold brought in — the fold minus every release tag that does not contain it,
+   * which is exactly what the participants contributed over what was already shipped. See {@link
+   * CommitService#listMergeRange} for why the base is the released tags and neither {@code ^1} nor
+   * {@code main}.
    *
    * <p>Scoped by repository as well as by id, so a request read through the wrong repository's route
    * is a 404 rather than somebody else's answer. (The bare {@link #get} is deliberately left as it
@@ -840,17 +844,7 @@ public class ReleaseRequests {
    * a real, if unusual, release. Every one of them answers 200 with the reason on {@code detail}.
    */
   public ReleaseRequestCommitsDto mergedCommits(String repoId, String requestId) {
-    ReleaseRequest row =
-        QuarkusTransaction.requiringNew()
-            .call(
-                () ->
-                    requests
-                        .findByIdOptional(requestId)
-                        .filter(candidate -> candidate.repoId.equals(repoId))
-                        .orElseThrow(
-                            () ->
-                                new NotFoundException(
-                                    "Release request not found: " + requestId)));
+    ReleaseRequest row = requireRequestOf(repoId, requestId);
     if (row.mergedSha == null) {
       return new ReleaseRequestCommitsDto(null, List.of(), "Nothing has been folded yet");
     }
@@ -867,6 +861,115 @@ public class ReleaseRequests {
               + " onto");
     }
     return new ReleaseRequestCommitsDto(row.mergedSha, range.commits(), null);
+  }
+
+  /** A change list longer than this answers its first {@value} entries with {@code truncated}. */
+  static final int MAX_CHANGED_FILES = 2000;
+
+  /**
+   * A patch longer than this ({@value} characters, ~1 MiB) answers its change type with no text.
+   * The viewer already renders an empty diff as "no textual change to show", which is the honest
+   * thing to say about a patch no person is going to read either.
+   */
+  static final int MAX_DIFF_CHARS = 1024 * 1024;
+
+  /**
+   * What this request's fold <b>changed</b>: the files between {@link
+   * CommitService#resolveDiffBase(String, String) the fold's diff base} and {@code mergedSha}.
+   *
+   * <p>The same three empties as {@link #mergedCommits}, the same three sentences, and no error
+   * among them — nothing folded yet, a fold the repository no longer holds, and a fold that changed
+   * nothing. A repository that has never released is diffed against the empty tree and answers its
+   * whole tree, which is what its first release adds and also why the cap below exists.
+   *
+   * <p><b>Capped, and it says so.</b> Over {@link #MAX_CHANGED_FILES} paths the answer is the first
+   * {@link #MAX_CHANGED_FILES} with {@code truncated} set and a detail naming the total: a release
+   * that rewrites the estate is exactly when this page is most worth having and least able to draw
+   * the whole of it.
+   */
+  public ReleaseRequestChangesDto foldChanges(String repoId, String requestId) {
+    ReleaseRequest row = requireRequestOf(repoId, requestId);
+    if (row.mergedSha == null) {
+      return new ReleaseRequestChangesDto(
+          null, null, null, List.of(), false, "Nothing has been folded yet");
+    }
+    CommitService.MergeDiffBase diffBase = commits.resolveDiffBase(repoId, row.mergedSha);
+    if (!diffBase.present()) {
+      return new ReleaseRequestChangesDto(
+          row.mergedSha,
+          null,
+          null,
+          List.of(),
+          false,
+          "The fold is no longer in the repository's history");
+    }
+    List<CommitFileChangeDto> files =
+        commits.listChanges(repoId, row.mergedSha, diffBase.base()).files();
+    if (files.isEmpty()) {
+      return new ReleaseRequestChangesDto(
+          row.mergedSha,
+          diffBase.base(),
+          diffBase.baseTag(),
+          List.of(),
+          false,
+          "The fold changed nothing over what the previous release shipped");
+    }
+    if (files.size() > MAX_CHANGED_FILES) {
+      return new ReleaseRequestChangesDto(
+          row.mergedSha,
+          diffBase.base(),
+          diffBase.baseTag(),
+          List.copyOf(files.subList(0, MAX_CHANGED_FILES)),
+          true,
+          "This release touches "
+              + files.size()
+              + " files; the first "
+              + MAX_CHANGED_FILES
+              + " are listed");
+    }
+    return new ReleaseRequestChangesDto(
+        row.mergedSha, diffBase.base(), diffBase.baseTag(), files, false, null);
+  }
+
+  /**
+   * The unified diff of one {@code path} in this request's fold, against the same base {@link
+   * #foldChanges} lists. A request with nothing folded yet, and a fold the repository no longer
+   * holds, answer the empty patch rather than an error — the same posture as the list, expressed in
+   * the shape this read has ({@link CommitFileDiffDto} carries no sentence, and an empty patch is
+   * already what the viewer renders as "no textual change to show").
+   *
+   * <p>A patch over {@link #MAX_DIFF_CHARS} answers its change type with no text, for the same
+   * reason.
+   */
+  public CommitFileDiffDto foldFileDiff(String repoId, String requestId, String path) {
+    ReleaseRequest row = requireRequestOf(repoId, requestId);
+    if (row.mergedSha == null) {
+      return new CommitFileDiffDto(path, "MODIFIED", "");
+    }
+    CommitService.MergeDiffBase diffBase = commits.resolveDiffBase(repoId, row.mergedSha);
+    if (!diffBase.present()) {
+      return new CommitFileDiffDto(path, "MODIFIED", "");
+    }
+    CommitFileDiffDto diff = commits.getFileDiff(repoId, row.mergedSha, diffBase.base(), path);
+    if (diff.diff() != null && diff.diff().length() > MAX_DIFF_CHARS) {
+      return new CommitFileDiffDto(diff.path(), diff.changeType(), "");
+    }
+    return diff;
+  }
+
+  /**
+   * The request, scoped by repository as well as by id, so a request read through the wrong
+   * repository's route is a 404 rather than somebody else's answer.
+   */
+  private ReleaseRequest requireRequestOf(String repoId, String requestId) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                requests
+                    .findByIdOptional(requestId)
+                    .filter(candidate -> candidate.repoId.equals(repoId))
+                    .orElseThrow(
+                        () -> new NotFoundException("Release request not found: " + requestId)));
   }
 
   // ---------------------------------------------------------------------------------------------

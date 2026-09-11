@@ -16,7 +16,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Reads the commit log for a branch, scoped to the commits unique to it. The "parent" a branch is
@@ -199,6 +201,106 @@ public class CommitService {
       return new MergeRange(true, parseCommits(output));
     } catch (Exception e) {
       throw new InternalServerErrorException("Git log failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * The one commit a fold's diff is taken against, and whether the fold is there to be asked at all.
+   *
+   * @param present whether the mirror holds the fold object — same ordinary answer as {@link
+   *     MergeRange#present()}, for the same reasons (a withdrawn request's branch is deleted, and a
+   *     fold nothing references is pruned)
+   * @param base the commit to diff against, or null for "the empty tree" ({@code --root}) — a
+   *     repository that has never released has no earlier release to stand on
+   * @param baseTag the release tag the base was resolved from, so a page can say "since
+   *     2026.910.180413" rather than print a sha. Null exactly when {@code base} is null.
+   */
+  public record MergeDiffBase(boolean present, String base, String baseTag) {}
+
+  /**
+   * The diff base for a release request's fold: {@code merge-base(mergedSha, newest release tag that
+   * does not contain it)}, or null — the empty tree — when the repository has never released.
+   *
+   * <p><b>It is not {@code mergedSha^1}.</b> A re-folded request's first parent is its own previous
+   * fold, so {@code ^1} shows only what the last push added; and a fold whose sources are all
+   * contained in one head is a fast-forward, writing no merge commit at all, so {@code ^1} is then
+   * just the branch's own previous commit. Worse, {@code git diff-tree} against a merge commit with
+   * no base takes the first parent and reports <em>nothing</em> — a silently empty answer for the
+   * octopus case this exists for.
+   *
+   * <p><b>It is not the same base {@link #listMergeRange} uses.</b> That answers a commit
+   * <em>list</em> with the same invariant but expressed as N negative tips ({@code ^refs/tags/…}),
+   * which a diff cannot express: one diff has one base tree, so the set is resolved to a single
+   * commit. The two agree in the ordinary case; where they differ <b>the commit list is the
+   * authority</b> and this read names the base it actually used.
+   *
+   * <p><b>It is not {@code merge-base(mergedSha, main)}</b>, however identical the answer looks
+   * today. {@code main} only ever advances by merging released tags, so the newest non-containing
+   * tag <em>is</em> the main the fold was built on — until this release reaches {@code main}, at
+   * which point that merge base collapses to {@code mergedSha} itself and the whole diff goes empty.
+   * A released request's page is read months later, so that is not an edge case.
+   *
+   * <p>The newest tag is newest <b>by {@code creatordate}, never by name</b>: the names are the
+   * platform's calvers today and this arithmetic must not depend on that staying true.
+   *
+   * <p>Unrelated histories are the one case where a tag exists and no merge base does ({@code
+   * merge-base} exits non-zero); that answers the empty tree too, which is what a fold sharing no
+   * history with any release has in fact added.
+   */
+  public MergeDiffBase resolveDiffBase(String repoId, String mergedSha) {
+    requireRef(mergedSha, "commit");
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      GitExecutor.ExecResult probe =
+          git.execAllowNonZero(
+              mirror.gitDir().toFile(), "git", "cat-file", "-e", mergedSha + "^{commit}");
+      if (probe.exitCode() != 0) {
+        return new MergeDiffBase(false, null, null);
+      }
+      Set<String> shipped = new LinkedHashSet<>();
+      for (String tag :
+          git.exec(mirror.gitDir().toFile(), "git", "tag", "--no-contains", mergedSha, "--")
+              .split("\n")) {
+        if (!tag.isBlank()) {
+          shipped.add(tag.trim());
+        }
+      }
+      if (shipped.isEmpty()) {
+        return new MergeDiffBase(true, null, null);
+      }
+      String newest = null;
+      for (String tag :
+          git.exec(
+                  mirror.gitDir().toFile(),
+                  "git",
+                  "for-each-ref",
+                  "--sort=-creatordate",
+                  "--format=%(refname:short)",
+                  "refs/tags")
+              .split("\n")) {
+        if (shipped.contains(tag.trim())) {
+          newest = tag.trim();
+          break;
+        }
+      }
+      if (newest == null) {
+        return new MergeDiffBase(true, null, null);
+      }
+      // The full spelling, so a tag can never be read as anything else.
+      GitExecutor.ExecResult mergeBase =
+          git.execAllowNonZero(
+              mirror.gitDir().toFile(),
+              "git",
+              "merge-base",
+              "refs/tags/" + newest,
+              mergedSha,
+              "--");
+      if (mergeBase.exitCode() != 0 || mergeBase.output().isBlank()) {
+        return new MergeDiffBase(true, null, null);
+      }
+      return new MergeDiffBase(true, mergeBase.output().trim(), newest);
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git merge-base failed: " + e.getMessage());
     }
   }
 

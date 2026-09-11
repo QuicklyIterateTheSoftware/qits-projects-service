@@ -2,8 +2,10 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.projects.control.ReleaseArtifacts;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
+import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.ReleaseArtifactsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -40,11 +42,19 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * request answers with is the max over its named branches. Nothing acts on it yet — it is carried
  * down the chain as data for the queue-ordering feature to read.
  *
- * <p><b>Two reads hang off a single request and neither is a column.</b> {@code …/commits} is the
- * fold's own range, read out of the repository's mirror, and {@code …/artifacts} is what the
- * released tag's tree declares was published. Both exist because "the release landed" is the
- * beginning of a person's question rather than the end of it, and both answer 200 with a sentence
- * where they cannot answer with a list — see their operations below.
+ * <p><b>Four reads hang off a single request and not one of them is a column.</b> {@code …/commits}
+ * is the fold's own range and {@code …/changes} (plus {@code …/changes/diff} for one file) is the
+ * same release seen as a tree difference, both read out of the repository's mirror; {@code
+ * …/artifacts} is what the released tag's tree declares was published. They exist because "the
+ * release landed" is the beginning of a person's question rather than the end of it, and every one
+ * of them answers 200 with a sentence where it cannot answer with a list — see their operations
+ * below.
+ *
+ * <p><b>The commits and the changes share one invariant and not one implementation.</b> Both take
+ * "already shipped" to be "reachable from a release tag", because {@code main} only ever advances by
+ * merging released tags; the commit list can express that as N negative tips, a diff has one base
+ * tree and must resolve them to a single commit. Where the two ever differ, the commit list is the
+ * authority and the changes read names the base it used.
  *
  * <p><b>Two callers, two roles, on almost every route</b>: a person driving a release from a browser,
  * and the machine peers the door split brings (the maintenance bump, qits-workspaces creating
@@ -366,9 +376,11 @@ public class ReleaseRequestController {
   @Operation(
       summary = "The commits this request's fold brought in",
       description =
-          "The range mergedSha^1..mergedSha — the first parent of an octopus merge is the branch it"
-              + " was folded onto, so what is left is exactly what the request's sources"
-              + " contributed. It stays the same answer after the release reaches main. The version"
+          "The fold minus every release tag that does not contain it — main only ever advances by"
+              + " merging released tags, so what is left is exactly what the request's sources"
+              + " contributed over what was already shipped. It stays the same answer after the"
+              + " release reaches main, which neither mergedSha^1 nor a live read of main does. The"
+              + " version"
               + " bump is not in the list: the release commits the rewritten manifests ON TOP of the"
               + " fold. An empty list is never an error — detail says whether nothing has been"
               + " folded yet, the fold is no longer in the repository's history, or the fold"
@@ -376,6 +388,42 @@ public class ReleaseRequestController {
   public ReleaseRequestCommitsDto commits(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
     return releaseRequests.mergedCommits(repoId, requestId);
+  }
+
+  @GET
+  @Path("/{requestId}/changes")
+  @Operation(
+      summary = "The files this request's fold changed",
+      description =
+          "Diffed against the newest release tag that does not contain the fold, resolved to one"
+              + " commit with merge-base — never mergedSha^1 (a re-fold's first parent is the"
+              + " previous fold, and a fast-forwarded fold is no merge commit at all) and never"
+              + " merge-base(mergedSha, main), which reports nothing once the release reaches main."
+              + " base and baseTag name what was used; a repository that has never released is"
+              + " diffed against the empty tree. An empty list is never an error — detail says"
+              + " whether nothing has been folded yet, the fold is no longer in the repository's"
+              + " history, or the fold changed nothing. Over 2000 paths the answer is the first 2000"
+              + " with truncated set and the total in detail.")
+  public ReleaseRequestChangesDto changes(
+      @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
+    return releaseRequests.foldChanges(repoId, requestId);
+  }
+
+  @GET
+  @Path("/{requestId}/changes/diff")
+  @Operation(
+      summary = "The patch of one file in this request's fold",
+      description =
+          "The unified diff of path, against the same base …/changes lists: the newest release tag"
+              + " that does not contain the fold, resolved with merge-base, or the empty tree for a"
+              + " repository that has never released. An empty diff is never an error — a binary"
+              + " file, a pure rename, a fold that is not there any more and a patch over ~1 MiB all"
+              + " answer their change type with no text.")
+  public CommitFileDiffDto changeDiff(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      @QueryParam("path") @NotBlank String path) {
+    return releaseRequests.foldFileDiff(repoId, requestId, path);
   }
 
   @GET
