@@ -83,8 +83,8 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
     `ticket/<slug>` and launches an agent in it. A **request somebody is waiting on**, so it throws
     a `DomainException` — 502 for the exchange, 503 for a hop with no address or no credential.
     <br>Its second verb, `workspacesReferencing`, is the **read back** of the reference that dispatch
-    writes — `GET /workspaces/api/workspaces/references?ticketId=…&epicId=…`, both repeating, one
-    call per listing — and it carries the **opposite** failure contract, deliberately and inside the
+    writes — `GET /workspaces/api/agent-dispatches/references?ticketId=…&epicId=…`, both repeating,
+    one call per listing — and it carries the **opposite** failure contract, deliberately and inside the
     same class, because the split above is about what a failure means rather than about the address:
     this one decorates a read, so a missing address, a missing credential, a non-200, an unreachable
     far side and an unparseable answer are all one WARN and an empty list. Empty is also the honest
@@ -92,6 +92,16 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
     rule is the far side's and is stated there once (an ACTIVE workspace row, whatever its container
     is doing); nothing here re-decides it, and `api/DispatchedWorkspaces` is the one place the epics
     module's DTOs are decorated with what it answers.
+    <br>**The path is under `agent-dispatches` because the roles are, and that cost a release to
+    learn.** It shipped against `/workspaces/api/workspaces/references` (qits-workspaces
+    2026.911.151414) and answered **403** to every call: that far-side class is
+    `@RolesAllowed("qits:admin")`, a person's door, and this hop presents a machine bearer carrying
+    `qits:system`. The never-throw contract above then did exactly what it promises — one WARN, an
+    empty list — so every ticket and every epic read `workspaces: []`, the buttons behaved as before,
+    and the only evidence was a log line nobody was reading. **When a port's failure mode is
+    indistinguishable from its empty success, a behaviour test on this side proves nothing about the
+    far side's door**; the far side pins the roles now, and a live read is worth making before
+    calling such a feature done.
 
   That is why the second one is a new class and not a second method on the first: two verbs with
   opposite failure contracts do not share a class, and the standing rule stays — do not grow a verb

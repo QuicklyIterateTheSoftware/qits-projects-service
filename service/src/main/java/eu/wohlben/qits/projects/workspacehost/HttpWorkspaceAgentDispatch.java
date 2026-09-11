@@ -183,8 +183,16 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   }
 
   /**
-   * The read back: {@code GET /workspaces/api/workspaces/references?ticketId=…&epicId=…}, both
+   * The read back: {@code GET /workspaces/api/agent-dispatches/references?ticketId=…&epicId=…}, both
    * parameters repeating, answering {@code {"entries":[{"workspace":{…}}]}}.
+   *
+   * <p><b>The path is under {@code agent-dispatches} and that is load-bearing, not tidy.</b> It sat
+   * under {@code /workspaces/api/workspaces/references} for one release and answered **403** to
+   * every call this class made: that far-side class is {@code @RolesAllowed("qits:admin")}, a
+   * person's door, and this hop presents a machine bearer, which carries {@code qits:system}. The
+   * contract below turned each 403 into an empty list — correctly, by its own rules — so the feature
+   * was deployed, inert, and silent. The dispatch door's class states both roles, so the reference
+   * it writes is read back through it.
    *
    * <p><b>Nothing here throws, and that is the port's contract rather than this class being
    * lenient.</b> A missing address, a missing credential, a far side that is away, a non-200 and an
@@ -210,7 +218,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     try {
       HttpRequest request =
           HttpRequest.newBuilder(
-                  URI.create(base.get() + "/workspaces/api/workspaces/references?" + query))
+                  URI.create(base.get() + "/workspaces/api/agent-dispatches/references?" + query))
               .timeout(LOOKUP_TIMEOUT)
               .header("Accept", "application/json")
               .header("Authorization", authorization.get())
