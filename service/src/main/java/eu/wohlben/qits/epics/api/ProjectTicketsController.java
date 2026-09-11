@@ -3,6 +3,7 @@ package eu.wohlben.qits.epics.api;
 import eu.wohlben.qits.epics.control.TicketService;
 import eu.wohlben.qits.epics.dto.TicketDto;
 import eu.wohlben.qits.epics.mapper.TicketMapper;
+import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.control.ProjectService;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -40,6 +41,9 @@ public class ProjectTicketsController {
 
   @Inject TicketChangeHints hints;
 
+  /** One lookup for the whole listing — see {@link DispatchedWorkspaces}. */
+  @Inject DispatchedWorkspaces dispatchedWorkspaces;
+
   public record ListTicketsRequest() {
     public record Response(List<Entry> entries) {
       public record Entry(TicketDto ticket) {}
@@ -55,9 +59,16 @@ public class ProjectTicketsController {
   public ListTicketsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
     projectService.get(projectId); // 404 if the project does not exist
+    // Mapped first, then decorated in one call: the workspaces lookup is asked once about the whole
+    // page, never once per row.
     var entries =
-        ticketService.listByProject(projectId, status).stream()
-            .map(t -> new ListTicketsRequest.Response.Entry(ticketMapper.toDto(t)))
+        dispatchedWorkspaces
+            .decorateTickets(
+                ticketService.listByProject(projectId, status).stream()
+                    .map(ticketMapper::toDto)
+                    .toList())
+            .stream()
+            .map(ListTicketsRequest.Response.Entry::new)
             .toList();
     return new ListTicketsRequest.Response(entries);
   }

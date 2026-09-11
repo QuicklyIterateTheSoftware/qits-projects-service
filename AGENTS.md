@@ -82,6 +82,16 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
     agent" makes to `/workspaces/api/agent-dispatches`, which stands an aggregate workspace on
     `ticket/<slug>` and launches an agent in it. A **request somebody is waiting on**, so it throws
     a `DomainException` — 502 for the exchange, 503 for a hop with no address or no credential.
+    <br>Its second verb, `workspacesReferencing`, is the **read back** of the reference that dispatch
+    writes — `GET /workspaces/api/workspaces/references?ticketId=…&epicId=…`, both repeating, one
+    call per listing — and it carries the **opposite** failure contract, deliberately and inside the
+    same class, because the split above is about what a failure means rather than about the address:
+    this one decorates a read, so a missing address, a missing credential, a non-200, an unreachable
+    far side and an unparseable answer are all one WARN and an empty list. Empty is also the honest
+    degraded answer — it is exactly what these screens showed before the field existed. The liveness
+    rule is the far side's and is stated there once (an ACTIVE workspace row, whatever its container
+    is doing); nothing here re-decides it, and `api/DispatchedWorkspaces` is the one place the epics
+    module's DTOs are decorated with what it answers.
 
   That is why the second one is a new class and not a second method on the first: two verbs with
   opposite failure contracts do not share a class, and the standing rule stays — do not grow a verb

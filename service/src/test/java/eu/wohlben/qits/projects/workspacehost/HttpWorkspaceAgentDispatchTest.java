@@ -36,7 +36,8 @@ import org.junit.jupiter.api.Test;
  */
 class HttpWorkspaceAgentDispatchTest {
 
-  private record Received(String method, String path, String body, String auth) {}
+  private record Received(
+      String method, String path, String query, String body, String auth) {}
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -65,6 +66,7 @@ class HttpWorkspaceAgentDispatchTest {
               new Received(
                   exchange.getRequestMethod(),
                   exchange.getRequestURI().getPath(),
+                  exchange.getRequestURI().getRawQuery(),
                   new String(requestBytes, StandardCharsets.UTF_8),
                   exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] responseBytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
@@ -199,5 +201,93 @@ class HttpWorkspaceAgentDispatchTest {
                     .dispatchAgent("r", "ticket/x", true, WorkspaceAgentDispatch.Subject.ticket("t"), "i"));
 
     assertEquals(502, failure.statusCode());
+  }
+
+  // --- the read back ---------------------------------------------------------------------------
+
+  @Test
+  void aLookupAsksOnceWithEveryIdAndReadsTheEntriesBack() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"entries\":[{\"workspace\":{\"workspaceRowId\":41,\"repositoryId\":\"repo-1\","
+            + "\"workspaceId\":\"ticket-puce\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\","
+            + "\"epicId\":null}}]}");
+
+    List<WorkspaceAgentDispatch.Reference> found =
+        against(base).workspacesReferencing(List.of("t-7", "t-8", "t-7"), List.of("e-1"));
+
+    assertEquals(1, found.size());
+    WorkspaceAgentDispatch.Reference reference = found.get(0);
+    assertEquals(41L, reference.workspaceRowId());
+    assertEquals("repo-1", reference.repositoryId());
+    assertEquals("ticket-puce", reference.workspaceId());
+    assertEquals("ticket/puce", reference.branch());
+    assertEquals("t-7", reference.ticketId());
+
+    assertEquals(1, received.size(), "a page of rows is one call, never one call per row");
+    Received request = received.get(0);
+    assertEquals("GET", request.method());
+    assertEquals("/workspaces/api/workspaces/references", request.path());
+    assertEquals("Bearer machine-token", request.auth());
+    // Every id asked about, each once — the repeat is dropped rather than asked twice.
+    assertEquals("ticketId=t-7&ticketId=t-8&epicId=e-1", request.query());
+  }
+
+  @Test
+  void askingAboutNoRowsMakesNoCallAtAll() throws Exception {
+    String base = startServer();
+
+    assertTrue(against(base).workspacesReferencing(List.of(), List.of()).isEmpty());
+    assertTrue(against(base).workspacesReferencing(List.of("  "), List.of()).isEmpty());
+
+    assertTrue(received.isEmpty(), "a question about no rows was still asked over the network");
+  }
+
+  /**
+   * The port's contract, and the whole reason it differs from the dispatch above: this read
+   * decorates a listing, so every way it can fail has to end in an empty answer rather than in an
+   * exception that takes the page down with it.
+   */
+  @Test
+  void everyFailureIsAnEmptyAnswerAndNeverAThrow() throws Exception {
+    String base = startServer();
+
+    status.set(503);
+    assertTrue(against(base).workspacesReferencing(List.of("t-7"), List.of()).isEmpty());
+
+    status.set(200);
+    responseBody.set("not json at all");
+    assertTrue(against(base).workspacesReferencing(List.of("t-7"), List.of()).isEmpty());
+
+    // Nothing listening, no address, and no credential — the three the dispatch answers 502/503 to.
+    assertTrue(
+        against("http://127.0.0.1:1", null, Optional.of("Bearer t"))
+            .workspacesReferencing(List.of("t-7"), List.of())
+            .isEmpty());
+    assertTrue(
+        against(null, "", Optional.of("Bearer t"))
+            .workspacesReferencing(List.of("t-7"), List.of())
+            .isEmpty());
+    assertTrue(
+        against(base, null, Optional.empty())
+            .workspacesReferencing(List.of("t-7"), List.of())
+            .isEmpty());
+  }
+
+  /** A row a link cannot be composed from is skipped, rather than carried with a hole in it. */
+  @Test
+  void anEntryMissingThePairALinkNeedsIsSkipped() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"entries\":[{\"workspace\":{\"repositoryId\":\"repo-1\",\"ticketId\":\"t-7\"}},"
+            + "{\"workspace\":{\"workspaceRowId\":9,\"ticketId\":\"t-7\"}},"
+            + "{\"workspace\":{\"workspaceRowId\":12,\"repositoryId\":\"repo-1\","
+            + "\"ticketId\":\"t-7\"}}]}");
+
+    List<WorkspaceAgentDispatch.Reference> found =
+        against(base).workspacesReferencing(List.of("t-7"), List.of());
+
+    assertEquals(1, found.size());
+    assertEquals(12L, found.get(0).workspaceRowId());
   }
 }
