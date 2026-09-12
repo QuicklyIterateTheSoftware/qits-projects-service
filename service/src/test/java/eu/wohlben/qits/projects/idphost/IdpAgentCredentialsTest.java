@@ -83,24 +83,28 @@ class IdpAgentCredentialsTest {
   }
 
   /**
-   * An idp older than the gitRefs member answers 400. The commission is made again without it,
-   * which is what this did before — the container still gets its credential.
+   * Fail closed. An idp without the gitRefs member ignores it and answers 201, so a 400 is a
+   * refusal of the request. It is never sent again without gitRefs, which would let the credential
+   * push anything. The list is already [], so it is not sent again at all.
    */
   @Test
-  void anIdpThatRefusesGitRefsGetsTheCommissionWithoutIt() throws IOException {
-    try (StubIdpServer stub = new StubIdpServer()) {
-      stub.answering(400, "{\"error\":\"unknown member gitRefs\"}").answering(201, COMMISSIONED);
+  void aRefusedCommissionIsNeverSentAgainWithoutGitRefs() throws IOException {
+    try (StubIdpServer stub = new StubIdpServer();
+        CapturedErrors errors = new CapturedErrors(IdpAgentCredentials.class)) {
+      stub.answering(400, "{\"error\":\"too many gitRefs\"}").answering(201, COMMISSIONED);
 
-      AgentCredentials.Commissioned pair = credentials(stub.url()).commission(PROJECT);
+      AgentCredentialException refused =
+          assertThrows(
+              AgentCredentialException.class, () -> credentials(stub.url()).commission(PROJECT));
 
-      assertEquals("dev-qits-projects-agent-7", pair.clientId());
+      assertFalse(refused.retryable(), "a 400 is about the request");
       List<StubIdpServer.Received> requests = stub.received();
-      assertEquals(2, requests.size());
+      assertEquals(1, requests.size(), "the same request is not sent twice");
       assertTrue(requests.get(0).body().contains("\"gitRefs\":[]"), requests.get(0).body());
-      assertFalse(requests.get(1).body().contains("gitRefs"), requests.get(1).body());
-      assertTrue(
-          requests.get(1).body().contains("\"claims\":{\"project\":\"" + PROJECT + "\"}"),
-          "the fallback drops the refs and nothing else: " + requests.get(1).body());
+      assertEquals(1, errors.messages().size(), errors.messages().toString());
+      String error = errors.messages().get(0);
+      assertTrue(error.contains(PROJECT), "the error names the context: " + error);
+      assertTrue(error.contains("too many gitRefs"), "the error names the reason: " + error);
     }
   }
 
@@ -138,10 +142,7 @@ class IdpAgentCredentialsTest {
   @Test
   void anAnswerAboutTheRequestIsNot() throws IOException {
     try (StubIdpServer stub = new StubIdpServer()) {
-      // Twice: the first 400 is read as an idp older than gitRefs, and the commission is made again
-      // without it. A 400 on that one too is about the request.
-      stub.answering(400, "{\"error\":\"invalid_request\"}")
-          .answering(400, "{\"error\":\"invalid_request\"}");
+      stub.answering(400, "{\"error\":\"invalid_request\"}");
 
       assertFalse(
           assertThrows(

@@ -39,8 +39,13 @@ public interface RefinementCredentials {
    * claim qits-idp puts on every token the pair mints, and what a resource service judges it on.
    * Unlike the agent harness, where the context and the scope are the same string, a refinement's
    * are not.
+   *
+   * <p>{@code gitRefs} is what the credential may push (plan contract C2): exact refs, each {@code
+   * refs/heads/…}. For a refinement it is its own branch, {@code refs/heads/refining/<epicSlug>} —
+   * see {@code RefinementCommissions.gitRefsOf}. An empty list means "may push nothing". The list
+   * is always stated, never left out, because a commission without it may push anything.
    */
-  Commissioned commission(long refinementId, String projectId);
+  Commissioned commission(long refinementId, String projectId, List<String> gitRefs);
 
   /** Give a credential back. Best-effort and never throws. */
   void decommission(String clientId);

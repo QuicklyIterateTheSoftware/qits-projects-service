@@ -81,11 +81,6 @@ public class IdpRefinementCredentials implements RefinementCredentials {
    * containers take of a fact the registry could not supply. It is never sent as {@code "*"}:
    * qits-idp refuses a commission that widens itself, and asking for the wildcard would be asking
    * for the thing this scoping exists to stop granting.
-   *
-   * <p><b>It states no {@code gitRefs}, on purpose.</b> The agent container states {@code []}
-   * because nothing in it pushes. A refinement container does push: qits-workspace-daemon's
-   * auto-push sends each commit to {@code refining/<epicSlug>}. So this commission keeps no stated
-   * scope until somebody decides what a refinement may push.
    */
   private static Map<String, Object> claimed(Map<String, String> context, String projectId) {
     Map<String, Object> body = new java.util.LinkedHashMap<>(context);
@@ -96,25 +91,35 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     return body;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p><b>A refused list fails closed.</b> An idp without the {@code gitRefs} member ignores it and
+   * answers 201, so a 400 to a commission that states refs comes from an idp that read the list and
+   * refused it (for example, more than 500 entries). A commission without {@code gitRefs} could then
+   * push anything, so it is never sent. The commission is sent again with {@code gitRefs: []} and an
+   * ERROR names the refinement and the idp's reason: the container starts, but its auto-push fails.
+   * A 400 to that second request is about the request and is thrown.
+   */
   @Override
-  public Commissioned commission(long refinementId, String projectId) {
-    String body;
-    try {
-      body =
-          objectMapper.writeValueAsString(
-              claimed(
-                  Map.of("contextKind", CONTEXT_KIND, "contextId", Long.toString(refinementId)),
-                  projectId));
-    } catch (IOException e) {
-      throw new AgentCredentialException("Could not build the commission request", false, e);
+  public Commissioned commission(long refinementId, String projectId, List<String> gitRefs) {
+    Map<String, Object> body =
+        claimed(
+            Map.of("contextKind", CONTEXT_KIND, "contextId", Long.toString(refinementId)),
+            projectId);
+    // Null is read as "may push nothing", never as "no scope stated".
+    List<String> refs = gitRefs == null ? IdpAgentCredentials.NO_GIT_REFS : List.copyOf(gitRefs);
+    body.put(IdpAgentCredentials.GIT_REFS, refs);
+    String doing = "commissioning a credential for refinement " + refinementId;
+    HttpResponse<String> response = post(body, doing);
+    if (response.statusCode() == 400 && !refs.isEmpty()) {
+      LOG.errorf(
+          "qits-idp refused the Git refs %s of refinement %s (400: %s). Commissioning it again"
+              + " with gitRefs [], so this refinement can push nothing and its auto-push fails",
+          refs, refinementId, response.body());
+      body.put(IdpAgentCredentials.GIT_REFS, IdpAgentCredentials.NO_GIT_REFS);
+      response = post(body, doing);
     }
-    HttpResponse<String> response =
-        send(
-            request(clientsUrl())
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build(),
-            "commissioning a credential for refinement " + refinementId);
     if (response.statusCode() != 201) {
       throw refusal("commission a credential for refinement " + refinementId, response);
     }
@@ -191,6 +196,22 @@ public class IdpRefinementCredentials implements RefinementCredentials {
       }
     }
     return commissions;
+  }
+
+  /** POST one commission body to {@code …/api/clients}. */
+  private HttpResponse<String> post(Map<String, Object> body, String doing) {
+    String json;
+    try {
+      json = objectMapper.writeValueAsString(body);
+    } catch (IOException e) {
+      throw new AgentCredentialException("Could not build the commission request", false, e);
+    }
+    return send(
+        request(clientsUrl())
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .build(),
+        doing);
   }
 
   private String clientsUrl() {

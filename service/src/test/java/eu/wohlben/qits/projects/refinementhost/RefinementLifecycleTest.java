@@ -244,6 +244,11 @@ public class RefinementLifecycleTest {
         projectId,
         credentials.scopeFor(id.longValue()),
         "a refinement's credential is scoped to its project");
+    // And it may push exactly the branch its daemon auto-pushes to, and nothing else.
+    assertEquals(
+        java.util.List.of("refs/heads/refining/discard-epic"),
+        credentials.gitRefsFor(id.longValue()),
+        "a refinement's credential may push its own refining branch");
 
     given()
         .when()

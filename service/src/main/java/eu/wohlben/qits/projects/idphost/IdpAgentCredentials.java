@@ -19,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -110,9 +109,6 @@ public class IdpAgentCredentials implements AgentCredentials {
    */
   static final List<String> NO_GIT_REFS = List.of();
 
-  /** Set by the first idp that refuses {@link #GIT_REFS}, so that warning is logged once. */
-  private final AtomicBoolean warnedUnscoped = new AtomicBoolean();
-
   @Override
   public Commissioned commission(String projectId) {
     Map<String, Object> body = new LinkedHashMap<>();
@@ -123,19 +119,17 @@ public class IdpAgentCredentials implements AgentCredentials {
     // which is what lets this ship before the issuer does.
     body.put("claims", Map.of(PROJECT_CLAIM, projectId));
     body.put(GIT_REFS, NO_GIT_REFS);
-    String doing = "commissioning a credential for project " + projectId;
-    HttpResponse<String> response = post(body, doing);
+    HttpResponse<String> response =
+        post(body, "commissioning a credential for project " + projectId);
     if (response.statusCode() == 400) {
-      // An idp older than the gitRefs member answers 400. Commission again without it, which is
-      // what this did before (plan contract C5's fallback). A second 400 is about the request.
-      if (warnedUnscoped.compareAndSet(false, true)) {
-        LOG.warnf(
-            "qits-idp refused a commission that states gitRefs (400: %s), so agent-container"
-                + " credentials are commissioned without it until qits-idp accepts it",
-            response.body());
-      }
-      body.remove(GIT_REFS);
-      response = post(body, doing);
+      // Fail closed. An idp without the gitRefs member ignores it and answers 201, so a 400 comes
+      // from an idp that read the request and refused it. Asking again without gitRefs would let
+      // the credential push anything. Asking again with [] would send the same request, because
+      // the list is already []. So the refusal stands.
+      LOG.errorf(
+          "qits-idp refused the agent-container commission for project %s (400: %s). It is not"
+              + " asked again without gitRefs, because that credential could push anything",
+          projectId, response.body());
     }
     if (response.statusCode() != 201) {
       throw refusal("commission a credential for project " + projectId, response);

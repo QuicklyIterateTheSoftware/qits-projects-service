@@ -35,12 +35,22 @@ public class FakeRefinementCredentials implements RefinementCredentials {
     return scopes.get(refinementId);
   }
 
+  /** The Git refs each commission stated, by refinement id. */
+  private final Map<Long, List<String>> gitRefs = new java.util.HashMap<>();
+
+  /** The Git refs a refinement's credential was commissioned with, or null when none was made. */
+  public synchronized List<String> gitRefsFor(long refinementId) {
+    return gitRefs.get(refinementId);
+  }
+
   @Override
-  public synchronized Commissioned commission(long refinementId, String projectId) {
+  public synchronized Commissioned commission(
+      long refinementId, String projectId, List<String> refs) {
     String clientId = "dyn-refinement-" + refinementId + "-" + minted.incrementAndGet();
     String secret = "secret-" + clientId;
     live.put(clientId, Long.toString(refinementId));
     scopes.put(refinementId, projectId);
+    gitRefs.put(refinementId, refs);
     return new Commissioned(clientId, secret);
   }
 
@@ -64,5 +74,7 @@ public class FakeRefinementCredentials implements RefinementCredentials {
     enabled = false;
     minted.set(0);
     live.clear();
+    scopes.clear();
+    gitRefs.clear();
   }
 }
