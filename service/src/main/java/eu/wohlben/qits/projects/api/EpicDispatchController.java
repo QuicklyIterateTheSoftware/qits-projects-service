@@ -269,8 +269,9 @@ public class EpicDispatchController {
         + ") in this project. Read it first with get_epic (id "
         + epic.id
         + ") — the description and its feature/task tree are the brief."
-        + " The epic is the pitch; its DOSSIER is the breakdown, with the examples and figures the"
-        + " description leaves out — list it with list_dossier_pages and read a page with"
+        + " The epic is the pitch; its DOSSIER is what changes and how it works — the paths, names,"
+        + " exact values, examples and figures the description leaves out. List it with"
+        + " list_dossier_pages and read a page with"
         + " get_dossier_page whenever a task's detail is unclear, before deciding it yourself."
         + " The dossier is read-only while the epic is in implementation, so if it is wrong or"
         + " silent on something you had to decide, say that in your report rather than trying to"

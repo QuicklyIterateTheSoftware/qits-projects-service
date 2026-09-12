@@ -22,10 +22,13 @@ import java.util.List;
  * The dossier half of the "repository" MCP server — the surface an agent writes the epic's long form
  * on, mounted on the same declared server as {@link EpicMcpTools} for the reason stated there.
  *
- * <p><strong>The epic is the pitch; the dossier is the breakdown.</strong> An epic's description
- * argues that the work is worth doing; a dossier page shows how, with examples, images from the
- * Sketch tab and designs framed inline. An agent refining an epic writes both, and the tool
- * descriptions say which is which so it does not put the breakdown in the pitch.
+ * <p><strong>The epic is the pitch; the dossier is the implementation reference.</strong> An epic's
+ * description argues that the work is worth doing; a dossier page is read by the agent implementing
+ * the epic — {@code EpicDispatchController.instruction(...)} sends it here for the detail the epic
+ * leaves out — so a page records what changes and how it works: paths, names, commands, file lists,
+ * exact values, with examples, images from the Sketch tab and designs framed inline. An agent
+ * refining an epic writes both, and the tool descriptions say which is which so the argument stays
+ * in the pitch and the page stays something an implementer can build from.
  *
  * <p><strong>Nobody accepts these writes.</strong> A page is live in the tab the moment it lands,
  * which is why every update carries a {@code version}: a stale one is a refusal to be re-read and
@@ -87,10 +90,11 @@ public class DossierMcpTools {
       name = "list_dossier_pages",
       description =
           "List the pages of this epic's dossier in reading order, without their text. The epic's"
-              + " own description is the pitch — why the work is worth doing; the dossier is the"
-              + " breakdown, one page per part, with examples and figures. Start here to see what"
-              + " the dossier already covers before adding a page that repeats it, then read the"
-              + " one you mean with get_dossier_page.")
+              + " own description is the pitch — why the work is worth doing; the dossier is what"
+              + " the agent implementing the epic builds from, one page per part, recording what"
+              + " changes and how it works — paths, names, exact values, examples and figures."
+              + " Start here to see what the dossier already covers before adding a page that"
+              + " repeats it, then read the one you mean with get_dossier_page.")
   public List<PageSummary> listDossierPages(
       @ToolArg(description = "id of an epic in this project") String epicId) {
     Epic epic = requireEpicInProject(epicId);
@@ -116,9 +120,14 @@ public class DossierMcpTools {
       name = "put_dossier_page",
       description =
           "Write a dossier page: leave pageId out to add one at the end, or give it to rewrite that"
-              + " page. The body is markdown; inline a sketch or a design with inline_figure rather"
-              + " than writing a URL by hand. NOBODY ACCEPTS THIS WRITE — the page is live in the"
-              + " Dossier tab the moment it lands, which is why an update must carry the version"
+              + " page. The page is read by the agent implementing this epic, so write what changes"
+              + " and how it works: paths, names, commands, file lists, exact values. The problem,"
+              + " the argument for the approach and why it is worth doing go in the epic's"
+              + " description instead — a page that restates them gives the implementer nothing to"
+              + " build from. The body is markdown; inline a sketch or a design with inline_figure"
+              + " rather than writing a URL by hand. NOBODY ACCEPTS THIS WRITE — the page is live"
+              + " in the Dossier tab the moment it lands, which is why an update must carry the"
+              + " version"
               + " get_dossier_page gave you. A version that is no longer current means a person or"
               + " another agent wrote to that page after you read it: re-read the page, fold your"
               + " change into what is there now, and write again. It is a refusal to be retried,"

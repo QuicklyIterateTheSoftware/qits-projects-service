@@ -152,7 +152,8 @@ public class EpicDispatchControllerTest {
         asked.instruction().contains("get_epic"),
         "the agent is sent to read the epic live: " + asked.instruction());
     assertTrue(asked.instruction().contains(epicId), "and told which epic that is");
-    // The epic is the pitch and the dossier is the breakdown, so an agent that only reads the epic
+    // The epic is the pitch and the dossier is what this agent builds from, so one that only reads
+    // the epic
     // fills the gaps by guessing — and the guess arrives in the diff looking like a decision.
     assertTrue(
         asked.instruction().contains("get_dossier_page"),

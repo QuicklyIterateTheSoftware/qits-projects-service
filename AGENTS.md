@@ -663,7 +663,9 @@ marker's semantics are identical either way; only the writer moves from a prompt
 
 **The epic's long form, and it belongs to the EPIC rather than to the refinement that produced it**
 (`dossier_page`, epics V5; `dossier_asset` + `dossier_page_asset`, V6). The epic's description is the
-value pitch; a dossier page is the breakdown, with examples, sketches and framed designs. It is
+value pitch; a dossier page is what the agent implementing the epic builds from — what changes and
+how it works, in paths, names, commands and exact values, with examples, sketches and framed
+designs, and **not** the problem or the argument, which are the description's. It is
 written on the refining route, using the rest of that route — but storing it beside `refinement`
 would cascade it away on a discard, and the plan has to outlive the container: implementation reads
 it months later, when no refinement is open at all.
