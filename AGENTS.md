@@ -562,6 +562,41 @@ branch is a *file* at `refs/heads/feature/<timestamp>` while a feature branch ne
 `refs/heads/feature/<epic>/` to be a directory, so the first of the two to be created blocks the
 other. Renaming the capture prefix is a qits-workspaces-service workstream; do not change it from here.
 
+## Git refs an agent may push
+
+Each dispatch tells qits-workspaces which Git refs its agent may push: the `gitRefs` member of the
+dispatch request (contract C4 in the superproject's `principal-bound-git-refs-plan.md`).
+`epics/control/WorkBranches` computes the branch and its refs in one place, so the two cannot drift
+apart. The refs are exact refs (`refs/heads/<branch>`) and never `/*` patterns: qits-workspaces
+removes one ref from an epic's list when a sub-workspace takes that branch, and it cannot do that to
+a pattern.
+
+| work | branch | may push |
+| --- | --- | --- |
+| ticket | `ticket/<slug>` (`ticket/ticket-<id8>` for a title with no letters or digits) | its own branch |
+| task | `task/<epic>/<feature>/<task>` | its own branch |
+| epic | `epic/<slug>` | the epic branch, every feature branch and every task branch of the epic |
+
+- **There is no task dispatch door yet.** `WorkBranches.task` holds the rule for when there is one.
+- **The epic list is read after the freeze** to `IMPLEMENTATION`. From then on no feature or task can
+  be added, so the list is complete. A slug never changes, so no ref on it goes stale.
+- **Absent is safe both ways.** Without `gitRefs`, qits-workspaces allows the workspace's own branch;
+  a qits-workspaces older than the member ignores it.
+- **Size.** The idp takes at most 500 refs of at most 255 characters each (contract C2). A slug is at
+  most 40 characters, so a task ref is at most 138. The count is not checked here: an epic with more
+  than 499 features and tasks together would exceed it.
+
+The idp commissions of this service's own containers state refs too (contract C2):
+
+- **An agent container states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
+  clones, and qits-coding-agents runs no git. An idp older than the member answers 400; then
+  `IdpAgentCredentials` commissions again without it (contract C5's fallback) and logs one warning.
+- **A refinement container states no `gitRefs`, on purpose.** Its qits-workspace-daemon auto-pushes
+  each commit to `refining/<epicSlug>` (`OriginSync`, `auto-push-enabled` defaults to true), so `[]`
+  would break refinement. What a refinement may push is still to be decided.
+
+Roles do not change: a commission still carries its owner's roles until phase 4 of the plan.
+
 ## Epic lifecycle
 
 An epic is in one of four stored statuses (V3): `REFINING`, `IMPLEMENTATION`, `SUPERSEDED`,
@@ -906,8 +941,8 @@ handed no token does not bind its API at all.
 
 **One idp client per container, and its lifetime is the container's.** `AgentCommissions` gets it
 from qits-idp's commission API — `POST /idp/api/clients` with `{"contextKind":"agent-container",
-"contextId":"<projectId>","claims":{"project":"<projectId>"}}`, HTTP Basic with **this service's
-own** oidc client id and secret,
+"contextId":"<projectId>","claims":{"project":"<projectId>"},"gitRefs":[]}` (for `gitRefs` see "Git
+refs an agent may push"), HTTP Basic with **this service's own** oidc client id and secret,
 because a caller there already holds an idp credential and that is how the API authenticates one.
 `idphost/IdpAgentCredentials` is the adapter and `agenthost/AgentCredentials` the seam; the adapter
 is `@DefaultBean`, so the suite's `FakeAgentCredentials` wins the injection and no test reaches an

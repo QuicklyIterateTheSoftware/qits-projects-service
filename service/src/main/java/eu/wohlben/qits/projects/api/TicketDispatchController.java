@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.epics.api.EpicsPrincipal;
 import eu.wohlben.qits.epics.control.TicketService;
+import eu.wohlben.qits.epics.control.WorkBranches;
 import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
@@ -100,7 +101,9 @@ public class TicketDispatchController {
     }
     Project project = projects.get(ticket.projectId);
     Repository wrapper = wrapperOf(project);
-    String branch = "ticket/" + ticket.slug;
+    // The branch and the refs its agent may push come from one place.
+    WorkBranches.Scope scope = WorkBranches.ticket(ticket);
+    String branch = scope.branch();
 
     WorkspaceAgentDispatch.Dispatch made =
         dispatch
@@ -108,6 +111,7 @@ public class TicketDispatchController {
             .dispatchAgent(
                 wrapper.id,
                 branch,
+                scope.gitRefs(),
                 true,
                 WorkspaceAgentDispatch.Subject.ticket(ticket.id),
                 instruction(ticket));

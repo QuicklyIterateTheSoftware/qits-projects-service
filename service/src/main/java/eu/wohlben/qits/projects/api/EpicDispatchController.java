@@ -2,6 +2,9 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.epics.api.EpicsPrincipal;
 import eu.wohlben.qits.epics.control.EpicService;
+import eu.wohlben.qits.epics.control.FeatureService;
+import eu.wohlben.qits.epics.control.TaskService;
+import eu.wohlben.qits.epics.control.WorkBranches;
 import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -114,6 +117,11 @@ public class EpicDispatchController {
 
   @Inject EpicService epics;
 
+  /** The epic's features and tasks name the branches its agent may push. */
+  @Inject FeatureService features;
+
+  @Inject TaskService tasks;
+
   @Inject EpicResolutions resolutions;
 
   @Inject ProjectService projects;
@@ -144,7 +152,6 @@ public class EpicDispatchController {
     }
     Project project = projects.get(epic.projectId);
     Repository wrapper = wrapperOf(project);
-    String branch = "epic/" + epic.slug;
 
     if (epic.status == EpicStatus.REFINING) {
       // First, and through EpicResolutions — see the class javadoc for both halves of why.
@@ -153,12 +160,20 @@ public class EpicDispatchController {
       publisher.fire(epic.projectId, ProjectChangeHint.Topic.EPICS);
     }
 
+    // After the freeze, so no feature or task can be added any more and the list is complete: the
+    // epic branch plus every feature and task branch of the epic.
+    WorkBranches.Scope scope =
+        WorkBranches.epic(
+            epic, features.listByEpic(epic.id), feature -> tasks.listByFeature(feature.id));
+    String branch = scope.branch();
+
     WorkspaceAgentDispatch.Dispatch made =
         dispatch
             .get()
             .dispatchAgent(
                 wrapper.id,
                 branch,
+                scope.gitRefs(),
                 true,
                 WorkspaceAgentDispatch.Subject.epic(epic.id),
                 instruction(epic));

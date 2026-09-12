@@ -34,7 +34,8 @@ import org.jboss.logging.Logger;
  *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
  *   Content-Type: application/json
  *
- *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;", "branchTree": true,
+ *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;",
+ *    "gitRefs": ["refs/heads/ticket/&lt;slug&gt;"], "branchTree": true,
  *    "ticketId": "…", "instruction": "&lt;the agent's first turn&gt;"}
  *
  *   -&gt; 200 {"workspace": {"id": 41, …}, "fresh": true,
@@ -122,6 +123,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   public Dispatch dispatchAgent(
       String repositoryId,
       String branch,
+      List<String> gitRefs,
       boolean branchTree,
       Subject subject,
       String instruction) {
@@ -146,6 +148,11 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("repositoryId", repositoryId);
     body.put("branch", branch);
+    // The refs an agent in this workspace may push (plan contract C4). Left off when unset: then
+    // qits-workspaces allows only the workspace's own branch. An older qits-workspaces ignores it.
+    if (gitRefs != null) {
+      body.put("gitRefs", gitRefs);
+    }
     body.put("branchTree", branchTree);
     // What the workspace is for, and no goal: a dispatch has no prose of its own to state, and the
     // far side leaves a `preamble` it is not sent alone. Only the member that is set is sent —

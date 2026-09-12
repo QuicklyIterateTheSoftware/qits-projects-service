@@ -15,9 +15,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -98,33 +100,43 @@ public class IdpAgentCredentials implements AgentCredentials {
     return true;
   }
 
+  /** The commission member that states which Git refs the credential may push (plan contract C2). */
+  static final String GIT_REFS = "gitRefs";
+
+  /**
+   * What an agent container may push: nothing. qits-projects-daemon only clones the project, and
+   * nothing else in the container pushes. An empty list means "may push nothing"; an absent one
+   * means "no scope stated".
+   */
+  static final List<String> NO_GIT_REFS = List.of();
+
+  /** Set by the first idp that refuses {@link #GIT_REFS}, so that warning is logged once. */
+  private final AtomicBoolean warnedUnscoped = new AtomicBoolean();
+
   @Override
   public Commissioned commission(String projectId) {
-    String body;
-    try {
-      body =
-          objectMapper.writeValueAsString(
-              Map.of(
-                  "contextKind",
-                  CONTEXT_KIND,
-                  "contextId",
-                  projectId,
-                  // What this context is ABOUT, not merely which context it is. qits-idp turns it
-                  // into a `project` claim on every token the pair mints; an idp that predates the
-                  // member ignores it, which is what lets this ship before the issuer does.
-                  "claims",
-                  Map.of(PROJECT_CLAIM, projectId)));
-    } catch (IOException e) {
-      // A three-entry map of strings and one nested map. Unreachable, and not retryable if it were.
-      throw new AgentCredentialException("Could not build the commission request", false, e);
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("contextKind", CONTEXT_KIND);
+    body.put("contextId", projectId);
+    // What this context is ABOUT, not merely which context it is. qits-idp turns it into a
+    // `project` claim on every token the pair mints; an idp that predates the member ignores it,
+    // which is what lets this ship before the issuer does.
+    body.put("claims", Map.of(PROJECT_CLAIM, projectId));
+    body.put(GIT_REFS, NO_GIT_REFS);
+    String doing = "commissioning a credential for project " + projectId;
+    HttpResponse<String> response = post(body, doing);
+    if (response.statusCode() == 400) {
+      // An idp older than the gitRefs member answers 400. Commission again without it, which is
+      // what this did before (plan contract C5's fallback). A second 400 is about the request.
+      if (warnedUnscoped.compareAndSet(false, true)) {
+        LOG.warnf(
+            "qits-idp refused a commission that states gitRefs (400: %s), so agent-container"
+                + " credentials are commissioned without it until qits-idp accepts it",
+            response.body());
+      }
+      body.remove(GIT_REFS);
+      response = post(body, doing);
     }
-    HttpResponse<String> response =
-        send(
-            request(clientsUrl())
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build(),
-            "commissioning a credential for project " + projectId);
     if (response.statusCode() != 201) {
       throw refusal("commission a credential for project " + projectId, response);
     }
@@ -201,6 +213,23 @@ public class IdpAgentCredentials implements AgentCredentials {
       }
     }
     return commissions;
+  }
+
+  /** POST one commission body to {@code …/api/clients}. */
+  private HttpResponse<String> post(Map<String, Object> body, String doing) {
+    String json;
+    try {
+      json = objectMapper.writeValueAsString(body);
+    } catch (IOException e) {
+      // Strings, one nested map and one list. Unreachable, and not retryable if it were.
+      throw new AgentCredentialException("Could not build the commission request", false, e);
+    }
+    return send(
+        request(clientsUrl())
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .build(),
+        doing);
   }
 
   /** {@code <auth-server-url>/api/clients}, with no double slash however the base is written. */

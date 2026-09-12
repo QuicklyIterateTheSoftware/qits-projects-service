@@ -110,6 +110,10 @@ public class TicketDispatchControllerTest {
         "a ticket names no repository, so the dispatch stands on the project's wrapper");
     assertEquals("ticket/login-button-is-the-wrong-colour", asked.branch());
     assertTrue(asked.branchTree(), "the aggregate workspace is the whole point for a ticket");
+    assertEquals(
+        java.util.List.of("refs/heads/ticket/login-button-is-the-wrong-colour"),
+        asked.gitRefs(),
+        "a ticket's agent may push its own branch and nothing else");
 
     // The subject is a FIELD and the goal is left empty: the workspace names the ticket it is for,
     // and no copy of a row that goes on moving is frozen into its preamble.
