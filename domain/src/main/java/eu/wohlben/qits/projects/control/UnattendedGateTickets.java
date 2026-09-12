@@ -27,8 +27,12 @@ import java.util.Optional;
  * and on every pending tag reaching {@code main}, so one stuck repository can go red many times over.
  * A ticket per verdict would be a ticket storm on exactly the repository somebody is already trying
  * to fix. So the dedupe is carried by the caller: {@code release_request.gate_ticket_id} remembers
- * the ticket this request already has — and a request is per (repository, branch) by construction,
- * because asking to release a branch that already participates in an open request converges on it —
+ * the ticket this request already has — the dedupe is carried by the <b>request</b> and by nothing
+ * else, which is what makes it hold under both convergence rules: an ordinary repository converges
+ * per branch (asking to release a branch that already participates answers that request), and a
+ * project's wrapper converges per repository, so its one request has many participating branches
+ * and still has exactly one ticket. That is the right grain either way — the fold is what went red,
+ * and a ticket per participant would put N people in front of one failure —
  * and {@link Rejection#existingTicketId()} hands it back on the next failure. An implementation
  * <b>comments</b> on that ticket while it is open and files a fresh one only when there is none or
  * the one there is has been resolved.

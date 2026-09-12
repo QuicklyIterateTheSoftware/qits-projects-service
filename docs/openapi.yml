@@ -1258,6 +1258,8 @@ components:
           type: boolean
         priority:
           type: string
+        addedBy:
+          type: string
     RenameRepositoryRequest:
       type: object
       required:
@@ -4690,8 +4692,14 @@ paths:
         \ every released tag of the repository not yet merged to main; they are folded\
         \ onto release/<id> and it is that MERGE the gates evaluate — mergedSha on\
         \ the answer. A branch that already participates in an open request answers\
-        \ that request rather than opening a second. Poll until RELEASED, REJECTED,\
-        \ CONFLICTED or FAILED; detail says why, and conflict says what to resolve."
+        \ that request rather than opening a second. On the project's WRAPPER repository\
+        \ convergence is per repository rather than per branch: a branch nothing has\
+        \ asked about JOINS the estate's one open request as a further source, so\
+        \ the answer may carry an id you did not create, sources you did not name\
+        \ and somebody else's summary — the words of the ask that opened the request\
+        \ stand, and yours are recorded on your own source row. Poll until RELEASED,\
+        \ REJECTED, CONFLICTED or FAILED; detail says why, and conflict says what\
+        \ to resolve."
       parameters:
       - name: repoId
         in: path
@@ -5599,4 +5607,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.911.163000
+  version: 2026.912.43050

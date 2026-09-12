@@ -26,6 +26,13 @@ package eu.wohlben.qits.projects.dto;
  * MEDIUM} is what a caller who stated nothing gets) and <b>always null on an implicit one</b>:
  * a released tag has no row here and no urgency of its own, and it counts towards nothing. The
  * request's own {@code priority} is the max over the named ones.
+ *
+ * <p><b>{@code addedBy} is who put this branch on the request</b>, and it is on the wire because a
+ * request can be shared. A project's wrapper converges per repository rather than per branch, so
+ * one request carries the asks of several workspaces at once and "whose branch is this" is a
+ * question a reader of that request actually has — the request's own {@code requester} is only the
+ * person who opened it. Null where nobody is recorded: the implied {@code main} of a machine-made
+ * create, every implicit tag source, and any row written before this field existed.
  */
 public record ReleaseRequestSourceDto(
-    String kind, String name, String ref, boolean implicit, String priority) {}
+    String kind, String name, String ref, boolean implicit, String priority, String addedBy) {}

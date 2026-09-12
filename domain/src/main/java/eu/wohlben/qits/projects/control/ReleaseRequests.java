@@ -17,6 +17,7 @@ import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
@@ -62,6 +63,14 @@ import org.jboss.logging.Logger;
  * of the releases still in flight — a release is a tag and {@code main} is finalized only after the
  * deployment, so between those two moments a request that did not fold the tag in would be a step
  * backwards from what is already shipping.
+ *
+ * <p><b>How many requests a repository may have open is an archetype question, and there are two
+ * answers.</b> Ordinarily the unit is the branch: one open request per named branch, and asking
+ * again for a branch that already participates answers that request. For the project's <b>wrapper</b>
+ * ({@link eu.wohlben.qits.projects.entity.RepositoryArchetype#PROJECT}) the unit is the repository:
+ * its content is the estate, so every ask joins the one open request as a further named source and
+ * a night of work is one tag, one gating build, one approval and one deployment. {@link #request}
+ * holds the rule and the argument for it.
  *
  * <p>{@link #remerge} folds them into {@code refs/heads/release/<id>} through {@link
  * BackingBranchMerger} and stores the tip as {@code mergedSha}. <b>That fold is the re-arm</b>:
@@ -340,11 +349,45 @@ public class ReleaseRequests {
    * branch that already participates in an open request answers that request rather than opening a
    * second one, and adds nothing to it.
    *
+   * <h2>A wrapper converges per REPOSITORY, not per branch</h2>
+   *
+   * <p><b>Where the repository is the project's wrapper ({@link RepositoryArchetype#PROJECT} — the
+   * root superproject, at most one per project), the unit of convergence is the repository.</b> An
+   * ask naming a branch nothing has asked about yet <b>joins</b> the request that is already open
+   * and becomes a named source of it, exactly as {@link #addSource} would; only when the repository
+   * has no open request at all is a fresh one minted. Every other archetype keeps the per-branch
+   * rule above, untouched.
+   *
+   * <p>The reason is what a wrapper <em>is</em>. Its content is the estate — the gitlink pins of
+   * every component — so two workspaces releasing on the same night are not two releases: they are
+   * two asks about one estate, and answering them with two requests gives that estate two calver
+   * tags, two gating builds, two approvals and two deployments for one night's work, each of them
+   * folding a different half. One request with many participating branches is the honest shape, and
+   * it is the shape {@link ReleaseRequestSource} already models — a request is an octopus merge of N
+   * sources and always was; what changed is only which asks are allowed to reach the same one.
+   *
+   * <p><b>A converging ask on a wrapper does not rewrite the request's words.</b> The {@code
+   * summary} and {@code requester} are those of the ask that <em>opened</em> it and they stand: the
+   * request is shared now, and letting the second workspace's sentence replace the first's would
+   * erase what a person reading the approval gate is being asked to approve. What the newcomer's
+   * words do reach is their own row — {@link ReleaseRequestSource#addedBy} records who put the
+   * branch on, and {@link ReleaseRequestSource#priority} is stated per branch — so nothing a
+   * converging caller says is lost, it is simply recorded against the branch it is about rather
+   * than against everybody's request. The per-branch converge arm (the same branch asked for twice,
+   * on any archetype) still re-states the summary of a request it is the whole of the ask for.
+   *
+   * <p><b>A caller can always tell what happened</b>, because the answer is the whole {@link
+   * ReleaseRequestDto}: an id that is not new, a source list carrying branches the caller never
+   * named, and a summary that is somebody else's. See {@code ReleaseRequestController.create}.
+   *
    * @param priority how urgently the named branch wants to be released, or null/blank for {@code
    *     MEDIUM}. The implied {@code main} row takes the default rather than the caller's word: the
    *     caller asked about their branch and said nothing about main. On the <b>converge</b> arm an
    *     absent priority changes nothing — re-asking for a branch must never silently downgrade the
-   *     urgency somebody escalated it to — and a stated one updates the branch's row.
+   *     urgency somebody escalated it to — and a stated one updates the branch's row. A converging
+   *     ask states its own branch's urgency and <b>no other branch's</b>; the request's effective
+   *     priority stays the max over its sources, so a BLOCKING newcomer escalates the whole fold
+   *     without touching a single sibling's row.
    */
   public ReleaseRequestDto request(
       String repoId, String branch, String summary, String requester, String priority) {
@@ -363,21 +406,45 @@ public class ReleaseRequests {
         repository.mainBranch == null || repository.mainBranch.isBlank()
             ? DEFAULT_MAIN
             : repository.mainBranch;
+    // Which unit this repository converges on, read here beside the rest of the row's facts: the
+    // wrapper IS the project's estate, so its unit is the repository. See the javadoc.
+    boolean wrapper = repository.archetype == RepositoryArchetype.PROJECT;
 
+    // What the fold that follows is about. It is only ever "created" on the fresh arm; a branch
+    // joining an estate's open request is the same content change an explicit addSource is, and
+    // the announcement should say which branch arrived rather than claim a creation.
+    AtomicReference<String> why = new AtomicReference<>("created");
     String id =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
-                  ReleaseRequest open = requests.findOpenByBranch(repoId, named).orElse(null);
+                  ReleaseRequest open =
+                      wrapper
+                          ? openOfWrapper(repoId, named)
+                          : requests.findOpenByBranch(repoId, named).orElse(null);
                   if (open != null) {
-                    open.summary = summary.trim();
-                    if (requester != null) {
-                      open.requester = requester;
-                    }
-                    if (stated != null) {
-                      sources
-                          .find(open.id, ReleaseRequestSource.Kind.BRANCH, named)
-                          .ifPresent(source -> source.priority = stated);
+                    ReleaseRequestSource participating =
+                        sources
+                            .find(open.id, ReleaseRequestSource.Kind.BRANCH, named)
+                            .orElse(null);
+                    if (participating == null) {
+                      // The wrapper arm, and the only way to reach it: a branch nothing has asked
+                      // about joins the estate's one open request instead of opening a second.
+                      addSourceRow(open.id, named, requester, orDefault(stated));
+                      why.set("a source was added: " + named);
+                    } else {
+                      if (stated != null) {
+                        participating.priority = stated;
+                      }
+                      if (!wrapper) {
+                        // The per-branch converge arm: the caller is the whole of this request's
+                        // ask, so their words are the request's. On a wrapper they are not — the
+                        // words of the ask that opened it stand. See this method's javadoc.
+                        open.summary = summary.trim();
+                        if (requester != null) {
+                          open.requester = requester;
+                        }
+                      }
                     }
                     open.updatedAt = Instant.now();
                     return open.id;
@@ -409,8 +476,31 @@ public class ReleaseRequests {
                   }
                   return fresh.id;
                 });
-    remerge(id, "created");
+    remerge(id, why.get());
     return get(id);
+  }
+
+  /**
+   * The one open request of a <b>wrapper</b> repository — the estate's request, which a new ask
+   * joins rather than duplicates. See {@link #request}'s javadoc for why the unit of convergence is
+   * the repository here and the branch everywhere else.
+   *
+   * <p>There is at most one by construction once this rule is in force, but the read does not
+   * assume it: a repository that was accumulating a request per workspace before this shipped can
+   * have several open at once, and the answer has to be stable and has to be the <em>right</em> one
+   * for the branch being asked about. So a request that <b>already names the branch</b> wins — that
+   * is the per-branch converge the caller is entitled to, and a re-ask must answer the request it
+   * answered last time — and otherwise the oldest open request is the estate's, which is also the
+   * one the others will drain into as their branches release.
+   */
+  private ReleaseRequest openOfWrapper(String repoId, String named) {
+    List<ReleaseRequest> open = requests.listOpenByRepo(repoId);
+    for (ReleaseRequest candidate : open) {
+      if (sources.find(candidate.id, ReleaseRequestSource.Kind.BRANCH, named).isPresent()) {
+        return candidate;
+      }
+    }
+    return open.isEmpty() ? null : open.get(0);
   }
 
   /**
@@ -2318,7 +2408,8 @@ public class ReleaseRequests {
               source.name,
               "refs/heads/" + source.name,
               false,
-              source.priority == null ? null : source.priority.name()));
+              source.priority == null ? null : source.priority.name(),
+              source.addedBy));
     }
     for (ReleasedTagPendingMerge tag : implicit) {
       all.add(
@@ -2329,6 +2420,8 @@ public class ReleaseRequests {
               true,
               // An implicit source has no row and therefore no priority of its own: its urgency
               // was the release it came from, and it counts towards no max.
+              null,
+              // Nor an author: nobody put it on, the repository's own in-flight set did.
               null));
     }
     return new ReleaseRequestDto(
