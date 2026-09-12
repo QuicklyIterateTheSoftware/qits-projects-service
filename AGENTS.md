@@ -608,11 +608,20 @@ a pattern.
 The idp commissions of this service's own containers state refs too (contract C2):
 
 - **An agent container states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
-  clones, and qits-coding-agents runs no git. An idp older than the member answers 400; then
-  `IdpAgentCredentials` commissions again without it (contract C5's fallback) and logs one warning.
-- **A refinement container states no `gitRefs`, on purpose.** Its qits-workspace-daemon auto-pushes
-  each commit to `refining/<epicSlug>` (`OriginSync`, `auto-push-enabled` defaults to true), so `[]`
-  would break refinement. What a refinement may push is still to be decided.
+  clones, and qits-coding-agents runs no git.
+- **A refinement container states `"gitRefs": ["refs/heads/refining/<epicSlug>"]`**: its own branch
+  and nothing else. Its qits-workspace-daemon auto-pushes each commit there (`OriginSync`,
+  `auto-push-enabled` defaults to true). `RefinementCommissions.gitRefsOf` reads the ref off the
+  row's `branch`: the branch `RefinementService.findOrCreate` cut, and the value the container gets
+  as `QITS_WORKSPACE_DAEMON_BRANCH`.
+- **A refused list fails closed, never open.** An idp without the member ignores it and answers 201.
+  So a 400 to a commission that states `gitRefs` comes from an idp that read the list and refused it
+  (for example, more than 500 entries). A commission without `gitRefs` could push anything, so it is
+  never sent. This replaces contract C5's "commission without it" fallback for this service.
+  - The refinement commission is sent again with `gitRefs: []` and logs an ERROR naming the
+    refinement and the idp's reason. The container starts, but its auto-push fails.
+  - The agent container's list is already `[]`, so the same request is not sent twice: the 400 is
+    logged as an ERROR naming the project and the idp's reason, and the ensure fails with it.
 
 Roles do not change: a commission still carries its owner's roles until phase 4 of the plan.
 

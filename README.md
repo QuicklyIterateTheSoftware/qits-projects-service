@@ -132,8 +132,11 @@ list: the Git refs its agent may push. A ticket's agent gets its own branch,
 `refs/heads/ticket/<slug>`. An epic's agent gets the epic branch plus every feature and task branch
 of the epic (`feature/<epic>/<feature>`, `task/<epic>/<feature>/<task>`). `epics/control/WorkBranches`
 computes the branch and its refs together. This service's own idp commissions state refs too: an
-agent container states `gitRefs: []` (it pushes nothing), and a refinement container states none,
-because it pushes `refining/<epicSlug>`. See AGENTS.md, "Git refs an agent may push".
+agent container states `gitRefs: []` (it pushes nothing), and a refinement container states
+`gitRefs: ["refs/heads/refining/<epicSlug>"]`, the one branch it pushes. If the idp refuses a stated
+list (400), this service never commissions without `gitRefs`: a refinement is commissioned again
+with `gitRefs: []`, and an ERROR names the context and the idp's reason. See AGENTS.md, "Git refs an
+agent may push".
 
 `ProjectDomainRegistrar` is the hook where a project's domain would be registered in DNS, and
 **nothing implements it right now**: qits-platform-dns was the implementation and the platform no

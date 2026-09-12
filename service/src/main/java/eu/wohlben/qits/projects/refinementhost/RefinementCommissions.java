@@ -8,6 +8,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -52,7 +53,7 @@ public class RefinementCommissions {
     }
     handBack(refinement);
     RefinementCredentials.Commissioned commissioned =
-        commissionPatiently(refinement.id, refinement.projectId);
+        commissionPatiently(refinement.id, refinement.projectId, gitRefsOf(refinement));
     QuarkusTransaction.requiringNew()
         .run(
             () ->
@@ -105,8 +106,20 @@ public class RefinementCommissions {
     LOG.infof("Decommissioned the client %s of refinement %s", held, refinement.id);
   }
 
+  /**
+   * What a refinement's credential may push: exactly its own branch. The row's {@code branch} is
+   * the one {@code RefinementService.findOrCreate} cut ({@code refining/<epicSlug>}), and {@code
+   * RefinementContainerFactory} gives the same value to the container as {@code
+   * QITS_WORKSPACE_DAEMON_BRANCH}. So the daemon's auto-push goes to this ref and to no other. A row
+   * with no branch may push nothing.
+   */
+  static List<String> gitRefsOf(Refinement refinement) {
+    String branch = refinement.branch == null ? "" : refinement.branch.trim();
+    return branch.isEmpty() ? List.of() : List.of("refs/heads/" + branch);
+  }
+
   private RefinementCredentials.Commissioned commissionPatiently(
-      Long refinementId, String projectId) {
+      Long refinementId, String projectId, List<String> gitRefs) {
     Instant giveUpAt = Instant.now().plus(commissionPatience);
     Duration pause =
         RETRY_PAUSE.compareTo(commissionPatience) > 0 ? commissionPatience : RETRY_PAUSE;
@@ -114,7 +127,7 @@ public class RefinementCommissions {
     while (true) {
       attempts++;
       try {
-        return credentials.commission(refinementId, projectId);
+        return credentials.commission(refinementId, projectId, gitRefs);
       } catch (AgentCredentialException e) {
         if (!e.retryable() || !Instant.now().isBefore(giveUpAt) || !sleep(pause)) {
           throw new AgentCredentialException(
