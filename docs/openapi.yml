@@ -2092,6 +2092,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/agent-configuration:
     get:
       responses:
@@ -2112,6 +2113,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/agent-mcp-catalog:
     get:
       responses:
@@ -2131,6 +2133,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/agent-mcp-catalog/{key}:
     put:
       parameters:
@@ -2188,6 +2191,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: key
@@ -2230,6 +2234,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/agent-surfaces/{surface}:
     put:
       parameters:
@@ -2287,6 +2292,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/agent-surfaces/{surface}/revisions:
     get:
       parameters:
@@ -2312,6 +2318,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/dossier:
     get:
       parameters:
@@ -2337,6 +2344,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: epicId
@@ -2431,6 +2439,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/dossier/{pageId}:
     put:
       parameters:
@@ -2498,6 +2507,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: epicId
@@ -2590,6 +2600,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: epicId
@@ -2679,6 +2690,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: id
@@ -2728,6 +2740,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{id}/dispatch-agent:
     post:
       parameters:
@@ -2811,6 +2824,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: featureId
@@ -2900,6 +2914,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: id
@@ -2944,6 +2959,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/projects:
     get:
       responses:
@@ -2964,6 +2980,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
     post:
       requestBody:
         content:
@@ -3050,6 +3067,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: id
@@ -3099,6 +3117,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/agent-container/ensure:
     post:
       parameters:
@@ -3178,6 +3197,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: projectId
@@ -3237,6 +3257,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/reconcile:
     post:
       summary: Re-assert a project's domain through the dns registrar
@@ -3297,6 +3318,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/release-requests:
     get:
       summary: "The project's release requests, across all of its repositories"
@@ -3332,6 +3354,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/projects/{projectId}/repositories:
     get:
       parameters:
@@ -3358,6 +3381,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
     post:
       parameters:
       - name: projectId
@@ -3499,6 +3523,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:system
+        - qits:agent
   /projects/api/projects/{projectId}/repositories/reconcile:
     post:
       summary: Bring a project's repositories in line with its wrapper's .gitmodules
@@ -3565,6 +3590,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: projectId
@@ -3650,6 +3676,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/refinements/{id}/active-process:
     get:
       parameters:
@@ -3676,6 +3703,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/refinements/{id}/designs:
     get:
       parameters:
@@ -3702,6 +3730,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: id
@@ -3803,6 +3832,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: designId
@@ -3909,6 +3939,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/refinements/{id}/prompt-attachments:
     get:
       parameters:
@@ -3935,6 +3966,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: id
@@ -4062,6 +4094,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/refinements/{id}/prompt-draft:
     put:
       parameters:
@@ -4121,6 +4154,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: id
@@ -4218,6 +4252,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}:
     patch:
       summary: Rename a repository
@@ -4288,6 +4323,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
     delete:
       summary: "Delete a repository, on the git host as well"
       description: "Deletes the row, the repository's workspaces, its local mirror,\
@@ -4343,6 +4379,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/repositories/{repoId}/backup-sync:
     post:
       summary: Back this repository up to its forge twin now
@@ -4428,6 +4465,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/repositories/{repoId}/commits:
     get:
       parameters:
@@ -4459,6 +4497,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/builds:
     get:
       summary: Every CI verdict recorded for one commit
@@ -4493,6 +4532,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/changes:
     get:
       parameters:
@@ -4527,6 +4567,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/diff:
     get:
       parameters:
@@ -4567,6 +4608,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/repositories/{repoId}/main-branch:
     put:
       parameters:
@@ -4685,6 +4727,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
     post:
       summary: Ask for a branch to be released once its builds are green
       description: "Creates (or converges on) the open release request the branch\
@@ -4731,6 +4774,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}:
     get:
       parameters:
@@ -4762,6 +4806,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/approvals:
     get:
       summary: "Every decision made about this request, newest first"
@@ -4802,6 +4847,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/approve:
     post:
       summary: "Sign off this request's current fold, so it may release"
@@ -4890,6 +4936,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/changes:
     get:
       summary: The files this request's fold changed
@@ -4931,6 +4978,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/changes/diff:
     get:
       summary: The patch of one file in this request's fold
@@ -4973,6 +5021,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/commits:
     get:
       summary: The commits this request's fold brought in
@@ -5012,6 +5061,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/decline:
     post:
       summary: "Refuse this request's current fold, answerably"
@@ -5103,6 +5153,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/sources/priority:
     post:
       summary: Re-state how urgently one of a request's branches wants to be released
@@ -5150,6 +5201,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/withdraw:
     post:
       summary: Withdraw an open release request
@@ -5194,6 +5246,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/sync:
     post:
       parameters:
@@ -5244,6 +5297,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/tasks/{id}:
     put:
       parameters:
@@ -5301,6 +5355,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: id
@@ -5352,6 +5407,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/ticket-comments/{id}:
     put:
       parameters:
@@ -5466,6 +5522,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: id
@@ -5573,6 +5630,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: ticketId
@@ -5607,4 +5665,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.912.43050
+  version: 2026.912.172933

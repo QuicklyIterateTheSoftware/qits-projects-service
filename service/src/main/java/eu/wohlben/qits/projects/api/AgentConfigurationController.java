@@ -40,7 +40,7 @@ import jakarta.ws.rs.core.MediaType;
  */
 @Path("/agent-configuration")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:system"})
+@RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
 public class AgentConfigurationController {
 
   @Inject AgentSurfaceConfigurationService surfaces;

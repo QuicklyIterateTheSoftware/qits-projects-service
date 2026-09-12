@@ -97,6 +97,7 @@ public class AgentContainerController {
 
   /** What the agent container is doing, changing nothing. {@code ABSENT} when there is none. */
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public AgentContainerResponse get(@PathParam("projectId") String projectId) {
     return AgentContainerResponse.of(agentContainers.status(projectId));
   }

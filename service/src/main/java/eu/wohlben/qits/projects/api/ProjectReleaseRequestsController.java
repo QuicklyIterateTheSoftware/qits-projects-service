@@ -33,7 +33,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  */
 @Path("/projects/{projectId}/release-requests")
 @Produces(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system"})
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
 public class ProjectReleaseRequestsController {
 
   @Inject ReleaseRequests releaseRequests;

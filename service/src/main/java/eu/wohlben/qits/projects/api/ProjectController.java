@@ -145,6 +145,7 @@ public class ProjectController {
   }
 
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetProjectRequest.Response get(@PathParam("id") String id) {
     var project = projectService.get(id);
@@ -164,7 +165,7 @@ public class ProjectController {
    * Spelled in full because a method-level {@code @RolesAllowed} REPLACES the class-level one.
    */
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
   public ListProjectsRequest.Response list() {
     var projects = projectService.list();
     var entries =
@@ -283,7 +284,7 @@ public class ProjectController {
    */
   @GET
   @Path("/{projectId}/repositories")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
   public ListProjectRepositoriesRequest.Response listRepositories(
       @PathParam("projectId") String projectId) {
     var repos = projectService.getRepositories(projectId);
@@ -356,7 +357,7 @@ public class ProjectController {
    */
   @GET
   @Path("/{projectId}/repositories/by-name/{repoName}")
-  @jakarta.annotation.security.RolesAllowed("qits:system")
+  @jakarta.annotation.security.RolesAllowed({"qits:system", "qits:agent"})
   @Operation(
       summary = "Resolve a project-scoped repository name to its id",
       description =

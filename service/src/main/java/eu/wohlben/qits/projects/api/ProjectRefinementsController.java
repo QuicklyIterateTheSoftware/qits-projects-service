@@ -21,7 +21,7 @@ import java.util.List;
  */
 @Path("/projects/{projectId}/refinements")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:agent"})
 public class ProjectRefinementsController {
 
   @Inject RefinementService refinements;

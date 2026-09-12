@@ -44,6 +44,7 @@ public class RefinementPromptDraftController {
 
   /** 404 when no draft has been saved — deliberately, so "none" and "empty" stay distinct. */
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DraftResponse get(@PathParam("id") long id) {
     refinements.get(id);
     RefinementPromptDraft draft =

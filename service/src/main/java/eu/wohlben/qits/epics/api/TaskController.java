@@ -37,6 +37,7 @@ public class TaskController {
   }
 
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetTaskRequest.Response get(@PathParam("id") String id) {
     return new GetTaskRequest.Response(taskMapper.toDto(taskService.get(id)));

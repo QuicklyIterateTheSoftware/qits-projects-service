@@ -55,6 +55,7 @@ public class TicketController {
    * bought for nothing — the client re-reads.
    */
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetTicketRequest.Response get(@PathParam("id") String id) {
     return new GetTicketRequest.Response(
@@ -140,6 +141,7 @@ public class TicketController {
 
   /** The ticket's thread, OLDEST FIRST — a conversation is read from the start. */
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{ticketId}/comments")
   public ListTicketCommentsRequest.Response listComments(@PathParam("ticketId") String ticketId) {
     ticketService.get(ticketId); // 404 if the ticket does not exist

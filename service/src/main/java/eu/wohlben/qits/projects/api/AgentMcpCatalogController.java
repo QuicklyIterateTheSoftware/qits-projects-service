@@ -107,6 +107,7 @@ public class AgentMcpCatalogController {
 
   /** Every entry, by key, each saying which surfaces attach it. */
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public CatalogListResponse list() {
     return new CatalogListResponse(
         catalog.listAll(),
@@ -116,6 +117,7 @@ public class AgentMcpCatalogController {
 
   /** One entry, or a 404 — unlike a surface, an entry that does not exist is not a default. */
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{key}")
   public AgentMcpCatalogEntryDto get(@PathParam("key") String key) {
     return catalog.get(key);

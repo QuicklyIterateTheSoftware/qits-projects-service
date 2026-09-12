@@ -347,6 +347,25 @@ identity here.
 | `qits:admin` | the forwarded `X-Qits-Roles` header alone — the edge asserts it for an authenticated admin session | every REST controller here (class-level), the events stream and the remote-login socket |
 | `qits:system` | a machine bearer alone — qits-idp copies a client's `roles` into the token's `groups` claim, and quarkus-oidc reads that claim as roles with no configuration at all | `GET /projects/{projectId}/repositories/by-name/{repoName}` (qits-githost), `POST /projects/{projectId}/repositories/adopt` (the bootstrap) and the agent control socket `/projects/daemon/{projectId}` |
 
+**`qits:agent` is an agent's own token (plan phase 4). An agent keeps every read and gains no
+write** (user ruling, 2026-09-12):
+
+- **Every read route takes it** — each GET, and the SSE streams — with no restriction. On a class
+  that also has writes, each GET states `qits:agent` at method level, so the writes keep the class
+  list. `api/AgentReadAccessTest` checks the rule for every controller class.
+- **Four writes take it, bound to the agent's own work:** create, sources, priority and withdraw
+  on `ReleaseRequestController`. The repository must be in the token's `project`, a request must
+  belong to that repository, and on create and sources the branch must be in the token's
+  `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline stay `qits:admin`.
+- **The two control sockets take it, bound to the agent's own container** (a socket is a control
+  channel, not a read): `/projects/daemon/{projectId}` wants the token's `project`, and
+  `/projects/refinement-daemon/{id}` wants the token's `sub` to be that row's commissioned client.
+  `AgentControlSocketAccess` and `RefinementControlSocketAccess` answer 403 at the upgrade.
+- **A caller that also holds `qits:system` or `qits:admin` is judged as before.** The checks read
+  the token's claims directly (`security/AgentAccess`), not `MachineAuth`: `MachineAuth` passes
+  every caller while `qits.auth.machine.required` is off, and an agent role that came from a
+  forwarded header carries no token, so it is refused every write.
+
 **Four routes take both roles**, because a sibling service and a browser read each of them:
 `GET /projects` (the bootstrap turning the project's name into its id, and the projects overview),
 `GET /projects/{projectId}/repositories` (qits-workspaces creating an aggregate branch, and the

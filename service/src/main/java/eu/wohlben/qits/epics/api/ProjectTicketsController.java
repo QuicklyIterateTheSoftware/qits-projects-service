@@ -56,6 +56,7 @@ public class ProjectTicketsController {
    * tickets".
    */
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public ListTicketsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
     projectService.get(projectId); // 404 if the project does not exist
