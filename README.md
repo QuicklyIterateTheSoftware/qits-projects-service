@@ -127,6 +127,14 @@ container is a real one.
 | `ProjectDomainRegistrar` | **nothing, today** — qits-platform-dns implemented it and was removed from the platform | a created project's domain is stored and registered nowhere, which is what a project whose dns lives at a registrar's control panel wants — and is the state every deployment is in |
 | `CommandOutputSink` | the service module's websocket | — (an SPI this context calls, not one it looks up) |
 
+**What a dispatched agent may push.** A ticket or epic dispatch sends qits-workspaces a `gitRefs`
+list: the Git refs its agent may push. A ticket's agent gets its own branch,
+`refs/heads/ticket/<slug>`. An epic's agent gets the epic branch plus every feature and task branch
+of the epic (`feature/<epic>/<feature>`, `task/<epic>/<feature>/<task>`). `epics/control/WorkBranches`
+computes the branch and its refs together. This service's own idp commissions state refs too: an
+agent container states `gitRefs: []` (it pushes nothing), and a refinement container states none,
+because it pushes `refining/<epicSlug>`. See AGENTS.md, "Git refs an agent may push".
+
 `ProjectDomainRegistrar` is the hook where a project's domain would be registered in DNS, and
 **nothing implements it right now**: qits-platform-dns was the implementation and the platform no
 longer runs it, so dns records are configured by hand at the external provider. The port stays as the

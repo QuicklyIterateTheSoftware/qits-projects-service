@@ -26,14 +26,21 @@ import org.jboss.logging.Logger;
  * {@code @PathParam} — and is parsed here, the same manual move qits-workspaces makes. A path that
  * is not a number registers nothing and the socket is left to idle out.
  *
- * <p>The socket requires {@code qits:system} during the upgrade; the daemon presents its
- * commissioned machine token ({@code QITS_WORKSPACE_DAEMON_AUTH_*}). The row-id path parameter
- * selects a target and is not accepted as authentication by itself — the reverse tunnel's nonce
- * remains a second, connection-local guard.
+ * <p>The socket requires {@code qits:system} or {@code qits:agent} during the upgrade; the daemon
+ * presents its commissioned machine token ({@code QITS_WORKSPACE_DAEMON_AUTH_*}). The row-id path
+ * parameter selects a target and is not accepted as authentication by itself. A {@code qits:agent}
+ * caller may open only the socket of the refinement its client was commissioned for — {@link
+ * RefinementControlSocketAccess} answers 403 for any other. The reverse tunnel's nonce remains a
+ * second, connection-local guard.
  */
-@WebSocket(path = RefinementPaths.CONTROL_SOCKET_PREFIX + "{refinementId}")
-@jakarta.annotation.security.RolesAllowed("qits:system")
+@WebSocket(
+    path = RefinementPaths.CONTROL_SOCKET_PREFIX + "{refinementId}",
+    endpointId = RefinementControlSocket.ENDPOINT_ID)
+@jakarta.annotation.security.RolesAllowed({"qits:system", "qits:agent"})
 public class RefinementControlSocket {
+
+  /** Stated, so {@link RefinementControlSocketAccess} names this endpoint and no other. */
+  public static final String ENDPOINT_ID = "projects-refinement-control-socket";
 
   private static final Logger LOG = Logger.getLogger(RefinementControlSocket.class);
 

@@ -31,13 +31,20 @@ import org.jboss.logging.Logger;
  * <p>Unlike qits-workspaces' equivalent the path parameter needs no parsing: a project id is
  * already a String, which is the only type websockets-next accepts for a {@code @PathParam}.
  *
- * <p>The socket requires {@code qits:system} during the upgrade. Its daemon callers present their
- * commissioned machine tokens; the project path parameter selects a target and is not accepted as
- * authentication by itself. The reverse tunnel's nonce remains a second, connection-local guard.
+ * <p>The socket requires {@code qits:system} or {@code qits:agent} during the upgrade. Its daemon
+ * callers present their commissioned machine tokens; the project path parameter selects a target
+ * and is not accepted as authentication by itself. A {@code qits:agent} caller may open only its own
+ * project's socket — {@link AgentControlSocketAccess} answers 403 for any other. The reverse
+ * tunnel's nonce remains a second, connection-local guard.
  */
-@WebSocket(path = DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + "{projectId}")
-@jakarta.annotation.security.RolesAllowed("qits:system")
+@WebSocket(
+    path = DaemonProtocol.CONTROL_SOCKET_PATH_PREFIX + "{projectId}",
+    endpointId = AgentControlSocket.ENDPOINT_ID)
+@jakarta.annotation.security.RolesAllowed({"qits:system", "qits:agent"})
 public class AgentControlSocket {
+
+  /** Stated, so {@link AgentControlSocketAccess} names this endpoint and no other. */
+  public static final String ENDPOINT_ID = "projects-agent-control-socket";
 
   private static final Logger LOG = Logger.getLogger(AgentControlSocket.class);
 

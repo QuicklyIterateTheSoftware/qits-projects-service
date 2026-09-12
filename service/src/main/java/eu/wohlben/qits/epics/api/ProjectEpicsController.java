@@ -53,6 +53,7 @@ public class ProjectEpicsController {
    * status name; a value naming none is a 400, so a typo in the filter does not read as "no epics".
    */
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public ListEpicsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
     projectService.get(projectId); // 404 if the project does not exist

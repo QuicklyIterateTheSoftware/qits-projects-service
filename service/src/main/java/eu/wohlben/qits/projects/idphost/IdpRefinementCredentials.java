@@ -81,6 +81,11 @@ public class IdpRefinementCredentials implements RefinementCredentials {
    * containers take of a fact the registry could not supply. It is never sent as {@code "*"}:
    * qits-idp refuses a commission that widens itself, and asking for the wildcard would be asking
    * for the thing this scoping exists to stop granting.
+   *
+   * <p><b>It states no {@code gitRefs}, on purpose.</b> The agent container states {@code []}
+   * because nothing in it pushes. A refinement container does push: qits-workspace-daemon's
+   * auto-push sends each commit to {@code refining/<epicSlug>}. So this commission keeps no stated
+   * scope until somebody decides what a refinement may push.
    */
   private static Map<String, Object> claimed(Map<String, String> context, String projectId) {
     Map<String, Object> body = new java.util.LinkedHashMap<>(context);

@@ -81,6 +81,7 @@ public class DossierAssetController {
    * document render as something else.
    */
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{assetId}/content")
   public Response content(
       @PathParam("epicId") String epicId, @PathParam("assetId") String assetId) {

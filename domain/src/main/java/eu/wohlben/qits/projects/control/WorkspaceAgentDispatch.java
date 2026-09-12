@@ -105,6 +105,10 @@ public interface WorkspaceAgentDispatch {
    *     wrapper, because a ticket names no repository.
    * @param branch the branch to stand the workspace on, created at the repository's default branch
    *     if it does not exist
+   * @param gitRefs the Git refs an agent in this workspace may push: exact refs, each {@code
+   *     refs/heads/…} (plan contract C4). Sent as {@code gitRefs}. {@code null} sends nothing, and
+   *     qits-workspaces then allows only the workspace's own branch. Computed by {@code
+   *     WorkBranches}, together with {@code branch}.
    * @param branchTree whether the submodules are branched alongside the wrapper — true for the
    *     whole-estate aggregate a ticket needs
    * @param subject what the workspace is for — see {@link Subject}. There is deliberately no
@@ -116,7 +120,12 @@ public interface WorkspaceAgentDispatch {
    *     was unreachable or answered unreadably, 503 for a hop with no address or no credential
    */
   Dispatch dispatchAgent(
-      String repositoryId, String branch, boolean branchTree, Subject subject, String instruction);
+      String repositoryId,
+      String branch,
+      List<String> gitRefs,
+      boolean branchTree,
+      Subject subject,
+      String instruction);
 
   /**
    * A live workspace over there that names one of our rows as its subject — the {@link Subject} read

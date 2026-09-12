@@ -76,6 +76,31 @@ class IdpAgentCredentialsTest {
       // the context id here, and a different fact — see AgentCredentials.commission.
       assertTrue(
           request.body().contains("\"claims\":{\"project\":\"" + PROJECT + "\"}"), request.body());
+      // And what it may push: nothing, because nothing in an agent container pushes.
+      assertTrue(request.body().contains("\"gitRefs\":[]"), request.body());
+      assertEquals(1, stub.received().size(), "an idp that accepts it is asked once");
+    }
+  }
+
+  /**
+   * An idp older than the gitRefs member answers 400. The commission is made again without it,
+   * which is what this did before — the container still gets its credential.
+   */
+  @Test
+  void anIdpThatRefusesGitRefsGetsTheCommissionWithoutIt() throws IOException {
+    try (StubIdpServer stub = new StubIdpServer()) {
+      stub.answering(400, "{\"error\":\"unknown member gitRefs\"}").answering(201, COMMISSIONED);
+
+      AgentCredentials.Commissioned pair = credentials(stub.url()).commission(PROJECT);
+
+      assertEquals("dev-qits-projects-agent-7", pair.clientId());
+      List<StubIdpServer.Received> requests = stub.received();
+      assertEquals(2, requests.size());
+      assertTrue(requests.get(0).body().contains("\"gitRefs\":[]"), requests.get(0).body());
+      assertFalse(requests.get(1).body().contains("gitRefs"), requests.get(1).body());
+      assertTrue(
+          requests.get(1).body().contains("\"claims\":{\"project\":\"" + PROJECT + "\"}"),
+          "the fallback drops the refs and nothing else: " + requests.get(1).body());
     }
   }
 
@@ -113,7 +138,10 @@ class IdpAgentCredentialsTest {
   @Test
   void anAnswerAboutTheRequestIsNot() throws IOException {
     try (StubIdpServer stub = new StubIdpServer()) {
-      stub.answering(400, "{\"error\":\"invalid_request\"}");
+      // Twice: the first 400 is read as an idp older than gitRefs, and the commission is made again
+      // without it. A 400 on that one too is about the request.
+      stub.answering(400, "{\"error\":\"invalid_request\"}")
+          .answering(400, "{\"error\":\"invalid_request\"}");
 
       assertFalse(
           assertThrows(

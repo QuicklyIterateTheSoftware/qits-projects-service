@@ -164,6 +164,7 @@ public class AgentCapabilityController {
    * when it is the library's fallback rather than a binary's own answer.
    */
   @GET
+  @RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
   public AgentCapabilityCatalogueDto catalogue() {
     return capabilities.catalogue();
   }

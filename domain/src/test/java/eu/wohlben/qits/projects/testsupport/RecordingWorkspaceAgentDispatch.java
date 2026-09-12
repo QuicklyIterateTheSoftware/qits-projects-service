@@ -33,6 +33,7 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   public record Dispatched(
       String repositoryId,
       String branch,
+      List<String> gitRefs,
       boolean branchTree,
       Subject subject,
       String instruction) {}
@@ -47,10 +48,11 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
   public synchronized Dispatch dispatchAgent(
       String repositoryId,
       String branch,
+      List<String> gitRefs,
       boolean branchTree,
       Subject subject,
       String instruction) {
-    calls.add(new Dispatched(repositoryId, branch, branchTree, subject, instruction));
+    calls.add(new Dispatched(repositoryId, branch, gitRefs, branchTree, subject, instruction));
     if (failure != null) {
       throw failure;
     }

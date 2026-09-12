@@ -347,6 +347,25 @@ identity here.
 | `qits:admin` | the forwarded `X-Qits-Roles` header alone — the edge asserts it for an authenticated admin session | every REST controller here (class-level), the events stream and the remote-login socket |
 | `qits:system` | a machine bearer alone — qits-idp copies a client's `roles` into the token's `groups` claim, and quarkus-oidc reads that claim as roles with no configuration at all | `GET /projects/{projectId}/repositories/by-name/{repoName}` (qits-githost), `POST /projects/{projectId}/repositories/adopt` (the bootstrap) and the agent control socket `/projects/daemon/{projectId}` |
 
+**`qits:agent` is an agent's own token (plan phase 4). An agent keeps every read and gains no
+write** (user ruling, 2026-09-12):
+
+- **Every read route takes it** — each GET, and the SSE streams — with no restriction. On a class
+  that also has writes, each GET states `qits:agent` at method level, so the writes keep the class
+  list. `api/AgentReadAccessTest` checks the rule for every controller class.
+- **Four writes take it, bound to the agent's own work:** create, sources, priority and withdraw
+  on `ReleaseRequestController`. The repository must be in the token's `project`, a request must
+  belong to that repository, and on create and sources the branch must be in the token's
+  `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline stay `qits:admin`.
+- **The two control sockets take it, bound to the agent's own container** (a socket is a control
+  channel, not a read): `/projects/daemon/{projectId}` wants the token's `project`, and
+  `/projects/refinement-daemon/{id}` wants the token's `sub` to be that row's commissioned client.
+  `AgentControlSocketAccess` and `RefinementControlSocketAccess` answer 403 at the upgrade.
+- **A caller that also holds `qits:system` or `qits:admin` is judged as before.** The checks read
+  the token's claims directly (`security/AgentAccess`), not `MachineAuth`: `MachineAuth` passes
+  every caller while `qits.auth.machine.required` is off, and an agent role that came from a
+  forwarded header carries no token, so it is refused every write.
+
 **Four routes take both roles**, because a sibling service and a browser read each of them:
 `GET /projects` (the bootstrap turning the project's name into its id, and the projects overview),
 `GET /projects/{projectId}/repositories` (qits-workspaces creating an aggregate branch, and the
@@ -561,6 +580,41 @@ in **Project slugs** below.
 branch is a *file* at `refs/heads/feature/<timestamp>` while a feature branch needs
 `refs/heads/feature/<epic>/` to be a directory, so the first of the two to be created blocks the
 other. Renaming the capture prefix is a qits-workspaces-service workstream; do not change it from here.
+
+## Git refs an agent may push
+
+Each dispatch tells qits-workspaces which Git refs its agent may push: the `gitRefs` member of the
+dispatch request (contract C4 in the superproject's `principal-bound-git-refs-plan.md`).
+`epics/control/WorkBranches` computes the branch and its refs in one place, so the two cannot drift
+apart. The refs are exact refs (`refs/heads/<branch>`) and never `/*` patterns: qits-workspaces
+removes one ref from an epic's list when a sub-workspace takes that branch, and it cannot do that to
+a pattern.
+
+| work | branch | may push |
+| --- | --- | --- |
+| ticket | `ticket/<slug>` (`ticket/ticket-<id8>` for a title with no letters or digits) | its own branch |
+| task | `task/<epic>/<feature>/<task>` | its own branch |
+| epic | `epic/<slug>` | the epic branch, every feature branch and every task branch of the epic |
+
+- **There is no task dispatch door yet.** `WorkBranches.task` holds the rule for when there is one.
+- **The epic list is read after the freeze** to `IMPLEMENTATION`. From then on no feature or task can
+  be added, so the list is complete. A slug never changes, so no ref on it goes stale.
+- **Absent is safe both ways.** Without `gitRefs`, qits-workspaces allows the workspace's own branch;
+  a qits-workspaces older than the member ignores it.
+- **Size.** The idp takes at most 500 refs of at most 255 characters each (contract C2). A slug is at
+  most 40 characters, so a task ref is at most 138. The count is not checked here: an epic with more
+  than 499 features and tasks together would exceed it.
+
+The idp commissions of this service's own containers state refs too (contract C2):
+
+- **An agent container states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
+  clones, and qits-coding-agents runs no git. An idp older than the member answers 400; then
+  `IdpAgentCredentials` commissions again without it (contract C5's fallback) and logs one warning.
+- **A refinement container states no `gitRefs`, on purpose.** Its qits-workspace-daemon auto-pushes
+  each commit to `refining/<epicSlug>` (`OriginSync`, `auto-push-enabled` defaults to true), so `[]`
+  would break refinement. What a refinement may push is still to be decided.
+
+Roles do not change: a commission still carries its owner's roles until phase 4 of the plan.
 
 ## Epic lifecycle
 
@@ -906,8 +960,8 @@ handed no token does not bind its API at all.
 
 **One idp client per container, and its lifetime is the container's.** `AgentCommissions` gets it
 from qits-idp's commission API — `POST /idp/api/clients` with `{"contextKind":"agent-container",
-"contextId":"<projectId>","claims":{"project":"<projectId>"}}`, HTTP Basic with **this service's
-own** oidc client id and secret,
+"contextId":"<projectId>","claims":{"project":"<projectId>"},"gitRefs":[]}` (for `gitRefs` see "Git
+refs an agent may push"), HTTP Basic with **this service's own** oidc client id and secret,
 because a caller there already holds an idp credential and that is how the API authenticates one.
 `idphost/IdpAgentCredentials` is the adapter and `agenthost/AgentCredentials` the seam; the adapter
 is `@DefaultBean`, so the suite's `FakeAgentCredentials` wins the injection and no test reaches an

@@ -66,6 +66,7 @@ public class DossierController {
 
   /** The epic's pages in position order, bodies included. Empty list, never a 404. */
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public ListPagesResponse list(@PathParam("epicId") String epicId) {
     // The epic is resolved here rather than in the epics module, which cannot see `domain` and has
     // no way to check a project scope — the same split EpicController makes.
@@ -83,6 +84,7 @@ public class DossierController {
   }
 
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{pageId}")
   public DossierPageDto get(@PathParam("epicId") String epicId, @PathParam("pageId") String pageId) {
     return mapper.toDto(requireOfEpic(epicId, pageId));

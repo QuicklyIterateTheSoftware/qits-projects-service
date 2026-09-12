@@ -85,6 +85,15 @@ public class EpicDispatchControllerTest {
         .path("feature.id");
   }
 
+  private void addTask(String featureId, String repositoryId, String title) {
+    asAdmin("setup")
+        .body(Map.of("repositoryId", repositoryId, "title", title))
+        .when()
+        .post("/projects/api/features/" + featureId + "/tasks")
+        .then()
+        .statusCode(200);
+  }
+
   /** Move an epic on by the board's own door, so the fixture never depends on the door under test. */
   private void transition(String epicId, String target) {
     asAdmin("setup")
@@ -117,7 +126,11 @@ public class EpicDispatchControllerTest {
   public void startingImplementationFreezesTheEpicAndDispatchesOntoTheWholeEstate() {
     String projectId = createProject("Epic Dispatch Happy");
     String epicId = createEpic(projectId, "Planning domain", "The spine of the plan.");
-    addFeature(epicId, "Lifecycle", "statuses and the freeze");
+    String lifecycle = addFeature(epicId, "Lifecycle", "statuses and the freeze");
+    String branches = addFeature(epicId, "Branches", "what an agent may push");
+    addTask(lifecycle, wrapperIdOf(projectId), "Freeze");
+    addTask(branches, wrapperIdOf(projectId), "Name the refs");
+    addTask(branches, wrapperIdOf(projectId), "Send them");
 
     asAdmin("mallory")
         .when()
@@ -142,6 +155,17 @@ public class EpicDispatchControllerTest {
         "an epic spans the estate, so the dispatch stands on the project's wrapper");
     assertEquals("epic/planning-domain", asked.branch());
     assertTrue(asked.branchTree(), "the aggregate workspace is the whole point for an epic");
+    // The big whitelist: the epic branch, then each feature followed by its tasks.
+    assertEquals(
+        java.util.List.of(
+            "refs/heads/epic/planning-domain",
+            "refs/heads/feature/planning-domain/lifecycle",
+            "refs/heads/task/planning-domain/lifecycle/freeze",
+            "refs/heads/feature/planning-domain/branches",
+            "refs/heads/task/planning-domain/branches/name-the-refs",
+            "refs/heads/task/planning-domain/branches/send-them"),
+        asked.gitRefs(),
+        "an epic's agent may push the epic branch and every feature and task branch of it");
 
     // The subject is a FIELD and the goal is left empty: the epic tree moves under an
     // implementation, so a rendering of it frozen at creation is stale the moment a task is marked.
@@ -194,6 +218,10 @@ public class EpicDispatchControllerTest {
         .body("dispatch.agentLaunch", equalTo("SKIPPED_RUNNING"));
 
     assertEquals("epic/second-press", dispatch.lastCall().branch());
+    assertEquals(
+        java.util.List.of("refs/heads/epic/second-press"),
+        dispatch.lastCall().gitRefs(),
+        "an epic with no features or tasks may push its own branch and nothing else");
     assertEquals("IMPLEMENTATION", statusOf(epicId), "and the epic is where it already was");
   }
 

@@ -22,7 +22,7 @@ import org.jboss.resteasy.reactive.RestStreamElementType;
  * connect, so there is no replay protocol.
  */
 @Path("/refinements/{id}/events")
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:agent"})
 public class RefinementEventsController {
 
   @Inject RefinementEventBroadcaster broadcaster;

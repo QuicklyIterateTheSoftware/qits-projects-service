@@ -57,6 +57,7 @@ public class FeatureController {
   }
 
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetFeatureRequest.Response get(@PathParam("id") String id) {
     return new GetFeatureRequest.Response(featureMapper.toDto(featureService.get(id)));
@@ -119,6 +120,7 @@ public class FeatureController {
   }
 
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{featureId}/tasks")
   public ListTasksRequest.Response listTasks(@PathParam("featureId") String featureId) {
     featureService.get(featureId); // 404 if the feature does not exist

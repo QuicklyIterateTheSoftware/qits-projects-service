@@ -46,6 +46,7 @@ public class RefinementController {
   }
 
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public RefinementResponse get(@PathParam("id") long id) {
     return new RefinementResponse(RefinementDto.of(refinements.view(refinements.get(id))));
@@ -74,6 +75,7 @@ public class RefinementController {
   }
 
   @GET
+  @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}/active-process")
   public ActiveProcessResponse activeProcess(@PathParam("id") long id) {
     refinements.get(id); // 404 an unknown row rather than answering a hopeful null

@@ -64,6 +64,7 @@ public class EpicController {
   }
 
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetEpicRequest.Response get(@PathParam("id") String id) {
     return new GetEpicRequest.Response(
@@ -136,6 +137,7 @@ public class EpicController {
   }
 
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{epicId}/features")
   public ListFeaturesRequest.Response listFeatures(@PathParam("epicId") String epicId) {
     epicService.get(epicId); // 404 if the epic does not exist
@@ -179,6 +181,7 @@ public class EpicController {
    * outlive the rows). Deliberately does NOT require the epic to still exist.
    */
   @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}/audit")
   public EpicAuditRequest.Response audit(@PathParam("id") String id) {
     var entries = auditService.listForEpic(id).stream().map(auditEntryMapper::toDto).toList();

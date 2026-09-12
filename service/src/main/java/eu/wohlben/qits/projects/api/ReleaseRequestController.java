@@ -2,12 +2,16 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.projects.control.ReleaseArtifacts;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
+import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.ReleaseArtifactsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
+import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.error.DomainException;
+import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.NotBlank;
@@ -72,14 +76,24 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
  * would have let the same bump robot that opened the request approve it, which is a gate whose
  * subject is also its judge. {@code GET /approvals} stays on the class pair: reading who decided is
  * not deciding, and a machine assembling a release report has an honest reason to ask.
+ *
+ * <p><b>An agent reads everything here and writes only for its own work.</b> {@code qits:agent} is
+ * on the class list, so every read is open to it with no restriction. The four writes it reaches —
+ * create, sources, priority and withdraw — bind a caller that holds it and neither of the other
+ * two: the repository must be in the project its token names ({@code project}) and a request must
+ * be one of that repository; on create and sources the branch must also be one its token may push
+ * ({@code git_refs}). Anything else is a 403. Approve and decline stay {@code qits:admin}: an
+ * agent never judges its own release.
  */
 @Path("/repositories/{repoId}/release-requests")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system"})
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
 public class ReleaseRequestController {
 
   @Inject ReleaseRequests releaseRequests;
+
+  @Inject RepositoryService repositories;
 
   @Inject ReleaseArtifacts releaseArtifacts;
 
@@ -144,6 +158,8 @@ public class ReleaseRequestController {
               + " says what to resolve.")
   public CreateReleaseRequest.Response create(
       @PathParam("repoId") String repoId, CreateReleaseRequest body) {
+    requireAgentProject(repoId);
+    requireAgentBranch(body == null ? null : body.branch());
     return new CreateReleaseRequest.Response(
         releaseRequests.request(
             repoId, body.branch(), body.summary(), actorFor(body.requester()), body.priority()));
@@ -174,6 +190,8 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       AddReleaseRequestSource body) {
+    requireAgentRequest(repoId, requestId);
+    requireAgentBranch(body == null ? null : body.branch());
     return new AddReleaseRequestSource.Response(
         releaseRequests.addSource(
             requestId, body.branch(), actorFor(body.requester()), body.priority()));
@@ -209,6 +227,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       SetReleaseSourcePriority body) {
+    requireAgentRequest(repoId, requestId);
     return new SetReleaseSourcePriority.Response(
         releaseRequests.updateSourcePriority(
             requestId, body.branch(), body.priority(), actorFor(body.requester())));
@@ -240,6 +259,7 @@ public class ReleaseRequestController {
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
       WithdrawReleaseRequest body) {
+    requireAgentRequest(repoId, requestId);
     String actor = identity.isAnonymous() ? null : identity.getPrincipal().getName();
     return new WithdrawReleaseRequest.Response(
         releaseRequests.withdraw(requestId, body == null ? null : body.reason(), actor));
@@ -465,5 +485,43 @@ public class ReleaseRequestController {
   public ReleaseArtifactsDto artifacts(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
     return releaseArtifacts.of(repoId, requestId);
+  }
+
+  // ---- what an agent may reach ---------------------------------------------------------------
+
+  /** A caller holding one of these is judged as before, even if it also holds the agent role. */
+  private static final String[] WIDER = {AgentAccess.ADMIN_ROLE, AgentAccess.SYSTEM_ROLE};
+
+  /** A bound agent reaches only the repositories of its own project. */
+  private void requireAgentProject(String repoId) {
+    if (!AgentAccess.isBoundAgent(identity, WIDER)) {
+      return;
+    }
+    Repository repository = repositories.get(repoId); // 404 if absent
+    String projectId = repository.project == null ? null : repository.project.id;
+    if (!AgentAccess.coversProject(identity, projectId)) {
+      throw new DomainException(
+          403, "An agent may reach only the release requests of its own project.");
+    }
+  }
+
+  /** A bound agent reaches only the requests of that repository. */
+  private void requireAgentRequest(String repoId, String requestId) {
+    if (!AgentAccess.isBoundAgent(identity, WIDER)) {
+      return;
+    }
+    requireAgentProject(repoId);
+    if (!repoId.equals(releaseRequests.get(requestId).repoId())) {
+      throw new DomainException(
+          403, "Release request " + requestId + " is not a request of repository " + repoId + ".");
+    }
+  }
+
+  /** A bound agent may put on a request only a branch its token may push. */
+  private void requireAgentBranch(String branch) {
+    if (AgentAccess.isBoundAgent(identity, WIDER) && !AgentAccess.coversBranch(identity, branch)) {
+      throw new DomainException(
+          403, "An agent may ask to release only a branch in its git_refs; " + branch + " is not.");
+    }
   }
 }
