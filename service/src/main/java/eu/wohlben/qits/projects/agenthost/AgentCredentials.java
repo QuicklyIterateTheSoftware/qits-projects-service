@@ -11,7 +11,8 @@ import java.util.List;
  * {@code ContainerRuntime} has.
  *
  * <p><b>Absent is a supported configuration and it is the shipped one.</b> With
- * {@code quarkus.oidc-client.client-enabled=false} this service holds no credential of its own, so
+ * {@code quarkus.oidc-client.qits.client-enabled=false} this service holds no credential of its own,
+ * so
  * it can authenticate to nothing and commissions nothing: {@link #enabled()} answers false, no HTTP
  * call is made, no environment is injected, and a container's spec is byte for byte the spec it was
  * before any of this existed. That is not a degraded mode — it is the deployment that has no idp,

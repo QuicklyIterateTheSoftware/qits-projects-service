@@ -12,9 +12,10 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * The shipped {@link WorkspacesBearer}: the {@code workspaces} named OIDC client's token (audience
- * {@code qits-workspaces}) — {@code wiring/IdpGitHostBearer} and {@code releasehost/IdpCiBearer}'s
- * sibling, on the same service identity and secret and asking only for a third audience.
+ * The shipped {@link WorkspacesBearer}: the {@code qits} named OIDC client's token
+ * (service-client-identity-plan.md, C4 — one audience, {@code qits-platform}) — {@code
+ * wiring/IdpGitHostBearer} and {@code releasehost/IdpCiBearer}'s sibling, on the same service
+ * identity and secret.
  *
  * <p>Empty on the same three terms they are: the named client disabled (the shipped default, and any
  * no-idp topology), a blank token, or a mint that threw. What the caller does with empty is stricter
@@ -27,11 +28,11 @@ public class IdpWorkspacesBearer implements WorkspacesBearer {
   private static final Logger LOG = Logger.getLogger(IdpWorkspacesBearer.class);
   private static final Duration TOKEN_TIMEOUT = Duration.ofSeconds(5);
 
-  @ConfigProperty(name = "quarkus.oidc-client.workspaces.client-enabled")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean enabled;
 
   @Inject
-  @NamedOidcClient("workspaces")
+  @NamedOidcClient("qits")
   OidcClient oidcClient;
 
   private final TokensHelper tokens = new TokensHelper();

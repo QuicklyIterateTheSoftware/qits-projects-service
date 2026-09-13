@@ -11,8 +11,8 @@ import java.util.List;
  *
  * <p>The sole implementation is {@code idphost/IdpRefinementCredentials}, {@code @DefaultBean} so
  * the suite installs a double and reaches no idp. <b>Absent is the shipped configuration</b>: with
- * {@code quarkus.oidc-client.client-enabled=false} nothing is commissioned and a container's spec
- * is byte for byte the spec it would be without any of this.
+ * {@code quarkus.oidc-client.qits.client-enabled=false} nothing is commissioned and a container's
+ * spec is byte for byte the spec it would be without any of this.
  */
 public interface RefinementCredentials {
 

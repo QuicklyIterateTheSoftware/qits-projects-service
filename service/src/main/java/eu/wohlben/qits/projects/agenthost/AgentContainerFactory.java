@@ -215,18 +215,16 @@ public class AgentContainerFactory {
   String ownPort;
 
   /** IdP base used by this service and handed to commissioned daemons for token exchange. */
-  @ConfigProperty(name = "quarkus.oidc-client.auth-server-url")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.auth-server-url")
   String idpAuthServerUrl;
 
-  /** This service is also the audience protecting its daemon control socket. */
-  @ConfigProperty(name = "quarkus.oidc-client.client-id")
-  String platformClientId;
-
-  /** Audience the commissioned container requests for its direct qits-githost reads. */
-  @ConfigProperty(
-      name = "quarkus.oidc-client.githost.grant-options.client.audience",
-      defaultValue = "qits-githost")
-  String gitHostAudience;
+  /**
+   * The one audience every service now asks for and every service now accepts
+   * (service-client-identity-plan.md, C4) — what the commissioned daemon requests both for its own
+   * dial-home to this service's control socket AND for its direct qits-githost reads. A constant,
+   * not a config key: there is nothing left for a deployment to configure here.
+   */
+  static final String PLATFORM_AUDIENCE = "qits-platform";
 
   /**
    * The git host the daemon's boot self-clone reads from, including qits-githost's own {@code /git}
@@ -499,8 +497,8 @@ public class AgentContainerFactory {
           env.put(
               "QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL",
               idpAuthServerUrl.replaceAll("/+$", "") + "/token");
-          env.put("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE", platformClientId);
-          env.put("QITS_PROJECTS_DAEMON_GIT_AUTH_AUDIENCE", gitHostAudience);
+          env.put("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE", PLATFORM_AUDIENCE);
+          env.put("QITS_PROJECTS_DAEMON_GIT_AUTH_AUDIENCE", PLATFORM_AUDIENCE);
         });
     env.put("QITS_PROJECTS_DAEMON_API_PORT", Integer.toString(daemonApiPort));
     env.put("QITS_PROJECTS_DAEMON_HOOKS_PORT", Integer.toString(daemonHooksPort));

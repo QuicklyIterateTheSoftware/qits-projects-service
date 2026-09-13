@@ -936,7 +936,7 @@ one wrong fails silently: no url leaves the daemon idle, no token leaves its API
     QITS_COMMISSIONED_CLIENT_ID          this container's OWN idp client — absent with no idp
     QITS_COMMISSIONED_CLIENT_SECRET      its secret, answered once and stored here
     QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL  the idp token endpoint used before dial-home
-    QITS_PROJECTS_DAEMON_AUTH_AUDIENCE   this qits-projects service's environment client id
+    QITS_PROJECTS_DAEMON_AUTH_AUDIENCE   qits-platform — one audience for every service now (plan C4)
 
 **The last two are a credential per container, not a shared one.** They are commissioned from
 qits-idp's `POST /idp/api/clients` as `{agent-container, <projectId>}` and handed back when the
@@ -974,9 +974,10 @@ refs an agent may push"), HTTP Basic with **this service's own** oidc client id 
 because a caller there already holds an idp credential and that is how the API authenticates one.
 `idphost/IdpAgentCredentials` is the adapter and `agenthost/AgentCredentials` the seam; the adapter
 is `@DefaultBean`, so the suite's `FakeAgentCredentials` wins the injection and no test reaches an
-idp. Everything is read from the keys the oidc-client block already ships
-(`client-enabled`, `client-id`, `credentials.secret`, `auth-server-url`) — there is no second address
-and no second credential to configure.
+idp. Everything is read from the keys the `qits` named oidc-client block already ships
+(`client-enabled`, `client-id`, `credentials.secret`, `auth-server-url` —
+service-client-identity-plan.md, C4) — there is no second address and no second credential to
+configure.
 
 **The `claims` member is the scope, and it is not the same fact as `contextId`.** The context id
 says which container this credential belongs to — what the reconcile compares against live places —
@@ -993,8 +994,9 @@ here was before.
 Four things bite.
 
 - **Absent is the shipped configuration and must stay byte-identical.** With
-  `quarkus.oidc-client.client-enabled=false` this process holds no secret, so it can authenticate to
-  nothing: nothing is commissioned, the two names are simply not in the env map, and the spec a
+  `quarkus.oidc-client.qits.client-enabled=false` this process holds no secret, so it can
+  authenticate to nothing: nothing is commissioned, the two names are simply not in the env map, and
+  the spec a
   container is started with is the spec it was before any of this existed. Same answer, plus one
   WARN, when the switch is on and the secret is blank.
 - **The fresh arm commissions and the wake arm must not.** `AgentContainerFactory.forProject` mints
@@ -1527,7 +1529,9 @@ Five things bite.
   project id where it used to take a container name, and `qits-proj-<slug>` travels as the spec's
   `explicitName` — a hint for `docker ps`, never an address. `qits.projects.containers.owner`
   **must equal the machine token's `sub`** once the far side's gate is on (its `OwnerGuard` compares
-  them), which is why it defaults to reading `quarkus.oidc-client.client-id`. Two instances must not
+  them), which is why it defaults to reading `quarkus.oidc-client.qits.client-id`, the one named
+  client every outbound identity this service has (service-client-identity-plan.md, C4). Two
+  instances must not
   share it; two environments sharing one docker daemon are `dev-qits-projects` and
   `prod-qits-projects` and neither one's rows name the other's containers.
 - **The client never throws, and its four answers are the whole vocabulary.** A refusal and an
@@ -1923,7 +1927,8 @@ diagram and no route this service owns is.
 **The launched process needs a git-host credential, and that is a real finding rather than test
 plumbing.** `HttpGitHostRepositories` fails **closed**: every lifecycle call asks `IdpGitHostBearer`
 for a machine token and throws `No machine bearer is available for qits-githost` rather than sending
-one unauthenticated. The shipped default is `quarkus.oidc-client.githost.client-enabled=false`, so a
+one unauthenticated. The shipped default is `quarkus.oidc-client.qits.client-enabled=false` — the one
+named client every outbound identity this service has (service-client-identity-plan.md, C4) — so a
 packaged process with no idp configured **cannot create a repository at all** — which is correct in
 production and is why `PackagedWithMockIdp` now points that named client at the same `MockIdp` and
 stubs `POST /idp/token` on it.

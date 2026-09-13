@@ -12,11 +12,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * qits-projects' separately audience-bound credential for qits-githost.
+ * qits-projects' credential for qits-githost.
  *
- * <p>The default OIDC client is reserved for qits-containers: its token has a different audience
- * and must never be reused here. A missing or failed token is returned as empty; the git-host
- * callers fail closed before sending an unauthenticated request.
+ * <p>The same {@code qits} named client every outbound call this service makes now shares
+ * (service-client-identity-plan.md, C4), asking one audience — {@code qits-platform} — rather than a
+ * git-host-specific one. A missing or failed token is returned as empty; the git-host callers fail
+ * closed before sending an unauthenticated request.
  */
 @ApplicationScoped
 public class IdpGitHostBearer implements GitHostBearer {
@@ -24,10 +25,10 @@ public class IdpGitHostBearer implements GitHostBearer {
   private static final Logger LOG = Logger.getLogger(IdpGitHostBearer.class);
   private static final Duration TOKEN_TIMEOUT = Duration.ofSeconds(5);
 
-  @ConfigProperty(name = "quarkus.oidc-client.githost.client-enabled")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean enabled;
 
-  @Inject @NamedOidcClient("githost") OidcClient oidcClient;
+  @Inject @NamedOidcClient("qits") OidcClient oidcClient;
 
   private final TokensHelper tokens = new TokensHelper();
 

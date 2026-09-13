@@ -30,11 +30,12 @@ import org.jboss.logging.Logger;
  * design and it is the mechanism that adds nothing: a caller here already holds an idp client id and
  * secret — it is how it gets tokens at all — so there is no new audience to configure and no
  * bearer-validation stack inside the service that issues the bearers. The pair comes from
- * {@code quarkus.oidc-client.client-id} and {@code quarkus.oidc-client.credentials.secret}, and the
- * base url from {@code quarkus.oidc-client.auth-server-url}: one set of keys, so a deployment that
- * turned machine auth on has already configured this.
+ * {@code quarkus.oidc-client.qits.client-id} and {@code quarkus.oidc-client.qits.credentials.secret}
+ * — the one named client every outbound identity this service has (service-client-identity-plan.md,
+ * C4) — and the base url from {@code quarkus.oidc-client.qits.auth-server-url}: one set of keys, so a
+ * deployment that turned machine auth on has already configured this.
  *
- * <p><b>Absent is the shipped configuration.</b> {@code quarkus.oidc-client.client-enabled=false}
+ * <p><b>Absent is the shipped configuration.</b> {@code quarkus.oidc-client.qits.client-enabled=false}
  * means this process holds no secret, so it can authenticate to nothing and
  * {@link #enabled()} answers false before any url is built. A blank secret with the switch on is the
  * same answer with a warning: a deployment half-way through turning idp on must not fail every
@@ -67,18 +68,18 @@ public class IdpAgentCredentials implements AgentCredentials {
    * for the same reason: one value decides whether this process has a credential at all, and a
    * second key of ours would be a second thing to get wrong.
    */
-  @ConfigProperty(name = "quarkus.oidc-client.client-enabled")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean tokensEnabled;
 
   /** The idp's base — {@code …/idp}, the same value the token endpoint is joined onto. */
-  @ConfigProperty(name = "quarkus.oidc-client.auth-server-url")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.auth-server-url")
   String authServerUrl;
 
-  @ConfigProperty(name = "quarkus.oidc-client.client-id")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.client-id")
   String clientId;
 
   /** Absent whenever the switch is off, and the switch being on with no secret is a warning. */
-  @ConfigProperty(name = "quarkus.oidc-client.credentials.secret")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.credentials.secret")
   Optional<String> clientSecret;
 
   @ConfigProperty(name = "qits.projects.agent-credentials.request-timeout")
@@ -91,9 +92,9 @@ public class IdpAgentCredentials implements AgentCredentials {
     }
     if (secret().isEmpty()) {
       LOG.warn(
-          "quarkus.oidc-client.client-enabled is on but no client secret is configured, so no"
-              + " agent-container credential can be commissioned. Set"
-              + " QUARKUS_OIDC_CLIENT_CREDENTIALS_SECRET.");
+          "quarkus.oidc-client.qits.client-enabled is on but no client secret is configured, so no"
+              + " agent-container credential can be commissioned. Set QITS_RESOURCE_IDP_CLIENT_SECRET"
+              + " or QUARKUS_OIDC_CLIENT_CREDENTIALS_SECRET.");
       return false;
     }
     return true;
