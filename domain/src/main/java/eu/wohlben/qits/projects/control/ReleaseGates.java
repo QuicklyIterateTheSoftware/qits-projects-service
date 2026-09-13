@@ -24,9 +24,46 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *     .config/qits/ci-event-release-request.yml present  →  the CI gate
+ *     .config/qits/release.yml naming an archetype:       →  the CI gate too
  *     .config/qits/deployments.yml present               →  the deployment gate
  *     .config/qits/release-requests.yml manual-review     →  the approval gate
  * </pre>
+ *
+ * <h2>A migrated repository's CI gate is composed, not local</h2>
+ *
+ * <p>{@link ReleaseArtifacts#SLOT_CONFIG} replaces the two legacy recipe files for a repository that
+ * has migrated (see that class's javadoc): its own {@code ci-event-release-request.yml} is gone from
+ * the tree, and qits-ci composes the QA pipeline instead, from the wrapper's own
+ * {@code .config/qits/release-archetypes/<archetype>.yml}. That pipeline still reports a gating
+ * verdict the same way an in-repository recipe would, so the CI gate has to fire on the composed
+ * source too — the bug this class existed to close on 2026-09-13: a repository that migrated lost
+ * its CI gate entirely, because {@link #read} only ever looked for the file that no longer exists,
+ * so every request of that repository skipped straight to {@code READY} and released before its QA
+ * run had even started.
+ *
+ * <p><b>The rule is presence, not composition.</b> {@link #read} asks {@link ReleaseArchetypeParser}
+ * one question — does {@link ReleaseArtifacts#SLOT_CONFIG} name a non-blank {@code archetype:} — and
+ * never opens the archetype file itself to confirm it actually carries a {@code release-request:}
+ * slot. That is deliberate rather than a shortcut: the archetype schema belongs to qits-ci, which
+ * composes it, and a second reader of that schema here is a second place a future archetype change
+ * has to be kept in step, for a fact a presence check already answers. Every archetype this platform
+ * ships declares a {@code release-request:} slot today (checked by hand across all six on
+ * 2026-09-13), so the two readings agree on every repository that exists; if a future archetype ever
+ * shipped without one, a repository naming it would still hold its CI gate here (see below) and wait
+ * on a verdict that never arrives — recoverable by fixing the archetype or the repository's
+ * declaration, and the one outcome this class must never produce instead is releasing ungated.
+ *
+ * <p><b>Two edge cases both resolve to "the CI gate applies", never to "no gate".</b> A {@link
+ * ReleaseArtifacts#SLOT_CONFIG} that will not parse, and one naming an archetype with no {@code
+ * release-request:} slot, are indistinguishable from here without becoming that second schema
+ * reader — so both are read the same conservative way as "an archetype might be composing a
+ * pipeline for this repository" and the CI gate is added. The alternative, treating either as "no
+ * gate", would be a release configured to skip its own QA run and never say so; the alternative of
+ * marking the whole {@link GateSet} {@link GateSet#unknown} — the way an unparseable {@code
+ * release-requests.yml} does two paragraphs down — would be truthful but wider than the fact
+ * actually in doubt, since the deployment and approval gates are unaffected by whether {@link
+ * ReleaseArtifacts#SLOT_CONFIG} parses. A WARN names the repository either way, because a file that
+ * will not parse is something a person has to fix.
  *
  * <h2>Read from main, never from the fold</h2>
  *
@@ -69,6 +106,12 @@ public class ReleaseGates {
   /** The per-release-request CI pipeline. Its presence is the CI gate. */
   static final String CI_RECIPE = ReleaseArtifacts.QA_RECIPE;
 
+  /**
+   * A migrated repository's release declaration. Read for {@code archetype:} — see the class
+   * javadoc's "A migrated repository's CI gate is composed, not local".
+   */
+  static final String RELEASE_CONFIG = ReleaseArtifacts.SLOT_CONFIG;
+
   /** The platform's declaration that something deploys this repository. */
   static final String DEPLOYMENTS_MANIFEST = ReleaseFinalization.DEPLOYMENTS_MANIFEST;
 
@@ -78,6 +121,8 @@ public class ReleaseGates {
   @Inject RepositoryRepository repositories;
 
   @Inject ReleaseRequestSettingsParser settingsParser;
+
+  @Inject ReleaseArchetypeParser archetypeParser;
 
   @Inject Instance<ReleaseGitHost> gitHosts;
 
@@ -149,7 +194,8 @@ public class ReleaseGates {
   /**
    * Which gates hold {@code repoId}'s release requests, read from its {@code main}.
    *
-   * <p>One tree listing, plus one file read where {@link #SETTINGS} is in it. A repository with no
+   * <p>One tree listing, plus one file read where {@link #RELEASE_CONFIG} is in the tree and {@link
+   * #CI_RECIPE} is not, plus one file read where {@link #SETTINGS} is in it. A repository with no
    * row, and a platform with no git host configured, are both {@link GateSet#unknown}: the honest
    * answer to "which rules apply" when the rules cannot be located is not "none".
    *
@@ -213,6 +259,42 @@ public class ReleaseGates {
     EnumSet<Kind> kinds = EnumSet.noneOf(Kind.class);
     if (paths.contains(CI_RECIPE)) {
       kinds.add(Kind.CI);
+    }
+    if (!kinds.contains(Kind.CI) && paths.contains(RELEASE_CONFIG)) {
+      // The legacy recipe already answered the CI gate; a migrated repository never carries both,
+      // so this is skipped rather than redundant on every ordinary repository — one file read, not
+      // two, and the file this service reads to decide is exactly the one it already fetches for
+      // ReleaseArtifacts.
+      ReleaseGitHost.Answer<String> config;
+      try {
+        config = host.file(repoId, rev, RELEASE_CONFIG);
+      } catch (RuntimeException e) {
+        LOG.debugf(e, "The git host threw reading %s of %s at %s", RELEASE_CONFIG, repoId, rev);
+        return GateSet.unknown("The git host could not be asked what " + RELEASE_CONFIG + " says");
+      }
+      if (config == null || !config.ok()) {
+        return GateSet.unknown(
+            RELEASE_CONFIG
+                + " is declared at "
+                + rev
+                + " and could not be read: "
+                + (config == null ? "the git host could not be asked" : config.detail()));
+      }
+      try {
+        if (archetypeParser.declaresArchetype(config.value())) {
+          kinds.add(Kind.CI);
+        }
+      } catch (RuntimeException e) {
+        // Unlike the settings-file failure below, this does NOT widen to GateSet.unknown: the one
+        // fact in doubt is whether this repository's CI gate applies, the deployment and approval
+        // gates read from other files entirely, and the safe answer to "cannot say" is the same
+        // one an archetype with no release-request slot gets — hold the CI gate rather than skip
+        // it. See the class javadoc's "Two edge cases both resolve to 'the CI gate applies'".
+        LOG.warnf(
+            "%s at %s of %s does not parse; treating %s as CI-gated rather than ungated: %s",
+            RELEASE_CONFIG, rev, repoId, repoId, e.getMessage());
+        kinds.add(Kind.CI);
+      }
     }
     if (paths.contains(DEPLOYMENTS_MANIFEST)) {
       kinds.add(Kind.DEPLOYMENT);

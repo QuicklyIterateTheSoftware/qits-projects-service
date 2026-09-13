@@ -24,16 +24,20 @@ import org.junit.jupiter.api.Test;
 
 /**
  * <b>The merged sha is the correlation key</b>, and this class is about what follows from that: a
- * verdict for a fold the request has moved past settles nothing, in either direction; and a re-fold
- * that supersedes a sha asks qits-ci to stop the runs that sha was being built by.
+ * verdict for a fold the request has moved past settles nothing, in either direction; a re-fold that
+ * supersedes a sha asks qits-ci to stop the runs that sha was being built by; and a request that
+ * concludes — WITHDRAWN here, RELEASED in {@code AutoReleaseTest} — asks for the same cancellation,
+ * because a run still building a branch nobody will merge is exactly as stale as one building a
+ * superseded sha.
  *
- * <p>The two halves are one subject on purpose. The cancellation is <b>best effort</b> — it frees a
+ * <p>The halves are one subject on purpose. The cancellation is <b>best effort</b> — it frees a
  * build agent and decides nothing — and the only reason that is affordable is the correlation
  * proved here: the gate is already safe when the cancellation never happens. A test that asserted
  * the cancellation alone would read as though the gate depended on it.
  *
  * <p>{@code ReleaseRequestFlowTest} owns the gate's ordinary rules and the state machine's timing;
- * what is asserted here is only what the sha correlates.
+ * what is asserted here is only what the sha correlates, and, for the concluding states, that the
+ * cancellation fires at all.
  */
 @QuarkusTest
 public class ReleaseGateCorrelationTest {
@@ -273,6 +277,75 @@ public class ReleaseGateCorrelationTest {
   /** Order the two ids the way the fixture made them, so the assertion is about the SET. */
   private static java.util.Comparator<String> comparingByCreation(String first, String second) {
     return java.util.Comparator.comparingInt(id -> id.equals(first) ? 0 : 1);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // A concluded request cancels its runs too — a stale run must never build a deleted branch
+  // ---------------------------------------------------------------------------------------------
+
+  private void branchDeleted(String branch) {
+    headListener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "SCMDeleteBranch",
+            Instant.now(),
+            "{\"branch\":\"" + branch + "\",\"repoId\":\"" + repoId + "\"}",
+            null,
+            null,
+            null));
+  }
+
+  @Test
+  public void anOperatorWithdrawingARequestCancelsItsRuns() {
+    String id = create("work");
+    cancellations.reset();
+
+    given()
+        .contentType(ContentType.JSON)
+        .body("{}")
+        .post(base() + "/" + id + "/withdraw")
+        .then()
+        .statusCode(200);
+
+    assertEquals("WITHDRAWN", stateOf(id));
+    assertEquals(1, cancellations.calls().size());
+    RecordingQaRunCancellations.Cancelled cancelled = cancellations.calls().get(0);
+    assertEquals(repoId, cancelled.repoId());
+    assertEquals(id, cancelled.releaseRequestId());
+  }
+
+  @Test
+  public void aBranchDeletedWithdrawalCancelsItsRunsTheSameWay() {
+    String id = create("work");
+    cancellations.reset();
+
+    // The only source is "work", so deleting it leaves nothing but the default branch and the
+    // request auto-withdraws — see ReleaseRequestFlowTest for the withdrawal itself.
+    branchDeleted("work");
+
+    assertEquals("WITHDRAWN", stateOf(id));
+    assertEquals(1, cancellations.calls().size());
+    assertEquals(id, cancellations.calls().get(0).releaseRequestId());
+  }
+
+  @Test
+  public void aBranchDeletedThatLeavesOtherSourcesReFoldsRatherThanWithdraws() {
+    String id = create("work-a");
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"work-b\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
+    cancellations.reset();
+
+    // The request still names work-b after work-a is dropped, so it re-folds instead of
+    // withdrawing — the ordinary supersession cancellation may fire for the re-fold, but
+    // withdrawal's never does, because withdrawal never happens.
+    branchDeleted("work-a");
+
+    assertEquals("PENDING", stateOf(id), "re-folded, not withdrawn");
+    assertTrue(cancellations.calls().stream().allMatch(call -> call.releaseRequestId().equals(id)));
   }
 
   private String awaitState(String id, String expected) {

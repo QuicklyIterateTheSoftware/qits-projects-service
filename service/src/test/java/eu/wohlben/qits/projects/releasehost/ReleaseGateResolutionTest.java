@@ -72,6 +72,59 @@ public class ReleaseGateResolutionTest {
     assertFalse(set.nothingToWaitOn());
   }
 
+  // -----------------------------------------------------------------------------------------
+  // A migrated repository's release.yml composes the CI gate too
+  // -----------------------------------------------------------------------------------------
+
+  @Test
+  void releaseYmlNamingAnArchetypeIsTheCiGateExactlyLikeTheLegacyRecipe() {
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "archetype: spa-frontend\n"));
+    GateSet set = resolve();
+    assertTrue(set.known());
+    assertEquals(Set.of(Kind.CI), set.kinds());
+  }
+
+  @Test
+  void releaseYmlWithNoArchetypeKeyIsNoCiGate() {
+    // A repository publishing artifacts without a composed pipeline is ReleaseArtifacts' ordinary
+    // case, not a failure to detect one here.
+    gitHost.tree(
+        "refs/heads/main",
+        Map.of(".config/qits/release.yml", "artifacts:\n  - type: oci\n    name: qits/thing\n"));
+    GateSet set = resolve();
+    assertTrue(set.known());
+    assertEquals(Set.of(), set.kinds());
+  }
+
+  @Test
+  void bothFilesPresentIsStillJustTheCiGate() {
+    // A repository migrating mid-flight, or one that never dropped the legacy file: either way one
+    // CI gate, not a set that somehow double-counts it.
+    gitHost.tree(
+        "refs/heads/main",
+        Map.of(
+            ".config/qits/ci-event-release-request.yml", "steps: []\n",
+            ".config/qits/release.yml", "archetype: spa-frontend\n"));
+    assertEquals(Set.of(Kind.CI), resolve().kinds());
+  }
+
+  @Test
+  void releaseYmlThatWillNotParseHoldsTheCiGateRatherThanReleasingUngated() {
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "archetype: [unclosed\n"));
+    GateSet set = resolve();
+    // Unlike an unparseable release-requests.yml (below), this stays a KNOWN set with the CI gate
+    // held — the fact in doubt is only whether qits-ci composes a pipeline, and the safe assumption
+    // is that it does.
+    assertTrue(set.known());
+    assertEquals(Set.of(Kind.CI), set.kinds());
+  }
+
+  @Test
+  void releaseYmlWhoseRootIsNotAMappingHoldsTheCiGateToo() {
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "- archetype\n"));
+    assertEquals(Set.of(Kind.CI), resolve().kinds());
+  }
+
   @Test
   void allThreeFilesAreAllThreeGates() {
     gitHost.tree(

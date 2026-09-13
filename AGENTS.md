@@ -625,6 +625,36 @@ The idp commissions of this service's own containers state refs too (contract C2
 
 Roles do not change: a commission still carries its owner's roles until phase 4 of the plan.
 
+## Release request gates
+
+A release request releases only once every gate its repository configures has passed.
+`ReleaseGates.resolve` reads the gate set from the repository's `main` — never from the fold under
+review, so a change cannot loosen the rules it is judged by — and holds the request open, not
+released, while any configured gate is unmet. One file at `main` turns on each gate:
+
+| file at `main` | gate |
+| --- | --- |
+| `.config/qits/ci-event-release-request.yml` | CI — a gating `BuildSuccessful` for the fold |
+| `.config/qits/release.yml` naming an `archetype:` | CI too — qits-ci composes the same QA pipeline from the wrapper's `release-archetypes/*.yml`, and its verdict gates the same way (fixed 2026-09-13: this repository used to miss it, so a migrated repository released before its QA run even started) |
+| `.config/qits/deployments.yml` | deployment — the release is not finished until the deployment is live |
+| `.config/qits/release-requests.yml` with `manual-review: true` | approval — a person's yes |
+
+**A repository configuring none of these releases at once**, which is not the same as unreviewed:
+pressing release is still a person's act. **A configuration this service could not read is never
+treated as "none"** — every failed read holds the request rather than releasing it ungated. See
+`ReleaseGates`' javadoc for the full rule, including why an unparseable `release.yml` (or one naming
+an archetype whose composed pipeline this service does not itself verify) holds the CI gate rather
+than dropping it.
+
+**Release and withdrawal both ask qits-ci to cancel the request's queued or running runs**, best
+effort and never able to fail the release or the withdrawal itself (`ReleaseRequests.cancel`) — so a
+run still building a branch the release just deleted, or a branch a withdrawal just dropped, cannot
+land a stray verdict later.
+
+**Follow-up: ticket b27384a3** — a release request should stay open until the release is finalized
+(the deployment gate's own status model). This change does not touch that; RELEASED still means the
+tag was cut, not that the deployment is live.
+
 ## Epic lifecycle
 
 An epic is in one of four stored statuses (V3): `REFINING`, `IMPLEMENTATION`, `SUPERSEDED`,

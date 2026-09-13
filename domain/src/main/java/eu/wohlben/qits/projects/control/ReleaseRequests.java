@@ -601,21 +601,28 @@ public class ReleaseRequests {
    * than reviving this one, and a push no longer re-merges it. A request already settled (RELEASED,
    * WITHDRAWN) refuses with a 409 naming its state: withdrawing what already concluded would rewrite
    * a record.
+   *
+   * <p>Also asks qits-ci to cancel this request's runs, the same best-effort call {@link #cancel}
+   * makes for a supersession: a run still building this request's backing branch has nothing left to
+   * report to, since the next fold this branch could ever see belongs to a different request.
    */
   public ReleaseRequestDto withdraw(String id, String reason, String actor) {
-    QuarkusTransaction.requiringNew()
-        .run(
-            () -> {
-              ReleaseRequest row = requireOpenForChange(id);
-              row.state = ReleaseRequest.State.WITHDRAWN;
-              row.detail =
-                  (reason == null || reason.isBlank())
-                      ? "Withdrawn by " + (actor == null ? "an operator" : actor)
-                      : reason.trim();
-              row.retryable = false;
-              row.updatedAt = Instant.now();
-            });
+    String repoId =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  ReleaseRequest row = requireOpenForChange(id);
+                  row.state = ReleaseRequest.State.WITHDRAWN;
+                  row.detail =
+                      (reason == null || reason.isBlank())
+                          ? "Withdrawn by " + (actor == null ? "an operator" : actor)
+                          : reason.trim();
+                  row.retryable = false;
+                  row.updatedAt = Instant.now();
+                  return row.repoId;
+                });
     estatePinLedger.forget(id);
+    cancel(repoId, id, "was withdrawn");
     return get(id);
   }
 
@@ -1134,7 +1141,10 @@ public class ReleaseRequests {
    * A branch is gone, so it participates in nothing: it is dropped from every open request naming
    * it. A request left with nothing but the repository's default branch is <b>withdrawn</b> — there
    * is no work in it any more and the row would otherwise stand open forever (three did,
-   * 2026-09-01) — and every other affected request simply re-folds without it.
+   * 2026-09-01) — and every other affected request simply re-folds without it. A withdrawn request
+   * also asks qits-ci to cancel its runs: this is the exact case {@link #cancel}'s javadoc names —
+   * a run still building the branch that was just deleted, about to fail {@code CLONE_FAILED} for a
+   * reason that has nothing to do with the code under test.
    */
   public void onBranchDeleted(String repoId, String branch) {
     record Affected(String id, boolean withdrawn) {}
@@ -1167,7 +1177,9 @@ public class ReleaseRequests {
                   return touched;
                 });
     for (Affected row : affected) {
-      if (!row.withdrawn()) {
+      if (row.withdrawn()) {
+        cancel(repoId, row.id(), "was withdrawn: its branch " + branch + " was deleted");
+      } else {
         remerge(row.id(), "the source branch " + branch + " was deleted");
       }
     }
@@ -1337,7 +1349,10 @@ public class ReleaseRequests {
         // A fold that REPLACED a sha, not the first one: whatever qits-ci is still running for this
         // request is grinding on content nobody will accept. See cancel() for why this is best
         // effort and why it is scoped to this request alone.
-        cancel(folded.repoId(), folded.releaseRequestId(), folded.supersededSha());
+        cancel(
+            folded.repoId(),
+            folded.releaseRequestId(),
+            "was superseded by a re-fold onto " + shortSha(folded.mergedSha()));
       }
       announce(folded);
       refreshEstatePins(folded.releaseRequestId());
@@ -1379,27 +1394,31 @@ public class ReleaseRequests {
   }
 
   /**
-   * Ask qits-ci to stop this request's in-flight runs, because the fold they were started for has
-   * been superseded.
+   * Ask qits-ci to stop this request's in-flight runs, because they can no longer settle anything:
+   * the fold they were started for was superseded, or the request itself has concluded (RELEASED —
+   * the branch they were building is deleted the moment the tag lands — or WITHDRAWN).
    *
-   * <p><b>Best effort, and never able to fail a fold.</b> The gate is correlated by sha — a verdict
-   * naming a merge this request has already moved past matches nothing and settles nothing — so the
-   * cancellation buys a build agent rather than correctness. An unreachable qits-ci, a refusal and
-   * no implementation at all are one answer: carry on. That is also why it is called <b>after</b>
-   * the fold's write transaction and outside every transaction, beside the announcement.
+   * <p><b>Best effort, and never able to fail a fold, a release or a withdrawal.</b> The gate is
+   * correlated by sha — a verdict naming a merge this request has already moved past, or one whose
+   * request has already concluded, matches nothing and settles nothing — so the cancellation buys a
+   * build agent and closes the window a stale run could otherwise land a verdict in (a CI recipe
+   * checking out a branch the release already deleted fails {@code CLONE_FAILED} rather than
+   * silently, but a run that started before the delete and finishes after it is exactly the race
+   * this closes) rather than deciding correctness. An unreachable qits-ci, a refusal and no
+   * implementation at all are one answer: carry on. That is also why every call site makes it
+   * <b>after</b> its own write transaction and outside every transaction, beside the announcement.
    *
    * <p><b>Scoped to this request and never to the repository.</b> A sibling request folds its own
    * sources onto its own backing branch and its runs are none of this one's business; cancelling by
    * repository would take a neighbour's green build away seconds before it settled them.
    */
-  private void cancel(String repoId, String requestId, String supersededSha) {
+  private void cancel(String repoId, String requestId, String reason) {
     if (!cancellations.isResolvable()) {
       return;
     }
     try {
       LOG.debugf(
-          "Release request %s superseded %s; asking qits-ci to cancel its runs",
-          requestId, shortSha(supersededSha));
+          "Release request %s %s; asking qits-ci to cancel its runs", requestId, reason);
       cancellations.get().cancelRunsOf(repoId, requestId);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not cost the fold.
@@ -1957,6 +1976,11 @@ public class ReleaseRequests {
           ask.repoName() != null ? ask.repoName() : ask.repoId(),
           ask.backingBranch(),
           outcome.version());
+      // The executor already deleted the backing branch as part of the release, so any run still
+      // building it is doomed to a checkout failure that has nothing to do with the code under
+      // test — the exact case cancel() exists for, and best effort for the same reason as every
+      // other call to it: the release already happened and nothing here may undo it.
+      cancel(ask.repoId(), id, "was released as " + outcome.version());
       remergeOpenOf(ask.repoId(), id, "the sibling release " + outcome.version() + " is in flight");
       // THE PUBLISH PHASE'S FORK, on the release's own thread and the moment it lands: a repository
       // that declares no deployment has nothing to wait for and its tag goes to main now. One that

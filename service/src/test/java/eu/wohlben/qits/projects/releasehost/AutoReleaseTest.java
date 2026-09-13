@@ -355,6 +355,25 @@ public class AutoReleaseTest {
     assertNull(pending.mergedAt, "nothing has merged it to main yet — that is a later arm");
   }
 
+  /**
+   * <b>A release asks qits-ci to cancel the request's runs, the moment the tag lands.</b> The
+   * executor already deleted the branch a stale run would still be building — {@link
+   * #aMetGateStampsBumpsCommitsTagsDeletesAndAnnounces} proves that half — so a run still in flight
+   * is heading for a checkout failure that says nothing about the code, and freeing that build agent
+   * is exactly {@code cancel}'s job. {@code ReleaseGateCorrelationTest} owns the same call for
+   * supersession and for WITHDRAWN; this is its RELEASED half.
+   */
+  @Test
+  public void aReleaseCancelsAnyRunStillBuildingTheDeletedBranch() {
+    String id = releaseARequest(reactor());
+    awaitState(id, "RELEASED");
+
+    assertEquals(1, cancellations.calls().size());
+    RecordingQaRunCancellations.Cancelled cancelled = cancellations.calls().get(0);
+    assertEquals(repoId, cancelled.repoId());
+    assertEquals(id, cancelled.releaseRequestId());
+  }
+
   @Test
   public void aRepositoryThatRendersNoVersionTagsTheFoldItselfAndIsAReleaseLikeAnyOther() {
     String id = releaseARequest(Map.of("README.md", "a docs repository", "docs/index.md", "hi"));
