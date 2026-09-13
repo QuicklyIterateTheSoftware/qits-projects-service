@@ -250,6 +250,42 @@ public final class AgentSurfaceDefaults {
       """;
 
   /**
+   * The steering the two composed runs launch with, copied byte for byte from the library's {@code
+   * AgentLaunchService.COMPOSED_RUN_PROMPT} (surfaced there as {@code
+   * AgentSurfaceConfigurations.shippedSystemPrompt}).
+   *
+   * <p>Copied as a text block with its line continuations intact rather than reflowed, exactly as
+   * {@link #TICKETS_DESK_PROMPT} is: the daemon renders it as a shell-quoted argument, so a re-wrap
+   * here would be a silent behaviour change that only a live launch could catch. If you are editing
+   * this to say something new, edit the row through the editor — the constant is the shipped default
+   * and moves only when the library's does.
+   *
+   * <p><b>One constant for both surfaces, and that is the decision rather than an economy.</b> What
+   * it says is how to run an orchestrated session — plan, delegate, verify — and none of that
+   * depends on whether the run is an epic's task prompt spanning a project or a ticket inside one
+   * freshly cut workspace. What differs between the two is the bootstrap turn and the servers, which
+   * are already per surface. Two near-identical copies would drift the first time somebody edited
+   * one, and the drift would be invisible: both render a launch nobody watches.
+   */
+  public static final String COMPOSED_RUN_PROMPT =
+      """
+      You are orchestrating this run rather than typing it. The task prompt says what to \
+      build; the order it is built in, the checking that it works and the report at the end \
+      are yours, and the bulk of the code is not.
+
+      Read the task prompt and the repository first, then plan the work as a sequence of \
+      self-contained programming tasks and hand each one to a subagent, stated completely — \
+      the files, the change, what done looks like. Planning, sequencing and the final report \
+      stay in this session. Choose each subagent's model by scope and expected difficulty: \
+      Sonnet for mechanical, narrow, well-specified edits, and Opus for anything wide, \
+      ambiguous or architecturally load-bearing.
+
+      Delegating the work does not delegate the verification. A subagent's report is a claim \
+      and not a result: build the project yourself, run the tests yourself, and read what \
+      changed before you say the work is done.\
+      """;
+
+  /**
    * The projects daemon's {@code TASK_PROMPT_BOOTSTRAP} — the one-sentence turn {@code
    * epic.autonomous} is seeded with. It carries the user's authority while the {@code taskPrompt}
    * MCP tool carries the content, which is the whole point of the push→fetch inversion.
@@ -373,20 +409,26 @@ public final class AgentSurfaceDefaults {
     map.put(EPIC_AGENT, surface(EPIC_AGENT, false, "", "", workspacePair(false)));
     map.put(WORKSPACE_CHAT, surface(WORKSPACE_CHAT, true, "", "", workspacePair(false)));
     map.put(WORKSPACE_AGENT, surface(WORKSPACE_AGENT, false, "", "", workspacePair(false)));
-    // The two composed runs: a chat with the bootstrap turn pushed over stdin and every server url
-    // read-only marked, so this service's own ReadOnlyRepositoryToolFilter hides the mutating tools.
+    // The two composed runs: a chat steered by the one orchestration prompt both of them ship, with
+    // the bootstrap turn pushed over stdin and every server url read-only marked, so this service's
+    // own ReadOnlyRepositoryToolFilter hides the mutating tools. The prompt is shared and the
+    // bootstrap turn is not — see COMPOSED_RUN_PROMPT for why that split is the right one.
     map.put(
         EPIC_AUTONOMOUS,
         surface(
             EPIC_AUTONOMOUS,
             true,
-            "",
+            COMPOSED_RUN_PROMPT,
             PROJECT_TASK_PROMPT_BOOTSTRAP,
             List.of(repositoryScopedRepository(true))));
     map.put(
         TICKET_DISPATCH,
         surface(
-            TICKET_DISPATCH, true, "", WORKSPACE_TASK_PROMPT_BOOTSTRAP, workspacePair(true)));
+            TICKET_DISPATCH,
+            true,
+            COMPOSED_RUN_PROMPT,
+            WORKSPACE_TASK_PROMPT_BOOTSTRAP,
+            workspacePair(true)));
     return Map.copyOf(map);
   }
 

@@ -49,6 +49,11 @@ import org.junit.jupiter.api.Test;
  *       tracking on.
  *   <li>{@code AgentLaunchService.claudeChatProtocol} (projects :540, workspace :622) — remote
  *       control on every Claude chat, over the SDK control channel, and on no interactive launch.
+ *   <li>{@code eu.wohlben.qits:qits-coding-agents} — {@code
+ *       AgentLaunchService.COMPOSED_RUN_PROMPT}, surfaced as {@code
+ *       AgentSurfaceConfigurations.shippedSystemPrompt}: the one orchestration prompt both composed
+ *       runs ship. No line is named because the copy is tracked against the constant rather than
+ *       against a coordinate — that library is where the prompt is edited, and this is the copy.
  * </ul>
  */
 public class AgentSurfaceDefaultsTest {
@@ -141,6 +146,33 @@ public class AgentSurfaceDefaultsTest {
 
       When something is too big for a ticket — when it needs a plan rather than a fix — say so \
       and point at the epics desk. Do not file an epic from here.\
+      """;
+
+  /**
+   * The composed runs' orchestration prompt as the library's text block renders it — the same block,
+   * with the same line continuations, so this literal and the shipped constant are two independent
+   * copies of the bytes rather than one copy read twice.
+   *
+   * <p>One literal for both surfaces because there is one constant for both: the instruction is
+   * about running an orchestrated session and does not depend on whether the run is scoped to an
+   * epic across a project or to a ticket in one cut workspace.
+   */
+  private static final String COMPOSED_RUN_PROMPT =
+      """
+      You are orchestrating this run rather than typing it. The task prompt says what to \
+      build; the order it is built in, the checking that it works and the report at the end \
+      are yours, and the bulk of the code is not.
+
+      Read the task prompt and the repository first, then plan the work as a sequence of \
+      self-contained programming tasks and hand each one to a subagent, stated completely — \
+      the files, the change, what done looks like. Planning, sequencing and the final report \
+      stay in this session. Choose each subagent's model by scope and expected difficulty: \
+      Sonnet for mechanical, narrow, well-specified edits, and Opus for anything wide, \
+      ambiguous or architecturally load-bearing.
+
+      Delegating the work does not delegate the verification. A subagent's report is a claim \
+      and not a result: build the project yourself, run the tests yourself, and read what \
+      changed before you say the work is done.\
       """;
 
   // -------------------------------------------------------------------------------------------
@@ -287,6 +319,25 @@ public class AgentSurfaceDefaultsTest {
   // -------------------------------------------------------------------------------------------
   // The two composed runs
   // -------------------------------------------------------------------------------------------
+
+  /**
+   * Both of them steer with the one orchestration prompt, and neither ships an empty box.
+   *
+   * <p>The constant is asserted against the copied-in literal the way the tickets desk's is: a
+   * shipped prompt is only worth anything if it is the library's bytes, and a test that read its
+   * expectation off {@link AgentSurfaceDefaults} would agree with any edit.
+   */
+  @Test
+  public void theTwoComposedRunsCarryTheComposedRunPromptByteForByte() {
+    assertEquals(
+        COMPOSED_RUN_PROMPT, AgentSurfaceDefaults.COMPOSED_RUN_PROMPT, "the constant and the copy");
+    for (String surface : List.of("epic.autonomous", "ticket.dispatch")) {
+      assertEquals(
+          COMPOSED_RUN_PROMPT,
+          AgentSurfaceDefaults.SHIPPED.get(surface).systemPrompt(),
+          surface + ": one prompt for both composed runs, and two copies would drift");
+    }
+  }
 
   @Test
   public void theTwoComposedRunsCarryTheirBootstrapTurnAndReadOnlyMarkedServers() {
