@@ -136,18 +136,17 @@ public class RefinementContainerFactory {
   @ConfigProperty(name = "qits.projects.own-port", defaultValue = "8080")
   String ownPort;
 
-  @ConfigProperty(name = "quarkus.oidc-client.auth-server-url")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.auth-server-url")
   String idpAuthServerUrl;
 
-  /** This service is also the audience protecting its refinement control socket. */
-  @ConfigProperty(name = "quarkus.oidc-client.client-id")
-  String platformClientId;
-
-  /** Audience the container's git credential helper requests for its git reads. */
-  @ConfigProperty(
-      name = "quarkus.oidc-client.githost.grant-options.client.audience",
-      defaultValue = "qits-githost")
-  String gitHostAudience;
+  /**
+   * The one audience every service now asks for and every service now accepts
+   * (service-client-identity-plan.md, C4) — what the container's git credential helper requests for
+   * its git reads AND what the daemon requests for its own dial-home to this service's refinement
+   * control socket. A constant, not a config key: there is nothing left for a deployment to
+   * configure here.
+   */
+  static final String PLATFORM_AUDIENCE = "qits-platform";
 
   /**
    * The address a refinement container reaches git at — the same authority the deployed
@@ -275,14 +274,14 @@ public class RefinementContainerFactory {
           env.put("QITS_COMMISSIONED_CLIENT_ID", pair.clientId());
           env.put("QITS_COMMISSIONED_CLIENT_SECRET", pair.secret());
           // The workspace image's git credential helper: Basic against the edge, exchanged for a
-          // bearer with the githost audience. The helper reads these three names.
+          // bearer with the platform audience. The helper reads these three names.
           env.put("GIT_CONFIG_GLOBAL", "/etc/qits-gitconfig");
           env.put("QITS_GIT_AUTH_HOST", authority(containerGitUrl));
           env.put("QITS_GIT_AUTH_TOKEN_URL", trimSlash(idpAuthServerUrl) + "/token");
-          env.put("QITS_GIT_AUTH_AUDIENCE", gitHostAudience);
+          env.put("QITS_GIT_AUTH_AUDIENCE", PLATFORM_AUDIENCE);
           // The daemon's own dial-home bearer, presented on every control-socket handshake.
           env.put("QITS_WORKSPACE_DAEMON_AUTH_TOKEN_URL", trimSlash(idpAuthServerUrl) + "/token");
-          env.put("QITS_WORKSPACE_DAEMON_AUTH_AUDIENCE", platformClientId);
+          env.put("QITS_WORKSPACE_DAEMON_AUTH_AUDIENCE", PLATFORM_AUDIENCE);
         });
     gitIdentity.envMap().forEach(env::put);
 

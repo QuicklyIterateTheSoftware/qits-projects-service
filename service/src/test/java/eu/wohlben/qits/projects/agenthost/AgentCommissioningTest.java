@@ -87,8 +87,10 @@ class AgentCommissioningTest {
     assertEquals("secret-of-" + clientId, env.get("QITS_COMMISSIONED_CLIENT_SECRET"));
     assertEquals(
         "http://qits-idp:8080/idp/token", env.get("QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL"));
-    assertEquals("qits-projects", env.get("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE"));
-    assertEquals("qits-githost", env.get("QITS_PROJECTS_DAEMON_GIT_AUTH_AUDIENCE"));
+    // One audience for every service now (service-client-identity-plan.md, C4): qits-platform, not
+    // this service's own client id or a git-host-specific audience.
+    assertEquals("qits-platform", env.get("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE"));
+    assertEquals("qits-platform", env.get("QITS_PROJECTS_DAEMON_GIT_AUTH_AUDIENCE"));
   }
 
   /**

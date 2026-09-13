@@ -133,21 +133,22 @@ public class TokenValidationBootstrapIT {
       // HttpGitHostRepositories fails CLOSED: every lifecycle call to qits-githost asks
       // IdpGitHostBearer for a machine token first and throws "No machine bearer is available"
       // rather than sending one unauthenticated. The shipped default is
-      // quarkus.oidc-client.githost.client-enabled=false, so a packaged process with no idp cannot
+      // quarkus.oidc-client.qits.client-enabled=false, so a packaged process with no idp cannot
       // create a repository at all — which is correct in production and is why every story that
-      // publishes to the git host needs this named client pointed at the same MockIdp the inbound
-      // tenant validates against. The token itself is a stub on that mock (see
+      // publishes to the git host needs this named client (service-client-identity-plan.md, C4 — the
+      // one client every outbound call now shares) pointed at the same MockIdp the inbound tenant
+      // validates against. The token itself is a stub on that mock (see
       // {@link #stubTheGitHostTokenEndpoint}); the git-host fixture does not check it, because what
       // is under test here is that this service PRESENTS one.
-      overrides.put("quarkus.oidc-client.githost.client-enabled", "true");
-      overrides.put("quarkus.oidc-client.githost.auth-server-url", idp.baseUrl());
-      overrides.put("quarkus.oidc-client.githost.credentials.secret", GITHOST_CLIENT_SECRET);
+      overrides.put("quarkus.oidc-client.qits.client-enabled", "true");
+      overrides.put("quarkus.oidc-client.qits.auth-server-url", idp.baseUrl());
+      overrides.put("quarkus.oidc-client.qits.credentials.secret", GITHOST_CLIENT_SECRET);
       stubTheGitHostTokenEndpoint(idp);
       return overrides;
     }
   }
 
-  /** The secret this process authenticates its {@code githost} oidc-client with. Not a real one. */
+  /** The secret this process authenticates its {@code qits} oidc-client with. Not a real one. */
   static final String GITHOST_CLIENT_SECRET = "story-githost-secret";
 
   /**
@@ -162,11 +163,12 @@ public class TokenValidationBootstrapIT {
    * its own, because minting on demand is a token endpoint's whole job and a mock cannot guess the
    * audience anybody will ask for.
    *
-   * <p>The token is a real RS256 token signed by the mock's keypair, with the audience qits-githost
-   * would enforce, so the answer is the shape a resource server would accept rather than a
-   * placeholder string. It carries an hour, which outlives any story run, so exactly <b>one</b>
-   * token fetch happens per run — and that fetch is an edge in whichever story first publishes to
-   * the git host, which is where it belongs.
+   * <p>The token is a real RS256 token signed by the mock's keypair, with the platform audience
+   * qits-githost now enforces (service-client-identity-plan.md, C1 widened it fleet-wide), so the
+   * answer is the shape a resource server would accept rather than a placeholder string. It carries
+   * an hour, which outlives any story run, so exactly <b>one</b> token fetch happens per run — and
+   * that fetch is an edge in whichever story first publishes to the git host, which is where it
+   * belongs.
    *
    * <p>Only the copy of this class that <i>started</i> the mock may stub it; a second classloader's
    * copy attaches instead and the call throws, which is the signal that the owner already did it.
@@ -177,7 +179,7 @@ public class TokenValidationBootstrapIT {
             "access_token",
             idp.token()
                 .subject("qits-projects")
-                .audience("qits-githost")
+                .audience("qits-platform")
                 .groups("qits:system")
                 .ttl(Duration.ofHours(1))
                 .mint(),

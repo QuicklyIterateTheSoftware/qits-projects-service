@@ -9,7 +9,8 @@ import org.eclipse.microprofile.config.Config;
 import org.junit.jupiter.api.Test;
 
 /**
- * Guards the pre-expiry refresh window on both machine-client audiences.
+ * Guards the pre-expiry refresh window on the one named client every outbound call now shares
+ * (service-client-identity-plan.md, C4).
  *
  * <p>qits-idp grants service tokens for an hour. Without this skew, {@code TokensHelper} can reuse
  * a bearer in its JWT {@code exp} second: the resource server has already rejected it, while the
@@ -27,10 +28,8 @@ class OidcClientRefreshConfigTest {
   @Inject Config config;
 
   @Test
-  void bothMachineAudiencesRefreshBeforeTheirBearerExpires() {
-    assertEquals(REFRESH_SKEW, duration("quarkus.oidc-client.refresh-token-time-skew"));
-    assertEquals(
-        REFRESH_SKEW, duration("quarkus.oidc-client.githost.refresh-token-time-skew"));
+  void theQitsClientRefreshesBeforeItsBearerExpires() {
+    assertEquals(REFRESH_SKEW, duration("quarkus.oidc-client.qits.refresh-token-time-skew"));
   }
 
   private Duration duration(String key) {

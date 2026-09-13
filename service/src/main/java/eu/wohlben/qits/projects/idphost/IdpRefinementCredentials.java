@@ -25,11 +25,11 @@ import org.jboss.logging.Logger;
 /**
  * {@link RefinementCredentials} over qits-idp's commission API — the refinement sibling of
  * {@link IdpAgentCredentials}, one directory over, same shape on purpose: HTTP Basic with this
- * service's own oidc pair, {@code Map}s and never DTOs (no native-image registration to owe), an
- * instance {@link HttpClient}, and absent-as-shipped when {@code
- * quarkus.oidc-client.client-enabled} is off. The only differences are the context kind and the
- * context id (a refinement row id rather than a project id). That class carries the full argument
- * for every one of these choices.
+ * service's own oidc pair — the {@code qits} named client (service-client-identity-plan.md, C4) —
+ * {@code Map}s and never DTOs (no native-image registration to owe), an instance {@link HttpClient},
+ * and absent-as-shipped when {@code quarkus.oidc-client.qits.client-enabled} is off. The only
+ * differences are the context kind and the context id (a refinement row id rather than a project
+ * id). That class carries the full argument for every one of these choices.
  */
 @ApplicationScoped
 @DefaultBean
@@ -43,16 +43,16 @@ public class IdpRefinementCredentials implements RefinementCredentials {
 
   @Inject ObjectMapper objectMapper;
 
-  @ConfigProperty(name = "quarkus.oidc-client.client-enabled")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean tokensEnabled;
 
-  @ConfigProperty(name = "quarkus.oidc-client.auth-server-url")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.auth-server-url")
   String authServerUrl;
 
-  @ConfigProperty(name = "quarkus.oidc-client.client-id")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.client-id")
   String clientId;
 
-  @ConfigProperty(name = "quarkus.oidc-client.credentials.secret")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.credentials.secret")
   Optional<String> clientSecret;
 
   @ConfigProperty(name = "qits.projects.agent-credentials.request-timeout")
@@ -65,8 +65,8 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     }
     if (secret().isEmpty()) {
       LOG.warn(
-          "quarkus.oidc-client.client-enabled is on but no client secret is configured, so no"
-              + " refinement credential can be commissioned. Set"
+          "quarkus.oidc-client.qits.client-enabled is on but no client secret is configured, so no"
+              + " refinement credential can be commissioned. Set QITS_RESOURCE_IDP_CLIENT_SECRET or"
               + " QUARKUS_OIDC_CLIENT_CREDENTIALS_SECRET.");
       return false;
     }

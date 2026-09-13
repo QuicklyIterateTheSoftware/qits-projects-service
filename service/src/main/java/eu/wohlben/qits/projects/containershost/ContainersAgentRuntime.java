@@ -72,8 +72,9 @@ public class ContainersAgentRuntime implements ContainerRuntime {
    *
    * <p>It must equal the {@code sub} of the machine token this service presents once the gate is on,
    * because {@code OwnerGuard} compares them — so the shipped default reads
-   * {@code quarkus.oidc-client.client-id} and the coupling lives in one place, the key's own comment
-   * in {@code application.properties}. It is also the scope: two environments sharing one docker
+   * {@code quarkus.oidc-client.qits.client-id} and the coupling lives in one place, the key's own
+   * comment in {@code application.properties}. It is also the scope: two environments sharing one
+   * docker
    * daemon are {@code dev-qits-projects} and {@code prod-qits-projects}, and neither one's rows name
    * the other's containers.
    */

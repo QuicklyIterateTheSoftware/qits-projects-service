@@ -11,8 +11,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * The audience-bound machine bearer this service presents to qits-ci — {@code wiring/IdpGitHostBearer}'s
- * sibling on the {@code ci} named client (audience {@code qits-ci}), empty on the same terms.
+ * The machine bearer this service presents to qits-ci — {@code wiring/IdpGitHostBearer}'s sibling on
+ * the {@code qits} named client (service-client-identity-plan.md, C4), asking one audience,
+ * {@code qits-platform}, empty on the same terms.
  *
  * <p>Two hops hold it and both are about a release request's gate: {@link HttpActiveBuilds} reads
  * the active-runs listing, and {@link HttpQaRunCancellations} asks for a superseded request's runs
@@ -27,10 +28,10 @@ public class IdpCiBearer {
   private static final Logger LOG = Logger.getLogger(IdpCiBearer.class);
   private static final Duration TOKEN_TIMEOUT = Duration.ofSeconds(5);
 
-  @ConfigProperty(name = "quarkus.oidc-client.ci.client-enabled")
+  @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean enabled;
 
-  @Inject @NamedOidcClient("ci") OidcClient oidcClient;
+  @Inject @NamedOidcClient("qits") OidcClient oidcClient;
 
   private final TokensHelper tokens = new TokensHelper();
 
