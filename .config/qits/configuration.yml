@@ -1,0 +1,146 @@
+# What qits-projects declares about its own configuration.
+#
+# The deployer reads this file from the git host at the RELEASED TAG, beside
+# `.config/qits/deployments.yml`, and POSTs it verbatim to qits-configuration before anything is
+# scheduled:
+#
+#     POST /configuration/api/applications/qits-projects/declarations/<version>
+#          ?deploymentTarget=environment
+#
+# The store parses it with the estate's ONE strict parser (qits-configuration's `DeclarationParser`).
+# Nothing in this repository parses it. A malformed file is a DECLARATION_REFUSED release, so every
+# line here was checked against that parser by running it.
+#
+# WHY THIS FILE EXISTS: to make leftover entries visible. qits-configuration flags a stored entry
+# `orphaned` only when the application has a declaration and the declaration does not list the key.
+# So this file lists EVERY key qits-projects still reads (checked against the code on 2026-09-13),
+# and nothing else. The configuration UI can then offer to remove the rest (plan C10). Leaving a read
+# key out would invite its deletion; adding an unread one would hide a leftover.
+#
+# IT CHANGES NOTHING TODAY. No key has a default: a default sits UNDER the stored entries, and the
+# bootstrap stores all of them. A declaration also never drops a stored entry from the resolved read.
+# This is step one of the two-step rule (docs guide §7.5): provably inert.
+#
+# THE `qits` CLIENT'S FALLBACK. The four `QUARKUS_OIDC_CLIENT_*` keys with no client name are read by
+# the `qits` named client in application.properties, as the fallback behind `QITS_RESOURCE_IDP_*`
+# (service-client-identity-plan.md, C4). They stay declared until this service's `idp:client`
+# cutover (plan C5) retires that fallback. Remove them here in the same change.
+#
+# LEFT OUT ON PURPOSE, so they show as orphaned:
+#   * the old named clients' keys, QUARKUS_OIDC_CLIENT_{GITHOST,CI,MAINTENANCE,WORKSPACES}_*. No code
+#     injects those clients. Quarkus still binds their disabled blocks, which is not a read.
+#   * QUARKUS_OIDC_CLIENT_GRANT_OPTIONS_CLIENT_AUDIENCE. The `qits` client asks for the constant
+#     `qits-platform`; this key only reaches the unused default client.
+#   * QITS_RESOURCE_*. The deployer injects those from its resource registry; they are never entries.
+#
+# NO serviceAddress AND NO packageVersion, on purpose. Both change what the container gets, so both
+# belong to a later step. The two image-version keys are `string` here: qits-configuration's
+# `ImagePins` list writes them on every release. Declaring them packageVersion is that list's own
+# migration, and it must remove the rows from `ImagePins.AUTHORED` in the same wave.
+#
+# SECRETS are declared by name only. Their values live in qits-configuration and never here.
+
+keys:
+  # --- storage ---------------------------------------------------------------------------------
+
+  mounts[0]:
+    type: string
+    description: "The named volume this service keeps its data in, mounted at /data. The repository mirrors live under it (QITS_PROJECTS_DATA_DIR)."
+
+  env.QITS_PROJECTS_DATA_DIR:
+    type: string
+    description: "Where the repository mirrors live (qits.projects.data-dir). Must be inside the /data mount."
+
+  # --- this service's own namespace ------------------------------------------------------------
+
+  env.QITS_PROJECTS_RESERVED_SLUGS:
+    type: string
+    description: "The platform's environment names, comma-separated. No new project may take one as its slug."
+
+  env.QITS_PROJECTS_OWN_HOST:
+    type: string
+    description: "The host name agent and refinement containers use to reach this service."
+
+  env.QITS_PROJECTS_AGENT_GIT_BASE:
+    type: string
+    description: "The git base URL, with the /git path, that an agent container clones the project's wrapper from."
+
+  env.QITS_PROJECTS_AGENT_IMAGE_VERSION:
+    type: string
+    description: "The qits/project-agent image version an agent container starts from. Written by qits-configuration's ImagePins on each release."
+
+  env.QITS_PROJECTS_REFINEMENT_IMAGE_VERSION:
+    type: string
+    description: "The qits/workspace image version a refinement container starts from. Written by qits-configuration's ImagePins on each release."
+
+  # --- the release flow's peers -----------------------------------------------------------------
+
+  env.QITS_PROJECTS_RELEASE_REQUESTS_GITHOST_URL:
+    type: string
+    description: "qits-githost, for the release flow's merges, commits, tags and branch deletes. Unset turns the release flow off."
+
+  env.QITS_PROJECTS_RELEASE_REQUESTS_CI_URL:
+    type: string
+    description: "qits-ci, for the release gate's active-run read and for cancelling a superseded request's runs."
+
+  env.QITS_PROJECTS_RELEASE_REQUESTS_MAINTENANCE_URL:
+    type: string
+    description: "qits-maintenance, for the downstream-components read at each fold and the estate pin bumps."
+
+  env.QITS_PROJECTS_RELEASE_REQUESTS_WORKSPACES_URL:
+    type: string
+    description: "qits-workspaces, for the branch-resolution call after a release. Also the fallback address for the agent dispatch door."
+
+  # --- the platform's shared wiring -----------------------------------------------------------
+
+  env.QITS_GITHOST_URL:
+    type: string
+    description: "The git host the repository mirrors clone and fetch from. Scheme, host and port, no path."
+
+  env.QITS_REPOSITORIES_GIT_PUSH_TOKEN:
+    type: string
+    description: "A secret: the git host's push token (qits.repositories.git.push-token), sent on pushes that must pass protected refs."
+
+  env.QITS_CONTAINERS_URL:
+    type: string
+    description: "Where qits-containers answers. Every agent and refinement container verb is one call to it."
+
+  env.QITS_EVENTS_URL:
+    type: string
+    description: "The event bus this service consumes git host events from and publishes its own events to."
+
+  env.QITS_OBSERVABILITY_URL:
+    type: string
+    description: "Where this service's OTLP telemetry goes. Scheme, host and port, no path."
+
+  # --- the identity this surface is guarded by --------------------------------------------------
+
+  env.QITS_AUTH_MACHINE_REQUIRED:
+    type: boolean
+    description: "The machine gate. Off, there is no OIDC tenant at all; on, a machine token is validated and its audience checked."
+
+  env.QITS_AUTH_MACHINE_AUDIENCE:
+    type: string
+    description: "The audience a machine token addressed to this service must carry, beside qits-platform."
+
+  env.QUARKUS_OIDC_AUTH_SERVER_URL:
+    type: string
+    description: "The issuer whose JWKS validates the tokens that arrive here."
+
+  # --- the `qits` client's fallback (until the idp:client cutover, plan C5) --------------------
+
+  env.QUARKUS_OIDC_CLIENT_CLIENT_ENABLED:
+    type: boolean
+    description: "Turns the `qits` named client on. Off, no bearer is sent and no container credential is commissioned."
+
+  env.QUARKUS_OIDC_CLIENT_AUTH_SERVER_URL:
+    type: string
+    description: "The idp the `qits` client gets its tokens from, when QITS_RESOURCE_IDP_URL is unset."
+
+  env.QUARKUS_OIDC_CLIENT_CLIENT_ID:
+    type: string
+    description: "The `qits` client's id, when QITS_RESOURCE_IDP_CLIENT_ID is unset. Also the owner key at qits-containers."
+
+  env.QUARKUS_OIDC_CLIENT_CREDENTIALS_SECRET:
+    type: string
+    description: "A secret: the `qits` client's secret, when QITS_RESOURCE_IDP_CLIENT_SECRET is unset."
