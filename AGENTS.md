@@ -998,6 +998,35 @@ Three things travel with it:
   failure surfaces on the door instead — 502 from the far side, 503 with no workspaces context at all
   — because a comment saying an agent is on it when none is would be worse than the error.
 
+**A transition starts the next phase by itself, and the transition is the whole trigger.**
+`projects/api/TicketPhaseAdvance` (application-scoped, `afterTransition(ticket, changedBy)`) is
+called by **both** transition surfaces — `epics/api/TicketController`'s route and
+`mcp/TicketMcpTools.transitionTicket` — *after* the move is recorded and outside its transaction,
+exactly where each already fires its hint. It reads `TicketPhasePrompts.startedBy` and **adds no
+second table and no second switch**: the prompt for a status is the work that starts from it, so a
+failed verification moving IMPLEMENTED → REFINED gets the *implement* turn and a reopen to VERIFIED
+gets nothing. Direction is never consulted. It hangs off the transition and off nothing else — not
+assignment, not a comment, not a release.
+
+- **It is not on `TicketService`** because the epics module has no idea what a workspace is and must
+  keep not having one, and because recording a fact and calling out to a sibling service must not
+  share a transaction. Both call sites wrap the call in the belt `ReleaseRequests` carries: the port
+  must not throw, and a throw is a port bug that may not touch a transition that already happened.
+- **`projects/api/TicketWorkspaces` is where the wrapper and the branch are resolved**, for the
+  dispatch door and the hand-off alike — one address, derived rather than stored, so a copy could
+  drift with nothing failing. `require` carries the dispatch door's 409 unchanged; `find` answers
+  empty for the caller that has nobody to refuse.
+- **What lands on the thread is what actually happened**, stamped from the caller like the dispatch
+  comment (the stamp is passed *in*, because the MCP surface's fallback identity is `mcp-agent` where
+  the REST one's is null): *"Started the implement phase: the agent working in the workspace on
+  `ticket/x` was told."*, or *"…no agent was running in the workspace on `ticket/x`, so one was
+  launched to take it."*, or *"Could not start the implement phase: &lt;reason&gt;. The ticket is
+  REFINED and nothing is running on it."* — which claims nothing about an agent. **A ticket with no
+  workspace gets no comment at all**, and so do a project with no wrapper and an absent port: in all
+  three there is nothing standing to speak to, and a person walking a ticket through by hand must not
+  have their thread filled with "there was nobody to tell". The `TICKETS` hint fires only where a
+  comment was written.
+
 ## Project agent harness
 
 One container per project, holding a clone of that project's wrapper repository and running

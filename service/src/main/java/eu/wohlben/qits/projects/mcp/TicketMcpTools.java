@@ -6,6 +6,7 @@ import eu.wohlben.qits.epics.entity.TicketComment;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
+import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -15,6 +16,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
+import org.jboss.logging.Logger;
 
 /**
  * The ticket half of the "repository" MCP server — the surface an agent files and works bugs and
@@ -54,6 +56,8 @@ import java.util.List;
 @WrapBusinessError
 public class TicketMcpTools {
 
+  private static final Logger LOG = Logger.getLogger(TicketMcpTools.class);
+
   /**
    * What the audit log records for a write with no forwarded identity. An MCP session is a machine
    * caller; naming it beats a null {@code changed_by} that reads as "unknown human".
@@ -67,6 +71,13 @@ public class TicketMcpTools {
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
+
+  /**
+   * The phase a transition starts. Crossing into {@code projects.api} from here is the same
+   * crossing {@code TicketDispatchController} declares: a workspace is {@code domain}'s, and this
+   * module assembles both.
+   */
+  @Inject TicketPhaseAdvance phaseAdvance;
 
   // --- Result shapes --------------------------------------------------------
 
@@ -261,8 +272,19 @@ public class TicketMcpTools {
                       + " REPORTED, REFINED, IMPLEMENTED, VERIFIED or DONE")
           String target) {
     requireTicketInProject(id);
-    Ticket ticket = ticketService.transition(id, target, changedBy());
+    String changedBy = changedBy();
+    Ticket ticket = ticketService.transition(id, target, changedBy);
     announce();
+    // The agent's claim IS the trigger for the next phase, and this is where it lands: after the
+    // move is recorded, outside its transaction, so a transition that failed speaks to nobody. The
+    // stamp is passed in because this surface's fallback is AGENT where the REST one's is null.
+    try {
+      phaseAdvance.afterTransition(ticket, changedBy);
+    } catch (RuntimeException e) {
+      // It says it must not throw; a throw is a bug in it and must not turn a recorded transition
+      // into a tool error the model would read as "the move did not happen".
+      LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
+    }
     return summarize(ticket);
   }
 

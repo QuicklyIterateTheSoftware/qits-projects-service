@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import io.quarkiverse.mcp.server.ToolResponse;
 import io.quarkiverse.mcp.server.test.McpAssured;
 import io.quarkiverse.mcp.server.test.McpAssured.McpStreamableTestClient;
@@ -34,6 +36,19 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 @TestProfile(McpStatelessTestProfile.class)
 public class TicketMcpToolsTest {
+
+  /** The delivery seam the transition hands the next phase's prompt to. */
+  @jakarta.inject.Inject RecordingWorkspaceAgentTurns turns;
+
+  /**
+   * One application per class means one instance of that bean, and most tests here walk a ticket's
+   * statuses without caring about the hand-off — so it goes back to its resting answer (no
+   * workspace, nothing said) before each of them, and only the two below script anything else.
+   */
+  @org.junit.jupiter.api.BeforeEach
+  void resetTheDeliverySeam() {
+    turns.reset();
+  }
 
   private static RequestSpecification authenticated() {
     return given()
@@ -574,5 +589,61 @@ public class TicketMcpToolsTest {
               assertTrue(names.contains("get_ticket"), "read tool wrongly hidden: " + names);
             })
         .thenAssertResults();
+  }
+
+  /**
+   * <b>The agent's own claim starts the next phase.</b> {@code transition_ticket} is the whole
+   * trigger, so the MCP surface has to reach the hand-off exactly as the REST route does — this is
+   * the surface that matters most for it, since it is the door an agent finishing a phase comes
+   * through. What the hand-off <em>does</em> with the answer is {@code TicketPhaseAdvanceTest}'s;
+   * what is pinned here is that the two surfaces are one flow and not two, and that the comment is
+   * stamped by whoever the session named (this surface's own {@code mcp-agent} fallback only
+   * applies where nothing named it, which under the shipped {@code %test} dev user is never here).
+   */
+  @Test
+  public void aTransitionThroughTheToolStartsTheNextPhase() {
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    String projectId = createProject("Ticket Hand Off");
+    String ticketId = createTicket(projectId, "Refined by its own agent", "BUG");
+
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "REFINED"),
+        response -> assertFalse(response.isError(), text(response)));
+
+    assertEquals(1, turns.calls().size(), "the agent's claim is what starts the next phase");
+    assertEquals("ticket/refined-by-its-own-agent", turns.lastCall().branch());
+    assertTrue(
+        turns.lastCall().text().startsWith("Implement ticket \""),
+        "REFINED starts implementation: " + turns.lastCall().text());
+
+    // And it lands on this ticket's own thread, stamped like every other write this surface makes
+    // — the shipped %test dev user names the session here, so what is asserted is that the comment
+    // is there and carries an author, not which fallback an unnamed session would have used.
+    call(
+        projectId,
+        "get_ticket",
+        Map.of("id", ticketId),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains("Started the implement phase"), body);
+          assertFalse(body.contains("\"author\":null"), "the comment is stamped: " + body);
+        });
+  }
+
+  /** A refused move is not a move, so nothing is said to anybody about a phase nobody entered. */
+  @Test
+  public void aRefusedTransitionThroughTheToolStartsNothing() {
+    String projectId = createProject("Ticket No Hand Off");
+    String ticketId = createTicket(projectId, "Two steps at once", "BUG");
+
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "IMPLEMENTED"),
+        response -> assertTrue(response.isError(), text(response)));
+
+    assertTrue(turns.calls().isEmpty(), "a transition that rolled back speaks to nobody");
   }
 }

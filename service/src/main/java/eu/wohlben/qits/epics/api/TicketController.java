@@ -6,6 +6,7 @@ import eu.wohlben.qits.epics.dto.TicketDto;
 import eu.wohlben.qits.epics.mapper.TicketCommentMapper;
 import eu.wohlben.qits.epics.mapper.TicketMapper;
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
+import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -21,13 +22,28 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
+import org.jboss.logging.Logger;
 
-/** A single ticket and its comment thread. */
+/**
+ * A single ticket and its comment thread.
+ *
+ * <h2>One injection points the other way, and it is the service layer's crossing</h2>
+ *
+ * <p>{@link #transition} calls {@link TicketPhaseAdvance}, which lives in {@code
+ * eu.wohlben.qits.projects.api} because it needs the project, the wrapper repository and a workspace
+ * port. That is not the epics <b>jar</b> learning about {@code domain}: this class is under {@code
+ * service/}, the module that assembles both, and it is only the package name that reads like the
+ * epics module. The {@code epics} jar itself still depends on {@code domain} nowhere, which is what
+ * keeps it liftable — and the same crossing {@code DispatchedWorkspaces} already makes below, one
+ * field up.
+ */
 @Path("/tickets")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class TicketController {
+
+  private static final Logger LOG = Logger.getLogger(TicketController.class);
 
   @Inject TicketService ticketService;
 
@@ -41,6 +57,9 @@ public class TicketController {
 
   /** Which live workspaces are on this ticket — derived per read; see {@link DispatchedWorkspaces}. */
   @Inject DispatchedWorkspaces dispatchedWorkspaces;
+
+  /** The phase a transition starts, delivered into the workspace on the ticket's branch. */
+  @Inject TicketPhaseAdvance phaseAdvance;
 
   // --- Ticket ---
 
@@ -120,9 +139,19 @@ public class TicketController {
   @Path("/{id}/transition")
   public TransitionTicketRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionTicketRequest request) {
-    var ticket =
-        ticketService.transition(id, request.target(), EpicsPrincipal.changedBy(identity));
+    String changedBy = EpicsPrincipal.changedBy(identity);
+    var ticket = ticketService.transition(id, request.target(), changedBy);
     hints.fire(ticket.projectId);
+    // AFTER the move is recorded and outside its transaction, like the hint above: the next phase
+    // is started from the status the ticket now holds, and a transition that rolled back speaks to
+    // nobody. See TicketPhaseAdvance for why this is not a step inside TicketService.transition.
+    try {
+      phaseAdvance.afterTransition(ticket, changedBy);
+    } catch (RuntimeException e) {
+      // It says it must not throw; a throw is a bug in it and must not touch a transition that has
+      // already been recorded and already been answered for.
+      LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
+    }
     return new TransitionTicketRequest.Response(ticketMapper.toDto(ticket));
   }
 

@@ -2,14 +2,9 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.epics.api.EpicsPrincipal;
 import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.control.WorkBranches;
 import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
-import eu.wohlben.qits.projects.control.ProjectService;
-import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
-import eu.wohlben.qits.projects.entity.Project;
-import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -46,6 +41,11 @@ import org.jboss.logging.Logger;
  *
  * <p>The slug is the branch segment for the reason it exists: minted at create and never
  * re-derived, so a retitled ticket keeps the branch its agent is already working on.
+ *
+ * <p>Both halves of that address are resolved by {@link TicketWorkspaces} rather than here, because
+ * {@link TicketPhaseAdvance} has to arrive at the same one when it speaks to the workspace this door
+ * stood up. Its {@code require} arm carries this door's own 409 — the one a person reads when a
+ * project has no wrapper to make a workspace on — unchanged.
  *
  * <h2>The agent's first turn is picked by the ticket's status</h2>
  *
@@ -94,9 +94,12 @@ public class TicketDispatchController {
 
   @Inject TicketService tickets;
 
-  @Inject ProjectService projects;
-
-  @Inject RepositoryService repositories;
+  /**
+   * The wrapper and the branch, resolved where {@link TicketPhaseAdvance} resolves them. Two flows
+   * address one workspace and the address is derived rather than stored, so one of them computing it
+   * differently would be invisible until a phase hand-off quietly stopped arriving.
+   */
+  @Inject TicketWorkspaces workspaces;
 
   @Inject SecurityIdentity identity;
 
@@ -122,19 +125,18 @@ public class TicketDispatchController {
           "No workspaces context is configured, so no agent can be dispatched onto ticket " + id
               + ".");
     }
-    Project project = projects.get(ticket.projectId);
-    Repository wrapper = wrapperOf(project);
-    // The branch and the refs its agent may push come from one place.
-    WorkBranches.Scope scope = WorkBranches.ticket(ticket);
-    String branch = scope.branch();
+    // Where this ticket's agent stands: the project's wrapper and ticket/<slug>, with the refs it
+    // may push — resolved by the one collaborator the phase hand-off resolves through too.
+    TicketWorkspaces.Target target = workspaces.require(ticket);
+    String branch = target.branch();
 
     WorkspaceAgentDispatch.Dispatch made =
         dispatch
             .get()
             .dispatchAgent(
-                wrapper.id,
+                target.repositoryId(),
                 branch,
-                scope.gitRefs(),
+                target.scope().gitRefs(),
                 true,
                 WorkspaceAgentDispatch.Subject.ticket(ticket.id),
                 started.instruction());
@@ -146,26 +148,10 @@ public class TicketDispatchController {
         "Dispatched an agent onto ticket %s (%s) for the %s phase in workspace %s on %s",
         ticket.id, ticket.slug, started.phase(), made.workspaceRowId(), branch);
     return new DispatchAgentRequest.Response(
-        TicketAgentDispatchDto.of(made, wrapper.id, branch));
+        TicketAgentDispatchDto.of(made, target.repositoryId(), branch));
   }
 
   // ---- the pieces --------------------------------------------------------------------------
-
-  /** {@code RefinementService.wrapperOf}'s seam and its refusal — the project IS its wrapper. */
-  private Repository wrapperOf(Project project) {
-    String wrapperName = ProjectService.wrapperName(project);
-    return repositories
-        .findByProjectAndName(project.id, wrapperName)
-        .orElseThrow(
-            () ->
-                new DomainException(
-                    409,
-                    "Project "
-                        + project.id
-                        + " has no wrapper repository ("
-                        + wrapperName
-                        + "), so there is nothing to dispatch an agent onto."));
-  }
 
   /**
    * The phase this ticket's status starts, with the turn its agent gets — or the <b>409</b> that
