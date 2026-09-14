@@ -74,7 +74,10 @@ public class Ticket extends PanacheEntityBase implements CausedRow {
   @Column(nullable = false, length = 32)
   public TicketType type;
 
-  /** Open or resolved; moved only through the transition endpoint. */
+  /**
+   * What has been achieved so far — see {@link TicketStatus} for the five words and for the phase
+   * each of them starts. Moved only through the transition endpoint, one step at a time.
+   */
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 32)
   public TicketStatus status;
@@ -87,7 +90,39 @@ public class Ticket extends PanacheEntityBase implements CausedRow {
   @Column(name = "created_by", updatable = false)
   public String createdBy;
 
-  /** The long-form Markdown body. */
+  /**
+   * <b>Why this ticket exists, in the reporter's or the triage agent's own words.</b> It is the
+   * high-level statement of what brought the ticket about, and it is what a {@link
+   * TicketStatus#REPORTED} ticket consists of — an impetus and nothing else.
+   *
+   * <p><b>The length rule, which is the whole of the field's discipline.</b> An impetus takes one
+   * of two shapes — <em>"{some error} occurs {in some context}"</em> or <em>"{an existing part}
+   * should be {something to introduce or improve}"</em> — and is almost always one sentence, rarely
+   * a paragraph, very rarely two. A bug's steps to reproduce may be included and do not count
+   * against that length: they are part of saying what occurs.
+   *
+   * <p><b>Why the rule exists.</b> An impetus that grows into an essay is indistinguishable from
+   * the refined {@link #description}, and at that point it stops being a record of what was
+   * originally asked for — which is the one thing nothing else in the row holds. Two fields that
+   * say the same thing leave the next reader to work out which one the work was actually agreed
+   * against.
+   *
+   * <p><b>It is never rewritten by a later phase.</b> Refinement writes {@link #description};
+   * implementation and verification write neither. It stays editable by triage, because a report
+   * filed in haste is often the wrong words for the right problem — but an edit is a correction of
+   * what was asked for, never a restatement of what was later decided.
+   *
+   * <p>Nullable in the column and required at the intake surfaces: rows that predate V7 have none,
+   * and a migration cannot invent what somebody meant.
+   */
+  @Column(name = "impetus")
+  public String impetus;
+
+  /**
+   * <b>The refinement's output</b> — the long-form Markdown statement of what to do about {@link
+   * #impetus}, written by the refine phase rather than supplied at intake. Null on a {@link
+   * TicketStatus#REPORTED} ticket, and its presence is what {@link TicketStatus#REFINED} claims.
+   */
   public String description;
 
   @CreationTimestamp

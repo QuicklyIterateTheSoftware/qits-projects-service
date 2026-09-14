@@ -27,7 +27,14 @@ class TicketServiceTest extends EpicsTestSupport {
   @Inject AuditService auditService;
 
   private Ticket bug(String title) {
-    return ticketService.create("proj-1", title, "what went wrong", "BUG", null, "alice");
+    return ticketService.create(
+        "proj-1",
+        title,
+        "something occurs on the login page",
+        "what went wrong",
+        "BUG",
+        null,
+        "alice");
   }
 
   // --- Tickets ---------------------------------------------------------------------------------
@@ -38,7 +45,7 @@ class TicketServiceTest extends EpicsTestSupport {
     assertNotNull(ticket.id);
     assertEquals("proj-1", ticket.projectId);
     assertEquals(TicketType.BUG, ticket.type);
-    assertEquals(TicketStatus.OPEN, ticket.status);
+    assertEquals(TicketStatus.REPORTED, ticket.status);
     assertNull(ticket.assignee);
     assertNotNull(ticket.createdAt);
     assertNotNull(ticket.updatedAt);
@@ -47,7 +54,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
     Ticket updated =
         ticketService.update(
-            ticket.id, "Login button is inert", null, false, "IMPROVEMENT", "bob", false, "bob");
+            ticket.id, "Login button is inert", null, false, null, false, "IMPROVEMENT", "bob", false, "bob");
     assertEquals("Login button is inert", updated.title);
     assertEquals(TicketType.IMPROVEMENT, updated.type);
     assertEquals("bob", updated.assignee);
@@ -66,7 +73,16 @@ class TicketServiceTest extends EpicsTestSupport {
     // never client-supplied — the service takes it from the same value it audits with.
     assertEquals("alice", bug("Stamped").createdBy);
     assertNull(
-        ticketService.create("proj-1", "Unattributed", null, "BUG", null, null).createdBy,
+        ticketService
+            .create(
+                "proj-1",
+                "Unattributed",
+                "something occurs on the login page",
+                null,
+                "BUG",
+                null,
+                null)
+            .createdBy,
         "an unattributed caller is an ordinary caller");
   }
 
@@ -74,15 +90,15 @@ class TicketServiceTest extends EpicsTestSupport {
   void createdByIsNotRewrittenByALaterEdit() {
     Ticket ticket = bug("Filed by alice");
     Ticket edited =
-        ticketService.update(ticket.id, "Edited by bob", null, false, null, null, false, "bob");
+        ticketService.update(ticket.id, "Edited by bob", null, false, null, false, null, null, false, "bob");
     assertEquals("alice", edited.createdBy);
   }
 
   @Test
   void listByProjectScopesToTheProject() {
-    ticketService.create("proj-a", "A1", null, "BUG", null, "t");
-    ticketService.create("proj-a", "A2", null, "IMPROVEMENT", null, "t");
-    ticketService.create("proj-b", "B1", null, "BUG", null, "t");
+    ticketService.create("proj-a", "A1", "something occurs on the login page", null, "BUG", null, "t");
+    ticketService.create("proj-a", "A2", "something occurs on the login page", null, "IMPROVEMENT", null, "t");
+    ticketService.create("proj-b", "B1", "something occurs on the login page", null, "BUG", null, "t");
 
     assertEquals(2, ticketService.listByProject("proj-a").size());
     assertEquals(1, ticketService.listByProject("proj-b").size());
@@ -101,17 +117,17 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void listByProjectFiltersByStatus() {
-    Ticket open = bug("Still broken");
-    Ticket resolved = bug("Fixed");
-    ticketService.transition(resolved.id, "RESOLVED", "t");
+    Ticket reported = bug("Still broken");
+    Ticket refined = bug("Described");
+    ticketService.transition(refined.id, "REFINED", "t");
 
     assertEquals(2, ticketService.listByProject("proj-1").size());
     assertEquals(
-        List.of(open.id),
-        ticketService.listByProject("proj-1", "OPEN").stream().map(t -> t.id).toList());
+        List.of(reported.id),
+        ticketService.listByProject("proj-1", "REPORTED").stream().map(t -> t.id).toList());
     assertEquals(
-        List.of(resolved.id),
-        ticketService.listByProject("proj-1", "RESOLVED").stream().map(t -> t.id).toList());
+        List.of(refined.id),
+        ticketService.listByProject("proj-1", "REFINED").stream().map(t -> t.id).toList());
     // A blank filter is no filter.
     assertEquals(2, ticketService.listByProject("proj-1", "  ").size());
   }
@@ -120,8 +136,10 @@ class TicketServiceTest extends EpicsTestSupport {
   void anUnknownStatusFilterIsRejected() {
     // A typo must not read as "no tickets".
     assertThrows(
-        BadRequestException.class, () -> ticketService.listByProject("proj-1", "RESOLVD"));
-    assertThrows(BadRequestException.class, () -> ticketService.listByProject("proj-1", "open"));
+        BadRequestException.class, () -> ticketService.listByProject("proj-1", "REFIND"));
+    assertThrows(BadRequestException.class, () -> ticketService.listByProject("proj-1", "reported"));
+    // The old vocabulary is a typo now like any other.
+    assertThrows(BadRequestException.class, () -> ticketService.listByProject("proj-1", "OPEN"));
   }
 
   @Test
@@ -133,7 +151,14 @@ class TicketServiceTest extends EpicsTestSupport {
     assertEquals(
         "login-button-does-nothing",
         ticketService
-            .create("proj-2", "Login button does nothing", null, "BUG", null, "t")
+            .create(
+                "proj-2",
+                "Login button does nothing",
+                "something occurs on the login page",
+                null,
+                "BUG",
+                null,
+                "t")
             .slug);
   }
 
@@ -142,7 +167,7 @@ class TicketServiceTest extends EpicsTestSupport {
     Ticket ticket = bug("Login button does nothing");
     Ticket renamed =
         ticketService.update(
-            ticket.id, "Something else entirely", null, false, null, null, false, "t");
+            ticket.id, "Something else entirely", null, false, null, false, null, null, false, "t");
     // The slug is the row's stable address; retitling must not move it.
     assertEquals("login-button-does-nothing", renamed.slug);
   }
@@ -150,46 +175,112 @@ class TicketServiceTest extends EpicsTestSupport {
   @Test
   void theClearFlagsAreWhatEmptyTheNullableFields() {
     Ticket ticket =
-        ticketService.create("proj-1", "Assigned", "a body", "BUG", "alice", "alice");
+        ticketService.create(
+            "proj-1", "Assigned", "the list is unsorted", "a body", "BUG", "alice", "alice");
 
-    // A title-only edit touches neither.
+    // A title-only edit touches none of the three.
     Ticket retitled =
-        ticketService.update(ticket.id, "Renamed", null, false, null, null, false, "t");
+        ticketService.update(ticket.id, "Renamed", null, false, null, false, null, null, false, "t");
+    assertEquals("the list is unsorted", retitled.impetus);
     assertEquals("a body", retitled.description);
     assertEquals("alice", retitled.assignee);
 
     Ticket cleared =
-        ticketService.update(ticket.id, null, null, true, null, null, true, "t");
+        ticketService.update(ticket.id, null, null, true, null, true, null, null, true, "t");
+    assertNull(cleared.impetus);
     assertNull(cleared.description);
     assertNull(cleared.assignee);
   }
 
   @Test
+  void theImpetusIsWhatAFiledTicketConsistsOf() {
+    // A REPORTED ticket is an impetus and nothing else: the description is the refinement's output
+    // and is ordinarily written later, by the phase this status starts.
+    Ticket filed =
+        ticketService.create(
+            "proj-1",
+            "Login button does nothing",
+            "clicking the login button does nothing on the sign-in page",
+            null,
+            "BUG",
+            null,
+            "alice");
+    assertEquals(TicketStatus.REPORTED, filed.status);
+    assertEquals("clicking the login button does nothing on the sign-in page", filed.impetus);
+    assertNull(filed.description, "refinement has not run yet");
+
+    // It survives the round trip, and a read of the row says what the create answered.
+    assertEquals(filed.impetus, ticketService.get(filed.id).impetus);
+  }
+
+  @Test
+  void anAbsentImpetusIsRejectedAtCreate() {
+    // Required here rather than at the surfaces alone: a ticket with nothing said about why it
+    // exists is a row nobody can refine.
+    assertThrows(
+        BadRequestException.class,
+        () -> ticketService.create("proj-1", "T", null, "a body", "BUG", null, "t"));
+    assertThrows(
+        BadRequestException.class,
+        () -> ticketService.create("proj-1", "T", "   ", "a body", "BUG", null, "t"));
+  }
+
+  @Test
+  void theImpetusIsEditableAndTheRefinementIsWrittenBesideit() {
+    Ticket filed =
+        ticketService.create(
+            "proj-1", "Inert button", "the login button does nothing", null, "BUG", null, "alice");
+
+    // Triage corrects the words; the refinement writes its own field. Neither overwrites the other.
+    Ticket refined =
+        ticketService.update(
+            filed.id,
+            null,
+            "the login button does nothing while a session is expired",
+            false,
+            "Re-issue the session before the click handler runs.",
+            false,
+            null,
+            null,
+            false,
+            "bob");
+    assertEquals("the login button does nothing while a session is expired", refined.impetus);
+    assertEquals("Re-issue the session before the click handler runs.", refined.description);
+
+    // And the audit entry carries the impetus like any other field.
+    var history = auditService.listForEntity(AuditEntityType.TICKET, filed.id);
+    assertTrue(
+        history.get(0).snapshot.contains("while a session is expired"), history.get(0).snapshot);
+  }
+
+  @Test
   void aBlankAssigneeMeansNobody() {
-    Ticket ticket = ticketService.create("proj-1", "T", null, "BUG", "   ", "t");
+    Ticket ticket =
+        ticketService.create(
+            "proj-1", "T", "something occurs on the login page", null, "BUG", "   ", "t");
     assertNull(ticket.assignee);
-    assertNull(ticketService.update(ticket.id, null, null, false, null, "  ", false, "t").assignee);
+    assertNull(ticketService.update(ticket.id, null, null, false, null, false, null, "  ", false, "t").assignee);
   }
 
   @Test
   void blankTitleAndUnknownTypeAreRejected() {
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "  ", null, "BUG", null, "t"));
+        () -> ticketService.create("proj-1", "  ", "something occurs on the login page", null, "BUG", null, "t"));
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "T", null, "  ", null, "t"));
+        () -> ticketService.create("proj-1", "T", "something occurs on the login page", null, "  ", null, "t"));
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "T", null, "DEFECT", null, "t"));
+        () -> ticketService.create("proj-1", "T", "something occurs on the login page", null, "DEFECT", null, "t"));
 
     Ticket ticket = bug("Live");
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.update(ticket.id, "  ", null, false, null, null, false, "t"));
+        () -> ticketService.update(ticket.id, "  ", null, false, null, false, null, null, false, "t"));
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.update(ticket.id, null, null, false, "bug", null, false, "t"));
+        () -> ticketService.update(ticket.id, null, null, false, null, false, "bug", null, false, "t"));
   }
 
   @Test
@@ -287,7 +378,7 @@ class TicketServiceTest extends EpicsTestSupport {
   @Test
   void everyMutationIsAudited() {
     Ticket ticket = bug("Audited");
-    ticketService.update(ticket.id, "Audited twice", null, false, null, null, false, "bob");
+    ticketService.update(ticket.id, "Audited twice", null, false, null, false, null, null, false, "bob");
 
     var history = auditService.listForEntity(AuditEntityType.TICKET, ticket.id);
     assertEquals(2, history.size());
@@ -296,7 +387,7 @@ class TicketServiceTest extends EpicsTestSupport {
     assertEquals("bob", history.get(0).changedBy);
     assertEquals(AuditOperation.CREATE, history.get(1).operation);
     assertEquals("alice", history.get(1).changedBy);
-    assertTrue(history.get(1).snapshot.contains("\"status\":\"OPEN\""));
+    assertTrue(history.get(1).snapshot.contains("\"status\":\"REPORTED\""));
   }
 
   @Test

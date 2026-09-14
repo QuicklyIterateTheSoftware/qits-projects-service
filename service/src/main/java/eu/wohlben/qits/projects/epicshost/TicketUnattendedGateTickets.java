@@ -35,10 +35,10 @@ import org.jboss.logging.Logger;
  * <h2>The dedupe, which is the part that would bite</h2>
  *
  * <p>The caller remembers the ticket on the request row and hands it back; this class decides
- * whether that ticket is still a place to put a failure. Open → the failure is a <b>comment</b>.
- * Resolved, or deleted, or naming nothing → a fresh ticket. That is what keeps a repository that
- * re-gates red twenty times over to one ticket, on exactly the repository somebody is already trying
- * to fix.
+ * whether that ticket is still a place to put a failure. Anything but DONE → the failure is a
+ * <b>comment</b>. DONE, or deleted, or naming nothing → a fresh ticket. That is what keeps a
+ * repository that re-gates red twenty times over to one ticket, on exactly the repository somebody
+ * is already trying to fix.
  *
  * <h2>Nothing here throws</h2>
  *
@@ -66,7 +66,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   @Override
   public Optional<String> rejected(Rejection rejection) {
     try {
-      Ticket open = openTicket(rejection.existingTicketId());
+      Ticket open = reusableTicket(rejection.existingTicketId());
       if (open != null) {
         tickets.addComment(open.id, comment(rejection), REPORTER);
         redraw(rejection.projectId());
@@ -79,6 +79,11 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
           tickets.create(
               rejection.projectId(),
               title(rejection),
+              // The impetus is the one-sentence statement of what occurs; the long report goes in
+              // the description, where it always has. Both are written here because this filer is
+              // both the reporter and the only thing that will ever know these facts — nothing
+              // later can reconstruct which run came back red.
+              impetus(rejection),
               body(rejection),
               TicketType.BUG.name(),
               // No assignee. Nobody was watching this release; inventing an owner for the ticket
@@ -103,9 +108,9 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   @Override
   public void released(String ticketId, String requestId, String repoName, String version) {
     try {
-      Ticket ticket = openTicket(ticketId);
+      Ticket ticket = reusableTicket(ticketId);
       if (ticket == null) {
-        // Resolved already, or gone. Either way somebody has dealt with it and a comment on a
+        // DONE already, or gone. Either way somebody has finished with it and a comment on a
         // closed thread is noise.
         return;
       }
@@ -118,9 +123,9 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
               + " passed its gate and released as **"
               + version
               + "**.\n\n"
-              + "This ticket is deliberately left OPEN: a green build says the fold passes now, not"
-              + " that everything said on this thread is handled. Resolve it if there is nothing"
-              + " left in it.",
+              + "This ticket is deliberately left where it is: a green build says the fold passes"
+              + " now, not that everything said on this thread is handled. Move it on yourself if"
+              + " there is nothing left in it.",
           REPORTER);
       redraw(ticket.projectId);
       LOG.infof(
@@ -133,11 +138,19 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   // ---- the pieces ------------------------------------------------------------------------------
 
   /**
-   * The ticket to put this failure on, or null where there is none to put it on. A resolved ticket
-   * is not one: the failure is back and it deserves a report somebody will see in their open list,
-   * not a comment under a thread that reads as finished.
+   * The ticket to put this failure on, or null where there is none to put it on. The probe is
+   * <b>not DONE</b> rather than any one status, and that is the whole of the rule: DONE is the only
+   * word that says a person has finished with the thread, so it is the only one under which a fresh
+   * failure deserves a fresh ticket rather than a comment.
+   *
+   * <p><b>An IMPLEMENTED gate ticket is still the one to reuse</b>, and it is the case worth
+   * stating because it reads like a closed one. IMPLEMENTED says a fix was released and that verify
+   * is running — so a gate going red again while it holds is exactly the evidence that phase exists
+   * to gather, and it belongs on that thread. Filing a second ticket there would split the
+   * verification from the fix it is verifying and hide the most useful fact either one has. The
+   * same reading covers REPORTED, REFINED and VERIFIED: none of them claims anybody is done.
    */
-  private Ticket openTicket(String ticketId) {
+  private Ticket reusableTicket(String ticketId) {
     if (ticketId == null || ticketId.isBlank()) {
       return null;
     }
@@ -153,11 +166,25 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
       LOG.debugf("Gate-failure ticket %s could not be read; treating it as gone", ticketId);
       return null;
     }
-    return ticket.status == TicketStatus.OPEN ? ticket : null;
+    return ticket.status == TicketStatus.DONE ? null : ticket;
   }
 
   static String title(Rejection rejection) {
     return "The maintenance release request of " + named(rejection) + " is failing its gate";
+  }
+
+  /**
+   * The one sentence that says what occurs, in the shape {@code Ticket.impetus} asks for — the
+   * whole report is the description, and the length rule there is why it is not repeated here.
+   *
+   * <p>It names the repository and not the request id: a request is re-armed and superseded while
+   * the impetus must go on reading true for the life of the ticket, and what brought the ticket
+   * about is that this repository's gate is red with nobody watching.
+   */
+  static String impetus(Rejection rejection) {
+    return "The maintenance release request of `"
+        + named(rejection)
+        + "` fails its gate with nobody watching it, so the repository stops moving.";
   }
 
   /**

@@ -2039,11 +2039,11 @@ public class ReleaseRequests {
    * The request that a ticket was filed about has released after all — said on that ticket's thread,
    * and nothing more.
    *
-   * <p><b>The ticket is deliberately left OPEN.</b> A green build says this fold passes now; it does
-   * not say that whatever a person added to the thread in the meantime is handled, and a machine
-   * that files a report is a much cheaper thing to be wrong about than a machine that closes one.
-   * Somebody reading "this released as 2026.910.104616" and resolving it costs one press; a ticket
-   * auto-resolved over a discussion nobody finished costs the discussion.
+   * <p><b>The ticket is deliberately left where it is.</b> A green build says this fold passes now;
+   * it does not say that whatever a person added to the thread in the meantime is handled, and a
+   * machine that files a report is a much cheaper thing to be wrong about than a machine that
+   * closes one. Somebody reading "this released as 2026.910.104616" and moving the ticket on costs
+   * one press; a ticket auto-closed over a discussion nobody finished costs the discussion.
    *
    * <p>Last on the release path, after the row is RELEASED, and wrapped like every other call out
    * here: a release that has already happened must never be failed by a ticket store.

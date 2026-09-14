@@ -22,9 +22,10 @@ import java.util.UUID;
  * service} controller (this module has no dependency on {@code domain}), exactly as {@link
  * EpicService} has it.
  *
- * <p>A new ticket starts {@link TicketStatus#OPEN}; {@link #transition} is the only thing that
- * moves the status, and {@link TicketLifecycle} is where the legal moves live. Nothing here
- * freezes: see that class for why a ticket has no equivalent of the epic scope freeze.
+ * <p>A new ticket starts {@link TicketStatus#REPORTED}; {@link #transition} is the only thing that
+ * moves the status, one step at a time, and {@link TicketLifecycle} is where the adjacency rule
+ * lives. Nothing here freezes: see that class for why a ticket has no equivalent of the epic scope
+ * freeze.
  *
  * <p><b>Audit rows carry the TICKET's id as their subtree key</b> — the {@code epicId} argument of
  * {@code AuditService.record}, which is the root a change hangs under rather than a foreign key to
@@ -82,8 +83,11 @@ public class TicketService {
   }
 
   /**
-   * A new {@link TicketStatus#OPEN} ticket. {@code type} is the enum name and is required — a
-   * ticket that says neither bug nor improvement is a report nobody can triage.
+   * A new {@link TicketStatus#REPORTED} ticket. {@code type} is the enum name and is required — a
+   * ticket that says neither bug nor improvement is a report nobody can triage — and so is {@code
+   * impetus}, which is what a REPORTED ticket consists of: see {@link Ticket#impetus} for the
+   * length rule the intake surfaces quote. {@code description} is the refinement's output and is
+   * ordinarily absent here.
    *
    * <p>{@code changedBy} is both the audit principal and the stored {@code createdBy}: they are the
    * same fact asked at the same moment, and the column exists so a list has a reporter without a
@@ -93,12 +97,14 @@ public class TicketService {
   public Ticket create(
       String projectId,
       String title,
+      String impetus,
       String description,
       String type,
       String assignee,
       String changedBy) {
     Validations.requireText(projectId, "projectId");
     Validations.requireText(title, "title");
+    Validations.requireText(impetus, "impetus");
     Validations.requireText(type, "type");
     TicketType kind =
         TicketLifecycle.parseType(type)
@@ -119,9 +125,10 @@ public class TicketService {
                   Slugs.slugify(title, ticket.id, "ticket-"),
                   ticketRepository.listByProject(projectId).stream().map(t -> t.slug).toList());
           ticket.type = kind;
-          ticket.status = TicketStatus.OPEN;
+          ticket.status = TicketStatus.REPORTED;
           ticket.assignee = blankToNull(assignee);
           ticket.createdBy = changedBy;
+          ticket.impetus = impetus;
           ticket.description = description;
           ticketRepository.persist(ticket);
           auditService.record(
@@ -136,16 +143,25 @@ public class TicketService {
   }
 
   /**
-   * Partial update. A null {@code title}/{@code description}/{@code type} leaves that field
-   * unchanged; the two nullable fields change only when their {@code clear*} flag is true (→
-   * cleared) or a non-null value is supplied (→ set), so a retitle cannot silently unassign a
-   * ticket or drop its body. The same value/clear pairing {@code FeatureService.update} uses.
+   * Partial update. A null {@code title}/{@code impetus}/{@code description}/{@code type} leaves
+   * that field unchanged; the three nullable fields change only when their {@code clear*} flag is
+   * true (→ cleared) or a non-null value is supplied (→ set), so a retitle cannot silently unassign
+   * a ticket or drop its body. The same value/clear pairing {@code FeatureService.update} uses.
+   *
+   * <p><b>The impetus takes that pairing too, and is editable by triage</b> — a report filed in
+   * haste is often the wrong words for the right problem. It is nullable in the column (rows that
+   * predate V7 have none, and triage may write one onto them), so it is a nullable field on this
+   * surface like the other two: an omitted impetus never overwrites one, and emptying it is a
+   * deliberate act rather than the side effect of a blank form field. What this method must never
+   * be used for is restating the refinement here — see {@link Ticket#impetus}.
    *
    * <p>The status is deliberately not settable here: {@link #transition} is the only way it moves.
    */
   public Ticket update(
       String id,
       String title,
+      String impetus,
+      boolean clearImpetus,
       String description,
       boolean clearDescription,
       String type,
@@ -169,6 +185,11 @@ public class TicketService {
           Ticket ticket = get(id);
           if (title != null) {
             ticket.title = title;
+          }
+          if (clearImpetus) {
+            ticket.impetus = null;
+          } else if (impetus != null) {
+            ticket.impetus = impetus;
           }
           if (clearDescription) {
             ticket.description = null;
@@ -196,9 +217,10 @@ public class TicketService {
 
   /**
    * Moves a ticket to {@code target} (the enum name), rejecting a move the lifecycle does not allow
-   * with a 409 — today that is only a move to the status it is already in. A target naming no
-   * status is a 409 too, for the reason {@link EpicService#transition} gives; an absent one is a
-   * 400, because that is a malformed request rather than a refused move.
+   * with a 409 — that is anything other than one step forward or one step back along the five
+   * statuses, including a move to the status it already has. A target naming no status is a 409
+   * too, for the reason {@link EpicService#transition} gives; an absent one is a 400, because that
+   * is a malformed request rather than a refused move.
    */
   public Ticket transition(String id, String target, String changedBy) {
     Validations.requireText(target, "target");

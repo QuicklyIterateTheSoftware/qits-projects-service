@@ -117,7 +117,10 @@ public class UnattendedGateTicketTest {
 
     var ticket = given().get("/projects/api/tickets/" + ticketId).then().statusCode(200).extract();
     assertEquals("BUG", ticket.path("ticket.type"));
-    assertEquals("OPEN", ticket.path("ticket.status"));
+    assertEquals("REPORTED", ticket.path("ticket.status"));
+    assertTrue(
+        ((String) ticket.path("ticket.impetus")).contains(REPO_NAME),
+        "the impetus says in one sentence what occurs");
     assertNull(ticket.path("ticket.assignee"), "nobody was watching; nobody is assigned either");
     assertEquals("qits-projects", ticket.path("ticket.createdBy"), "this service is what noticed");
 
@@ -184,22 +187,25 @@ public class UnattendedGateTicketTest {
   }
 
   /**
-   * Somebody resolved the ticket and the gate went red again. That is a fresh report, not a comment
-   * under a thread that reads as finished — the failure has to land somewhere an open list shows it.
+   * Somebody walked the ticket all the way to DONE and the gate went red again. That is a fresh
+   * report, not a comment under a thread that reads as finished. DONE is the only status this
+   * probe treats that way: every earlier one still claims somebody is on it.
    */
   @Test
-  public void aFailureAfterTheTicketWasResolvedFilesAFreshOne() {
+  public void aFailureAfterTheTicketReachedDoneFilesAFreshOne() {
     String id = create("maintenance/dependencies", ROBOT);
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
     String first = awaitTicketOn(id);
 
-    given()
-        .contentType(ContentType.JSON)
-        .body("{\"target\":\"RESOLVED\"}")
-        .post("/projects/api/tickets/" + first + "/transition")
-        .then()
-        .statusCode(200);
+    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      given()
+          .contentType(ContentType.JSON)
+          .body("{\"target\":\"" + target + "\"}")
+          .post("/projects/api/tickets/" + first + "/transition")
+          .then()
+          .statusCode(200);
+    }
 
     headMoved("maintenance/dependencies");
     awaitState(id, "PENDING");
@@ -212,11 +218,11 @@ public class UnattendedGateTicketTest {
   }
 
   /**
-   * It healed. The thread is told, and the ticket is <b>left open</b> — a green build says the fold
-   * passes now, not that everything said on the thread is handled.
+   * It healed. The thread is told, and the ticket is <b>left where it is</b> — a green build says
+   * the fold passes now, not that everything said on the thread is handled.
    */
   @Test
-  public void aReleaseSaysSoOnTheTicketAndLeavesItOpen() {
+  public void aReleaseSaysSoOnTheTicketAndLeavesItWhereItIs() {
     activeBuilds.answer(Optional.of(0));
     String id = create("maintenance/dependencies", ROBOT);
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
@@ -230,7 +236,7 @@ public class UnattendedGateTicketTest {
 
     awaitComment(ticketId, "released as");
     assertEquals(
-        "OPEN",
+        "REPORTED",
         given()
             .get("/projects/api/tickets/" + ticketId)
             .then()

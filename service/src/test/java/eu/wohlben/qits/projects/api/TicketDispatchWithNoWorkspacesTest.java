@@ -75,7 +75,13 @@ public class TicketDispatchWithNoWorkspacesTest {
             .path("project.id");
     String ticketId =
         asAdmin()
-            .body(Map.of("title", "Nobody to dispatch", "type", "BUG"))
+            .body(Map.of(
+                    "title",
+                    "Nobody to dispatch",
+                    "type",
+                    "BUG",
+                    "impetus",
+                    "something occurs in this project"))
             .when()
             .post("/projects/api/projects/" + projectId + "/tickets")
             .then()

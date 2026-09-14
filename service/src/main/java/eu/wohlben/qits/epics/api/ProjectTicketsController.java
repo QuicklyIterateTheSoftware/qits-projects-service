@@ -79,9 +79,18 @@ public class ProjectTicketsController {
    * nor improvement is a report nobody can triage. There is deliberately no {@code createdBy} on
    * this request: it is stamped from the caller's identity, so nobody can file a ticket as somebody
    * else.
+   *
+   * <p><b>{@code impetus} is required and {@code description} is not</b>, which is the intake shape
+   * the lifecycle asks for: a filed ticket is REPORTED, and a REPORTED ticket is an impetus and
+   * nothing else. The description is the refine phase's output and is ordinarily written later. See
+   * {@code Ticket.impetus} for the length rule a caller is expected to keep to.
    */
   public record CreateTicketRequest(
-      @NotBlank String title, String description, @NotBlank String type, String assignee) {
+      @NotBlank String title,
+      @NotBlank String impetus,
+      String description,
+      @NotBlank String type,
+      String assignee) {
     public record Response(TicketDto ticket) {}
   }
 
@@ -93,6 +102,7 @@ public class ProjectTicketsController {
         ticketService.create(
             projectId,
             request.title(),
+            request.impetus(),
             request.description(),
             request.type(),
             request.assignee(),

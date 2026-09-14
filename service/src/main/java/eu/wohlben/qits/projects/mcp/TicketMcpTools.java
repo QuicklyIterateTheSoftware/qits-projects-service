@@ -24,13 +24,15 @@ import java.util.List;
  * <p><strong>Use case: the small thing found on the way.</strong> An agent working in a repository
  * notices something wrong that is not what it was asked to do. Filing it as an epic would put a
  * plan on the board where a note belongs; {@code create_ticket} is the note. The same surface reads
- * the open tickets, so an agent asked to "fix the outstanding bugs" has somewhere to look.
+ * the project's tickets by status, so an agent asked to "fix the outstanding bugs" has somewhere to
+ * look — REFINED is the work that is ready to be picked up.
  *
  * <p><strong>Unlike epics, the transition IS here.</strong> {@code EpicMcpTools} deliberately
  * exposes no lifecycle move, because freezing a plan is a human decision about committing to scope.
- * Resolving a ticket is a statement about work that is done, which is exactly the thing the agent
- * that did it knows and nobody else does yet — and it is reversible, so a wrong answer costs a
- * click rather than a superseded epic.
+ * Every ticket status is a statement about what has been achieved — refined, implemented, verified
+ * — which is exactly the thing the agent that did the work knows and nobody else does yet; and
+ * every move is reversible one step, so a wrong answer costs a call rather than a superseded epic.
+ * The last move, to DONE, is still a person's: closing is a judgement about the thread.
  *
  * <p>Scope comes from {@link ProjectScope} (the {@code X-QITS-Project} header), never from a tool
  * argument, and every id a tool is handed is checked back to that project — a ticket or comment in
@@ -68,7 +70,12 @@ public class TicketMcpTools {
 
   // --- Result shapes --------------------------------------------------------
 
-  /** A ticket as it appears in a list: no thread, just enough to choose one. */
+  /**
+   * A ticket as it appears in a list: no thread, just enough to choose one. It carries both
+   * {@code impetus} (what was originally asked for) and {@code description} (what refinement
+   * decided to do about it), because which of the two is present is how a reader tells a bare
+   * report from a refined one without asking again.
+   */
   public record TicketSummary(
       String id,
       String slug,
@@ -77,6 +84,7 @@ public class TicketMcpTools {
       String status,
       String assignee,
       String createdBy,
+      String impetus,
       String description) {}
 
   /** One remark inside {@link TicketDetail}. */
@@ -91,6 +99,7 @@ public class TicketMcpTools {
       String status,
       String assignee,
       String createdBy,
+      String impetus,
       String description,
       List<CommentDetail> comments) {}
 
@@ -102,12 +111,18 @@ public class TicketMcpTools {
       description =
           "List the tickets of the project this session is scoped to, oldest first, without their"
               + " comments. A ticket is a small-scoped piece of work — a BUG or an IMPROVEMENT —"
-              + " that is not big enough to be an epic. Call it with status=\"OPEN\" to find what"
-              + " is still outstanding.")
+              + " that is not big enough to be an epic. Its status says what has been achieved so"
+              + " far: REPORTED (somebody said what is wrong), REFINED (the ticket says what to"
+              + " do), IMPLEMENTED (the change is released and deployed), VERIFIED (it no longer"
+              + " occurs on the platform), DONE (closed). Call it with status=\"REFINED\" to find"
+              + " the work that is ready to be picked up, or status=\"REPORTED\" to find what"
+              + " still needs refining.")
   public List<TicketSummary> listTickets(
       @ToolArg(
               required = false,
-              description = "exact status to filter by: OPEN or RESOLVED. Omit for every ticket.")
+              description =
+                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTED, VERIFIED or DONE."
+                      + " Omit for every ticket.")
           String status) {
     return ticketService.listByProject(scope.requireProjectId(), status).stream()
         .map(TicketMcpTools::summarize)
@@ -135,6 +150,7 @@ public class TicketMcpTools {
         ticket.status.name(),
         ticket.assignee,
         ticket.createdBy,
+        ticket.impetus,
         ticket.description,
         comments);
   }
@@ -143,21 +159,40 @@ public class TicketMcpTools {
   @Tool(
       name = "create_ticket",
       description =
-          "File a new ticket on this project. It is created OPEN. Use this for the small thing you"
-              + " found on the way — a defect, or something that works and could work better —"
-              + " rather than proposing an epic for it: an epic is a plan, a ticket is a note. Say"
-              + " in the description how to see the problem, not just that it exists.")
+          "File a new ticket on this project. It is created REPORTED, which means somebody has"
+              + " said what is wrong and nothing more — refining it into a plan of work is the next"
+              + " phase and not yours here. Use this for the small thing you found on the way — a"
+              + " defect, or something that works and could work better — rather than proposing an"
+              + " epic for it: an epic is a plan, a ticket is a note. The impetus is the whole of"
+              + " what a filed ticket needs; the description is optional at intake and is"
+              + " ordinarily left empty, because it is the refinement's output rather than yours.")
   public TicketSummary createTicket(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(description = "BUG for something behaving wrongly, IMPROVEMENT for something that"
               + " works and could be better")
           String type,
-      @ToolArg(required = false, description = "the long-form Markdown body") String description,
+      @ToolArg(
+              description =
+                  "why this ticket exists, in your own words: either \"{some error} occurs {in"
+                      + " some context}\" or \"{an existing part} should be {something to"
+                      + " introduce or improve}\". Almost always one sentence, rarely a paragraph,"
+                      + " very rarely two. For a bug you may include the steps to reproduce, and"
+                      + " they do not count against that length. Keep to it: an impetus that grows"
+                      + " into an essay is indistinguishable from the refined description and stops"
+                      + " being a record of what was originally asked for.")
+          String impetus,
+      @ToolArg(
+              required = false,
+              description =
+                  "the refinement's long-form Markdown output — what to do about the impetus."
+                      + " Omit it at intake unless you are recording a decision that has already"
+                      + " been made.")
+          String description,
       @ToolArg(required = false, description = "who is looking at it; omit for nobody")
           String assignee) {
     Ticket ticket =
         ticketService.create(
-            scope.requireProjectId(), title, description, type, assignee, changedBy());
+            scope.requireProjectId(), title, impetus, description, type, assignee, changedBy());
     announce();
     return summarize(ticket);
   }
@@ -166,12 +201,24 @@ public class TicketMcpTools {
   @Tool(
       name = "update_ticket",
       description =
-          "Change a ticket's title, description, type or assignee. Omitted fields keep their"
-              + " current value. The status is not editable here — use transition_ticket, which is"
-              + " the only thing that moves it.")
+          "Change a ticket's title, impetus, description, type or assignee. Omitted fields keep"
+              + " their current value. Writing the description is how the refine phase does its"
+              + " work: it is what turns a REPORTED ticket into one that says what to do, and the"
+              + " transition to REFINED is the claim that it now does. The impetus is editable"
+              + " because a report filed in haste is often the wrong words for the right problem —"
+              + " but never rewrite it to say what you decided: it is the record of what was"
+              + " originally asked for, and the description is where a decision goes. The status is"
+              + " not editable here — use transition_ticket, which is the only thing that moves"
+              + " it.")
   public TicketSummary updateTicket(
       @ToolArg(description = "id of a ticket in this project") String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
+      @ToolArg(
+              required = false,
+              description =
+                  "a correction of what was originally asked for; omit to keep it. Same length"
+                      + " rule as at create: one sentence, rarely more.")
+          String impetus,
       @ToolArg(required = false, description = "new description; omit to keep it")
           String description,
       @ToolArg(required = false, description = "BUG or IMPROVEMENT; omit to keep it") String type,
@@ -182,7 +229,8 @@ public class TicketMcpTools {
     // deliberate act in a form, and a model that meant "no value" would reach for a null it cannot
     // express here anyway.
     Ticket ticket =
-        ticketService.update(id, title, description, false, type, assignee, false, changedBy());
+        ticketService.update(
+            id, title, impetus, false, description, false, type, assignee, false, changedBy());
     announce();
     return summarize(ticket);
   }
@@ -191,13 +239,27 @@ public class TicketMcpTools {
   @Tool(
       name = "transition_ticket",
       description =
-          "Move a ticket to RESOLVED when the work is done, or back to OPEN when it turns out not"
-              + " to be. Both directions are legal and nothing is frozen by either — unlike an"
-              + " epic, a ticket you resolve by mistake simply reopens. Asking for the status it"
-              + " already has is refused.")
+          "Move a ticket one step along its lifecycle. A status is a claim about what has been"
+              + " ACHIEVED, so only move to one you can honestly make: REPORTED — somebody said"
+              + " what is wrong; REFINED — the ticket now says what to do; IMPLEMENTED — the change"
+              + " is released AND deployed, not merely merged; VERIFIED — you checked the platform"
+              + " and it no longer occurs; DONE — closed, which is a person's call. MOVES ARE"
+              + " ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED"
+              + " <-> DONE, one step at a time, and asking for the status the ticket already has is"
+              + " refused. There is no reject verb: a verification that fails is the ordinary move"
+              + " back from IMPLEMENTED to REFINED, because what it establishes is that the ticket"
+              + " needs deciding again. Nothing is terminal — DONE reopens to VERIFIED like any"
+              + " other move — so a wrong answer costs one more call.")
   public TicketSummary transitionTicket(
-      @ToolArg(description = "id of a ticket in this project") String id,
-      @ToolArg(description = "the status to move to: RESOLVED or OPEN") String target) {
+      @ToolArg(
+              description =
+                  "id of a ticket in this project")
+          String id,
+      @ToolArg(
+              description =
+                  "the status to move to; must be a neighbour of the ticket's current one:"
+                      + " REPORTED, REFINED, IMPLEMENTED, VERIFIED or DONE")
+          String target) {
     requireTicketInProject(id);
     Ticket ticket = ticketService.transition(id, target, changedBy());
     announce();
@@ -293,6 +355,7 @@ public class TicketMcpTools {
         ticket.status.name(),
         ticket.assignee,
         ticket.createdBy,
+        ticket.impetus,
         ticket.description);
   }
 }

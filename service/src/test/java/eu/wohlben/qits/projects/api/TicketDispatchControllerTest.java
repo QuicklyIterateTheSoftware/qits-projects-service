@@ -65,7 +65,16 @@ public class TicketDispatchControllerTest {
     return asAdmin("setup")
         .body(
             java.util.Map.of(
-                "title", title, "type", type, "description", description, "assignee", "dana"))
+                "title",
+                title,
+                "type",
+                type,
+                "impetus",
+                "something occurs in this project",
+                "description",
+                description,
+                "assignee",
+                "dana"))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()

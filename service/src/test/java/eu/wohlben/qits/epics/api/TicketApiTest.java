@@ -47,7 +47,9 @@ class TicketApiTest {
   private String createTicket(String projectId, String title, String type) {
     return given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest(title, null, type, null))
+        .body(
+            new ProjectTicketsController.CreateTicketRequest(
+                title, "something occurs in this project", null, type, null))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()
@@ -80,7 +82,11 @@ class TicketApiTest {
             .contentType(ContentType.JSON)
             .body(
                 new ProjectTicketsController.CreateTicketRequest(
-                    "Login button does nothing", "It just sits there", "BUG", "alice"))
+                    "Login button does nothing",
+                    "clicking the login button does nothing on the sign-in page",
+                    "It just sits there",
+                    "BUG",
+                    "alice"))
             .when()
             .post("/projects/api/projects/" + projectId + "/tickets")
             .then()
@@ -90,8 +96,11 @@ class TicketApiTest {
             .body("ticket.title", equalTo("Login button does nothing"))
             .body("ticket.slug", equalTo("login-button-does-nothing"))
             .body("ticket.type", equalTo("BUG"))
-            // A new ticket is open — the lifecycle's starting point.
-            .body("ticket.status", equalTo("OPEN"))
+            // A filed ticket has been REPORTED and no more — the lifecycle's starting point.
+            .body("ticket.status", equalTo("REPORTED"))
+            .body(
+                "ticket.impetus",
+                equalTo("clicking the login button does nothing on the sign-in page"))
             .body("ticket.assignee", equalTo("alice"))
             // Stamped from the identity, never from the body.
             .body("ticket.createdBy", equalTo("dev"))
@@ -119,7 +128,7 @@ class TicketApiTest {
         .contentType(ContentType.JSON)
         .body(
             new TicketController.UpdateTicketRequest(
-                "Login button is inert", null, false, "IMPROVEMENT", null, false))
+                "Login button is inert", null, false, null, false, "IMPROVEMENT", null, false))
         .when()
         .put("/projects/api/tickets/" + ticketId)
         .then()
@@ -127,27 +136,39 @@ class TicketApiTest {
         .body("ticket.title", equalTo("Login button is inert"))
         .body("ticket.type", equalTo("IMPROVEMENT"))
         .body("ticket.description", equalTo("It just sits there"))
+        .body(
+            "ticket.impetus",
+            equalTo("clicking the login button does nothing on the sign-in page"))
         .body("ticket.assignee", equalTo("alice"))
         // The slug is the row's stable address, so a rename never touches it.
         .body("ticket.slug", equalTo("login-button-does-nothing"));
 
-    // Transition both ways.
+    // Transition, one adjacent step at a time, and back again.
     given()
         .contentType(ContentType.JSON)
-        .body(new TicketController.TransitionTicketRequest("RESOLVED"))
+        .body(new TicketController.TransitionTicketRequest("REFINED"))
         .when()
         .post("/projects/api/tickets/" + ticketId + "/transition")
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("RESOLVED"));
+        .body("ticket.status", equalTo("REFINED"));
     given()
         .contentType(ContentType.JSON)
-        .body(new TicketController.TransitionTicketRequest("OPEN"))
+        .body(new TicketController.TransitionTicketRequest("IMPLEMENTED"))
         .when()
         .post("/projects/api/tickets/" + ticketId + "/transition")
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("OPEN"));
+        .body("ticket.status", equalTo("IMPLEMENTED"));
+    // A failed verification is this ordinary backward move and not a verb of its own.
+    given()
+        .contentType(ContentType.JSON)
+        .body(new TicketController.TransitionTicketRequest("REFINED"))
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .then()
+        .statusCode(200)
+        .body("ticket.status", equalTo("REFINED"));
 
     // Comments: created under the ticket, then edited on their own root.
     String commentId =
@@ -241,27 +262,38 @@ class TicketApiTest {
   @TestSecurity(user = "dev", roles = "qits:admin")
   void theListFiltersByStatusAndRefusesATypo() {
     String projectId = createProject();
-    String open = createTicket(projectId, "Still broken", "BUG");
-    String resolved = createTicket(projectId, "Fixed", "BUG");
+    String reported = createTicket(projectId, "Still broken", "BUG");
+    String refined = createTicket(projectId, "Described", "BUG");
     given()
         .contentType(ContentType.JSON)
-        .body(new TicketController.TransitionTicketRequest("RESOLVED"))
+        .body(new TicketController.TransitionTicketRequest("REFINED"))
         .when()
-        .post("/projects/api/tickets/" + resolved + "/transition")
+        .post("/projects/api/tickets/" + refined + "/transition")
         .then()
         .statusCode(200);
 
     given()
         .when()
-        .get("/projects/api/projects/" + projectId + "/tickets?status=OPEN")
+        .get("/projects/api/projects/" + projectId + "/tickets?status=REPORTED")
         .then()
         .statusCode(200)
-        .body("entries.ticket.id", contains(open));
-
-    // A typo must not read as "no tickets".
+        .body("entries.ticket.id", contains(reported));
     given()
         .when()
-        .get("/projects/api/projects/" + projectId + "/tickets?status=RESOLVD")
+        .get("/projects/api/projects/" + projectId + "/tickets?status=REFINED")
+        .then()
+        .statusCode(200)
+        .body("entries.ticket.id", contains(refined));
+
+    // A typo must not read as "no tickets", and the retired vocabulary is now one.
+    given()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/tickets?status=REFIND")
+        .then()
+        .statusCode(Response.Status.BAD_REQUEST.getStatusCode());
+    given()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/tickets?status=OPEN")
         .then()
         .statusCode(Response.Status.BAD_REQUEST.getStatusCode());
   }
@@ -296,7 +328,7 @@ class TicketApiTest {
             .contentType(ContentType.JSON)
             .body(
                 new ProjectTicketsController.CreateTicketRequest(
-                    "Assigned", "a body", "BUG", "alice"))
+                    "Assigned", "the list is unsorted", "a body", "BUG", "alice"))
             .when()
             .post("/projects/api/projects/" + projectId + "/tickets")
             .then()
@@ -304,25 +336,29 @@ class TicketApiTest {
             .extract()
             .path("ticket.id");
 
-    // A title-only edit touches neither — this is the defect the flags exist to stop.
+    // A title-only edit touches none of the three — the defect the flags exist to stop.
     given()
         .contentType(ContentType.JSON)
         .body(
-            new TicketController.UpdateTicketRequest("Renamed", null, false, null, null, false))
+            new TicketController.UpdateTicketRequest(
+                "Renamed", null, false, null, false, null, null, false))
         .when()
         .put("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(200)
+        .body("ticket.impetus", equalTo("the list is unsorted"))
         .body("ticket.description", equalTo("a body"))
         .body("ticket.assignee", equalTo("alice"));
 
     given()
         .contentType(ContentType.JSON)
-        .body(new TicketController.UpdateTicketRequest(null, null, true, null, null, true))
+        .body(
+            new TicketController.UpdateTicketRequest(null, null, true, null, true, null, null, true))
         .when()
         .put("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(200)
+        .body("ticket.impetus", nullValue())
         .body("ticket.description", nullValue())
         .body("ticket.assignee", nullValue());
   }
@@ -333,12 +369,21 @@ class TicketApiTest {
   @TestSecurity(user = "dev", roles = "qits:admin")
   void anIllegalTransitionTargetIs409() {
     String projectId = createProject();
-    String ticketId = createTicket(projectId, "Open already", "BUG");
+    String ticketId = createTicket(projectId, "Reported already", "BUG");
 
-    // Already OPEN: the move is refused rather than being a no-op.
+    // Already REPORTED: the move is refused rather than being a no-op.
     given()
         .contentType(ContentType.JSON)
-        .body(new TicketController.TransitionTicketRequest("OPEN"))
+        .body(new TicketController.TransitionTicketRequest("REPORTED"))
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .then()
+        .statusCode(Response.Status.CONFLICT.getStatusCode());
+
+    // And so is a status that exists but is not a neighbour: moves are one step at a time.
+    given()
+        .contentType(ContentType.JSON)
+        .body(new TicketController.TransitionTicketRequest("IMPLEMENTED"))
         .when()
         .post("/projects/api/tickets/" + ticketId + "/transition")
         .then()
@@ -394,7 +439,8 @@ class TicketApiTest {
 
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest("Broken login", null, "BUG", null))
+        .body(new ProjectTicketsController.CreateTicketRequest(
+                "Broken login", "the login page is broken", null, "BUG", null))
         .when()
         .post("/projects/api/projects/" + projectA + "/tickets")
         .then()
@@ -402,7 +448,8 @@ class TicketApiTest {
         .body("ticket.slug", equalTo("broken-login"));
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest("Broken   LOGIN!", null, "BUG", null))
+        .body(new ProjectTicketsController.CreateTicketRequest(
+                "Broken   LOGIN!", "the login page is broken", null, "BUG", null))
         .when()
         .post("/projects/api/projects/" + projectA + "/tickets")
         .then()
@@ -412,7 +459,8 @@ class TicketApiTest {
     // Another project is another scope, so the clean slug is free again.
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest("Broken login", null, "BUG", null))
+        .body(new ProjectTicketsController.CreateTicketRequest(
+                "Broken login", "the login page is broken", null, "BUG", null))
         .when()
         .post("/projects/api/projects/" + projectB + "/tickets")
         .then()
@@ -425,7 +473,8 @@ class TicketApiTest {
   void createTicketUnderUnknownProjectIs404() {
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest("X", null, "BUG", null))
+        .body(new ProjectTicketsController.CreateTicketRequest(
+                "X", "something occurs", null, "BUG", null))
         .when()
         .post("/projects/api/projects/ghost/tickets")
         .then()
@@ -466,22 +515,41 @@ class TicketApiTest {
 
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest("  ", null, "BUG", null))
+        .body(new ProjectTicketsController.CreateTicketRequest(
+                "  ", "something occurs", null, "BUG", null))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()
         .statusCode(anyOf(equalTo(Response.Status.BAD_REQUEST.getStatusCode()), equalTo(422)));
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest("T", null, "  ", null))
+        .body(new ProjectTicketsController.CreateTicketRequest(
+                "T", "something occurs", null, "  ", null))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()
         .statusCode(anyOf(equalTo(Response.Status.BAD_REQUEST.getStatusCode()), equalTo(422)));
+    // The impetus is required at intake: a REPORTED ticket is an impetus and nothing else.
+    given()
+        .contentType(ContentType.JSON)
+        .body(new ProjectTicketsController.CreateTicketRequest("T", null, null, "BUG", null))
+        .when()
+        .post("/projects/api/projects/" + projectId + "/tickets")
+        .then()
+        .statusCode(anyOf(equalTo(Response.Status.BAD_REQUEST.getStatusCode()), equalTo(422)));
+    given()
+        .contentType(ContentType.JSON)
+        .body(new ProjectTicketsController.CreateTicketRequest("T", "  ", null, "BUG", null))
+        .when()
+        .post("/projects/api/projects/" + projectId + "/tickets")
+        .then()
+        .statusCode(anyOf(equalTo(Response.Status.BAD_REQUEST.getStatusCode()), equalTo(422)));
+
     // A type that is present and names nothing is the service's 400, not the validator's.
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectTicketsController.CreateTicketRequest("T", null, "DEFECT", null))
+        .body(new ProjectTicketsController.CreateTicketRequest(
+                "T", "something occurs", null, "DEFECT", null))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()
@@ -498,7 +566,9 @@ class TicketApiTest {
     // A supplied-but-blank title on the partial update is NotBlankIfPresent's refusal.
     given()
         .contentType(ContentType.JSON)
-        .body(new TicketController.UpdateTicketRequest("  ", null, false, null, null, false))
+        .body(
+            new TicketController.UpdateTicketRequest(
+                "  ", null, false, null, false, null, null, false))
         .when()
         .put("/projects/api/tickets/" + ticketId)
         .then()

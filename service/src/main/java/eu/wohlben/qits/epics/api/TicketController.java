@@ -63,15 +63,20 @@ public class TicketController {
   }
 
   /**
-   * Partial update: a null {@code title}/{@code type} leaves it unchanged. The two nullable fields
-   * change only when their {@code clear*} flag is true (→ cleared) or a non-null value is supplied
-   * (→ set), so a retitle can't silently unassign a ticket or drop its body — the pairing {@code
-   * FeatureController.UpdateFeatureRequest} carries.
+   * Partial update: a null {@code title}/{@code type} leaves it unchanged. The three nullable
+   * fields change only when their {@code clear*} flag is true (→ cleared) or a non-null value is
+   * supplied (→ set), so a retitle can't silently unassign a ticket or drop its body — the pairing
+   * {@code FeatureController.UpdateFeatureRequest} carries.
+   *
+   * <p>{@code impetus} is editable here because triage corrects reports; what it must not become is
+   * a second place to write the refinement — see {@code Ticket.impetus} for the length rule.
    *
    * <p>The status is deliberately absent: {@link #transition} is the only thing that moves it.
    */
   public record UpdateTicketRequest(
       @NotBlankIfPresent String title,
+      @NotBlankIfPresent String impetus,
+      boolean clearImpetus,
       String description,
       boolean clearDescription,
       @NotBlankIfPresent String type,
@@ -88,6 +93,8 @@ public class TicketController {
         ticketService.update(
             id,
             request.title(),
+            request.impetus(),
+            request.clearImpetus(),
             request.description(),
             request.clearDescription(),
             request.type(),
@@ -99,9 +106,11 @@ public class TicketController {
   }
 
   /**
-   * A lifecycle move. {@code target} is the status name — {@code RESOLVED} or {@code OPEN}, both
-   * directions being legal. A move the lifecycle does not allow, and a target naming no status,
-   * both answer 409 with a message; an absent target is a 400.
+   * A lifecycle move. {@code target} is the status name, and the move must be to a NEIGHBOUR of the
+   * ticket's current status along REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE — one step,
+   * forward or back. A move the lifecycle does not allow (including a move to the status the ticket
+   * already has), and a target naming no status, both answer 409 with a message; an absent target
+   * is a 400.
    */
   public record TransitionTicketRequest(String target) {
     public record Response(TicketDto ticket) {}

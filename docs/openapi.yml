@@ -557,9 +557,13 @@ components:
       type: object
       required:
       - title
+      - impetus
       - type
       properties:
         title:
+          type: string
+          pattern: \S
+        impetus:
           type: string
           pattern: \S
         description:
@@ -1896,6 +1900,8 @@ components:
           type: string
         createdBy:
           type: string
+        impetus:
+          type: string
         description:
           type: string
         createdAt:
@@ -1991,6 +1997,10 @@ components:
       properties:
         title:
           type: string
+        impetus:
+          type: string
+        clearImpetus:
+          type: boolean
         description:
           type: string
         clearDescription:
@@ -5665,4 +5675,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.913.131024
+  version: 2026.913.200802

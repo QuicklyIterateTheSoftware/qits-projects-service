@@ -823,15 +823,37 @@ somebody writes, not a foreign key somebody sets.
 
 **Almost everything here is the epics module's idiom applied again** — `TicketService` on
 `ReadPatience`/`WritePatience` with no `@Transactional`, in-service cascade delete so each removed
-comment gets its own audit row, the `value` + `clear*` pairing on the two nullable fields, a target
-naming no status answering 409 while an absent one answers 400. Three things are *different*, and
-each one is a decision rather than a simplification:
+comment gets its own audit row, the `value` + `clear*` pairing on the three nullable fields, a
+target naming no status answering 409 while an absent one answers 400. Three things are *different*,
+and each one is a decision rather than a simplification:
 
 - **Nothing freezes.** `EpicLifecycle`'s whole subject is which fields a phase still permits,
   because an epic carries a scope that was committed to. `TicketLifecycle` has no `requireOpen` and
-  must not grow one: a resolved ticket stays editable, commentable and reopenable, and the
-  alternative — refusing writes once resolved — only means filing a duplicate whenever a resolution
-  turns out to be wrong. `OPEN ↔ RESOLVED` both ways, no terminal status.
+  must not grow one: a DONE ticket stays editable, commentable and reopenable, and the
+  alternative — refusing writes once closed — only means filing a duplicate whenever a closure
+  turns out to be wrong.
+
+  **The lifecycle is five phases (V7, 2026-09-14):** `REPORTED → REFINED → IMPLEMENTED → VERIFIED →
+  DONE`. **A status is what has been ACHIEVED, and the phase that runs while it holds is what
+  happens next** — REPORTED means somebody said what is wrong (refine runs), REFINED means the
+  ticket says what to do (implement runs), IMPLEMENTED means the change is released and deployed
+  (verify runs), VERIFIED means it no longer occurs on the platform (a person closes it), DONE means
+  closed. So no status names work in flight and there must never be an `IN_PROGRESS`. Moves are
+  **adjacent-only in either direction**, asking for the status a ticket already has stays refused,
+  there is no reject verb — a failed verification is the ordinary backward move `IMPLEMENTED →
+  REFINED` — and nothing is terminal: DONE reopens to VERIFIED like any other move.
+
+  **`impetus` is the intake field and `description` is the refinement's output.** A REPORTED ticket
+  has an impetus and nothing else. The impetus takes one of two shapes — *"{some error} occurs {in
+  some context}"* or *"{an existing part} should be {something to introduce or improve}"* — and is
+  almost always one sentence, rarely a paragraph, very rarely two; a bug's steps to reproduce may be
+  included and do not count against that length. The rule exists because an impetus that grows into
+  an essay is indistinguishable from the refined description and stops being a record of what was
+  originally asked for. It is never rewritten by a later phase, and stays editable by triage. The
+  column is nullable (V7 invents none for the rows that predate it) and required at every intake
+  surface. V7 also remaps the old vocabulary: `OPEN → REFINED`, because today's ticket descriptions
+  are already refinement-grade so no open ticket goes back through phase 1, and `RESOLVED → DONE`,
+  because nobody verified those against the platform.
 - **`created_by` and `author` are columns, and they are STAMPED.** Every other actor in this module
   lives only in the audit log. These two are duplicated onto the live rows because a ticket list
   wants a reporter and a thread wants a writer without a join per row — and they are read from the

@@ -139,11 +139,14 @@ public class TicketMcpToolsTest {
     call(
         projectId,
         "create_ticket",
-        Map.of("title", title, "type", type, "description", "found by the agent"),
+        Map.of("title", title, "type", type, "impetus", "something occurs in this project"),
         response -> {
           assertFalse(response.isError(), text(response));
           String body = text(response);
-          assertTrue(body.contains("\"OPEN\""), "a new ticket must be open: " + body);
+          assertTrue(body.contains("\"REPORTED\""), "a filed ticket must be REPORTED: " + body);
+          assertTrue(
+              body.contains("something occurs in this project"),
+              "and it must carry the impetus it was filed with: " + body);
           id[0] = idIn(body);
         });
     return id[0];
@@ -250,23 +253,24 @@ public class TicketMcpToolsTest {
   @Test
   public void filtersTheListByStatus() {
     String projectId = createProject("Ticket Filtered");
-    String open = createTicket(projectId, "Still broken", "BUG");
-    String resolved = createTicket(projectId, "Fixed", "IMPROVEMENT");
+    String reported = createTicket(projectId, "Still broken", "BUG");
+    String refined = createTicket(projectId, "Described", "IMPROVEMENT");
     call(
         projectId,
         "transition_ticket",
-        Map.of("id", resolved, "target", "RESOLVED"),
+        Map.of("id", refined, "target", "REFINED"),
         response -> assertFalse(response.isError(), text(response)));
 
     call(
         projectId,
         "list_tickets",
-        Map.of("status", "OPEN"),
+        Map.of("status", "REPORTED"),
         response -> {
           assertFalse(response.isError(), text(response));
           String body = text(response);
-          assertTrue(body.contains(open), "the open ticket is what the filter is for: " + body);
-          assertFalse(body.contains(resolved), "a resolved ticket is not open: " + body);
+          assertTrue(
+              body.contains(reported), "the unrefined ticket is what the filter is for: " + body);
+          assertFalse(body.contains(refined), "a refined ticket is not a reported one: " + body);
         });
   }
 
@@ -276,7 +280,7 @@ public class TicketMcpToolsTest {
     call(
         projectId,
         "list_tickets",
-        Map.of("status", "RESOLVD"),
+        Map.of("status", "REFIND"),
         response -> {
           assertTrue(response.isError(), "a typo must not read as 'no tickets'");
           assertTrue(text(response).contains("Unknown ticket status"), text(response));
@@ -289,10 +293,52 @@ public class TicketMcpToolsTest {
     call(
         projectId,
         "create_ticket",
-        Map.of("title", "Mistyped", "type", "DEFECT"),
+        Map.of("title", "Mistyped", "type", "DEFECT", "impetus", "something occurs"),
         response -> {
           assertTrue(response.isError(), "a type naming nothing must be refused");
           assertTrue(text(response).contains("Unknown ticket type"), text(response));
+        });
+  }
+
+  @Test
+  public void theRefinementIsWrittenWithUpdateAndClaimedWithATransition() {
+    // The two halves of the refine phase as an agent performs them: write what to do into the
+    // description, then claim it by moving REPORTED -> REFINED. The impetus is left alone — it is
+    // the record of what was originally asked for.
+    String projectId = createProject("Ticket Refining");
+    String ticketId = createTicket(projectId, "Inert button", "BUG");
+
+    call(
+        projectId,
+        "update_ticket",
+        Map.of("id", ticketId, "description", "Re-issue the session before the click handler runs."),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains("Re-issue the session"), body);
+          assertTrue(
+              body.contains("something occurs in this project"),
+              "the impetus is not rewritten by a later phase: " + body);
+          assertTrue(body.contains("\"REPORTED\""), "writing the description moves nothing: " + body);
+        });
+
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "REFINED"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"REFINED\""), text(response));
+        });
+
+    // And triage may still correct the words it was reported in.
+    call(
+        projectId,
+        "update_ticket",
+        Map.of("id", ticketId, "impetus", "the login button does nothing while a session is expired"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("while a session is expired"), text(response));
         });
   }
 
@@ -398,41 +444,53 @@ public class TicketMcpToolsTest {
   // --- The lifecycle --------------------------------------------------------
 
   @Test
-  public void resolvesAndReopensATicket() {
+  public void walksATicketForwardAndBackOneStepAtATime() {
     String projectId = createProject("Ticket Cycle");
     String ticketId = createTicket(projectId, "Round trip", "BUG");
 
+    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      call(
+          projectId,
+          "transition_ticket",
+          Map.of("id", ticketId, "target", target),
+          response -> {
+            assertFalse(response.isError(), text(response));
+            assertTrue(text(response).contains("\"" + target + "\""), text(response));
+          });
+    }
+    // Nothing is terminal: DONE reopens to VERIFIED like any other move.
     call(
         projectId,
         "transition_ticket",
-        Map.of("id", ticketId, "target", "RESOLVED"),
+        Map.of("id", ticketId, "target", "VERIFIED"),
         response -> {
           assertFalse(response.isError(), text(response));
-          assertTrue(text(response).contains("\"RESOLVED\""), text(response));
-        });
-    call(
-        projectId,
-        "transition_ticket",
-        Map.of("id", ticketId, "target", "OPEN"),
-        response -> {
-          assertFalse(response.isError(), text(response));
-          assertTrue(text(response).contains("\"OPEN\""), text(response));
+          assertTrue(text(response).contains("\"VERIFIED\""), text(response));
         });
   }
 
   @Test
   public void refusesAnIllegalTransitionWithAReadableToolError() {
     String projectId = createProject("Ticket Refusal");
-    String ticketId = createTicket(projectId, "Already open", "BUG");
+    String ticketId = createTicket(projectId, "Already reported", "BUG");
 
     // isError, NOT a JSON-RPC protocol error: the model has to be able to read the refusal and move
     // on inside the same turn.
     call(
         projectId,
         "transition_ticket",
-        Map.of("id", ticketId, "target", "OPEN"),
+        Map.of("id", ticketId, "target", "REPORTED"),
         response -> {
           assertTrue(response.isError(), "a move to the status it already has must be refused");
+          assertTrue(text(response).contains("cannot move from"), text(response));
+        });
+    // A status that exists but is two steps away is the same refusal: moves are adjacent-only.
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "IMPLEMENTED"),
+        response -> {
+          assertTrue(response.isError(), "a non-adjacent move must be refused");
           assertTrue(text(response).contains("cannot move from"), text(response));
         });
     call(
@@ -446,16 +504,18 @@ public class TicketMcpToolsTest {
   }
 
   @Test
-  public void aResolvedTicketIsStillWritable() {
+  public void aDoneTicketIsStillWritable() {
     // The whole difference from the epic surface, where a frozen epic refuses every structural
-    // edit. Resolving a ticket commits to nothing, so nothing about it is frozen.
+    // edit. Closing a ticket commits to nothing, so nothing about it is frozen.
     String projectId = createProject("Ticket Thawed");
     String ticketId = createTicket(projectId, "Done for now", "BUG");
-    call(
-        projectId,
-        "transition_ticket",
-        Map.of("id", ticketId, "target", "RESOLVED"),
-        response -> assertFalse(response.isError(), text(response)));
+    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      call(
+          projectId,
+          "transition_ticket",
+          Map.of("id", ticketId, "target", target),
+          response -> assertFalse(response.isError(), text(response)));
+    }
 
     call(
         projectId,

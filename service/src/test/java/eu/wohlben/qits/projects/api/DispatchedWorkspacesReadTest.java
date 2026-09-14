@@ -56,7 +56,7 @@ public class DispatchedWorkspacesReadTest {
 
   private String createTicket(String projectId, String title) {
     return asAdmin()
-        .body(Map.of("title", title, "type", "BUG"))
+        .body(Map.of("title", title, "type", "BUG", "impetus", "something occurs in this project"))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()

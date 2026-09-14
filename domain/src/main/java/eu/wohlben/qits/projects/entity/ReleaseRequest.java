@@ -181,8 +181,9 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
    * <p>Not cleared by a re-arm and not cleared by the release. A re-arm is a fold nobody has judged
    * yet and clearing the link there would file a fresh ticket the moment the same build fails again;
    * a release is a "this released as {version}" comment on the thread, which is a thing to say on
-   * the ticket rather than a reason to forget it. What ends the link is the ticket being RESOLVED —
-   * asked at the far side, at the moment the next failure needs to know.
+   * the ticket rather than a reason to forget it. What ends the link is the ticket reaching DONE —
+   * asked at the far side, at the moment the next failure needs to know, and DONE rather than any
+   * earlier status because only that word says somebody has finished with the thread.
    *
    * <p>It names a row in the <b>epics</b> database. There is no foreign key because there cannot be
    * one, and a ticket somebody deleted reads as "there is no open ticket" and files a fresh one.
