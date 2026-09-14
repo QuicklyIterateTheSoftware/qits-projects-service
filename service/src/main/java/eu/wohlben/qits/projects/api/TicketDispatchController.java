@@ -4,6 +4,7 @@ import eu.wohlben.qits.epics.api.EpicsPrincipal;
 import eu.wohlben.qits.epics.control.TicketService;
 import eu.wohlben.qits.epics.control.WorkBranches;
 import eu.wohlben.qits.epics.entity.Ticket;
+import eu.wohlben.qits.epics.entity.TicketStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -46,12 +47,29 @@ import org.jboss.logging.Logger;
  * <p>The slug is the branch segment for the reason it exists: minted at create and never
  * re-derived, so a retitled ticket keeps the branch its agent is already working on.
  *
+ * <h2>The agent's first turn is picked by the ticket's status</h2>
+ *
+ * <p>{@link TicketPhasePrompts#promptFor(Ticket)} is the whole of it, and that class holds the
+ * argument for every sentence in the three templates — including the two seams that have to hold
+ * for any of them to be an instruction rather than a dead letter, which moved there with the words
+ * they are about. What this door does with the answer is the rest of this section.
+ *
+ * <p>A status is what has been <em>achieved</em> and the phase that runs while it holds is what
+ * happens next, so REPORTED starts refinement, REFINED starts implementation and IMPLEMENTED starts
+ * verification — and pressing "assign agent" on a half-finished ticket <b>resumes</b> it there
+ * rather than starting it over. {@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} start
+ * nothing at all, so the prompt is empty and this door answers <b>409</b> naming the status. That
+ * refusal runs <em>before</em> the port is asked for anything: the ticket is past the work, so no
+ * workspace is stood up, nothing is launched, and nothing lands on the thread. Closing a ticket is
+ * a person's move, and reopening it to VERIFIED or IMPLEMENTED is the way back to a dispatchable
+ * one.
+ *
  * <h2>The workspace is told what it is for, and is given no goal</h2>
  *
  * <p>The dispatch carries the ticket's <b>id</b> ({@link WorkspaceAgentDispatch.Subject#ticket}) and
  * no preamble. This door used to render the whole ticket — title, a type/status/assignee/reporter
  * line and the full description — into the workspace's goal, and that copy served no reader well:
- * the instruction below sends the agent to read the ticket live over MCP, so the prose was stale by
+ * every phase template sends the agent to read the ticket live over MCP, so the prose was stale by
  * construction, and on the workspace page it buried the one fact a person scanning the list wants.
  * The workspaces SPA turns the id into a link; the preamble goes back to being what it is, a
  * person's prose, authored where a person creates a workspace by hand.
@@ -59,7 +77,10 @@ import org.jboss.logging.Logger;
  * <h2>What lands on the thread</h2>
  *
  * <p>A dispatch that succeeded writes one comment, stamped from the caller's identity exactly as a
- * hand-written one is, and fires the {@code TICKETS} hint so open browsers redraw. A dispatch that
+ * hand-written one is, <b>naming the phase it started</b> — there are three now, they read nothing
+ * like each other, and a thread saying only "an agent was dispatched" would leave a reader unable to
+ * tell a refinement from a verification. It fires the {@code TICKETS} hint so open browsers redraw.
+ * A dispatch that
  * failed writes nothing at all — a comment saying an agent is on it when none is would be worse
  * than the error the caller already gets.
  */
@@ -93,6 +114,8 @@ public class TicketDispatchController {
   @Path("/{id}/dispatch-agent")
   public DispatchAgentRequest.Response dispatchAgent(@PathParam("id") String id) {
     Ticket ticket = tickets.get(id); // 404 if the ticket does not exist
+    // Before anything is asked of anybody: a ticket past the work starts no phase and no workspace.
+    TicketPhasePrompts.Started started = phaseOrRefuse(ticket);
     if (dispatch.isUnsatisfied()) {
       throw new DomainException(
           503,
@@ -114,14 +137,14 @@ public class TicketDispatchController {
                 scope.gitRefs(),
                 true,
                 WorkspaceAgentDispatch.Subject.ticket(ticket.id),
-                instruction(ticket));
+                started.instruction());
 
     String changedBy = EpicsPrincipal.changedBy(identity);
-    tickets.addComment(ticket.id, comment(branch, made), changedBy);
+    tickets.addComment(ticket.id, comment(branch, made, started.phase()), changedBy);
     publisher.fire(ticket.projectId, ProjectChangeHint.Topic.TICKETS);
     LOG.infof(
-        "Dispatched an agent onto ticket %s (%s) in workspace %s on %s",
-        ticket.id, ticket.slug, made.workspaceRowId(), branch);
+        "Dispatched an agent onto ticket %s (%s) for the %s phase in workspace %s on %s",
+        ticket.id, ticket.slug, started.phase(), made.workspaceRowId(), branch);
     return new DispatchAgentRequest.Response(
         TicketAgentDispatchDto.of(made, wrapper.id, branch));
   }
@@ -145,62 +168,48 @@ public class TicketDispatchController {
   }
 
   /**
-   * The agent's first turn. Four things are said on purpose and none of them is decoration: read the
-   * ticket over MCP rather than working from what the workspace was handed, keep <em>one</em> comment current instead
-   * of stacking notes under it, treat the work as unfinished until it is released — the platform's
-   * own definition of done, and the one an agent left to itself gets wrong — and then resolve the
-   * ticket.
+   * The phase this ticket's status starts, with the turn its agent gets — or the <b>409</b> that
+   * says there is none. {@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} are the two: the
+   * ticket is past the work, and what is left is a person's judgement rather than an agent's run.
    *
-   * <p><b>The resolve is conditional and hangs off the release, which is why it is the last
-   * sentence.</b> Without it a dispatched agent that finished cleanly left an OPEN ticket behind and
-   * a person had to notice and close it; with it worded as a habit, an agent that was blocked or
-   * only half-released would close one that is not done, which is worse. So the sentence names both
-   * arms — resolved once released, left OPEN with the gap said on the thread otherwise — and says
-   * that resolving is reversible through the same door. That last clause is what gives an unsure
-   * agent a cheap correct move instead of a coin flip.
-   *
-   * <p>Two seams have to hold for this to be an instruction rather than a dead letter, and both are
-   * checked rather than assumed. qits-workspace-daemon's {@code AgentLaunchService} lists {@code
-   * transition_ticket} in its {@code TICKET_RESOLUTION_TOOLS} bucket, so the tool exists for a kimi
-   * session too (there {@code enabledTools} is the whole surface, not a pre-approval). And a
-   * dispatch keeps connecting <em>without</em> the {@code agentReadOnly=true} marker — it goes
-   * through the daemon's {@code launchChat}, which never sets it — so {@link
-   * eu.wohlben.qits.projects.mcp.ReadOnlyRepositoryToolFilter} still hides all five ticket writes
-   * from an unattended run. If a dispatch ever starts marking itself read-only, this sentence goes
-   * silent along with the thread comments.
+   * <p>It is the first thing this door does after resolving the ticket, ahead of the workspaces
+   * port, the project and the wrapper, for the reason {@code EpicDispatchController.requireStartable}
+   * gives one level up — a refusal that was never going to be avoidable is decided before anything
+   * is attempted, so nothing is stood up and nothing is written for a caller about to be refused.
+   * The message names the status back, because "409" alone leaves the caller guessing which of the
+   * two it walked into and what would make the ticket dispatchable again.
    */
-  static String instruction(Ticket ticket) {
-    return "Work on ticket \""
-        + ticket.title
-        + "\" ("
-        + ticket.type
-        + ", slug "
-        + ticket.slug
-        + "). Read it first with get_ticket (id "
-        + ticket.id
-        + ") — the description and the comment thread are the brief."
-        + " Document your findings and progress as a ticket comment with add_ticket_comment,"
-        + " and keep that same comment current with update_ticket_comment as you go:"
-        + " short is better for that comment."
-        + " Your work is only done once your changes are fully released — integrate the workspace"
-        + " and see the release through, and say so on the thread when it is."
-        + " Once it is released, resolve the ticket with transition_ticket (target RESOLVED) as the"
-        + " last step; if you could not finish it — blocked, refused, or released only in part —"
-        + " leave it OPEN and say on the thread what is missing. Resolving is reversible and"
-        + " reopening is the same door, so leaving it open when you are unsure is the cheap correct"
-        + " answer.";
+  private static TicketPhasePrompts.Started phaseOrRefuse(Ticket ticket) {
+    return TicketPhasePrompts.startedBy(ticket)
+        .orElseThrow(
+            () ->
+                new DomainException(
+                    409,
+                    "Ticket "
+                        + ticket.id
+                        + " is "
+                        + ticket.status
+                        + ", so there is no phase left to start — what remains is a person's to"
+                        + " decide, and an agent is not dispatched onto work that is over."));
   }
 
   /**
-   * What the thread is told. A re-dispatch that found an agent already working says so rather than
-   * claiming a second one was started — the far side's {@code SKIPPED_RUNNING} is the only thing
-   * that knows, and a comment that got it wrong would read as two agents on one ticket.
+   * What the thread is told. It <b>names the phase</b>, because there are three of them and they
+   * read nothing like each other: a reader scanning the thread can see that this press started a
+   * verification and not a second implementation.
+   *
+   * <p>A re-dispatch that found an agent already working says so rather than claiming a second one
+   * was started — the far side's {@code SKIPPED_RUNNING} is the only thing that knows, and a comment
+   * that got it wrong would read as two agents on one ticket. That arm names no phase on purpose:
+   * the agent that is already running was started for whatever the status said <em>then</em>, and
+   * this press has not looked.
    */
-  private static String comment(String branch, WorkspaceAgentDispatch.Dispatch made) {
+  private static String comment(
+      String branch, WorkspaceAgentDispatch.Dispatch made, String phase) {
     if ("SKIPPED_RUNNING".equals(made.agentLaunch())) {
       return "An agent is already working on this ticket in workspace `" + branch
           + "`; left it to carry on.";
     }
-    return "Dispatched a coding agent to workspace `" + branch + "`.";
+    return "Dispatched a coding agent to workspace `" + branch + "` for the " + phase + " phase.";
   }
 }

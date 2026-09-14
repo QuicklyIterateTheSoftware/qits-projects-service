@@ -22,9 +22,10 @@ import org.junit.jupiter.api.Test;
  * The ticket agent-dispatch door, REST-level and end to end against the recording port.
  *
  * <p>What it pins is the half of the flow this service actually owns: <b>what is asked for</b> — the
- * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, the ticket's id and an
- * instruction rendered from the ticket — and <b>what the ticket is left saying</b> afterwards. The
- * dispatch itself is qits-workspaces' and is not simulated here.
+ * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, the ticket's id and
+ * the turn the ticket's <b>status</b> picked — and <b>what the ticket is left saying</b> afterwards.
+ * The dispatch itself is qits-workspaces' and is not simulated here, and the three templates'
+ * sentences are {@link TicketPhasePromptsTest}'s.
  *
  * <p>The caller is named with the real {@code X-Qits-*} pair rather than {@code @TestSecurity},
  * because the comment's {@code author} is one of the assertions and the header is what produces it
@@ -83,6 +84,19 @@ public class TicketDispatchControllerTest {
         .path("ticket.id");
   }
 
+  /** One step along the lifecycle, through the door a person presses. */
+  private void transition(String ticketId, String target) {
+    asAdmin("setup")
+        .body(new TicketControllerTransition(target))
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .then()
+        .statusCode(200);
+  }
+
+  /** The transition body, spelled here so this suite needs nothing of the epics module's API. */
+  private record TicketControllerTransition(String target) {}
+
   /**
    * The wrapper by a different route than the door takes — {@code findWrapper} reads the archetype
    * where the door resolves the {@code <slug>-<slug>} name — so the assertion below is about the
@@ -129,24 +143,15 @@ public class TicketDispatchControllerTest {
     assertEquals(ticketId, asked.subject().ticketId(), "the dispatch names the ticket it is about");
     assertNull(asked.subject().epicId(), "a ticket dispatch names no epic");
 
+    // A freshly created ticket is REPORTED, so the turn it is given is the refine phase's — the
+    // templates themselves are asserted sentence by sentence in TicketPhasePromptsTest.
     assertTrue(
-        asked.instruction().contains("add_ticket_comment"),
-        "the agent is told to report on the thread: " + asked.instruction());
+        asked.instruction().startsWith("Refine ticket \""),
+        "the status picks the phase, and a new ticket's phase is refinement: "
+            + asked.instruction());
     assertTrue(
-        asked.instruction().contains("update_ticket_comment"),
-        "and to keep that one comment current");
-    assertTrue(
-        asked.instruction().contains("fully released"),
-        "and that the work is not done until it is released");
-    assertTrue(
-        asked.instruction().contains("transition_ticket"),
-        "and to resolve the ticket itself rather than leaving it for somebody to notice");
-    assertTrue(
-        asked.instruction().contains("RESOLVED"),
-        "naming the status, since the tool takes a target");
-    assertTrue(
-        asked.instruction().contains("leave it OPEN"),
-        "the other arm: an unfinished run must not close the ticket");
+        asked.instruction().contains("transition_ticket to REFINED"),
+        "and the phase ends with its own claim");
     assertTrue(asked.instruction().contains(ticketId), "and where to read the ticket itself");
 
     asAdmin("mallory")
@@ -158,7 +163,92 @@ public class TicketDispatchControllerTest {
         .body("entries[0].comment.author", equalTo("mallory"))
         .body(
             "entries[0].comment.body",
-            containsString("Dispatched a coding agent to workspace `ticket/"));
+            containsString("Dispatched a coding agent to workspace `ticket/"))
+        .body(
+            "entries[0].comment.body",
+            containsString("for the refine phase"));
+  }
+
+  /**
+   * The resume: the door reads the status at the moment it is pressed, so a ticket that was refined
+   * last week gets the implement turn rather than a second refinement of a description that is
+   * already written. The phase is never passed in, so this is the only way it could be wrong.
+   */
+  @Test
+  public void aTicketAlreadyRefinedIsResumedAtTheImplementPhase() {
+    String projectId = createProject("Dispatch Resume");
+    String ticketId = createTicket(projectId, "Resume me", "BUG", "It is refined already.");
+    transition(ticketId, "REFINED");
+
+    asAdmin("mallory")
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .then()
+        .statusCode(200);
+
+    assertTrue(
+        dispatch.lastCall().instruction().startsWith("Implement ticket \""),
+        "a REFINED ticket starts the implement phase: " + dispatch.lastCall().instruction());
+
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .then()
+        .statusCode(200)
+        .body("entries[0].comment.body", containsString("for the implement phase"));
+  }
+
+  /**
+   * <b>DONE is past the work.</b> The refusal is decided before the port is asked for anything, so
+   * what this pins is both halves: the 409 naming the status, and the fact that no workspace was
+   * stood up and nothing landed on the thread for a caller that was always going to be refused.
+   */
+  @Test
+  public void aDispatchOntoADoneTicketIsRefusedAndStartsNoWorkspace() {
+    String projectId = createProject("Dispatch Finished");
+    String ticketId = createTicket(projectId, "All over", "BUG", "It was fixed.");
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+    transition(ticketId, "DONE");
+
+    asAdmin("mallory")
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("is DONE"))
+        .body("message", containsString("no phase left to start"));
+
+    assertTrue(
+        dispatch.calls().isEmpty(),
+        "a ticket past the work starts no workspace at all, so nothing is asked of the port");
+
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .then()
+        .statusCode(200)
+        .body("entries.size()", equalTo(0));
+  }
+
+  /** VERIFIED is the other status that starts nothing: a person closes it, an agent does not. */
+  @Test
+  public void aDispatchOntoAVerifiedTicketIsRefusedToo() {
+    String projectId = createProject("Dispatch Verified");
+    String ticketId = createTicket(projectId, "Confirmed gone", "BUG", "Checked on the platform.");
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    asAdmin("mallory")
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("is VERIFIED"));
+
+    assertTrue(dispatch.calls().isEmpty(), "nothing is dispatched onto work that is over");
   }
 
   @Test

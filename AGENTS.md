@@ -938,24 +938,45 @@ Three things travel with it:
   as a field (`workspace.ticket_id`, its `V5`) and resolves it with nothing; the workspaces SPA
   composes the link, because that needs the platform's public origin, which a browser is told by
   `/main-navigation` and no service here holds a key for.
-- **The agent is told what "done" means here, and told to say so on the ticket.** Report on the
-  thread with `add_ticket_comment` and keep that **one** comment current with
-  `update_ticket_comment`; the work is not finished until the changes are **released**, not merely
-  merged; and once they are, **resolve the ticket with `transition_ticket`**. All three are the
-  platform's own conventions and an agent left to itself gets the last two wrong — until 2026-09-08
-  the instruction stopped at "released" and every successful dispatch left an OPEN ticket for a
-  person to notice and close by hand. The resolve is **conditional and last**: an agent that was
-  blocked, refused or released only in part leaves the ticket OPEN and says on the thread what is
-  missing, and the sentence names that resolving is reversible through the same door so an unsure
-  agent has a cheap correct move. Two seams make it an instruction rather than a dead letter, and
-  both are stated in `instruction(...)`'s javadoc: qits-workspace-daemon lists `transition_ticket`
-  in its own `TICKET_RESOLUTION_TOOLS` bucket (on the kimi path `enabledTools` is the whole tool
-  surface, so an unlisted tool does not exist), and a dispatch keeps connecting **without**
-  `agentReadOnly=true`, so `ReadOnlyRepositoryToolFilter` still fences all five ticket writes off
-  every unattended run.
-- **A dispatch that succeeded stamps the thread; one that failed writes nothing.** The comment is
+- **The agent's first turn is `api/TicketPhasePrompts` and the ticket's STATUS picks it.** Three
+  templates, one per phase — REPORTED starts refine, REFINED starts implement, IMPLEMENTED starts
+  verify — and VERIFIED and DONE render **nothing**, so the door answers **409** naming the status
+  and stands no workspace up (the refusal runs before the port is asked for anything). The prompt is
+  never passed in: pressing "assign agent" on a half-finished ticket **resumes** it at the right
+  phase instead of starting it over, and there is exactly one place mapping a status to words.
+  Each template's own load-bearing sentences are argued in its javadoc; four rules span all three:
+  - **Refine writes into the ticket's `description` with `update_ticket`** — not a comment, not a
+    file in the tree — and uses `put_dossier_page` against the ticket where prose cannot hold it.
+    Its hardest job is **refusing to implement**, stated as the phase's boundary with its reason,
+    because an agent that has just found the bug wants to fix it.
+  - **Implement comments as the work goes with `add_ticket_comment`**, which deliberately replaces
+    "keep one comment current" (the epic asks for a thread, not a scratchpad); **releasing is the
+    goal** — released and deployed, not merged and not a green build; and **DO NOT INTEGRATE THE
+    WORKSPACE**, in the imperative, because verification happens in that same workspace after the
+    release and today's threads still carry the opposite sentence.
+  - **Verify verifies ON THE PLATFORM**, and reads the relevant code changes only where the
+    situation is conceptually unreproducible — the order of those two is the design, so the fallback
+    is never the easy path. A failure transitions **back to REFINED**; closing stays a person's move.
+  - **Each ends the same way**: the transition is the agent's claim, it is reversible in both
+    directions, and a phase that could not finish says what is missing on the thread and leaves the
+    status where it is. That is the cheap correct answer for an unsure agent, and it matters more
+    with five statuses than it did with two.
+
+  Two seams make all three instructions rather than dead letters, and both are stated in
+  `TicketPhasePrompts`' javadoc (they **moved there** from the instruction it replaces):
+  qits-workspace-daemon lists `transition_ticket` in its own `TICKET_RESOLUTION_TOOLS` bucket (on the
+  kimi path `enabledTools` is the whole tool surface, so an unlisted tool does not exist), and a
+  dispatch keeps connecting **without** `agentReadOnly=true`, so `ReadOnlyRepositoryToolFilter` still
+  fences all five ticket writes off every unattended run. **`update_ticket` and `put_dossier_page`
+  are in neither daemon's bucket** — reachable today because every surface ships CLAUDE with
+  `SKIP_PERMISSIONS`, and a surface moved to kimi needs both added there and in
+  `AgentSurfaceDefaults`' copy on the same day, or the refine phase has been told to write into a
+  field it cannot write.
+- **A dispatch that succeeded stamps the thread, naming the phase it started; one that failed writes
+  nothing.** The comment is
   stamped from the caller's identity like any other, and a re-dispatch that qits-workspaces answered
-  `SKIPPED_RUNNING` says it found an agent already working rather than claiming a second one. A
+  `SKIPPED_RUNNING` says it found an agent already working rather than claiming a second one — and
+  names no phase, because that agent was started for whatever the status said then. A
   failure surfaces on the door instead — 502 from the far side, 503 with no workspaces context at all
   — because a comment saying an agent is on it when none is would be worse than the error.
 
