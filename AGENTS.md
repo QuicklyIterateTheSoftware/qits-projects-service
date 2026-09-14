@@ -73,7 +73,7 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
 - `service/…/workspacehost/` — qits-workspaces, and `@DefaultBean` HTTP clients again. A package of
   its own rather than classes in `releasehost/` because **neither is a release verb** —
   qits-workspaces' release door left on 2026-09-03 and stays gone; what travels here are
-  workspace-lifecycle facts and asks. **Two seams, one per class, and the split is the failure
+  workspace-lifecycle facts and asks. **Three seams, one per class, and the split is the failure
   contract rather than the address:**
   - `control/ReleasedBranchWorkspaces` → `HttpReleasedBranchWorkspaces`: the POST a release makes,
     after it has already landed, to say that a branch it deleted is gone. Fire-and-forget, **never
@@ -103,13 +103,31 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
     far side's door**; the far side pins the roles now, and a live read is worth making before
     calling such a feature done.
 
-  That is why the second one is a new class and not a second method on the first: two verbs with
-  opposite failure contracts do not share a class, and the standing rule stays — do not grow a verb
-  onto `HttpReleasedBranchWorkspaces` on the grounds that the address is configured again. The
+  - `control/WorkspaceAgentTurns` → `HttpWorkspaceAgentTurns`: the POST that says something **to the
+    agent already standing on a branch** — `POST /workspaces/api/agent-dispatches/delivery` with
+    `{repositoryId, branch, text, compactFirst:false}`, answering
+    `{workspaceId, delivered, launched, detail}`. It exists because a ticket's phases share one
+    workspace and are separated by a context reset rather than by a container, so the end of a phase
+    is a moment this service knows something the workspace does not. **Its contract is
+    `ReleasedBranchWorkspaces`', not the dispatch's**, and that is the whole reason it is a third
+    class: it is told *after* a transition that has already been recorded, so **nobody is waiting on
+    it and it must never throw** — absent implementation, no address, no bearer, an unreachable far
+    side and an unreadable answer are ONE behaviour, one WARN naming the branch and the reason. It
+    **returns** what happened (delivered / launched / no workspace / could not) because the caller
+    has a thread to say it on, and **that return is advisory**: nothing retries on it and nothing
+    fails on it. A well-formed request is always a 200; `workspaceId: null` is the ordinary answer
+    and means no workspace stands on that branch — **the door never creates one**, which is the
+    dispatch door's job one path over. The path sits under `agent-dispatches` for the 403 reason
+    above; do not tidy it.
+
+  That is why the second and third are new classes and not further methods on the first: two verbs
+  with opposite failure contracts do not share a class, and the standing rule stays — do not grow a
+  verb onto `HttpReleasedBranchWorkspaces` on the grounds that the address is configured again. The
   address itself is `qits.projects.workspaces-url`, shipped **unset** and falling back to
   `qits.projects.release-requests.workspaces-url`, which already ships set and is what every
   environment injects; the dispatch reads the honest name and costs no configuration change to reach
-  it.
+  it, and **the delivery hop reads the same two keys in the same order** rather than renaming either
+  or inventing a third address.
 - `service/…/maintenancehost/` — qits-maintenance, the same `@DefaultBean` HTTP-client shape once
   more: the seam is `control/DownstreamComponents` and the whole of what lives here is ONE GET,
   `/maintenance/api/repositories/{repoId}/downstream`, asked at fold time so

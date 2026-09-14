@@ -30,6 +30,7 @@ public class NativeImageContractTest {
             HttpGitHostRepositories.class,
             eu.wohlben.qits.projects.workspacehost.HttpReleasedBranchWorkspaces.class,
             eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentDispatch.class,
+            eu.wohlben.qits.projects.workspacehost.HttpWorkspaceAgentTurns.class,
             eu.wohlben.qits.projects.maintenancehost.HttpDownstreamComponents.class)) {
       for (Field field : type.getDeclaredFields()) {
         boolean isStatic = Modifier.isStatic(field.getModifiers());

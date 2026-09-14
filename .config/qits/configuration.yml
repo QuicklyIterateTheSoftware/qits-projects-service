@@ -89,7 +89,11 @@ keys:
 
   env.QITS_PROJECTS_RELEASE_REQUESTS_WORKSPACES_URL:
     type: string
-    description: "qits-workspaces, for the branch-resolution call after a release. Also the fallback address for the agent dispatch door."
+    description: "qits-workspaces, for the branch-resolution call after a release. Also the fallback address for the agent dispatch and delivery doors."
+
+  env.QITS_PROJECTS_WORKSPACES_URL:
+    type: string
+    description: "qits-workspaces under its own name, for the agent dispatch door and for delivering a turn to an agent already standing on a branch. Unset falls back to the release-requests key above."
 
   # --- the platform's shared wiring -----------------------------------------------------------
 
