@@ -3,6 +3,7 @@ package eu.wohlben.qits.epics.api;
 import eu.wohlben.qits.epics.control.DossierService;
 import eu.wohlben.qits.epics.control.EpicService;
 import eu.wohlben.qits.epics.dto.DossierPageDto;
+import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.mapper.DossierPageMapper;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -32,6 +33,12 @@ import java.util.List;
  * from a prompt is the ordinary case rather than an edge one — and the tab needs the current body to
  * tell the person what their write would have overwritten. The mapping is
  * {@code EpicsExceptionMapper}'s, which puts the row under {@code current}.
+ *
+ * <p><b>This is the epic half of the dossier; the ticket half is {@link TicketDossierController}.</b>
+ * Two root resources rather than one class, because these are two paths — {@code /epics/{epicId}}
+ * and {@code /tickets/{ticketId}} — and JAX-RS gives a class exactly one. Everything either of them
+ * decides is {@code DossierService}'s, so the pair cannot drift on a rule; what differs is only what
+ * a path parameter names and which SSE topic a write announces on.
  *
  * <p><b>A frozen epic is readable and unwritable.</b> Reads succeed in every status — implementation
  * reads this months later — and every mutation is refused by the service's own {@code REFINING}
@@ -71,14 +78,18 @@ public class DossierController {
     // The epic is resolved here rather than in the epics module, which cannot see `domain` and has
     // no way to check a project scope — the same split EpicController makes.
     epicService.get(epicId);
-    return new ListPagesResponse(dossier.listByEpic(epicId).stream().map(mapper::toDto).toList());
+    return new ListPagesResponse(
+        dossier.listByOwner(DossierOwner.epic(epicId)).stream().map(mapper::toDto).toList());
   }
 
   @POST
   public DossierPageDto create(@PathParam("epicId") String epicId, @Valid NewPage request) {
     var page =
         dossier.create(
-            epicId, request.title(), request.body(), EpicsPrincipal.changedBy(identity));
+            DossierOwner.epic(epicId),
+            request.title(),
+            request.body(),
+            EpicsPrincipal.changedBy(identity));
     hints.fire(hints.projectOfEpic(epicId));
     return mapper.toDto(page);
   }
@@ -136,14 +147,14 @@ public class DossierController {
   }
 
   /**
-   * The page, if it is this epic's. A page of another epic is <b>not found</b> rather than
-   * forbidden: the epic id in the path is a boundary, not decoration, and a 403 would confirm the
-   * row exists somewhere else.
+   * The page, if it is this epic's. A page of another epic — or a ticket-owned page, whose {@code
+   * epicId} is null — is <b>not found</b> rather than forbidden: the epic id in the path is a
+   * boundary, not decoration, and a 403 would confirm the row exists somewhere else.
    */
   private eu.wohlben.qits.epics.entity.DossierPage requireOfEpic(String epicId, String pageId) {
     epicService.get(epicId);
     var page = dossier.get(pageId);
-    if (!page.epicId.equals(epicId)) {
+    if (!epicId.equals(page.epicId)) {
       throw new eu.wohlben.qits.epics.error.NotFoundException("Dossier page not found: " + pageId);
     }
     return page;

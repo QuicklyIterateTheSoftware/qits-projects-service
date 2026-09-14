@@ -201,6 +201,114 @@ public class DossierMcpToolsTest {
         });
   }
 
+  private String createTicket(String projectId, String title) {
+    return authenticated()
+        .contentType(ContentType.JSON)
+        .body(
+            Map.of(
+                "title", title, "impetus", "A 500 occurs in the claim loop.", "type", "BUG"))
+        .when()
+        .post("/projects/api/projects/" + projectId + "/tickets")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .extract()
+        .path("ticket.id");
+  }
+
+  /**
+   * The owner argument contract: one of the two ids, never two and never none. Both refusals are
+   * sentences a model can act on — a silent default would put a ticket's refinement on an epic's
+   * dossier with nothing reporting it.
+   */
+  @Test
+  public void namingBothAnEpicAndATicketIsRefusedAndSoIsNamingNeither() {
+    String projectId = createProject("Dossier Owners");
+    String epicId = createEpic(projectId, "Owned epic");
+    String ticketId = createTicket(projectId, "Owned ticket");
+
+    call(
+        projectId,
+        "list_dossier_pages",
+        Map.of("epicId", epicId, "ticketId", ticketId),
+        response -> {
+          assertTrue(response.isError(), "two owners must be refused");
+          assertTrue(text(response).contains("never both"), text(response));
+        });
+
+    call(
+        projectId,
+        "list_dossier_pages",
+        Map.of(),
+        response -> {
+          assertTrue(response.isError(), "no owner at all must be refused");
+          assertTrue(text(response).contains("names neither"), text(response));
+        });
+  }
+
+  @Test
+  public void aTicketsDossierIsWrittenAndReadThroughTheSameFiveTools() {
+    String projectId = createProject("Dossier Ticket");
+    String ticketId = createTicket(projectId, "Owned ticket");
+
+    String[] pageId = new String[1];
+    call(
+        projectId,
+        "put_dossier_page",
+        Map.of(
+            "ticketId", ticketId,
+            "title", "The root cause",
+            "body", "# The root cause\n\nFour services deep."),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          pageId[0] = idIn(text(response));
+        });
+
+    call(
+        projectId,
+        "list_dossier_pages",
+        Map.of("ticketId", ticketId),
+        response -> assertTrue(text(response).contains("the-root-cause"), text(response)));
+
+    call(
+        projectId,
+        "get_dossier_page",
+        Map.of("ticketId", ticketId, "pageId", pageId[0]),
+        response -> assertTrue(text(response).contains("Four services deep"), text(response)));
+
+    // The page is the ticket's, so asking for it under an epic's dossier finds nothing.
+    String epicId = createEpic(projectId, "A different owner");
+    call(
+        projectId,
+        "get_dossier_page",
+        Map.of("epicId", epicId, "pageId", pageId[0]),
+        response -> {
+          assertTrue(response.isError(), "another owner's page must read as absent");
+          assertTrue(text(response).contains("Dossier page not found"), text(response));
+        });
+
+    call(
+        projectId,
+        "remove_dossier_page",
+        Map.of("ticketId", ticketId, "pageId", pageId[0]),
+        response -> assertFalse(response.isError(), text(response)));
+  }
+
+  @Test
+  public void aTicketInAnotherProjectIsNotFound() {
+    String owner = createProject("Ticket Owner");
+    String ticketId = createTicket(owner, "Owned ticket");
+    String stranger = createProject("Ticket Stranger");
+
+    call(
+        stranger,
+        "list_dossier_pages",
+        Map.of("ticketId", ticketId),
+        response -> {
+          assertTrue(response.isError(), "cross-project access must be refused");
+          assertTrue(text(response).contains("Ticket not found"), text(response));
+        });
+  }
+
   @Test
   public void pagesAreMovedAndRemoved() {
     String projectId = createProject("Dossier Order");

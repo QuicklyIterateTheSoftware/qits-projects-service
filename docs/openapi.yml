@@ -647,6 +647,8 @@ components:
           type: string
         epicId:
           type: string
+        ticketId:
+          type: string
         slug:
           type: string
         title:
@@ -5670,6 +5672,199 @@ paths:
       summary: Create Comment
       tags:
       - Ticket Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/tickets/{ticketId}/dossier:
+    get:
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPagesResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: List
+      tags:
+      - Ticket Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPage"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Create
+      tags:
+      - Ticket Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/tickets/{ticketId}/dossier/{slug}:
+    put:
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WritePage"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Write
+      tags:
+      - Ticket Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    get:
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Get
+      tags:
+      - Ticket Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    delete:
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletePageResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Delete
+      tags:
+      - Ticket Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/tickets/{ticketId}/dossier/{slug}/move:
+    post:
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovePage"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Move
+      tags:
+      - Ticket Dossier Controller
       security:
       - SecurityScheme:
         - qits:admin

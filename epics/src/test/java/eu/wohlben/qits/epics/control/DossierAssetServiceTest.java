@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.epics.entity.DossierAsset;
+import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
 import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.persistence.DossierAssetRepository;
@@ -77,8 +78,8 @@ class DossierAssetServiceTest extends EpicsTestSupport {
     Epic e = epic();
     String assetId = copy(e.id, UUID.randomUUID().toString()).id;
 
-    DossierPage one = dossier.create(e.id, "One", "before " + line(e.id, assetId), "t");
-    DossierPage two = dossier.create(e.id, "Two", "also " + line(e.id, assetId), "t");
+    DossierPage one = dossier.create(DossierOwner.epic(e.id), "One", "before " + line(e.id, assetId), "t");
+    DossierPage two = dossier.create(DossierOwner.epic(e.id), "Two", "also " + line(e.id, assetId), "t");
     assertNotNull(stored(assetId));
 
     dossier.delete(one.id, "t");
@@ -92,7 +93,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
   void editingABodyToDropTheOnlyReferenceCollectsTheAssetInThatSave() {
     Epic e = epic();
     String assetId = copy(e.id, UUID.randomUUID().toString()).id;
-    DossierPage page = dossier.create(e.id, "One", line(e.id, assetId), "t");
+    DossierPage page = dossier.create(DossierOwner.epic(e.id), "One", line(e.id, assetId), "t");
     assertNotNull(stored(assetId));
 
     dossier.update(page.id, null, "the figure is gone from this argument", 0L, "t");
@@ -104,10 +105,10 @@ class DossierAssetServiceTest extends EpicsTestSupport {
     Epic mine = epic();
     Epic theirs = epic();
     String assetId = copy(mine.id, UUID.randomUUID().toString()).id;
-    dossier.create(mine.id, "Mine", line(mine.id, assetId), "t");
+    dossier.create(DossierOwner.epic(mine.id), "Mine", line(mine.id, assetId), "t");
 
     // The same asset id under another epic's path: not this page's reference, and not a copy.
-    dossier.create(theirs.id, "Theirs", line(theirs.id, assetId), "t");
+    dossier.create(DossierOwner.epic(theirs.id), "Theirs", line(theirs.id, assetId), "t");
     assertNotNull(stored(assetId));
     assertEquals(
         List.of(mine.id),
@@ -122,7 +123,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
     // Nothing here reads the source at all — the copy IS the reason a discarded refinement costs
     // the dossier nothing.
     String assetId = copy(e.id, UUID.randomUUID().toString()).id;
-    dossier.create(e.id, "One", line(e.id, assetId), "t");
+    dossier.create(DossierOwner.epic(e.id), "One", line(e.id, assetId), "t");
 
     DossierAsset served = QuarkusTransaction.requiringNew().call(() -> assets.get(e.id, assetId));
     assertEquals("image/png", served.mimeType);
@@ -134,7 +135,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
     Epic e = epic();
     String inlined = copy(e.id, UUID.randomUUID().toString()).id;
     String dangling = UUID.randomUUID().toString();
-    dossier.create(e.id, "One", line(e.id, inlined), "t");
+    dossier.create(DossierOwner.epic(e.id), "One", line(e.id, inlined), "t");
 
     var flags = QuarkusTransaction.requiringNew().call(() -> assets.inUse(e.id, List.of(inlined, dangling)));
     assertTrue(flags.contains(inlined));

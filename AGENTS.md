@@ -768,6 +768,34 @@ Being in the epics module is the point, not a filing decision: `DossierService` 
 restate the condition**), an `AuditEntry` per create/update/move/delete under the epic's own id, and
 the `CausationStamp` listener.
 
+- **A page has ONE owner and there are two kinds of owner: an epic or a TICKET** (epics V8,
+  2026-09-14). `dossier_page.epic_id` is nullable now, `ticket_id` joins it, and
+  `ck_dossier_page_owner` (`num_nonnulls(epic_id, ticket_id) = 1`) is what makes "exactly one" a
+  fact rather than a convention. Both are **real foreign keys with `on delete cascade`** — Ticket
+  and Epic are both in this database, the fact V5 leaned on — which a generic `owner_type`/`owner_id`
+  pair would have given up for a third owner nobody has asked for. `entity/DossierOwner` is the
+  value every repository and service method takes instead of an epic id. What a ticket's dossier is
+  *for* is the refine phase: the result goes in the ticket's `description`, and a page is what that
+  phase writes when the body cannot hold it. Four consequences, each a rule:
+  - **The `REFINING` guard applies to epic-owned pages only.** A plan freezes; a ticket freezes
+    nothing (`TicketLifecycle`'s first sentence), so a ticket page is writable at every status and
+    the refine phase is not the only phase allowed to write one.
+  - **`dossier_asset` is NOT widened, deliberately.** A figure is a copy of the refining route's
+    sketches and designs, a route a ticket has not got, so `DossierAssetService.syncReferences` is
+    **skipped** for a ticket-owned page rather than handed a null epic id — and a ticket page whose
+    markdown names an asset id gets no copy and no dangling `dossier_page_asset` row. The REST side
+    matches by absence: there is no `/tickets/{id}/dossier-assets` route at all.
+  - **The audit subtree key is the ticket's id**, with no schema change, because `auditentry.epic_id`
+    is the subtree key rather than literally an epic (V4's stated reading).
+  - **The MCP surface takes an owner and the five tools stay five.** Every tool takes `epicId` and
+    `ticketId`, both optional, exactly one required; both or neither is refused with a sentence
+    saying which. A parallel set of five ticket tools would double the surface a model chooses from
+    and write one rule twice. `inline_figure` is the one tool that stays epic-only.
+  - The ticket routes are `epics/api/TicketDossierController` — `GET/POST /tickets/{ticketId}/dossier`,
+    `GET/PUT/DELETE …/{slug}`, `POST …/{slug}/move`, same roles and the same 409-with-current-page as
+    the epic ones. A **second root resource** rather than methods on `DossierController`, because
+    JAX-RS gives a class one `@Path`; the page segment accepts a slug **or** an id, so the SPA's
+    slug URLs and the epic half's id addressing are one contract.
 - **Flat, and nothing may add a `parent_id`.** The nav's second level is the *current* page's own
   `h1`/`h2`/`h3`, derived in the browser from the rendered DOM and stored nowhere. It cannot drift
   from the page because it *is* the page.

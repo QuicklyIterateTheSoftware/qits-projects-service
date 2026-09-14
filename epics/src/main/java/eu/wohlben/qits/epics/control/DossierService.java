@@ -3,6 +3,7 @@ package eu.wohlben.qits.epics.control;
 import eu.wohlben.qits.epics.dto.DossierPageDto;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
+import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
 import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.error.BadRequestException;
@@ -10,34 +11,54 @@ import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.epics.error.StaleWriteException;
 import eu.wohlben.qits.epics.persistence.DossierPageRepository;
 import eu.wohlben.qits.epics.persistence.EpicRepository;
+import eu.wohlben.qits.epics.persistence.TicketRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * The only class that writes a dossier page; both doors — the SPA's REST controller and the
+ * The only class that writes a dossier page; both doors — the SPA's REST controllers and the
  * agent-facing MCP tools — go through it, so neither can grow a second version of these rules.
  *
- * <p><b>Slug.</b> Minted from the title at create, unique per epic with a numeric suffix on
- * collision, and never changed afterwards — the rule {@link Epic#slug} follows and for the same
- * reason: it is in URLs people have already sent each other. A rename changes the title only.
+ * <p><b>A page has ONE owner, and it is an epic or a ticket.</b> Every method here takes a {@link
+ * DossierOwner} rather than an epic id (V8): an epic's dossier is the plan's breakdown, a ticket's
+ * is what the refine phase wrote when the ticket's own body could not hold it. Two of this class's
+ * rules then read off the owner's kind rather than applying to everything:
  *
- * <p><b>Position.</b> Dense and zero-based. A create appends; {@link #move} renumbers the affected
- * span and nothing outside it.
+ * <ul>
+ *   <li><b>{@link EpicLifecycle#requireRefining} runs for an EPIC owner only.</b> A plan freezes and
+ *       its dossier freezes with it; a ticket freezes nothing — {@code TicketLifecycle} has no
+ *       {@code requireOpen} and must not grow one — so a ticket-owned page is writable while the
+ *       ticket is {@code REPORTED}, {@code IMPLEMENTED} and {@code DONE} alike. The phase that
+ *       mostly writes them (refine) is deliberately not the only one allowed to: the implement phase
+ *       correcting a page it found wrong is the ordinary case, not a violation.
+ *   <li><b>{@link DossierAssetService#syncReferences} runs for an EPIC owner only.</b> Assets are
+ *       copies of the refining route's sketches and designs, a route a ticket does not have, so
+ *       {@code dossier_asset} stays epic-only. <b>That is why a ticket page cannot inline a
+ *       sketch</b>: markdown naming an asset id on a ticket-owned page copies nothing and writes no
+ *       {@code dossier_page_asset} row, rather than being handed a null epic id to count against.
+ * </ul>
+ *
+ * <p><b>Slug.</b> Minted from the title at create, unique <b>per owner</b> with a numeric suffix on
+ * collision, and never changed afterwards — the rule {@link Epic#slug} follows and for the same
+ * reason: it is in URLs people have already sent each other. A rename changes the title only. The
+ * same slug under an epic and under a ticket is two different addresses that never meet.
+ *
+ * <p><b>Position.</b> Dense and zero-based, per owner. A create appends; {@link #move} renumbers the
+ * affected span and nothing outside it.
  *
  * <p><b>Version.</b> Incremented on every write. A write carrying a stale one throws {@link
  * StaleWriteException} with the current page attached — the caller needs to see what it would have
  * overwritten, and merging two authors' prose is not a decision this layer may make.
  *
- * <p><b>The guard is the same one features and tasks obey.</b> Every mutation calls {@link
- * EpicLifecycle#requireRefining}, so the three cannot drift apart and a non-{@code REFINING} epic
- * answers the identical message everywhere. Reads are not guarded: a frozen epic's dossier is what
- * implementation reads.
- *
  * <p><b>Audit.</b> One {@code AuditEntry} per create, update, move and delete, snapshotting the way
- * the feature and task services do, and carrying the OWNING EPIC's id as the subtree key.
+ * the feature and task services do, and carrying <b>the owner's</b> id as the subtree key. For a
+ * ticket-owned page that is the ticket's id, which needs no schema change: {@code auditentry.epic_id}
+ * is the subtree key rather than literally an epic (V4's stated reading — a {@code TICKET} row is
+ * its own root), so "the whole history of this ticket" keeps including what its pages did.
  */
 @ApplicationScoped
 public class DossierService {
@@ -46,24 +67,26 @@ public class DossierService {
 
   @Inject EpicRepository epics;
 
+  @Inject TicketRepository tickets;
+
   @Inject AuditService auditService;
 
   @Inject ReadPatience patience;
 
   @Inject WritePatience writes;
 
-  /** Hook for the copied figures a page's body references. Absent until that feature lands. */
+  /** The copied figures a page's body references. Epic-owned pages only; see the class javadoc. */
   @Inject DossierAssetService assets;
 
   // --- reads ----------------------------------------------------------------
 
   /**
-   * The epic's pages in position order, bodies included, held through a postgres cutover. The tab
+   * The owner's pages in position order, bodies included, held through a postgres cutover. The tab
    * renders one immediately and a dossier is a handful of pages, so a second round trip per page
    * would buy nothing.
    */
-  public List<DossierPage> listByEpic(String epicId) {
-    return patience.hold("dossier list", () -> pages.listByEpic(epicId));
+  public List<DossierPage> listByOwner(DossierOwner owner) {
+    return patience.hold("dossier list", () -> pages.listByOwner(owner));
   }
 
   public DossierPage get(String pageId) {
@@ -73,40 +96,47 @@ public class DossierService {
   }
 
   /** One page by the slug a URL names, or nothing. */
-  public DossierPage getBySlug(String epicId, String slug) {
-    return pages
-        .findBySlug(epicId, slug)
+  public DossierPage getBySlug(DossierOwner owner, String slug) {
+    return findBySlug(owner, slug)
         .orElseThrow(() -> new NotFoundException("Dossier page not found: " + slug));
+  }
+
+  /**
+   * The same lookup for a door that has something else to try — the ticket routes address a page by
+   * slug or by id, and an absent slug there is not yet a 404.
+   */
+  public Optional<DossierPage> findBySlug(DossierOwner owner, String slug) {
+    return pages.findBySlug(owner, slug);
   }
 
   // --- writes ---------------------------------------------------------------
 
-  /** A new page, appended to the end of the epic's dossier. */
-  public DossierPage create(String epicId, String title, String body, String changedBy) {
+  /** A new page, appended to the end of the owner's dossier. */
+  public DossierPage create(DossierOwner owner, String title, String body, String changedBy) {
     return writes.hold(
         "dossier page create",
         () -> {
           Validations.requireText(title, "title");
-          EpicLifecycle.requireRefining(requireEpic(epicId));
+          requireWritable(owner);
           DossierPage page = new DossierPage();
           page.id = UUID.randomUUID().toString();
-          page.epicId = epicId;
+          owner.writeOnto(page);
           page.title = title;
           page.slug =
               Slugs.unique(
                   Slugs.slugify(title, page.id, "page-"),
-                  pages.listByEpic(epicId).stream().map(row -> row.slug).toList());
+                  pages.listByOwner(owner).stream().map(row -> row.slug).toList());
           page.body = body == null ? "" : body;
-          page.position = pages.maxPosition(epicId) + 1;
+          page.position = pages.maxPosition(owner) + 1;
           page.version = 0L;
           page.createdAt = Instant.now();
           page.updatedAt = page.createdAt;
           pages.persist(page);
-          assets.syncReferences(page.id, page.epicId, page.body);
+          syncAssets(owner, page.id, page.body);
           auditService.record(
               AuditEntityType.DOSSIER_PAGE,
               page.id,
-              epicId,
+              owner.id(),
               AuditOperation.CREATE,
               changedBy,
               page);
@@ -127,7 +157,8 @@ public class DossierService {
         "dossier page update",
         () -> {
           DossierPage page = get(pageId);
-          EpicLifecycle.requireRefining(requireEpic(page.epicId));
+          DossierOwner owner = DossierOwner.of(page);
+          requireWritable(owner);
           requireCurrent(page, version);
           if (title != null) {
             Validations.requireText(title, "title");
@@ -135,14 +166,14 @@ public class DossierService {
           }
           if (body != null) {
             page.body = body;
-            assets.syncReferences(page.id, page.epicId, body);
+            syncAssets(owner, page.id, body);
           }
           page.version = page.version + 1;
           page.updatedAt = Instant.now();
           auditService.record(
               AuditEntityType.DOSSIER_PAGE,
               page.id,
-              page.epicId,
+              owner.id(),
               AuditOperation.UPDATE,
               changedBy,
               page);
@@ -160,11 +191,12 @@ public class DossierService {
         "dossier page move",
         () -> {
           DossierPage page = get(pageId);
-          EpicLifecycle.requireRefining(requireEpic(page.epicId));
+          DossierOwner owner = DossierOwner.of(page);
+          requireWritable(owner);
           if (position < 0) {
             throw new BadRequestException("A position cannot be negative: " + position);
           }
-          List<DossierPage> siblings = pages.listByEpic(page.epicId);
+          List<DossierPage> siblings = pages.listByOwner(owner);
           int target = Math.min(position, siblings.size() - 1);
           if (target != page.position) {
             int from = page.position;
@@ -185,7 +217,7 @@ public class DossierService {
           auditService.record(
               AuditEntityType.DOSSIER_PAGE,
               page.id,
-              page.epicId,
+              owner.id(),
               AuditOperation.UPDATE,
               changedBy,
               page);
@@ -199,19 +231,19 @@ public class DossierService {
         "dossier page delete",
         () -> {
           DossierPage page = get(pageId);
-          String epicId = page.epicId;
-          EpicLifecycle.requireRefining(requireEpic(epicId));
+          DossierOwner owner = DossierOwner.of(page);
+          requireWritable(owner);
           // The same path a save takes, with nothing referenced any more: an asset whose last
-          // reference goes with this page is deleted in this transaction.
-          assets.syncReferences(page.id, epicId, "");
+          // reference goes with this page is deleted in this transaction. Epic owners only, for the
+          // reason the class javadoc gives.
+          syncAssets(owner, page.id, "");
           int gone = page.position;
           pages.delete(page);
-          // One statement, so the gap closes whatever the session happens to be holding.
-          pages.update("position = position - 1 where epicId = ?1 and position > ?2", epicId, gone);
+          pages.closeGapAfter(owner, gone);
           auditService.record(
               AuditEntityType.DOSSIER_PAGE,
               pageId,
-              epicId,
+              owner.id(),
               AuditOperation.DELETE,
               changedBy,
               page);
@@ -220,13 +252,54 @@ public class DossierService {
 
   // --- plumbing -------------------------------------------------------------
 
-  private Epic requireEpic(String epicId) {
-    if (epicId == null) {
-      throw new NotFoundException("Epic not found: null");
+  /**
+   * Resolve the owner — 404 if it does not exist, whichever kind it is — and apply the freeze that
+   * belongs to an epic and to nothing else.
+   */
+  private void requireWritable(DossierOwner owner) {
+    if (owner == null) {
+      throw new NotFoundException("Dossier owner not found: null");
     }
-    return epics
-        .findByIdOptional(epicId)
-        .orElseThrow(() -> new NotFoundException("Epic not found: " + epicId));
+    if (owner.isEpic()) {
+      // The freeze, and only here. A ticket owner is resolved and then left alone.
+      EpicLifecycle.requireRefining(
+          epics
+              .findByIdOptional(owner.id())
+              .orElseThrow(() -> new NotFoundException("Epic not found: " + owner.id())));
+      return;
+    }
+    requireOwner(owner);
+  }
+
+  /**
+   * Assert the owning epic or ticket exists, 404ing the same way for both: the id in a path or a
+   * tool argument is a boundary, so an owner that is not there is absent rather than an error about
+   * a null. Public because the read doors check it before listing an empty dossier.
+   */
+  public void requireOwner(DossierOwner owner) {
+    if (owner == null) {
+      throw new NotFoundException("Dossier owner not found: null");
+    }
+    if (owner.isEpic()) {
+      epics
+          .findByIdOptional(owner.id())
+          .orElseThrow(() -> new NotFoundException("Epic not found: " + owner.id()));
+      return;
+    }
+    tickets
+        .findByIdOptional(owner.id())
+        .orElseThrow(() -> new NotFoundException("Ticket not found: " + owner.id()));
+  }
+
+  /**
+   * Count the figures an epic-owned page references, and do nothing at all for a ticket-owned one:
+   * {@code dossier_asset} is epic-only by decision (V8), so there is no epic id to count against and
+   * inventing one would be the cross-owner reference the copy exists to make impossible.
+   */
+  private void syncAssets(DossierOwner owner, String pageId, String body) {
+    if (owner.isEpic()) {
+      assets.syncReferences(pageId, owner.id(), body);
+    }
   }
 
   /**
@@ -253,6 +326,7 @@ public class DossierService {
     return new DossierPageDto(
         page.id,
         page.epicId,
+        page.ticketId,
         page.slug,
         page.title,
         page.position,

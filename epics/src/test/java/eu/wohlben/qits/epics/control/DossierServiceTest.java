@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
+import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
 import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
@@ -40,16 +41,16 @@ class DossierServiceTest extends EpicsTestSupport {
   @Test
   void slugIsDerivedFromTheTitleAndUniqueWithinTheEpic() {
     Epic e = epic();
-    assertEquals("the-claim-loop", dossier.create(e.id, "The claim loop", "", "t").slug);
-    assertEquals("the-claim-loop-2", dossier.create(e.id, "The CLAIM  loop!", "", "t").slug);
+    assertEquals("the-claim-loop", dossier.create(DossierOwner.epic(e.id), "The claim loop", "", "t").slug);
+    assertEquals("the-claim-loop-2", dossier.create(DossierOwner.epic(e.id), "The CLAIM  loop!", "", "t").slug);
 
     // Another epic is another scope, so the clean slug is free again.
-    assertEquals("the-claim-loop", dossier.create(epic().id, "The claim loop", "", "t").slug);
+    assertEquals("the-claim-loop", dossier.create(DossierOwner.epic(epic().id), "The claim loop", "", "t").slug);
   }
 
   @Test
   void aRenameLeavesTheSlugAlone() {
-    DossierPage page = dossier.create(epic().id, "The claim loop", "", "t");
+    DossierPage page = dossier.create(DossierOwner.epic(epic().id), "The claim loop", "", "t");
     DossierPage renamed = dossier.update(page.id, "The claim loop, again", null, 0L, "t");
     assertEquals("the-claim-loop", renamed.slug);
     assertEquals(1L, renamed.version);
@@ -58,9 +59,9 @@ class DossierServiceTest extends EpicsTestSupport {
   @Test
   void createAppendsAndPositionsStayDense() {
     Epic e = epic();
-    dossier.create(e.id, "One", "", "t");
-    dossier.create(e.id, "Two", "", "t");
-    DossierPage third = dossier.create(e.id, "Three", "", "t");
+    dossier.create(DossierOwner.epic(e.id), "One", "", "t");
+    dossier.create(DossierOwner.epic(e.id), "Two", "", "t");
+    DossierPage third = dossier.create(DossierOwner.epic(e.id), "Three", "", "t");
     assertEquals(2, third.position);
 
     dossier.move(third.id, 0, "t");
@@ -72,21 +73,21 @@ class DossierServiceTest extends EpicsTestSupport {
     inFreshTx(
         () ->
             assertEquals(
-                List.of(0, 1), dossier.listByEpic(e.id).stream().map(p -> p.position).toList()));
+                List.of(0, 1), dossier.listByOwner(DossierOwner.epic(e.id)).stream().map(p -> p.position).toList()));
   }
 
   @Test
   void aPositionPastTheEndMeansLast() {
     Epic e = epic();
-    DossierPage first = dossier.create(e.id, "One", "", "t");
-    dossier.create(e.id, "Two", "", "t");
+    DossierPage first = dossier.create(DossierOwner.epic(e.id), "One", "", "t");
+    dossier.create(DossierOwner.epic(e.id), "Two", "", "t");
     dossier.move(first.id, 99, "t");
     assertEquals(List.of("Two", "One"), titles(e.id));
   }
 
   @Test
   void aWriteCarryingAStaleVersionIsRefusedWithTheCurrentPage() {
-    DossierPage page = dossier.create(epic().id, "The claim loop", "first", "t");
+    DossierPage page = dossier.create(DossierOwner.epic(epic().id), "The claim loop", "first", "t");
     dossier.update(page.id, null, "second", 0L, "t");
 
     StaleWriteException refused =
@@ -101,20 +102,20 @@ class DossierServiceTest extends EpicsTestSupport {
 
   @Test
   void aWriteWithNoVersionAtAllIsRejected() {
-    DossierPage page = dossier.create(epic().id, "The claim loop", "", "t");
+    DossierPage page = dossier.create(DossierOwner.epic(epic().id), "The claim loop", "", "t");
     assertThrows(BadRequestException.class, () -> dossier.update(page.id, null, "x", null, "t"));
   }
 
   @Test
   void aFrozenEpicIsReadableAndUnwritable() {
     Epic e = epic();
-    DossierPage page = dossier.create(e.id, "The claim loop", "the body", "t");
+    DossierPage page = dossier.create(DossierOwner.epic(e.id), "The claim loop", "the body", "t");
     epicService.transition(e.id, EpicStatus.IMPLEMENTATION.name(), "t");
 
     // The read is what implementation is for.
-    assertEquals("the body", dossier.listByEpic(e.id).get(0).body);
+    assertEquals("the body", dossier.listByOwner(DossierOwner.epic(e.id)).get(0).body);
 
-    assertThrows(ConflictException.class, () -> dossier.create(e.id, "Another", "", "t"));
+    assertThrows(ConflictException.class, () -> dossier.create(DossierOwner.epic(e.id), "Another", "", "t"));
     assertThrows(ConflictException.class, () -> dossier.update(page.id, "New", null, 0L, "t"));
     assertThrows(ConflictException.class, () -> dossier.move(page.id, 0, "t"));
     assertThrows(ConflictException.class, () -> dossier.delete(page.id, "t"));
@@ -123,7 +124,7 @@ class DossierServiceTest extends EpicsTestSupport {
   @Test
   void everyChangeLeavesAnAuditEntryUnderTheEpic() {
     Epic e = epic();
-    DossierPage page = dossier.create(e.id, "The claim loop", "", "t");
+    DossierPage page = dossier.create(DossierOwner.epic(e.id), "The claim loop", "", "t");
     dossier.update(page.id, "Renamed", null, 0L, "t");
     dossier.delete(page.id, "t");
 
@@ -141,6 +142,6 @@ class DossierServiceTest extends EpicsTestSupport {
   }
 
   private List<String> titles(String epicId) {
-    return dossier.listByEpic(epicId).stream().map(page -> page.title).toList();
+    return dossier.listByOwner(DossierOwner.epic(epicId)).stream().map(page -> page.title).toList();
   }
 }

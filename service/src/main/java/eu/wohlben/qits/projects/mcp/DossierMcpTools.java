@@ -2,8 +2,12 @@ package eu.wohlben.qits.projects.mcp;
 
 import eu.wohlben.qits.epics.control.DossierService;
 import eu.wohlben.qits.epics.control.EpicService;
+import eu.wohlben.qits.epics.control.TicketService;
+import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
 import eu.wohlben.qits.epics.entity.Epic;
+import eu.wohlben.qits.epics.entity.Ticket;
+import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
@@ -35,8 +39,21 @@ import java.util.List;
  * retried, never an error to paper over by sending the write again without one. The tool
  * descriptions carry that sentence, because it is the one thing a model gets wrong here.
  *
- * <p>Scope is {@link ProjectScope}'s, exactly as the epic tools resolve theirs: an epic in another
- * project reads as not found, so nothing here says what another project holds.
+ * <p><strong>A page belongs to an epic OR to a ticket, and the five tools stay five.</strong> Every
+ * tool takes {@code epicId} and {@code ticketId}, both optional and <b>exactly one required</b>; a
+ * call naming both or neither is refused with a sentence saying which. A parallel set of five ticket
+ * tools would double a surface the model has to choose from and would write the same rules twice,
+ * and the rules genuinely are the same — only the freeze differs, which is the service's to apply:
+ * a ticket commits to no scope, so its pages are writable at every status, while an epic's dossier
+ * freezes with the plan. A ticket's dossier is what the refine phase writes when <b>the ticket's own
+ * body cannot hold it</b>, and the descriptions say so because the refine prompt relies on it.
+ *
+ * <p><strong>{@code inline_figure} is the one tool that stays epic-only</strong>, and by absence of
+ * an argument rather than by a refusal: {@code dossier_asset} copies the refining route's sketches
+ * and designs, a route a ticket has not got.
+ *
+ * <p>Scope is {@link ProjectScope}'s, exactly as the epic tools resolve theirs: an epic — or a
+ * ticket — in another project reads as not found, so nothing here says what another project holds.
  *
  * <p>All five write tools are in {@link ReadOnlyRepositoryToolFilter}'s mutating set — on a
  * read-only session they are <em>absent</em>, not present-and-refusing.
@@ -54,6 +71,8 @@ public class DossierMcpTools {
   @Inject ProjectScope scope;
 
   @Inject EpicService epicService;
+
+  @Inject TicketService ticketService;
 
   @Inject DossierService dossier;
 
@@ -89,16 +108,19 @@ public class DossierMcpTools {
   @Tool(
       name = "list_dossier_pages",
       description =
-          "List the pages of this epic's dossier in reading order, without their text. The epic's"
-              + " own description is the pitch — why the work is worth doing; the dossier is what"
-              + " the agent implementing the epic builds from, one page per part, recording what"
-              + " changes and how it works — paths, names, exact values, examples and figures."
-              + " Start here to see what the dossier already covers before adding a page that"
-              + " repeats it, then read the one you mean with get_dossier_page.")
+          "List the pages of an epic's or a ticket's dossier in reading order, without their text."
+              + " Give exactly one of epicId and ticketId. The owner's own prose is the short form —"
+              + " an epic's description is the pitch, a ticket's is what refinement concluded — and"
+              + " the dossier is what the agent doing the work builds from, one page per part,"
+              + " recording what changes and how it works: paths, names, exact values, examples and"
+              + " figures. A DOSSIER PAGE IS FOR WHAT THE TICKET'S OWN BODY CANNOT HOLD. Start here"
+              + " to see what the dossier already covers before adding a page that repeats it, then"
+              + " read the one you mean with get_dossier_page.")
   public List<PageSummary> listDossierPages(
-      @ToolArg(description = "id of an epic in this project") String epicId) {
-    Epic epic = requireEpicInProject(epicId);
-    return dossier.listByEpic(epic.id).stream().map(DossierMcpTools::summarize).toList();
+      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
+      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+    Owner owner = requireOwnerInProject(epicId, ticketId);
+    return dossier.listByOwner(owner.owner()).stream().map(DossierMcpTools::summarize).toList();
   }
 
   @McpServer("repository")
@@ -106,53 +128,61 @@ public class DossierMcpTools {
       name = "get_dossier_page",
       description =
           "Read one dossier page in full: its markdown, and the version you must send back if you"
-              + " intend to rewrite it. Read before you write — a page is somebody's prose and the"
-              + " last write wins, so writing without reading is how an argument gets flattened.")
+              + " intend to rewrite it. Give exactly one of epicId and ticketId — whichever owns the"
+              + " page. Read before you write — a page is somebody's prose and the last write wins,"
+              + " so writing without reading is how an argument gets flattened.")
   public PageDetail getDossierPage(
-      @ToolArg(description = "id of an epic in this project") String epicId,
-      @ToolArg(description = "id of a page of this epic's dossier") String pageId) {
-    Epic epic = requireEpicInProject(epicId);
-    return detail(requireOfEpic(epic.id, pageId));
+      @ToolArg(description = "id of a page of that dossier") String pageId,
+      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
+      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+    Owner owner = requireOwnerInProject(epicId, ticketId);
+    return detail(requireOfOwner(owner.owner(), pageId));
   }
 
   @McpServer("repository")
   @Tool(
       name = "put_dossier_page",
       description =
-          "Write a dossier page: leave pageId out to add one at the end, or give it to rewrite that"
-              + " page. The page is read by the agent implementing this epic, so write what changes"
-              + " and how it works: paths, names, commands, file lists, exact values. The problem,"
-              + " the argument for the approach and why it is worth doing go in the epic's"
-              + " description instead — a page that restates them gives the implementer nothing to"
-              + " build from. The body is markdown; inline a sketch or a design with inline_figure"
-              + " rather than writing a URL by hand. NOBODY ACCEPTS THIS WRITE — the page is live"
-              + " in the Dossier tab the moment it lands, which is why an update must carry the"
-              + " version"
-              + " get_dossier_page gave you. A version that is no longer current means a person or"
-              + " another agent wrote to that page after you read it: re-read the page, fold your"
-              + " change into what is there now, and write again. It is a refusal to be retried,"
-              + " never an error to work around by sending the write without a version. Fails with"
-              + " a message when the epic's scope is frozen — a dossier is refined while the epic"
-              + " is still being refined.")
+          "Write a dossier page onto an epic or onto a ticket: give exactly one of epicId and"
+              + " ticketId, and leave pageId out to add a page at the end or give it to rewrite that"
+              + " page. The page is read by the agent doing the work, so write what changes and how"
+              + " it works: paths, names, commands, file lists, exact values. A DOSSIER PAGE IS FOR"
+              + " WHAT THE TICKET'S OWN BODY CANNOT HOLD — an error scenario crossing several"
+              + " services, a sequence worth a figure; anything that fits in the ticket's"
+              + " description belongs there instead. On an epic the same split is the pitch against"
+              + " the breakdown: the problem, the argument for the approach and why it is worth"
+              + " doing go in the epic's description, and a page that restates them gives the"
+              + " implementer nothing to build from. The body is markdown; on an EPIC's dossier"
+              + " inline a sketch or a design with inline_figure rather than writing a URL by hand,"
+              + " and note that a ticket's dossier has no figures at all. NOBODY ACCEPTS THIS"
+              + " WRITE — the page is live in the Dossier tab the moment it lands, which is why an"
+              + " update must carry the version get_dossier_page gave you. A version that is no"
+              + " longer current means a person or another agent wrote to that page after you read"
+              + " it: re-read the page, fold your change into what is there now, and write again."
+              + " It is a refusal to be retried, never an error to work around by sending the write"
+              + " without a version. On an epic it fails with a message when the scope is frozen —"
+              + " an epic's dossier is refined while the epic is; a ticket's dossier is writable at"
+              + " every status it has.")
   public PageSummary putDossierPage(
-      @ToolArg(description = "id of an epic in this project") String epicId,
       @ToolArg(description = "the page's heading, which also mints its slug at create") String title,
       @ToolArg(description = "the page's markdown") String body,
+      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
+      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId,
       @ToolArg(required = false, description = "id of the page to rewrite; omit to add a new one")
           String pageId,
       @ToolArg(
               required = false,
               description = "the version you last read of that page; required when rewriting")
           Long version) {
-    Epic epic = requireEpicInProject(epicId);
+    Owner owner = requireOwnerInProject(epicId, ticketId);
     DossierPage page;
     if (pageId == null || pageId.isBlank()) {
-      page = dossier.create(epic.id, title, body, changedBy());
+      page = dossier.create(owner.owner(), title, body, changedBy());
     } else {
-      requireOfEpic(epic.id, pageId);
+      requireOfOwner(owner.owner(), pageId);
       page = dossier.update(pageId, title, body, version, changedBy());
     }
-    changePublisher.fire(epic.projectId, ProjectChangeHint.Topic.EPICS);
+    changePublisher.fire(owner.projectId(), owner.topic());
     return summarize(page);
   }
 
@@ -161,17 +191,19 @@ public class DossierMcpTools {
       name = "move_dossier_page",
       description =
           "Put a page at a position in the dossier's reading order, zero-based; the pages between"
-              + " where it was and where it lands shift to close the gap. Reading order is the only"
+              + " where it was and where it lands shift to close the gap. Give exactly one of"
+              + " epicId and ticketId — whichever owns the page. Reading order is the only"
               + " structure a dossier has — there is no nesting, and a page's own headings are its"
               + " second level.")
   public PageSummary moveDossierPage(
-      @ToolArg(description = "id of an epic in this project") String epicId,
-      @ToolArg(description = "id of a page of this epic's dossier") String pageId,
-      @ToolArg(description = "zero-based position to put it at") int position) {
-    Epic epic = requireEpicInProject(epicId);
-    requireOfEpic(epic.id, pageId);
+      @ToolArg(description = "id of a page of that dossier") String pageId,
+      @ToolArg(description = "zero-based position to put it at") int position,
+      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
+      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+    Owner owner = requireOwnerInProject(epicId, ticketId);
+    requireOfOwner(owner.owner(), pageId);
     PageSummary moved = summarize(dossier.move(pageId, position, changedBy()));
-    changePublisher.fire(epic.projectId, ProjectChangeHint.Topic.EPICS);
+    changePublisher.fire(owner.projectId(), owner.topic());
     return moved;
   }
 
@@ -179,16 +211,18 @@ public class DossierMcpTools {
   @Tool(
       name = "remove_dossier_page",
       description =
-          "Delete a page of this epic's dossier. Removing somebody's page is not a way to disagree"
-              + " with it — rewrite the part that is wrong instead, and delete only what you added"
-              + " and no longer mean. A figure nothing else inlines goes with the page.")
+          "Delete a page of an epic's or a ticket's dossier; give exactly one of epicId and"
+              + " ticketId. Removing somebody's page is not a way to disagree with it — rewrite the"
+              + " part that is wrong instead, and delete only what you added and no longer mean. On"
+              + " an epic's dossier, a figure nothing else inlines goes with the page.")
   public String removeDossierPage(
-      @ToolArg(description = "id of an epic in this project") String epicId,
-      @ToolArg(description = "id of a page of this epic's dossier") String pageId) {
-    Epic epic = requireEpicInProject(epicId);
-    requireOfEpic(epic.id, pageId);
+      @ToolArg(description = "id of a page of that dossier") String pageId,
+      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
+      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+    Owner owner = requireOwnerInProject(epicId, ticketId);
+    requireOfOwner(owner.owner(), pageId);
     dossier.delete(pageId, changedBy());
-    changePublisher.fire(epic.projectId, ProjectChangeHint.Topic.EPICS);
+    changePublisher.fire(owner.projectId(), owner.topic());
     return "Removed dossier page " + pageId;
   }
 
@@ -226,9 +260,53 @@ public class DossierMcpTools {
     return epic;
   }
 
-  private DossierPage requireOfEpic(String epicId, String pageId) {
+  /** The ticket, checked back to the session's project the same way, and absent otherwise. */
+  private Ticket requireTicketInProject(String ticketId) {
+    Ticket ticket = ticketService.get(ticketId);
+    if (!scope.requireProjectId().equals(ticket.projectId)) {
+      throw new NotFoundException("Ticket not found: " + ticketId);
+    }
+    return ticket;
+  }
+
+  /** A resolved owner, with what a change hint needs: whose channel, and which topic. */
+  private record Owner(DossierOwner owner, String projectId, ProjectChangeHint.Topic topic) {}
+
+  /**
+   * Exactly one of the two ids, resolved and checked back to the session's project.
+   *
+   * <p>Both and neither are refused rather than guessed, and the two refusals say different things
+   * on purpose: a model that named two owners has to be told to drop one, and a model that named
+   * none has to be told the tool cannot pick. A silent default — "epic if you gave one" — would put
+   * a ticket's refinement on an epic's dossier with nothing reporting it.
+   */
+  private Owner requireOwnerInProject(String epicId, String ticketId) {
+    boolean hasEpic = epicId != null && !epicId.isBlank();
+    boolean hasTicket = ticketId != null && !ticketId.isBlank();
+    if (hasEpic && hasTicket) {
+      throw new BadRequestException(
+          "Give either epicId or ticketId, never both: a dossier page belongs to one epic or to one"
+              + " ticket, and this call names two owners.");
+    }
+    if (!hasEpic && !hasTicket) {
+      throw new BadRequestException(
+          "Give either epicId or ticketId: a dossier page belongs to an epic or to a ticket, and"
+              + " this call names neither.");
+    }
+    if (hasEpic) {
+      Epic epic = requireEpicInProject(epicId);
+      return new Owner(
+          DossierOwner.epic(epic.id), epic.projectId, ProjectChangeHint.Topic.EPICS);
+    }
+    Ticket ticket = requireTicketInProject(ticketId);
+    return new Owner(
+        DossierOwner.ticket(ticket.id), ticket.projectId, ProjectChangeHint.Topic.TICKETS);
+  }
+
+  /** The page, if that owner owns it. One of another owner's reads as absent, never as forbidden. */
+  private DossierPage requireOfOwner(DossierOwner owner, String pageId) {
     DossierPage page = dossier.get(pageId);
-    if (!page.epicId.equals(epicId)) {
+    if (!owner.equals(DossierOwner.of(page))) {
       throw new NotFoundException("Dossier page not found: " + pageId);
     }
     return page;
