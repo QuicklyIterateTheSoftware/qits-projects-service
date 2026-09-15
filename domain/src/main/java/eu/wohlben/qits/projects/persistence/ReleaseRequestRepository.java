@@ -16,14 +16,40 @@ import java.util.Optional;
 public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRequest, String> {
 
   /**
-   * The states a request can still move out of — what a new head re-arms, what a sweep visits, and
-   * what a list of "pending work" means when nobody named a state. REJECTED is in the set
-   * deliberately: a rejected request comes back to life when the fix lands, which is the
-   * merge-request shape of the whole aggregate. CONFLICTED is in it for exactly the same reason —
-   * the next push that makes the fold succeed clears it, and a request nothing re-merges is a
-   * request nothing can ever clear.
+   * <b>Open means NOT FINISHED</b> — every state but the three a request never leaves: FINALIZED,
+   * WITHDRAWN and OBSOLETE. REJECTED is in the set deliberately: a rejected request comes back to
+   * life when the fix lands, which is the merge-request shape of the whole aggregate. CONFLICTED is
+   * in it for exactly the same reason — the next push that makes the fold succeed clears it, and a
+   * request nothing re-merges is a request nothing can ever clear.
+   *
+   * <p><b>RELEASED joined it with ticket b27384a3.</b> A release is a tag, and what the tag released
+   * has still to publish, to deploy and to reach {@code main}; a request that vanished from every
+   * listing at the tag was a publish failure nobody was holding open. So this set is what a default
+   * listing answers and what "still happening here" means — and it is deliberately <b>not</b> the
+   * set that decides whether a request may still be folded, added to or approved, because a RELEASED
+   * request may not be. That is {@link #UNRELEASED}, one field down, and every write path reads it.
    */
   public static final List<ReleaseRequest.State> OPEN =
+      List.of(
+          ReleaseRequest.State.PENDING,
+          ReleaseRequest.State.READY,
+          ReleaseRequest.State.RELEASED,
+          ReleaseRequest.State.FAILED,
+          ReleaseRequest.State.REJECTED,
+          ReleaseRequest.State.CONFLICTED);
+
+  /**
+   * <b>{@link #OPEN} minus RELEASED: the states in which a request's content can still move.</b>
+   * What a push re-arms, what a create converges onto, what the gate sweep visits and what a fold
+   * may write to.
+   *
+   * <p>The two sets were one word until RELEASED became open, and separating them is the whole of
+   * what keeps that change safe. A released request's fold has been tagged: re-folding it would
+   * re-arm a request whose content already shipped, converging onto it would add a branch to a
+   * release that has happened, and approving it would be a row nothing reads. Every one of those
+   * paths reads this set, and only the reading paths read {@link #OPEN}.
+   */
+  public static final List<ReleaseRequest.State> UNRELEASED =
       List.of(
           ReleaseRequest.State.PENDING,
           ReleaseRequest.State.READY,
@@ -32,23 +58,28 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
           ReleaseRequest.State.CONFLICTED);
 
   /**
-   * The open request of this repository that already names {@code branch} as a source, if any —
-   * what the converge-on-create rule converges on, and what a push to that branch re-merges.
+   * The unreleased request of this repository that already names {@code branch} as a source, if any
+   * — what the converge-on-create rule converges on, and what a push to that branch re-merges.
    *
    * <p>A subquery rather than a join: the child rows are not mapped as an association (the parent is
    * loaded by id, never navigated), and this read wants the parent alone.
    */
-  public Optional<ReleaseRequest> findOpenByBranch(String repoId, String branch) {
-    return findOpenByBranches(repoId, List.of(branch)).stream().findFirst();
+  public Optional<ReleaseRequest> findUnreleasedByBranch(String repoId, String branch) {
+    return findUnreleasedByBranches(repoId, List.of(branch)).stream().findFirst();
   }
 
   /**
-   * Every open request of this repository naming any of {@code branches} as a named source, oldest
-   * first. The push consumption's read: one push touches one branch and may participate in several
-   * requests, and <b>each of them re-merges on its own</b> — a shared trigger is never a shared
-   * merge.
+   * Every unreleased request of this repository naming any of {@code branches} as a named source,
+   * oldest first. The push consumption's read: one push touches one branch and may participate in
+   * several requests, and <b>each of them re-merges on its own</b> — a shared trigger is never a
+   * shared merge.
+   *
+   * <p>{@link #UNRELEASED} and not {@link #OPEN}: a push to a branch a released request named is a
+   * push to a branch that release already consumed, and re-folding on it would re-arm a request
+   * whose tag is cut.
    */
-  public List<ReleaseRequest> findOpenByBranches(String repoId, Collection<String> branches) {
+  public List<ReleaseRequest> findUnreleasedByBranches(
+      String repoId, Collection<String> branches) {
     if (branches.isEmpty()) {
       return List.of();
     }
@@ -57,7 +88,7 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
             + " (select s.requestId from ReleaseRequestSource s where s.name in ?3)"
             + " order by createdAt",
         repoId,
-        OPEN,
+        UNRELEASED,
         branches);
   }
 
@@ -74,18 +105,31 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
         ReleaseRequest.State.PENDING);
   }
 
-  /** Every open request, oldest first — the sweep's worklist. */
-  public List<ReleaseRequest> listOpen() {
-    return list("state in ?1 order by createdAt", OPEN);
+  /**
+   * Every unreleased request, oldest first — the gate sweep's worklist. A RELEASED request is open
+   * but has no gate left in front of its tag; what is still owed for it is the publish phase's, and
+   * {@code ReleaseFinalization.sweep} is the belt under that.
+   */
+  public List<ReleaseRequest> listUnreleased() {
+    return list("state in ?1 order by createdAt", UNRELEASED);
   }
 
   /**
-   * Every open request of one repository, oldest first — the worklist of a trigger that is about
-   * the <b>repository</b> rather than about a branch: a sibling release adding an implicit tag, or
-   * one reaching {@code main} and leaving the set.
+   * Every unreleased request of one repository, oldest first — the worklist of a trigger that is
+   * about the <b>repository</b> rather than about a branch: a sibling release adding an implicit
+   * tag, or one reaching {@code main} and leaving the set.
    */
-  public List<ReleaseRequest> listOpenByRepo(String repoId) {
-    return list("repoId = ?1 and state in ?2 order by createdAt", repoId, OPEN);
+  public List<ReleaseRequest> listUnreleasedByRepo(String repoId) {
+    return list("repoId = ?1 and state in ?2 order by createdAt", repoId, UNRELEASED);
+  }
+
+  /**
+   * The repository's requests that have released and not been finalized, oldest first — what a fresh
+   * request of the same repository <b>obsoletes</b>. See {@code ReleaseRequests.request}.
+   */
+  public List<ReleaseRequest> listReleasedUnfinalized(String repoId) {
+    return list(
+        "repoId = ?1 and state = ?2 order by createdAt", repoId, ReleaseRequest.State.RELEASED);
   }
 
   /**
@@ -102,27 +146,35 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
   }
 
   /**
-   * The repository's last {@code limit} releases, most recently moved first — the tail the default
-   * reading adds to the open set, so that a list which is otherwise "what is still waiting" also
-   * says what has just landed.
+   * The repository's last {@code limit} <b>finalized</b> requests, most recently moved first — the
+   * tail the default reading adds to the open set, so that a list which is otherwise "what is still
+   * waiting" also says what has just landed.
+   *
+   * <p><b>FINALIZED and no longer RELEASED</b>, because RELEASED is in the open set now: a released
+   * request is already on the page as work in flight, and topping the same page up with it would
+   * list it twice. What a reader wants behind the open ones is what has <em>finished</em>, which is
+   * exactly the state a request leaves the open set for.
    *
    * <p>Ordered and paged by {@code updatedAt} rather than by {@code createdAt}: what makes a release
-   * recent is when it <em>released</em>, and a request asked for a week ago that landed this morning
-   * is the one somebody is looking for. It is a page and not a filter on purpose — a repository with
-   * a year of releases must cost the same read as one with three.
+   * recent is when it <em>landed</em>, and a request asked for a week ago that finalized this
+   * morning is the one somebody is looking for. It is a page and not a filter on purpose — a
+   * repository with a year of releases must cost the same read as one with three.
    */
-  public List<ReleaseRequest> listRecentReleased(String repoId, int limit) {
-    return find("repoId = ?1 and state = ?2 order by updatedAt desc", repoId, ReleaseRequest.State.RELEASED)
+  public List<ReleaseRequest> listRecentFinalized(String repoId, int limit) {
+    return find(
+            "repoId = ?1 and state = ?2 order by updatedAt desc",
+            repoId,
+            ReleaseRequest.State.FINALIZED)
         .page(0, limit)
         .list();
   }
 
-  /** {@link #listRecentReleased} across every repository of one project. */
-  public List<ReleaseRequest> listRecentReleasedByProject(String projectId, int limit) {
+  /** {@link #listRecentFinalized} across every repository of one project. */
+  public List<ReleaseRequest> listRecentFinalizedByProject(String projectId, int limit) {
     return find(
             "projectId = ?1 and state = ?2 order by updatedAt desc",
             projectId,
-            ReleaseRequest.State.RELEASED)
+            ReleaseRequest.State.FINALIZED)
         .page(0, limit)
         .list();
   }

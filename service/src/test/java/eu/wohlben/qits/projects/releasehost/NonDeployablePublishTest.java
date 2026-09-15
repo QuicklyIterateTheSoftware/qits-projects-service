@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.ReleaseFinalization;
@@ -43,9 +44,14 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class NonDeployablePublishTest {
 
+  /** The released tree's release pipeline — the publish gate's own file, spelled once. */
+  private static final String RELEASE_PIPELINE = ".config/qits/ci-event-release.yml";
+
   @Inject ReleaseFinalization finalization;
 
   @Inject eu.wohlben.qits.projects.bus.DeploymentActiveListener deployments;
+
+  @Inject eu.wohlben.qits.projects.bus.BuildStatusListener verdicts;
 
   @Inject RecordingBackingBranchMerger merger;
 
@@ -96,6 +102,142 @@ public class NonDeployablePublishTest {
               ReleaseRequest.delete("projectId = ?1", projectId);
               ReleasedTagPendingMerge.delete("repoId = ?1", repoId);
             });
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // The publish gate (ticket b27384a3)
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * <b>A release whose tree declares a release pipeline is not finished when the tag is cut.</b> The
+   * publish run has to go green first — which is the whole ticket: this repository used to be
+   * finalized at the tag, so a publish run that failed afterwards had nothing holding it open.
+   */
+  @Test
+  public void aReleaseWithAPublishPipelineWaitsForItsRunAndThenReachesMain() {
+    String tag = freshTag();
+    String releasedSha = pendingTag(tag);
+    treeAtTag(tag, "pom.xml", RELEASE_PIPELINE);
+
+    finalization.onReleased(repoId, tag);
+
+    assertEquals(
+        List.of(),
+        merger.foldsOf("refs/heads/main"),
+        "the tag is cut and nothing else is: the release run has not reported");
+    assertEquals(
+        ReleasedTagPendingMerge.PublishState.PENDING,
+        rowOf(tag).publishState,
+        "and the gate is visible on the row rather than implied by an absence");
+
+    publishVerdict("BuildSuccessful", tag, releasedSha, "run-green");
+
+    assertEquals(ReleasedTagPendingMerge.PublishState.PASSED, rowOf(tag).publishState);
+    assertEquals(List.of(releasedSha), merger.foldsOf("refs/heads/main").get(0).sources());
+    assertNotNull(rowOf(tag).mergedAt);
+  }
+
+  /**
+   * <b>A red publish run is a failed gate on an open release, never a state the request leaves.</b>
+   * The tag is cut and cannot be un-cut, so what a failure buys is a request that goes on saying so
+   * — with the run named, because {@code qits ci retry} is addressed by run — and a retry whose
+   * green verdict finalizes exactly as a first-time green one would.
+   */
+  @Test
+  public void aRedPublishRunLeavesTheReleaseOpenAndTheRetryFinalizesIt() {
+    String tag = freshTag();
+    pendingTag(tag);
+    treeAtTag(tag, "pom.xml", RELEASE_PIPELINE);
+    finalization.onReleased(repoId, tag);
+
+    publishVerdict("BuildFailed", tag, "sha-red", "run-red");
+
+    ReleasedTagPendingMerge red = rowOf(tag);
+    assertEquals(ReleasedTagPendingMerge.PublishState.FAILED, red.publishState);
+    assertEquals("run-red", red.publishRunId, "the run to retry is named, not described");
+    assertTrue(red.publishDetail.contains("run-red"), red.publishDetail);
+    assertNull(red.mergedAt, "nothing reaches main on a red gate");
+    assertNull(red.mergeRequestedAt, "and nothing is owed either");
+
+    // The sweep must not talk itself into finalizing a release whose gate is red.
+    finalization.sweep();
+    assertEquals(List.of(), merger.foldsOf("refs/heads/main"));
+
+    publishVerdict("BuildSuccessful", tag, "sha-green", "run-retry");
+
+    assertEquals(ReleasedTagPendingMerge.PublishState.PASSED, rowOf(tag).publishState);
+    assertNotNull(rowOf(tag).mergedAt, "the retry is what finishes it");
+  }
+
+  /**
+   * <b>A release that both publishes and deploys waits for both</b>, and the two arrive in whichever
+   * order they arrive: each keeps its own fact on the row, so neither can be forgotten by the other
+   * having been first.
+   */
+  @Test
+  public void aDeployableReleaseWithAPipelineWaitsForBothGatesInEitherOrder() {
+    String first = freshTag();
+    pendingTag(first);
+    treeAtTag(first, "pom.xml", RELEASE_PIPELINE, ".config/qits/deployments.yml");
+    finalization.onReleased(repoId, first);
+
+    publishVerdict("BuildSuccessful", first, "sha-1", "run-1");
+    assertEquals(
+        List.of(), merger.foldsOf("refs/heads/main"), "green, and the deployment has not happened");
+    deploymentActive("qits-thing", first);
+    assertNotNull(rowOf(first).mergedAt, "both gates passed, so the tag is owed main and lands");
+
+    String second = freshTag();
+    pendingTag(second);
+    treeAtTag(second, "pom.xml", RELEASE_PIPELINE, ".config/qits/deployments.yml");
+    finalization.onReleased(repoId, second);
+
+    deploymentActive("qits-thing", second);
+    assertNull(rowOf(second).mergedAt, "deployed, and the publish run has not reported");
+    assertNotNull(rowOf(second).deploymentActiveAt, "but the deployment is remembered for later");
+    publishVerdict("BuildSuccessful", second, "sha-2", "run-2");
+    assertNotNull(rowOf(second).mergedAt, "the other order finishes the same way");
+  }
+
+  /**
+   * The migrated repository's arm: no {@code ci-event-release.yml} in the tree at all, and qits-ci
+   * composes the release pipeline from the archetype {@code release.yml} names. The gate applies
+   * just the same — the file the presence rule reads is different, the fact is not.
+   */
+  @Test
+  public void aReleaseDeclaringAnArchetypeIsPublishGatedToo() {
+    String tag = freshTag();
+    pendingTag(tag);
+    gitHost.tree(
+        "refs/tags/" + tag,
+        Map.of("pom.xml", "irrelevant", ".config/qits/release.yml", "archetype: service\n"));
+
+    finalization.onReleased(repoId, tag);
+
+    assertEquals(
+        ReleasedTagPendingMerge.PublishState.PENDING,
+        rowOf(tag).publishState,
+        "a composed pipeline is a pipeline");
+    assertEquals(List.of(), merger.foldsOf("refs/heads/main"));
+  }
+
+  /**
+   * And the negative that keeps the arm above honest: a {@code release.yml} naming <em>no</em>
+   * archetype composes nothing, so a repository carrying one for its artifacts alone still has
+   * nothing that will ever finalize it and is finalized at the tag.
+   */
+  @Test
+  public void aReleaseYamlWithNoArchetypeIsNotAPipeline() {
+    String tag = freshTag();
+    pendingTag(tag);
+    gitHost.tree(
+        "refs/tags/" + tag,
+        Map.of("pom.xml", "irrelevant", ".config/qits/release.yml", "artifacts:\n  - maven\n"));
+
+    finalization.onReleased(repoId, tag);
+
+    assertNull(rowOf(tag).publishState, "no gate, deliberately not a PENDING one");
+    assertNotNull(rowOf(tag).mergedAt);
   }
 
   @Test
@@ -299,6 +441,31 @@ public class NonDeployablePublishTest {
                 ReleasedTagPendingMerge.<ReleasedTagPendingMerge>find(
                         "repoId = ?1 and tagName = ?2", repoId, tag)
                     .firstResult());
+  }
+
+  /**
+   * A verdict for the tag's own release run, through the listener that hears every verdict — so what
+   * is under test includes the correlation this platform actually makes: <b>a publish run's branch
+   * is the version</b>, and nothing else about the event says it is a publish run at all.
+   */
+  private void publishVerdict(String name, String tag, String sha, String runId) {
+    verdicts.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            name,
+            Instant.now(),
+            "{\"runId\":\""
+                + runId
+                + "\",\"repoId\":\""
+                + repoId
+                + "\",\"branch\":\""
+                + tag
+                + "\",\"commitSha\":\""
+                + sha
+                + "\"}",
+            null,
+            null,
+            null));
   }
 
   private void deploymentActive(String application, String version) {

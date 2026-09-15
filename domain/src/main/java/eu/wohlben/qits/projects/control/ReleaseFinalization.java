@@ -9,6 +9,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.jboss.logging.Logger;
@@ -18,29 +19,48 @@ import org.jboss.logging.Logger;
  * far end of the flow {@code ReleaseRequests} opens — a release is a tag, {@code main} is finalized
  * afterwards — and the only thing on this platform that advances {@code main} at all.
  *
- * <h2>The gate</h2>
+ * <h2>The gates, and there are two of them</h2>
  *
- * <p>The terminal gate is <b>a deployment reporting active</b>: qits-deployments announces {@code
- * DeploymentActive} for an application and a version, and that version is a released tag of some
- * repository, waiting in {@code released_tag_pending_merge} with a null {@code merged_at}. Nothing
- * else may move {@code main}: merging before the deployment would put a commit there that nothing
- * had proved, which is the shape this epic removed.
+ * <p><b>A release is finalized when every post-release gate the RELEASED TREE declares has passed</b>
+ * (ticket b27384a3). The released tag's own tree is read once — {@link #releasedTree} — and what it
+ * carries says which gates apply to this release:
  *
- * <p>Passing the gate stamps {@link ReleasedTagPendingMerge#mergeRequestedAt}, and that stamp — not
- * the event, not this thread — is what the merge is owed on. A merge that could not be applied stays
- * owed and the sweep keeps asking, so a git host that was unreachable for an hour costs a delay
- * rather than a release that never lands on {@code main}.
+ * <ul>
+ *   <li><b>The publish gate</b>, where the tree declares a release pipeline ({@code
+ *       .config/qits/ci-event-release.yml}, or a {@code .config/qits/release.yml} naming an
+ *       archetype qits-ci composes one from). The tag's own release run has to finish green, which
+ *       arrives here as a {@code BuildSuccessful} whose <em>branch is the version</em> — see {@link
+ *       #onPublishVerdict}. A red one is a <b>failed gate on an open request</b>, retried with
+ *       {@code qits ci retry}; it never moves the request out of RELEASED, because the tag is cut
+ *       and cannot be taken back.
+ *   <li><b>The deployment gate</b>, where the tree declares {@code .config/qits/deployments.yml}.
+ *       qits-deployments announces {@code DeploymentActive} for an application and a version, and
+ *       that version is a released tag of some repository — see {@link #onDeploymentActive}.
+ * </ul>
  *
- * <h2>The repositories that have no deployment to wait for</h2>
+ * <p><b>They pass in either order and each keeps its own fact on the row</b> ({@code publish_state},
+ * {@code deployment_active_at}, V23), which is why the deployment's stamp is no longer {@code
+ * merge_requested_at} itself. That column now means what its name always said: every configured
+ * gate passed and the merge is owed. A merge that could not be applied stays owed and the sweep
+ * keeps asking, so a git host that was unreachable for an hour costs a delay rather than a release
+ * that never lands on {@code main}.
  *
- * <p>A library deploys nothing, and neither does a stand-alone SPA or a docs repository, so the gate
- * above would never come and their {@code main} would never move again. {@link #onReleased} is the
- * shortcut: <b>at the release</b>, the released tag's tree is read and a repository declaring no
- * {@code .config/qits/deployments.yml} is finalized there and then. <b>That fork lives in exactly
- * one place</b> — {@link #deployability}, reached only from {@link #fork} — and it is
- * <b>temporary</b>, in the sense that its replacement is already named: when qits-maintenance
- * becomes the lifecycle for libraries the way qits-deployments is for services, a consumer taking
- * the new version <em>is</em> the deployment, and this arm goes.
+ * <h2>The repositories nothing else will ever finalize</h2>
+ *
+ * <p>A library publishes nothing and deploys nothing, and neither does a docs repository: no
+ * pipeline will report and no deployment will come, so its {@code main} would never move again.
+ * {@link #onReleased} is the arm for exactly that — a release whose tree declares <b>neither</b> of
+ * the two gates is finalized at the tag, there and then.
+ *
+ * <p><b>That is a narrower claim than the arm used to make, and the narrowing is the ticket's.</b>
+ * It read one file ({@code deployments.yml}) and finalized every repository that did not declare it
+ * — which finalized an SPA whose publish run had not run yet, and swallowed the failure when it went
+ * red. The question is not "does this deploy" any more, it is "will anything at all finish this",
+ * and the answer is read from the same single tree listing.
+ *
+ * <p>It is still <b>temporary</b>, in the sense that its replacement is already named: when
+ * qits-maintenance becomes the lifecycle for libraries the way qits-deployments is for services, a
+ * consumer taking the new version <em>is</em> the deployment, and this arm goes.
  *
  * <p><b>It hangs off this service's own release and not off qits-ci's {@code SoftwareRelease}</b>,
  * which is where it used to hang and why the arm quietly did nothing for half the platform: that
@@ -49,9 +69,9 @@ import org.jboss.logging.Logger;
  * {@code main} for ever. A release, by contrast, is something this service performs itself and
  * therefore always knows about.
  *
- * <p>The two gates cannot both fire for one tag: a repository that declares a deployment is left
- * entirely to {@code DeploymentActive}, and the stamped {@code merge_requested_at} settles the race
- * even if it could.
+ * <p>No two paths can double-gate one tag: {@link #advance} is the only writer of {@code
+ * merge_requested_at}, it stamps once, and every arrival — the release, a verdict, a deployment, the
+ * sweep — reaches it by the same route.
  *
  * <h2>Correlating a deployment back to a release</h2>
  *
@@ -102,11 +122,24 @@ public class ReleaseFinalization {
 
   @Inject Instance<ReleaseGitHost> gitHosts;
 
+  /** Reads {@link #RELEASE_SLOT_CONFIG} for the one fact the publish gate needs: an archetype. */
+  @Inject ReleaseArchetypeParser archetypeParser;
+
   /**
    * The platform's declaration that a repository is deployed, at the path every service and every
-   * frontend of it carries. Its <b>absence</b> is what the non-deployable shortcut turns on.
+   * frontend of it carries. Its presence is the deployment gate.
    */
   static final String DEPLOYMENTS_MANIFEST = ".config/qits/deployments.yml";
+
+  /** A repository's own release pipeline. Its presence at the tag is the publish gate. */
+  static final String RELEASE_PIPELINE = ReleaseArtifacts.RELEASE_RECIPE;
+
+  /**
+   * A migrated repository's release declaration: qits-ci composes the release pipeline from the
+   * archetype it names, so naming one is the publish gate too — {@link ReleaseGates}' own reading of
+   * the same file for the CI gate, applied to the released tree.
+   */
+  static final String RELEASE_SLOT_CONFIG = ReleaseArtifacts.SLOT_CONFIG;
 
   /**
    * A deployment of {@code version} is live, so the tag it deployed is owed {@code main}.
@@ -126,15 +159,100 @@ public class ReleaseFinalization {
     if (owed == null) {
       return;
     }
-    gate(
-        owed,
-        "the deployment of "
-            + (applicationName == null ? "it" : applicationName)
-            + " "
-            + version
-            + (environmentName == null ? "" : " to " + environmentName)
-            + " is active");
-    merge(owed.id());
+    boolean first =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    pendingTags
+                        .findByIdOptional(owed.id())
+                        .filter(row -> row.mergedAt == null && row.deploymentActiveAt == null)
+                        .map(
+                            row -> {
+                              row.deploymentActiveAt = Instant.now();
+                              return true;
+                            })
+                        .orElse(false));
+    if (first) {
+      LOG.infof(
+          "The deployment gate passed for %s of %s: %s %s is active%s",
+          owed.tagName(),
+          owed.repoId(),
+          applicationName == null ? "the application" : applicationName,
+          version,
+          environmentName == null ? "" : " in " + environmentName);
+    }
+    // Loud, because a deployment is news: a tag whose tree cannot be read here says so once per
+    // deployment rather than once per sweep.
+    advance(owed, true);
+  }
+
+  /**
+   * <b>The publish gate's verdict: qits-ci finished the release run of a tag.</b> Called from the
+   * build-status consumption for every terminal verdict whose branch names a version this service
+   * released — for a publish run the branch <em>is</em> the tag, which is what makes this
+   * correlation possible without qits-ci knowing anything about release requests.
+   *
+   * <p><b>A red verdict does not move the request out of RELEASED</b>, and that is the whole point
+   * of the ticket this method belongs to. The tag is cut; it cannot be un-cut. What a failure means
+   * is that a gate on an <em>open</em> request went red — the request keeps saying so, the run id is
+   * on the row for {@code qits ci retry} to address, and the retry's green verdict arrives here and
+   * finalizes. Nothing is rolled back and nothing is rejected.
+   *
+   * <p><b>Gating is not consulted.</b> A publish run's {@code gating} flag is about the fold gate,
+   * which this is not; what selects this arm is the branch naming a released version of the same
+   * repository with a finalization still owed. A run for anything else — a QA run on {@code
+   * release/<id>}, a build of {@code main} — names no such version and settles nothing here.
+   *
+   * <p>It never throws: the caller is a durable consumption whose watermark must not be held behind
+   * one repository's publish run.
+   *
+   * @param branch the verdict's branch, which for a publish run is the released version's own name
+   * @param green whether the run finished {@code SUCCESS}
+   */
+  public void onPublishVerdict(String repoId, String branch, String runId, boolean green) {
+    if (repoId == null || repoId.isBlank() || branch == null || branch.isBlank()) {
+      return;
+    }
+    String version = branch.trim();
+    String said =
+        green
+            ? "The release run " + runId + " of " + version + " finished green"
+            : "The release run "
+                + runId
+                + " of "
+                + version
+                + " FAILED; the release stays open until it is retried and passes";
+    Owed owed =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    pendingTags
+                        .find(repoId, version)
+                        .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                        .map(
+                            row -> {
+                              row.publishState =
+                                  green
+                                      ? ReleasedTagPendingMerge.PublishState.PASSED
+                                      : ReleasedTagPendingMerge.PublishState.FAILED;
+                              row.publishDetail = said;
+                              row.publishRunId = runId;
+                              return owedOf(row);
+                            })
+                        .orElse(null));
+    if (owed == null) {
+      // The overwhelmingly ordinary case: a verdict for a branch, not for a tag of ours.
+      LOG.debugf("No release of %s is waiting on a run for %s", repoId, version);
+      return;
+    }
+    if (green) {
+      LOG.infof("The publish gate passed for %s of %s: %s", version, repoId, said);
+      advance(owed, true);
+      return;
+    }
+    LOG.warnf(
+        "The publish gate FAILED for %s of %s and the release request stays open: %s",
+        version, repoId, said);
   }
 
   /**
@@ -152,18 +270,22 @@ public class ReleaseFinalization {
    * 2026.904.151913, measured). A release is a fact this service produces itself, so this is now
    * hung off that.
    *
-   * <p><b>TEMPORARY, and the shape of what replaces it is known.</b> A library deploys nothing, so
-   * the {@code DeploymentActive} gate would never come and its {@code main} would never move again;
-   * until qits-maintenance becomes the lifecycle for libraries the way qits-deployments is for
-   * services — a consumer taking the new version <em>is</em> the deployment — the release itself has
-   * to stand in for it. When that lands, this arm goes and {@code onDeploymentActive} is the only
-   * gate again.
+   * <p><b>It finalizes a repository NOTHING ELSE WILL EVER FINALIZE, and nothing more</b> — that is
+   * the ticket b27384a3 narrowing of what this arm used to do. It used to be "finalize a
+   * non-deployable at once", one file read, and it therefore finalized an SPA whose publish run had
+   * not even started: a red run afterwards had nothing left to hold open. The arm exists for the
+   * 2026-09-04 stranding case and for that alone — a release whose tree declares <b>neither</b> a
+   * release pipeline nor {@code deployments.yml} has no gate that could ever come, and without this
+   * its {@code main} would never move again.
    *
-   * <p>Deployability is read at the released tag, not at {@code main}: {@code
-   * .config/qits/deployments.yml} is the platform's own declaration of "this is deployed", and the
-   * tag is the only tree that is certainly the release's own. <b>A repository that does deploy is
-   * left alone</b> — its {@code DeploymentActive} is the gate and merging here would put the commit
-   * on {@code main} before the deployment, which is precisely the ordering this epic exists to fix.
+   * <p><b>TEMPORARY, and the shape of what replaces it is known.</b> Until qits-maintenance becomes
+   * the lifecycle for libraries the way qits-deployments is for services — a consumer taking the new
+   * version <em>is</em> the deployment — the release itself has to stand in for it. When that lands,
+   * this arm goes and the two real gates are the only ones again.
+   *
+   * <p>What is declared is read at the released tag, not at {@code main}: those files are the
+   * platform's own declaration of "this publishes" and "this is deployed", and the tag is the only
+   * tree that is certainly the release's own. See {@link ReleaseGates}' "Configured at the tag".
    *
    * <p><b>It never throws.</b> The caller is a release that has already happened and must not be
    * failed by anything after the tag; a git host that could not answer leaves the row ungated, which
@@ -179,71 +301,136 @@ public class ReleaseFinalization {
                 () ->
                     pendingTags
                         .find(repoId, version.trim())
-                        .filter(row -> row.mergedAt == null && row.mergeRequestedAt == null)
+                        .filter(
+                            row ->
+                                row.mergedAt == null
+                                    && row.mergeRequestedAt == null
+                                    && row.abandonedAt == null)
                         .map(ReleaseFinalization::owedOf)
                         .orElse(null));
     if (owed == null) {
       // Either this service did not release that tag, or it is already merged, or something has
-      // already gated it — the deployment, or an earlier pass of this very method.
+      // already gated it — the two gates, or an earlier pass of this very method — or a later
+      // release has superseded it whole.
       LOG.debugf("Nothing to gate for %s of %s on its release", version, repoId);
       return;
     }
-    fork(owed, true);
+    advance(owed, true);
   }
 
   /**
-   * The fork itself, and the ONLY copy of it: deploys nothing → {@code main} now; deploys → the
-   * deployment gates it; could not tell → nothing, and the catch-up asks again.
+   * <b>The whole post-release state machine, and the ONLY copy of it.</b> Every arrival reaches it —
+   * the release, a publish verdict, a deployment, the catch-up — and it always asks the same
+   * question: has every gate the released tree declares passed? If so the merge is owed and made; if
+   * not, nothing happens and whatever is still owed will arrive later.
    *
-   * @param loud whether an unanswerable git host is worth a WARN. It is on the release path, where
+   * <p>One tree listing per pass, which is what it costs to know which gates apply at all. The
+   * alternative — remembering the answer on the row — was rejected for {@link ReleaseGates}' own
+   * reason: it is the same bytes the git host would answer with again, and a stored requirement
+   * would be a second copy of a fact the tag already carries immutably.
+   *
+   * @param loud whether an unanswerable git host is worth a WARN. It is on the arrival paths, where
    *     it is news; it is not on the catch-up, which re-asks about the same row every sweep and
    *     would otherwise turn one unreadable tag into a log nobody reads.
    */
-  private void fork(Owed owed, boolean loud) {
-    switch (deployability(owed.repoId(), owed.tagName())) {
-      case DEPLOYS ->
-          // The DeploymentActive path owns this one, exclusively. Saying so at DEBUG rather than
-          // silently, because "nothing happened" is the correct outcome and an unreadable one.
-          LOG.debugf(
-              "%s declares a deployment, so its release %s reaches main when that deployment does",
-              owed.repoId(), owed.tagName());
-      case DEPLOYS_NOTHING -> {
-        gate(
-            owed,
-            "the repository declares no "
-                + DEPLOYMENTS_MANIFEST
-                + ", so nothing will ever deploy "
-                + owed.tagName());
-        merge(owed.id());
+  private void advance(Owed owed, boolean loud) {
+    ReleasedTree declared = releasedTree(owed.repoId(), owed.tagName());
+    if (!declared.read()) {
+      // The released tag stays visibly unfinished — merge_requested_at null beside a null merged_at
+      // — and the catch-up, a verdict, a deployment or a person can still complete it.
+      String sentence =
+          "What "
+              + owed.tagName()
+              + " of "
+              + owed.repoId()
+              + " declares cannot be established, so its gates cannot be decided; it stays ungated"
+              + " and the catch-up will ask again";
+      if (loud) {
+        LOG.warn(sentence);
+      } else {
+        LOG.debug(sentence);
       }
-      case UNREADABLE, UNKNOWN_FOR_NOW -> {
-        // The released tag stays visibly unfinished — merge_requested_at null beside a null
-        // merged_at — and the catch-up, a deployment, or a person can still complete it.
-        String sentence =
-            "Whether "
-                + owed.tagName()
-                + " of "
-                + owed.repoId()
-                + " deploys anything cannot be established; it stays ungated and the catch-up will"
-                + " ask again";
-        if (loud) {
-          LOG.warn(sentence);
-        } else {
-          LOG.debug(sentence);
-        }
-      }
+      return;
     }
+    Owing owing = owingOf(owed, declared.publishes());
+    if (owing == null) {
+      // The row went, or landed, between the listing and this read.
+      return;
+    }
+    if (declared.publishes()
+        && owing.publishState() != ReleasedTagPendingMerge.PublishState.PASSED) {
+      LOG.debugf(
+          "%s of %s declares a release pipeline whose run is %s; main waits for it",
+          owed.tagName(), owed.repoId(), owing.publishState());
+      return;
+    }
+    if (declared.deploys() && owing.deploymentActiveAt() == null) {
+      LOG.debugf(
+          "%s declares a deployment, so its release %s reaches main when that deployment does",
+          owed.repoId(), owed.tagName());
+      return;
+    }
+    gate(owed, why(owed, declared));
+    merge(owed.id());
+  }
+
+  /** Why this tag became owed {@code main} — the sentence the gate stamp is logged with. */
+  private static String why(Owed owed, ReleasedTree declared) {
+    List<String> passed = new ArrayList<>();
+    if (declared.publishes()) {
+      passed.add("the release run of " + owed.tagName() + " is green");
+    }
+    if (declared.deploys()) {
+      passed.add("a deployment of " + owed.tagName() + " is active");
+    }
+    if (passed.isEmpty()) {
+      return "the released tree declares neither a release pipeline nor "
+          + DEPLOYMENTS_MANIFEST
+          + ", so nothing else will ever finalize "
+          + owed.tagName();
+    }
+    return "every post-release gate passed — " + String.join(" and ", passed);
+  }
+
+  /** What the row itself says about the two gates, and the PENDING stamp that goes with asking. */
+  private record Owing(
+      ReleasedTagPendingMerge.PublishState publishState, Instant deploymentActiveAt) {}
+
+  /**
+   * Read the row's gate facts, stamping the publish gate PENDING the first time a release is found
+   * to declare a pipeline. The stamp is what makes the gate <b>visible</b> — it is where {@code
+   * gateReport} reads the PUBLISH gate's existence from, since nothing at {@code main} says whether
+   * the released commit declared one — and it is never written over a verdict that has already
+   * answered.
+   */
+  private Owing owingOf(Owed owed, boolean publishes) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                pendingTags
+                    .findByIdOptional(owed.id())
+                    .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                    .map(
+                        row -> {
+                          if (publishes && row.publishState == null) {
+                            row.publishState = ReleasedTagPendingMerge.PublishState.PENDING;
+                            row.publishDetail =
+                                "Waiting for the release run of " + row.tagName + " to finish";
+                          }
+                          return new Owing(row.publishState, row.deploymentActiveAt);
+                        })
+                    .orElse(null));
   }
 
   /**
    * The belt under every gate, in two arms.
    *
-   * <p><b>The catch-up</b> re-asks the deployability question for every released tag nothing has
-   * gated yet. It is what makes the fork crash-safe — a process that died between the tag and the
-   * fork loses nothing but time — and it is what heals a tag whose fork never ran at all, which is
-   * every non-deployable release made while this decision hung off {@code SoftwareRelease}. A
-   * repository that does declare a deployment is looked at and left alone on every pass, which is
-   * one cheap tree listing per release in flight.
+   * <p><b>The catch-up</b> re-asks the gate question for every released tag nothing has gated yet.
+   * It is what makes the release-path arm crash-safe — a process that died between the tag and it
+   * loses nothing but time — and it is what heals a tag nothing ever decided about, which is every
+   * non-deployable release made while this decision hung off {@code SoftwareRelease}. A release
+   * still waiting on a gate is looked at and left alone on every pass, which is one cheap tree
+   * listing per release in flight.
    *
    * <p><b>The retry</b> re-attempts each merge this service already owes {@code main}, turning an
    * unreachable git host, a merge that raced a concurrent writer and a conflict somebody has since
@@ -259,7 +446,7 @@ public class ReleaseFinalization {
     List<Owed> ungated =
         QuarkusTransaction.requiringNew()
             .call(() -> pendingTags.listUngated().stream().map(ReleaseFinalization::owedOf).toList());
-    ungated.forEach(row -> fork(row, false));
+    ungated.forEach(row -> advance(row, false));
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -280,7 +467,11 @@ public class ReleaseFinalization {
                 () ->
                     pendingTags
                         .findByIdOptional(owed.id())
-                        .filter(row -> row.mergedAt == null && row.mergeRequestedAt == null)
+                        .filter(
+                            row ->
+                                row.mergedAt == null
+                                    && row.mergeRequestedAt == null
+                                    && row.abandonedAt == null)
                         .map(
                             row -> {
                               row.mergeRequestedAt = Instant.now();
@@ -312,7 +503,11 @@ public class ReleaseFinalization {
                 () ->
                     pendingTags
                         .findByIdOptional(rowId)
-                        .filter(row -> row.mergedAt == null && row.mergeRequestedAt != null)
+                        .filter(
+                            row ->
+                                row.mergedAt == null
+                                    && row.mergeRequestedAt != null
+                                    && row.abandonedAt == null)
                         .map(
                             row ->
                                 new Ask(
@@ -421,16 +616,39 @@ public class ReleaseFinalization {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // Deployable or not — the TEMPORARY fork, and the only copy of it
+  // What the released tree declares — ONE listing, and the only copy of the reading
   // -----------------------------------------------------------------------------------------------
 
   /**
-   * What a repository's released tree says about whether anything deploys it. {@link #UNKNOWN} is
-   * not a third kind of repository: it is this service not having been able to ask.
+   * Which post-release gates a released tag declares, or the fact that its tree could not be read.
+   *
+   * <p>Both questions come out of <b>one</b> listing on purpose. They used to be one question
+   * (deployability) and are now two, and asking them separately would double this service's git-host
+   * traffic per sweep for two membership tests on the same list of paths.
+   *
+   * @param readability whether the tree was read at all; the two failure words are kept apart for
+   *     the reason stated on {@link Readability#UNREADABLE}
+   * @param publishes the tree declares a release pipeline, so the publish gate applies
+   * @param deploys the tree declares {@link #DEPLOYMENTS_MANIFEST}, so the deployment gate applies
    */
-  enum Deployability {
-    DEPLOYS,
-    DEPLOYS_NOTHING,
+  record ReleasedTree(Readability readability, boolean publishes, boolean deploys) {
+
+    static ReleasedTree unread(Readability readability) {
+      return new ReleasedTree(readability, false, false);
+    }
+
+    boolean read() {
+      return readability == Readability.READ;
+    }
+  }
+
+  /**
+   * Whether the released tree could be read. Neither failure is ever an answer about the release —
+   * "could not ask" resolving to "declares nothing" would merge a commit to {@code main} on no gate
+   * at all.
+   */
+  enum Readability {
+    READ,
     /** The git host could not be asked. Retrying is exactly what fixes it. */
     UNKNOWN_FOR_NOW,
     /** The git host answered, and its answer was a refusal that will not change: settle. */
@@ -438,46 +656,79 @@ public class ReleaseFinalization {
   }
 
   /**
-   * Does this release declare a deployment? Read as the released tag's own tree, through the git
-   * host, and nowhere else.
+   * What does this release declare? Read as the released tag's own tree, through the git host, and
+   * nowhere else.
    *
    * <p><b>The tree rather than the file.</b> {@code ReleaseGitHost.file} answers "failed" for a blob
    * that is absent, one that is binary and a rev that does not resolve alike, and the difference
-   * between "this repository deploys nothing" and "the git host could not tell us" is the whole
+   * between "this repository declares nothing" and "the git host could not tell us" is the whole
    * decision here. A tree listing separates them: a successful listing without the path is an
    * answer, and an unsuccessful one is not an answer at all.
    *
    * <p>A refusal that is <b>not</b> about the moment — a tag the git host does not know — is kept
-   * apart as {@link Deployability#UNREADABLE} even though {@link #fork} treats the two alike today:
+   * apart as {@link Readability#UNREADABLE} even though {@link #advance} treats the two alike today:
    * the same bytes really would fail identically forever, and only the volume of the retry
    * distinguishes them. Neither is ever read as an answer.
    *
+   * <p><b>The one file read, and only where the listing already said the file is there</b>: {@link
+   * #RELEASE_SLOT_CONFIG} has to be opened to see whether it names an archetype. A read that fails
+   * is "could not ask" and holds the whole answer; a file that will not <em>parse</em> is {@link
+   * ReleaseGates}' case exactly and takes its answer — the gate applies. Waiting on a run that then
+   * has to be fixed is recoverable; finalizing a release whose pipeline was never checked is not.
+   *
    * <p><b>Its failures are logged at DEBUG</b>, because the catch-up asks about the same row on
-   * every sweep; {@link #fork} is what says something once, on the path where it is news.
+   * every sweep; {@link #advance} is what says something once, on the path where it is news.
    */
-  private Deployability deployability(String repoId, String version) {
+  private ReleasedTree releasedTree(String repoId, String version) {
     if (!gitHosts.isResolvable()) {
-      LOG.debugf(
-          "No git host is configured, so whether %s deploys anything cannot be read", repoId);
-      return Deployability.UNKNOWN_FOR_NOW;
+      LOG.debugf("No git host is configured, so what %s declares cannot be read", repoId);
+      return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
     }
+    String rev = "refs/tags/" + version;
+    ReleaseGitHost host = gitHosts.get();
     ReleaseGitHost.Answer<List<String>> tree;
     try {
-      tree = gitHosts.get().tree(repoId, "refs/tags/" + version);
+      tree = host.tree(repoId, rev);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not be read as an answer.
       LOG.debugf(e, "The git host threw reading the tree of %s at %s", repoId, version);
-      return Deployability.UNKNOWN_FOR_NOW;
+      return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
     }
     if (!tree.ok()) {
       LOG.debugf(
-          "Could not read the tree of %s at refs/tags/%s (%s): %s",
-          repoId, version, tree.retryable() ? "retryable" : "final", tree.detail());
-      return tree.retryable() ? Deployability.UNKNOWN_FOR_NOW : Deployability.UNREADABLE;
+          "Could not read the tree of %s at %s (%s): %s",
+          repoId, rev, tree.retryable() ? "retryable" : "final", tree.detail());
+      return ReleasedTree.unread(
+          tree.retryable() ? Readability.UNKNOWN_FOR_NOW : Readability.UNREADABLE);
     }
-    return tree.value().contains(DEPLOYMENTS_MANIFEST)
-        ? Deployability.DEPLOYS
-        : Deployability.DEPLOYS_NOTHING;
+    List<String> paths = tree.value();
+    boolean deploys = paths.contains(DEPLOYMENTS_MANIFEST);
+    if (paths.contains(RELEASE_PIPELINE)) {
+      return new ReleasedTree(Readability.READ, true, deploys);
+    }
+    if (!paths.contains(RELEASE_SLOT_CONFIG)) {
+      return new ReleasedTree(Readability.READ, false, deploys);
+    }
+    ReleaseGitHost.Answer<String> config;
+    try {
+      config = host.file(repoId, rev, RELEASE_SLOT_CONFIG);
+    } catch (RuntimeException e) {
+      LOG.debugf(e, "The git host threw reading %s of %s at %s", RELEASE_SLOT_CONFIG, repoId, rev);
+      return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
+    }
+    if (config == null || !config.ok()) {
+      LOG.debugf(
+          "%s is declared at %s of %s and could not be read", RELEASE_SLOT_CONFIG, rev, repoId);
+      return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
+    }
+    try {
+      return new ReleasedTree(Readability.READ, archetypeParser.declaresArchetype(config.value()), deploys);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "%s at %s of %s does not parse; treating %s as publish-gated rather than ungated: %s",
+          RELEASE_SLOT_CONFIG, rev, repoId, version, e.getMessage());
+      return new ReleasedTree(Readability.READ, true, deploys);
+    }
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -504,7 +755,9 @@ public class ReleaseFinalization {
             () -> {
               List<ReleasedTagPendingMerge> rows = pendingTags.listByTag(version.trim());
               List<ReleasedTagPendingMerge> open =
-                  rows.stream().filter(row -> row.mergedAt == null).toList();
+                  rows.stream()
+                      .filter(row -> row.mergedAt == null && row.abandonedAt == null)
+                      .toList();
               if (open.isEmpty()) {
                 LOG.debugf(
                     "Nothing here owes main for version %s (%d released rows carry that tag)",

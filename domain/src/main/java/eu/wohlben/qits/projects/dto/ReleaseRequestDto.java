@@ -5,11 +5,26 @@ import java.util.List;
 
 /**
  * One release request as the API answers it. {@code state} is the stored word — {@code PENDING},
- * {@code READY}, {@code RELEASED}, {@code REJECTED}, {@code FAILED}, {@code CONFLICTED} or {@code
- * WITHDRAWN} today, and the vocabulary may grow. {@code detail} is the sentence explaining a request
- * that is not simply pending or released; {@code version} is the calver the release answered with,
- * once it did. {@code retryable} says, of a FAILED request, whether the sweep keeps retrying the
- * execution or the refusal stands until something re-arms it.
+ * {@code READY}, {@code RELEASED}, {@code REJECTED}, {@code FAILED}, {@code CONFLICTED}, {@code
+ * WITHDRAWN}, {@code FINALIZED} or {@code OBSOLETE} today, and the vocabulary may grow. {@code
+ * detail} is the sentence explaining a request that is not simply pending or released; {@code
+ * version} is the calver the release answered with, once it did. {@code retryable} says, of a FAILED
+ * request, whether the sweep keeps retrying the execution or the refusal stands until something
+ * re-arms it.
+ *
+ * <p><b>{@code RELEASED} IS NOT THE END, and a caller that treats it as one is wrong about two
+ * things at once.</b> A release is a tag; what it released has still to publish, to deploy and to
+ * reach {@code main}, and only {@code FINALIZED} says all of that happened. So a RELEASED request is
+ * on the default listing, its {@code gates} keep answering (the publish and deployment gates do
+ * their work entirely after the tag), and a red publish run shows as a FAILED gate on a request that
+ * is still open rather than as a state it moved to. What RELEASED does mean is that nothing about
+ * the request may change any more — no source, no approval, no re-fold.
+ *
+ * <p><b>{@code supersededBy} is the whole of what {@code OBSOLETE} means</b>: a later release of the
+ * same repository was asked for before this one finalized, folded this one's tag in and released
+ * past it, so nothing will ever finish this request. It names that later request and is null in
+ * every other state. The release itself was real and its tag stands — this says only that the tag
+ * reaches {@code main} inside the successor rather than under its own name.
  *
  * <p><b>A request is a merge of {@code sources}, not a branch head.</b> {@code backingBranch} is
  * {@code release/<id>} — the ref the git host folds them into — and {@code mergedSha} is the tip of
@@ -110,6 +125,7 @@ public record ReleaseRequestDto(
     List<ReleaseGateDto> gates,
     MergeConflictDto conflict,
     String version,
+    String supersededBy,
     String releasedSha,
     Instant mergedToMainAt,
     boolean retryable,

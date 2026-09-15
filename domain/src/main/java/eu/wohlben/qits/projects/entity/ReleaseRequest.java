@@ -32,13 +32,30 @@ import java.util.UUID;
  * answer it. A fold that produces nothing new ({@code unchanged} at the git host) is not a change
  * and re-arms nothing.
  *
- * <p>The state machine: {@code PENDING → READY → RELEASED}; {@code PENDING → REJECTED} when a
- * gating verdict is red; {@code READY → FAILED → READY} around a mechanical execution failure —
- * retried by the sweep only while {@link #retryable} says asking again can change the answer;
+ * <p>The state machine: {@code PENDING → READY → RELEASED → FINALIZED}; {@code PENDING → REJECTED}
+ * when a gating verdict is red; {@code READY → FAILED → READY} around a mechanical execution failure
+ * — retried by the sweep only while {@link #retryable} says asking again can change the answer;
  * {@code → CONFLICTED} when the sources cannot be folded at all, cleared by the next fold that
  * succeeds; a new merged sha re-arms {@code REJECTED}, {@code FAILED} and {@code CONFLICTED} back to
- * {@code PENDING}; {@code WITHDRAWN} is reserved for an explicit withdrawal. Stored as a string with
- * no check constraint, the platform's usual reasoning — which is why CONFLICTED cost no DDL.
+ * {@code PENDING}; {@code WITHDRAWN} is reserved for an explicit withdrawal, and {@code OBSOLETE}
+ * for a released-but-unfinalized request a later release of the same repository has overtaken.
+ * Stored as a string with no check constraint, the platform's usual reasoning — which is why
+ * CONFLICTED cost no DDL and neither did these two.
+ *
+ * <p><b>RELEASED IS NOT THE END, and that is the change ticket b27384a3 made.</b> The tag being cut
+ * used to finish a request: a publish run that failed afterwards had nothing holding it open, and a
+ * QA run still queued kept grinding on a branch that no longer existed. A request is finished when
+ * the release is <b>finalized</b> — the tag merged into {@code main} — which happens only once every
+ * post-release gate its repository configures has passed: the tag's own release pipeline green
+ * (where the released tree declares one) and {@code DeploymentActive} for the released version
+ * (where it declares a deployment). Until then the request is <em>open</em>: it is in {@link
+ * eu.wohlben.qits.projects.persistence.ReleaseRequestRepository#OPEN}, it is on the default listing,
+ * and a red publish verdict is a failed gate on it rather than a state it leaves.
+ *
+ * <p><b>A RELEASED request is nonetheless past changing.</b> Its fold has been tagged, so nothing
+ * re-folds it, no source may be added to it and nobody may approve it — see {@link
+ * eu.wohlben.qits.projects.persistence.ReleaseRequestRepository#UNRELEASED}, which is the narrower
+ * set every one of those paths reads. "Open" here means "not finished", never "still editable".
  *
  * <p><b>{@code PENDING → READY} is now TWO gates, not one</b>, and only the first of them is made of
  * verdicts. The build gate asks whether CI vouched for {@link #mergedSha}; the <b>approval gate</b>
@@ -64,12 +81,27 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   public enum State {
     PENDING,
     READY,
+    /**
+     * The tag is cut, and the request is <b>still open</b>: what it released has still to publish,
+     * to deploy and to reach {@code main}. See the class javadoc.
+     */
     RELEASED,
     REJECTED,
     FAILED,
     /** The sources cannot be folded; {@link #conflictDetail} says which paths and whose head. */
     CONFLICTED,
-    WITHDRAWN
+    WITHDRAWN,
+    /**
+     * The release reached {@code main}. <b>The only end of the ordinary path</b>, and the one state
+     * in which every gate — before the tag and after it — has been answered.
+     */
+    FINALIZED,
+    /**
+     * A later release of the same repository overtook this one before it was finalized, so nothing
+     * will ever finish it: the new release folds this one's tag in and supersedes it whole. {@link
+     * #supersededBy} names the request that did it and {@link #detail} says so in a sentence.
+     */
+    OBSOLETE
   }
 
   /**
@@ -172,6 +204,16 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
 
   /** The calver the release door answered with, once RELEASED. */
   @Column public String version;
+
+  /**
+   * The request that made this one {@link State#OBSOLETE} — a later release of the same repository
+   * that overtook this one before it was finalized. Null in every other state, and it is a plain id
+   * with no foreign key for the reason {@link #gateTicketId} states one field down in reverse: the
+   * row it names is in this very table, but a delete of it must not cascade into the record of what
+   * superseded what.
+   */
+  @Column(name = "superseded_by")
+  public String supersededBy;
 
   /**
    * The ticket filed because this request's gate went red with <b>nobody watching</b> — see {@code

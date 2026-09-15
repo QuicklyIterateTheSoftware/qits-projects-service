@@ -114,7 +114,10 @@ public class ReleaseArtifacts {
                               () ->
                                   new NotFoundException(
                                       "Release request not found: " + requestId));
-                  if (row.state != ReleaseRequest.State.RELEASED
+                  // RELEASED and FINALIZED alike: a tag was cut in both, and what it carries does
+                  // not change when it reaches main. Anything else has released nothing to read.
+                  if ((row.state != ReleaseRequest.State.RELEASED
+                          && row.state != ReleaseRequest.State.FINALIZED)
                       || row.version == null
                       || row.version.isBlank()) {
                     return null;

@@ -211,6 +211,25 @@ import org.jboss.logging.Logger;
  * scheduler thread, and the release is several HTTP round trips neither may sit on. The worker
  * re-reads the row, so a request executed twice over is settled by the first arrival.
  *
+ * <h2>The tag is not the end</h2>
+ *
+ * <p><b>A request stays open until the release is FINALIZED</b> (ticket b27384a3). RELEASED means
+ * the tag is cut, and what it released has still to publish, to deploy and to reach {@code main} —
+ * {@link ReleaseFinalization} is where those two gates and that merge live, and {@link
+ * #onReleasedTagMerged} is where the request finishes. Three rules follow here:
+ *
+ * <ul>
+ *   <li><b>RELEASED is in {@link ReleaseRequestRepository#OPEN} and not in {@link
+ *       ReleaseRequestRepository#UNRELEASED}.</b> It is open — a listing shows it, its gates keep
+ *       reporting — and it is past changing: nothing re-folds it, no source may be added and nobody
+ *       may approve it. Every write path in this class reads the second set.
+ *   <li><b>A new request obsoletes a release it overtook</b>, because the fresh fold contains that
+ *       release's tag and nothing will ever finish the earlier request. See {@link #obsolete}.
+ *   <li><b>Nothing here decides a post-release gate.</b> A publish verdict and a deployment are
+ *       {@link ReleaseFinalization}'s to read; this class learns the outcome when a tag reaches
+ *       {@code main}.
+ * </ul>
+ *
  * <p>What {@link ReleaseExecutor} does is stamp a calver, rewrite the manifests at the fold, commit
  * them onto the backing branch, <b>tag</b> that commit, delete the branches the release consumed and
  * announce {@code SCMRelease}. There is no push to {@code main} in it: a release is a tag, and
@@ -380,6 +399,17 @@ public class ReleaseRequests {
    * ReleaseRequestDto}: an id that is not new, a source list carrying branches the caller never
    * named, and a summary that is somebody else's. See {@code ReleaseRequestController.create}.
    *
+   * <h2>A fresh request OBSOLETES the releases it overtakes</h2>
+   *
+   * <p>A RELEASED request stays open until its tag reaches {@code main}, so a repository can be
+   * asked for a new release while an earlier one is still owed its publish run or its deployment.
+   * The fresh request folds that earlier tag in, so it <em>is</em> the earlier release plus more:
+   * the earlier request is marked {@link ReleaseRequest.State#OBSOLETE}, its runs are cancelled and
+   * its owed merge abandoned. {@link #obsolete} holds the rule, and states there why obsolescence
+   * and convergence cannot fight — the short of it is that every convergence read is over {@link
+   * ReleaseRequestRepository#UNRELEASED} and every obsolescence read is over RELEASED, two disjoint
+   * sets, so a converging ask never reaches this at all.
+   *
    * @param priority how urgently the named branch wants to be released, or null/blank for {@code
    *     MEDIUM}. The implied {@code main} row takes the default rather than the caller's word: the
    *     caller asked about their branch and said nothing about main. On the <b>converge</b> arm an
@@ -414,6 +444,10 @@ public class ReleaseRequests {
     // joining an estate's open request is the same content change an explicit addSource is, and
     // the announcement should say which branch arrived rather than claim a creation.
     AtomicReference<String> why = new AtomicReference<>("created");
+    // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
+    // and their owed merges stopped afterwards, because both reach out of this database. Empty on
+    // every converging ask — see the obsolescence paragraph in this method's javadoc.
+    List<Obsoleted> overtaken = new ArrayList<>();
     String id =
         QuarkusTransaction.requiringNew()
             .call(
@@ -421,7 +455,7 @@ public class ReleaseRequests {
                   ReleaseRequest open =
                       wrapper
                           ? openOfWrapper(repoId, named)
-                          : requests.findOpenByBranch(repoId, named).orElse(null);
+                          : requests.findUnreleasedByBranch(repoId, named).orElse(null);
                   if (open != null) {
                     ReleaseRequestSource participating =
                         sources
@@ -474,10 +508,88 @@ public class ReleaseRequests {
                   if (!mainWasNamed) {
                     addSourceRow(fresh.id, named, requester, orDefault(stated));
                   }
+                  overtaken.addAll(obsolete(repoId, fresh));
                   return fresh.id;
                 });
+    for (Obsoleted earlier : overtaken) {
+      stopFinalizing(earlier);
+      cancel(repoId, earlier.requestId(), "was superseded by release request " + id);
+    }
     remerge(id, why.get());
     return get(id);
+  }
+
+  /** One request this create overtook, carried out of the transaction that marked it. */
+  private record Obsoleted(String requestId, String version) {}
+
+  /**
+   * <b>Mark every release of this repository that never finalized OBSOLETE.</b> Called from the
+   * fresh arm of {@link #request} and from nowhere else.
+   *
+   * <p>A RELEASED request is open until its tag reaches {@code main}, so a repository can be asked
+   * for a new release while an earlier one is still owed its publish run or its deployment. The new
+   * request folds that earlier tag in — it is an implicit source, which is what makes every release
+   * a superset of the ones in flight — so the earlier release <b>is</b> the new one now, in content.
+   * What is left of it is a request that nothing will ever finish and a merge the sweep would go on
+   * attempting for a version the platform has moved past. Both are ended here: the row says which
+   * request superseded it ({@link ReleaseRequest#supersededBy}), its queued runs are cancelled, and
+   * its tag row is abandoned so the finalization sweep stops asking.
+   *
+   * <h2>Obsolescence and convergence cannot fight, and this is why</h2>
+   *
+   * <p><b>Convergence wins wherever it applies, because obsolescence cannot reach the same rows.</b>
+   * Both arms of {@link #request} read {@link ReleaseRequestRepository#UNRELEASED} — {@link
+   * #openOfWrapper} and {@code findUnreleasedByBranch} alike — so a converging ask answers a request
+   * whose tag has <em>not</em> been cut and never gets here at all. This runs only after that read
+   * came back empty and a fresh request was minted, and it looks only at RELEASED rows, which no
+   * convergence read can return. The two operate on disjoint sets by construction rather than by
+   * ordering, which is what makes "a second workspace joins the estate's open request" and "a new
+   * release overtakes one still publishing" both true of a wrapper at the same time.
+   *
+   * <p>The tag itself stays in the implicit source set: it was really cut and every later fold must
+   * still contain it, or the next release would be a step backwards from something that shipped.
+   */
+  private List<Obsoleted> obsolete(String repoId, ReleaseRequest successor) {
+    List<Obsoleted> overtaken = new ArrayList<>();
+    for (ReleaseRequest earlier : requests.listReleasedUnfinalized(repoId)) {
+      if (earlier.id.equals(successor.id)) {
+        continue;
+      }
+      earlier.state = ReleaseRequest.State.OBSOLETE;
+      earlier.supersededBy = successor.id;
+      earlier.detail =
+          "Superseded by release request "
+              + successor.id
+              + (earlier.version == null
+                  ? ", which was asked for before this one finalized"
+                  : ", which folds " + earlier.version + " in and releases past it");
+      earlier.retryable = false;
+      earlier.updatedAt = Instant.now();
+      pendingTags
+          .findByRequest(earlier.id)
+          .filter(tag -> tag.mergedAt == null && tag.abandonedAt == null)
+          .ifPresent(tag -> tag.abandonedAt = Instant.now());
+      overtaken.add(new Obsoleted(earlier.id, earlier.version));
+      LOG.infof(
+          "Release request %s (%s) is obsolete: %s releases past it",
+          earlier.id, earlier.version, successor.id);
+    }
+    return overtaken;
+  }
+
+  /**
+   * Nothing is left to finalize for an obsoleted request, so say it once where a reader will look.
+   * The abandoning itself is one field written in the transaction above — this is the log line and
+   * the estate note, both of which belong outside it.
+   */
+  private void stopFinalizing(Obsoleted earlier) {
+    estatePinLedger.forget(earlier.requestId());
+    if (earlier.version() != null) {
+      LOG.infof(
+          "The released tag %s is abandoned: its request was superseded before it reached main, and"
+              + " the release that superseded it folds it in",
+          earlier.version());
+    }
   }
 
   /**
@@ -492,9 +604,15 @@ public class ReleaseRequests {
    * is the per-branch converge the caller is entitled to, and a re-ask must answer the request it
    * answered last time — and otherwise the oldest open request is the estate's, which is also the
    * one the others will drain into as their branches release.
+   *
+   * <p><b>"Open" here is {@link ReleaseRequestRepository#UNRELEASED}, not {@link
+   * ReleaseRequestRepository#OPEN}</b>, and since RELEASED became an open state that distinction is
+   * what keeps this correct: an estate whose tag is cut and is waiting on its deployment must not be
+   * joined by a new branch, because its content is already tagged. Such an ask mints a fresh request
+   * — and {@link #obsolete} then supersedes the released one, which is the honest outcome.
    */
   private ReleaseRequest openOfWrapper(String repoId, String named) {
-    List<ReleaseRequest> open = requests.listOpenByRepo(repoId);
+    List<ReleaseRequest> open = requests.listUnreleasedByRepo(repoId);
     for (ReleaseRequest candidate : open) {
       if (sources.find(candidate.id, ReleaseRequestSource.Kind.BRANCH, named).isPresent()) {
         return candidate;
@@ -679,8 +797,10 @@ public class ReleaseRequests {
    *
    * <ol>
    *   <li><b>The request does not exist</b> — a 404, the only one here, since nothing was named.
-   *   <li><b>It is not open.</b> RELEASED and WITHDRAWN have concluded and a decision about them
-   *       would be a decision about a record. READY refuses too, which the other write paths do not
+   *   <li><b>Its fold is past deciding about.</b> RELEASED, FINALIZED, WITHDRAWN and OBSOLETE have
+   *       all been tagged or abandoned and a decision about them would be a decision about a record
+   *       — a RELEASED request is still <em>open</em>, but what it is open on is a publish run and a
+   *       deployment, neither of which a person's yes can answer. READY refuses too, which the other write paths do not
    *       do: a READY request has passed both gates and has been handed to the worker, so there is
    *       no gate left to answer and an approval landing beside an execution already in flight would
    *       be a row nothing ever reads. PENDING, REJECTED, FAILED and CONFLICTED are all decidable —
@@ -822,8 +942,7 @@ public class ReleaseRequests {
               + verb(decision)
               + ".");
     }
-    if (row.state == ReleaseRequest.State.RELEASED
-        || row.state == ReleaseRequest.State.WITHDRAWN) {
+    if (!ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
       throw new DomainException(
           409,
           "Release request "
@@ -925,7 +1044,7 @@ public class ReleaseRequests {
             () -> {
               List<ReleaseRequest> rows = new ArrayList<>(requests.listByRepo(repoId, selection.states()));
               if (selection.recentReleased()) {
-                rows.addAll(requests.listRecentReleased(repoId, RECENT_RELEASED));
+                rows.addAll(requests.listRecentFinalized(repoId, RECENT_RELEASED));
               }
               rows.sort(Comparator.comparing((ReleaseRequest row) -> row.createdAt).reversed());
               return decorate(rows, Map.of());
@@ -957,7 +1076,7 @@ public class ReleaseRequests {
               List<ReleaseRequest> rows =
                   new ArrayList<>(requests.listByProject(projectId, selection.states()));
               if (selection.recentReleased()) {
-                rows.addAll(requests.listRecentReleasedByProject(projectId, RECENT_RELEASED));
+                rows.addAll(requests.listRecentFinalizedByProject(projectId, RECENT_RELEASED));
               }
               rows.sort(Comparator.comparing((ReleaseRequest row) -> row.updatedAt).reversed());
               return decorate(rows, names.namesByRepository(projectId));
@@ -1129,7 +1248,7 @@ public class ReleaseRequests {
         QuarkusTransaction.requiringNew()
             .call(
                 () ->
-                    requests.findOpenByBranches(repoId, List.of(branch)).stream()
+                    requests.findUnreleasedByBranches(repoId, List.of(branch)).stream()
                         .map(row -> row.id)
                         .toList());
     for (String id : affected) {
@@ -1153,7 +1272,7 @@ public class ReleaseRequests {
             .call(
                 () -> {
                   List<Affected> touched = new ArrayList<>();
-                  for (ReleaseRequest open : requests.findOpenByBranches(repoId, List.of(branch))) {
+                  for (ReleaseRequest open : requests.findUnreleasedByBranches(repoId, List.of(branch))) {
                     sources
                         .find(open.id, ReleaseRequestSource.Kind.BRANCH, branch)
                         .ifPresent(sources::delete);
@@ -1197,8 +1316,25 @@ public class ReleaseRequests {
    * in the fold through {@code main} itself, so dropping it changes nothing the git host can see: the
    * merge answers {@code unchanged}, no request is re-armed and no event is dispatched. A tag
    * nothing has a pending row for is a no-op.
+   *
+   * <p><b>And this is where a request FINISHES</b> (ticket b27384a3). The tag reaching {@code main}
+   * is the last thing that happens to a release, so the request that produced it moves RELEASED →
+   * {@link ReleaseRequest.State#FINALIZED} here and leaves the open set. Two things follow from
+   * doing it at this line rather than at the tag:
+   *
+   * <ul>
+   *   <li><b>The runs are cancelled last, not at the release.</b> They were cancelled when the tag
+   *       was cut too — the backing branch is deleted there and a run on it is doomed — but a
+   *       request that stayed open could have had a run queued against it since. This is the last
+   *       moment anything could, so it is the honest place for the final ask, and it is the same
+   *       best-effort {@link #cancel} every other caller makes.
+   *   <li><b>A request in any other state is left exactly as it is.</b> An OBSOLETE one whose tag
+   *       somehow reached {@code main} is not resurrected into FINALIZED: it was superseded, that is
+   *       the record, and the successor is what finished.
+   * </ul>
    */
   public void onReleasedTagMerged(String repoId, String tagName) {
+    AtomicReference<String> finalized = new AtomicReference<>();
     boolean cleared =
         QuarkusTransaction.requiringNew()
             .call(
@@ -1209,11 +1345,32 @@ public class ReleaseRequests {
                         .map(
                             row -> {
                               row.mergedAt = Instant.now();
+                              if (row.releaseRequestId != null) {
+                                requests
+                                    .findByIdOptional(row.releaseRequestId)
+                                    .filter(
+                                        request ->
+                                            request.state == ReleaseRequest.State.RELEASED)
+                                    .ifPresent(
+                                        request -> {
+                                          request.state = ReleaseRequest.State.FINALIZED;
+                                          request.detail = null;
+                                          request.retryable = false;
+                                          request.updatedAt = row.mergedAt;
+                                          finalized.set(request.id);
+                                        });
+                              }
                               return true;
                             })
                         .orElse(false));
     if (!cleared) {
       return;
+    }
+    if (finalized.get() != null) {
+      estatePinLedger.forget(finalized.get());
+      LOG.infof(
+          "Release request %s is finalized: %s reached main", finalized.get(), tagName);
+      cancel(repoId, finalized.get(), "is finalized: " + tagName + " reached main");
     }
     remergeOpenOf(repoId, null, "the released tag " + tagName + " reached main");
   }
@@ -1241,7 +1398,9 @@ public class ReleaseRequests {
   }
 
   /**
-   * The safety net under the event-driven path: re-evaluates every open request. It is what turns
+   * The safety net under the event-driven path: re-evaluates every request whose fold can still
+   * move ({@link ReleaseRequestRepository#UNRELEASED}; a RELEASED one is open but has no gate left
+   * in front of its tag, and {@code ReleaseFinalization.sweep} is the belt under what it does owe). It is what turns
    * "could not ask qits-ci" and "the verdict has not landed yet" into delays instead of stalls, what
    * retries a FAILED execution — a <b>retryable</b> one only — and what re-folds a request whose
    * very first merge could not be made because the git host was unreachable.
@@ -1257,7 +1416,7 @@ public class ReleaseRequests {
    */
   public void sweep() {
     List<ReleaseRequest> open =
-        QuarkusTransaction.requiringNew().call(() -> List.copyOf(requests.listOpen()));
+        QuarkusTransaction.requiringNew().call(() -> List.copyOf(requests.listUnreleased()));
     for (ReleaseRequest row : open) {
       if (row.state != ReleaseRequest.State.CONFLICTED && row.mergedSha == null) {
         remerge(row.id, "the first fold had not been made yet");
@@ -1311,7 +1470,7 @@ public class ReleaseRequests {
             .call(
                 () -> {
                   ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
-                  if (row == null || !ReleaseRequestRepository.OPEN.contains(row.state)) {
+                  if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
                     return new Ask(null, List.of(), null, false);
                   }
                   return new Ask(
@@ -1433,7 +1592,7 @@ public class ReleaseRequests {
         .call(
             () -> {
               ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
-              if (row == null || !ReleaseRequestRepository.OPEN.contains(row.state)) {
+              if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
                 return null;
               }
               Instant now = Instant.now();
@@ -1600,13 +1759,13 @@ public class ReleaseRequests {
     }
   }
 
-  /** Re-fold every open request of a repository, optionally skipping one. */
+  /** Re-fold every still-unreleased request of a repository, optionally skipping one. */
   private void remergeOpenOf(String repoId, String skipId, String why) {
     List<String> ids =
         QuarkusTransaction.requiringNew()
             .call(
                 () ->
-                    requests.listOpenByRepo(repoId).stream()
+                    requests.listUnreleasedByRepo(repoId).stream()
                         .map(row -> row.id)
                         .filter(id -> !id.equals(skipId))
                         .toList());
@@ -2133,7 +2292,7 @@ public class ReleaseRequests {
             () ->
                 requests
                     .findByIdOptional(id)
-                    .filter(row -> ReleaseRequestRepository.OPEN.contains(row.state))
+                    .filter(row -> ReleaseRequestRepository.UNRELEASED.contains(row.state))
                     .ifPresent(
                         row -> {
                           row.detail = detail;
@@ -2167,11 +2326,18 @@ public class ReleaseRequests {
 
   /**
    * The states a {@code state} query means, and what else rides with them. <b>Absent or blank is the
-   * open set plus the last {@value #RECENT_RELEASED} releases</b> — the question both lists exist to
-   * answer is "what is happening here", and a page that dropped a release the moment it landed made
-   * the most interesting event in the flow the one thing it never showed. {@code all} is every state
-   * (spelled as the full set rather than as "no filter", so one query shape serves both); a state
-   * name, in any case, is itself, and narrows to exactly it.
+   * open set plus the last {@value #RECENT_RELEASED} FINALIZED requests</b> — the question both
+   * lists exist to answer is "what is happening here", and a page that dropped a release the moment
+   * it landed made the most interesting event in the flow the one thing it never showed. {@code all}
+   * is every state (spelled as the full set rather than as "no filter", so one query shape serves
+   * both); a state name, in any case, is itself, and narrows to exactly it.
+   *
+   * <p><b>The tail is FINALIZED now and used to be RELEASED</b>, and it moved for one reason:
+   * RELEASED joined the open set (ticket b27384a3), so a released request is already on the page as
+   * work in flight and topping the same page up with it would list it twice. What belongs behind the
+   * open ones is what has <em>finished</em>, and finishing is exactly what a request leaves the open
+   * set for. The shape is untouched — still a page of {@value #RECENT_RELEASED}, still a second
+   * query rather than a state in the set, for the reason {@link Selection} gives.
    *
    * <p><b>WITHDRAWN left the default reading when the tail arrived</b>, and that is the intended
    * trade: it was never in the open set, so it only ever appeared on the repository list because
@@ -2304,6 +2470,12 @@ public class ReleaseRequests {
    *       one PASSED, nothing PENDING. The active-run probe is deliberately not asked here: it
    *       narrows the gate rather than answering it, and a read must not make an HTTP call per row.
    *   <li><b>Approval</b> — the decision at this fold. WAITING is PENDING, a decline is FAILED.
+   *   <li><b>Publish</b> — the released tag's own release run, read off {@code publish_state}. It is
+   *       the one gate whose <em>membership</em> is not in the gate set this class resolved: it is
+   *       configured by the released tree rather than by {@code main} (see {@link ReleaseGates}'
+   *       "Configured at the tag"), so a release that declares one is what puts the kind in the set
+   *       here, through {@link ReleaseGates.GateSet#with}. A request that has not released reports
+   *       no publish gate at all, because nothing has yet declared one.
    *   <li><b>Deployment</b> — PASSED when the released tag has reached {@code main}, which is what
    *       "the deployment is live" means here, and PENDING until then. On a request that has not
    *       released there is nothing yet to deploy, so it is PENDING too.
@@ -2329,7 +2501,18 @@ public class ReleaseRequests {
     if (released != null && released.mergedAt != null) {
       states.put(ReleaseGates.Kind.DEPLOYMENT, ReleaseGates.State.PASSED);
     }
-    return ReleaseGates.report(set, states).stream()
+    ReleaseGates.GateSet reported = set;
+    if (released != null && released.publishState != null) {
+      reported = set.with(ReleaseGates.Kind.PUBLISH);
+      states.put(
+          ReleaseGates.Kind.PUBLISH,
+          switch (released.publishState) {
+            case PASSED -> ReleaseGates.State.PASSED;
+            case FAILED -> ReleaseGates.State.FAILED;
+            case PENDING -> ReleaseGates.State.PENDING;
+          });
+    }
+    return ReleaseGates.report(reported, states).stream()
         .map(gate -> new ReleaseGateDto(gate.kind().name(), gate.state().name()))
         .toList();
   }
@@ -2470,6 +2653,7 @@ public class ReleaseRequests {
         gates,
         conflictOf(row),
         row.version,
+        row.supersededBy,
         released == null ? null : released.releasedSha,
         released == null ? null : released.mergedAt,
         row.retryable,
@@ -2552,13 +2736,18 @@ public class ReleaseRequests {
     return stated == null ? ReleasePriority.DEFAULT : stated;
   }
 
+  /**
+   * The row, if its content may still change — which is {@link ReleaseRequestRepository#UNRELEASED}
+   * and not {@link ReleaseRequestRepository#OPEN}. A RELEASED request is open (it has still to
+   * publish, deploy and reach {@code main}) and is nonetheless past changing: its fold is tagged, so
+   * adding a source to it or re-pricing one would edit a release that has happened.
+   */
   private ReleaseRequest requireOpenForChange(String id) {
     ReleaseRequest row =
         requests
             .findByIdOptional(id)
             .orElseThrow(() -> new NotFoundException("Release request not found: " + id));
-    if (row.state == ReleaseRequest.State.RELEASED
-        || row.state == ReleaseRequest.State.WITHDRAWN) {
+    if (!ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
       throw new DomainException(409, "Release request " + id + " is already " + row.state);
     }
     return row;

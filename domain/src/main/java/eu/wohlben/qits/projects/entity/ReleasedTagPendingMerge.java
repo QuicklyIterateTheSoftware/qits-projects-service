@@ -4,6 +4,8 @@ import eu.wohlben.qits.eventstream.Uncaused;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -33,6 +35,28 @@ import java.time.Instant;
 @Uncaused
 public class ReleasedTagPendingMerge extends PanacheEntityBase {
 
+  /**
+   * How the <b>publish</b> gate stands for this release: the release run of the tag itself — the
+   * pipeline the released tree declares — having gone green.
+   *
+   * <p>Stored, unlike every derived answer in {@code ReleaseRequest}, and it has to be: the fact is
+   * a verdict that arrived once, on a run nobody can be asked about again, and there is no table
+   * anywhere correlating a tag name to a run's outcome. Null is a fourth answer and the commonest
+   * one — the released tree declares no release pipeline at all, so there is no gate here.
+   */
+  public enum PublishState {
+    /** A release pipeline is declared and no verdict has come for the tag yet. */
+    PENDING,
+    /** The tag's release run finished green. */
+    PASSED,
+    /**
+     * It finished red. <b>The request stays RELEASED and open</b>: the tag is cut and cannot be
+     * taken back, so this is a failed gate to be retried ({@code qits ci retry}) and never a state
+     * the request leaves.
+     */
+    FAILED
+  }
+
   @Id public String id;
 
   @Column(name = "repo_id", nullable = false)
@@ -58,9 +82,15 @@ public class ReleasedTagPendingMerge extends PanacheEntityBase {
   public Instant mergedAt;
 
   /**
-   * When the terminal gate passed and this tag became owed a merge to {@code main} — a deployment
-   * of this version reported active, or, for a repository that deploys nothing, its release being
-   * published (V13).
+   * When <b>every</b> post-release gate this release configures had passed and the tag became owed a
+   * merge to {@code main} (V13, widened by V23).
+   *
+   * <p>It used to be the deployment's own stamp, because the deployment was the only gate. There are
+   * two now — the publish run and the deployment — and they pass in either order, so each keeps its
+   * own fact ({@link #publishState}, {@link #deploymentActiveAt}) and this column is what {@code
+   * ReleaseFinalization} writes once both are satisfied. The sweep's selection is unchanged by that
+   * widening, which is the point of keeping the column rather than deriving it: a row with this set
+   * and {@link #mergedAt} null is a merge somebody is owed, whatever passed to get it there.
    *
    * <p><b>It is the sweep's whole selection</b>, together with a null {@link #mergedAt}. A row with
    * neither set is a release still waiting on its deployment and must never be swept: merging it
@@ -80,4 +110,48 @@ public class ReleasedTagPendingMerge extends PanacheEntityBase {
    */
   @Column(name = "merge_detail", length = 4000)
   public String mergeDetail;
+
+  /**
+   * The publish gate's answer for this tag, or null where the released tree declares no release
+   * pipeline and there is therefore no such gate (V23). See {@link PublishState}.
+   */
+  @Enumerated(EnumType.STRING)
+  @Column(name = "publish_state", length = 32)
+  public PublishState publishState;
+
+  /** What the publish gate has to say, in a sentence — which run, and how it went. */
+  @Column(name = "publish_detail", length = 4000)
+  public String publishDetail;
+
+  /**
+   * The qits-ci run that decided {@link #publishState}. Kept beside the word rather than folded into
+   * the sentence, because a retry is addressed by run and a person acting on a red gate needs the
+   * id rather than a paragraph containing it.
+   */
+  @Column(name = "publish_run_id")
+  public String publishRunId;
+
+  /**
+   * When a {@code DeploymentActive} first named this version — the deployment gate's own fact, kept
+   * apart from {@link #mergeRequestedAt} since V23 because the two post-release gates pass in either
+   * order and "the deployment happened" has to survive a publish run that has not finished yet.
+   *
+   * <p>The <b>first</b> environment wins and later ones change nothing: a version reaching {@code
+   * dev} is the same immutable coordinate that reaches every other tier.
+   */
+  @Column(name = "deployment_active_at")
+  public Instant deploymentActiveAt;
+
+  /**
+   * When a later release of the same repository overtook this one, so nothing will ever finalize it
+   * (V23). The successor folds this tag in and supersedes it whole, which is what makes abandoning
+   * it safe: its content is not lost, it simply reaches {@code main} under the successor's name.
+   *
+   * <p>An abandoned row leaves {@code listOwedMerges} and {@code listUngated} — the sweep must stop
+   * trying to merge a tag whose request is OBSOLETE — and deliberately <b>stays</b> in {@code
+   * listPending}: it is still a released tag that is not on {@code main}, so every open request must
+   * still fold it in or it would be a step backwards from what shipped.
+   */
+  @Column(name = "abandoned_at")
+  public Instant abandonedAt;
 }

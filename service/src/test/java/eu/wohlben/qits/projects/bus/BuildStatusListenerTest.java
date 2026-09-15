@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.BuildStatusLedger;
+import eu.wohlben.qits.projects.control.ReleaseFinalization;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ class BuildStatusListenerTest {
   private BuildStatusListener listener;
   private RecordingLedger ledger;
   private RecordingRequests requests;
+  private RecordingFinalization finalization;
 
   private static final class RecordingLedger extends BuildStatusLedger {
     final List<Verdict> recorded = new ArrayList<>();
@@ -49,13 +51,58 @@ class BuildStatusListenerTest {
     }
   }
 
+  /**
+   * The publish arm's far side. Every verdict is offered to it — a run's branch is either a released
+   * version or it is not, and only this class knows which — so it records what it was told rather
+   * than deciding anything.
+   */
+  private static final class RecordingFinalization extends ReleaseFinalization {
+    final List<String> offered = new ArrayList<>();
+
+    @Override
+    public void onPublishVerdict(String repoId, String branch, String runId, boolean green) {
+      offered.add(repoId + "@" + branch + "/" + runId + (green ? " green" : " red"));
+    }
+  }
+
   @BeforeEach
   void setUp() {
     listener = new BuildStatusListener();
     ledger = new RecordingLedger();
     requests = new RecordingRequests();
+    finalization = new RecordingFinalization();
     listener.ledger = ledger;
     listener.releaseRequests = requests;
+    listener.finalization = finalization;
+  }
+
+  /**
+   * A verdict is offered to <b>both</b> arms, and the branch is what tells them apart: the fold gate
+   * correlates on the commit sha, the publish gate on the branch naming a released version. This
+   * listener decides neither — it hands the same event to each, which is what keeps the two
+   * correlations in the classes that own the rows they read.
+   */
+  @Test
+  void everyVerdictIsOfferedToThePublishGateWithItsBranchAndItsRun() {
+    listener.onFrame(
+        frame(
+            "BuildSuccessful",
+            "{\"runId\":\"run-9\",\"repoId\":\"repo-1\",\"branch\":\"2026.915.101010\","
+                + "\"commitSha\":\"abc123\"}"));
+
+    assertEquals(List.of("repo-1@2026.915.101010/run-9 green"), finalization.offered);
+    assertEquals(List.of("repo-1@abc123"), requests.resolved, "and the fold arm is asked too");
+  }
+
+  @Test
+  void aRedVerdictReachesThePublishGateAsRed() {
+    listener.onFrame(
+        frame(
+            "BuildFailed",
+            "{\"runId\":\"run-10\",\"repoId\":\"repo-1\",\"branch\":\"2026.915.101010\","
+                + "\"commitSha\":\"abc123\",\"outcome\":\"FAILED\"}"));
+
+    assertEquals(List.of("repo-1@2026.915.101010/run-10 red"), finalization.offered);
   }
 
   private static EventFrame frame(String name, String payload) {
