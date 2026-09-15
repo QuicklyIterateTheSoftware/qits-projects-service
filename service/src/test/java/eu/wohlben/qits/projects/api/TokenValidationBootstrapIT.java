@@ -267,7 +267,7 @@ public class TokenValidationBootstrapIT {
       refused while the idp was still coming up — for a service whose own code was fine.
       """)
   @Order(1)
-  void serviceBootFetchesJwksAndAcceptsPlatformTokens(Interactions story) {
+  void bootFetchesNothingAndTheFirstBearerFetchesTheJwks(Interactions story) {
     MockIdp idp = MockIdp.attach();
 
     story.note(
