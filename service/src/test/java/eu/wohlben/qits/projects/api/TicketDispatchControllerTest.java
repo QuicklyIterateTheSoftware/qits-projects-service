@@ -224,12 +224,18 @@ public class TicketDispatchControllerTest {
         dispatch.calls().isEmpty(),
         "a ticket past the work starts no workspace at all, so nothing is asked of the port");
 
+    // The one comment on this thread is the lifecycle's own — the walk through VERIFIED says that
+    // no workspace was standing on the branch, so no release was asked for. The refused dispatch
+    // added nothing to it.
     asAdmin("mallory")
         .when()
         .get("/projects/api/tickets/" + ticketId + "/comments")
         .then()
         .statusCode(200)
-        .body("entries.size()", equalTo(0));
+        .body("entries.size()", equalTo(1))
+        .body(
+            "entries[0].comment.body",
+            equalTo("No workspace is standing on `ticket/all-over`, so no release was asked for."));
   }
 
   /** VERIFIED is the other status that starts nothing: a person closes it, an agent does not. */

@@ -1,12 +1,18 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.epics.control.TicketService;
+import eu.wohlben.qits.epics.control.WorkBranches;
 import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
+import eu.wohlben.qits.projects.control.ReleaseRequests;
+import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
+import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
+import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.util.List;
 import java.util.Optional;
 import org.jboss.logging.Logger;
 
@@ -41,9 +47,50 @@ import org.jboss.logging.Logger;
  * VERIFIED starts no phase at all. A rule that asked "forward or back?" would need a second table to
  * answer from, and the second table is the thing that goes wrong.
  *
- * <p>{@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} therefore end the flow at its first
- * line, and that is where the one remaining human decision lives: closing a ticket is a person's
- * move, so nothing is delivered and nothing is written on a transition into either.
+ * <p>{@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} therefore start no phase and
+ * deliver no turn, and that is where the one remaining human decision lives: closing a ticket is a
+ * person's move. DONE ends the flow at its first line and writes nothing at all. VERIFIED does the
+ * one thing that is not a phase — it asks for the release of the branch the work was done on — and
+ * the section below is the whole of it.
+ *
+ * <h2>VERIFIED asks for a release, and nothing else does</h2>
+ *
+ * <p>The verify phase ran in the workspace standing on {@code ticket/<slug>} and found the change
+ * good. What that branch then needs is to be released, and until now nobody asked: the agent's own
+ * instruction says releasing is the goal, but the press that ends verification is a transition and
+ * not a release. So a move into VERIFIED opens (or joins) the release request naming that branch on
+ * the project's wrapper, and the thread is told which request the ticket now waits on.
+ *
+ * <p><b>The workspace is looked up first, and the lookup is the point rather than decoration.</b>
+ * {@link ReleaseRequests#request} validates a branch name syntactically and nothing else, so an ask
+ * naming a branch the git host no longer has lands a PENDING row whose fold answers UNREACHABLE and
+ * which the 30-second sweep then retries for ever, with no path that ever settles it. A live
+ * reference on exactly {@code ticket/<slug>} is the cheapest available evidence that the branch is
+ * there, so <b>no reference means no ask</b> — one plain sentence on the thread and nothing else.
+ *
+ * <p><b>The call is made in process rather than through {@code ReleaseRequestController}, and
+ * bypassing that door is the intent.</b> {@link ReleaseRequests} is role-blind; every check on the
+ * release door — {@code @RolesAllowed}, {@code requireAgentProject}, {@code requireAgentBranch} —
+ * lives in the controller and judges <em>the caller</em>. Here the caller is not who is asking: the
+ * platform is the requester and the ticket lifecycle is the authority, exactly as it is for the turn
+ * delivered one arm up. Going through the door would mean widening some agent's {@code git_refs}
+ * scope so that pressing a transition also granted it the right to release the wrapper, which is a
+ * far larger grant than this feature needs and one that would outlive the press.
+ *
+ * <h2>A move back into IMPLEMENTED names the request and withdraws nothing</h2>
+ *
+ * <p>Verification can fail after the release was asked for, and then the ticket moves back. Nothing
+ * is withdrawn, because there is no honest inverse to perform: no door removes a single source from
+ * a request, the wrapper's request is estate-wide so {@code withdraw} would settle every other
+ * branch's release along with this one, and deleting the branch would destroy the work. What the
+ * platform owes a person instead is the request id on the thread, so that withdrawing or declining
+ * it is a decision they can actually make.
+ *
+ * <p><b>That note is conditioned on the request existing and never on the direction of the move</b>,
+ * which is this class's rule applied where it would be easiest to break: arriving at IMPLEMENTED
+ * from REFINED nothing has been asked for, the query finds nothing and no comment is written;
+ * arriving back from VERIFIED it does, and the sentence lands. The fact is read rather than inferred
+ * from where the ticket came from, so there is still no second table saying which way is which.
  *
  * <h2>Why this is not on {@code TicketService}</h2>
  *
@@ -119,6 +166,29 @@ public class TicketPhaseAdvance {
   @Inject Instance<WorkspaceAgentTurns> turns;
 
   /**
+   * The read half of the dispatch port, and optional for {@link #turns}' reason: with no
+   * implementation present there is no workspace to find, so a move into VERIFIED asks for nothing
+   * and says nothing — the same silence an absent turn port gets. Named apart from {@link
+   * #workspaces} beside it because the two answer different questions: that one derives the address
+   * a workspace would stand at, this one says whether one actually does.
+   */
+  @Inject Instance<WorkspaceAgentDispatch> dispatchedWorkspaces;
+
+  /**
+   * Not an {@code Instance}, unlike every port here, because it is not a port: {@link
+   * ReleaseRequests} is an {@code @ApplicationScoped} bean of this service's own {@code domain}
+   * module, in this JVM, and an assembly without it is an assembly that does not start.
+   */
+  @Inject ReleaseRequests releaseRequests;
+
+  /**
+   * Who asks for the release when the transition carried no name. The platform is the requester on
+   * every one of these asks — see the class javadoc — and this is what that looks like on a request
+   * a person reads.
+   */
+  private static final String PLATFORM_REQUESTER = "ticket-lifecycle";
+
+  /**
    * Start the phase the ticket's new status begins, in the workspace standing on its branch, and say
    * on the thread what happened.
    *
@@ -142,10 +212,16 @@ public class TicketPhaseAdvance {
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
   public void afterTransition(Ticket ticket, String changedBy) {
+    if (ticket.status == TicketStatus.VERIFIED) {
+      // The one move that starts no phase and is still not nothing: the work is good, so the branch
+      // it was done on is asked to be released. See the class javadoc.
+      releaseWorkspace(ticket, changedBy);
+      return;
+    }
     Optional<TicketPhasePrompts.Started> started = TicketPhasePrompts.startedBy(ticket);
     if (started.isEmpty()) {
-      // VERIFIED and DONE: the work is over and closing is a person's move. Nothing to do, and
-      // nothing to say about having done nothing.
+      // DONE, and nothing else now that VERIFIED is answered above: the work is over and closing is
+      // a person's move. Nothing to do, and nothing to say about having done nothing.
       return;
     }
     if (turns.isUnsatisfied()) {
@@ -160,7 +236,156 @@ public class TicketPhaseAdvance {
       return;
     }
     deliver(ticket, started.get(), target.get(), changedBy);
+    if (ticket.status == TicketStatus.IMPLEMENTED) {
+      noteTheReleaseThatStandsOpen(ticket, target.get(), changedBy);
+    }
   }
+
+  /**
+   * The ask that a move into VERIFIED makes, and the sentence that follows it.
+   *
+   * <p>Ordered so that the <b>lookup decides whether anything is asked at all</b>: a reference on
+   * exactly this ticket's branch is the evidence that the branch is still there, and without it an
+   * ask would be a PENDING request the sweep retries for ever. The class javadoc argues that, and
+   * why the request is made here rather than through the release door.
+   */
+  private void releaseWorkspace(Ticket ticket, String changedBy) {
+    if (dispatchedWorkspaces.isUnsatisfied()) {
+      // No implementation of the port: there is nothing standing anywhere, so there is nothing to
+      // release and nothing to say. The same silence an absent turn port gets.
+      LOG.debugf(
+          "Ticket %s is VERIFIED, and no workspace lookup is configured, so no release was asked"
+              + " for",
+          ticket.id);
+      return;
+    }
+    String branch = WorkBranches.ticket(ticket).branch();
+    List<WorkspaceAgentDispatch.Reference> found;
+    try {
+      found = dispatchedWorkspaces.get().workspacesReferencing(List.of(ticket.id), List.of());
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and must not touch a transition that
+      // has already been recorded. Nothing is known about the branch, which is the "no workspace"
+      // answer — and asking anyway is the one thing that cannot be undone.
+      LOG.warnf(e, "Could not look up the workspaces of ticket %s: the port threw", ticket.id);
+      found = List.of();
+    }
+    WorkspaceAgentDispatch.Reference standing =
+        found.stream()
+            .filter(reference -> branch.equals(reference.branch()))
+            .findFirst()
+            .orElse(null);
+    if (standing == null) {
+      // A workspace on some other branch is somebody else's work, and no workspace at all is the
+      // ordinary state of a ticket walked through by hand.
+      LOG.debugf("No workspace stands on %s, so ticket %s asks for no release", branch, ticket.id);
+      say(
+          ticket,
+          "No workspace is standing on `" + branch + "`, so no release was asked for.",
+          changedBy);
+      return;
+    }
+
+    String requester = changedBy == null || changedBy.isBlank() ? PLATFORM_REQUESTER : changedBy;
+    try {
+      ReleaseRequestDto request =
+          releaseRequests.request(
+              standing.repositoryId(),
+              branch,
+              "Ticket " + ticket.slug + ": " + ticket.title,
+              requester,
+              // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
+              // nothing to state — the ticket carries no urgency a release could read.
+              null);
+      LOG.infof(
+          "Ticket %s (%s) is VERIFIED: release request %s now carries %s",
+          ticket.id, ticket.slug, request.id(), branch);
+      say(
+          ticket,
+          "Asked for the release of `"
+              + branch
+              + "`: the ticket now waits on release request "
+              + request.id()
+              + ".",
+          changedBy);
+    } catch (RuntimeException e) {
+      // The refusal arm's rule, one door over: name what did not happen, carry the far side's own
+      // reason, and claim nothing that did.
+      LOG.warnf(
+          e,
+          "Could not ask for the release of %s for ticket %s (%s)",
+          branch,
+          ticket.id,
+          ticket.slug);
+      String detail = e.getMessage() == null ? "" : e.getMessage().trim();
+      say(
+          ticket,
+          "Could not ask for the release of `"
+              + branch
+              + "`"
+              + (detail.isBlank() ? "" : ": " + detail)
+              + ". The ticket is VERIFIED and nothing is running on it.",
+          changedBy);
+    }
+  }
+
+  /**
+   * The second sentence a move into IMPLEMENTED sometimes gets: the release asked for earlier is
+   * still standing, and it is a person's to withdraw or decline.
+   *
+   * <p>Read rather than inferred — see the class javadoc — so a ticket arriving from REFINED finds
+   * nothing and is told nothing. A failed read writes nothing either: this note is context on a move
+   * that has already happened and has already said what it started, and a sentence about the release
+   * is worth exactly nothing if it might be wrong.
+   *
+   * <p>The state is left unnamed on purpose, because <b>absent is the word meaning open</b> here
+   * ({@code ReleaseRequests.statesFor}): the open set is what it answers, plus the last few
+   * FINALIZED requests as a tail. A finalized request is a release that landed and is nobody's to
+   * withdraw, so the tail is dropped again on the way past.
+   */
+  private void noteTheReleaseThatStandsOpen(
+      Ticket ticket, TicketWorkspaces.Target target, String changedBy) {
+    String branch = target.branch();
+    ReleaseRequestDto open;
+    try {
+      open =
+          releaseRequests.listByRepo(target.repositoryId(), null).stream()
+              .filter(request -> !FINALIZED.equals(request.state()))
+              .filter(
+                  request ->
+                      request.sources().stream()
+                          .map(ReleaseRequestSourceDto::name)
+                          .anyMatch(branch::equals))
+              .findFirst()
+              .orElse(null);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not read the release requests of %s, so ticket %s was told nothing about the"
+              + " release its branch is on",
+          target.repositoryId(),
+          ticket.id);
+      return;
+    }
+    if (open == null) {
+      return;
+    }
+    LOG.infof(
+        "Ticket %s moved back to IMPLEMENTED while release request %s still carries %s",
+        ticket.id, open.id(), branch);
+    say(
+        ticket,
+        "Release request "
+            + open.id()
+            + " still names `"
+            + branch
+            + "` as a source: the release was not withdrawn, and withdrawing or declining it is a"
+            + " person's decision.",
+        changedBy);
+  }
+
+  /** The one state word this class reads, and it reads it to drop a row rather than to find one. */
+  private static final String FINALIZED = "FINALIZED";
 
   /**
    * The turn, and the one sentence that follows it. Split out so the method above reads as the rule
