@@ -1969,8 +1969,11 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   launched qits-projects needs in order to boot is one answer — and adds only the gate, the mock
   idp's address, and the three darkening keys (otel, the eventstream bus, the self-seed). The far
   side is qits-service-mock's `MockIdp`, which serves a real JWKS for a generated keypair, mints
-  tokens against it and **records what it answered**, so "the service fetched the keys at startup" is
-  an assertion and not an inference.
+  tokens against it and **records what it answered**, so "the service reached the idp for nothing
+  while it was starting, and fetched the keys when the first bearer arrived" is an assertion on both
+  halves and not an inference. **The story used to claim the opposite** — a boot-time fetch — and
+  `quarkus.oidc.jwks.resolve-early=false` (2026-09-14, after a rollback) is what made it false; see
+  the block in `application.properties` and `security/BearerJwksTest`.
   <br>It is also this repo's **first userflow**, and the one every other story class is ordered
   after — see **Userflows** below.
   <br>**`skipITs` stays `true` and no IT flips it**, unlike qits-githost-service's namesake:
@@ -2046,10 +2049,12 @@ its three stories cannot move into the surefire suite.
 so the whole catalogue runs against **one** launched process and one embedded postgres. A second
 profile is a second boot and a second minute; every shared seam belongs in that one profile.
 
-**Class order is load-bearing, and it is FQCN-alphabetical within the profile group.** A cumulative
-capture source is attributed by a cursor, so traffic recorded before any story ran — the startup
-JWKS fetch — lands in whichever story drains *first*, which must be the story about it. Hence
-`…projects.api.TokenValidationBootstrapIT` (`api` sorts before `stories`) owns the boot, and the
+**Class order is load-bearing, and it is FQCN-alphabetical within the profile group.** The JWKS is
+fetched by the **first bearer** of the run (never at boot — see `TokenValidationBootstrapIT`), so
+only the story that presents that bearer can assert either half of it, and a cumulative capture
+source is attributed by a cursor, so the fetch lands in whichever story drains after it was
+recorded. Hence `…projects.api.TokenValidationBootstrapIT` (`api` sorts before `stories`) owns the
+first bearer and the one fetch that follows it, and the
 packages under `stories/` are named so that alphabetical order **is** the intended order:
 `catalogue` → `planning` → `refusals` → `review`, with the read-only review last because it reads
 what the first two put there. Each story also declares `@UserflowRunsAfter` for the same order, so a
@@ -2063,7 +2068,7 @@ hand. Three taps feed `NetworkCapture` and there is no fourth:
 | tap | what it draws | where it lives |
 | --- | --- | --- |
 | `NetworkTaps.restAssured("qits-projects")` | `<actor> -> qits-projects`, one edge per request a story makes, labelled `METHOD <scrubbed path> -> <status>` | the framework ships it; installed from each story class's `@BeforeAll`, idempotent per service |
-| `MockIdp.recordedRequests()` | `qits-projects -> qits-platform-idp` — the startup JWKS fetch | registered as a cumulative `NetworkCapture.source` in `TokenValidationBootstrapIT` |
+| `MockIdp.recordedRequests()` | `qits-projects -> qits-platform-idp` — the JWKS fetch the first bearer drives | registered as a cumulative `NetworkCapture.source` in `TokenValidationBootstrapIT` |
 | `GitHostFixture`'s access log | `qits-projects -> qits-githost` — the lifecycle `PUT`/`GET`, the smart-HTTP advertisement and pack, and the mirror fetches | `stories/support/StoryGitHost` |
 
 The local `StoryNetworkFilter` this repo carried beside the IT is **deleted**: the framework ships
@@ -2085,8 +2090,9 @@ stubs `POST /idp/token` on it.
 is `client_credentials`, cached by quarkus-oidc-client for the token's whole hour, so it happens
 exactly **once per run** — whichever story publishes first would draw an arrow the identical story
 would not draw if it ran second, and the `networkHash` would move with nothing having changed. The
-source filters `/idp/token` out and the dependency is stated here instead. The `GET /idp/jwks`
-startup fetch stays: it happens once too, but the story it lands in is *about* it.
+source filters `/idp/token` out and the dependency is stated here instead. The `GET /idp/jwks` fetch
+stays: it happens once too — driven by the run's first bearer, which the first story presents — but
+the story it lands in is *about* it.
 
 **The git-host tap is a file, and it has a floor.** `GitHostFixture` appends one
 `METHOD URI STATUS` line per answered request to `target/it-git-host-fixture-access.log` — outside
@@ -2115,7 +2121,7 @@ else happened", which is most of what is worth knowing about this service:
 
 | category | story | the claim only a negative can make |
 | --- | --- | --- |
-| `authentication` | the startup JWKS fetch; a stranger's token refused | — |
+| `authentication` | boot reaches the idp for nothing and the first bearer fetches the keys; a stranger's token refused | the ready probe is answered with **no** `/idp/jwks` request recorded — the listener does not wait on another service |
 | `authorization` | a browser session at the two `qits:system` doors; a machine bearer at the planning surface; an anonymous caller | `assertNoEdgesTo(qits-githost)` — a refusal is decided at the door, so no work is done for a caller about to be refused |
 | `catalogue` | a project created and its wrapper published; a component joined; the bootstrap's adoption | `assertEdgeCount(3)` on the adoption — it asks the git host **once** and clones, pushes and mirrors nothing |
 | `planning` | a plan proposed and frozen; a task marked implemented | `assertOnlyEdgesFrom(<one person>)` — the whole planning surface is rows in this service's own `epics` database |

@@ -228,7 +228,7 @@ steps:
   # (TokenValidationBootstrapIT.PackagedWithMockIdp), so the whole list is one launched process and
   # one embedded postgres rather than one per class. The order below is the order they run in anyway
   # (failsafe orders by FQCN within a profile group), and it is load-bearing: the bootstrap IT owns
-  # the startup JWKS traffic. See AGENTS.md § Userflows.
+  # the run's first bearer and the JWKS fetch that follows it. See AGENTS.md § Userflows.
   #
   # `-Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false` keeps the unit suites out of this run:
   # the gating step's image build compiles and packages this repository, this half is about the

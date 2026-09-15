@@ -10,7 +10,7 @@ import io.restassured.specification.RequestSpecification;
  * <h2>A machine is a bearer</h2>
  *
  * <p>{@link #platformService(RequestSpecification)} presents an RS256 token minted by {@link
- * MockIdp} against the very JWKS the launched process fetched at startup: {@code
+ * MockIdp} against the very JWKS the launched process fetches when a bearer first arrives: {@code
  * aud=qits-projects} (what {@code qits.auth.machine.audience} pins as a literal in
  * {@code application.properties}) and {@code groups=[qits:system]} — qits-idp copies a client's
  * roles into that claim and quarkus-oidc reads it as roles with no configuration at all.

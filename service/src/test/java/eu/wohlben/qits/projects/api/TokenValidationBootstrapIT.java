@@ -43,13 +43,16 @@ import org.junit.jupiter.api.TestMethodOrder;
  * notes; it draws nothing. The story is browserless (no {@code Flow} parameter), so no Chromium is
  * involved anywhere.
  *
- * <p><b>The two stories are ordered</b>, and that is load-bearing rather than tidiness: a
- * cumulative source is attributed by a cursor, so traffic that happened before any story ran — the
- * startup JWKS fetch, which is the whole subject of the first story — lands in whichever story
- * drains <i>first</i>. Pinning the order is what keeps that the story it belongs to. The same
- * reasoning is why this class runs before every other: it owns the startup traffic, and the story
- * classes under {@code stories/} declare {@code @UserflowRunsAfter(TokenValidationBootstrapIT)} so
- * that stays true however the packages are later renamed.
+ * <p><b>The two stories are ordered</b>, and that is load-bearing rather than tidiness. The subject
+ * of the first story is that the JWKS fetch happens when the <b>first bearer</b> arrives and not
+ * before, so only the story that presents the first bearer of the whole run can state the negative
+ * half of it; a second story that got there first would fetch the keys and leave this one asserting
+ * nothing. The same reasoning is why this class runs before every other — it owns the first bearer
+ * and the one fetch that follows it — and the story classes under {@code stories/} declare
+ * {@code @UserflowRunsAfter(TokenValidationBootstrapIT)} so that stays true however the packages are
+ * later renamed. The attribution machinery cares too: a cumulative source is drained by a cursor, so
+ * the fetch lands in whichever story drains after it was recorded, and the order is what keeps that
+ * the story it belongs to.
  *
  * <p><b>ITs are skipped by default here and this one does NOT flip that</b>, unlike qits-githost's
  * namesake. {@code skipITs} is {@code true} in the root pom because {@link PackagedSurfaceIT} is
@@ -67,7 +70,7 @@ public class TokenValidationBootstrapIT {
 
   static final String CATEGORY = "authentication";
   static final String ACCEPTED_SLUG =
-      "on-start-the-projects-service-fetches-the-platform-s-signing-keys";
+      "the-projects-service-starts-without-the-idp-and-the-first-bearer-fetches-the-signing-keys";
   static final String DENIED_SLUG = "a-stranger-s-token-never-opens-the-projects-catalogue";
 
   /** How the diagram names this service on both sides of an edge. */
@@ -208,9 +211,9 @@ public class TokenValidationBootstrapIT {
    *
    * <p>The idp is the far side, registered as a <b>cumulative</b> source: the supplier hands over
    * the mock's whole request log every time it is asked and the framework remembers how much of it
-   * earlier stories already consumed, so the startup fetch — recorded long before any story existed
-   * — is attributed to the first story and to that one only. It is invoked lazily at story end, so
-   * registering it here is safe even though nothing has been recorded yet.
+   * earlier stories already consumed, so the key fetch — driven by the first story's own bearer — is
+   * attributed to that story and to that one only. It is invoked lazily at story end, so registering
+   * it here is safe even though nothing has been recorded yet.
    *
    * <p>The label carries the status the mock <i>answered</i> with, which is the half a method and
    * path cannot supply: {@code "GET /idp/jwks -> 200"} is evidence that the keys were served, not
@@ -245,14 +248,23 @@ public class TokenValidationBootstrapIT {
   }
 
   @UserStory(
-      value = "On start, the projects service fetches the platform's signing keys",
+      value =
+          "The projects service starts without the idp, and the first bearer fetches the signing"
+              + " keys",
       category = "authentication")
   @UserStoryDescription(
       """
-      A freshly deployed qits-projects must validate service bearers before any caller arrives:
-      at startup it fetches the signing keys (JWKS) from qits-platform-idp — discovery stays
-      off, the path is configured — so the very first machine request is accepted. qits-ci reads
-      the repository catalogue with exactly this credential.
+      A freshly deployed qits-projects reaches qits-platform-idp for nothing at all while it is
+      starting: the HTTP listener opens and /projects/q/health/ready answers whether the idp is up
+      or not. The signing keys (JWKS) are fetched when the first bearer arrives — looked up by that
+      token's own `kid`, discovery stays off and the path is configured — and then cached, so the
+      very first machine request is still accepted. qits-ci reads the repository catalogue with
+      exactly this credential.
+
+      The reason is a deployment rule rather than a preference: a listener must not wait on another
+      service. Fetching at boot put a 30 s retry against the idp in front of the port, and on
+      2026-09-14 a deploy of this service was rolled back because the health probe got connection
+      refused while the idp was still coming up — for a service whose own code was fine.
       """)
   @Order(1)
   void serviceBootFetchesJwksAndAcceptsPlatformTokens(Interactions story) {
@@ -262,15 +274,16 @@ public class TokenValidationBootstrapIT {
         "qits-projects starts with the OIDC tenant on, beside a reachable qits-platform-idp");
     given().get("/projects/q/health/ready").then().statusCode(200);
 
-    // End (a), the idp side: the JWKS was served during startup — before this story presented any
-    // token at all. The edge itself is drained from the mock's recording; what is asserted here is
-    // that it happened, and the note is the one thing the recording cannot carry — WHEN.
+    // End (a), the idp side, and it is a NEGATIVE: the packaged process is up and answering its
+    // readiness probe having asked the idp for nothing. That is the whole deployment property —
+    // the listener does not wait on another service — and only a check made before any token is
+    // presented can state it, which is why the two stories are ordered.
     assertTrue(
-        idp.recordedRequests().stream().anyMatch(r -> "/idp/jwks".equals(r.path())),
-        "the packaged service never fetched /idp/jwks at startup");
+        idp.recordedRequests().stream().noneMatch(r -> "/idp/jwks".equals(r.path())),
+        "the packaged service fetched /idp/jwks before any bearer had arrived");
     story
-        .note("the signing keys were fetched at startup, before this story presented any token")
-        .as("jwks-fetched");
+        .note("the service is up and ready having asked qits-platform-idp for nothing at all")
+        .as("no-jwks-at-boot");
 
     // End (b), the projects side: those keys are what token validation now runs on. A platform
     // service's bearer (aud = this service, roles in `groups`) opens the guarded catalogue —
@@ -295,6 +308,19 @@ public class TokenValidationBootstrapIT {
     story
         .note("a platform service's bearer (aud=qits-projects, groups=[qits:system]) is accepted")
         .as("catalogue-served");
+
+    // And the keys DID arrive — just later, driven by the token rather than by the boot. Asserting
+    // it after end (b) rather than deleting the old check is what keeps the story a proof that
+    // validation really runs on the platform's published keys: a tenant that fetched nothing ever
+    // could not have accepted the bearer above. The edge itself is drained from the mock's
+    // recording; what is asserted here is that it happened, and the notes carry the one thing the
+    // recording cannot — WHEN.
+    assertTrue(
+        idp.recordedRequests().stream().anyMatch(r -> "/idp/jwks".equals(r.path())),
+        "the arriving bearer never made the packaged service fetch /idp/jwks");
+    story
+        .note("the signing keys were fetched by that first bearer, by its kid, and then cached")
+        .as("jwks-fetched-by-the-first-bearer");
   }
 
   @UserStory(
@@ -351,7 +377,8 @@ public class TokenValidationBootstrapIT {
     // networkHash recomputes from them, and every mermaid line is in the markdown.
     ReportAssertions.assertComplete(CATEGORY, ACCEPTED_SLUG, UserflowReport.PASSED);
     // Observed on the far side, drained from the mock's recording, and attributed to this story
-    // because it is the first one that ran (see the class javadoc on ordering).
+    // because it is the first one that ran and the first bearer is what drove it (see the class
+    // javadoc on ordering).
     ReportAssertions.assertEdge(
         CATEGORY, ACCEPTED_SLUG, "http", SERVICE, MockIdp.SERVICE_NAME, "GET /idp/jwks -> 200");
     // Observed on the near side, by the filter, with the actor this story set.
@@ -362,8 +389,9 @@ public class TokenValidationBootstrapIT {
         "a platform service",
         SERVICE,
         "GET /projects/api/repositories -> 200");
-    ReportAssertions.assertStepId(CATEGORY, ACCEPTED_SLUG, "jwks-fetched");
+    ReportAssertions.assertStepId(CATEGORY, ACCEPTED_SLUG, "no-jwks-at-boot");
     ReportAssertions.assertStepId(CATEGORY, ACCEPTED_SLUG, "catalogue-served");
+    ReportAssertions.assertStepId(CATEGORY, ACCEPTED_SLUG, "jwks-fetched-by-the-first-bearer");
 
     ReportAssertions.assertComplete(CATEGORY, DENIED_SLUG, UserflowReport.PASSED);
     ReportAssertions.assertEdge(

@@ -171,7 +171,8 @@ public class AccessRefusalIT {
       qits-ci enumerates the repository catalogue, qits-workspaces looks a repository up by id —
       but the planning surface is a person's judgement about scope, so every epics, features and
       tasks route is qits:admin and nothing else. A perfectly valid machine bearer, minted against
-      the same signing keys this service fetched at startup, is 403 on both a create and an update
+      the same signing keys this service fetches when a bearer arrives, is 403 on both a create and
+      an update
       there, and 200 on the catalogue in the same breath.
       """)
   @Order(2)
