@@ -16,13 +16,10 @@ import org.junit.jupiter.api.Test;
  * from them, byte for byte (service-client-identity-plan.md, C4). This is what keeps a deployment
  * running unchanged the moment this commit ships, before qits-deployments injects anything new.
  *
- * <p>All six of this service's old named clients — the unnamed default, {@code githost}, {@code ci},
- * {@code workspaces}, {@code maintenance} and {@code configuration} — carry the same id and secret
- * in {@code ComposeTemplate.java}'s extras block (verified 2026-09-13:
- * {@code QUARKUS_OIDC_CLIENT_*_CLIENT_ID=${ENV_NAME}-qits-projects} and
- * {@code QUARKUS_OIDC_CLIENT_*_CREDENTIALS_SECRET=${IDP_SECRET_PROJECTS}} on every one of them), so
- * one fallback pair is enough; this profile sets only the unnamed default client's names, which is
- * what the {@code qits} client's own keys read.
+ * <p>The names are the unnamed default client's — {@code QUARKUS_OIDC_CLIENT_CLIENT_ID},
+ * {@code _CREDENTIALS_SECRET}, {@code _AUTH_SERVER_URL} — because those are the ones the {@code
+ * qits} client's own expressions read, and they are what an environment that has not been
+ * re-bootstrapped still carries.
  */
 @QuarkusTest
 @TestProfile(QitsOidcClientOldExtrasFallbackTest.OldExtrasOnly.class)

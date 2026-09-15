@@ -27,10 +27,11 @@
 # cutover (plan C5) retires that fallback. Remove them here in the same change.
 #
 # LEFT OUT ON PURPOSE, so they show as orphaned:
-#   * the old named clients' keys, QUARKUS_OIDC_CLIENT_{GITHOST,CI,MAINTENANCE,WORKSPACES}_*. No code
-#     injects those clients. Quarkus still binds their disabled blocks, which is not a read.
+#   * the old named clients' keys, QUARKUS_OIDC_CLIENT_{GITHOST,CI,MAINTENANCE,WORKSPACES,
+#     CONFIGURATION}_*. Those clients do not exist: application.properties declares one named client,
+#     `qits`, and nothing injects any other.
 #   * QUARKUS_OIDC_CLIENT_GRANT_OPTIONS_CLIENT_AUDIENCE. The `qits` client asks for the constant
-#     `qits-platform`; this key only reaches the unused default client.
+#     `qits-platform`; this key only reaches the unnamed default client, which nothing injects.
 #   * QITS_RESOURCE_*. The deployer injects those from its resource registry; they are never entries.
 #
 # NO serviceAddress AND NO packageVersion, on purpose. Both change what the container gets, so both
@@ -125,7 +126,7 @@ keys:
 
   env.QITS_AUTH_MACHINE_AUDIENCE:
     type: string
-    description: "The audience a machine token addressed to this service must carry, beside qits-platform."
+    description: "The audience a machine token addressed to this service must carry: the platform's one audience, qits-platform. qits-auth-core refuses to start with the gate on and this unset."
 
   env.QUARKUS_OIDC_AUTH_SERVER_URL:
     type: string

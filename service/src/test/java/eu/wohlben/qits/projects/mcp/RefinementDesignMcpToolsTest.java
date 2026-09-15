@@ -34,7 +34,7 @@ public class RefinementDesignMcpToolsTest {
   private static RequestSpecification authenticated() {
     return given()
         .header("X-Qits-User", "mcp-test")
-        .header("X-Qits-Roles", "qits:admin,qits:system,qits-platform:system");
+        .header("X-Qits-Roles", "qits:admin,qits:system");
   }
 
   // --- Fixtures over REST ---------------------------------------------------

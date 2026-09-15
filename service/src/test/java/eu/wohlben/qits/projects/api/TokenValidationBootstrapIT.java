@@ -99,14 +99,13 @@ public class TokenValidationBootstrapIT {
   public static class PackagedWithMockIdp extends PackagedSurfaceIT.PackagedResources {
 
     /**
-     * The audience this service enforces, and it is a LITERAL rather than a variable name — the
-     * difference from qits-githost's IT, which hands its launched process {@code
-     * QITS_AUTH_MACHINE_AUDIENCE} because the shipped expression there reads that variable. Here
-     * {@code qits.auth.machine.audience=qits-projects} is spelled out in
-     * {@code application.properties}, so the audience under test is the shipped one and there is no
-     * expression to feed. A deployment still overrides it by environment.
+     * The audience this service enforces, and it is a LITERAL rather than a variable name: {@code
+     * quarkus.oidc.token.audience=qits-platform} is spelled out in {@code application.properties},
+     * so the audience under test is the shipped one and there is no expression to feed. It is the
+     * one audience qits-idp puts on every token it mints, for every client, which is why a single
+     * value covers both a sibling service's bearer and a person's {@code qits} CLI token.
      */
-    static final String AUDIENCE = "qits-projects";
+    static final String AUDIENCE = "qits-platform";
 
     @Override
     public Map<String, String> getConfigOverrides() {

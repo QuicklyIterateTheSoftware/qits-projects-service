@@ -11,8 +11,9 @@ import io.restassured.specification.RequestSpecification;
  *
  * <p>{@link #platformService(RequestSpecification)} presents an RS256 token minted by {@link
  * MockIdp} against the very JWKS the launched process fetches when a bearer first arrives: {@code
- * aud=qits-projects} (what {@code qits.auth.machine.audience} pins as a literal in
- * {@code application.properties}) and {@code groups=[qits:system]} — qits-idp copies a client's
+ * aud=qits-platform} (what {@code quarkus.oidc.token.audience} pins as a literal in
+ * {@code application.properties} — the one audience qits-idp puts on every token it mints) and
+ * {@code groups=[qits:system]} — qits-idp copies a client's
  * roles into that claim and quarkus-oidc reads it as roles with no configuration at all.
  *
  * <h2>A person is a pair of headers</h2>
@@ -37,7 +38,7 @@ import io.restassured.specification.RequestSpecification;
 public final class StoryIdentities {
 
   /** The audience this service enforces — a literal, because {@code application.properties} pins it. */
-  public static final String AUDIENCE = "qits-projects";
+  public static final String AUDIENCE = "qits-platform";
 
   /** The machine role a platform peer holds: the bootstrap's doors and the four shared reads. */
   public static final String MACHINE_ROLE = "qits:system";

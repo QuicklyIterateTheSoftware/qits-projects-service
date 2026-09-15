@@ -12,8 +12,8 @@ import java.util.Map;
  *
  * <p>It moves exactly three keys, and the shipped key path is untouched: discovery stays off,
  * {@code jwks-path} stays {@code jwks} (joined onto the address below, which is why the mock stubs
- * {@code /idp/jwks}), the audiences stay the shipped pair, and {@code jwks.resolve-early} stays
- * {@code false} — the thing under test.
+ * {@code /idp/jwks}), the audience stays the shipped {@code qits-platform}, and {@code
+ * jwks.resolve-early} stays {@code false} — the thing under test.
  *
  * <ul>
  *   <li>{@code qits.auth.machine.required} is THE GATE: the shipped tenant is {@code

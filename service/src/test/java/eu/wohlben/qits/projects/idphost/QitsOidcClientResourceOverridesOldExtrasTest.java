@@ -13,8 +13,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Once a deployment declares {@code idp:client} (service-client-identity-plan.md, C5) qits-deployments
  * injects {@code QITS_RESOURCE_IDP_*} beside whatever old extras keys are still there from before the
- * cutover — deleting them is a later, unhurried step (C9). The {@code qits} client must read the new
- * triple first, every time, or a deployment mid-cutover would keep presenting its old secret.
+ * cutover. The {@code qits} client must read the new triple first, every time, or a deployment
+ * mid-cutover would keep presenting its old secret.
  */
 @QuarkusTest
 @TestProfile(QitsOidcClientResourceOverridesOldExtrasTest.BothSet.class)

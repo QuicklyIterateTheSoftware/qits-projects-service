@@ -33,7 +33,7 @@ public class DossierMcpToolsTest {
   private static RequestSpecification authenticated() {
     return given()
         .header("X-Qits-User", "mcp-test")
-        .header("X-Qits-Roles", "qits:admin,qits:system,qits-platform:system");
+        .header("X-Qits-Roles", "qits:admin,qits:system");
   }
 
   private String createProject(String name) {
