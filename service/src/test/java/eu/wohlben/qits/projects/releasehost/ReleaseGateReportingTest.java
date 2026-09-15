@@ -46,6 +46,8 @@ public class ReleaseGateReportingTest {
 
   @Inject RecordingReleaseGitHost gitHost;
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseFinalization finalization;
+
   private String repoId;
   private String projectId;
 
@@ -150,12 +152,56 @@ public class ReleaseGateReportingTest {
     assertEquals(List.of("PASSED", "PASSED"), states(id), "the deployment reached main");
   }
 
+  /**
+   * <b>The publish gate appears when the release declares one, and it is the released tree that
+   * says so.</b> Nothing at {@code main} can answer it — the pipeline that has to go green is the
+   * one the released commit declared — so the gate is reported from the moment a tag exists and
+   * never before, which is why this test releases first and stages the tag's tree second.
+   */
+  @Test
+  public void aPublishGateIsReportedOnceTheReleasedTreeDeclaresAPipeline() {
+    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    String id = create("work");
+    assertEquals(List.of("CI"), kinds(id), "before the tag, nothing has declared a publish gate");
+
+    verdict("BuildSuccessful", mergedShaOf(id), "");
+    awaitState(id, "RELEASED");
+    String version = versionOf(id);
+    gitHost.tree(
+        "refs/tags/" + version,
+        Map.of("pom.xml", "irrelevant", ".config/qits/ci-event-release.yml", "steps: []\n"));
+
+    // The catch-up is what asks the question for a tag nothing has decided about yet.
+    finalization.sweep();
+
+    assertEquals(List.of("CI", "PUBLISH"), kinds(id), "the release declared one, so it is reported");
+    assertEquals(List.of("PASSED", "PENDING"), states(id), "and its run has not reported yet");
+
+    listener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "BuildFailed",
+            Instant.now(),
+            "{\"branch\":\""
+                + version
+                + "\",\"commitSha\":\"released-sha\",\"repoId\":\""
+                + repoId
+                + "\",\"runId\":\"run-publish\",\"outcome\":\"FAILED\"}",
+            null,
+            null,
+            null));
+
+    assertEquals(List.of("PASSED", "FAILED"), states(id), "a red publish run is a failed gate");
+    assertEquals("RELEASED", stateOf(id), "on a request that is still open, and stays so");
+  }
+
   @Test
   public void aConfigurationThatCannotBeReadIsUnknownAndNeverPending() {
     gitHost.mainUnreadable();
     String id = create("work");
-    assertEquals(List.of("CI", "APPROVAL", "DEPLOYMENT"), kinds(id), "never an empty list");
-    assertEquals(List.of("UNKNOWN", "UNKNOWN", "UNKNOWN"), states(id));
+    assertEquals(
+        List.of("CI", "APPROVAL", "PUBLISH", "DEPLOYMENT"), kinds(id), "never an empty list");
+    assertEquals(List.of("UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN"), states(id));
     assertEquals("PENDING", stateOf(id), "held, and not rejected either: nothing refused it");
     assertEquals(0, executor.calls().size());
   }
@@ -217,6 +263,10 @@ public class ReleaseGateReportingTest {
   private String detailOf(String id) {
     String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
     return detail == null ? "" : detail;
+  }
+
+  private String versionOf(String id) {
+    return given().get(base() + "/" + id).then().statusCode(200).extract().path("request.version");
   }
 
   private String mergedShaOf(String id) {

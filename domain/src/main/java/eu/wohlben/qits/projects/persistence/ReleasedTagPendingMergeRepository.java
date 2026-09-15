@@ -20,6 +20,11 @@ public class ReleasedTagPendingMergeRepository
    * The repository's releases still in flight — released, not yet on {@code main} — oldest first.
    * This <b>is</b> the implicit source set: every open request of the repository folds these in, so
    * that a release cannot be a step backwards from one already shipping.
+   *
+   * <p><b>An abandoned row is still in flight and is deliberately still here.</b> The successor that
+   * obsoleted its request folds this tag in and supersedes it whole; a later request that dropped it
+   * would be a step backwards from a tag that really was cut. What abandoning stops is the
+   * <em>merge</em> ({@link #listOwedMerges}, {@link #listUngated}), never the fold.
    */
   public List<ReleasedTagPendingMerge> listPending(String repoId) {
     return list("repoId = ?1 and mergedAt is null order by releasedAt", repoId);
@@ -47,7 +52,9 @@ public class ReleasedTagPendingMergeRepository
    * sweep is the only caller, and a row is here exactly while the git host has not applied it.
    */
   public List<ReleasedTagPendingMerge> listOwedMerges() {
-    return list("mergeRequestedAt is not null and mergedAt is null order by mergeRequestedAt");
+    return list(
+        "mergeRequestedAt is not null and mergedAt is null and abandonedAt is null"
+            + " order by mergeRequestedAt");
   }
 
   /**
@@ -58,9 +65,14 @@ public class ReleasedTagPendingMergeRepository
    *
    * <p>Bounded by construction: a row leaves this list the moment anything gates it, so the set is
    * the releases genuinely in flight plus whatever is stuck — a handful, not a history.
+   *
+   * <p>An <b>abandoned</b> row is out of it, and that is what stops the catch-up from re-asking
+   * about a release a successor has superseded for ever: nothing will finalize it, so asking is a
+   * tree listing per sweep with no outcome that could ever follow it.
    */
   public List<ReleasedTagPendingMerge> listUngated() {
-    return list("mergeRequestedAt is null and mergedAt is null order by releasedAt");
+    return list(
+        "mergeRequestedAt is null and mergedAt is null and abandonedAt is null order by releasedAt");
   }
 
   /** The tags a page of release requests produced, for naming what reached {@code main}. */

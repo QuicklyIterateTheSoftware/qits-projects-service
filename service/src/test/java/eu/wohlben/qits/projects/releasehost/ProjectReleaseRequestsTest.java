@@ -146,11 +146,25 @@ public class ProjectReleaseRequestsTest {
   }
 
   /**
-   * A landed release, written straight to the table. The state machine's own way there is asserted
-   * in {@code ReleaseRequestFlowTest}; what this class is about is the reading, and eleven releases
-   * driven through the gate would be eleven door calls to make one list.
+   * A finished release, written straight to the table. The state machine's own way there is asserted
+   * in {@code ReleaseRequestFlowTest} and {@code MainFinalizationTest}; what this class is about is
+   * the reading, and eleven releases driven through the gates would be eleven door calls to make one
+   * list.
+   *
+   * <p>FINALIZED and not RELEASED, because those are two different things to a listing now: a
+   * released request is still open work — it has still to publish, deploy and reach {@code main} —
+   * and a finalized one is what the tail behind the open work is made of.
    */
+  private String finalized(String repoId, String summary, Instant when) {
+    return row(repoId, summary, when, ReleaseRequest.State.FINALIZED);
+  }
+
+  /** A release that has been tagged and has not reached {@code main} yet: OPEN work. */
   private String released(String repoId, String summary, Instant when) {
+    return row(repoId, summary, when, ReleaseRequest.State.RELEASED);
+  }
+
+  private String row(String repoId, String summary, Instant when, ReleaseRequest.State state) {
     return QuarkusTransaction.requiringNew()
         .call(
             () -> {
@@ -159,7 +173,7 @@ public class ProjectReleaseRequestsTest {
               row.repoId = repoId;
               row.projectId = projectId;
               row.summary = summary;
-              row.state = ReleaseRequest.State.RELEASED;
+              row.state = state;
               row.version = "2026.903." + Math.abs(summary.hashCode() % 900000 + 100000);
               row.createdAt = when;
               row.armedAt = when;
@@ -192,11 +206,36 @@ public class ProjectReleaseRequestsTest {
   }
 
   /**
-   * <b>The default is the open work plus the last ten releases</b>, and the tail is what makes the
-   * page readable: a request that lands is no longer waiting on anybody, so it leaves the open set —
-   * and a worklist that dropped it there and then made the one event people actually come to check
-   * the one thing it never showed. Ten and not the history, so a project with a year of releases
-   * costs the same read as one with three.
+   * <b>A RELEASED request is open work.</b> The tag is cut and the release has still to publish, to
+   * deploy and to reach {@code main} — so a page whose question is "what is happening here" answers
+   * it without anybody naming a state, which is the whole of ticket b27384a3 as a reader sees it.
+   */
+  @Test
+  public void aReleasedRequestIsListedAsOpenWork() {
+    String open = create(serviceRepoId, "waiting-on-a-gate");
+    String released = released(frontendRepoId, "tagged and not finished", Instant.now());
+    String finalized = finalized(frontendRepoId, "done", Instant.now().minusSeconds(60));
+
+    List<String> ids = idsAt("");
+
+    assertTrue(ids.contains(released), "a released request has not finished: " + ids);
+    assertTrue(ids.contains(open));
+    assertTrue(
+        ids.contains(finalized),
+        "and the finalized one is on the page too — but as the tail behind the open work, not as"
+            + " open work");
+    assertTrue(idsAt("?state=RELEASED").contains(released), "and it is still findable by state");
+  }
+
+  /**
+   * <b>The default is the open work plus the last ten FINALIZED requests</b>, and the tail is what
+   * makes the page readable: a request that has reached {@code main} is no longer waiting on
+   * anybody, so it leaves the open set — and a worklist that dropped it there and then made the one
+   * event people actually come to check the one thing it never showed. Ten and not the history, so a
+   * project with a year of releases costs the same read as one with three.
+   *
+   * <p>The tail is FINALIZED and no longer RELEASED, because RELEASED is open now: topping the page
+   * up with a state that is already on it would list those rows twice.
    */
   @Test
   public void theDefaultCarriesTheLastTenReleasesBehindTheOpenWork() {
@@ -204,7 +243,8 @@ public class ProjectReleaseRequestsTest {
     List<String> releases = new ArrayList<>();
     for (int index = 0; index < 11; index++) {
       // Oldest first, so the one that must fall off the tail is releases.get(0).
-      releases.add(released(serviceRepoId, "release " + index, Instant.now().minusSeconds(600 - index)));
+      releases.add(
+          finalized(serviceRepoId, "release " + index, Instant.now().minusSeconds(600 - index)));
     }
 
     List<String> ids = idsAt("");
@@ -224,10 +264,10 @@ public class ProjectReleaseRequestsTest {
   @Test
   public void namingAStateAnswersThatStateAndNothingBesideIt() {
     create(serviceRepoId, "narrowing-open");
-    String release = released(frontendRepoId, "a release", Instant.now());
+    String release = finalized(frontendRepoId, "a release", Instant.now());
 
     given()
-        .get(projectBase() + "?state=RELEASED")
+        .get(projectBase() + "?state=FINALIZED")
         .then()
         .statusCode(200)
         .body("requests.id", contains(release));

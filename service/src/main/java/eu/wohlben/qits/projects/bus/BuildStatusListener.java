@@ -4,6 +4,7 @@ import eu.wohlben.qits.eventstream.QitsDurableEventListener;
 import eu.wohlben.qits.eventstream.control.CanonicalJson;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.control.BuildStatusLedger;
+import eu.wohlben.qits.projects.control.ReleaseFinalization;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -77,6 +78,12 @@ public class BuildStatusListener implements QitsDurableEventListener {
 
   @Inject ReleaseRequests releaseRequests;
 
+  /**
+   * The publish gate's reader. A release run's verdict arrives on this same consumption and names
+   * the released version as its branch, so this listener answers both halves of one event stream.
+   */
+  @Inject ReleaseFinalization finalization;
+
   @Override
   public String consumerId() {
     return CONSUMER_ID;
@@ -118,6 +125,17 @@ public class BuildStatusListener implements QitsDurableEventListener {
     // own transactions and hands any execution to its own worker, so the claim never spans this
     // datasource and never waits on a door.
     releaseRequests.onVerdict(build.repoId(), build.commitSha());
+    // AND the same verdict may be a PUBLISH run — the release run of a tag, whose branch IS the
+    // version. That is a gate on a request that has released and is still open, and the only thing
+    // separating it from the fold verdict above is what the branch names; both arms are asked
+    // because one event cannot be both and neither is expensive to rule out. See
+    // ReleaseFinalization.onPublishVerdict, which is where the correlation and the refusal to move
+    // the request out of RELEASED live.
+    finalization.onPublishVerdict(
+        build.repoId(),
+        build.branch(),
+        build.runId(),
+        SUCCESS_SIGNATURE.equals(frame.name()));
   }
 
   /**

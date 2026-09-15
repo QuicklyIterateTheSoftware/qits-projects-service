@@ -52,6 +52,8 @@ public class MainFinalizationTest {
 
   @Inject RecordingReleaseRequestAnnouncer announcer;
 
+  @Inject RecordingQaRunCancellations cancellations;
+
   private String repoId;
   private String projectId;
 
@@ -62,6 +64,7 @@ public class MainFinalizationTest {
     merger.reset();
     announcer.reset();
     gitHost.reset();
+    cancellations.reset();
     // A run is still active, so no fixture request settles itself mid-test: what is under test is
     // the merge to main, never the gate's timing.
     activeBuilds.answer(Optional.of(1));
@@ -269,23 +272,7 @@ public class MainFinalizationTest {
   @Test
   public void aReleasedRequestSaysWhetherItsTagHasReachedMainYet() {
     String tag = freshTag();
-    String requestId = UUID.randomUUID().toString();
-    QuarkusTransaction.requiringNew()
-        .run(
-            () -> {
-              ReleaseRequest released = new ReleaseRequest();
-              released.id = requestId;
-              released.repoId = repoId;
-              released.projectId = projectId;
-              released.summary = "shipped";
-              released.state = ReleaseRequest.State.RELEASED;
-              released.version = tag;
-              released.armedAt = Instant.now();
-              released.createdAt = Instant.now();
-              released.updatedAt = Instant.now();
-              released.persist();
-              pendingTag(tag).releaseRequestId = requestId;
-            });
+    String requestId = releasedRequest(tag);
 
     given()
         .get(base() + "/" + requestId)
@@ -308,9 +295,85 @@ public class MainFinalizationTest {
             org.hamcrest.Matchers.notNullValue());
   }
 
+  /**
+   * <b>Reaching {@code main} is what finishes a request</b> (ticket b27384a3), and it is the last
+   * moment anything could still be running for one — so the final cancellation is asked for here
+   * rather than at the tag, where a request that stayed open could since have had a run queued
+   * against it.
+   */
+  @Test
+  public void theTagReachingMainFinalizesTheRequestAndCancelsWhateverIsStillRunningForIt() {
+    String tag = freshTag();
+    String requestId = releasedRequest(tag);
+
+    given()
+        .get(base() + "/" + requestId)
+        .then()
+        .body("request.state", org.hamcrest.Matchers.equalTo("RELEASED"));
+
+    deploymentActive("publisher", tag, "dev");
+
+    given()
+        .get(base() + "/" + requestId)
+        .then()
+        .body("request.state", org.hamcrest.Matchers.equalTo("FINALIZED"));
+    assertTrue(
+        cancellations.cancelledRequests().contains(requestId),
+        "the runs of a finished request have nothing left to report to: "
+            + cancellations.cancelledRequests());
+  }
+
+  /** And the default listing's half of the same fact: a RELEASED request is still open work. */
+  @Test
+  public void aReleasedRequestIsOnTheDefaultListingAndAFinalizedOneHasLeftTheOpenSet() {
+    String tag = freshTag();
+    String requestId = releasedRequest(tag);
+
+    given()
+        .get(base())
+        .then()
+        .body("requests.id", org.hamcrest.Matchers.hasItem(requestId))
+        .body(
+            "requests.find { it.id == '" + requestId + "' }.state",
+            org.hamcrest.Matchers.equalTo("RELEASED"));
+
+    deploymentActive("publisher", tag, "dev");
+
+    given()
+        .get(base() + "?state=RELEASED")
+        .then()
+        .body("requests.id", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(requestId)));
+    given()
+        .get(base() + "?state=FINALIZED")
+        .then()
+        .body("requests.id", org.hamcrest.Matchers.hasItem(requestId));
+  }
+
   // -----------------------------------------------------------------------------------------------
   // The fixture
   // -----------------------------------------------------------------------------------------------
+
+  /** A request that has released, with its tag in flight — the state the whole ticket is about. */
+  private String releasedRequest(String tag) {
+    String requestId = UUID.randomUUID().toString();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest released = new ReleaseRequest();
+              released.id = requestId;
+              released.repoId = repoId;
+              released.projectId = projectId;
+              released.summary = "shipped";
+              released.state = ReleaseRequest.State.RELEASED;
+              released.version = tag;
+              released.armedAt = Instant.now();
+              released.createdAt = Instant.now();
+              released.updatedAt = Instant.now();
+              released.persist();
+              pendingTag(tag).releaseRequestId = requestId;
+            });
+    return requestId;
+  }
 
   private String base() {
     return "/projects/api/repositories/" + repoId + "/release-requests";
@@ -332,7 +395,16 @@ public class MainFinalizationTest {
     return "2026.903." + (100000 + (int) (Math.random() * 800000));
   }
 
+  /**
+   * A released tag of this fixture, <b>declaring a deployment and no release pipeline</b>. The tree
+   * is staged with the row because a release's gates are read from the released tree now, not from
+   * {@code main}: a tag whose tree says nothing is a release whose gates cannot be decided, and this
+   * class is about the one gate it does declare.
+   */
   private ReleasedTagPendingMerge pendingTag(String tag) {
+    gitHost.tree(
+        "refs/tags/" + tag,
+        java.util.Map.of("pom.xml", "irrelevant", ".config/qits/deployments.yml", "irrelevant"));
     ReleasedTagPendingMerge row = new ReleasedTagPendingMerge();
     row.id = UUID.randomUUID().toString();
     row.repoId = repoId;

@@ -289,9 +289,25 @@ public class WrapperSubmoduleWriter {
    * worth retrying, because re-reading is exactly what fixes it.
    *
    * <p>Two shapes, and both are real: git rejects the update client-side as a non-fast-forward when
-   * it saw the newer tip in the advertisement, and refuses it server-side as a stale old value (or
-   * a lock failure) when the ref moved between the advertisement and the ref transaction. A hook
-   * declining the push is neither and must never be retried.
+   * it saw the newer tip in the advertisement, and refuses it server-side when the ref moved
+   * between the advertisement and the ref transaction. A hook declining the push is neither and
+   * must never be retried.
+   *
+   * <p><b>The server-side shape is receive-pack's own wording and it is not the wording
+   * {@code update-ref} uses.</b> What a lost transaction reports per ref is exactly {@code failed to
+   * update ref} — the only thing {@link PushOutcome#remoteRefusal()} can read, since it is the
+   * parenthesised summary on the {@code [remote rejected]} line — while the sentence that says
+   * <em>why</em> ({@code cannot lock ref '…': is at X but expected Y}) is streamed separately as a
+   * {@code remote: error:} line and never reaches the summary. Matching only {@code incorrect old
+   * value} / {@code stale info} (JGit and {@code --force-with-lease} wordings) therefore classified
+   * every genuinely lost race as a refusal and answered 400 instead of re-reading — measured
+   * against git 2.39. So the summary is read for receive-pack's word and the whole output for the
+   * lock detail behind it.
+   *
+   * <p>A permanent {@code failed to update ref} — a directory/file clash on the ref name, say — is
+   * retried too and then reported as the exhausted-attempts failure, which carries the output the
+   * detail line is in. Three cheap re-reads are the right price for never mistaking a race for a
+   * refusal.
    */
   private static boolean lostTheRace(PushOutcome outcome) {
     if (outcome.saysNotFastForward()) {
@@ -302,9 +318,14 @@ public class WrapperSubmoduleWriter {
       return false;
     }
     String lower = refusal.toLowerCase(java.util.Locale.ROOT);
-    return lower.contains("incorrect old value")
+    if (lower.contains("incorrect old value")
         || lower.contains("lock")
-        || lower.contains("stale info");
+        || lower.contains("stale info")
+        || lower.contains("failed to update ref")) {
+      return true;
+    }
+    String output = outcome.output() == null ? "" : outcome.output().toLowerCase(java.util.Locale.ROOT);
+    return output.contains("cannot lock ref");
   }
 
   private static String branchOf(Repository wrapper) {

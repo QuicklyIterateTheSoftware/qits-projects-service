@@ -27,7 +27,29 @@ import org.jboss.logging.Logger;
  *     .config/qits/release.yml naming an archetype:       →  the CI gate too
  *     .config/qits/deployments.yml present               →  the deployment gate
  *     .config/qits/release-requests.yml manual-review     →  the approval gate
+ *
+ *     AT THE RELEASED TAG, not at main:
+ *     .config/qits/ci-event-release.yml present          →  the publish gate
+ *     .config/qits/release.yml naming an archetype:       →  the publish gate too
  * </pre>
+ *
+ * <h2>Configured at the tag: the publish gate</h2>
+ *
+ * <p><b>{@link Kind#PUBLISH} is not in the set this class resolves</b>, and it cannot be: it is
+ * configured by the <em>released tag's</em> tree rather than by {@code main}'s, so there is no
+ * answer to give until a release has happened. {@code ReleaseFinalization} reads it, off the same
+ * single tree listing it already makes for {@code deployability}, and a caller that has a released
+ * tag in hand puts the kind into the set with {@link GateSet#with} before reporting.
+ *
+ * <p><b>Why that direction is right here and wrong for the other three.</b> The rule "read from
+ * main, never from the fold" exists so a change cannot loosen the rules it is judged by — and every
+ * gate it governs is asked <em>before</em> the tag, about content nobody has accepted yet. The
+ * publish gate is asked after: the run that must go green is the release run of the released commit,
+ * composed from what <em>that commit</em> declared, and asking {@code main} instead would gate a
+ * release on a pipeline it does not have (a repository that added {@code ci-event-release.yml} after
+ * the tag) or wave one through that does (a repository that removed it since). There is no loophole
+ * to open, because the content is already tagged and immutable. It is {@link
+ * ReleaseFinalization#deployability}'s reasoning exactly, for the same half of the lifecycle.
  *
  * <h2>A migrated repository's CI gate is composed, not local</h2>
  *
@@ -132,12 +154,18 @@ public class ReleaseGates {
 
   private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
-  /** The three gates. A fourth is a new member here and nowhere else. */
+  /** The four gates. A fifth is a new member here and nowhere else. */
   public enum Kind {
     /** Before the tag: a gating {@code BuildSuccessful} for the fold. */
     CI,
     /** Before the tag, and standing alone: a person's yes. */
     APPROVAL,
+    /**
+     * After the tag: the tag's own release run — the <b>publish</b> run — must be green. See
+     * "Configured at the tag" in this class's javadoc for why this one is not read from {@code
+     * main}, and {@code ReleaseFinalization} for who answers it.
+     */
+    PUBLISH,
     /** After the tag: the release is not finished until its deployment is live. */
     DEPLOYMENT
   }
@@ -183,6 +211,23 @@ public class ReleaseGates {
     /** Whether this repository is gated by {@code kind}. False for an unknown set: see {@link #known}. */
     public boolean requires(Kind kind) {
       return known && kinds.contains(kind);
+    }
+
+    /**
+     * The same set with one more gate in it — the seam {@link Kind#PUBLISH} arrives through, since
+     * that one is configured at the released tag and this set is read at {@code main}.
+     *
+     * <p><b>An unknown set is returned unchanged</b>, and that is the whole care this method needs:
+     * unknown does not mean "no gates yet", it means the configuration could not be read, and a set
+     * that gained a member would start claiming to know one gate out of four. See {@link #known}.
+     */
+    public GateSet with(Kind kind) {
+      if (!known || kinds.contains(kind)) {
+        return this;
+      }
+      EnumSet<Kind> widened = EnumSet.copyOf(kinds.isEmpty() ? EnumSet.noneOf(Kind.class) : kinds);
+      widened.add(kind);
+      return GateSet.of(widened);
     }
 
     /** A repository that configured no gate at all: nothing is waited on in front of the press. */

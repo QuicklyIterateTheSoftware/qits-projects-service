@@ -1241,6 +1241,8 @@ components:
           $ref: "#/components/schemas/MergeConflictDto"
         version:
           type: string
+        supersededBy:
+          type: string
         releasedSha:
           type: string
         mergedToMainAt:
@@ -5870,4 +5872,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.913.200802
+  version: 2026.915.62059

@@ -669,9 +669,35 @@ effort and never able to fail the release or the withdrawal itself (`ReleaseRequ
 run still building a branch the release just deleted, or a branch a withdrawal just dropped, cannot
 land a stray verdict later.
 
-**Follow-up: ticket b27384a3** — a release request should stay open until the release is finalized
-(the deployment gate's own status model). This change does not touch that; RELEASED still means the
-tag was cut, not that the deployment is live.
+**A release request stays open until the release is FINALIZED** (ticket b27384a3, done). RELEASED is
+an *open* state: the tag is cut and what it released has still to publish, to deploy and to reach
+`main`. The path past the tag is two more gates, and both are read from the **released tag's own
+tree** rather than from `main` — the pipeline that must go green is the one the released commit
+declared, which is `ReleaseFinalization.deployability`'s reasoning applied twice:
+
+| file at the released tag | gate |
+| --- | --- |
+| `.config/qits/ci-event-release.yml`, or a `release.yml` naming an `archetype:` | publish — the tag's own release run must be green |
+| `.config/qits/deployments.yml` | deployment — a `DeploymentActive` for the released version |
+
+`ReleaseFinalization.advance` is the whole state machine and the only writer of `merge_requested_at`:
+one tree listing, both gates, and the merge to `main` when every configured one has passed.
+`onReleasedTagMerged` is what moves the request to `FINALIZED` and cancels whatever is still queued
+for it. Three consequences worth stating:
+
+- **A red publish verdict never moves the request out of RELEASED.** The tag cannot be un-cut, so it
+  is a failed gate on an open request — the run id is on `released_tag_pending_merge` and the fix is
+  `qits ci retry`, whose green verdict finalizes.
+- **`onReleased` finalizes only what nothing else will ever finalize** — a released tree declaring
+  *neither* gate. It used to finalize every non-deployable at the tag, which shipped SPAs whose
+  publish run had not started.
+- **A new request OBSOLETES a release that never finalized.** The successor folds the earlier tag in,
+  so `ReleaseRequests.obsolete` marks the earlier request `OBSOLETE` with `superseded_by`, cancels
+  its runs and abandons its owed merge. It cannot fight convergence: every convergence read is over
+  `ReleaseRequestRepository.UNRELEASED` and this is over `RELEASED`, two disjoint sets.
+
+`OPEN` (what a listing answers) and `UNRELEASED` (what may still be folded, added to or approved) are
+two different constants now, and mixing them up is the defect to watch for.
 
 ## Epic lifecycle
 
