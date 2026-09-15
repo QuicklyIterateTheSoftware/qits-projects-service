@@ -51,6 +51,42 @@ class QitsOidcClientShippedConfigTest {
   }
 
   @Test
+  void theFourNamesTheDeploymentStillMintsAreNeutralised() {
+    // These are not dead stubs and a cleanup must not take them out again: the deployed environment
+    // carries QUARKUS_OIDC_CLIENT_{CI,GITHOST,MAINTENANCE,WORKSPACES}_* entries, one variable mints
+    // the map key, and `client-enabled`/`discovery-enabled` both default to TRUE — an enabled client
+    // dials qits-idp during runtime init, before the HTTP listener accepts. `discovery-enabled` is
+    // what actually stops that (the env's `..._CLIENT_ENABLED=true` outranks this file), and
+    // `token-path` is mandatory beside it or the metadata has no token endpoint and the boot fails.
+    // QitsOidcClientEnvMintedNamesTest measures both of those against the shipped file.
+    for (String name : new String[] {"ci", "githost", "maintenance", "workspaces"}) {
+      String prefix = "quarkus.oidc-client." + name + ".";
+      assertEquals("false", value(prefix + "client-enabled"), name);
+      assertEquals("false", value(prefix + "discovery-enabled"), name);
+      assertEquals("token", value(prefix + "token-path"), name);
+    }
+  }
+
+  @Test
+  void aNameThisFileDoesNotMentionIsENABLEDandDISCOVERING() {
+    // The premise of the block above, pinned rather than argued, and measured through the real
+    // Quarkus config stack because only that carries the mapping's recorded defaults. The map key
+    // `quarkus.oidc-client.<name>` matches a STAR name, so ANY name — one an environment variable
+    // mints, and one nothing mints at all — answers `true` to `client-enabled` unless this file says
+    // otherwise. An undeclared name is used so that restoring or retiring a real one cannot make
+    // this pass or fail for the wrong reason.
+    assertEquals("true", value("quarkus.oidc-client.nosuchclient.client-enabled"));
+    // `discovery-enabled` has NO recorded default, because OidcClientConfig types it as an Optional
+    // and OidcClientRecorder applies `discoveryEnabled().orElse(true)` itself. Unset therefore still
+    // means DISCOVER — a dial to qits-idp in front of the HTTP listener during runtime init — which
+    // is exactly why the four names above have to say `false` in this file rather than say nothing.
+    assertTrue(
+        ConfigProvider.getConfig()
+            .getOptionalValue("quarkus.oidc-client.nosuchclient.discovery-enabled", String.class)
+            .isEmpty());
+  }
+
+  @Test
   void theContainersOwnerKeyFollowsTheQitsClientsId() {
     // qits.projects.containers.owner reads quarkus.oidc-client.qits.client-id by default —
     // OwnerGuard compares this string to a machine token's `sub` once the gate is on.
