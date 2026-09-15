@@ -26,8 +26,10 @@ import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -468,6 +470,80 @@ class AgentTunnelProxyTest {
         AgentCapabilityRelay.Outcome.Kind.ABSENT,
         outcome.kind(),
         "an answer with no capabilities is absent, and absent ends the window");
+  }
+
+  /**
+   * <b>The regression that cost the third release.</b> The read is driven from a <b>virtual
+   * thread</b>, the way production drives it, twenty times in a row — and every one of them must
+   * decode the full report.
+   *
+   * <p>Every other test in this class calls the relay on the JUnit platform thread, which is what
+   * let this through: the continuation after the response future completes then lands promptly, so
+   * {@code response.body()} was usually attached before the body had been delivered and dropped. On
+   * a virtual thread — an unmount and a remount on some carrier — it usually is not. Measured live
+   * on 2026-09-15 the relay gave up on eleven of twelve {@code Hello}s, in two spellings that looked
+   * unrelated: a bare {@code TimeoutException} when the read woke after {@code handleEnd} (the body
+   * promise minted too late for anyone to complete), and a "200 with an empty body" when it woke
+   * between the head and the end (an accumulator nobody had been filling). Both are a single
+   * blocking await placed between the response and its bytes; see {@link AgentCapabilityRelay}'s
+   * class javadoc.
+   *
+   * <p><b>Twenty reads rather than one, and that is the whole discriminating power of this test.</b>
+   * The old shape is a race, not a certainty — it failed most of the time live and it fails most of
+   * the time here — so a single read would be a flake in both directions. A loop asserting that
+   * <em>every</em> one succeeded turns "most of the time" into a reliable failure, and leaves the
+   * fixed shape with nothing to be lucky about.
+   *
+   * <p>The fake daemon answers the full report every time, and nothing here is slowed down or made
+   * to stall: the point is that a <b>healthy</b> daemon was being misread. Each read is one attempt
+   * ({@code readAndIngest}, never the retry window) for the same reason — a window would paper over
+   * exactly the losses this test exists to see.
+   */
+  @Test
+  void theReadIsDrivenFromAVirtualThreadTheWayProductionDrivesIt() throws Exception {
+    String project = UUID.randomUUID().toString();
+    String imageVersion = "2026.915.virtualthread-" + UUID.randomUUID();
+    availableBody = reportNaming(imageVersion);
+
+    int apiPort = startDaemonApi();
+    connectAsDaemon(project, apiPort);
+
+    int reads = 20;
+    List<AgentCapabilityRelay.Outcome> outcomes = new CopyOnWriteArrayList<>();
+    CompletableFuture<Void> done = new CompletableFuture<>();
+    Thread.ofVirtual()
+        .name("agent-capability-relay-regression")
+        .start(
+            () -> {
+              try {
+                for (int i = 0; i < reads; i++) {
+                  outcomes.add(relay.readAndIngest(project));
+                }
+                done.complete(null);
+              } catch (RuntimeException e) {
+                done.completeExceptionally(e);
+              }
+            });
+    done.get(TIMEOUT_SECONDS * 4, TimeUnit.SECONDS);
+
+    assertEquals(reads, outcomes.size());
+    for (int i = 0; i < reads; i++) {
+      assertEquals(
+          AgentCapabilityRelay.Outcome.Kind.RECORDED,
+          outcomes.get(i).kind(),
+          "read "
+              + (i + 1)
+              + " of "
+              + reads
+              + " did not decode the report the daemon answered: "
+              + outcomes.get(i).detail()
+              + ". A body awaited after the response, off the event loop, is a body that was"
+              + " already delivered and dropped.");
+    }
+
+    AgentHarnessCapability row = capabilities.find("CLAUDE", imageVersion).orElseThrow();
+    assertEquals("2.1.226", row.harnessVersion);
+    assertTrue(row.authenticated);
   }
 
   @Test

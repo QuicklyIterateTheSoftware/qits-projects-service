@@ -4,10 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.api.AgentCapabilityController;
 import eu.wohlben.qits.projects.api.AgentCapabilityController.CapabilityReportRequest;
 import eu.wohlben.qits.projects.control.AgentCapabilityCatalogueService;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.net.SocketAddress;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -76,6 +75,52 @@ import org.jboss.logging.Logger;
  * in the log said the daemon was speaking a contract this service could not read, which was the
  * opposite of true. A body that is absent says nothing about capabilities and can never be the reason
  * to stop asking; only a body genuinely present and unparseable is broken.
+ *
+ * <h2>The third fix: the body was never lost by the daemon, it was lost here</h2>
+ *
+ * <p><b>Measured live on 2026-09-15: the relay gave up on nearly every {@code Hello} it ever
+ * handled</b> — eleven windows in eight hours, one of which recorded anything. The give-up WARN
+ * named one of two last attempts, and the two looked like unrelated faults: either a bare {@code
+ * java.util.concurrent.TimeoutException} reported as "could not reach the daemon", or a "200 with an
+ * empty body" classified NOT_READY and asked again until the twelve attempts ran out. The daemon was
+ * healthy throughout: the <em>identical</em> route read through {@link ContainerProxyRoute}, over the
+ * same tunnel and the same {@code HttpClient}, answered 200 with the full report in <b>8 ms</b>.
+ *
+ * <p><b>Both spellings were one defect, and it was in the shape of this method rather than in
+ * anything the daemon did.</b> {@link #read} awaited the response future and only then called {@code
+ * response.body()}, with a thread hop in between — the caller here is a virtual thread, so the await
+ * and the continuation after it are not the event loop the response was delivered on. In Vert.x
+ * 4.5.26 the response stream is <b>not paused waiting for a handler</b> ({@code
+ * Http1xClientConnection$StreamImpl} creates its {@code InboundBuffer} unpaused), and {@code
+ * HttpEventHandler} drops every chunk that arrives before {@code body()} was called ({@code
+ * handleChunk}: {@code if (body == null) return;}) and never completes a {@code bodyPromise} created
+ * after {@code handleEnd()} has run ({@code handleEnd}: {@code if (bodyPromise == null) return;}).
+ * So waking up after {@code handleEnd} mints a promise nobody completes and the outer bound expires
+ * — the {@code TimeoutException} — while waking up between the head and the end finds an empty
+ * accumulator — the "empty body". Two symptoms, one race, decided by where the continuation landed.
+ *
+ * <p><b>The proxy was healthy the whole time because it never leaves the event loop.</b> {@code
+ * vertx-http-proxy} attaches its body handling inside the response callback and pipes from there;
+ * nothing about it waits on a future and then asks a delivered response for bytes it has already
+ * handed out. That is also why the relay's own {@code setTimeout} never bounded any of this: {@code
+ * RequestOptions.setTimeout} covers connect, request and response <em>head</em> only — {@code
+ * HttpClientRequestBase.handleResponse} cancels the timer the moment the head arrives — so the body
+ * read was unbounded by it and the only ceiling was the outer {@code get(timeoutMs)}.
+ *
+ * <p><b>So the rule is: compose the exchange, block once.</b> Request, send and {@code body()} are
+ * one {@link io.vertx.core.Future} chain, so {@code body()} is attached inside the response callback
+ * on the event loop where it cannot miss a chunk, and the blocking caller waits on the assembled
+ * result and on nothing else. The rule was first written down one repository over, in
+ * qits-workspaces-service's {@code daemonhost/DaemonAgentClient#send}, where the same defect was
+ * found and measured on 2026-09-08 as a call that took exactly its timeout and then reported a
+ * daemon unreachable that had in fact answered. This class is the second place it was paid for.
+ *
+ * <p><b>That also corrects the paragraph above.</b> "A 2xx with an empty body is a daemon that has
+ * not finished booting" was only ever half true: the daemon really does answer that way in its boot
+ * window, and the retry that reading bought is right and stays — but a large share of the empty
+ * bodies this relay saw in production were bodies that <em>did</em> arrive and were dropped on this
+ * side. The classification is unchanged (an absent body still says nothing about capabilities and
+ * still cannot end the window); what changed is that it now describes the daemon rather than us.
  *
  * <p><b>The window is bounded and the give-up is loud.</b> {@code relay-attempts} reads with an
  * exponential backoff capped at {@code relay-retry-max-ms} — about four minutes shipped — and a
@@ -150,6 +195,15 @@ public class AgentCapabilityRelay {
   /** The bearer the daemon requires — the same value {@link ContainerProxyRoute} presents. */
   @ConfigProperty(name = "qits.projects.daemon-api-token", defaultValue = "qits-projects-daemon")
   String daemonApiToken;
+
+  /**
+   * Not where we connect — the authority we claim. The <b>same key</b> {@link ContainerProxyRoute}
+   * reads for its {@code hostRewrite}, deliberately and not a second one: the daemon was told this
+   * port is its own address, and a relay that presented the tunnel's ephemeral loopback port instead
+   * would be the one caller able to tell the daemon which road a request took.
+   */
+  @ConfigProperty(name = "qits.projects.daemon-api-port", defaultValue = "13338")
+  int daemonApiPort;
 
   /**
    * How long the whole read may take before it is abandoned. Short: this is a local loopback hop into
@@ -231,6 +285,13 @@ public class AgentCapabilityRelay {
       return new Outcome(Kind.NOT_READY, detail);
     }
   }
+
+  /**
+   * One <b>whole</b> answer — status and body together, assembled on the event loop. It exists so
+   * there is exactly one thing for {@link #read} to block on; a status held apart from its body is
+   * two awaits, which is the defect this class's javadoc records.
+   */
+  private record Answer(int status, String body) {}
 
   /**
    * A daemon has said hello for {@code projectId}: go and ask it what its harnesses can do.
@@ -341,7 +402,9 @@ public class AgentCapabilityRelay {
    * <p><b>No body is "not ready", and it is a DIFFERENT answer from a body naming no
    * capabilities.</b> That distinction cost a live release: the second is an older daemon that
    * answered ({@code {"agents":[…],"defaultAgent":"CLAUDE"}} — absent, terminal, quiet), while the
-   * first is a daemon that has not finished booting, and handing {@code ""} to Jackson produces
+   * first is a daemon that has not finished booting — or, until 2026-09-15, this class losing a body
+   * the daemon had already sent, which is the third fix in the class javadoc — and handing {@code ""}
+   * to Jackson produces
    * "No content to map due to end-of-input" — measured live 2026-09-09 as the ONLY line the relay
    * logged, on every container start, from the arm that then refused to ask again. An empty answer
    * is not a statement about capabilities, so it can never be the reason to stop asking.
@@ -410,32 +473,50 @@ public class AgentCapabilityRelay {
    * probe finishing, and treating that as absence is precisely what made this relay fill nothing. A
    * hop that failed outright — which is what an unbound loopback API looks like from here, since the
    * daemon's dial-back finds nothing to pipe to — is not ready for the same reason.
+   *
+   * <p><b>The whole exchange is composed and awaited ONCE, and that is not style.</b> Awaiting the
+   * response and then asking it for its body is two blocking steps with an event loop running in
+   * between, and in this Vert.x version the response stream is not paused waiting for anyone: every
+   * chunk that arrives before {@code body()} was called is dropped, and a {@code body()} attached
+   * after the last one has already been handled is a promise nobody will ever complete. See this
+   * class's javadoc for what that measured as live. Composing keeps {@code body()} attached inside
+   * the response callback on the event loop and leaves exactly one thing to block on.
+   *
+   * <p><b>{@code setServer} is where we connect; {@code setHost}/{@code setPort} are what we claim to
+   * be calling.</b> The connection goes to the tunnel's ephemeral loopback port, and the authority
+   * stays {@code localhost:<daemon api port>} — the same pinning {@link
+   * ContainerProxyRoute#hostRewrite} does for a browser's request, so the daemon cannot tell which
+   * road a request took and never sees an ephemeral port as its own address.
    */
   private Outcome read(String projectId, AgentTunnels.TunnelOrigin origin) {
     String path = ContainerProxyPath.base(projectId) + AVAILABLE_PATH;
     try {
-      HttpClientResponse response =
+      Answer answer =
           origin
               .client()
               .request(
                   new RequestOptions()
                       .setMethod(HttpMethod.GET)
-                      .setHost("127.0.0.1")
-                      .setPort(origin.port())
+                      .setServer(SocketAddress.inetSocketAddress(origin.port(), "127.0.0.1"))
+                      .setHost("localhost")
+                      .setPort(Integer.valueOf(daemonApiPort))
                       .setURI(path)
                       .putHeader("Authorization", "Bearer " + daemonApiToken)
                       .setTimeout(timeoutMs))
               .compose(request -> request.send())
+              .compose(
+                  response ->
+                      response
+                          .body()
+                          .map(
+                              buffer ->
+                                  new Answer(
+                                      response.statusCode(),
+                                      buffer == null ? null : buffer.toString())))
               .toCompletionStage()
               .toCompletableFuture()
               .get(timeoutMs, TimeUnit.MILLISECONDS);
-      Buffer buffer =
-          response
-              .body()
-              .toCompletionStage()
-              .toCompletableFuture()
-              .get(timeoutMs, TimeUnit.MILLISECONDS);
-      int status = response.statusCode();
+      int status = answer.status();
       if (status == 404) {
         LOG.debugf(
             "project %s does not serve %s (404); no capability report to record",
@@ -448,17 +529,18 @@ public class AgentCapabilityRelay {
             projectId, Integer.valueOf(status), AVAILABLE_PATH);
         return Outcome.notReady("the daemon answered " + status + " for " + AVAILABLE_PATH);
       }
-      // An empty 2xx is NOT ready, never broken. The status is read from the response object above,
+      // An empty 2xx is NOT ready, never broken. The status is read off the same composed answer,
       // so nothing non-2xx can reach here disguised as an empty body; what does reach here is a
-      // 200 whose body never arrived, which is what a daemon mid-boot looks like through the tunnel.
-      String answer = buffer == null ? null : buffer.toString();
-      if (answer == null || answer.isBlank()) {
+      // 200 whose body really was empty, which is what a daemon mid-boot looks like through the
+      // tunnel. It is no longer also what a lost body looked like — see the composition above.
+      String body = answer.body();
+      if (body == null || body.isBlank()) {
         LOG.debugf(
             "project %s answered %d for %s with an empty body; its agent surface is not up yet",
             projectId, Integer.valueOf(status), AVAILABLE_PATH);
         return Outcome.notReady("the daemon answered " + status + " with an empty body");
       }
-      return ingest(projectId, answer);
+      return ingest(projectId, body);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return Outcome.notReady("interrupted");
