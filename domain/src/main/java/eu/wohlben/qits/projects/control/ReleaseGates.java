@@ -30,7 +30,8 @@ import org.jboss.logging.Logger;
  *
  *     AT THE RELEASED TAG, not at main:
  *     .config/qits/ci-event-release.yml present          →  the publish gate
- *     .config/qits/release.yml naming an archetype:       →  the publish gate too
+ *     .config/qits/release.yml for which qits-ci says
+ *       it runs a release                               →  the publish gate too
  * </pre>
  *
  * <h2>Configured at the tag: the publish gate</h2>
@@ -40,6 +41,14 @@ import org.jboss.logging.Logger;
  * answer to give until a release has happened. {@code ReleaseFinalization} reads it, off the same
  * single tree listing it already makes for {@code deployability}, and a caller that has a released
  * tag in hand puts the kind into the set with {@link GateSet#with} before reporting.
+ *
+ * <p><b>The two gates read {@link ReleaseArtifacts#SLOT_CONFIG} differently, and that is a
+ * correction rather than an inconsistency</b> (2026-09-16). This class asks whether the file names
+ * an archetype, because the composed pipeline it is about is the archetype's {@code
+ * release-request:} slot and every archetype declares one. {@code ReleaseFinalization} is about the
+ * {@code release:} slot, which {@code spa-frontend} and {@code cli} deliberately declare <b>not</b>
+ * — so an archetype's name was the wrong test there, and the publish gate asks qits-ci itself
+ * through {@code control/PublishRuns} instead. Neither reading may be copied onto the other.
  *
  * <p><b>Why that direction is right here and wrong for the other three.</b> The rule "read from
  * main, never from the fold" exists so a change cannot loosen the rules it is judged by — and every

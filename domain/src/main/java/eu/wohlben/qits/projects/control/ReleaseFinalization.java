@@ -8,10 +8,13 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
@@ -26,13 +29,16 @@ import org.jboss.logging.Logger;
  * carries says which gates apply to this release:
  *
  * <ul>
- *   <li><b>The publish gate</b>, where the tree declares a release pipeline ({@code
- *       .config/qits/ci-event-release.yml}, or a {@code .config/qits/release.yml} naming an
- *       archetype qits-ci composes one from). The tag's own release run has to finish green, which
+ *   <li><b>The publish gate</b>, where the tree declares a release pipeline — its own {@code
+ *       .config/qits/ci-event-release.yml}, or a {@code .config/qits/release.yml} for which
+ *       <b>qits-ci says it runs a release</b> ({@link PublishRuns}; that second question is not
+ *       answerable here and is not guessed at). The tag's own release run has to finish green, which
  *       arrives here as a {@code BuildSuccessful} whose <em>branch is the version</em> — see {@link
  *       #onPublishVerdict}. A red one is a <b>failed gate on an open request</b>, retried with
  *       {@code qits ci retry}; it never moves the request out of RELEASED, because the tag is cut
- *       and cannot be taken back.
+ *       and cannot be taken back. One that never reports at all holds {@code main} for as long as it
+ *       takes — there is deliberately no timeout that passes a gate — and is said out loud once a
+ *       window instead ({@link PublishGatePatience}).
  *   <li><b>The deployment gate</b>, where the tree declares {@code .config/qits/deployments.yml}.
  *       qits-deployments announces {@code DeploymentActive} for an application and a version, and
  *       that version is a released tag of some repository — see {@link #onDeploymentActive}.
@@ -122,8 +128,22 @@ public class ReleaseFinalization {
 
   @Inject Instance<ReleaseGitHost> gitHosts;
 
-  /** Reads {@link #RELEASE_SLOT_CONFIG} for the one fact the publish gate needs: an archetype. */
-  @Inject ReleaseArchetypeParser archetypeParser;
+  /**
+   * Asks qits-ci the one fact the publish gate needs of a {@link #RELEASE_SLOT_CONFIG} repository:
+   * does a release run exist for this tag at all. An {@code Instance} like the two ports above it,
+   * and absent is the supported configuration they all share — here it means "could not ask", which
+   * holds the tag rather than merging it.
+   */
+  @Inject Instance<PublishRuns> publishRuns;
+
+  /**
+   * How long a PENDING publish gate is ordinary before it is worth saying out loud — see {@link
+   * PublishGatePatience}. It changes who is told and never whether a gate passes.
+   */
+  @ConfigProperty(
+      name = "qits.projects.release-requests.publish-gate-patience",
+      defaultValue = "PT1H")
+  Duration publishGatePatience;
 
   /**
    * The platform's declaration that a repository is deployed, at the path every service and every
@@ -135,9 +155,12 @@ public class ReleaseFinalization {
   static final String RELEASE_PIPELINE = ReleaseArtifacts.RELEASE_RECIPE;
 
   /**
-   * A migrated repository's release declaration: qits-ci composes the release pipeline from the
-   * archetype it names, so naming one is the publish gate too — {@link ReleaseGates}' own reading of
-   * the same file for the CI gate, applied to the released tree.
+   * A migrated repository's release declaration: qits-ci composes its pipelines from the archetype
+   * it names. <b>Its presence at the tag is the question, never the answer</b> — whether the
+   * composition has a {@code release:} slot, and therefore whether this release is publish-gated at
+   * all, is qits-ci's to say ({@link PublishRuns}). {@link ReleaseGates} reads the same file for the
+   * CI gate and reads it differently on purpose; that gate's slot is {@code release-request:} and is
+   * declared by every archetype, so there the presence of a key really is the answer.
    */
   static final String RELEASE_SLOT_CONFIG = ReleaseArtifacts.SLOT_CONFIG;
 
@@ -362,6 +385,11 @@ public class ReleaseFinalization {
       LOG.debugf(
           "%s of %s declares a release pipeline whose run is %s; main waits for it",
           owed.tagName(), owed.repoId(), owing.publishState());
+      if (owing.publishState() == ReleasedTagPendingMerge.PublishState.PENDING) {
+        // A verdict that never comes is a stall nothing else would ever mention — and a red one is
+        // already loud, so only the waiting state is worth a window.
+        sayIfOverdue(owed);
+      }
       return;
     }
     if (declared.deploys() && owing.deploymentActiveAt() == null) {
@@ -402,6 +430,15 @@ public class ReleaseFinalization {
    * gateReport} reads the PUBLISH gate's existence from, since nothing at {@code main} says whether
    * the released commit declared one — and it is never written over a verdict that has already
    * answered.
+   *
+   * <p><b>And it CLEARS a stamp the release turns out not to owe</b>, which is the other half of the
+   * same fact and the half that heals what the old predicate left behind. {@code gateReport} reports
+   * a PUBLISH gate for exactly as long as this column is non-null, so a row stamped PENDING while
+   * this class still read {@code archetype:} as the gate would go on rendering a pending publish
+   * gate on a FINALIZED request for ever. Now that qits-ci answers the question, a release it says
+   * has no run has no gate — so the column and its sentence go, the report stops mentioning
+   * it, and the live stuck rows heal on the next sweep rather than by hand in the database. Nothing
+   * is lost by clearing: the column is the gate's own record and there is no gate.
    */
   private Owing owingOf(Owed owed, boolean publishes) {
     return QuarkusTransaction.requiringNew()
@@ -416,10 +453,66 @@ public class ReleaseFinalization {
                             row.publishState = ReleasedTagPendingMerge.PublishState.PENDING;
                             row.publishDetail =
                                 "Waiting for the release run of " + row.tagName + " to finish";
+                          } else if (!publishes && row.publishState != null) {
+                            LOG.infof(
+                                "%s of %s has no release run, so its publish gate (%s) is not a"
+                                    + " gate and is cleared",
+                                row.tagName, row.repoId, row.publishState);
+                            row.publishState = null;
+                            row.publishDetail = null;
                           }
                           return new Owing(row.publishState, row.deploymentActiveAt);
                         })
                     .orElse(null));
+  }
+
+  /**
+   * <b>A publish gate that has been PENDING too long is said out loud.</b> The stall is otherwise
+   * invisible: {@link #advance}'s own line is DEBUG because the catch-up re-asks about the same row
+   * every sweep, so a release run that never reports holds {@code main} back with nothing but a JSON
+   * field to show for it — which is how the case this whole change came from ran unnoticed.
+   *
+   * <p><b>It says it once per window, not once per sweep</b>, and the row's own {@code
+   * publish_detail} is what makes that possible: {@link PublishGatePatience} quantizes the waited
+   * time to a multiple of the patience, so the sentence changes once an hour, and this speaks only
+   * when it changed — {@link #failed}'s idiom for a merge that will not apply. Carrying the sentence
+   * there also puts it on {@code GET …/release-requests}, where the person who can act on it is
+   * already looking.
+   *
+   * <p><b>It passes nothing.</b> A slow publish keeps {@code main} waiting for as long as it takes;
+   * this only changes who knows.
+   */
+  private void sayIfOverdue(Owed owed) {
+    String said =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    pendingTags
+                        .findByIdOptional(owed.id())
+                        .filter(
+                            row ->
+                                row.mergedAt == null
+                                    && row.abandonedAt == null
+                                    && row.publishState
+                                        == ReleasedTagPendingMerge.PublishState.PENDING)
+                        .flatMap(
+                            row ->
+                                PublishGatePatience.overdue(
+                                        row.tagName,
+                                        row.repoId,
+                                        row.releasedAt,
+                                        Instant.now(),
+                                        publishGatePatience)
+                                    .filter(sentence -> !sentence.equals(row.publishDetail))
+                                    .map(
+                                        sentence -> {
+                                          row.publishDetail = sentence;
+                                          return sentence;
+                                        }))
+                        .orElse(null));
+    if (said != null) {
+      LOG.warn(said);
+    }
   }
 
   /**
@@ -670,11 +763,26 @@ public class ReleaseFinalization {
    * the same bytes really would fail identically forever, and only the volume of the retry
    * distinguishes them. Neither is ever read as an answer.
    *
-   * <p><b>The one file read, and only where the listing already said the file is there</b>: {@link
-   * #RELEASE_SLOT_CONFIG} has to be opened to see whether it names an archetype. A read that fails
-   * is "could not ask" and holds the whole answer; a file that will not <em>parse</em> is {@link
-   * ReleaseGates}' case exactly and takes its answer — the gate applies. Waiting on a run that then
-   * has to be fixed is recoverable; finalizing a release whose pipeline was never checked is not.
+   * <p><b>The one question asked elsewhere, and only where the listing already said the file is
+   * there</b>: where the tree carries {@link #RELEASE_SLOT_CONFIG}, <b>qits-ci</b> is asked whether
+   * a release run exists for this tag ({@link PublishRuns}). The file is not opened here at all any
+   * more, and that is the 2026-09-16 correction rather than a tidy-up. This class used to read it
+   * for a non-blank {@code archetype:} and call that the publish gate — but naming an archetype says
+   * only that qits-ci composes <em>something</em>, and only a composition carrying a {@code
+   * release:} slot produces a run at a tag. The {@code spa-frontend} and {@code cli} archetypes
+   * deliberately carry none (an SPA publishes nothing; the consuming service builds the bundle into
+   * its own image), so every such release stamped a gate no run would ever answer and its {@code
+   * main} stopped moving — qits-observability-frontend, found stuck in RELEASED with a PENDING
+   * publish gate. <b>The answer is not reachable from here</b>: the archetype lives at the wrapper
+   * repository's {@code main}, and the repository's own file may override the {@code release:} slot
+   * wholesale, so the composer is the only honest reader. See {@link PublishRuns}.
+   *
+   * <p><b>"Could not ask" is not an answer, and is never {@code false}.</b> An unresolvable port, an
+   * unset address, an unreachable qits-ci and a 503 all come back empty and make the whole released
+   * tree {@link Readability#UNKNOWN_FOR_NOW} — exactly what an unreadable tree does, and for the
+   * identical reason: reading a missing answer as "this release publishes nothing" would merge a tag
+   * to {@code main} whose publish was never checked, and {@code main} cannot be taken back. A
+   * release held one sweep longer costs thirty seconds.
    *
    * <p><b>Its failures are logged at DEBUG</b>, because the catch-up asks about the same row on
    * every sweep; {@link #advance} is what says something once, on the path where it is news.
@@ -709,26 +817,28 @@ public class ReleaseFinalization {
     if (!paths.contains(RELEASE_SLOT_CONFIG)) {
       return new ReleasedTree(Readability.READ, false, deploys);
     }
-    ReleaseGitHost.Answer<String> config;
-    try {
-      config = host.file(repoId, rev, RELEASE_SLOT_CONFIG);
-    } catch (RuntimeException e) {
-      LOG.debugf(e, "The git host threw reading %s of %s at %s", RELEASE_SLOT_CONFIG, repoId, rev);
-      return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
-    }
-    if (config == null || !config.ok()) {
+    if (!publishRuns.isResolvable()) {
       LOG.debugf(
-          "%s is declared at %s of %s and could not be read", RELEASE_SLOT_CONFIG, rev, repoId);
+          "%s is declared at %s of %s and no qits-ci is configured to say whether it runs a release"
+              + " for it",
+          RELEASE_SLOT_CONFIG, rev, repoId);
       return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
     }
+    Optional<Boolean> declared;
     try {
-      return new ReleasedTree(Readability.READ, archetypeParser.declaresArchetype(config.value()), deploys);
+      declared = publishRuns.get().declaredFor(repoId, rev);
     } catch (RuntimeException e) {
-      LOG.warnf(
-          "%s at %s of %s does not parse; treating %s as publish-gated rather than ungated: %s",
-          RELEASE_SLOT_CONFIG, rev, repoId, version, e.getMessage());
-      return new ReleasedTree(Readability.READ, true, deploys);
+      // The port says it must not throw; a throw is a port bug and must not be read as an answer.
+      LOG.debugf(e, "qits-ci threw being asked about the release phase of %s at %s", repoId, rev);
+      return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
     }
+    if (declared == null || declared.isEmpty()) {
+      LOG.debugf(
+          "qits-ci could not say whether %s of %s has a release run; %s stays ungated",
+          rev, repoId, version);
+      return ReleasedTree.unread(Readability.UNKNOWN_FOR_NOW);
+    }
+    return new ReleasedTree(Readability.READ, declared.get(), deploys);
   }
 
   // -----------------------------------------------------------------------------------------------

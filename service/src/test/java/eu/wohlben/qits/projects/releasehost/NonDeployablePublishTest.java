@@ -16,6 +16,7 @@ import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,6 +60,8 @@ public class NonDeployablePublishTest {
 
   @Inject FakeActiveBuilds activeBuilds;
 
+  @Inject FakePublishRuns publishRuns;
+
   @Inject RecordingReleaseExecutor executor;
 
   private String repoId;
@@ -70,6 +73,7 @@ public class NonDeployablePublishTest {
     executor.reset();
     merger.reset();
     gitHost.reset();
+    publishRuns.reset();
     activeBuilds.answer(Optional.of(1));
     repoId = "publish-lib-repo-" + UUID.randomUUID();
     projectId = "publish-lib-project-" + UUID.randomUUID();
@@ -201,16 +205,16 @@ public class NonDeployablePublishTest {
 
   /**
    * The migrated repository's arm: no {@code ci-event-release.yml} in the tree at all, and qits-ci
-   * composes the release pipeline from the archetype {@code release.yml} names. The gate applies
-   * just the same — the file the presence rule reads is different, the fact is not.
+   * composes the pipelines from the archetype {@code release.yml} names. Where the composition has a
+   * {@code release:} slot, qits-ci says so and the gate applies just the same — the file the
+   * question is asked about is different, the fact is not.
    */
   @Test
-  public void aReleaseDeclaringAnArchetypeIsPublishGatedToo() {
+  public void aReleaseQitsCiRunsAReleaseForIsPublishGatedToo() {
     String tag = freshTag();
     pendingTag(tag);
-    gitHost.tree(
-        "refs/tags/" + tag,
-        Map.of("pom.xml", "irrelevant", ".config/qits/release.yml", "archetype: service\n"));
+    releaseYamlAtTag(tag);
+    publishRuns.answer(Optional.of(true));
 
     finalization.onReleased(repoId, tag);
 
@@ -219,25 +223,142 @@ public class NonDeployablePublishTest {
         rowOf(tag).publishState,
         "a composed pipeline is a pipeline");
     assertEquals(List.of(), merger.foldsOf("refs/heads/main"));
+    assertEquals(
+        List.of(new FakePublishRuns.Asked(repoId, "refs/tags/" + tag)),
+        publishRuns.asked(),
+        "and the question is asked about the released TAG, not about main");
   }
 
   /**
-   * And the negative that keeps the arm above honest: a {@code release.yml} naming <em>no</em>
-   * archetype composes nothing, so a repository carrying one for its artifacts alone still has
-   * nothing that will ever finalize it and is finalized at the tag.
+   * <b>The defect this port exists to close.</b> A {@code release.yml} naming an archetype with no
+   * {@code release:} slot — {@code spa-frontend}, {@code cli} — composes no release run, so nothing
+   * would ever answer a publish gate stamped for it. This service cannot see that from the file (the
+   * archetype is in the wrapper and the slot can be overridden wholesale), so qits-ci is asked, and
+   * "no" means there is no gate here and the tag is finalized.
    */
   @Test
-  public void aReleaseYamlWithNoArchetypeIsNotAPipeline() {
+  public void aReleaseQitsCiRunsNoReleaseForIsNotPublishGatedAtAll() {
     String tag = freshTag();
-    pendingTag(tag);
-    gitHost.tree(
-        "refs/tags/" + tag,
-        Map.of("pom.xml", "irrelevant", ".config/qits/release.yml", "artifacts:\n  - maven\n"));
+    String releasedSha = pendingTag(tag);
+    releaseYamlAtTag(tag);
+    publishRuns.answer(Optional.of(false));
 
     finalization.onReleased(repoId, tag);
 
     assertNull(rowOf(tag).publishState, "no gate, deliberately not a PENDING one");
+    assertEquals(List.of(releasedSha), merger.foldsOf("refs/heads/main").get(0).sources());
     assertNotNull(rowOf(tag).mergedAt);
+  }
+
+  /**
+   * <b>And it heals the rows the old reading stranded, with no database surgery.</b> A release
+   * stamped PENDING while "names an archetype" was the predicate reports a pending PUBLISH gate for
+   * ever, because {@code gateReport} reads the gate's very existence off that column. qits-ci
+   * answering "no release run" is what makes the stamp wrong, so the stamp goes.
+   */
+  @Test
+  public void aStalePendingStampIsClearedWhenQitsCiSaysThereIsNoReleaseRun() {
+    String tag = freshTag();
+    pendingTag(tag);
+    releaseYamlAtTag(tag);
+    publishRuns.answer(Optional.of(true));
+    finalization.onReleased(repoId, tag);
+    assertEquals(ReleasedTagPendingMerge.PublishState.PENDING, rowOf(tag).publishState);
+
+    // The predicate is qits-ci's, so the answer changing is all it takes.
+    publishRuns.answer(Optional.of(false));
+    finalization.sweep();
+
+    ReleasedTagPendingMerge healed = rowOf(tag);
+    assertNull(healed.publishState, "the column is the gate's own record, and there is no gate");
+    assertNull(healed.publishDetail, "and no sentence about a run nobody is waiting for");
+    assertNotNull(healed.mergedAt, "so the release finally reaches main");
+  }
+
+  /**
+   * <b>"Could not ask" is not "no release run".</b> An unconfigured, unreachable or 503-answering
+   * qits-ci leaves the released tag exactly as unreadable as a git host that could not list the tree
+   * — nothing is gated, nothing is merged, and the sweep is what asks again. Reading the silence as
+   * "this publishes nothing" would put a commit on {@code main} whose publish was never checked.
+   */
+  @Test
+  public void aQitsCiThatCannotBeAskedMergesNothingAndTheSweepRetries() {
+    String tag = freshTag();
+    pendingTag(tag);
+    releaseYamlAtTag(tag);
+    publishRuns.answer(Optional.empty());
+
+    finalization.onReleased(repoId, tag);
+    finalization.sweep();
+
+    assertNull(rowOf(tag).publishState, "not gated: nothing is known about this release yet");
+    assertNull(rowOf(tag).mergeRequestedAt, "and nothing is owed main");
+    assertEquals(List.of(), merger.foldsOf("refs/heads/main"));
+
+    publishRuns.answer(Optional.of(false));
+    finalization.sweep();
+
+    assertNotNull(rowOf(tag).mergedAt, "the sweep asked again and qits-ci answered");
+  }
+
+  /**
+   * The unmigrated arm is untouched and must stay untouched: a tree carrying the repository's own
+   * release recipe is the answer, so qits-ci is <b>not asked at all</b>.
+   */
+  @Test
+  public void aTreeWithItsOwnReleaseRecipeAsksQitsCiNothing() {
+    String tag = freshTag();
+    pendingTag(tag);
+    treeAtTag(tag, "pom.xml", RELEASE_PIPELINE);
+
+    finalization.onReleased(repoId, tag);
+
+    assertEquals(ReleasedTagPendingMerge.PublishState.PENDING, rowOf(tag).publishState);
+    assertEquals(List.of(), publishRuns.asked(), "the recipe in the tree is the whole answer");
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // A gate that never answers (requirement: make the stall audible, never pass it)
+  // -----------------------------------------------------------------------------------------------
+
+  /**
+   * <b>A publish gate that has been PENDING longer than the patience says so on the row</b>, where
+   * the release-request read already looks — and it still merges nothing, because a run that is
+   * merely slow must keep {@code main} waiting.
+   */
+  @Test
+  public void aPublishGatePendingTooLongSaysHowLongItHasWaited() {
+    String tag = freshTag();
+    pendingTag(tag);
+    releaseYamlAtTag(tag);
+    publishRuns.answer(Optional.of(true));
+    finalization.onReleased(repoId, tag);
+    releasedAgo(tag, Duration.ofHours(3));
+
+    finalization.sweep();
+
+    ReleasedTagPendingMerge stuck = rowOf(tag);
+    assertEquals(ReleasedTagPendingMerge.PublishState.PENDING, stuck.publishState);
+    assertTrue(stuck.publishDetail.contains("3h"), stuck.publishDetail);
+    assertTrue(stuck.publishDetail.contains(tag), stuck.publishDetail);
+    assertEquals(List.of(), merger.foldsOf("refs/heads/main"), "and no timeout passes the gate");
+  }
+
+  /** And it says nothing while the run is still within the window it is allowed. */
+  @Test
+  public void aPublishGatePendingForAMomentSaysNothingYet() {
+    String tag = freshTag();
+    pendingTag(tag);
+    releaseYamlAtTag(tag);
+    publishRuns.answer(Optional.of(true));
+
+    finalization.onReleased(repoId, tag);
+    finalization.sweep();
+
+    assertEquals(
+        "Waiting for the release run of " + tag + " to finish",
+        rowOf(tag).publishDetail,
+        "the ordinary sentence, with nothing alarming in it");
   }
 
   @Test
@@ -423,6 +544,29 @@ public class NonDeployablePublishTest {
               row.persist();
               return row.releasedSha;
             });
+  }
+
+  /**
+   * A released tree carrying a migrated repository's release declaration. <b>The content is
+   * irrelevant on purpose</b>: nothing here reads the file any more, because whether the archetype
+   * it names composes a release run is qits-ci's answer and not this service's.
+   */
+  private void releaseYamlAtTag(String tag) {
+    gitHost.tree(
+        "refs/tags/" + tag,
+        Map.of("pom.xml", "irrelevant", ".config/qits/release.yml", "archetype: spa-frontend\n"));
+  }
+
+  /** Age the released tag, which is the only clock the PENDING-too-long signal has. */
+  private void releasedAgo(String tag, Duration ago) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleasedTagPendingMerge.update(
+                    "releasedAt = ?1 where repoId = ?2 and tagName = ?3",
+                    Instant.now().minus(ago),
+                    repoId,
+                    tag));
   }
 
   /** The released tree, as the git host would list it — the paths are the whole of what is read. */

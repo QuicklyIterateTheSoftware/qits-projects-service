@@ -20,6 +20,19 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * today. This class stops at the key, deliberately, and {@link ReleaseGates} never looks past what
  * it returns.
  *
+ * <p><b>{@link ReleaseGates} is now its ONLY caller, and the audit above is why the other one had to
+ * go</b> (2026-09-16). {@code ReleaseFinalization} used to ask the same question of the released
+ * tag's tree to decide the <b>publish</b> gate, and that was wrong on a fact the audit did not cover:
+ * what the audit verified is that every archetype declares a {@code release-request:} slot, which is
+ * <em>this</em> gate's slot. The publish gate's slot is {@code release:}, and {@code spa-frontend}
+ * and {@code cli} deliberately declare none — an SPA publishes nothing, since the consuming service
+ * carries it as a submodule and builds the bundle into its own image — so "names an archetype"
+ * stamped a gate for releases no run would ever answer and their {@code main} stopped moving. The
+ * publish gate asks qits-ci itself now ({@code control/PublishRuns}), because the archetype is in the
+ * wrapper repository and a repository's own file may override the slot wholesale, which puts the
+ * answer out of this service's reach entirely. <b>Do not widen this class towards that question</b>:
+ * the presence rule is right for the gate it serves and only for that gate.
+ *
  * <p><b>Shaped after {@link ReleaseRequestSettingsParser}</b>: a pure, framework-light helper,
  * unit-testable without a clone, using SnakeYAML's {@link SafeConstructor} so repository content can
  * never instantiate a class. It throws on a structural problem rather than answering {@code false}

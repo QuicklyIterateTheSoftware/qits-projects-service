@@ -677,8 +677,26 @@ declared, which is `ReleaseFinalization.deployability`'s reasoning applied twice
 
 | file at the released tag | gate |
 | --- | --- |
-| `.config/qits/ci-event-release.yml`, or a `release.yml` naming an `archetype:` | publish — the tag's own release run must be green |
+| `.config/qits/ci-event-release.yml`, or a `release.yml` **qits-ci says it runs a release for** | publish — the tag's own release run must be green |
 | `.config/qits/deployments.yml` | deployment — a `DeploymentActive` for the released version |
+
+**The publish gate's membership is qits-ci's answer and not this service's** (2026-09-16). It used
+to be "the `release.yml` names an `archetype:`", the same presence rule `ReleaseGates` applies for
+the CI gate — and that is wrong here, because the CI gate's slot is `release-request:` (every
+archetype declares one) while the publish gate's is `release:`, which `spa-frontend` and `cli`
+deliberately declare *not*: an SPA publishes nothing, the consuming service carries it as a submodule
+and builds the bundle into its own image. So every such release stamped a PENDING publish gate no run
+would ever answer and its `main` stopped moving (qits-observability-frontend, found stuck in
+RELEASED). The answer is unreachable from here — the archetype is at the **wrapper's** `main` and a
+repository's own file may override the slot wholesale — so `control/PublishRuns` asks the composer:
+`GET /ci/api/repositories/{repoId}/release-phase?rev=refs/tags/<version>`. Three rules ride with it:
+**"could not ask" is never `false`** (unset `ci-url`, unreachable, 503, unreadable body all leave the
+tag UNGATED for the next sweep, because a wrong `main` cannot be taken back); **a stale
+`publish_state` is cleared** when the answer is "no run", which is what heals the stuck rows without
+database surgery, since `gateReport` reads the gate's very existence off that column; and **no
+timeout ever passes the gate** — a publish that never reports holds `main` for ever and is made
+*audible* instead, one WARN and a sentence on `publish_detail` per
+`qits.projects.release-requests.publish-gate-patience` (1h) window.
 
 `ReleaseFinalization.advance` is the whole state machine and the only writer of `merge_requested_at`:
 one tree listing, both gates, and the merge to `main` when every configured one has passed.
