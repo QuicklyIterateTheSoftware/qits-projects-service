@@ -311,12 +311,54 @@ public class CommitService {
    * for a root commit).
    */
   public CommitChangesDto listChanges(String repoId, String commit, String parent) {
+    return listChanges(repoId, commit, parent, null);
+  }
+
+  /**
+   * {@link #listChanges(String, String, String)} narrowed to a single {@code pathspec}, for a caller
+   * that already knows which entry it is asking about and must not pay for the whole tree's diff to
+   * find out what that entry is. A path that the commit did not touch answers an empty list, which
+   * is the honest answer rather than an error.
+   *
+   * <p><b>The read is {@code --raw -z}, and both flags are load-bearing.</b>
+   *
+   * <p>{@code --raw} is what carries the tree <em>modes</em> and the two object ids. Without them a
+   * gitlink is indistinguishable from a file: the change set said {@code MODIFIED
+   * components/qits-ci/qits-ci-service} and the only way to discover that the entry was a {@code
+   * 160000} at all was to fetch its patch and read the {@code Subproject commit} lines back out of
+   * the text — the very opacity this read exists to remove.
+   *
+   * <p>{@code -z} is what makes the parse honest. {@code --name-status} separates its fields with a
+   * tab and <b>git-quotes</b> any path holding a tab, a newline or a non-ASCII byte — wrapping it in
+   * double quotes and C-escaping the offending bytes — so the old split-on-tab parser answered
+   * {@code "sch\303\266n.txt"} for a path that is simply {@code schön.txt}, and could be made to
+   * split a path in half outright. With {@code -z} every field is NUL-terminated and nothing is
+   * quoted or escaped at all, so a path arrives as the bytes it is.
+   *
+   * <p>The framing, verified against git rather than assumed, is one flat run of NUL-terminated
+   * fields with <b>no separator between records</b>:
+   *
+   * <pre>
+   * :&lt;oldMode&gt; &lt;newMode&gt; &lt;oldSha&gt; &lt;newSha&gt; &lt;STATUS&gt; NUL &lt;path&gt; NUL
+   * :100644 100644 587be6b… d735d34… M NUL a file.txt NUL
+   * :100644 100644 d735d34… d735d34… R100 NUL a file.txt NUL renamed file.txt NUL
+   * :160000 160000 f796365… 51a476a… M NUL sub/child NUL
+   * </pre>
+   *
+   * The status sits inside the header field with no tab before it, and {@code R}/{@code C} carry a
+   * second path field for the destination. That is why the parser walks fields rather than lines.
+   */
+  public CommitChangesDto listChanges(
+      String repoId, String commit, String parent, String pathspec) {
     requireRef(commit, "commit");
+    if (pathspec != null && (pathspec.isBlank() || pathspec.startsWith("-"))) {
+      throw new BadRequestException("Invalid path: " + pathspec);
+    }
     String base = normalizeParent(parent);
     RepoMirror mirror = requireMirror(repoId);
 
     List<String> cmd =
-        new ArrayList<>(List.of("git", "diff-tree", "-r", "--no-commit-id", "--name-status", "-M"));
+        new ArrayList<>(List.of("git", "diff-tree", "-r", "--raw", "-M", "-z", "--no-commit-id"));
     if (base != null) {
       cmd.add(base);
     } else {
@@ -324,12 +366,125 @@ public class CommitService {
     }
     cmd.add(commit);
     cmd.add("--"); // terminate options so refs/paths can't be read as flags
+    if (pathspec != null) {
+      cmd.add(pathspec);
+    }
 
     try {
       String output = git.exec(mirror.gitDir().toFile(), cmd.toArray(String[]::new));
       return new CommitChangesDto(commit, base, parseChanges(output));
     } catch (Exception e) {
       throw new InternalServerErrorException("Git diff-tree failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * The commits in {@code from..to} — what {@code to} reaches that {@code from} does not — newest
+   * first, in exactly the shape {@link #listMergeRange} answers.
+   *
+   * <p>It exists for the one question a wrapper's gitlink asks: the pair of pins says the submodule
+   * moved from one commit to another, and what a person wants to read is the <em>sibling's</em>
+   * commits in between. The range is one-sided on purpose — {@code from..to} is "what the new pin
+   * adds", not the symmetric difference — so a pin that moved sideways onto a rebuilt branch answers
+   * what it brings rather than a list mixing in what it dropped. The caller is the one holding the
+   * context to say so, and {@link ReleaseRequests} does say so, in a sentence, when {@code from} is
+   * not an ancestor of {@code to}.
+   *
+   * <p>A rev that names nothing is the caller's to rule out first — this method's non-zero exit is
+   * an {@code InternalServerErrorException} like every other broken git read, and "that pin is not
+   * in this repository's history" is a fact a caller should be answering with a sentence rather than
+   * discovering here.
+   */
+  public List<CommitDto> listCommitRange(String repoId, String from, String to) {
+    requireRef(from, "commit");
+    requireRef(to, "commit");
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      // `--` terminates option parsing so the range is never read as a flag.
+      String output =
+          git.exec(
+              mirror.gitDir().toFile(),
+              "git",
+              "log",
+              "--name-only",
+              LOG_FORMAT,
+              from + ".." + to,
+              "--");
+      return parseCommits(output);
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git log failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Whether {@code repoId}'s mirror holds {@code sha} as a commit — the same {@code cat-file -e}
+   * probe {@link #listMergeRange} opens with, exposed so a caller holding a pin read out of somebody
+   * else's tree can tell "that commit is not here" from "the read broke". A blank or dash-leading
+   * value is simply absent rather than a 400: a pin comes out of a tree entry, so refusing it would
+   * turn a malformed manifest into an error page.
+   */
+  public boolean hasCommit(String repoId, String sha) {
+    if (sha == null || sha.isBlank() || sha.startsWith("-")) {
+      return false;
+    }
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      return git.execAllowNonZero(
+                  mirror.gitDir().toFile(), "git", "cat-file", "-e", sha + "^{commit}")
+              .exitCode()
+          == 0;
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git cat-file failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Whether {@code ancestor} is reachable from {@code descendant} in {@code repoId}. Both are
+   * assumed present — probe with {@link #hasCommit} first, because {@code merge-base --is-ancestor}
+   * exits non-zero for "no" and for "no such commit" alike, and this answers false to both.
+   */
+  public boolean isAncestor(String repoId, String ancestor, String descendant) {
+    requireRef(ancestor, "commit");
+    requireRef(descendant, "commit");
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      return git.execAllowNonZero(
+                  mirror.gitDir().toFile(),
+                  "git",
+                  "merge-base",
+                  "--is-ancestor",
+                  ancestor,
+                  descendant,
+                  "--")
+              .exitCode()
+          == 0;
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git merge-base failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * The bytes of a blob at {@code revision:path} in {@code repoId}, or null when the revision holds
+   * no such path.
+   *
+   * <p>Absent is an answer rather than a failure because the one caller is reading a wrapper's
+   * {@code .gitmodules} at a fold, and a fold that declares no submodules at all is an ordinary
+   * commit — the same reading {@link WrapperReconcileService}'s "an empty manifest is not a
+   * manifest" rule already takes. {@code git show} spells "no such path in that tree" and "that
+   * revision does not exist" as the same non-zero exit, and neither is worth a 500 here.
+   */
+  public String readBlob(String repoId, String revision, String path) {
+    requireRef(revision, "commit");
+    if (path == null || path.isBlank() || path.startsWith("-")) {
+      throw new BadRequestException("Invalid path: " + path);
+    }
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      GitExecutor.ExecResult result =
+          git.execAllowNonZero(mirror.gitDir().toFile(), "git", "show", revision + ":" + path);
+      return result.exitCode() == 0 ? result.output() : null;
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git show failed: " + e.getMessage());
     }
   }
 
@@ -417,26 +572,75 @@ public class CommitService {
     return mirror;
   }
 
+  /**
+   * Parses {@code diff-tree -r --raw -M -z --no-commit-id} — see {@link #listChanges(String, String,
+   * String, String)} for the framing this walks and why it is not lines.
+   *
+   * <p>The whole output is one run of NUL-terminated fields with nothing between records, so the
+   * only way to know where a record ends is to read its status: {@code R} and {@code C} take two
+   * path fields, everything else takes one. Splitting on anything would be guessing, which is
+   * precisely what the previous spelling did.
+   */
   private List<CommitFileChangeDto> parseChanges(String output) {
     List<CommitFileChangeDto> files = new ArrayList<>();
-    for (String line : output.split("\n")) {
-      if (line.isBlank()) {
+    if (output == null || output.isEmpty()) {
+      return files;
+    }
+    // -1 keeps the trailing empty the final NUL produces; it is skipped below like any other.
+    String[] fields = output.split("\0", -1);
+    int i = 0;
+    while (i < fields.length) {
+      String header = fields[i];
+      if (header.isEmpty() || header.charAt(0) != ':') {
+        // Anything that is not a header is either the trailing empty or output this parse does not
+        // understand; skipping beats consuming a path field as though it were a record.
+        i++;
         continue;
       }
-      // name-status: "<STATUS>\t<path>" or, for renames/copies, "<STATUS>\t<old>\t<new>".
-      String[] f = line.split("\t");
-      if (f.length < 2) {
+      // ":<oldMode> <newMode> <oldSha> <newSha> <STATUS>" — five space-separated tokens, and the
+      // status is inside this field rather than behind a tab.
+      String[] head = header.substring(1).trim().split(" +");
+      if (head.length < 5) {
+        i++;
         continue;
       }
-      char code = f[0].charAt(0);
-      String changeType = changeType(code);
-      if ((code == 'R' || code == 'C') && f.length >= 3) {
-        files.add(new CommitFileChangeDto(f[2], f[1], changeType));
-      } else {
-        files.add(new CommitFileChangeDto(f[1], null, changeType));
+      // --raw scores renames and copies: "R100", "C75". The letter is the status; the number is a
+      // similarity percentage this record does not carry.
+      char code = head[4].charAt(0);
+      boolean twoPaths = code == 'R' || code == 'C';
+      if (i + (twoPaths ? 2 : 1) >= fields.length) {
+        break; // a truncated final record: better dropped than half-read
       }
+      String first = fields[i + 1];
+      String second = twoPaths ? fields[i + 2] : null;
+      files.add(
+          new CommitFileChangeDto(
+              twoPaths ? second : first,
+              twoPaths ? first : null,
+              changeType(code),
+              mode(head[0]),
+              mode(head[1]),
+              objectId(head[2]),
+              objectId(head[3]),
+              null));
+      i += twoPaths ? 3 : 2;
     }
     return files;
+  }
+
+  /** A mode of all zeroes is git's "this side does not exist"; that is an absence, not a mode. */
+  private String mode(String raw) {
+    return raw == null || raw.isBlank() || raw.chars().allMatch(c -> c == '0') ? null : raw;
+  }
+
+  /**
+   * An object id, or null for the all-zero sentinel git prints for an absent side. Handing {@code
+   * 0000000…} on would give a caller a value that looks like an id and names no object, which is the
+   * kind of thing that becomes a {@code cat-file} against a commit that has never existed. Same
+   * all-zeroes rule as {@link #mode}, and the same reading, so it is the same test.
+   */
+  private String objectId(String raw) {
+    return mode(raw);
   }
 
   private String changeType(char code) {
