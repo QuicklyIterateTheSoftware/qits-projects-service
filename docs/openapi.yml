@@ -452,6 +452,14 @@ components:
           type: string
         reason:
           type: string
+        kind:
+          type: string
+        base:
+          type: string
+        ours:
+          type: string
+        theirs:
+          type: string
     ContainerView:
       type: object
       properties:
@@ -5872,4 +5880,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.915.62059
+  version: 2026.916.23602

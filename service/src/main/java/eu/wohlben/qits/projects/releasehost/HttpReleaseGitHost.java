@@ -215,6 +215,40 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
         body -> Answer.of(true));
   }
 
+  /**
+   * Whether one commit is an ancestor of another, asked of the git host that holds them —
+   * {@code GET /githost/api/repositories/{repoId}/contains?commit=<older>&in=<newer>}, answering
+   * {@code {"repoId","commit","in","contains"}}.
+   *
+   * <p><b>Addressed by storage id and not by name</b>, unlike {@link #resolves} beside it, because
+   * the question is asked about a <em>sibling</em> repository whose row this service already holds:
+   * the caller resolved a {@code .gitmodules} section to a {@link
+   * eu.wohlben.qits.projects.entity.Repository} to get here, so the id is in hand and the name
+   * scheme's extra lookup buys nothing.
+   *
+   * <p>The classification is this class's standing one, and the 404 is the part worth stating: it is
+   * {@code no-such-repository} or {@code no-such-commit}, which are facts about the ask that answer
+   * the same until something else changes — a <b>failed</b> answer and never a {@code false}. A
+   * caller that reads "could not ask" as "no" would refuse a resolution it could have made; one that
+   * read it as "yes" would pin a commit it never checked. Both are wrong and only the first is
+   * cheap, which is why the port makes the distinction and this method does not collapse it.
+   */
+  @Override
+  public Answer<Boolean> contains(String repoId, String commit, String in) {
+    return call(
+        builder -> builder.GET(),
+        "/contains?commit=" + encode(commit) + "&in=" + encode(in),
+        repoId,
+        body -> {
+          JsonNode answer = MAPPER.readTree(body);
+          if (!answer.hasNonNull("contains")) {
+            return Answer.failedRetryable(
+                "qits-githost answered 200 to a containment read with no answer: " + clip(body));
+          }
+          return Answer.of(answer.path("contains").asBoolean(false));
+        });
+  }
+
   // -----------------------------------------------------------------------------------------------
   // Writes
   // -----------------------------------------------------------------------------------------------

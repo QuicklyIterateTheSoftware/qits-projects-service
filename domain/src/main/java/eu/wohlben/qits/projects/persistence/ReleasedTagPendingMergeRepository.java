@@ -92,6 +92,29 @@ public class ReleasedTagPendingMergeRepository
   }
 
   /**
+   * <b>Is this exact commit a release of this repository?</b> — the question a gitlink conflict is
+   * decided by, and the only one that can be asked about a bare sha: a pin names a commit and
+   * nothing else, so "which version is this" has to be answered by looking the sha up rather than by
+   * reading anything off it.
+   *
+   * <p>Empty means the sha names no release <em>this service recorded</em>, which covers a branch
+   * head somebody pinned by hand, a release older than this table (see {@link #latestReleased}'s
+   * caveat, which travels with this reader too) and a sha from another repository entirely. All
+   * three are the same answer for a caller: there is no release here to prefer, so the conflict is a
+   * person's.
+   *
+   * <p>{@code list} and not {@code find}, for {@link #findByRequest}'s reason: this class declares
+   * its own two-String {@code find(repoId, tagName)}, which a two-argument {@code find("… = ?1 and …
+   * = ?2", a, b)} call silently resolves to.
+   */
+  public Optional<ReleasedTagPendingMerge> findByReleasedSha(String repoId, String releasedSha) {
+    if (repoId == null || releasedSha == null || releasedSha.isBlank()) {
+      return Optional.empty();
+    }
+    return list("repoId = ?1 and releasedSha = ?2", repoId, releasedSha).stream().findFirst();
+  }
+
+  /**
    * <b>The newest release this service knows of for one repository</b>, merged or not — which is to
    * say, the version a wrapper's gitlink should be pinned at.
    *

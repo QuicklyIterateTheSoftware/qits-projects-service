@@ -68,6 +68,14 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   private final Map<String, Answer<Boolean>> resolvable =
       Collections.synchronizedMap(new LinkedHashMap<>());
 
+  /**
+   * Containment by {@code <repoId>@<earlier>-><later>}. Nothing staged is a plain <b>no</b>, for
+   * {@link #resolves}' reason one map down: a fake that answered yes to a lineage nobody described
+   * would let a test pass on a decision the real host would refuse.
+   */
+  private final Map<String, Answer<Boolean>> containment =
+      Collections.synchronizedMap(new LinkedHashMap<>());
+
   public RecordingReleaseGitHost() {
     // A class that never calls reset() still has an ordinary repository's main to be gated by.
     trees.put("refs/heads/main", new LinkedHashMap<>(GATED_MAIN));
@@ -186,6 +194,20 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     resolvable.put(repoName + "@" + sha, Answer.of(true));
   }
 
+  /**
+   * Say that {@code later} contains {@code earlier} in the repository {@code repoId} — the lineage
+   * half of a gitlink conflict's decision, staged.
+   */
+  public void containsCommit(String repoId, String earlier, String later) {
+    containment.put(repoId + "@" + earlier + "->" + later, Answer.of(true));
+  }
+
+  /** Stage a containment read that fails outright — neither a yes nor a no. */
+  public void containmentUnreadable(
+      String repoId, String earlier, String later, Answer<Boolean> answer) {
+    containment.put(repoId + "@" + earlier + "->" + later, answer);
+  }
+
   /** Stage a resolution read that fails outright — neither a yes nor a no. */
   public void resolutionUnreadable(String repoName, String sha, Answer<Boolean> answer) {
     resolvable.put(repoName + "@" + sha, answer);
@@ -223,6 +245,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     taken.clear();
     pins.clear();
     resolvable.clear();
+    containment.clear();
     commitCounter.set(0);
     tagCollisions.set(0);
     treeFailure.set(null);
@@ -348,6 +371,13 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   @Override
   public Answer<Boolean> resolves(String projectId, String repoName, String sha) {
     Answer<Boolean> staged = resolvable.get(repoName + "@" + sha);
+    return staged != null ? staged : Answer.of(false);
+  }
+
+  /** Whether one commit is an ancestor of another. Nothing staged is a plain no. */
+  @Override
+  public Answer<Boolean> contains(String repoId, String commit, String in) {
+    Answer<Boolean> staged = containment.get(repoId + "@" + commit + "->" + in);
     return staged != null ? staged : Answer.of(false);
   }
 

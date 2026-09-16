@@ -21,6 +21,7 @@ import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.entity.RepositoryName;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -59,8 +60,11 @@ public class ReleaseRequestSourcesTest {
 
   @Inject RecordingReleaseRequestAnnouncer announcer;
 
+  @Inject RecordingReleaseGitHost gitHost;
+
   private String repoId;
   private String projectId;
+  private String memberRepoId;
 
   @BeforeEach
   void seed() {
@@ -71,6 +75,7 @@ public class ReleaseRequestSourcesTest {
     activeBuilds.answer(Optional.of(1));
     repoId = "sources-repo-" + UUID.randomUUID();
     projectId = "sources-project-" + UUID.randomUUID();
+    memberRepoId = "sources-member-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -95,7 +100,13 @@ public class ReleaseRequestSourcesTest {
   @AfterEach
   void dropTheFixturesRequests() {
     QuarkusTransaction.requiringNew()
-        .run(() -> ReleaseRequest.delete("projectId = ?1", projectId));
+        .run(
+            () -> {
+              ReleaseRequest.delete("projectId = ?1", projectId);
+              // The released-tag rows the gitlink cases seed are foreign-keyed to nothing, and the
+              // finalization sweep walks every ungated row there is — so they leave with the test.
+              ReleasedTagPendingMerge.delete("repoId = ?1", memberRepoId);
+            });
   }
 
   private String base() {
@@ -601,6 +612,153 @@ public class ReleaseRequestSourcesTest {
         .body("request.state", equalTo("PENDING"))
         .body("request.conflict", equalTo(null));
     assertEquals(1, announcer.announcedFor(id).size(), "the clean fold is a change like any other");
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Conflicts a machine can decide
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * <b>The commonest conflict this service hits, and the one it already knows the answer to.</b> Two
+   * sources bumped one submodule pin to two different released versions of the same sibling; both
+   * shas are rows in {@code released_tag_pending_merge}; the later one contains the earlier one. So
+   * the fold is made a second time with that pin decided, and the request goes on as if nothing had
+   * happened — except in the merge commit's message, which says what was decided.
+   *
+   * <p><b>Exactly two folds.</b> That is the assertion the whole feature is bounded by: one attempt,
+   * one extra call, no trigger, no retry and no loop. {@code sweep()} still refuses to re-fold a
+   * CONFLICTED request, which is what makes the ceiling a ceiling.
+   */
+  @Test
+  public void aGitlinkConflictBetweenTwoReleasesIsDecidedByOneExtraFold() {
+    String id = create("work");
+    String target = "refs/heads/release/" + id;
+    int foldsBefore = merger.foldsOf(target).size();
+    seedMember();
+
+    merger.answerOnce(gitlinkConflict(target, OLDER_SHA, NEWER_SHA));
+    headMoved("work");
+
+    assertEquals("PENDING", stateOf(id), "the conflict was decided, so nothing is waiting on a person");
+    assertNull(
+        given().get(base() + "/" + id).then().extract().path("request.conflict"),
+        "and nothing conflicted is recorded on the row");
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
+    assertEquals(foldsBefore + 2, folds.size(), "one conflicted fold and one deciding it");
+    RecordingBackingBranchMerger.Fold second = folds.get(folds.size() - 1);
+    assertEquals(
+        List.of(new BackingBranchMerger.Resolution(MEMBER_PATH, NEWER_SHA)),
+        second.resolutions(),
+        "the later release is what the pin is decided at");
+    assertTrue(
+        second.message().contains("Resolved-Gitlink: " + MEMBER_PATH + " " + OLDER_SHA + " -> " + NEWER_SHA),
+        second.message());
+    assertEquals(
+        List.of(),
+        folds.get(folds.size() - 2).resolutions(),
+        "the fold that conflicted asked for nothing, exactly as every fold did before this existed");
+  }
+
+  /**
+   * And the other half: a gitlink conflict whose shas are not both recorded releases is nobody's to
+   * decide mechanically. <b>One fold</b> — no second attempt is made at all — the request is
+   * CONFLICTED as it always was, and the detail names the condition that failed, so a person reading
+   * it is told what was tried rather than left to wonder whether anything was.
+   */
+  @Test
+  public void aGitlinkConflictThisServiceCannotDecideIsStillAPersonsAfterOneFold() {
+    String id = create("work");
+    String target = "refs/heads/release/" + id;
+    int foldsBefore = merger.foldsOf(target).size();
+    seedMember();
+
+    // A sha nobody released: a branch head somebody pinned by hand is exactly this shape.
+    String unreleased = "cccccccccccccccccccccccccccccccccccccccc";
+    merger.answer(gitlinkConflict(target, OLDER_SHA, unreleased));
+    headMoved("work");
+
+    assertEquals("CONFLICTED", stateOf(id));
+    assertEquals(
+        foldsBefore + 1, merger.foldsOf(target).size(), "nothing was decided, so nothing was folded again");
+    String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
+    assertTrue(detail.contains(MEMBER_PATH), detail);
+    assertTrue(detail.contains("is no recorded release of 'member-a'"), detail);
+    // The sides travel onto the read model, which is what lets the screen say which two versions
+    // are in conflict rather than only which path is.
+    given()
+        .get(base() + "/" + id)
+        .then()
+        .body("request.conflict.conflicts[0].kind", equalTo("gitlink"))
+        .body("request.conflict.conflicts[0].ours", equalTo(OLDER_SHA))
+        .body("request.conflict.conflicts[0].theirs", equalTo(unreleased));
+  }
+
+  /** The member's path in the wrapper, under the component grammar. */
+  private static final String MEMBER_PATH = "components/member-a/member-a";
+
+  private static final String CONFLICT_HEAD_SHA = "head00000000000000000000000000000000000f";
+
+  private static final String OLDER_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  private static final String NEWER_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+  /** A 409 over a submodule pin, as the git host reports one: a kind, and both sides' shas. */
+  private static BackingBranchMerger.Outcome gitlinkConflict(
+      String target, String ours, String theirs) {
+    return BackingBranchMerger.Outcome.conflict(
+        target,
+        List.of(
+            new BackingBranchMerger.Conflict(
+                MEMBER_PATH,
+                "refs/heads/work",
+                CONFLICT_HEAD_SHA,
+                "content",
+                BackingBranchMerger.KIND_GITLINK,
+                null,
+                ours,
+                theirs)));
+  }
+
+  /**
+   * The estate behind a gitlink conflict: a member this project has adopted, its two releases, the
+   * declaration that names it at the conflicting path, and the lineage between the two shas. Staged
+   * per repository and per rev, so it is invisible to every other test in this class.
+   */
+  private void seedMember() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Project project = Project.findById(projectId);
+              Repository member = new Repository();
+              member.id = memberRepoId;
+              member.project = project;
+              member.mainBranch = "main";
+              member.persist();
+              RepositoryName alias = new RepositoryName();
+              alias.project = project;
+              alias.repository = member;
+              alias.name = "member-a";
+              alias.persist();
+              released("2026.901.1", OLDER_SHA, Instant.parse("2026-09-01T10:00:00Z"));
+              released("2026.902.2", NEWER_SHA, Instant.parse("2026-09-02T10:00:00Z"));
+            });
+    gitHost.treeFor(
+        repoId,
+        CONFLICT_HEAD_SHA,
+        java.util.Map.of(
+            ".gitmodules",
+            "[submodule \"member-a\"]\n\tpath = " + MEMBER_PATH + "\n\turl = ../member-a.git\n"));
+    gitHost.containsCommit(memberRepoId, OLDER_SHA, NEWER_SHA);
+  }
+
+  private void released(String tagName, String sha, Instant at) {
+    ReleasedTagPendingMerge row = new ReleasedTagPendingMerge();
+    row.id = UUID.randomUUID().toString();
+    row.repoId = memberRepoId;
+    row.tagName = tagName;
+    row.releasedSha = sha;
+    row.releasedAt = at;
+    row.persist();
   }
 
   /**

@@ -71,7 +71,12 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
   @Inject GitHostBearer bearer;
 
   @Override
-  public Outcome merge(String repoId, String target, List<String> sources, String message) {
+  public Outcome merge(
+      String repoId,
+      String target,
+      List<String> sources,
+      String message,
+      List<Resolution> resolutions) {
     if (githostUrl.isEmpty() || githostUrl.get().isBlank()) {
       return Outcome.unreachable(
           "qits.projects.release-requests.githost-url is not configured; nothing can fold this"
@@ -92,6 +97,18 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
       body.put("message", message);
       // The author both halves or neither, the far side's rule. This service is the one folding.
       body.put("author", Map.of("name", "qits-projects", "email", "qits-projects@qits.internal"));
+      if (resolutions != null && !resolutions.isEmpty()) {
+        // OMITTED ENTIRELY when there is nothing to direct, which is almost every fold: a git host
+        // that has never heard of resolutions must see byte for byte the request it saw before this
+        // existed, so that the feature cannot change the behaviour of the folds it does not decide.
+        body.put(
+            "resolutions",
+            resolutions.stream()
+                .map(
+                    resolution ->
+                        Map.of("path", resolution.path(), "gitlink", resolution.gitlink()))
+                .toList());
+      }
       HttpRequest request =
           HttpRequest.newBuilder(URI.create(address))
               .timeout(CALL_TIMEOUT)
@@ -121,7 +138,12 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
     }
   }
 
-  /** The 200 body: {@code target}, {@code sha}, {@code outcome}, {@code parents}, {@code skipped}. */
+  /**
+   * The 200 body: {@code target}, {@code sha}, {@code outcome}, {@code parents}, {@code skipped},
+   * and — on a fold that carried directives — {@code resolved}, the paths the far side decided by
+   * them. An absent {@code resolved} is an empty list and not a failure: it is what every fold that
+   * asked for nothing answers, and what a git host that predates directives answers to every fold.
+   */
   private static Outcome success(String body) throws Exception {
     JsonNode answer = MAPPER.readTree(body);
     String sha = answer.path("sha").asText(null);
@@ -130,9 +152,11 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
     }
     List<String> parents = new ArrayList<>();
     answer.path("parents").forEach(node -> parents.add(node.asText()));
+    List<String> resolved = new ArrayList<>();
+    answer.path("resolved").forEach(node -> resolved.add(node.asText()));
     return switch (answer.path("outcome").asText("")) {
-      case "merged" -> Outcome.merged(sha, parents);
-      case "fast-forward" -> Outcome.fastForward(sha, parents);
+      case "merged" -> Outcome.merged(sha, parents, resolved);
+      case "fast-forward" -> Outcome.fastForward(sha, parents, resolved);
       case "unchanged" -> Outcome.unchanged(sha);
       default ->
           Outcome.unreachable(
@@ -140,17 +164,39 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
     };
   }
 
+  /**
+   * One conflict per path and head, forwarded unchanged. {@code kind} is never null on the wire; a
+   * body that omits it is read as {@code file}, which is the answer that decides nothing — the
+   * gitlink arm is the only one anything acts on, so an unknown kind must never fall into it.
+   * {@code base}, {@code ours} and {@code theirs} stay null where the side does not have the path.
+   */
   private static List<Conflict> conflictsOf(JsonNode conflicts) {
     List<Conflict> paths = new ArrayList<>();
     conflicts.forEach(
         node ->
             paths.add(
                 new Conflict(
-                    node.path("path").asText(null),
-                    node.path("head").asText(null),
-                    node.path("headSha").asText(null),
-                    node.path("reason").asText(null))));
+                    text(node, "path"),
+                    text(node, "head"),
+                    text(node, "headSha"),
+                    text(node, "reason"),
+                    text(node, "kind") == null
+                        ? BackingBranchMerger.KIND_FILE
+                        : text(node, "kind"),
+                    text(node, "base"),
+                    text(node, "ours"),
+                    text(node, "theirs"))));
     return paths;
+  }
+
+  /**
+   * A string field, or null where it is absent <b>or JSON null</b>. Jackson's {@code
+   * asText(default)} answers the literal {@code "null"} for the second, which would turn "this side
+   * does not have the path" into a sha-shaped string nothing could act on sensibly.
+   */
+  private static String text(JsonNode node, String field) {
+    JsonNode value = node.path(field);
+    return value.isMissingNode() || value.isNull() ? null : value.asText();
   }
 
   private static String encode(String value) {

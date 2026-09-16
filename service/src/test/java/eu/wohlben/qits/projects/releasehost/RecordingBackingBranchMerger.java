@@ -5,7 +5,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -22,13 +24,26 @@ import java.util.concurrent.atomic.AtomicReference;
 @ApplicationScoped
 public class RecordingBackingBranchMerger implements BackingBranchMerger {
 
-  /** One fold, exactly as the domain asked for it — the sources are the assertion worth making. */
-  public record Fold(String repoId, String target, List<String> sources, String message) {}
+  /**
+   * One fold, exactly as the domain asked for it — the sources are the assertion worth making, and
+   * since the conflict resolver landed, so are the {@code resolutions}: "two folds were asked for
+   * and the second carried the directives" is the whole observable shape of a mechanical resolution
+   * from this side.
+   */
+  public record Fold(
+      String repoId,
+      String target,
+      List<String> sources,
+      String message,
+      List<Resolution> resolutions) {}
 
   private final List<Fold> folds = Collections.synchronizedList(new ArrayList<>());
 
   /** Null means "a fresh merged sha", the default. */
   private final AtomicReference<Outcome> scripted = new AtomicReference<>();
+
+  /** One-shot answers, taken in order before the standing one — see {@link #answerOnce}. */
+  private final Queue<Outcome> queued = new ConcurrentLinkedQueue<>();
 
   public List<Fold> folds() {
     return List.copyOf(folds);
@@ -48,6 +63,18 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
     scripted.set(outcome);
   }
 
+  /**
+   * An answer for the <b>next</b> fold alone, ahead of whatever {@link #answer} scripted.
+   *
+   * <p>It exists for the conflict resolver, whose whole subject is a sequence: the first fold
+   * conflicts and the second one — the one carrying the directives — succeeds. A single scripted
+   * answer cannot express that, and scripting by argument ("conflict unless resolutions are
+   * present") would build the expected behaviour into the fake and then assert it back.
+   */
+  public void answerOnce(Outcome outcome) {
+    queued.add(outcome);
+  }
+
   /** Back to the default: every fold produces new content. */
   public void answerFreshMerges() {
     scripted.set(null);
@@ -55,12 +82,23 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
 
   public void reset() {
     folds.clear();
+    queued.clear();
     scripted.set(null);
   }
 
   @Override
-  public Outcome merge(String repoId, String target, List<String> sources, String message) {
-    folds.add(new Fold(repoId, target, List.copyOf(sources), message));
+  public Outcome merge(
+      String repoId,
+      String target,
+      List<String> sources,
+      String message,
+      List<Resolution> resolutions) {
+    folds.add(
+        new Fold(repoId, target, List.copyOf(sources), message, List.copyOf(resolutions)));
+    Outcome once = queued.poll();
+    if (once != null) {
+      return once;
+    }
     Outcome outcome = scripted.get();
     return outcome != null ? outcome : Outcome.merged(freshSha(), List.copyOf(sources));
   }

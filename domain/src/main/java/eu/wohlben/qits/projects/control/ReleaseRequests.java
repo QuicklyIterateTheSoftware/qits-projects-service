@@ -277,6 +277,8 @@ public class ReleaseRequests {
    */
   @Inject EstatePinRefresh estatePinRefresh;
 
+  @Inject ConflictResolver conflictResolver;
+
   @Inject EstatePinLedger estatePinLedger;
 
   @Inject RepositoryRepository repositories;
@@ -1462,19 +1464,39 @@ public class ReleaseRequests {
    * <p>The git-host call is made <b>outside</b> every transaction, the shape the door call already
    * takes: the read that assembles the sources and the write that applies the answer are two short
    * transactions with an HTTP round trip between them.
+   *
+   * <p><b>A conflicted fold gets one mechanical attempt before it becomes a person's problem.</b>
+   * {@link ConflictResolver} is asked whether every conflicting path is a submodule pin this service
+   * can decide — two recorded releases of one sibling, the later one containing the earlier — and if
+   * every one of them is, the sources are folded once more with those pins decided and the decisions
+   * written into the merge message as trailers. Anything else, including a second conflict, reaches
+   * {@link #apply} exactly as it always did, with what was attempted appended to the CONFLICT arm's
+   * sentence.
    */
   void remerge(String id, String why) {
-    record Ask(String repoId, List<String> refs, String summary, boolean stillOpen) {}
+    record Ask(
+        String repoId, String projectId, List<String> refs, String summary, boolean stillOpen) {}
     Ask ask =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
                   ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
                   if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
-                    return new Ask(null, List.of(), null, false);
+                    return new Ask(null, null, List.of(), null, false);
                   }
+                  // The project is read here rather than at the conflict, because by then the only
+                  // transaction going is one this thread is deliberately not in; a conflict is rare
+                  // and one extra row read on every fold is cheaper than a second transaction.
+                  String projectId =
+                      repositories
+                          .findByIdOptional(row.repoId)
+                          .map(
+                              repository ->
+                                  repository.project == null ? null : repository.project.id)
+                          .orElse(null);
                   return new Ask(
                       row.repoId,
+                      projectId,
                       refsOf(sources.listByRequest(id), implicitFor(row.repoId)),
                       row.summary,
                       true);
@@ -1487,22 +1509,41 @@ public class ReleaseRequests {
       note(id, "No git host is configured; the sources for this request cannot be folded");
       return;
     }
-    BackingBranchMerger.Outcome outcome;
-    try {
-      outcome =
-          mergers
-              .get()
-              .merge(
-                  ask.repoId(),
-                  target,
-                  ask.refs(),
-                  "Release request " + id + ": " + ask.summary());
-    } catch (RuntimeException e) {
-      // The port says it must not throw; a throw is a port bug and must not lose the request.
-      LOG.warnf(e, "The backing-branch merger threw for release request %s", id);
-      outcome = BackingBranchMerger.Outcome.unreachable("merger error: " + e.getMessage());
+    String message = "Release request " + id + ": " + ask.summary();
+    BackingBranchMerger.Outcome outcome =
+        fold(id, ask.repoId(), target, ask.refs(), message, List.of());
+    String attempted = null;
+    if (outcome.result() == BackingBranchMerger.Result.CONFLICT) {
+      // ONE mechanical attempt, and one extra fold at most. See fold() for why there is no
+      // trigger, no retry and no loop behind this line.
+      ConflictResolver.Attempt attempt =
+          conflictResolver.attempt(id, ask.repoId(), ask.projectId(), outcome);
+      if (attempt.complete()) {
+        LOG.infof(
+            "Release request %s conflicts on %d submodule pin(s) this service can decide; folding"
+                + " again with the later release of each",
+            id, attempt.directives().size());
+        outcome =
+            fold(
+                id,
+                ask.repoId(),
+                target,
+                ask.refs(),
+                message + "\n\n" + attempt.trailer(),
+                attempt.directives());
+        if (outcome.result() == BackingBranchMerger.Result.CONFLICT) {
+          // The second outcome is the one that stands, and nothing attempts a third time: a fold
+          // that still conflicts with every decidable pin decided is conflicting over something
+          // else, which is a person's.
+          attempted =
+              attempt.directives().size()
+                  + " submodule pin(s) were decided and the fold conflicts anyway";
+        }
+      } else {
+        attempted = attempt.detail();
+      }
     }
-    Folded folded = apply(id, target, why, outcome);
+    Folded folded = apply(id, target, why, outcome, attempted);
     if (folded != null) {
       if (folded.supersededSha() != null) {
         // A fold that REPLACED a sha, not the first one: whatever qits-ci is still running for this
@@ -1518,6 +1559,35 @@ public class ReleaseRequests {
     }
     if (outcome.folded()) {
       evaluate(id);
+    }
+  }
+
+  /**
+   * One call to the merge port, with the port's must-not-throw contract belted. Two call sites and
+   * exactly two: a fold, and — only when the first answered CONFLICT and every conflicting path was
+   * decidable — the same fold again carrying the directives.
+   *
+   * <p><b>Two is the ceiling and there is no mechanism here that could raise it.</b> The second call
+   * is made from a straight line of code with no loop around it, on an outcome that is examined once;
+   * a second conflict is applied as it stands. That matters more than it looks: {@link #sweep()}
+   * deliberately does not re-fold a CONFLICTED request — a conflict answers the same on every knock,
+   * and knocking anyway is the unbounded-retry defect this aggregate already paid for once
+   * (cf91a63, measured 2026-09-01) — so the only way a resolution attempt could become a loop is by
+   * being made more than once per fold. It is not.
+   */
+  private BackingBranchMerger.Outcome fold(
+      String id,
+      String repoId,
+      String target,
+      List<String> refs,
+      String message,
+      List<BackingBranchMerger.Resolution> resolutions) {
+    try {
+      return mergers.get().merge(repoId, target, refs, message, resolutions);
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and must not lose the request.
+      LOG.warnf(e, "The backing-branch merger threw for release request %s", id);
+      return BackingBranchMerger.Outcome.unreachable("merger error: " + e.getMessage());
     }
   }
 
@@ -1585,9 +1655,20 @@ public class ReleaseRequests {
     }
   }
 
-  /** The write half of a fold: the row is re-read, so a request settled mid-call is left alone. */
+  /**
+   * The write half of a fold: the row is re-read, so a request settled mid-call is left alone.
+   *
+   * @param attempted what the mechanical resolution attempt came to, or null where there was
+   *     nothing to attempt. It is appended to the CONFLICT arm's own sentence and to nothing else —
+   *     <b>the state machine keeps exactly one CONFLICT arm</b>, because a second one would be a
+   *     second place the conflicted state is written and the two would drift.
+   */
   private Folded apply(
-      String id, String target, String why, BackingBranchMerger.Outcome outcome) {
+      String id,
+      String target,
+      String why,
+      BackingBranchMerger.Outcome outcome,
+      String attempted) {
     return QuarkusTransaction.requiringNew()
         .call(
             () -> {
@@ -1607,7 +1688,8 @@ public class ReleaseRequests {
                           + outcome.conflicts().stream()
                               .map(BackingBranchMerger.Conflict::path)
                               .distinct()
-                              .collect(Collectors.joining(", "));
+                              .collect(Collectors.joining(", "))
+                          + (attempted == null ? "" : " — " + attempted);
                   row.conflictDetail = conflictJson(target, outcome.conflicts());
                   row.retryable = false;
                   return null;
@@ -2778,7 +2860,14 @@ public class ReleaseRequests {
                   .map(
                       c ->
                           new MergeConflictDto.ConflictedPath(
-                              c.path(), c.head(), c.headSha(), c.reason()))
+                              c.path(),
+                              c.head(),
+                              c.headSha(),
+                              c.reason(),
+                              c.kind(),
+                              c.base(),
+                              c.ours(),
+                              c.theirs()))
                   .toList()));
     } catch (Exception e) {
       // A conflict that cannot be written down is still a conflict: the state stands and the

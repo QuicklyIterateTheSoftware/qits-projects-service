@@ -132,6 +132,31 @@ public interface ReleaseGitHost {
   Answer<Boolean> resolves(String projectId, String repoName, String sha);
 
   /**
+   * Whether {@code in} has {@code commit} in its history — "is the older of these two shas an
+   * ancestor of the newer", asked of the repository that holds them both.
+   *
+   * <p><b>Why containment is asked at all.</b> {@link ConflictResolver} decides a gitlink conflict by
+   * picking the <em>later</em> of two recorded releases of the same sibling, and later there means
+   * later by {@code released_tag_pending_merge.released_at} — which orders releases by when somebody
+   * cut them and says nothing whatever about lineage. A release cut from a side branch is newer in
+   * time and contains none of what the older one shipped, so pinning it would silently drop released
+   * work out of the estate: a wrapper version naming a member commit from which shipped changes are
+   * missing, with no conflict, no failure and nothing to notice it by. This read is what turns "the
+   * newer one" into "the newer one, and it really is a descendant of the other".
+   *
+   * <p><b>False is an answer, not a failure</b> — {@link #resolves}' rule one method up, and the same
+   * consequence: an unreachable host, a repository that is not there and a sha that is not there are
+   * all failed answers instead, because "we could not ask" must never be read as "no", and a caller
+   * that cannot establish containment gives the conflict to a person rather than guessing.
+   *
+   * @param repoId the storage id of the repository holding both commits — the sibling's, not the
+   *     wrapper's
+   * @param commit the older sha, the one that must be contained
+   * @param in the newer sha, the one that must contain it
+   */
+  Answer<Boolean> contains(String repoId, String commit, String in);
+
+  /**
    * What tagging said. {@link TagResult#ALREADY_EXISTS} is the one that is not a failure: it is the
    * platform's version-uniqueness guarantee arriving, and the caller's answer to it is to stamp a
    * fresh version and ask again — never to force the ref.
