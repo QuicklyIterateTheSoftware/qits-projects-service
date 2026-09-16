@@ -9,6 +9,7 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
+import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.security.AgentAccess;
@@ -468,6 +469,52 @@ public class ReleaseRequestController {
       @PathParam("requestId") String requestId,
       @QueryParam("path") @NotBlank String path) {
     return releaseRequests.foldFileDiff(repoId, requestId, path);
+  }
+
+  @GET
+  @Path("/{requestId}/changes/submodule")
+  @Operation(
+      summary = "One submodule this request's fold moves, expanded into its own history",
+      description =
+          "A wrapper's release is almost entirely 160000 gitlinks, and the fold's own patch for one"
+              + " is a pair of opaque Subproject commit lines. This answers what the release"
+              + " actually does: the sibling repository the path resolves to through the fold's own"
+              + " .gitmodules, the two pins, and that repository's commits and changed files between"
+              + " them. path addresses a gitlink of THIS fold and there is no repository parameter —"
+              + " the fold is re-diffed at that one path and must report a 160000-to-160000"
+              + " modification, so the only repositories reachable here are the ones the request"
+              + " under review pins. Nothing is ever an error: nothing folded yet, a fold the"
+              + " repository no longer holds, a path the fold does not move, a path the manifest does"
+              + " not declare, a name no repository of this project answers to, a pin the sibling"
+              + " does not contain and a sibling that could not be read all answer 200 with the"
+              + " reason in detail. An added or removed gitlink names its one pin and is not"
+              + " expandable. Over 2000 paths the file list is capped with truncated set.")
+  public SubmoduleChangesDto submoduleChanges(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      @QueryParam("path") @NotBlank String path) {
+    return releaseRequests.foldSubmoduleChanges(repoId, requestId, path);
+  }
+
+  @GET
+  @Path("/{requestId}/changes/submodule/diff")
+  @Operation(
+      summary = "The patch of one file inside a submodule this request's fold moves",
+      description =
+          "The unified diff of file within the submodule at path, taken in the SIBLING repository"
+              + " between the two pins this fold moves between — the patch …/changes/submodule lists"
+              + " as a changed file. Same resolution and same authorisation as that read: path"
+              + " selects a gitlink of this fold and file selects a path inside it, so the pair"
+              + " cannot reach a repository the fold does not pin. An empty diff is never an error —"
+              + " a binary file, a pure rename, a chain that stopped for any of the reasons"
+              + " …/changes/submodule reports in detail, and a patch over ~1 MiB all answer their"
+              + " change type with no text.")
+  public CommitFileDiffDto submoduleChangeDiff(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      @QueryParam("path") @NotBlank String path,
+      @QueryParam("file") @NotBlank String file) {
+    return releaseRequests.foldSubmoduleFileDiff(repoId, requestId, path, file);
   }
 
   @GET

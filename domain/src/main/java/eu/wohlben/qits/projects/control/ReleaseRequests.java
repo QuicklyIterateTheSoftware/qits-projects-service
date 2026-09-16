@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
+import eu.wohlben.qits.projects.dto.CommitDto;
 import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.MergeConflictDto;
@@ -11,6 +12,8 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
+import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
+import eu.wohlben.qits.projects.dto.SubmoduleRefDto;
 import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
@@ -37,6 +40,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -293,6 +297,14 @@ public class ReleaseRequests {
    * module's own bean and not a port, and the mirror it reads is cloned on first use.
    */
   @Inject CommitService commits;
+
+  /**
+   * The shared by-name resolution a gitlink's label needs. Not a second spelling of it: {@link
+   * WrapperReconcileService#view} joins a wrapper's manifest to this project's rows through exactly
+   * this method, and a copy here would let the components list and a release's change list disagree
+   * about which repository a submodule is.
+   */
+  @Inject RepositoryService repositoryService;
 
   @Inject ObjectMapper json;
 
@@ -1144,6 +1156,11 @@ public class ReleaseRequests {
    * {@link #MAX_CHANGED_FILES} with {@code truncated} set and a detail naming the total: a release
    * that rewrites the estate is exactly when this page is most worth having and least able to draw
    * the whole of it.
+   *
+   * <p><b>A gitlink is labelled with what it points at.</b> A wrapper's release is almost entirely
+   * {@code 160000} entries, and a list that names only their paths says nothing about the release at
+   * all. See {@link #labelGitlinks} for what the labelling costs and what it deliberately does not
+   * do.
    */
   public ReleaseRequestChangesDto foldChanges(String repoId, String requestId) {
     ReleaseRequest row = requireRequestOf(repoId, requestId);
@@ -1162,7 +1179,7 @@ public class ReleaseRequests {
           "The fold is no longer in the repository's history");
     }
     List<CommitFileChangeDto> files =
-        commits.listChanges(repoId, row.mergedSha, diffBase.base()).files();
+        labelGitlinks(row, commits.listChanges(repoId, row.mergedSha, diffBase.base()).files());
     if (files.isEmpty()) {
       return new ReleaseRequestChangesDto(
           row.mergedSha,
@@ -1213,6 +1230,358 @@ public class ReleaseRequests {
       return new CommitFileDiffDto(diff.path(), diff.changeType(), "");
     }
     return diff;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The submodules a fold moves
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Every {@code 160000} entry in {@code files}, labelled with the repository it resolves to and the
+   * two pins it moves between. Entries that are not gitlinks come back untouched.
+   *
+   * <p><b>This pass never touches a child repository.</b> Everything it needs is in the wrapper's
+   * own fold: the pins came off the raw diff, and the names come from one read of {@code
+   * .gitmodules} <em>at the fold</em> — the manifest as the release under review declares it, not as
+   * {@code main} declares it today, which is what makes a release that adds or moves a submodule
+   * label its own entry correctly. That read happens <b>once</b> for the whole list, and only when
+   * the list actually holds a gitlink, so an ordinary component release pays nothing for it. The
+   * remaining per-entry cost is one row lookup. A twenty-seven-submodule estate fold therefore
+   * labels every row with no clone, no fetch and no {@code cat-file} against any sibling; expanding
+   * one row into its commits is {@link #foldSubmoduleChanges}, which is deliberately the expensive
+   * read and is asked for one path at a time.
+   *
+   * <p>A missing manifest is an ordinary answer rather than a failure, the same reading
+   * {@link WrapperReconcileService}'s "an empty {@code .gitmodules} is not a manifest" rule already
+   * takes: every gitlink is then labelled with its pins and a sentence saying the fold declares
+   * none.
+   */
+  private List<CommitFileChangeDto> labelGitlinks(
+      ReleaseRequest row, List<CommitFileChangeDto> files) {
+    if (files.stream().noneMatch(CommitFileChangeDto::touchesGitlink)) {
+      return files;
+    }
+    Map<String, WrapperGitmodules.Entry> manifest = manifestAt(row.repoId, row.mergedSha);
+    List<CommitFileChangeDto> labelled = new ArrayList<>(files.size());
+    for (CommitFileChangeDto file : files) {
+      if (!file.touchesGitlink()) {
+        labelled.add(file);
+        continue;
+      }
+      WrapperGitmodules.Entry entry = manifest.get(file.path());
+      String name = entry == null ? null : submoduleName(entry);
+      String repositoryId =
+          name == null
+              ? null
+              : repositoryService
+                  .findByProjectAndName(row.projectId, name)
+                  .map(repo -> repo.id)
+                  .orElse(null);
+      String detail;
+      if (entry == null) {
+        detail = "The fold does not declare this path as a submodule";
+      } else if (name == null) {
+        detail = "The fold's manifest gives this submodule no name to resolve";
+      } else if (repositoryId == null) {
+        detail = "This submodule is not a repository of this project";
+      } else {
+        detail = expandabilityOf(file);
+      }
+      labelled.add(
+          file.withSubmodule(
+              new SubmoduleRefDto(repositoryId, name, file.oldSha(), file.newSha(), detail)));
+    }
+    return List.copyOf(labelled);
+  }
+
+  /**
+   * The wrapper's {@code .gitmodules} at {@code revision}, keyed by the path each entry declares.
+   * Empty when the revision holds no manifest, when it holds an unreadable one, or when the read
+   * itself failed — three different facts, none of them worth failing a change list over, and the
+   * caller says "the fold declares no submodule at this path" for all three.
+   */
+  private Map<String, WrapperGitmodules.Entry> manifestAt(String repoId, String revision) {
+    String content;
+    try {
+      content = commits.readBlob(repoId, revision, ".gitmodules");
+    } catch (RuntimeException e) {
+      LOG.warnf("Could not read .gitmodules at %s of %s: %s", revision, repoId, e.getMessage());
+      return Map.of();
+    }
+    if (content == null || content.isBlank()) {
+      return Map.of();
+    }
+    Map<String, WrapperGitmodules.Entry> byPath = new LinkedHashMap<>();
+    for (WrapperGitmodules.Entry entry : WrapperGitmodules.entries(content)) {
+      if (entry.path() != null && !entry.path().isBlank()) {
+        // First entry wins: two sections claiming one path is a malformed manifest, and picking the
+        // later one would make the answer depend on file order for no stated reason.
+        byPath.putIfAbsent(entry.path(), entry);
+      }
+    }
+    return byPath;
+  }
+
+  /**
+   * The sibling's addressable name: <b>the last segment of the entry's url</b>, with a trailing
+   * {@code .git} stripped, falling back to the last segment of its path.
+   *
+   * <p>{@link WrapperReconcileService#view} reads the path tail, and for every entry in this estate
+   * the two agree — the house grammar is {@code path = components/<component>/<name>} beside {@code
+   * url = ../<name>.git}. The url is nonetheless the more honest source, because it is what git
+   * itself resolves the sibling by: a path is where the checkout is mounted and a person may mount
+   * one anywhere, while the url is the repository being named. Where they disagree, the url is
+   * right. The path tail stays as the fallback for a malformed section that declares no url at all.
+   */
+  private String submoduleName(WrapperGitmodules.Entry entry) {
+    String url = entry.url();
+    if (url != null && !url.isBlank()) {
+      String tail = url.substring(url.lastIndexOf('/') + 1).trim();
+      if (tail.endsWith(".git")) {
+        tail = tail.substring(0, tail.length() - ".git".length());
+      }
+      if (!tail.isBlank()) {
+        return tail;
+      }
+    }
+    String path = entry.path();
+    if (path == null || path.isBlank()) {
+      return null;
+    }
+    String tail = path.substring(path.lastIndexOf('/') + 1).trim();
+    return tail.isBlank() ? null : tail;
+  }
+
+  /**
+   * Null when this gitlink can be expanded into the sibling's own history, or the sentence saying
+   * why not.
+   *
+   * <p>Only a <em>moved</em> gitlink has a range to show. An addition and a removal each name one
+   * pin and no interval — "every commit up to here" and "every commit up to there" are not what
+   * either release did — and a blob-to-gitlink swap is not a submodule change at all, it is a path
+   * changing kind.
+   */
+  private String expandabilityOf(CommitFileChangeDto file) {
+    boolean bothSides = "160000".equals(file.oldMode()) && "160000".equals(file.newMode());
+    if (bothSides) {
+      return null;
+    }
+    if ("160000".equals(file.newMode())) {
+      return "Added by this release";
+    }
+    if ("160000".equals(file.oldMode())) {
+      return "Removed by this release";
+    }
+    return "This path changes between a file and a submodule in this release";
+  }
+
+  /**
+   * One gitlink of this request's fold, expanded into the sibling repository's own commits and
+   * changed files.
+   *
+   * <p><b>The caller addresses a path and never a repository id, and that is the authorisation.</b>
+   * The path is resolved by re-running the fold's own raw diff restricted to it: unless the fold
+   * under review changes exactly that path, and changes it from a {@code 160000} to a {@code
+   * 160000}, the read stops with a sentence. So the set of repositories reachable through this route
+   * is exactly the set of submodules the request being reviewed actually moves — a caller who may
+   * read the request may read what the request does, and nothing else. There is no second way for
+   * {@code path} to select a repository and there must never be one; a parameter naming a repository
+   * directly would make this route a general cross-repository read wearing a release request's
+   * clothes.
+   *
+   * <p><b>Every step's failure is an answer.</b> Nothing folded yet, a fold the repository no longer
+   * holds, a path the fold does not move, a path the manifest does not declare, a name no repository
+   * of this project answers to, a pin the sibling's history does not contain, a sibling whose mirror
+   * could not be read — each is a {@code detail} on a 200. The rule is not politeness: a wrapper
+   * fold is twenty-seven of these reads and one unreachable sibling must not be able to fail the
+   * other twenty-six.
+   */
+  public SubmoduleChangesDto foldSubmoduleChanges(String repoId, String requestId, String path) {
+    SubmoduleTarget target = resolveSubmodule(repoId, requestId, path);
+    if (!target.expandable()) {
+      return target.asAnswer(List.of(), List.of(), false);
+    }
+
+    String detail = null;
+    if (!commits.isAncestor(target.repositoryId(), target.oldSha(), target.newSha())) {
+      detail =
+          "The new pin is not a descendant of the old one; these are the commits it adds, not the"
+              + " whole difference";
+    }
+    List<CommitDto> range =
+        commits.listCommitRange(target.repositoryId(), target.oldSha(), target.newSha());
+    if (range.isEmpty() && detail != null) {
+      // Not a descendant AND nothing added: the pin went backwards, which is the specific thing
+      // worth saying rather than the general one above.
+      detail = "This release moves the pin back to " + shortSha(target.newSha());
+    }
+
+    List<CommitFileChangeDto> files =
+        commits.listChanges(target.repositoryId(), target.newSha(), target.oldSha()).files();
+    if (files.size() > MAX_CHANGED_FILES) {
+      String capped =
+          "This submodule release touches "
+              + files.size()
+              + " files; the first "
+              + MAX_CHANGED_FILES
+              + " are listed";
+      return target.asAnswer(
+          range,
+          List.copyOf(files.subList(0, MAX_CHANGED_FILES)),
+          true,
+          detail == null ? capped : detail + ". " + capped);
+    }
+    return target.asAnswer(range, files, false, detail);
+  }
+
+  /**
+   * The unified diff of one file <b>inside</b> a submodule this request's fold moves, against the
+   * old pin.
+   *
+   * <p>Same resolution chain and same authorisation as {@link #foldSubmoduleChanges} — {@code path}
+   * selects the submodule and {@code file} selects a path within it, so the two parameters cannot be
+   * combined to reach a repository the fold does not pin. A chain that stops answers the empty patch
+   * rather than an error, the posture {@link #foldFileDiff} already takes: {@link CommitFileDiffDto}
+   * carries no sentence, and the viewer already renders an empty diff as "no textual change to
+   * show". A patch over {@link #MAX_DIFF_CHARS} answers its change type with no text, as everywhere
+   * else here.
+   */
+  public CommitFileDiffDto foldSubmoduleFileDiff(
+      String repoId, String requestId, String path, String file) {
+    SubmoduleTarget target = resolveSubmodule(repoId, requestId, path);
+    if (!target.expandable()) {
+      return new CommitFileDiffDto(file, "MODIFIED", "");
+    }
+    CommitFileDiffDto diff =
+        commits.getFileDiff(target.repositoryId(), target.newSha(), target.oldSha(), file);
+    if (diff.diff() != null && diff.diff().length() > MAX_DIFF_CHARS) {
+      return new CommitFileDiffDto(diff.path(), diff.changeType(), "");
+    }
+    return diff;
+  }
+
+  /**
+   * What the two submodule reads agree on before either of them asks the sibling anything: which
+   * repository, which two pins, and — when the chain stopped — the sentence saying why.
+   *
+   * <p>{@code expandable} is exactly "detail is null": every step that sets a detail is a step that
+   * stops. The two callers share this so the authorisation argument in {@link
+   * #foldSubmoduleChanges} is made in one place and cannot hold for the list read while a second
+   * spelling quietly loosens it for the diff read.
+   */
+  private record SubmoduleTarget(
+      String path,
+      String repositoryId,
+      String name,
+      String oldSha,
+      String newSha,
+      String detail) {
+
+    boolean expandable() {
+      return detail == null;
+    }
+
+    SubmoduleChangesDto asAnswer(
+        List<CommitDto> range, List<CommitFileChangeDto> files, boolean truncated) {
+      return asAnswer(range, files, truncated, detail);
+    }
+
+    SubmoduleChangesDto asAnswer(
+        List<CommitDto> range,
+        List<CommitFileChangeDto> files,
+        boolean truncated,
+        String withDetail) {
+      return new SubmoduleChangesDto(
+          path, repositoryId, name, oldSha, newSha, range, files, truncated, withDetail);
+    }
+
+    static SubmoduleTarget stopped(String path, String detail) {
+      return new SubmoduleTarget(path, null, null, null, null, detail);
+    }
+  }
+
+  /**
+   * The resolution chain behind both submodule reads, in order, each step's failure a sentence. See
+   * {@link #foldSubmoduleChanges} for why step three is also the authorisation check.
+   */
+  private SubmoduleTarget resolveSubmodule(String repoId, String requestId, String path) {
+    // The one refusal that is a 400 rather than a sentence: a caller that named no path has not
+    // addressed anything, so there is no submodule for a detail to be about. Both routes spell
+    // @NotBlank, so this is the domain saying the same thing to a caller that did not come through
+    // one — and a dash-leading value is refused here rather than reaching git as a flag.
+    if (path == null || path.isBlank() || path.startsWith("-")) {
+      throw new BadRequestException("Invalid submodule path: " + path);
+    }
+    ReleaseRequest row = requireRequestOf(repoId, requestId);
+    if (row.mergedSha == null) {
+      return SubmoduleTarget.stopped(path, "Nothing has been folded yet");
+    }
+    CommitService.MergeDiffBase diffBase = commits.resolveDiffBase(repoId, row.mergedSha);
+    if (!diffBase.present()) {
+      return SubmoduleTarget.stopped(path, "The fold is no longer in the repository's history");
+    }
+
+    // The fold's own diff, narrowed to this one path. A pathspec can match more than the string it
+    // is (a directory matches its whole subtree), so the entry is matched back by equality: what
+    // authorises this read is the fold changing THIS path, not the fold changing something under a
+    // prefix of it.
+    CommitFileChangeDto entry =
+        commits.listChanges(repoId, row.mergedSha, diffBase.base(), path).files().stream()
+            .filter(candidate -> path.equals(candidate.path()))
+            .findFirst()
+            .orElse(null);
+    if (entry == null) {
+      return SubmoduleTarget.stopped(path, "This release does not change this path");
+    }
+    if (!entry.touchesGitlink()) {
+      return SubmoduleTarget.stopped(path, "This path is not a submodule in this release");
+    }
+    String expandability = expandabilityOf(entry);
+    if (expandability != null) {
+      // An added or removed gitlink still carries the pin it has, so the caller can show it.
+      return new SubmoduleTarget(path, null, null, entry.oldSha(), entry.newSha(), expandability);
+    }
+
+    WrapperGitmodules.Entry declared = manifestAt(repoId, row.mergedSha).get(path);
+    if (declared == null) {
+      return SubmoduleTarget.stopped(path, "The fold does not declare this path as a submodule");
+    }
+    String name = submoduleName(declared);
+    if (name == null) {
+      return SubmoduleTarget.stopped(
+          path, "The fold's manifest gives this submodule no name to resolve");
+    }
+    String childId =
+        repositoryService
+            .findByProjectAndName(row.projectId, name)
+            .map(repo -> repo.id)
+            .orElse(null);
+    if (childId == null) {
+      return new SubmoduleTarget(
+          path, null, name, entry.oldSha(), entry.newSha(),
+          "This submodule is not a repository of this project");
+    }
+
+    // The first and only reach into the sibling. A mirror clone or refresh that fails is this one
+    // submodule's problem and nobody else's, so it is caught here rather than propagated — the row
+    // reads "could not read" and the other twenty-six rows of a wrapper fold are unaffected.
+    try {
+      if (!commits.hasCommit(childId, entry.oldSha())) {
+        return new SubmoduleTarget(
+            path, childId, name, entry.oldSha(), entry.newSha(),
+            shortSha(entry.oldSha()) + " is not in " + name + "'s history");
+      }
+      if (!commits.hasCommit(childId, entry.newSha())) {
+        return new SubmoduleTarget(
+            path, childId, name, entry.oldSha(), entry.newSha(),
+            shortSha(entry.newSha()) + " is not in " + name + "'s history");
+      }
+    } catch (RuntimeException e) {
+      LOG.warnf("Could not read the submodule %s (%s): %s", name, childId, e.getMessage());
+      return new SubmoduleTarget(
+          path, childId, name, entry.oldSha(), entry.newSha(), "Could not read " + name);
+    }
+    return new SubmoduleTarget(path, childId, name, entry.oldSha(), entry.newSha(), null);
   }
 
   /**

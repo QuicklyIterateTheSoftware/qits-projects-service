@@ -421,6 +421,16 @@ components:
           type: string
         changeType:
           type: string
+        oldMode:
+          type: string
+        newMode:
+          type: string
+        oldSha:
+          type: string
+        newSha:
+          type: string
+        submodule:
+          $ref: "#/components/schemas/SubmoduleRefDto"
     CommitFileDiffDto:
       type: object
       properties:
@@ -1757,6 +1767,44 @@ components:
           type: string
           pattern: \S
         requester:
+          type: string
+    SubmoduleChangesDto:
+      type: object
+      properties:
+        path:
+          type: string
+        repositoryId:
+          type: string
+        name:
+          type: string
+        oldSha:
+          type: string
+        newSha:
+          type: string
+        commits:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommitDto"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommitFileChangeDto"
+        truncated:
+          type: boolean
+        detail:
+          type: string
+    SubmoduleRefDto:
+      type: object
+      properties:
+        repositoryId:
+          type: string
+        name:
+          type: string
+        oldSha:
+          type: string
+        newSha:
+          type: string
+        detail:
           type: string
     SurfaceListResponse:
       type: object
@@ -5044,6 +5092,111 @@ paths:
         - qits:admin
         - qits:system
         - qits:agent
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/changes/submodule:
+    get:
+      summary: "One submodule this request's fold moves, expanded into its own history"
+      description: "A wrapper's release is almost entirely 160000 gitlinks, and the\
+        \ fold's own patch for one is a pair of opaque Subproject commit lines. This\
+        \ answers what the release actually does: the sibling repository the path\
+        \ resolves to through the fold's own .gitmodules, the two pins, and that repository's\
+        \ commits and changed files between them. path addresses a gitlink of THIS\
+        \ fold and there is no repository parameter — the fold is re-diffed at that\
+        \ one path and must report a 160000-to-160000 modification, so the only repositories\
+        \ reachable here are the ones the request under review pins. Nothing is ever\
+        \ an error: nothing folded yet, a fold the repository no longer holds, a path\
+        \ the fold does not move, a path the manifest does not declare, a name no\
+        \ repository of this project answers to, a pin the sibling does not contain\
+        \ and a sibling that could not be read all answer 200 with the reason in detail.\
+        \ An added or removed gitlink names its one pin and is not expandable. Over\
+        \ 2000 paths the file list is capped with truncated set."
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: query
+        schema:
+          type: string
+          pattern: \S
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmoduleChangesDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
+        - qits:agent
+  /projects/api/repositories/{repoId}/release-requests/{requestId}/changes/submodule/diff:
+    get:
+      summary: The patch of one file inside a submodule this request's fold moves
+      description: "The unified diff of file within the submodule at path, taken in\
+        \ the SIBLING repository between the two pins this fold moves between — the\
+        \ patch …/changes/submodule lists as a changed file. Same resolution and same\
+        \ authorisation as that read: path selects a gitlink of this fold and file\
+        \ selects a path inside it, so the pair cannot reach a repository the fold\
+        \ does not pin. An empty diff is never an error — a binary file, a pure rename,\
+        \ a chain that stopped for any of the reasons …/changes/submodule reports\
+        \ in detail, and a patch over ~1 MiB all answer their change type with no\
+        \ text."
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: file
+        in: query
+        schema:
+          type: string
+          pattern: \S
+        required: true
+      - name: path
+        in: query
+        schema:
+          type: string
+          pattern: \S
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitFileDiffDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Release Request Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/commits:
     get:
       summary: The commits this request's fold brought in
@@ -5880,4 +6033,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.916.23602
+  version: 2026.916.124951

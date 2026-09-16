@@ -2,8 +2,11 @@ package eu.wohlben.qits.projects.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
@@ -137,6 +140,110 @@ public class MergeRangeCommitsTest {
 
     assertFalse(range.present());
     assertEquals(List.of(), range.commits());
+  }
+
+  /**
+   * <b>The change list is {@code --raw -z}, and a path is the bytes it is.</b>
+   *
+   * <p>{@code --name-status} separates its fields with a tab and <em>git-quotes</em> any path
+   * holding a tab, a newline or a non-ASCII byte — wrapping it in double quotes and C-escaping the
+   * bytes — so the parser this replaces answered {@code "sch\303\266n.txt"} for a file called {@code
+   * schön.txt}, and a tab inside a name split one path into two fields. Each of the three names here
+   * is one of those cases, and none of them is exotic: a space is ordinary, and the estate is
+   * written by people who type umlauts.
+   *
+   * <p>The modes and object ids are the second half of the claim. They are what make a {@code
+   * 160000} gitlink recognisable as one without fetching its patch and reading the {@code Subproject
+   * commit} lines back out of the text, which is the whole reason the flags changed.
+   */
+  @Test
+  public void theChangeListCarriesAwkwardPathsIntactAndTheTreeEntriesItFound() throws Exception {
+    Repository repo = cloned("Raw Change List Project");
+    Path work = checkout(repo);
+    String base = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+
+    Files.writeString(work.resolve("a file.txt"), "one\n", StandardCharsets.UTF_8);
+    Files.writeString(work.resolve("tab\tname.txt"), "two\n", StandardCharsets.UTF_8);
+    // The umlaut is created by a shell from an ASCII argv rather than through java.nio, and that is
+    // a limitation of the test JVM rather than of anything under test: surefire runs under the C
+    // locale, so sun.jnu.encoding is ASCII and Path.resolve refuses the name outright. The bytes on
+    // disk are the same bytes either way, which is all the parser is being asked about.
+    git.exec(
+        work.toFile(), "sh", "-c", "printf three > \"$(printf 'sch\\303\\266n.txt')\"");
+    git.exec(work.toFile(), "git", "add", "-A");
+    git.exec(work.toFile(), "git", "commit", "-q", "-m", "Add three awkward names");
+    String head = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "push", "-q", "origin", "HEAD:" + repo.mainBranch);
+    goCold(repo);
+
+    List<CommitFileChangeDto> files = commitService.listChanges(repo.id, head, base).files();
+
+    assertEquals(
+        List.of("a file.txt", "sch\u00f6n.txt", "tab\tname.txt"),
+        files.stream().map(CommitFileChangeDto::path).sorted().toList(),
+        "no quoting, no C-escaping, and no split on the tab inside a name");
+    for (CommitFileChangeDto file : files) {
+      assertEquals("ADDED", file.changeType(), file.path());
+      assertEquals("100644", file.newMode(), file.path());
+      assertNotNull(file.newSha(), file.path());
+      assertNull(file.oldMode(), "an added path has no base side at all");
+      assertNull(
+          file.oldSha(), "git prints an all-zero id for the absent side; it is not handed on");
+      assertNull(file.submodule(), "an ordinary file is not a gitlink and carries no ref");
+    }
+  }
+
+  /**
+   * A rename takes <b>two</b> path fields where every other status takes one, which is why the
+   * parser walks fields rather than splitting on anything. {@code --raw} also scores it — the status
+   * reads {@code R100}, not {@code R} — so the status letter is the first character and the
+   * similarity is dropped.
+   */
+  @Test
+  public void aRenameCarriesBothPathsAndTheBlobThatDidNotMove() throws Exception {
+    Repository repo = cloned("Raw Rename Project");
+    Path work = checkout(repo);
+    commit(work, "a file.txt", "Add the file");
+    String base = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "mv", "a file.txt", "renamed file.txt");
+    git.exec(work.toFile(), "git", "commit", "-q", "-m", "Rename it");
+    String head = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "push", "-q", "origin", "HEAD:" + repo.mainBranch);
+    goCold(repo);
+
+    List<CommitFileChangeDto> files = commitService.listChanges(repo.id, head, base).files();
+
+    assertEquals(1, files.size(), files.toString());
+    CommitFileChangeDto file = files.getFirst();
+    assertEquals("RENAMED", file.changeType(), "the letter, never the similarity score");
+    assertEquals("a file.txt", file.oldPath());
+    assertEquals("renamed file.txt", file.path());
+    assertEquals(file.oldSha(), file.newSha(), "a pure rename moves the same blob");
+  }
+
+  /**
+   * {@code from..to} is what the new commit adds over the old one, in the shape the overview tab
+   * already renders — the read behind expanding a wrapper's gitlink into the sibling's own history.
+   */
+  @Test
+  public void aCommitRangeIsWhatTheSecondRevAddsOverTheFirst() throws Exception {
+    Repository repo = cloned("Commit Range Project");
+    Path work = checkout(repo);
+    commit(work, "one.txt", "Add one");
+    String from = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    commit(work, "two.txt", "Add two");
+    commit(work, "three.txt", "Add three");
+    String to = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "push", "-q", "origin", "HEAD:" + repo.mainBranch);
+    goCold(repo);
+
+    assertEquals(
+        List.of("Add three", "Add two"),
+        commitService.listCommitRange(repo.id, from, to).stream().map(c -> c.message()).toList(),
+        "newest first, and nothing the old rev already had");
+    assertTrue(
+        commitService.listCommitRange(repo.id, to, from).isEmpty(),
+        "the range is one-sided: going the other way adds nothing");
   }
 
   // -----------------------------------------------------------------------------------------------
