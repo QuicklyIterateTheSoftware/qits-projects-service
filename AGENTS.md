@@ -1092,6 +1092,13 @@ here at all: it is a **source copy** of the daemon repo's module, same java pack
 artifactId. A protocol change is three edits in order — the record and the constants in the daemon
 repo, `DaemonCodecTest` there, then the same files here — and it bumps `CAPABILITY_VERSION`.
 
+**It is the only vendored protocol module left**, and it is vendored because qits-projects-daemon
+publishes nothing. The refinement harness one section down had a second copy,
+`workspace-daemon-protocol/`, on the same terms and for the same reason; qits-workspace-daemon
+publishes its module now, so that one is an ordinary dependency and its version is also the image
+pin. Copy is the fallback here, not the preference: the day this daemon publishes, the same swap is
+a pom change with no source edits — which is what keeping the java package identical buys.
+
 **The daemon has no address.** `ProjectsApi` binds `127.0.0.1` from capability 1, so there is no
 direct branch anywhere: qits sends an `OpenStream` over the control socket, the daemon dials *out*
 to `/projects/daemon/stream/{nonce}`, and `DaemonStreamRoute` marries that WebSocket to the parked
@@ -1580,9 +1587,16 @@ One container per REFINING epic — the refining route's whole backend, which us
 qits-workspaces workspace on a `refining/*` branch (epic refinement-improvements, part 2). The host
 side is `service/…/refinementhost/`; the container runs the WORKSPACE image and daemon, unchanged —
 `qits-workspace-daemon` dials home to whatever `QITS_WORKSPACE_DAEMON_URL` names, and this service
-is that home now. `workspace-daemon-protocol/` is that daemon's wire contract, vendored beside
-`projects-daemon-protocol/` (two daemons, two vocabularies, two modules; the codec test travels with
-each).
+is that home now. That daemon's wire contract is a **dependency**,
+`eu.wohlben.qits:qits-workspace-daemon-protocol`, published by qits-workspace-daemon itself. It was
+a vendored `workspace-daemon-protocol/` module here — a byte-identical source copy beside
+`projects-daemon-protocol/` — until that repository published it; the swap was a pom change with no
+source edits, because the java package had been kept identical for exactly that day. Two daemons and
+two vocabularies still, but only one of them is a module here now: a workspace-protocol change
+arrives as a **version bump gated by this repository's own release request**, while
+`projects-daemon-protocol/` stays a source copy (its repository publishes nothing) and keeps its
+three-edits-in-order rule and its codec test. That jar's version is also the `qits/workspace` image
+pin — see the image-pin bullet below.
 
 The shape deliberately mirrors the project-agent harness one section up — control socket, registry,
 reverse tunnel, verbatim proxy with the hand-rolled websocket upgrade — on refinement's own paths,
@@ -1637,15 +1651,34 @@ Where it differs from the agent harness, each difference is the domain line:
   lights the repository-scoped narration (pull/push/sync leases) that ran unnarrated before, and
   `api/TechnicalProcessEventsController` is the SSE controller the port was waiting for. Everything
   in it is this process's memory; an evicted id answers the 404 the frontend reads as "expired".
-- **The image pin rides qits-workspace-daemon's releases through qits-configuration**: that repo's
-  release publishes `qits/workspace`, qits-configuration's `bus/SoftwareReleaseListener` consumes the
-  `SoftwareRelease` and writes this application's `QITS_PROJECTS_REFINEMENT_IMAGE_VERSION` extra, and
-  the deployer injects it at the next deploy. SmallRye maps it onto
-  `qits.projects.refinement-image-version` and lets the env win, so the committed property is the
-  clone-alone default and nothing rebuilds this service to move a version.
-  `.config/qits/ci-event-upstream-workspace-daemon.yml` used to carry that follow by rewriting the
-  property and releasing this service; it was retired on 2026-09-03, the way the library follows went
-  to qits-platform-maintenance on 2026-09-02/03.
+- **The image pin IS the protocol dependency's version, and no longer arrives as configuration.**
+  `WorkspaceImage.VERSION`, out of `eu.wohlben.qits:qits-workspace-daemon-protocol` — the same jar
+  this service decodes the daemon's frames with — is the `qits/workspace` tag a refinement container
+  starts from, and `RefinementContainerFactory.imageVersion()` reads it. One artifact carries both
+  because what this service must **speak** and what it must **start** are one release.
+  <br>**What that replaced, because the failure is the reason for it.** The version used to arrive as
+  `QITS_PROJECTS_REFINEMENT_IMAGE_VERSION`: qits-workspace-daemon's release published the image,
+  qits-configuration's `ImagePins` wrote the entry, the deployer injected it, and SmallRye let the
+  env win over the committed property. So a version rewritten by whoever released the image reached
+  the next refinement container with **nothing having tested the pair** — a protocol change arriving
+  as an environment variable is a change no gate here ever saw — and the clone-alone default behind
+  it aged in silence until it named a tag the registry's retention had deleted. A dependency cannot
+  age that way: it has to **resolve** for this reactor to build, and the pom line moves through this
+  repository's own release request. (Earlier still,
+  `.config/qits/ci-event-upstream-workspace-daemon.yml` carried the follow by rewriting the property
+  and releasing this whole service to move one number; retired 2026-09-03.)
+  <br>**The override survives under a name nothing automates, and the rename is the mechanism.**
+  `qits.projects.refinement-image-version-override` is `Optional` with no shipped default, so absent
+  is the ordinary state and setting it pins an image nothing has tested against this service. It is
+  a *different* key from the retired one on purpose: **nothing on this platform deletes a
+  configuration entry** — qits-configuration's own service says "an orphan is reported and never
+  cleaned up", and this service's credential could not do it anyway — so the row already written
+  under the old name stays in every deployment for ever, and renaming what this service reads is
+  what makes that residue inert. `refinementhost/RetiredRefinementImageVersionKey` WARNs at boot
+  while it is still there, and never refuses to start. The declaration is gone from
+  `.config/qits/configuration.yml`; the agent image's pin
+  (`QITS_PROJECTS_AGENT_IMAGE_VERSION`, `qits/project-agent`) is a different image on a different
+  train and is **unchanged**, still configuration-driven and still declared there.
 - **Git reaches the edge** (`qits.projects.refinement-git-url`, default
   `http://qits-platform-edge:8080`): the workspace image's credential helper speaks oauth2 Basic and
   the edge rewrites it to a Bearer, exactly as a workspace's does. The three registry keys
@@ -2185,7 +2218,7 @@ Anything that puts this route behind a poll faster than the window is polling th
 
     ./mvnw -pl service -am -DskipITs=false -Dquarkus.quinoa=false verify \
       -Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false \
-      -Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT
+      -Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,RefinementDaemonPinIT
 
 `-Dit.test` takes commas; `-Dtest=SKIPNONE` keeps the unit suite out of an IT-only run (run it
 separately before committing — the story classes share `domain`'s fixtures). `skipITs` stays `true`
@@ -2193,7 +2226,23 @@ in the root pom because `PackagedSurfaceIT` is heavyweight, so the opt-in is per
 The userflow half of `.config/qits/ci-event-release-request.yml` runs exactly this list at every
 release-request fold and publishes the bundle as the docs site `@userflows/qits-projects`. It
 declares `gating: false`, so a red story shows the run red without holding the fold at the release
-gate; **a new story class has to be added to that list**, or it is written and never run.
+gate; **the list is not derived, so a class that is not named there is written and never run** —
+which is why a new story class has to be added to it in the same commit.
+
+**The last entry is not a story, and it is the one that must never come off the list.**
+`refinementhost/RefinementDaemonPinIT` is the gate that proves the `qits/workspace` image pin: it
+downloads `qits-workspace-daemon` at exactly `WorkspaceImage.VERSION` — the pinned
+`qits-workspace-daemon-protocol` dependency's own version, which is also the image tag a refinement
+container starts from — runs it as a process against a stand-in refinement host, round-trips a
+command over the real control-socket protocol, asserts the version and the tunnel capability, and
+tears it down. A daemon bump that breaks the wire therefore fails this repository's own release
+request instead of the next live refinement. It derives the artifacts origin by cutting
+`qits.maven.repository.url` (falling back to `QITS_MAVEN_REPOSITORY_URL`) at `/artifacts/`, which
+that step already exports and passes; with no origin configured at all it skips, and that skip is
+defensive rather than a supported mode. Unlike every other class on the line it boots **no** Quarkus
+application — plain JUnit 5, no `@TestProfile` — deliberately, because nothing in the assertion needs
+the app and a second profile is a second whole qits-projects at ~125 MB of retained metaspace inside
+a 4g step container.
 
 ## What is deliberately absent
 

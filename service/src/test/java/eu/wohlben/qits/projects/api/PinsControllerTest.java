@@ -5,6 +5,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
+import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceImage;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.path.json.JsonPath;
 import java.util.List;
@@ -14,11 +15,12 @@ import org.junit.jupiter.api.Test;
 /**
  * The launch-pin route — what a container start by this process would pull.
  *
- * <p>The versions are read out of config rather than written down here: they are a release train's
- * to move, and a literal would fail the suite on the next bump while proving nothing. What is
- * asserted about them is that the answer carries <em>this process's</em> value. The <b>image</b>
- * halves are literals, because the registry-relative spelling is the contract while the configured
- * value is fully qualified.
+ * <p>Neither version is written down here: they are a release train's to move, and a literal would
+ * fail the suite on the next bump while proving nothing. What is asserted about them is that the
+ * answer carries <em>this process's</em> value — which the agent half reads out of config, because
+ * that image is still configuration-driven, and the refinement half takes from the pinned
+ * dependency's constant, because that one is not. The <b>image</b> halves are literals, because the
+ * registry-relative spelling is the contract while the configured value is fully qualified.
  *
  * <p>The omission rules are exercised against {@link PinsController#pins} directly: a blank version
  * is a config state, and reaching it through a {@code @TestProfile} would cost a Quarkus restart to
@@ -30,8 +32,19 @@ public class PinsControllerTest {
   @ConfigProperty(name = "qits.projects.agent-image-version")
   String agentImageVersion;
 
-  @ConfigProperty(name = "qits.projects.refinement-image-version")
-  String refinementImageVersion;
+  /**
+   * The refinement pin is a <b>constant</b> and not a config read, because the version it answers
+   * is {@link WorkspaceImage#VERSION} — the version of the released {@code
+   * qits-workspace-daemon-protocol} jar this reactor pins, which is also the {@code qits/workspace}
+   * tag a refinement container starts from. So the honest assertion is that the route answers that
+   * same constant; reading {@code qits.projects.refinement-image-version} here would assert a key
+   * nothing declares any more, and the suite would fail to start rather than fail meaningfully.
+   *
+   * <p>A literal would still be wrong for the reason the agent half's config read is right: the
+   * value moves when the pom line moves, and a literal would fail the suite on the next bump while
+   * proving nothing. The constant moves with it.
+   */
+  static final String refinementImageVersion = WorkspaceImage.VERSION;
 
   @Test
   public void theTwoLaunchImagesAnswerRegistryRelativeAndInImageOrder() {

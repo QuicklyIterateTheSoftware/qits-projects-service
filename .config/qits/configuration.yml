@@ -35,9 +35,20 @@
 #   * QITS_RESOURCE_*. The deployer injects those from its resource registry; they are never entries.
 #
 # NO serviceAddress AND NO packageVersion, on purpose. Both change what the container gets, so both
-# belong to a later step. The two image-version keys are `string` here: qits-configuration's
-# `ImagePins` list writes them on every release. Declaring them packageVersion is that list's own
-# migration, and it must remove the rows from `ImagePins.AUTHORED` in the same wave.
+# belong to a later step. ONE image-version key is left and it is `string` here: qits-configuration's
+# `ImagePins` list writes QITS_PROJECTS_AGENT_IMAGE_VERSION on every qits/project-agent release.
+# Declaring it packageVersion is that list's own migration, and it must remove the row from
+# `ImagePins.AUTHORED` in the same wave.
+#
+# THE REFINEMENT IMAGE HAS LEFT CONFIGURATION ENTIRELY, so there is no second key to migrate.
+# QITS_PROJECTS_REFINEMENT_IMAGE_VERSION is not declared here and is not read by this service any
+# more: the qits/workspace tag a refinement container starts from is `WorkspaceImage.VERSION`, the
+# version of the `qits-workspace-daemon-protocol` dependency this reactor pins — one artifact for
+# the protocol this service speaks and the image it starts, gated by this repository's own release
+# request instead of rewritten under it. The entry qits-configuration already wrote stays in every
+# deployment for ever (an orphan is reported and never cleaned up), which is exactly why the
+# emergency override reads a DIFFERENT key, `QITS_PROJECTS_REFINEMENT_IMAGE_VERSION_OVERRIDE`,
+# declared nowhere and written by no automation.
 #
 # SECRETS are declared by name only. Their values live in qits-configuration and never here.
 
@@ -69,10 +80,6 @@ keys:
   env.QITS_PROJECTS_AGENT_IMAGE_VERSION:
     type: string
     description: "The qits/project-agent image version an agent container starts from. Written by qits-configuration's ImagePins on each release."
-
-  env.QITS_PROJECTS_REFINEMENT_IMAGE_VERSION:
-    type: string
-    description: "The qits/workspace image version a refinement container starts from. Written by qits-configuration's ImagePins on each release."
 
   # --- the release flow's peers -----------------------------------------------------------------
 

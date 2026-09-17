@@ -55,10 +55,11 @@
             <artifactId>qits-projects-daemon-protocol</artifactId>
         </dependency>
         <dependency>
-            <!-- The workspace daemon's wire contract, vendored: what a refinement container's
-                 dial-home speaks (refinementhost/). Sources, not a published jar. -->
-            <groupId>${project.groupId}</groupId>
-            <artifactId>qits-projects-workspace-daemon-protocol</artifactId>
+            <!-- The workspace daemon's wire contract — what a refinement container's dial-home
+                 speaks (refinementhost/). Released by qits-workspace-daemon and no longer vendored
+                 here; its version is the `qits/workspace` image pin, see the root pom. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-workspace-daemon-protocol</artifactId>
         </dependency>
         <dependency>
             <!-- The platform event bus. It arrives HERE and not in `domain` on purpose, twice over:

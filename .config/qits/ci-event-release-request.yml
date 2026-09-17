@@ -230,6 +230,21 @@ steps:
   # (failsafe orders by FQCN within a profile group), and it is load-bearing: the bootstrap IT owns
   # the run's first bearer and the JWKS fetch that follows it. See AGENTS.md § Userflows.
   #
+  # THE LIST IS NOT DERIVED — SAID TWICE BECAUSE IT NOW GATES AN IMAGE PIN. A test not named on
+  # `-Dit.test` is written and never runs here, silently, and there is no wildcard to fall back on.
+  # RefinementDaemonPinIT MUST STAY ON IT: it is the gate that proves the `qits/workspace` image pin.
+  # That version is no longer a configuration entry somebody's release rewrote — it is
+  # WorkspaceImage.VERSION off the pinned qits-workspace-daemon-protocol dependency — and this test
+  # is what makes the pin mean something: it downloads the daemon at exactly that version, runs it
+  # as a process against a stand-in refinement host and round-trips the real protocol, so a daemon
+  # bump that breaks the wire fails THIS fold rather than the next live refinement. Drop it from
+  # this line and the pin is back to being an untested number. It needs the artifacts origin, which
+  # the two lines below already export and pass (it derives the daemon store by cutting
+  # `qits.maven.repository.url` at `/artifacts/`); with no origin at all it skips, which is the one
+  # state a CI step is never in. It is LAST rather than in FQCN position because it is the one class
+  # here that boots no Quarkus application at all — plain JUnit, no @TestProfile — so it is outside
+  # the story group the sentence above is about and its place on this line decides nothing.
+  #
   # `-Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false` keeps the unit suites out of this run:
   # the gating step's image build compiles and packages this repository, this half is about the
   # stories, and running the unit suites twice per fold buys nothing.
@@ -251,7 +266,7 @@ steps:
         -Dquarkus.quinoa=false \
         -Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false \
         -DskipITs=false \
-        "-Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT"
+        "-Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,RefinementDaemonPinIT"
 
       # `-C … .` so the story directories are the bundle's roots — nesting one directory deep would
       # put it in every served URL.

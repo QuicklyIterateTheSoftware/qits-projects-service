@@ -38,10 +38,19 @@
         <!-- gitmirror has no reactor dependency and is what `domain` builds its git substrate from
              (see its own pom for why it is a separate module); `service` depends on both `domain`
              and `epics`; `epics` deliberately depends on neither. projects-daemon-protocol is a
-             vendored copy of the daemon repo's wire contract and depends on nothing at all. -->
+             vendored copy of the PROJECTS daemon repo's wire contract and depends on nothing at all
+             — that one is still vendored, because nobody publishes it.
+
+             `workspace-daemon-protocol` used to sit beside it: a vendored copy of
+             qits-workspace-daemon's module, the contract a refinement container's daemon dials home
+             with, taken as sources for the same reason — it was published nowhere. It is published
+             now, as eu.wohlben.qits:qits-workspace-daemon-protocol, and the version of that jar IS
+             the `qits/workspace` image a refinement container starts from. So it is a dependency
+             below rather than a directory here, and the copy is gone: a vendored copy could drift
+             from the daemon it claims to speak to and nothing would go red, while a pin that has to
+             resolve cannot. -->
         <module>gitmirror</module>
         <module>projects-daemon-protocol</module>
-        <module>workspace-daemon-protocol</module>
         <module>domain</module>
         <module>epics</module>
         <module>service</module>
@@ -108,6 +117,25 @@
              vocabulary jar: a snapshot that resolves only from a warm docker layer and a
              developer's ~/.m2 is a red release waiting for whoever next edits a file. -->
         <qits.containers-client.version>2026.915.231127</qits.containers-client.version>
+
+        <!-- THE REFINEMENT IMAGE PIN, AS A DEPENDENCY. This is not an ordinary library version: the
+             artifact is qits-workspace-daemon's wire contract, and its version IS the tag of the
+             `qits/workspace` image a refinement container starts from — the same jar, the same
+             release, one number for both. So moving this line moves which image the next refinement
+             container runs, and it moves it the way everything else here moves: through this
+             repository's own release request, gated, reviewed by a person, and proven by the pin
+             test rather than by a deploy.
+
+             That is the whole point of it. A version that arrives as deployment config is rewritten
+             by whoever releases the image, so a new daemon reaches the next container with no test
+             of the pair, and a default baked into a properties file ages quietly until it names an
+             image the registry's retention has deleted. A dependency cannot age that way: it has to
+             RESOLVE for this reactor to build at all.
+
+             qits-platform-maintenance moves it on `maintenance/dependencies` like any other internal
+             pin, and it is gated here. Do not hand-edit it to chase a release you just cut — the
+             next bump overwrites the edit, and in between it asserts a pairing nobody proved. -->
+        <qits.workspace-daemon-protocol.version>2026.916.180326</qits.workspace-daemon-protocol.version>
 
         <!-- qits-integrations-quarkus ships two jars this repo consumes, released together, so they
              carry ONE version property rather than drifting apart:
@@ -238,6 +266,16 @@
                 <artifactId>qits-service-mock</artifactId>
                 <version>${qits.service-mock.version}</version>
             </dependency>
+            <dependency>
+                <!-- The workspace daemon's wire contract AND the version of the image it ships in —
+                     one artifact, because the thing a refinement container must speak and the thing
+                     this service must start are the same release. qits-workspace-daemon publishes
+                     it; the property above is the pin. Not a reactor module any more; see
+                     <modules>. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-workspace-daemon-protocol</artifactId>
+                <version>${qits.workspace-daemon-protocol.version}</version>
+            </dependency>
             <!-- The reactor's own modules, so children depend on them version-less. -->
             <dependency>
                 <!-- The git substrate: mirrors, wire reads and pushes. Framework-free like the
@@ -252,13 +290,6 @@
                      consumed only by `service` — the agent harness is a service-layer concern. -->
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-projects-daemon-protocol</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <!-- The vendored WORKSPACE-daemon wire contract — the daemon a refinement
-                     container runs, unchanged. Same shape as the sibling above. -->
-                <groupId>${project.groupId}</groupId>
-                <artifactId>qits-projects-workspace-daemon-protocol</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
