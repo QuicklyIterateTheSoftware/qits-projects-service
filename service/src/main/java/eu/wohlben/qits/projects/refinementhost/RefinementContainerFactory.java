@@ -10,6 +10,7 @@ import eu.wohlben.qits.containers.client.ContainersWire.Spec;
 import eu.wohlben.qits.containers.client.ContainersWire.VolumeMount;
 import eu.wohlben.qits.projects.control.GitIdentity;
 import eu.wohlben.qits.projects.entity.Refinement;
+import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceImage;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.net.URI;
@@ -64,20 +65,51 @@ public class RefinementContainerFactory {
   String imageRepo;
 
   /**
-   * The released calver the workspace image is pinned to. Read per container start, so a deployment
-   * that changes it needs no rebuild of this service.
+   * The released calver the workspace image is pinned to — <b>{@link WorkspaceImage#VERSION}, the
+   * version of the dependency this reactor pins</b>, with config as an explicit override and
+   * nothing else.
    *
-   * <p>The deployed value rides qits-configuration's image pin: it consumes qits-workspace-daemon's
-   * {@code SoftwareRelease} of {@code qits/workspace} and writes it as this application's {@code
-   * QITS_PROJECTS_REFINEMENT_IMAGE_VERSION} extra, which SmallRye maps onto this key and lets win.
-   * The committed property is the clone-alone default — it was what
-   * {@code .config/qits/ci-event-upstream-workspace-daemon.yml} rewrote before that hop was retired.
+   * <p><b>It used to be the other way round</b>, and that is the defect this field records. The
+   * value came from config: qits-configuration's release listener consumed qits-workspace-daemon's
+   * {@code SoftwareRelease} of {@code qits/workspace} and wrote it as this application's {@code
+   * QITS_PROJECTS_REFINEMENT_IMAGE_VERSION} extra, which the deployer injected and SmallRye let
+   * win. So a version rewritten by whoever released the image reached the <em>next</em> refinement
+   * container with nothing having tested the pair — this service speaks that daemon's protocol, and
+   * a protocol change arriving as an environment variable is a change no gate here ever saw. The
+   * committed fallback beside it aged in silence for the same reason, until it named a tag the
+   * registry's retention had deleted and every run without the injection failed at the pull.
+   *
+   * <p>Now the version is the version of {@code eu.wohlben.qits:qits-workspace-daemon-protocol},
+   * the jar that also carries the protocol both ends speak — one artifact, because what this
+   * service must <em>speak</em> and what it must <em>start</em> are one release. It cannot age: the
+   * dependency has to resolve for this reactor to build, the pin is a reviewed line in this
+   * repository's own pom, it is gated by this repository's own release request, and {@code
+   * PinsControllerTest} proves the pin answer is that same constant.
+   *
+   * <p><b>An emergency override survives, under a name nothing automates.</b> {@code
+   * qits.projects.refinement-image-version-override} — {@code
+   * QITS_PROJECTS_REFINEMENT_IMAGE_VERSION_OVERRIDE} — is {@code Optional} with no shipped default,
+   * so absent is the ordinary state. An operator who has to pin a different image live can still do
+   * it, and the pair is then explicitly untested by anything, which is the honest reading of an
+   * override.
+   *
+   * <p><b>The RENAME is the point, and the old name is the reason.</b> This used to read {@code
+   * qits.projects.refinement-image-version}, which is exactly the key qits-configuration's {@code
+   * ImagePins} wrote on every image release — so "an emergency override" and "the automatic pin"
+   * were one string, and the automatic one won on every deploy. Retiring the declaration stops the
+   * row being written again but cannot unwrite the entry already there: <b>nothing on this platform
+   * deletes a configuration entry</b> — qits-configuration's own {@code ConfigurationService} says
+   * so, "an orphan is reported and never cleaned up" — and this service's credential could not do
+   * it anyway. The residue therefore stays in every deployment's environment for ever, and a
+   * different name is what makes it inert, with no deletion required and no way for an automatic
+   * writer to land on the override again by accident. {@link RetiredRefinementImageVersionKey} says
+   * so out loud while the old entry is still present.
    */
-  @ConfigProperty(name = "qits.projects.refinement-image-version")
-  String imageVersion;
+  @ConfigProperty(name = "qits.projects.refinement-image-version-override")
+  Optional<String> imageVersionOverride;
 
   String image() {
-    return imageRepo + ":" + imageVersion;
+    return imageRepo + ":" + imageVersion();
   }
 
   /**
@@ -89,9 +121,26 @@ public class RefinementContainerFactory {
     return imageRepo;
   }
 
-  /** The refinement image's calver tag; see {@link #imageRepo()}. */
+  /**
+   * The refinement image's calver tag — <b>the pinned dependency's version, unless an operator has
+   * deliberately overridden it</b>; see {@link #imageRepo()} for why the two halves are readable
+   * apart, and {@link #imageVersionOverride} for why the pin is the default and not the other way
+   * round.
+   *
+   * <p>One method rather than a field resolved at injection, because {@code GET
+   * /projects/api/pins} and every container start have to give the same answer, and a second read
+   * of the key somewhere else is exactly how they would stop doing so — which is why {@link
+   * #image()} calls this rather than reading a field.
+   *
+   * <p><b>The blank filter is load-bearing and is not tidiness.</b> SmallRye maps {@code
+   * QITS_PROJECTS_REFINEMENT_IMAGE_VERSION_OVERRIDE} onto this key, and a deployment template that
+   * renders the variable with nothing to put in it produces a <em>present, empty</em> value rather
+   * than an absent one. Taken literally that composes {@code …/qits/workspace:} — a reference with
+   * no tag — and fails every container launch, on a deployment whose only mistake was rendering an
+   * empty template line. Empty means unset here, which is the only reading that makes sense of it.
+   */
   public String imageVersion() {
-    return imageVersion;
+    return imageVersionOverride.filter(value -> !value.isBlank()).orElse(WorkspaceImage.VERSION);
   }
 
   /** The same shared network, credential volume and build caches the agent factory mounts. */

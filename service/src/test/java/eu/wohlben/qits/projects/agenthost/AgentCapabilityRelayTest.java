@@ -167,11 +167,11 @@ class AgentCapabilityRelayTest {
            "authenticated":false,"authDetail":"","probeFailed":false,"probeDetail":""}]}
         """);
 
+    // The host's own pin, which is the jar this reactor depends on rather than a configuration key
+    // — the factory resolves exactly this and the relay asks the factory, so the two cannot drift.
     Optional<AgentHarnessCapability> row =
         capabilities.find(
-            "KIMI",
-            org.eclipse.microprofile.config.ConfigProvider.getConfig()
-                .getValue("qits.projects.agent-image-version", String.class));
+            "KIMI", eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage.VERSION);
     assertTrue(row.isPresent(), "keyed on the host's own image pin rather than on the empty string");
     assertEquals("project-agent/" + PROJECT_ID, row.get().reportedBy);
     assertFalse(row.get().effortSupported, "Kimi has no effort concept and the report said so");

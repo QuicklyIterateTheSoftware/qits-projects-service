@@ -5,20 +5,26 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
+import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
+import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceImage;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.path.json.JsonPath;
 import java.util.List;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.junit.jupiter.api.Test;
 
 /**
  * The launch-pin route — what a container start by this process would pull.
  *
- * <p>The versions are read out of config rather than written down here: they are a release train's
- * to move, and a literal would fail the suite on the next bump while proving nothing. What is
- * asserted about them is that the answer carries <em>this process's</em> value. The <b>image</b>
- * halves are literals, because the registry-relative spelling is the contract while the configured
- * value is fully qualified.
+ * <p><b>Neither version is written down here and neither is read from config any more</b>, which is
+ * itself the change under test. Both are pom pins carried by a released jar — {@link
+ * ProjectAgentImage#VERSION} off {@code qits-projects-daemon-protocol} and {@link
+ * WorkspaceImage#VERSION} off {@code qits-workspace-daemon-protocol} — and each is also the tag of
+ * the image that release pushed. So the honest assertion is that the route answers those same two
+ * constants: a literal would fail the suite on the next bump while proving nothing, and a {@code
+ * @ConfigProperty} read of either retired key would assert against a key nothing declares any more,
+ * which fails the suite on configuration rather than on behaviour. The <b>image</b> halves stay
+ * literals, because the registry-relative spelling is the contract while the configured repo value
+ * is fully qualified.
  *
  * <p>The omission rules are exercised against {@link PinsController#pins} directly: a blank version
  * is a config state, and reaching it through a {@code @TestProfile} would cost a Quarkus restart to
@@ -27,11 +33,15 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 public class PinsControllerTest {
 
-  @ConfigProperty(name = "qits.projects.agent-image-version")
-  String agentImageVersion;
+  /**
+   * The two pins the route answers, as <b>constants</b> rather than config reads. Each is the
+   * version of a released daemon-protocol jar this reactor pins, and that version is also the image
+   * tag the matching container starts from — so the constant moves exactly when the pom line moves,
+   * which is what makes this assertion survive a bump without being rewritten.
+   */
+  static final String agentImageVersion = ProjectAgentImage.VERSION;
 
-  @ConfigProperty(name = "qits.projects.refinement-image-version")
-  String refinementImageVersion;
+  static final String refinementImageVersion = WorkspaceImage.VERSION;
 
   @Test
   public void theTwoLaunchImagesAnswerRegistryRelativeAndInImageOrder() {
