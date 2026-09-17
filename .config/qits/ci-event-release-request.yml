@@ -230,17 +230,31 @@ steps:
   # (failsafe orders by FQCN within a profile group), and it is load-bearing: the bootstrap IT owns
   # the run's first bearer and the JWKS fetch that follows it. See AGENTS.md § Userflows.
   #
-  # `ProjectAgentDaemonPinIT` IS ON THE LIST BEFORE THE CLASS EXISTS, AND THAT IS THE POINT. This
-  # recipe is read from the repository's `main`, never from the fold under review, so a change that
-  # adds a test to this list cannot be gated by that test: the name has to land in one release and
-  # the class in the next, or the pin test ships having never gated anything — which is the exact
-  # shape of thing the ticket it belongs to exists to remove. `-Dsurefire.failIfNoSpecifiedTests=false`
-  # above is what makes the in-between state green rather than red.
+  # THE LIST IS NOT DERIVED — SAID TWICE BECAUSE IT NOW GATES TWO IMAGE PINS. A test not named on
+  # `-Dit.test` is written and never runs here, silently, and there is no wildcard to fall back on.
+  # `RefinementDaemonPinIT` AND `ProjectAgentDaemonPinIT` MUST BOTH STAY ON IT. They are the gates
+  # that prove the two image pins this repository carries — `qits/workspace`, which a refinement
+  # container runs (WorkspaceImage.VERSION off the pinned qits-workspace-daemon-protocol), and
+  # `qits/project-agent`, which a project's agent container runs (ProjectAgentImage.VERSION off the
+  # pinned qits-projects-daemon-protocol). Neither version is a configuration entry somebody's
+  # release rewrote any more, and each test is what makes its pin mean something: it downloads the
+  # daemon at exactly that version, runs it as a process against a stand-in host and round-trips the
+  # real protocol, so a daemon bump that breaks the wire fails THIS fold rather than the next live
+  # refinement or the next live agent container. Drop either from this line and that pin is back to
+  # being an untested number. Both need the artifacts origin, which the two lines below already
+  # export and pass (each derives the daemon store by cutting `qits.maven.repository.url` at
+  # `/artifacts/`); with no origin at all they skip, which is the one state a CI step is never in.
   #
-  # It is LAST rather than folded into the order above because it is not in that group at all: it is
-  # plain JUnit with no `@TestProfile`, launches nothing, presents no bearer, and starts the pinned
-  # qits-projects-daemon as a process to round-trip the control-socket protocol. The first-bearer
-  # rule applies to the five story classes and only to them.
+  # THEY ARE LAST RATHER THAN IN FQCN POSITION because neither is in that group at all: both are
+  # plain JUnit with no `@TestProfile`, boot no Quarkus application, launch nothing and present no
+  # bearer. The first-bearer rule above applies to the five story classes and only to them, so where
+  # these two sit on this line decides nothing.
+  #
+  # A NAME LANDS ONE RELEASE BEFORE ITS CLASS GATES ANYTHING, and that is not avoidable. This recipe
+  # is read from the repository's `main`, never from the fold under review, so the release that adds
+  # a test to this list runs the list as `main` had it — `-Dsurefire.failIfNoSpecifiedTests=false`
+  # above is what makes that in-between state green rather than red, and the test gates from the
+  # next fold onward. Budget two releases per edit to this line.
   #
   # `-Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false` keeps the unit suites out of this run:
   # the gating step's image build compiles and packages this repository, this half is about the
@@ -263,7 +277,7 @@ steps:
         -Dquarkus.quinoa=false \
         -Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false \
         -DskipITs=false \
-        "-Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,ProjectAgentDaemonPinIT"
+        "-Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,RefinementDaemonPinIT,ProjectAgentDaemonPinIT"
 
       # `-C … .` so the story directories are the bundle's roots — nesting one directory deep would
       # put it in every served URL.

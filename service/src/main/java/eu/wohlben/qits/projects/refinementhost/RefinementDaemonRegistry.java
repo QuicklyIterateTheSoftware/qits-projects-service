@@ -7,6 +7,7 @@ import eu.wohlben.qits.workspacedaemon.protocol.CommandChunk;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonLog;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonMessage;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonProtocol;
+import eu.wohlben.qits.workspacedaemon.protocol.EditorState;
 import eu.wohlben.qits.workspacedaemon.protocol.GitStatus;
 import eu.wohlben.qits.workspacedaemon.protocol.Heartbeat;
 import eu.wohlben.qits.workspacedaemon.protocol.Hello;
@@ -247,6 +248,14 @@ public class RefinementDaemonRegistry {
       case CommandChunk chunk -> onCommandChunk(refinementId, chunk);
       case Provisioned provisioned -> onProvisioned(refinementId, provisioned);
       case ProvisionFailed failed -> onProvisionFailed(refinementId, failed);
+      case EditorState ignored -> {
+        // Deliberately nothing. The frame announces the supervised web editor's lifecycle, and a
+        // refinement host has no editor surface to gate with it: there is no editor proxy and no
+        // splash here, so the state has nothing to answer. It arrives at all only because the same
+        // qits-workspace-daemon image serves qits-workspaces, where it IS the capability
+        // announcement. Named explicitly rather than left to the default arm so that dropping it is
+        // a decision this file records, not an accident of the catch-all.
+      }
       // Everything else — bootstrap frames, service transitions, config views, command exits,
       // echoes of host->daemon requests — is dropped rather than treated as an error.
       default -> LOG.tracef("dropped a %s frame for refinement %s", message.getClass(), refinementId);
