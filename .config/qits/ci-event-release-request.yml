@@ -230,6 +230,18 @@ steps:
   # (failsafe orders by FQCN within a profile group), and it is load-bearing: the bootstrap IT owns
   # the run's first bearer and the JWKS fetch that follows it. See AGENTS.md § Userflows.
   #
+  # `ProjectAgentDaemonPinIT` IS ON THE LIST BEFORE THE CLASS EXISTS, AND THAT IS THE POINT. This
+  # recipe is read from the repository's `main`, never from the fold under review, so a change that
+  # adds a test to this list cannot be gated by that test: the name has to land in one release and
+  # the class in the next, or the pin test ships having never gated anything — which is the exact
+  # shape of thing the ticket it belongs to exists to remove. `-Dsurefire.failIfNoSpecifiedTests=false`
+  # above is what makes the in-between state green rather than red.
+  #
+  # It is LAST rather than folded into the order above because it is not in that group at all: it is
+  # plain JUnit with no `@TestProfile`, launches nothing, presents no bearer, and starts the pinned
+  # qits-projects-daemon as a process to round-trip the control-socket protocol. The first-bearer
+  # rule applies to the five story classes and only to them.
+  #
   # `-Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false` keeps the unit suites out of this run:
   # the gating step's image build compiles and packages this repository, this half is about the
   # stories, and running the unit suites twice per fold buys nothing.
@@ -251,7 +263,7 @@ steps:
         -Dquarkus.quinoa=false \
         -Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false \
         -DskipITs=false \
-        "-Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT"
+        "-Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,ProjectAgentDaemonPinIT"
 
       # `-C … .` so the story directories are the bundle's roots — nesting one directory deep would
       # put it in every served URL.
