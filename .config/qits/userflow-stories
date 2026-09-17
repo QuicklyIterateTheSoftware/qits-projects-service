@@ -1,5 +1,31 @@
+# The QA verify's -Dit.test, one class per line. THE LIST IS NOT DERIVED: a class this file stops
+# naming is written and never runs, silently, and there is no wildcard to fall back on — `*IT` would
+# pull PackagedSurfaceIT back in, which does real git pushes through a CGI fixture and a
+# pseudo-terminal and is why skipITs is true in the root pom to begin with.
+#
+# The five story classes come first and in this order, which is the order failsafe runs them in
+# anyway (it orders by FQCN within a @TestProfile group) and is load-bearing: they share one profile,
+# TokenValidationBootstrapIT.PackagedWithMockIdp, so the group is one launched process and one
+# embedded postgres, and the bootstrap IT owns the run's first bearer and the JWKS fetch after it.
+# See AGENTS.md § Userflows.
+
 TokenValidationBootstrapIT
 ProjectCatalogueIT
 EpicPlanningIT
 AccessRefusalIT
 CatalogueReviewIT
+
+# The two pin tests, which are not stories and not in that profile group at all: plain JUnit, no
+# @TestProfile, no Quarkus application, no bearer, so their position here decides nothing. They are
+# the gates that make this repository's two image pins mean something — qits/workspace, which a
+# refinement container starts (WorkspaceImage.VERSION off the pinned qits-workspace-daemon-protocol),
+# and qits/project-agent, which a project's agent container starts (ProjectAgentImage.VERSION off the
+# pinned qits-projects-daemon-protocol). Each downloads the daemon at exactly the pinned version,
+# runs it as a process against a stand-in host and round-trips the real protocol, so a daemon bump
+# that breaks the wire fails THIS fold rather than the next live refinement or agent container. Drop
+# either line and its pin is an untested number again. Both need the artifacts origin, which they
+# derive by cutting qits.maven.repository.url at /artifacts/ — the archetype's verify exports and
+# passes it; with no origin at all they skip, which is the one state a CI step is never in.
+
+RefinementDaemonPinIT
+ProjectAgentDaemonPinIT
