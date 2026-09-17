@@ -14,11 +14,13 @@ import eu.wohlben.qits.containers.client.ContainersWire.SharedMount;
 import eu.wohlben.qits.containers.client.ContainersWire.Spec;
 import eu.wohlben.qits.containers.client.ContainersWire.VolumeMount;
 import eu.wohlben.qits.projects.dto.AgentConfigurationDocumentDto;
+import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.Test;
 
@@ -46,16 +48,21 @@ class AgentContainerFactoryTest {
   private static final String PROJECT_ID = "11111111-2222-3333-4444-555555555555";
 
   /**
-   * Composed from the two shipped keys rather than written down. The version half is a pin the
-   * deployer overrides at runtime (from qits-configuration), so a literal here would go red on a
-   * bump that is working exactly as intended. What is still under test is that the composed value is
-   * a qualified, pinned reference at all. {@link #composesTheReferenceFromRepoAndVersion} pins the
-   * exact default; this asserts the factory joins the same halves the config carries.
+   * Composed from the two halves the factory composes from, rather than written down. The version
+   * half is {@link ProjectAgentImage#VERSION} — the released jar this reactor pins, whose version IS
+   * the image tag — so a literal here would go red on a pin bump that is working exactly as
+   * intended. What is still under test is that the composed value is a qualified, pinned reference
+   * at all. {@link #composesTheReferenceFromRepoAndTheJarsVersion} pins the joining; this asserts the
+   * factory joins the same halves the shipped configuration and the pin carry.
+   *
+   * <p>The repo half is still a config read, because it still is configuration: the pin carries
+   * {@link ProjectAgentImage#AGENT_REPOSITORY} unqualified and the registry host is this reader's to
+   * supply.
    */
   private static final String IMAGE =
       ConfigProvider.getConfig().getValue("qits.projects.agent-image-repo", String.class)
           + ":"
-          + ConfigProvider.getConfig().getValue("qits.projects.agent-image-version", String.class);
+          + ProjectAgentImage.VERSION;
 
   @Inject AgentContainerFactory factory;
 
@@ -96,33 +103,57 @@ class AgentContainerFactoryTest {
   }
 
   /**
-   * The two keys compose to the fully qualified default the deployment starts with. This pins the
-   * shipped {@code application.properties} default exactly, because the version half no longer moves
-   * in this file — the deployer overrides it from qits-configuration — so the default is now stable.
+   * The shipped repo key and the pinned jar's version compose to the fully qualified reference the
+   * deployment starts with.
+   *
+   * <p>The repo half is a literal because it is the shipped default and the registry spelling is the
+   * contract; the version half is <b>not</b>, because it moves whenever qits-maintenance bumps
+   * {@code qits.projects-daemon-protocol.version} — and a literal there would fail the suite on
+   * exactly the change this whole arrangement exists to make routine. What the literal used to pin
+   * ({@code 2026.820.154053}) was an {@code application.properties} default that had aged past the
+   * registry's retention; there is no such value to pin any more.
    */
   @Test
-  void composesTheReferenceFromRepoAndVersion() {
+  void composesTheReferenceFromRepoAndTheJarsVersion() {
     assertEquals(
-        "registry.dev.localhost:8080/qits/project-agent:2026.820.154053",
+        "registry.dev.localhost:8080/qits/project-agent:" + ProjectAgentImage.VERSION,
         spec().image(),
-        "repo and version joined as <repo>:<version>, fully qualified");
+        "repo and the pinned jar's version joined as <repo>:<version>, fully qualified");
   }
 
   /**
-   * The deployer injects {@code QITS_PROJECTS_AGENT_IMAGE_VERSION}, which SmallRye maps onto {@code
-   * qits.projects.agent-image-version}, and the injected value wins over the default. A plain
-   * instance stands in for that injection so the override is exercised without rebooting the app:
-   * the factory composes whatever version it is handed against the committed repo, staying fully
-   * qualified.
+   * The emergency hatch, and the state it is shipped in.
+   *
+   * <p>{@code qits.projects.agent-image-version-override} is what a deployment sets to start a
+   * different tag than the pin; absent — and blank, which is what a deployment rendering {@code KEY=}
+   * produces — the pin wins. That pair is the whole contract, and it replaced a much worse one:
+   * the key used to be {@code qits.projects.agent-image-version}, which is exactly the key
+   * qits-configuration's release listener writes on every image release, so the "override" was
+   * overwritten by the automatic pin on every deploy. A plain instance stands in for the injection,
+   * so both arms are exercised without rebooting the app.
    */
   @Test
-  void theInjectedVersionWinsOverTheDefault() {
+  void theOverrideWinsWhenSetAndThePinWinsWhenItIsNot() {
     AgentContainerFactory overridden = new AgentContainerFactory();
     overridden.imageRepo = "registry.dev.localhost:8080/qits/project-agent";
-    overridden.imageVersion = "2026.999.000000";
+    overridden.imageVersionOverride = Optional.of("2026.999.000000");
 
+    assertEquals("2026.999.000000", overridden.imageVersion());
     assertEquals(
         "registry.dev.localhost:8080/qits/project-agent:2026.999.000000", overridden.image());
+
+    AgentContainerFactory unset = new AgentContainerFactory();
+    unset.imageRepo = "registry.dev.localhost:8080/qits/project-agent";
+    unset.imageVersionOverride = Optional.empty();
+    assertEquals(ProjectAgentImage.VERSION, unset.imageVersion(), "absent is the shipped state");
+
+    AgentContainerFactory blank = new AgentContainerFactory();
+    blank.imageRepo = "registry.dev.localhost:8080/qits/project-agent";
+    blank.imageVersionOverride = Optional.of("   ");
+    assertEquals(
+        ProjectAgentImage.VERSION,
+        blank.imageVersion(),
+        "a deployment rendering KEY= is a present, empty value and must not become the image tag");
   }
 
   /**

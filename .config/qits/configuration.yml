@@ -33,11 +33,29 @@
 #   * QUARKUS_OIDC_CLIENT_GRANT_OPTIONS_CLIENT_AUDIENCE. The `qits` client asks for the constant
 #     `qits-platform`; this key only reaches the unnamed default client, which nothing injects.
 #   * QITS_RESOURCE_*. The deployer injects those from its resource registry; they are never entries.
+#   * env.QITS_PROJECTS_AGENT_IMAGE_VERSION, REMOVED 2026-09-17 with the key it named.
+#     The decision, since both answers are a kind of lie and only one of them is this file's:
+#     the agent image version is a POM PIN now (eu.wohlben.qits:qits-projects-daemon-protocol,
+#     whose version IS the qits/project-agent tag), so this service does not read the key any more.
+#     The rule at the top of this file is what settles it — the file lists every key qits-projects
+#     STILL READS and nothing else, and "adding an unread one would hide a leftover" is exactly what
+#     keeping a tombstone declaration would do. The stored entry is real, it is in every deployment's
+#     environment, and nothing on this platform deletes one; leaving it declared would keep the
+#     configuration UI from ever offering to. So it goes, the entry reads `orphaned` over there,
+#     and that flag means precisely what is true: no declaration accounts for this key. It is not
+#     silent either — agenthost/RetiredImageVersionKeys WARNs once at boot naming the key, its stale
+#     value and the version being started instead, so the residue is a work item rather than a trap.
+#     The refinement image's key is untouched: qits.projects.refinement-image-version is still read.
 #
 # NO serviceAddress AND NO packageVersion, on purpose. Both change what the container gets, so both
-# belong to a later step. The two image-version keys are `string` here: qits-configuration's
-# `ImagePins` list writes them on every release. Declaring them packageVersion is that list's own
-# migration, and it must remove the rows from `ImagePins.AUTHORED` in the same wave.
+# belong to a later step. ONE image-version key is left and it is `string` here:
+# qits-configuration's `ImagePins` list writes QITS_PROJECTS_REFINEMENT_IMAGE_VERSION on every
+# qits/workspace release. Declaring it packageVersion is that list's own migration, and it must
+# remove the row from `ImagePins.AUTHORED` in the same wave.
+#
+# There were two until 2026-09-17. The agent one is gone from this file because the key is gone from
+# the code — see "LEFT OUT ON PURPOSE" below — and `ImagePins.AUTHORED` still writes it, which is
+# what the `orphaned` flag over there is for.
 #
 # SECRETS are declared by name only. Their values live in qits-configuration and never here.
 
@@ -66,9 +84,9 @@ keys:
     type: string
     description: "The git base URL, with the /git path, that an agent container clones the project's wrapper from."
 
-  env.QITS_PROJECTS_AGENT_IMAGE_VERSION:
+  env.QITS_PROJECTS_AGENT_IMAGE_VERSION_OVERRIDE:
     type: string
-    description: "The qits/project-agent image version an agent container starts from. Written by qits-configuration's ImagePins on each release."
+    description: "Emergency hatch: start a qits/project-agent tag other than the one this release pins (eu.wohlben.qits:qits-projects-daemon-protocol, proven by ProjectAgentDaemonPinIT). Shipped and normally UNSET — a deployment carrying a value is running an image nothing gated. Declared because it is read; the retired QITS_PROJECTS_AGENT_IMAGE_VERSION is not, and is meant to show as orphaned."
 
   env.QITS_PROJECTS_REFINEMENT_IMAGE_VERSION:
     type: string

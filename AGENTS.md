@@ -1086,11 +1086,43 @@ creation, and only a container recreate re-injects them:
     control socket   ws://<host>:<port>/projects/daemon/<projectId>
     proxy prefix     /projects/container/<projectId>/
 
-Neither is a literal in this tree. Both live in the vendored `DaemonProtocol` constants and are
-asserted on both sides by `DaemonCodecTest`, which is also why `projects-daemon-protocol/` exists
-here at all: it is a **source copy** of the daemon repo's module, same java package, different
-artifactId. A protocol change is three edits in order — the record and the constants in the daemon
-repo, `DaemonCodecTest` there, then the same files here — and it bumps `CAPABILITY_VERSION`.
+Neither is a literal in this tree. Both live in `DaemonProtocol`'s constants, which arrive here in
+`eu.wohlben.qits:qits-projects-daemon-protocol` — **a released dependency, not a source copy**. It
+was a vendored module (`projects-daemon-protocol/`) until 2026-09-17, on the grounds that the daemon
+repo published it nowhere; it does now, and the copy is deleted.
+
+**Its version IS the agent image pin, which is why the change was worth making.** That artifact's
+`${project.version}` is the tag both of qits-projects-daemon's images are pushed under, so
+`ProjectAgentImage.VERSION` is the `qits/project-agent` tag `AgentContainerFactory` starts containers
+from. The pin is one line — `qits.projects-daemon-protocol.version` in the root pom, written as a
+single property reference so qits-maintenance's bump train can move it — and moving it moves which
+image the next agent runs. Before, the version arrived as `env.QITS_PROJECTS_AGENT_IMAGE_VERSION`,
+rewritten by qits-configuration's release listener the moment an image was pushed: a new daemon
+reached the next real refinement run with the pair never having been built, let alone tested,
+together. Four rules follow and each one is load-bearing:
+
+- **A protocol change is a version bump, gated here.** The record and the constants change in the
+  daemon repo, `DaemonCodecTest` changes there, that repo releases, and the new version arrives here
+  as a pom edit on a branch — reviewed through this repository's own release request. There is no
+  second copy to keep in step and `CAPABILITY_VERSION` still bumps when the backend must branch.
+- **`ProjectAgentDaemonPinIT` is what makes the pin mean something.** It downloads the pinned
+  daemon's runnable uber-jar from qits-artifacts, starts it against a stand-in host, and asserts the
+  daemon that dials home announces exactly `ProjectAgentImage.VERSION` and still round-trips a
+  `RunCommand`. **It must stay named in `.config/qits/ci-event-release-request.yml`'s `-Dit.test`
+  list** — that list is not derived and carries no `*IT` wildcard, so a class left off it is written
+  and never run, silently.
+- **Deleting the module was the load-bearing half of adopting the jar.** The published coordinate is
+  exactly the one the vendored module occupied, and Maven resolves in-reactor before it resolves a
+  repository — so while that module existed the pin was silently shadowed and a green build proved
+  the opposite of what it claimed.
+- **`qits.projects.agent-image-version-override` is an emergency hatch and must stay unset.** A
+  deployment carrying one is running an image nothing here gated. It is spelled `-override` because
+  the old name is the name the release listener writes, so override and automatic pin were one
+  string and the automatic one won every deploy; nothing on this platform deletes a configuration
+  entry, so a *different name* is the only thing that makes the residue stop deciding.
+  `agenthost/RetiredImageVersionKeys` warns once at boot when the old key is still set — a WARN and
+  never a refusal, because failing to start over an entry nobody can delete turns a tidy-up into an
+  outage.
 
 **The daemon has no address.** `ProjectsApi` binds `127.0.0.1` from capability 1, so there is no
 direct branch anywhere: qits sends an `OpenStream` over the control socket, the daemon dials *out*
@@ -1580,9 +1612,15 @@ One container per REFINING epic — the refining route's whole backend, which us
 qits-workspaces workspace on a `refining/*` branch (epic refinement-improvements, part 2). The host
 side is `service/…/refinementhost/`; the container runs the WORKSPACE image and daemon, unchanged —
 `qits-workspace-daemon` dials home to whatever `QITS_WORKSPACE_DAEMON_URL` names, and this service
-is that home now. `workspace-daemon-protocol/` is that daemon's wire contract, vendored beside
-`projects-daemon-protocol/` (two daemons, two vocabularies, two modules; the codec test travels with
-each).
+is that home now. `workspace-daemon-protocol/` is that daemon's wire contract, **vendored** — a
+source copy of qits-workspace-daemon's module, same java package, different artifactId, with
+`DaemonCodecTest` travelling beside it so a drift in either repo fails a build rather than a socket.
+A protocol change there is three edits in order: the record and the constants in the daemon repo,
+the codec test there, then the same files here. It is the last vendored contract in this tree — the
+project agent's went to a released dependency (see "Project agent harness"), and this one has not,
+because **nothing here starts a workspace image off its version**: the refinement image pin is still
+`qits.projects.refinement-image-version`, followed through qits-configuration, which is a different
+ticket's subject.
 
 The shape deliberately mirrors the project-agent harness one section up — control socket, registry,
 reverse tunnel, verbatim proxy with the hand-rolled websocket upgrade — on refinement's own paths,
@@ -2185,7 +2223,7 @@ Anything that puts this route behind a poll faster than the window is polling th
 
     ./mvnw -pl service -am -DskipITs=false -Dquarkus.quinoa=false verify \
       -Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false \
-      -Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT
+      -Dit.test=TokenValidationBootstrapIT,ProjectCatalogueIT,EpicPlanningIT,AccessRefusalIT,CatalogueReviewIT,ProjectAgentDaemonPinIT
 
 `-Dit.test` takes commas; `-Dtest=SKIPNONE` keeps the unit suite out of an IT-only run (run it
 separately before committing — the story classes share `domain`'s fixtures). `skipITs` stays `true`
@@ -2193,7 +2231,15 @@ in the root pom because `PackagedSurfaceIT` is heavyweight, so the opt-in is per
 The userflow half of `.config/qits/ci-event-release-request.yml` runs exactly this list at every
 release-request fold and publishes the bundle as the docs site `@userflows/qits-projects`. It
 declares `gating: false`, so a red story shows the run red without holding the fold at the release
-gate; **a new story class has to be added to that list**, or it is written and never run.
+gate; **a new class has to be added to that list**, or it is written and never run.
+
+**`ProjectAgentDaemonPinIT` is on that list and is not a story.** It is the agent image pin's gate —
+plain JUnit, no `@TestProfile`, no launched qits-projects — and it rides this one command because the
+list is `-Dit.test` and there is only one. Two things about it are worth knowing before touching
+either: it needs `QITS_MAVEN_REPOSITORY_URL` **in the environment** (failsafe forks a JVM that does
+not inherit `-D`, so the property alone reaches a developer's run and not a CI step's), and it is the
+one entry on the list whose failure should hold the fold, since what it proves is that the image this
+release would start still speaks this reactor's protocol.
 
 ## What is deliberately absent
 

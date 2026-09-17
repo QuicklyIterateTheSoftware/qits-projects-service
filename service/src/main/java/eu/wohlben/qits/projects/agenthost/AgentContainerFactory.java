@@ -12,6 +12,7 @@ import eu.wohlben.qits.containers.client.ContainersWire.VolumeMount;
 import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.GitIdentity;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
+import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.nio.file.Files;
@@ -70,8 +71,8 @@ public class AgentContainerFactory {
   /**
    * The registry host and path of the image the per-project agent runs — the workspace toolchain
    * plus the daemon binary ({@code registry.dev.localhost:8080/qits/project-agent}). It is the fixed
-   * half of the reference: {@link #imageVersion} carries the calver tag, and {@link #image()} joins
-   * them as {@code <repo>:<version>}.
+   * half of the reference: {@link #imageVersion()} answers the calver tag, and {@link #image()}
+   * joins them as {@code <repo>:<version>}.
    *
    * <p><b>The registry host is part of the value.</b> A bare name would resolve against whatever is
    * lying in the host daemon's local image store — the {@code qits/project-agent:native} drift this
@@ -82,23 +83,41 @@ public class AgentContainerFactory {
   String imageRepo;
 
   /**
-   * The released calver the agent image is pinned to. Read from config, never a constant, because
-   * the deployer injects {@code QITS_PROJECTS_AGENT_IMAGE_VERSION} — sourced from qits-configuration,
-   * kept in step by the project-agent's own {@code SoftwareRelease} event — and SmallRye maps that
-   * env var onto this property automatically, so the injected value wins over the {@code
-   * application.properties} default.
+   * The emergency hatch over {@link ProjectAgentImage#VERSION}, and <b>shipped unset</b>. When it
+   * carries a non-blank value that version is started instead; otherwise the pinned one is.
+   *
+   * <h2>Why the key is called {@code …-version-override} and not what it used to be called</h2>
+   *
+   * <p>Until 2026-09-17 this was {@code qits.projects.agent-image-version}, read as a required
+   * {@code String} with a committed default — and that key is <b>exactly</b> the key
+   * qits-configuration's release listener writes into this deployment's environment on every
+   * {@code qits/project-agent} release. So "the operator's emergency override" and "the automatic
+   * pin" were one string, and the automatic one won on every deploy: there was no value an operator
+   * could set that the next image release would not overwrite.
+   *
+   * <p><b>Renaming is what makes the residue stop deciding, and no deletion is needed.</b> Nothing
+   * on this platform deletes a configuration entry — qits-configuration's own service reports an
+   * orphan and never cleans one up — and this service holds no credential that could. So the
+   * entries already written are still in every deployment's environment, and will be tomorrow. A
+   * *different name* is read by nobody, which is the only fix available from inside this
+   * repository. {@link RetiredImageVersionKeys} is what says so out loud at boot, once, so the
+   * residue becomes a work item rather than a trap.
+   *
+   * <p>{@code Optional<String>} rather than a {@code defaultValue}, because there is no default to
+   * ship: absent <em>is</em> the shipped state, and an empty {@code defaultValue} is a value SmallRye
+   * declines to resolve at all.
    */
-  @ConfigProperty(name = "qits.projects.agent-image-version")
-  String imageVersion;
+  @ConfigProperty(name = "qits.projects.agent-image-version-override")
+  Optional<String> imageVersionOverride;
 
   /**
    * The fully qualified, version-pinned image reference: {@code <repo>:<version>}. Composed rather
-   * than stored so the version half can be overridden at runtime by an env var while the registry
-   * host and path stay committed. The result is byte-identical in shape to the old single key —
-   * {@code registry.dev.localhost:8080/qits/project-agent:<calver>}.
+   * than stored so the registry host and path stay committed while the version half comes from the
+   * pin. The result is byte-identical in shape to the old single key — {@code
+   * registry.dev.localhost:8080/qits/project-agent:<calver>}.
    */
   String image() {
-    return imageRepo + ":" + imageVersion;
+    return imageRepo + ":" + imageVersion();
   }
 
   /**
@@ -113,9 +132,30 @@ public class AgentContainerFactory {
     return imageRepo;
   }
 
-  /** The agent image's calver tag; see {@link #imageRepo()}. */
+  /**
+   * The agent image's calver tag; see {@link #imageRepo()}.
+   *
+   * <p><b>It comes from the jar this reactor pins</b> — {@link ProjectAgentImage#VERSION}, whose
+   * value is the {@code ${project.version}} of {@code eu.wohlben.qits:qits-projects-daemon-protocol}
+   * and therefore the tag both of qits-projects-daemon's images were pushed under. The pom is the
+   * pin, the release request is where it is reviewed, and {@code ProjectAgentDaemonPinIT} is what
+   * proves the daemon inside that image still speaks this reactor's codec. {@link
+   * #imageVersionOverride} is the only thing that displaces it, and it is shipped unset.
+   *
+   * <p><b>A method, not a field resolved at injection, and that is the point of it.</b> {@code GET
+   * /projects/api/pins} publishes this value as what a launch would pull, {@link #image()} is what a
+   * launch actually pulls, and {@code AgentCapabilityRelay} keys a container's capability report on
+   * it — the three must give one answer or the pin is worthless. A second {@code @ConfigProperty}
+   * read of the override key somewhere else is exactly how two of them appear, and nothing would
+   * fail; one resolution, in one place, is what makes that unavailable rather than merely
+   * discouraged.
+   *
+   * <p>Blank counts as unset for the reason every override here does: SmallRye maps an environment
+   * variable onto the property, and a deployment that renders {@code KEY=} produces a present, empty
+   * value rather than an absent one — which would otherwise be started as the image tag {@code ""}.
+   */
   public String imageVersion() {
-    return imageVersion;
+    return imageVersionOverride.filter(version -> !version.isBlank()).orElse(ProjectAgentImage.VERSION);
   }
 
   /**
