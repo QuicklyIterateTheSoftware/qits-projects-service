@@ -97,6 +97,19 @@ import java.util.List;
  * on nothing — the last being a repository that configured no gate, which is releasable at once and
  * is not the same as unfinished.
  *
+ * <p><b>{@code pipeline} is the same release read as ONE pipeline of three phases</b> — QA, publish,
+ * deploy — with the gates above <em>placed</em> between them rather than decided again. It is
+ * additive and nothing about it is new: the phases are a mirror of qits-ci's own run rows and every
+ * gate in it carries the state {@code gates} already reports, so the two lists can never disagree
+ * and a caller finding them disagree has found a bug. It carries no pipeline status word and adds no
+ * request state, deliberately: what a release is waiting on is the first unfinished phase plus the
+ * gate in front of it, and a summarising word would be a third answer free to drift from both.
+ *
+ * <p><b>It is null for a request no phase run has been recorded for</b>, which is every request open
+ * across the cutover that put the phase word on qits-ci's events — and that is why {@code gates}
+ * keeps rendering unchanged for them. Null is "this pipeline cannot be drawn", never "this pipeline
+ * has no phases"; see {@link ReleasePipelineDto}.
+ *
  * <p>{@code repoName} is the repository's public name — null where it has none. It rides along
  * because a request read outside its repository's own page (the project-wide list) has nothing else
  * to name the repository with, and an opaque id is not a thing to show a person. The project list
@@ -130,4 +143,5 @@ public record ReleaseRequestDto(
     Instant mergedToMainAt,
     boolean retryable,
     Instant createdAt,
-    Instant updatedAt) {}
+    Instant updatedAt,
+    ReleasePipelineDto pipeline) {}

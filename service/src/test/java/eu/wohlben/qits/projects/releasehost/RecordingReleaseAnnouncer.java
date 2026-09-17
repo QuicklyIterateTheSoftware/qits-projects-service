@@ -15,7 +15,7 @@ import java.util.List;
 @ApplicationScoped
 public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
 
-  /** The seven payload fields, plus the time the envelope would carry. */
+  /** The eight payload fields, plus the time the envelope would carry. */
   public record Announced(
       String projectId,
       String repoId,
@@ -23,6 +23,7 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
       String branch,
       String version,
       String commitSha,
+      String releaseRequestId,
       Instant occurredAt,
       String priority) {}
 
@@ -44,10 +45,19 @@ public class RecordingReleaseAnnouncer implements ReleaseAnnouncer {
       String branch,
       String version,
       String commitSha,
+      String releaseRequestId,
       Instant occurredAt,
       String priority) {
     announced.add(
         new Announced(
-            projectId, repoId, repoName, branch, version, commitSha, occurredAt, priority));
+            projectId,
+            repoId,
+            repoName,
+            branch,
+            version,
+            commitSha,
+            releaseRequestId,
+            occurredAt,
+            priority));
   }
 }

@@ -98,6 +98,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       ProjectCreated.class,
       ProjectDeleted.class,
       BuildStatusListener.BuildVerdictPayload.class,
+      ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,
       EventEnvelope.class,
       EventFrame.class

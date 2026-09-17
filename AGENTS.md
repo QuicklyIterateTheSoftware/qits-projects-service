@@ -717,6 +717,129 @@ for it. Three consequences worth stating:
 `OPEN` (what a listing answers) and `UNRELEASED` (what may still be folded, added to or approved) are
 two different constants now, and mixing them up is the defect to watch for.
 
+### The same release read as one pipeline of three phases
+
+**A release is one pipeline and the gates above are what stands between its phases.** Nothing in
+this reading is a new fact: the same four kinds are resolved from the same files at the same revs
+and answered by the same paths, and what it adds is *placement* plus the position of the runs
+themselves. **A phase is a unit of work with a state and a rerun**, and exactly three things are
+one — a *step* inside a run is not, and neither is the `gating: false` half of a pipeline, which is
+part of the same run and has no rerun of its own.
+
+    P1 . QA        a qits-ci run at release/<id>@mergedSha
+      |  gates     CI, APPROVAL                                between = QA_PUBLISH
+    P2 . Publish   a qits-ci run at <version>@commitSha
+      |  gate      PUBLISH                                     between = PUBLISH_DEPLOY
+    P3 . Deploy    a qits-deployments deployment request
+      |  gate      DEPLOYMENT                                  between = DEPLOY_FINALIZED
+    -> FINALIZED
+
+**No release-request status was added and none may be.** `RELEASED` is *mid-pipeline* and
+`FINALIZED` is the end of all three, which is what the state machine already said. A phase's
+position is a fact about a run and a gate's answer is a fact about a gate, so a status word
+combining them would be a third answer free to disagree with both — and **a gate DELAYS rather than
+fails**, so there is no "pipeline failed" for a state to name. A red phase is a failed gate on a
+request that is still open.
+
+**`SCMRelease` carries `releaseRequestId` now**, the eighth field and additive on exactly
+`commitSha`'s terms: nullable, and `CanonicalJson`'s `NON_NULL` omits the key entirely when it is
+absent, so a replayed event from before this change keeps its exact shape. It is **the key the
+publish phase is recognised by**, and it replaces reading `release/<id>` out of `branch` —
+`deleteConsumedBranches` deletes that ref in the same operation that creates the tag, so the id is
+the durable half of the pair and parsing the convention off a ref that no longer resolves was never
+the key. `GitHostReleaseExecutor.announce` supplies it; `EventWireReflectionTest` pins the field
+list and the absent-key shape, which is the other end of qits-ci's own `ScmReleaseContractTest`.
+
+**The two run phases are a MIRROR, in `release_pipeline_run` (V24), and they decide nothing.**
+`bus/ReleasePipelineRunListener` is a **second** consumption beside `BuildStatusListener`, with its
+own consumer id (`projects-release-pipeline-run`, a new watermark) — and the split is the two
+events' own. That listener consumes `BuildSuccessful`/`BuildFailed`, on which qits-ci announces
+**terminal runs only**, which is exactly what makes every row of the build-status ledger a genuine
+verdict; this one consumes `BuildStatusChanged`, which is exhaustive over the run's own row, and
+`QUEUED`/`RUNNING` are precisely the states a live pipeline view is about. So the two want opposite
+halves of one run and neither event could have been widened into the other. **`BuildStatusListener`
+deliberately ignores the `phase` word** rather than storing it: binding it there would put one fact
+in two tables with two writers, and nothing about a verdict *about a commit* changes because of it.
+
+Four rules ride with the mirror:
+
+- **The correlation is derived and it is not a guess.** A `releaseRequestId` on the payload wins if
+  qits-ci ever carries one; otherwise a `RELEASE_REQUEST` run is matched by the exact inverse of
+  `ReleaseRequest.backingBranchOf` (the id is literally in the branch name), and a `RELEASE` run by
+  `released_tag_pending_merge` on `(repoId, tagName)` — the identical join
+  `ReleaseFinalization.onPublishVerdict` makes for the publish gate, reused so the phase row and the
+  gate can never disagree about which request a run belongs to. **A run correlating to nothing is
+  dropped quietly**: that is every ordinary build on the platform.
+- **Keyed on the run, not on `(request, phase)`**, because a phase can be re-run and collapsing the
+  runs in the schema would bake "the newest wins" into storage. The fold is the DTO's.
+- **`updated_at` is the frame's own `occurredAt` and it is the ordering fact.** A frame that is not
+  *strictly* newer than the row is a silent no-op, which is the whole of the convergence guarantee:
+  a catch-up page cannot walk a terminal run back into `RUNNING`.
+- **`phase` holds qits-ci's word** (`RELEASE_REQUEST`, `RELEASE`) and never the reader's (`QA`,
+  `PUBLISH`). The translation is `ReleasePipelineAssembler`'s, at the read, so a word this service
+  has never been taught is stored honestly and simply not drawn.
+
+**The block is `ReleaseRequestDto.pipeline`, and it is NULL where there is nothing to draw.** There
+is no backfill and none is possible — qits-ci began carrying the phase word on 2026-09-16 and
+nothing here records which historical run was which half of which release — so a request open
+across the cutover answers an **absent** block and its flat `gates` list renders exactly as it did.
+Absent is not empty: an empty block would claim the pipeline is known and has no phases. The flat
+list and the placed one come out of **one** evaluation (`ReleaseRequests.GateView`), which is why
+the placement lives in `gateReport` rather than in a second reader — two readings of one gate that
+shared no computation would be free to disagree, and a caller finding them disagree has found a bug.
+
+**Phase 3 is read live and it is the one phase over the network.** `control/DeploymentRequests` →
+`deploymenthost/HttpDeploymentRequests` asks qits-deployments' existing
+`GET /platform-deployments/api/deployment-requests?repoId=&version=`; **nothing was added over
+there**, no table and no event. Four answers must stay apart, and collapsing any two is the defect
+to watch for here:
+
+| what happened | what is drawn |
+| --- | --- |
+| unset address, unreachable, refused, any non-200, an unreadable body | a deploy phase in state `UNKNOWN` — "could not be asked" |
+| a 200 carrying an empty array | a deploy phase in state `PENDING` — asked, nothing owed yet |
+| the repository's decided gates carry no `DEPLOYMENT` | **two phases**, the third not drawn at all |
+| a list read | the phase is **absent** from the row, which is not the same claim as `UNKNOWN` |
+
+That last row is `ReleasePipelineAssembler.DeployReach`, and it is a parameter rather than a policy
+because the cost is the caller's: the far side's listing is keyed on the `(repoId, version)` **pair**
+and refuses a question naming only a repository, so a page of N released requests is N HTTP calls
+with nothing to batch — on the busiest read this service has. The single request a person opened
+passes `ASK`; every list passes `LIST_READ` and makes no call. **Nothing functional hangs off the
+read**: `DEPLOYMENT` is still closed by a `DeploymentActive` reaching `ReleaseFinalization` and by
+nothing else, and a phase and the gate behind it are two facts.
+
+**A phase can be run again, and the rerun decides nothing.**
+`POST /projects/api/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun`
+(`qits:admin` + `qits:system` — a rerun judges nothing, unlike approve/decline, so the sweeps and
+robots that already drive this surface may press it; `qits:agent` is deliberately not on the list).
+`QA` and `PUBLISH` go to qits-ci's `POST /ci/api/runs/rerun` with `{repoId, releaseRequestId, phase}`
+over `control/PipelinePhaseReruns` on the existing `ci-url`; `DEPLOY` re-posts qits-deployments'
+release intake over `control/DeploymentRedeploys`, which is the door a redeploy has always gone
+through and the only one that service has ever had (its intake names "an operator redeploys a
+version" as one of the two things it exists for and is exempt from the monotonic version collapse).
+No row is written, no state moves, no gate is re-decided and no event is published here — the new
+run reports on the bus exactly as the first one did, and the answer is the whole request read back.
+
+**Both rerun ports THROW, unlike every read hop in this service**, because somebody pressed a
+button: 503 with no address, 502 for the exchange. And **qits-ci's 409 reaches the caller with its
+message intact** — that the phase's newest run succeeded and its verdict was spent, that it has
+never run, that it is running right now — because that sentence is the fact the person pressing the
+button has not got, and "could not re-run that phase" would be strictly less than what was already
+known. Only two refusals are decided here, both about facts only this service holds: a request that
+has not released has no version to deploy, and a repository whose gate set is **known** and carries
+no `DEPLOYMENT` declares no deployment phase. An **unknown** gate set refuses neither.
+
+`qits.projects.release-requests.deployments-url` is **unset shipped** and is the whole of the third
+phase's configuration. The two doors on it want two different callers and getting that wrong is a
+silent 403: the listing is `qits:admin`/`qits:agent`, so `HttpDeploymentRequests` presents the
+forwarded `X-Qits-*` pair as `qits:agent` and **no machine bearer** (a platform service client
+carries `qits:system` and nothing else, fixed in qits-idp's `ClientRegistry`, so a bearer there is a
+guaranteed 403 this port would faithfully report as a permanent `UNKNOWN`); the intake is
+`qits:system` plus a machine-auth check, so `HttpDeploymentRedeploys` presents `IdpDeploymentsBearer`
+and falls back to the forwarded pair only where that client is disabled. Two doors of one service
+wanting two callers is why they are two classes, on top of the failure contracts being opposite.
+
 ## Epic lifecycle
 
 An epic is in one of four stored statuses (V3): `REFINING`, `IMPLEMENTATION`, `SUPERSEDED`,

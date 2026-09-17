@@ -326,6 +326,12 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
    * ReleasedTagPendingMerge.releasedSha} records, deliberately: three statements about one release
    * that a reader can join, where before this the bus half named a tag and no commit and a release
    * pipeline had to go and find the commit itself.
+   *
+   * <p>{@code release.requestId()} rides out beside it as the event's {@code releaseRequestId} — the
+   * key the publish phase of a release pipeline is recognised by. It is supplied here rather than
+   * left to be parsed back out of {@code backingBranch}: {@link #deleteConsumedBranches} has just
+   * deleted that ref, so {@code release/<id>} names nothing by the time a consumer reads the event,
+   * while the id itself still resolves against this service.
    */
   private void announce(Release release, String version, String tagged, Instant releasedAt) {
     if (!announcers.isResolvable()) {
@@ -341,6 +347,7 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
               release.backingBranch(),
               version,
               tagged,
+              release.requestId(),
               releasedAt,
               release.priority());
     } catch (RuntimeException e) {

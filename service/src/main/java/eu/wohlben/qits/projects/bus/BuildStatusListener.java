@@ -26,6 +26,16 @@ import org.jboss.logging.Logger;
  * wire. The cost — a rename over there is silent here — is the cost every cross-repo event contract
  * carries, and the listener test pins both names as literals so a change at least has to be a diff.
  *
+ * <p><b>The phase word rides these two events now, and this listener deliberately ignores it.</b>
+ * Since 2026-09-16 {@code BuildSuccessful}, {@code BuildFailed} and {@code BuildStatusChanged} all
+ * carry {@code phase} — {@code RELEASE_REQUEST} or {@code RELEASE}, absent for the ordinary run —
+ * saying which half of a release the run was. Nothing about a <em>verdict about a commit</em>
+ * changes because of it: the ledger's rows are what the release gate reads and the gate does not
+ * care which pipeline produced the green. The phase is mirrored by {@link
+ * ReleasePipelineRunListener} off the third event, where every transition arrives rather than only
+ * the terminal one, and that is the listener to add a field to if this service ever needs the word.
+ * Binding it here would put the same fact in two tables with two writers.
+ *
  * <p><b>What never arrives is part of the contract:</b> qits-ci announces terminal runs only, and
  * neither cancelled nor deduped-superseded ones — so every row written here is a genuine verdict
  * about a commit, and a commit with rows for every run and no failures among them is what the build

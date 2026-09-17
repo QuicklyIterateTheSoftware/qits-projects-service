@@ -51,6 +51,11 @@ public interface ReleaseAnnouncer {
    *     the version-bump commit, or the fold itself where nothing renders a version. Nullable, and
    *     an implementation must publish without it rather than refuse: it is the coordinate that lets
    *     a release pipeline check the released tree out, never a condition of the release.
+   * @param releaseRequestId the id of the release request that was released. <b>The key the publish
+   *     phase of a release pipeline is recognised by</b>, and it replaces reading {@code
+   *     release/<id>} out of {@code branch} above: that branch is deleted by the same operation that
+   *     creates the tag, so the id is the durable half of the pair. Nullable, and an implementation
+   *     publishes without it rather than refusing, like {@code commitSha}.
    * @param occurredAt when the tag was accepted, which is when the release happened
    * @param priority what this release was worth to whoever asked for it — the max over the
    *     request's named branch sources, computed at release time so a late escalation reaches the
@@ -65,6 +70,7 @@ public interface ReleaseAnnouncer {
       String branch,
       String version,
       String commitSha,
+      String releaseRequestId,
       Instant occurredAt,
       String priority);
 }

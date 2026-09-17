@@ -322,7 +322,7 @@ public class AutoReleaseTest {
         "the named source and the backing branch, and nothing else");
     assertFalse(gitHost.deletedBranches().contains("main"));
 
-    // 6. SCMRelease, the instant the tag was accepted, with the six payload fields.
+    // 6. SCMRelease, the instant the tag was accepted, with the eight payload fields.
     assertEquals(1, releases.announced().size());
     RecordingReleaseAnnouncer.Announced announced = releases.announced().get(0);
     assertEquals(projectId, announced.projectId());
@@ -340,6 +340,14 @@ public class AutoReleaseTest {
     // And what the release was worth: the ask's own value, ridden onto the event unchanged. MEDIUM
     // here because nothing stated one, which is the shape every release before this field had.
     assertEquals("MEDIUM", announced.priority());
+    // And the key the publish phase of the release pipeline is recognised by: the id of the request
+    // that was just released. Asserted against `id` and NOT against what `branch` spells, which is
+    // the whole point — `release/<id>` names a ref step 5 above has already deleted, so the id is
+    // the durable half of the pair and travels in its own field rather than being parsed back out.
+    assertEquals(
+        id,
+        announced.releaseRequestId(),
+        "the released request's own id reaches the announced event");
 
     // And this service's own half: the tag joins the repository's implicit source set until
     // something merges it to main, so every other open request is a superset of what is shipping.
@@ -388,6 +396,10 @@ public class AutoReleaseTest {
         releases.announced().get(0).commitSha(),
         "a stackless release has no commit before its tag, so the fold IS the checkout target —"
             + " the event carries one either way");
+    assertEquals(
+        id,
+        releases.announced().get(0).releaseRequestId(),
+        "and the publish phase's key rides out of every release, not only the ones that bump");
   }
 
   // ---------------------------------------------------------------------------------------------

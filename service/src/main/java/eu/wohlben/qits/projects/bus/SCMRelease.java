@@ -69,12 +69,25 @@ import java.util.UUID;
  * same absent key. <b>It reorders nothing today</b>: qits-ci transcribes it and qits-deployments
  * records it, both display-only, and the queue-ordering feature is what will act on it.
  *
+ * <p><b>{@code releaseRequestId} is the eighth, additive on exactly the same terms.</b> It is the id
+ * of the release request this tag came out of, and it is <b>the key the publish phase of a release
+ * pipeline is recognised by</b>: one release pipeline now runs in phases, and the phase that
+ * publishes the released tag has to be joinable back to the request that asked for it. It replaces
+ * reading {@code release/<id>} out of {@code branch} — a consumer that parsed the id out of that
+ * string was parsing a naming convention, and {@code branch} names a ref <em>qits-projects deletes
+ * in the same operation that creates the tag</em>. The id is the durable half of that pair, so it is
+ * the key rather than the branch string. Nullable, and {@code CanonicalJson}'s {@code NON_NULL}
+ * inclusion omits the key entirely when it is absent — a replayed event from before this change
+ * therefore keeps its exact shape, and a consumer that finds nothing falls back to what it did
+ * before rather than refusing.
+ *
  * <p><b>{@code eventId} and {@code occurredAt} are components and stay out of the payload.</b> The
  * library's canonical serializer excludes everything {@link QitsEvent} declares, and these two
  * accessors are those declarations — so identity and time travel in the envelope and the payload is
  * exactly the fields {@code branch}, {@code commitSha}, {@code priority}, {@code projectId}, {@code
- * repository}, {@code repositoryName}, {@code version}. Reading a payload back therefore yields a fresh id and a
- * null time, which is correct: a received event's identity and clock are the envelope's.
+ * releaseRequestId}, {@code repository}, {@code repositoryName}, {@code version}. Reading a payload
+ * back therefore yields a fresh id and a null time, which is correct: a received event's identity
+ * and clock are the envelope's.
  *
  * <p>It lives in {@code service/…/bus/} rather than a published vocabulary module, the {@link
  * RepositoryRenamed} ruling, and is registered in {@link EventWireReflection} — {@code CanonicalJson}
@@ -92,6 +105,12 @@ import java.util.UUID;
  *     checkoutable</b>: {@code (version, commitSha)} is a tag name and the commit it peels to, which
  *     is a clone target where {@code branch} is a deleted ref and {@code version} alone is not a
  *     commit.
+ * @param releaseRequestId the id of the release request this tag came out of, or null. <b>The key
+ *     the publish phase of a release pipeline is recognised by</b> — the phase that publishes a
+ *     released tag joins back to the request that asked for it by this id. It replaces reading
+ *     {@code release/<id>} out of {@code branch}: that branch is deleted by the same operation that
+ *     creates the tag, so the id is the durable half of the pair and parsing the convention out of a
+ *     ref that no longer exists was never the key.
  * @param occurredAt when the tag was accepted, which is when the release happened
  * @param priority what this release was worth to whoever asked for it — the release request's
  *     effective priority at release time, or null. Inert data: it is recorded downstream and orders
@@ -105,6 +124,7 @@ public record SCMRelease(
     String branch,
     String version,
     String commitSha,
+    String releaseRequestId,
     Instant occurredAt,
     String priority)
     implements QitsEvent {
@@ -123,6 +143,7 @@ public record SCMRelease(
       String branch,
       String version,
       String commitSha,
+      String releaseRequestId,
       Instant occurredAt,
       String priority) {
     this(
@@ -133,6 +154,7 @@ public record SCMRelease(
         branch,
         version,
         commitSha,
+        releaseRequestId,
         occurredAt,
         priority);
   }

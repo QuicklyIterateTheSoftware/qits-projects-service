@@ -77,13 +77,14 @@ public class EventWireReflectionTest {
             ProjectCreated.class,
             ProjectDeleted.class,
             BuildStatusListener.BuildVerdictPayload.class,
+            ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
             EventEnvelope.class,
             EventFrame.class),
         Set.of(registration.targets()),
-        "the four SCM records and the two bound consumption payloads in, RepositoryRenamed,"
+        "the four SCM records and the three bound consumption payloads in, RepositoryRenamed,"
             + " ReleaseRequestChanged, SCMRelease and the two project lifecycle events out, the PUT"
-            + " body, the frame — a fourteenth wire type means a line here");
+            + " body, the frame — a fifteenth wire type means a line here");
   }
 
   /**
@@ -154,22 +155,30 @@ public class EventWireReflectionTest {
    * ScmReleaseContractTest} over there declares a local record whose components are copied from this
    * one and runs it through the same {@code CanonicalJson}; nothing in either build can see the
    * other, so this assertion and that transcription are the two ends of the contract. A change here
-   * is a change there, in the same campaign — which {@code commitSha} was, and which {@code
-   * priority} is.
+   * is a change there, in the same campaign — which {@code commitSha} was, which {@code priority}
+   * is, and which {@code releaseRequestId} is.
    */
   @Test
   public void theReplicatedReleaseEventKeepsTheWireNameAndTheFiveFieldsItAlwaysHad() {
     assertEquals("SCMRelease", SCMRelease.class.getSimpleName());
     assertEquals(
         java.util.List.of(
-            "eventId", "projectId", "repository", "repositoryName", "branch", "version",
-            "commitSha", "occurredAt", "priority"),
+            "eventId",
+            "projectId",
+            "repository",
+            "repositoryName",
+            "branch",
+            "version",
+            "commitSha",
+            "releaseRequestId",
+            "occurredAt",
+            "priority"),
         java.util.Arrays.stream(SCMRelease.class.getRecordComponents())
             .map(java.lang.reflect.RecordComponent::getName)
             .toList(),
-        "the five qits-workspaces' record carried, in their order, plus commitSha and priority —"
-            + " eventId and occurredAt are components the canonical mix-in keeps out of the"
-            + " payload, leaving the seven a consumer selects on");
+        "the five qits-workspaces' record carried, in their order, plus commitSha,"
+            + " releaseRequestId and priority — eventId and occurredAt are components the canonical"
+            + " mix-in keeps out of the payload, leaving the eight a consumer selects on");
   }
 
   /**
@@ -194,6 +203,7 @@ public class EventWireReflectionTest {
                     "release/9f2c1a7e",
                     "2026.905.60215",
                     "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                    "9f2c1a7e",
                     java.time.Instant.parse("2026-09-05T06:02:15Z"),
                     "HIGH")));
     var without =
@@ -205,6 +215,7 @@ public class EventWireReflectionTest {
                     "qits-ci-service",
                     "release/9f2c1a7e",
                     "2026.905.60215",
+                    null,
                     null,
                     java.time.Instant.parse("2026-09-05T06:02:15Z"),
                     null)));
@@ -229,6 +240,63 @@ public class EventWireReflectionTest {
           withSha.get(field),
           without.get(field),
           field + " moved with commitSha, so the addition is not additive after all");
+    }
+  }
+
+  /**
+   * The same additive pin for {@code releaseRequestId}, the key the publish phase of a release
+   * pipeline is recognised by.
+   *
+   * <p>It exists because {@code branch} is not that key: it names the request's backing branch,
+   * {@code release/<id>}, and qits-projects <em>deletes that ref in the same operation that creates
+   * the tag</em> — so a consumer parsing the id back out of it is parsing a naming convention off a
+   * ref that no longer resolves. The id is the durable half of the pair and travels in its own
+   * field. Nullable on the same terms as the two before it: {@code NON_NULL} means an announcer with
+   * nothing to say, and a replay from before this field, are one and the same <b>absent key</b>
+   * rather than a null — a pre-change event keeps its exact shape.
+   */
+  @Test
+  public void aReleaseWithoutARequestIdIsAnAbsentKeyRatherThanANull() throws Exception {
+    var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    java.util.function.Function<String, com.fasterxml.jackson.databind.JsonNode> payload =
+        requestId -> {
+          try {
+            return mapper.readTree(
+                eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                    new SCMRelease(
+                        "p-1",
+                        "r-1",
+                        "qits-ci-service",
+                        "release/9f2c1a7e",
+                        "2026.905.60215",
+                        "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                        requestId,
+                        java.time.Instant.parse("2026-09-05T06:02:15Z"),
+                        "HIGH")));
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+        };
+
+    var withId = payload.apply("9f2c1a7e-1c2b-4d3e-8f90-abcdef012345");
+    var without = payload.apply(null);
+
+    assertEquals(
+        "9f2c1a7e-1c2b-4d3e-8f90-abcdef012345",
+        withId.get("releaseRequestId").asText(),
+        "the publish phase's key is on the wire in its own field, not spelled into the branch");
+    assertTrue(
+        !without.has("releaseRequestId"),
+        "NON_NULL: an absent request id is an absent KEY, which is exactly the shape a replay from"
+            + " before this field has");
+    for (String field :
+        java.util.List.of(
+            "branch", "commitSha", "priority", "projectId", "repository", "repositoryName",
+            "version")) {
+      assertEquals(
+          withId.get(field),
+          without.get(field),
+          field + " moved with releaseRequestId, so the addition is not additive after all");
     }
   }
 
@@ -330,6 +398,7 @@ public class EventWireReflectionTest {
       java.util.Map.of(
           "BuildSuccessful", BuildStatusListener.BuildVerdictPayload.class,
           "BuildFailed", BuildStatusListener.BuildVerdictPayload.class,
+          "BuildStatusChanged", ReleasePipelineRunListener.PipelineRunPayload.class,
           "DeploymentActive", DeploymentActiveListener.DeploymentActivePayload.class);
 
   @Test

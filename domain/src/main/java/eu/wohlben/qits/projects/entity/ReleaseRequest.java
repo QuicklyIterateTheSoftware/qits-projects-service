@@ -52,6 +52,18 @@ import java.util.UUID;
  * eu.wohlben.qits.projects.persistence.ReleaseRequestRepository#OPEN}, it is on the default listing,
  * and a red publish verdict is a failed gate on it rather than a state it leaves.
  *
+ * <p><b>This state machine IS the release pipeline's, and there is no second one.</b> A release is
+ * one pipeline of three phases with gates between them — the QA run at {@code
+ * release/<id>@mergedSha}, the publish run at {@code <version>@commitSha}, and the deployment of
+ * that version — and the states above are how far along it this request has got. So {@code RELEASED}
+ * is <b>mid-pipeline</b>: the QA phase passed and the tag was cut, and two phases are still to
+ * happen. {@code FINALIZED} is the end of all three. <b>No state was added for the pipeline and none
+ * may be</b>: a phase's own position is a fact about a qits-ci run (mirrored in {@code
+ * release_pipeline_run} for the surface to draw) and a gate's answer is a fact about a gate, so a
+ * status word combining them would be a third answer free to disagree with both — and a gate DELAYS
+ * rather than fails, which means there is no "pipeline failed" for a state to name in the first
+ * place. A red phase is a failed gate on a request that is still open.
+ *
  * <p><b>A RELEASED request is nonetheless past changing.</b> Its fold has been tagged, so nothing
  * re-folds it, no source may be added to it and nobody may approve it — see {@link
  * eu.wohlben.qits.projects.persistence.ReleaseRequestRepository#UNRELEASED}, which is the narrower

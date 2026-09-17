@@ -3,11 +3,22 @@ package eu.wohlben.qits.projects.dto;
 /**
  * One quality gate of a release request, and what it has to say about this request's current fold.
  *
- * <p><b>{@code kind} is {@code CI}, {@code APPROVAL} or {@code DEPLOYMENT}</b> — a word rather than a
- * closed set, like {@code state} and {@code priority} on the request beside it, because the
- * vocabulary may grow. A gate is in the list because the repository <em>configures</em> it: a CI
- * recipe, a deployments manifest, {@code manual-review: true}. A gate the repository does not
- * configure is simply absent and is never waited on.
+ * <p><b>{@code kind} is {@code CI}, {@code APPROVAL}, {@code PUBLISH} or {@code DEPLOYMENT}</b> — a
+ * word rather than a closed set, like {@code state} and {@code priority} on the request beside it,
+ * because the vocabulary may grow. A gate is in the list because the repository <em>configures</em>
+ * it: a CI recipe, a deployments manifest, {@code manual-review: true}, a released tree qits-ci says
+ * it runs a release for. A gate the repository does not configure is simply absent and is never
+ * waited on.
+ *
+ * <p>({@code PUBLISH} was missing from that sentence for longer than it was missing from the wire:
+ * the gate has been emitted since the request stopped ending at the tag, and this javadoc went on
+ * naming three kinds. A reader who trusted it would have treated a real gate as an unknown word.)
+ *
+ * <p><b>A gate DELAYS; it does not fail a release.</b> An unmet gate holds the request where it is —
+ * the next phase does not start and the request stays open — which is why a red publish verdict is a
+ * {@code FAILED} gate on a {@code RELEASED} request rather than a state the request moves to. The
+ * same four kinds are answered again on {@link ReleasePipelineGateDto}, <em>placed</em> between the
+ * phases they separate; that list is this one positioned and never a second evaluation.
  *
  * <p><b>{@code state} is {@code PENDING}, {@code PASSED}, {@code FAILED} or {@code UNKNOWN}.</b>
  *

@@ -22,6 +22,35 @@ import org.jboss.logging.Logger;
  * releasable at once — which is not the same as unreviewed, because pressing release is still a
  * person's act.
  *
+ * <h2>The four kinds are the gates BETWEEN a release's phases</h2>
+ *
+ * <p>A release is one pipeline of three phases, and each of these four kinds stands between two of
+ * them. <b>A phase is a unit of work with a state and a rerun</b> — the QA run at {@code
+ * release/<id>@mergedSha}, the publish run at {@code <version>@commitSha}, and the deployment of
+ * that version — and nothing else is one: a <em>step</em> inside a run is not, and neither is the
+ * {@code gating: false} half of a pipeline, which is part of the same run and has no rerun of its
+ * own. <b>A gate is the condition between two phases.</b>
+ *
+ * <pre>
+ *     P1 . QA        {@link Kind#CI}, {@link Kind#APPROVAL}   ->   P2 . Publish
+ *     P2 . Publish   {@link Kind#PUBLISH}                     ->   P3 . Deploy
+ *     P3 . Deploy    {@link Kind#DEPLOYMENT}                  ->   FINALIZED
+ * </pre>
+ *
+ * <p><b>Reading them that way changed nothing about them.</b> The same four kinds are resolved from
+ * the same files at the same revs and answered by the same paths; what the pipeline reading adds is
+ * <em>placement</em>, which lives in {@code ReleasePipelineAssembler} and re-decides none of this.
+ * In particular the publish gate's "read at the tag, never at {@code main}" rule below is unchanged
+ * and is not a consequence of the phase model — it is a consequence of which content the gate is
+ * about.
+ *
+ * <p><b>And a gate DELAYS rather than fails.</b> An unmet gate holds the release where it is: the
+ * next phase does not start and the request stays open. That is why a red {@link Kind#PUBLISH}
+ * verdict leaves the request {@code RELEASED} rather than moving it anywhere — the tag cannot be
+ * un-cut, so it is a failed gate on an open request, retried by {@code qits ci retry} — and why
+ * there is no release-request state for "the pipeline failed". The only thing that ends a release is
+ * every configured gate having passed and the tag reaching {@code main}.
+ *
  * <pre>
  *     .config/qits/ci-event-release-request.yml present  →  the CI gate
  *     .config/qits/release.yml naming an archetype:       →  the CI gate too

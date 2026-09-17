@@ -534,6 +534,61 @@ public class ReleaseRequestController {
     return releaseArtifacts.of(repoId, requestId);
   }
 
+  public static record RerunReleasePipelinePhase() {
+    public record Response(ReleaseRequestDto request) {}
+  }
+
+  /**
+   * Run one <b>phase</b> of this release again.
+   *
+   * <p><b>A phase is a unit of work with a state and a rerun, and there are exactly three.</b>
+   * {@code QA} is the qits-ci run at the fold, {@code PUBLISH} the qits-ci run at the tag, {@code
+   * DEPLOY} the qits-deployments deployment request for the released version. A <em>step</em> inside
+   * one of those runs is not a phase and neither is the {@code gating: false} half of a pipeline:
+   * both are part of a run, and running the run again is what this door does. Adding a fourth word
+   * here would be a statement that a fourth thing can be re-run on its own.
+   *
+   * <p><b>{@code qits:admin} and {@code qits:system}, not admin alone</b> — and that is a deliberate
+   * difference from {@code approve}/{@code decline} one method up rather than an oversight. Those two
+   * are a sign-off: a machine may ask for a release and may not judge one, because a gate a machine
+   * could satisfy is not that gate. A rerun judges nothing. It re-asks a question whose answer
+   * arrives where it always did, so the sweeps and robots that already drive this surface are
+   * entitled to press it. {@code qits:agent} is deliberately <b>not</b> on the list: an agent's four
+   * writes are bound to its own work through its token's claims, and a rerun reaches a sibling
+   * service on the platform's own credential.
+   *
+   * <p>The answer is the whole {@link ReleaseRequestDto}, the same envelope every other verb here
+   * answers with, so the caller replaces its row rather than guessing what moved — and what moved is
+   * nothing: no state, no gate and no row. The new run reports on the bus exactly as the first one
+   * did.
+   */
+  @POST
+  @Path("/{requestId}/pipeline/{phase}/rerun")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system"})
+  @Operation(
+      summary = "Run one phase of this release again",
+      description =
+          "phase is QA, PUBLISH or DEPLOY — the three phases of a release pipeline. QA and PUBLISH"
+              + " ask qits-ci to re-fire that phase's run; DEPLOY re-posts the release onto"
+              + " qits-deployments, which is the door a redeploy has always gone through. Nothing"
+              + " about the request changes: no state moves, no gate is re-decided and no event is"
+              + " published here — the new run reports on the bus exactly as the first one did, so"
+              + " the answer is the request as it stands and the result arrives later. 409 carries"
+              + " qits-ci's OWN sentence where it refuses, because that sentence is the fact worth"
+              + " having: that the phase's newest run succeeded and its verdict is spent, that the"
+              + " phase has never run, or that it is running right now. DEPLOY is a 409 for a"
+              + " request that has not released (no version, so nothing to deploy) and for a"
+              + " repository that declares no deployment at all. 404 for an unknown request or one"
+              + " that is not this repository's, 400 for a word naming no phase, 503 where the"
+              + " sibling service is not configured.")
+  public RerunReleasePipelinePhase.Response rerunPhase(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      @PathParam("phase") String phase) {
+    return new RerunReleasePipelinePhase.Response(
+        releaseRequests.rerunPhase(repoId, requestId, phase));
+  }
+
   // ---- what an agent may reach ---------------------------------------------------------------
 
   /** A caller holding one of these is judged as before, even if it also holds the agent role. */

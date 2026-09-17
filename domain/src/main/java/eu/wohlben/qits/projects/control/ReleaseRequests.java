@@ -7,6 +7,7 @@ import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.MergeConflictDto;
 import eu.wohlben.qits.projects.dto.ReleaseGateDto;
+import eu.wohlben.qits.projects.dto.ReleasePipelineDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
@@ -14,6 +15,7 @@ import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
 import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.dto.SubmoduleRefDto;
+import eu.wohlben.qits.projects.entity.ReleasePipelineRun;
 import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
@@ -292,6 +294,19 @@ public class ReleaseRequests {
   @Inject BuildStatusLedger ledger;
 
   /**
+   * The live position of this request's phase runs, and the thing that draws them beside the gates.
+   *
+   * <p>Both are this module's own beans rather than ports, and both are <b>read-only</b> from here:
+   * the mirror is written by a bus consumption of its own and nothing on any decision path in this
+   * class reads it. Every gate is still settled by the fields above — the ledger, the approval
+   * table, the released tag's row — so removing the pipeline block would cost a surface and change
+   * no outcome, which is the property that let it be added without touching the state machine.
+   */
+  @Inject ReleasePipelineRuns pipelineRuns;
+
+  @Inject ReleasePipelineAssembler pipelineAssembler;
+
+  /**
    * The mirror-backed git reader, for the one question this class answers out of a repository rather
    * than out of its own tables: what a fold brought in. Not an {@code Instance} — it is this
    * module's own bean and not a port, and the mirror it reads is cloned on first use.
@@ -323,6 +338,15 @@ public class ReleaseRequests {
   @Inject Instance<DownstreamComponents> downstreamComponents;
 
   @Inject Instance<UnattendedGateTickets> gateTickets;
+
+  /**
+   * The two hops a <b>rerun</b> of a phase goes out through — qits-ci for the QA and publish runs,
+   * qits-deployments for the deployment. Optional like every other port here; absent is a 503 at the
+   * door rather than a silent no-op, because a rerun is a button somebody pressed.
+   */
+  @Inject Instance<PipelinePhaseReruns> phaseReruns;
+
+  @Inject Instance<DeploymentRedeploys> redeploys;
 
   /**
    * The requesters that are <b>machines</b>, and therefore the requests nobody is waiting on. A
@@ -1037,8 +1061,102 @@ public class ReleaseRequests {
                       row.mergedSha == null
                           ? List.of()
                           : ledger.verdictsOf(row.repoId, row.mergedSha),
-                      released));
+                      released,
+                      pipelineRuns.runsOf(row.id),
+                      ReleasePipelineAssembler.DeployReach.ASK));
             });
+  }
+
+  /**
+   * Run one <b>phase</b> of this release again, and answer the request as it stands afterwards.
+   *
+   * <p><b>A phase is a unit of work with a state and a rerun; there are three of them and this is
+   * the rerun.</b> {@code QA} and {@code PUBLISH} are qits-ci runs and go back to qits-ci through
+   * {@link PipelinePhaseReruns}; {@code DEPLOY} is a qits-deployments deployment request and goes
+   * back through {@link DeploymentRedeploys}, which re-posts the same intake the release itself
+   * posted. A step inside one of those runs is not a phase and cannot be asked for here, and neither
+   * is the {@code gating: false} half of a pipeline: both are part of a run, and re-running a run is
+   * what this door does.
+   *
+   * <p><b>Nothing about the request changes here.</b> No row is written, no state moves, no gate is
+   * re-decided and no event is published by this service — the new run reports on the bus exactly as
+   * the first one did, the mirror records it, and the gates are settled by whatever already settled
+   * them. That is the property to preserve: a rerun re-asks a question, and if this method ever
+   * starts deciding something it has stopped being one. The request is read back and answered whole
+   * so the caller replaces its row rather than guessing what moved.
+   *
+   * <p><b>The refusals are the far side's wherever the far side has one.</b> qits-ci answers 409
+   * with a sentence saying why a phase cannot be asked again — that its newest run succeeded and the
+   * verdict was spent, that it has never run, that it is running right now — and that message is
+   * propagated unchanged, because it carries the fact the person pressing the button has not got.
+   * Only two refusals are decided here, and both are about facts only this service holds: a request
+   * that has not released has no version, so there is nothing to deploy; and a repository whose gate
+   * set is known and carries no {@code DEPLOYMENT} declares no deployment at all, so the phase does
+   * not exist for it. An <b>unknown</b> gate set refuses neither — not being able to read a
+   * configuration is not evidence that a repository deploys nothing.
+   *
+   * @param phase the reader's word: {@code QA}, {@code PUBLISH} or {@code DEPLOY}. Anything else is a
+   *     400 — a typo must never quietly re-run a different phase from the one that was asked for.
+   */
+  public ReleaseRequestDto rerunPhase(String repoId, String requestId, String phase) {
+    ReleaseRequest row = requireRequestOf(repoId, requestId);
+    String word = phase == null ? "" : phase.trim().toUpperCase(java.util.Locale.ROOT);
+    switch (word) {
+      case ReleasePipelineAssembler.PHASE_QA ->
+          rerunCiPhase(row, PipelinePhaseReruns.CI_PHASE_QA);
+      case ReleasePipelineAssembler.PHASE_PUBLISH ->
+          rerunCiPhase(row, PipelinePhaseReruns.CI_PHASE_PUBLISH);
+      case ReleasePipelineAssembler.PHASE_DEPLOY -> rerunDeployPhase(row);
+      default ->
+          throw new BadRequestException(
+              "Unknown pipeline phase '"
+                  + phase
+                  + "': expected QA, PUBLISH or DEPLOY — the three phases of a release.");
+    }
+    return get(requestId);
+  }
+
+  /** One of the two run phases, asked of qits-ci with its own word. */
+  private void rerunCiPhase(ReleaseRequest row, String ciPhase) {
+    if (phaseReruns.isUnsatisfied()) {
+      throw new DomainException(
+          503, "No qits-ci context is configured, so no run of this release can be asked again.");
+    }
+    phaseReruns.get().rerun(row.repoId, row.id, ciPhase);
+  }
+
+  /**
+   * The deployment phase, re-posted onto qits-deployments' release intake — which is the door a
+   * redeploy has always gone through and the only one there has ever been; see {@link
+   * DeploymentRedeploys}.
+   */
+  private void rerunDeployPhase(ReleaseRequest row) {
+    ReleasedTagPendingMerge released = pendingTags.findByRequest(row.id).orElse(null);
+    if (released == null || released.tagName == null || released.tagName.isBlank()) {
+      throw new DomainException(
+          409,
+          "Release request "
+              + row.id
+              + " has not released, so there is no version to deploy: the deployment phase begins at"
+              + " the tag.");
+    }
+    ReleaseGates.GateSet set = gates.resolve(row.repoId);
+    if (set.known() && !set.requires(ReleaseGates.Kind.DEPLOYMENT)) {
+      throw new DomainException(
+          409,
+          "This repository declares no deployment (.config/qits/deployments.yml at main), so its"
+              + " release pipeline has no deployment phase to run again.");
+    }
+    if (redeploys.isUnsatisfied()) {
+      throw new DomainException(
+          503,
+          "No qits-deployments context is configured, so this version cannot be asked for again.");
+    }
+    redeploys
+        .get()
+        .deployAgain(
+            new DeploymentRedeploys.Redeploy(
+                row.repoId, row.projectId, row.repoName, null, released.tagName));
   }
 
   /**
@@ -2881,6 +2999,12 @@ public class ReleaseRequests {
                 .filter(row -> row.mergedSha != null)
                 .map(row -> new BuildStatusLedger.VerdictKey(row.repoId, row.mergedSha))
                 .collect(Collectors.toSet()));
+    // And the phase runs, batched for the identical reason: the pipeline block is drawn per row and
+    // asking per row would put a query per row on this same read. A request with no phase run is
+    // absent from the map, which is what the assembler reads as "there is no pipeline to draw".
+    Map<String, List<ReleasePipelineRun>> phaseRuns =
+        pipelineRuns.runsForEach(
+            rows.stream().map(row -> row.id).collect(Collectors.toSet()));
     return rows.stream()
         .map(
             row -> {
@@ -2904,7 +3028,14 @@ public class ReleaseRequests {
                           : verdicts.getOrDefault(
                               new BuildStatusLedger.VerdictKey(row.repoId, row.mergedSha),
                               List.of()),
-                      released.get(row.id)));
+                      released.get(row.id),
+                      phaseRuns.getOrDefault(row.id, List.of()),
+                      // A list read never asks qits-deployments. Its listing is keyed on
+                      // (repoId, version), so a page of N released requests is N HTTP calls with
+                      // nothing to batch — on the busiest read this service has. The deploy phase
+                      // is simply ABSENT from these rows, which is this block's own word for "not
+                      // known yet" and is not the same claim as UNKNOWN.
+                      ReleasePipelineAssembler.DeployReach.LIST_READ));
             })
         .toList();
   }
@@ -2931,13 +3062,29 @@ public class ReleaseRequests {
    *       "the deployment is live" means here, and PENDING until then. On a request that has not
    *       released there is nothing yet to deploy, so it is PENDING too.
    * </ul>
+   *
+   * <p><b>It answers the same gates twice and decides them once.</b> The flat list is the published
+   * surface it always was; the pipeline block is that same list <em>placed</em> between the phases
+   * each gate separates, plus the phase runs themselves. One evaluation feeds both, which is the
+   * whole reason the placement is done here rather than by a second reader: two readings of one gate
+   * that shared no computation would be free to disagree.
+   *
+   * @param phaseRuns this request's mirrored phase runs, newest transition first — empty for a
+   *     request open across the cutover, which is what makes the pipeline block absent rather than
+   *     empty. Read-only, and read by nothing above.
+   * @param reach whether this read may ask qits-deployments for the pipeline's third phase — {@code
+   *     ASK} on the single-request read and {@code LIST_READ} on every list, because that listing is
+   *     keyed per {@code (repoId, version)} and cannot be batched. It reaches nothing but the
+   *     assembler: no gate is decided differently either way.
    */
-  private List<ReleaseGateDto> gateReport(
+  private GateView gateReport(
       ReleaseRequest row,
       ReleaseGates.GateSet set,
       ApprovalView approval,
       List<CommitBuildStatusDto> verdicts,
-      ReleasedTagPendingMerge released) {
+      ReleasedTagPendingMerge released,
+      List<ReleasePipelineRun> phaseRuns,
+      ReleasePipelineAssembler.DeployReach reach) {
     Map<ReleaseGates.Kind, ReleaseGates.State> states = new java.util.EnumMap<>(ReleaseGates.Kind.class);
     if (verdicts.stream().anyMatch(v -> v.gating() && !"SUCCESS".equals(v.status()))) {
       states.put(ReleaseGates.Kind.CI, ReleaseGates.State.FAILED);
@@ -2963,10 +3110,55 @@ public class ReleaseRequests {
             case PENDING -> ReleaseGates.State.PENDING;
           });
     }
-    return ReleaseGates.report(reported, states).stream()
-        .map(gate -> new ReleaseGateDto(gate.kind().name(), gate.state().name()))
-        .toList();
+    List<ReleaseGates.Gate> decided = ReleaseGates.report(reported, states);
+    return new GateView(
+        decided.stream()
+            .map(gate -> new ReleaseGateDto(gate.kind().name(), gate.state().name()))
+            .toList(),
+        pipelineAssembler.assemble(
+            phaseRuns, decided, gateDetails(set, released), released, reach));
   }
+
+  /**
+   * A sentence per gate, where the path that already answered the gate already has one — sourced,
+   * never invented, because nothing here may evaluate a gate to produce prose about it.
+   *
+   * <p>Two gates can say something and no third one can. The <b>publish</b> gate's sentence is
+   * {@code released_tag_pending_merge.publish_detail}, which is where a publish run that never
+   * reports is made audible once a window; an <b>unknown</b> gate set's is the set's own reason for
+   * not having been readable, which is the one case where the sentence is about the gate having no
+   * answer rather than about its answer. CI and approval carry none: their sentence today is the
+   * request's own {@code detail}, one field up, and copying it onto a gate would be the same words
+   * in two places free to drift.
+   */
+  private static Map<ReleaseGates.Kind, String> gateDetails(
+      ReleaseGates.GateSet set, ReleasedTagPendingMerge released) {
+    Map<ReleaseGates.Kind, String> details = new java.util.EnumMap<>(ReleaseGates.Kind.class);
+    if (!set.known() && set.detail() != null) {
+      for (ReleaseGates.Kind kind : ReleaseGates.Kind.values()) {
+        details.put(kind, set.detail());
+      }
+      return details;
+    }
+    if (released != null
+        && released.publishDetail != null
+        && !released.publishDetail.isBlank()) {
+      details.put(ReleaseGates.Kind.PUBLISH, released.publishDetail);
+    }
+    return details;
+  }
+
+  /**
+   * One evaluation of a request's gates, in the two shapes the answer is published in.
+   *
+   * <p>A record rather than two calls because the two <b>must</b> come from one evaluation: the flat
+   * list is the surface every existing reader draws and the block is the same gates placed between
+   * the phases they separate, so computing them separately would be two readings of one fact.
+   *
+   * @param pipeline null where the pipeline cannot be drawn — see {@code
+   *     ReleasePipelineAssembler}'s "Absent is not empty"
+   */
+  private record GateView(List<ReleaseGateDto> gates, ReleasePipelineDto pipeline) {}
 
   /**
    * The approval gate as a <b>read</b> answers it: whether a person had to be asked, what the newest
@@ -3048,7 +3240,9 @@ public class ReleaseRequests {
    *     computed here so that the list path can answer a whole page in a fixed number of queries.
    * @param gates the whole gate set with each gate's state, derived the same way and for the same
    *     reason — the approval fields are one member of it, answered twice on the wire because the
-   *     three approval fields are a published surface and the set is the new reading of it.
+   *     three approval fields are a published surface and the set is the new reading of it. It
+   *     carries the pipeline block beside the flat list, because both are that one derivation: see
+   *     {@link GateView}.
    */
   private ReleaseRequestDto dto(
       ReleaseRequest row,
@@ -3057,7 +3251,7 @@ public class ReleaseRequests {
       List<ReleasedTagPendingMerge> implicit,
       ReleasedTagPendingMerge released,
       ApprovalView approval,
-      List<ReleaseGateDto> gates) {
+      GateView gates) {
     List<ReleaseRequestSourceDto> all = new ArrayList<>();
     for (ReleaseRequestSource source : named) {
       all.add(
@@ -3101,7 +3295,7 @@ public class ReleaseRequests {
         approval.actor(),
         approval.decidedAt(),
         approval.note(),
-        gates,
+        gates.gates(),
         conflictOf(row),
         row.version,
         row.supersededBy,
@@ -3109,7 +3303,8 @@ public class ReleaseRequests {
         released == null ? null : released.mergedAt,
         row.retryable,
         row.createdAt,
-        row.updatedAt);
+        row.updatedAt,
+        gates.pipeline());
   }
 
   // ---------------------------------------------------------------------------------------------
