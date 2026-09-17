@@ -77,10 +77,10 @@ public class ReleasePipelineRuns {
 
   private static final Logger LOG = Logger.getLogger(ReleasePipelineRuns.class);
 
-  /** qits-ci's word for the QA half of a release — the run a {@code ReleaseRequestChanged} caused. */
+  /** qits-ci's word for the QA phase of a release — the run a {@code ReleaseRequestChanged} caused. */
   public static final String PHASE_RELEASE_REQUEST = "RELEASE_REQUEST";
 
-  /** qits-ci's word for the publish half — the run an {@code SCMRelease} caused at the tag. */
+  /** qits-ci's word for the publish phase — the run an {@code SCMRelease} caused at the tag. */
   public static final String PHASE_RELEASE = "RELEASE";
 
   /**

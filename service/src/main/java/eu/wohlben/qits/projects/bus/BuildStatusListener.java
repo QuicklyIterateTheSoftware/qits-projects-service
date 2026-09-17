@@ -29,7 +29,7 @@ import org.jboss.logging.Logger;
  * <p><b>The phase word rides these two events now, and this listener deliberately ignores it.</b>
  * Since 2026-09-16 {@code BuildSuccessful}, {@code BuildFailed} and {@code BuildStatusChanged} all
  * carry {@code phase} — {@code RELEASE_REQUEST} or {@code RELEASE}, absent for the ordinary run —
- * saying which half of a release the run was. Nothing about a <em>verdict about a commit</em>
+ * saying which phase of a release the run was. Nothing about a <em>verdict about a commit</em>
  * changes because of it: the ledger's rows are what the release gate reads and the gate does not
  * care which pipeline produced the green. The phase is mirrored by {@link
  * ReleasePipelineRunListener} off the third event, where every transition arrives rather than only
