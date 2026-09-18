@@ -116,7 +116,7 @@
 
              Do not hand-edit it to chase a release you just made. The train owns it, the release
              request is where it is reviewed, and a hand-written pin asserts a pair nobody gated. -->
-        <qits.projects-daemon-protocol.version>2026.918.203603</qits.projects-daemon-protocol.version>
+        <qits.projects-daemon-protocol.version>2026.918.212543</qits.projects-daemon-protocol.version>
 
         <!-- The platform event bus: the outbox, the idempotent PUT, the durable listener and
              CausationScope. Published by libs/qits-eventstream into the platform Maven repository,
