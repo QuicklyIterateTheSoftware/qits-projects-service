@@ -1,0 +1,13 @@
+-- DROP THE `gating` FLAG (ticket 9441bc6e, "Remove `gating: false` entirely").
+--
+-- V8 added the column so a red verdict could be read and ignored: qits-ci marked a pipeline
+-- `gating: false` and this service recorded its redness without letting it stand in the way of
+-- releasing the commit. That distinction is gone estate-wide, because a verdict that is not a
+-- verdict about the commit is not a thing any more -- QA that does not gate is pointless, and a
+-- pipeline whose red nobody acts on is a pipeline nobody should be running. The rule is now flat: a
+-- BuildSuccessful for the fold IS the CI gate, and any non-SUCCESS verdict for the fold rejects.
+--
+-- Nothing is lost that was being read: the column only ever narrowed which rows the gate filtered
+-- on, and every row's run id, status and branch -- the account of what actually ran -- stays exactly
+-- where it was. V8 is untouched, as an applied migration always is.
+alter table commit_build_status drop column gating;

@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The half of the loop that puts a red gate in front of a person: a release request <b>nobody is
- * waiting on</b> that a gating verdict rejects files a BUG ticket, once, and says so on that same
+ * waiting on</b> that a red verdict rejects files a BUG ticket, once, and says so on that same
  * ticket when it eventually releases.
  *
  * <p>This drives the shipped adapter rather than a recording double, on purpose: what is actually

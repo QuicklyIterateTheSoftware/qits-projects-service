@@ -809,7 +809,7 @@ public class ReleaseRequestSourcesTest {
     assertEquals("CONFLICTED", stateOf(id));
     announcer.reset();
 
-    // Back onto the sha a gating run has already answered for. The gate reads that verdict on the
+    // Back onto the sha a run has already answered for. The gate reads that verdict on the
     // way out of the fold, so an event here would only ask for a second build of built content.
     merger.answer(BackingBranchMerger.Outcome.unchanged(merged));
     headMoved("work");

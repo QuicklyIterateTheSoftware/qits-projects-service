@@ -659,7 +659,7 @@ released, while any configured gate is unmet. One file at `main` turns on each g
 
 | file at `main` | gate |
 | --- | --- |
-| `.config/qits/ci-event-release-request.yml` | CI — a gating `BuildSuccessful` for the fold |
+| `.config/qits/ci-event-release-request.yml` | CI — a `BuildSuccessful` for the fold |
 | `.config/qits/release.yml` naming an `archetype:` | CI too — qits-ci composes the same QA pipeline from the wrapper's `release-archetypes/*.yml`, and its verdict gates the same way (fixed 2026-09-13: this repository used to miss it, so a migrated repository released before its QA run even started) |
 | `.config/qits/deployments.yml` | deployment — the release is not finished until the deployment is live |
 | `.config/qits/release-requests.yml` with `manual-review: true` | approval — a person's yes |
@@ -730,8 +730,8 @@ two different constants now, and mixing them up is the defect to watch for.
 this reading is a new fact: the same four kinds are resolved from the same files at the same revs
 and answered by the same paths, and what it adds is *placement* plus the position of the runs
 themselves. **A phase is a unit of work with a state and a rerun**, and exactly three things are
-one — a *step* inside a run is not, and neither is the `gating: false` half of a pipeline, which is
-part of the same run and has no rerun of its own.
+one — a *step* inside a run is not, and neither is any other part a run is split into, which is
+part of that run and has no rerun of its own.
 
     P1 . QA        a qits-ci run at release/<id>@mergedSha
       |  gates     CI, APPROVAL                                between = QA_PUBLISH

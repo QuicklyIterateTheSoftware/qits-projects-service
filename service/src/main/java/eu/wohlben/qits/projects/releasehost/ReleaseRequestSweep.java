@@ -9,7 +9,7 @@ import jakarta.inject.Inject;
 /**
  * The safety net under the event-driven release requests: re-evaluates every open request on a
  * schedule, which is what turns "qits-ci could not be asked", "the verdict had not landed yet" and a
- * FAILED execution into delays instead of stalls. Since the gate passes on a gating verdict and
+ * FAILED execution into delays instead of stalls. Since the gate passes on a green verdict and
  * nothing else, it is also the only thing that will ever release a request whose verdict arrived
  * while this service was down.
  *

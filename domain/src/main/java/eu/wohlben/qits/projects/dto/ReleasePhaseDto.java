@@ -9,9 +9,9 @@ import java.time.Instant;
  * {@code QA} is the run a {@code ReleaseRequestChanged} causes at {@code release/<id>@mergedSha};
  * {@code PUBLISH} is the run an {@code SCMRelease} causes at {@code <version>@commitSha}; {@code
  * DEPLOY} is the deployment request qits-deployments answers for {@code (repository, version)}.
- * Nothing else is a phase — a <em>step</em> inside one of those runs is not, and neither is the
- * {@code gating: false} half of a pipeline, which is part of the same run and has no rerun of its
- * own. Adding a fourth word here is a statement that a fourth thing can be re-run on its own, and it
+ * Nothing else is a phase — a <em>step</em> inside one of those runs is not, and neither is any
+ * other part a run is split into, because it is part of that run and has no rerun of its own.
+ * Adding a fourth word here is a statement that a fourth thing can be re-run on its own, and it
  * is a decision rather than a label.
  *
  * <p><b>{@code phase} is the reader's word and not the storage's.</b> qits-ci records {@code

@@ -201,7 +201,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
         .append(named(rejection))
         .append("` was asked for by **")
         .append(rejection.requester())
-        .append("** — a machine, so nobody is waiting on it — and its gating build came back red.")
+        .append("** — a machine, so nobody is waiting on it — and its build came back red.")
         .append(" The repository stops moving here until somebody fixes the build: the request")
         .append(" re-arms by itself on the next push to a participating branch.\n\n");
     text.append("| | |\n|---|---|\n");
@@ -216,7 +216,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
             : rejection.branches().stream().map(TicketUnattendedGateTickets::code).reduce(
                 (a, b) -> a + ", " + b).orElse("—"));
     row(text, "Folded sha", code(rejection.mergedSha()));
-    row(text, "Gating run", code(rejection.runId()) + " (" + rejection.status() + ")");
+    row(text, "Run", code(rejection.runId()) + " (" + rejection.status() + ")");
     text.append("\n**The gate's own words:** ").append(rejection.detail()).append("\n\n");
     text.append("Reported by qits-projects because the release request has no human requester.")
         .append(" Read the run's log in qits-ci to find out why the build failed; this report")
@@ -226,7 +226,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
 
   /** One further red verdict on a ticket that is already open. */
   static String comment(Rejection rejection) {
-    return "The gate is still red. Gating run "
+    return "The gate is still red. Run "
         + code(rejection.runId())
         + " finished "
         + rejection.status()

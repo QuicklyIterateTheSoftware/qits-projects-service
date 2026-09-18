@@ -11,7 +11,7 @@ import java.util.Optional;
  * <p>A release request a <em>person</em> opened has a person waiting on it: they watch it, and a
  * REJECTED is a thing they answer. A request the platform's maintenance robot opened has nobody —
  * it is the tail of an automated night, a bump wrote {@code maintenance/dependencies}, asked for it
- * to be released and stopped — so a red gating verdict on that fold is seen by no one at all and the
+ * to be released and stopped — so a red verdict on that fold is seen by no one at all and the
  * repository quietly stops moving. Measured on 2026-09-10: qits-deployments-platform-service was
  * bumped at 07:05, its request was REJECTED at 07:14 on a build dying in Quarkus Arc, and four hours
  * later nothing had noticed. The estate-side half of that (qits-maintenance no longer waiting
@@ -54,7 +54,7 @@ import java.util.Optional;
 public interface UnattendedGateTickets {
 
   /**
-   * A red gating verdict on an unattended request, as much as a ticket needs to name it.
+   * A red verdict on an unattended request, as much as a ticket needs to name it.
    *
    * @param requestId the release request that was rejected — the address of the thing that stopped
    * @param projectId the project the ticket is filed on; a request whose repository has no project
@@ -63,7 +63,7 @@ public interface UnattendedGateTickets {
    * @param repoName the repository's public name, or null where it has none
    * @param branches the request's named branch sources — what was being released
    * @param mergedSha the fold the gate evaluated
-   * @param runId the gating run that came back red, as the ledger recorded it
+   * @param runId the run that came back red, as the ledger recorded it
    * @param status that run's terminal status — FAILED, CANCELLED, whatever the ledger holds
    * @param detail this service's own rejection sentence, verbatim, so the ticket and the request say
    *     the same thing

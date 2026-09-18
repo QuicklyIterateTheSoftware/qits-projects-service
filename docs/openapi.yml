@@ -378,8 +378,6 @@ components:
           type: string
         branch:
           type: string
-        gating:
-          type: boolean
         finishedAt:
           $ref: "#/components/schemas/Instant"
     CommitChangesDto:
@@ -6125,4 +6123,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.917.123916
+  version: 2026.917.194747
