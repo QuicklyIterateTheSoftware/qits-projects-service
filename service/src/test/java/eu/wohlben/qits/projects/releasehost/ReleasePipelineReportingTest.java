@@ -59,6 +59,8 @@ public class ReleasePipelineReportingTest {
 
   @Inject RecordingReleaseGitHost gitHost;
 
+  @Inject FakePublishRuns publishRuns;
+
   @Inject eu.wohlben.qits.projects.control.ReleaseFinalization finalization;
 
   @Inject eu.wohlben.qits.projects.deploymenthost.FakeDeploymentRequests deployments;
@@ -77,6 +79,7 @@ public class ReleasePipelineReportingTest {
     executor.reset();
     merger.reset();
     gitHost.reset();
+    publishRuns.reset();
     deployments.reset();
     redeploys.reset();
     reruns.reset();
@@ -121,7 +124,7 @@ public class ReleasePipelineReportingTest {
    */
   @Test
   public void aRequestWhoseRunsCarryNoPhaseHasNoPipelineBlockAndItsGatesRenderAsBefore() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
 
     // A transition of an ordinary run of this very repository: no phase, so no phase row, so no
@@ -142,7 +145,7 @@ public class ReleasePipelineReportingTest {
    */
   @Test
   public void theQaPhaseRunsAndThenSucceeds() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     String backing = ReleaseRequest.backingBranchOf(id);
 
@@ -184,7 +187,7 @@ public class ReleasePipelineReportingTest {
    */
   @Test
   public void thePublishPhaseAppearsOnceTheTagExists() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     String backing = ReleaseRequest.backingBranchOf(id);
     transitionAt(
@@ -219,7 +222,7 @@ public class ReleasePipelineReportingTest {
     gitHost.tree(
         "refs/heads/main",
         Map.of(
-            RecordingReleaseGitHost.CI_RECIPE, "steps: []\n",
+            RecordingReleaseGitHost.RELEASE_CONFIG, RecordingReleaseGitHost.GATING_RELEASE_CONFIG,
             ".config/qits/release-requests.yml", "manual-review: true\n",
             ".config/qits/deployments.yml", "resources: []\n"));
     String id = create("work");
@@ -255,7 +258,7 @@ public class ReleasePipelineReportingTest {
    */
   @Test
   public void thePublishGateStandsBetweenPublishAndDeployAndCarriesItsOwnSentence() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     transitionAt(
         "run-qa",
@@ -268,7 +271,12 @@ public class ReleasePipelineReportingTest {
     String version = versionOf(id);
     gitHost.tree(
         "refs/tags/" + version,
-        Map.of("pom.xml", "irrelevant", ".config/qits/ci-event-release.yml", "steps: []\n"));
+        Map.of(
+            "pom.xml", "irrelevant",
+            RecordingReleaseGitHost.RELEASE_CONFIG, RecordingReleaseGitHost.GATING_RELEASE_CONFIG));
+    // Whether the archetype composes a release run is qits-ci's answer and never this service's,
+    // so the declaration alone stamps no gate — the port has to say yes.
+    publishRuns.answer(Optional.of(true));
     finalization.sweep();
 
     assertEquals(List.of("CI", "PUBLISH"), strings(id, "request.pipeline.gates.kind"));
@@ -297,7 +305,7 @@ public class ReleasePipelineReportingTest {
    */
   @Test
   public void aRepositoryThatDeclaresNoDeploymentGetsTwoPhasesAndNotThree() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = releasedRequest();
     transitionAt(
         "run-publish",
@@ -486,7 +494,7 @@ public class ReleasePipelineReportingTest {
    */
   @Test
   public void theDeployPhaseRefusesWithNoVersionAndWithNoDeploymentDeclared() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String unreleased = create("work");
     assertTrue(
         rerun(unreleased, "DEPLOY", 409).getString("message").contains("has not released"),
@@ -502,7 +510,7 @@ public class ReleasePipelineReportingTest {
   /** A word naming no phase is a 400: a typo must never quietly re-run a different phase. */
   @Test
   public void aWordNamingNoPhaseIsRefused() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
 
     assertTrue(rerun(id, "STEP", 400).getString("message").contains("QA, PUBLISH or DEPLOY"));
@@ -513,7 +521,7 @@ public class ReleasePipelineReportingTest {
 
   /** A released request of a repository that declares no deployment. */
   private String releasedRequest() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     return releaseOne();
   }
 
@@ -522,7 +530,7 @@ public class ReleasePipelineReportingTest {
     gitHost.tree(
         "refs/heads/main",
         Map.of(
-            RecordingReleaseGitHost.CI_RECIPE, "steps: []\n",
+            RecordingReleaseGitHost.RELEASE_CONFIG, RecordingReleaseGitHost.GATING_RELEASE_CONFIG,
             ".config/qits/deployments.yml", "resources: []\n"));
     return releaseOne();
   }

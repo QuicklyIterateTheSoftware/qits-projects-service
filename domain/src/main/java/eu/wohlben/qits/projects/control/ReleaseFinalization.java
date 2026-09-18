@@ -29,9 +29,8 @@ import org.jboss.logging.Logger;
  * carries says which gates apply to this release:
  *
  * <ul>
- *   <li><b>The publish gate</b>, where the tree declares a release pipeline — its own {@code
- *       .config/qits/ci-event-release.yml}, or a {@code .config/qits/release.yml} for which
- *       <b>qits-ci says it runs a release</b> ({@link PublishRuns}; that second question is not
+ *   <li><b>The publish gate</b>, where the tree declares a {@code .config/qits/release.yml} for
+ *       which <b>qits-ci says it runs a release</b> ({@link PublishRuns}; that question is not
  *       answerable here and is not guessed at). The tag's own release run has to finish green, which
  *       arrives here as a {@code BuildSuccessful} whose <em>branch is the version</em> — see {@link
  *       #onPublishVerdict}. A red one is a <b>failed gate on an open request</b>, retried with
@@ -70,7 +69,8 @@ import org.jboss.logging.Logger;
  *
  * <p><b>It hangs off this service's own release and not off qits-ci's {@code SoftwareRelease}</b>,
  * which is where it used to hang and why the arm quietly did nothing for half the platform: that
- * event is emitted by a repository's {@code ci-event-release.yml} recipe, so a repository without
+ * event was emitted by a repository's own {@code ci-event-release.yml} recipe — the release pipeline
+ * files the estate has since retired — so a repository without
  * one published no artifact event, was never forked on, and left its released tag stranded off
  * {@code main} for ever. A release, by contrast, is something this service performs itself and
  * therefore always knows about.
@@ -151,12 +151,9 @@ public class ReleaseFinalization {
    */
   static final String DEPLOYMENTS_MANIFEST = ".config/qits/deployments.yml";
 
-  /** A repository's own release pipeline. Its presence at the tag is the publish gate. */
-  static final String RELEASE_PIPELINE = ReleaseArtifacts.RELEASE_RECIPE;
-
   /**
-   * A migrated repository's release declaration: qits-ci composes its pipelines from the archetype
-   * it names. <b>Its presence at the tag is the question, never the answer</b> — whether the
+   * A repository's release declaration: qits-ci composes its pipelines from the archetype it names.
+   * <b>Its presence at the tag is the question, never the answer</b> — whether the
    * composition has a {@code release:} slot, and therefore whether this release is publish-gated at
    * all, is qits-ci's to say ({@link PublishRuns}). {@link ReleaseGates} reads the same file for the
    * CI gate and reads it differently on purpose; that gate's slot is {@code release-request:} and is
@@ -286,8 +283,9 @@ public class ReleaseFinalization {
    * <p><b>It hangs off the RELEASE, not off a published artifact</b> — and that move is this
    * method's whole point (2026-09-04). It used to be {@code onSoftwareRelease}, driven by qits-ci's
    * per-artifact publication event, which sounded like the closest thing a library has to "it is
-   * live" and was in fact a gate only some repositories can pass: {@code SoftwareRelease} is emitted
-   * by a repository's {@code ci-event-release.yml} recipe, and every repository without one — every
+   * live" and was in fact a gate only some repositories can pass: {@code SoftwareRelease} was
+   * emitted by a repository's own {@code ci-event-release.yml} recipe, and every repository without
+   * one — every
    * SPA, for a start — announced nothing, so its released tag never reached {@code main} and its
    * default branch fell one commit behind for ever (qits-deployments-platform-frontend
    * 2026.904.151913, measured). A release is a fact this service produces itself, so this is now
@@ -811,9 +809,6 @@ public class ReleaseFinalization {
     }
     List<String> paths = tree.value();
     boolean deploys = paths.contains(DEPLOYMENTS_MANIFEST);
-    if (paths.contains(RELEASE_PIPELINE)) {
-      return new ReleasedTree(Readability.READ, true, deploys);
-    }
     if (!paths.contains(RELEASE_SLOT_CONFIG)) {
       return new ReleasedTree(Readability.READ, false, deploys);
     }

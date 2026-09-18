@@ -46,6 +46,8 @@ public class ReleaseGateReportingTest {
 
   @Inject RecordingReleaseGitHost gitHost;
 
+  @Inject FakePublishRuns publishRuns;
+
   @Inject eu.wohlben.qits.projects.control.ReleaseFinalization finalization;
 
   private String repoId;
@@ -57,6 +59,7 @@ public class ReleaseGateReportingTest {
     executor.reset();
     merger.reset();
     gitHost.reset();
+    publishRuns.reset();
     activeBuilds.answer(Optional.of(0));
     repoId = "gate-report-repo-" + UUID.randomUUID();
     projectId = "gate-report-project-" + UUID.randomUUID();
@@ -89,7 +92,7 @@ public class ReleaseGateReportingTest {
 
   @Test
   public void aCiRepositoryWaitsOnItsBuildAndSaysSo() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     assertEquals(List.of("CI"), kinds(id));
     assertEquals(List.of("PENDING"), states(id), "configured, and nothing has answered yet");
@@ -101,7 +104,7 @@ public class ReleaseGateReportingTest {
 
   @Test
   public void aRedGatingVerdictReportsTheCiGateFailed() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
@@ -133,7 +136,7 @@ public class ReleaseGateReportingTest {
     gitHost.tree(
         "refs/heads/main",
         Map.of(
-            RecordingReleaseGitHost.CI_RECIPE, "steps: []\n",
+            RecordingReleaseGitHost.RELEASE_CONFIG, RecordingReleaseGitHost.GATING_RELEASE_CONFIG,
             ".config/qits/deployments.yml", "resources: []\n"));
     String id = create("work");
     assertEquals(List.of("CI", "DEPLOYMENT"), kinds(id));
@@ -160,7 +163,7 @@ public class ReleaseGateReportingTest {
    */
   @Test
   public void aPublishGateIsReportedOnceTheReleasedTreeDeclaresAPipeline() {
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     assertEquals(List.of("CI"), kinds(id), "before the tag, nothing has declared a publish gate");
 
@@ -169,7 +172,12 @@ public class ReleaseGateReportingTest {
     String version = versionOf(id);
     gitHost.tree(
         "refs/tags/" + version,
-        Map.of("pom.xml", "irrelevant", ".config/qits/ci-event-release.yml", "steps: []\n"));
+        Map.of(
+            "pom.xml", "irrelevant",
+            RecordingReleaseGitHost.RELEASE_CONFIG, RecordingReleaseGitHost.GATING_RELEASE_CONFIG));
+    // Whether the archetype composes a release run is qits-ci's answer and never this service's,
+    // so the declaration alone stamps no gate — the port has to say yes.
+    publishRuns.answer(Optional.of(true));
 
     // The catch-up is what asks the question for a tag nothing has decided about yet.
     finalization.sweep();

@@ -37,16 +37,14 @@ import org.junit.jupiter.api.Test;
  * thing standing between the two behaviours is one file's presence in the released tree.
  *
  * <p>The newer claim is <b>where the fork hangs</b> (2026-09-04). It used to hang off qits-ci's
- * {@code SoftwareRelease} — an event only a repository carrying a {@code ci-event-release.yml}
- * recipe ever emits — so every recipe-less repository, every SPA among them, released tags that
- * never reached {@code main} at all. It hangs off this service's own release now, which is a fact it
- * always has, and the catch-up sweep is what heals everything stranded in the meantime.
+ * {@code SoftwareRelease} — an event only a repository carrying its own {@code
+ * ci-event-release.yml} recipe ever emitted, back when those files existed — so every recipe-less
+ * repository, every SPA among them, released tags that never reached {@code main} at all. It hangs
+ * off this service's own release now, which is a fact it always has, and the catch-up sweep is what
+ * heals everything stranded in the meantime.
  */
 @QuarkusTest
 public class NonDeployablePublishTest {
-
-  /** The released tree's release pipeline — the publish gate's own file, spelled once. */
-  private static final String RELEASE_PIPELINE = ".config/qits/ci-event-release.yml";
 
   @Inject ReleaseFinalization finalization;
 
@@ -121,7 +119,7 @@ public class NonDeployablePublishTest {
   public void aReleaseWithAPublishPipelineWaitsForItsRunAndThenReachesMain() {
     String tag = freshTag();
     String releasedSha = pendingTag(tag);
-    treeAtTag(tag, "pom.xml", RELEASE_PIPELINE);
+    publishGatedTag(tag);
 
     finalization.onReleased(repoId, tag);
 
@@ -151,7 +149,7 @@ public class NonDeployablePublishTest {
   public void aRedPublishRunLeavesTheReleaseOpenAndTheRetryFinalizesIt() {
     String tag = freshTag();
     pendingTag(tag);
-    treeAtTag(tag, "pom.xml", RELEASE_PIPELINE);
+    publishGatedTag(tag);
     finalization.onReleased(repoId, tag);
 
     publishVerdict("BuildFailed", tag, "sha-red", "run-red");
@@ -182,7 +180,7 @@ public class NonDeployablePublishTest {
   public void aDeployableReleaseWithAPipelineWaitsForBothGatesInEitherOrder() {
     String first = freshTag();
     pendingTag(first);
-    treeAtTag(first, "pom.xml", RELEASE_PIPELINE, ".config/qits/deployments.yml");
+    publishGatedTag(first, ".config/qits/deployments.yml");
     finalization.onReleased(repoId, first);
 
     publishVerdict("BuildSuccessful", first, "sha-1", "run-1");
@@ -193,7 +191,7 @@ public class NonDeployablePublishTest {
 
     String second = freshTag();
     pendingTag(second);
-    treeAtTag(second, "pom.xml", RELEASE_PIPELINE, ".config/qits/deployments.yml");
+    publishGatedTag(second, ".config/qits/deployments.yml");
     finalization.onReleased(repoId, second);
 
     deploymentActive("qits-thing", second);
@@ -204,10 +202,11 @@ public class NonDeployablePublishTest {
   }
 
   /**
-   * The migrated repository's arm: no {@code ci-event-release.yml} in the tree at all, and qits-ci
-   * composes the pipelines from the archetype {@code release.yml} names. Where the composition has a
-   * {@code release:} slot, qits-ci says so and the gate applies just the same — the file the
-   * question is asked about is different, the fact is not.
+   * <b>The one arm there is</b>: qits-ci composes the pipelines from the archetype {@code
+   * release.yml} names, and where the composition has a {@code release:} slot it says so and the
+   * gate applies. This was "the migrated repository's arm" while a second one read a repository's
+   * own pipeline file out of the tree; that file left the estate and the arm went with it, so the
+   * question is asked of every released tag that declares anything at all.
    */
   @Test
   public void aReleaseQitsCiRunsAReleaseForIsPublishGatedToo() {
@@ -302,19 +301,27 @@ public class NonDeployablePublishTest {
   }
 
   /**
-   * The unmigrated arm is untouched and must stay untouched: a tree carrying the repository's own
-   * release recipe is the answer, so qits-ci is <b>not asked at all</b>.
+   * <b>A released tree declaring no release configuration asks qits-ci nothing</b>, which is the
+   * negative the port's own cost depends on: the question is one HTTP call per gate evaluation of a
+   * released tag, and a repository that declares nothing must not pay it.
+   *
+   * <p>This class used to assert the same negative about a different tree — one carrying the
+   * repository's <em>own</em> {@code .config/qits/ci-event-release.yml}, whose presence was the
+   * whole answer and short-circuited the port. That arm went on 2026-09-18 with the last of those
+   * files: a tag carrying one now takes exactly this path instead, declares no {@code release.yml}
+   * and is not publish-gated. The claim that survived is the one worth keeping — <b>an unasked
+   * question</b> — and the arm below is where it is now made.
    */
   @Test
-  public void aTreeWithItsOwnReleaseRecipeAsksQitsCiNothing() {
+  public void aTreeDeclaringNoReleaseConfigurationAsksQitsCiNothing() {
     String tag = freshTag();
     pendingTag(tag);
-    treeAtTag(tag, "pom.xml", RELEASE_PIPELINE);
+    treeAtTag(tag, "pom.xml", "README.md");
 
     finalization.onReleased(repoId, tag);
 
-    assertEquals(ReleasedTagPendingMerge.PublishState.PENDING, rowOf(tag).publishState);
-    assertEquals(List.of(), publishRuns.asked(), "the recipe in the tree is the whole answer");
+    assertNull(rowOf(tag).publishState, "nothing composes a release run, so there is no gate");
+    assertEquals(List.of(), publishRuns.asked(), "and nobody was asked about it");
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -547,14 +554,33 @@ public class NonDeployablePublishTest {
   }
 
   /**
-   * A released tree carrying a migrated repository's release declaration. <b>The content is
-   * irrelevant on purpose</b>: nothing here reads the file any more, because whether the archetype
-   * it names composes a release run is qits-ci's answer and not this service's.
+   * A released tree carrying a repository's release declaration. <b>The content is irrelevant on
+   * purpose</b>: nothing here reads the file any more, because whether the archetype it names
+   * composes a release run is qits-ci's answer and not this service's.
    */
-  private void releaseYamlAtTag(String tag) {
-    gitHost.tree(
-        "refs/tags/" + tag,
-        Map.of("pom.xml", "irrelevant", ".config/qits/release.yml", "archetype: spa-frontend\n"));
+  private void releaseYamlAtTag(String tag, String... alsoDeclares) {
+    Map<String, String> tree = new LinkedHashMap<>();
+    tree.put("pom.xml", "irrelevant");
+    tree.put(".config/qits/release.yml", "archetype: spa-frontend\n");
+    for (String path : alsoDeclares) {
+      tree.put(path, "irrelevant");
+    }
+    gitHost.tree("refs/tags/" + tag, tree);
+  }
+
+  /**
+   * <b>A release that really is publish-gated</b>, which now takes two staged facts rather than one
+   * path in a tree: the declaration, and qits-ci saying it composes a release run for it.
+   *
+   * <p>Until 2026-09-18 a tree carrying {@code .config/qits/ci-event-release.yml} was the whole of
+   * it — presence decided the gate and the port was never asked — and the tests below that are about
+   * what a publish-gated release <em>does</em> staged exactly that. They assert the same things
+   * through the one path that is left, because the gate they are about never changed; what changed
+   * is only which fact turns it on.
+   */
+  private void publishGatedTag(String tag, String... alsoDeclares) {
+    releaseYamlAtTag(tag, alsoDeclares);
+    publishRuns.answer(Optional.of(true));
   }
 
   /** Age the released tag, which is the only clock the PENDING-too-long signal has. */

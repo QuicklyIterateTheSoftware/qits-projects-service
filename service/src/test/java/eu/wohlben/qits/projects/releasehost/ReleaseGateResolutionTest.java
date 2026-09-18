@@ -62,26 +62,27 @@ public class ReleaseGateResolutionTest {
     return gates.resolve(repoId);
   }
 
-  @Test
-  void aRepositoryCarryingOnlyARecipeIsGatedByCiAlone() {
-    gitHost.tree(
-        "refs/heads/main", Map.of(".config/qits/ci-event-release-request.yml", "steps: []\n"));
-    GateSet set = resolve();
-    assertTrue(set.known());
-    assertEquals(Set.of(Kind.CI), set.kinds());
-    assertFalse(set.nothingToWaitOn());
-  }
-
   // -----------------------------------------------------------------------------------------
-  // A migrated repository's release.yml composes the CI gate too
+  // The release.yml's archetype composes the CI gate
   // -----------------------------------------------------------------------------------------
 
+  /**
+   * <b>A repository declaring only an archetype is gated by CI alone</b>, which is almost every
+   * repository on this platform.
+   *
+   * <p>This used to be two tests, because the CI gate used to have two sources: the bare presence of
+   * {@code .config/qits/ci-event-release-request.yml} on main, and — added 2026-09-13 for the
+   * repositories that had migrated away from it — an {@code archetype:} in {@code release.yml}. The
+   * first went on 2026-09-18 with the last of those files, so there is one source and one test. The
+   * <em>assertion</em> is the one the legacy test made, unchanged.
+   */
   @Test
-  void releaseYmlNamingAnArchetypeIsTheCiGateExactlyLikeTheLegacyRecipe() {
+  void aRepositoryDeclaringAnArchetypeIsGatedByCiAlone() {
     gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "archetype: spa-frontend\n"));
     GateSet set = resolve();
     assertTrue(set.known());
     assertEquals(Set.of(Kind.CI), set.kinds());
+    assertFalse(set.nothingToWaitOn());
   }
 
   @Test
@@ -97,9 +98,9 @@ public class ReleaseGateResolutionTest {
   }
 
   @Test
-  void bothFilesPresentIsStillJustTheCiGate() {
-    // A repository migrating mid-flight, or one that never dropped the legacy file: either way one
-    // CI gate, not a set that somehow double-counts it.
+  void aLegacyRecipeLeftInTheTreeIsNotReadAndDecidesNothing() {
+    // A repository that never deleted its retired pipeline file. It is not read any more, so the
+    // archetype beside it is the whole answer — one CI gate, from one source.
     gitHost.tree(
         "refs/heads/main",
         Map.of(
@@ -126,11 +127,11 @@ public class ReleaseGateResolutionTest {
   }
 
   @Test
-  void allThreeFilesAreAllThreeGates() {
+  void allThreeDeclarationsAreAllThreeGates() {
     gitHost.tree(
         "refs/heads/main",
         Map.of(
-            ".config/qits/ci-event-release-request.yml", "steps: []\n",
+            ".config/qits/release.yml", "archetype: java-service\n",
             ".config/qits/deployments.yml", "resources: []\n",
             ".config/qits/release-requests.yml", "manual-review: true\n"));
     GateSet set = resolve();
@@ -168,7 +169,7 @@ public class ReleaseGateResolutionTest {
     gitHost.tree(
         "refs/heads/main",
         Map.of(
-            ".config/qits/ci-event-release-request.yml", "steps: []\n",
+            ".config/qits/release.yml", "archetype: java-service\n",
             ".config/qits/release-requests.yml", "manual-review: maybe\n"));
     GateSet set = resolve();
     assertFalse(set.known());
@@ -190,8 +191,7 @@ public class ReleaseGateResolutionTest {
     gitHost.mainUnreadable();
     assertFalse(gates.resolve(repoId).known());
     // The very next resolve asks again — retrying is exactly what fixes "could not ask".
-    gitHost.tree(
-        "refs/heads/main", Map.of(".config/qits/ci-event-release-request.yml", "steps: []\n"));
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "archetype: java-service\n"));
     assertEquals(Set.of(Kind.CI), gates.resolve(repoId).kinds());
   }
 }

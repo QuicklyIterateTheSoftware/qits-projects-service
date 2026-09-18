@@ -185,7 +185,7 @@ public class ReleaseSupersessionTest {
   private String releaseOf(String branch) {
     String tag = "2026.915." + (100000 + (int) (Math.random() * 800000));
     executor.answer(ReleaseExecutor.Outcome.released(tag, RecordingBackingBranchMerger.freshSha()));
-    gitHost.tree("refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps: []\n"));
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     gitHost.tree(
         "refs/tags/" + tag,
         Map.of("pom.xml", "irrelevant", ".config/qits/deployments.yml", "irrelevant"));

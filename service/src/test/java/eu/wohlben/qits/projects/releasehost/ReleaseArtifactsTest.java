@@ -26,20 +26,21 @@ import org.junit.jupiter.api.Test;
 /**
  * <b>What a release published, read out of the released tag's own tree.</b>
  *
- * <p>The tree is the source of every answer here, and that is the claim worth pinning: the recipes
- * are files in the repository at the tag, so this endpoint answers for a release whose CI announced
- * nothing, for one made before the endpoint existed, and for a repository that publishes nothing at
- * all. Nothing about a build's record is consulted, which is why none of these tests stage one.
+ * <p>The tree is the source of every answer here, and that is the claim worth pinning: the
+ * declaration is a file in the repository at the tag, so this endpoint answers for a release whose
+ * CI announced nothing, for one made before the endpoint existed, and for a repository that
+ * publishes nothing at all. Nothing about a build's record is consulted, which is why none of these tests stage one.
  *
  * <p>The second claim is that <b>none of it is an error</b>. Not released, a tag the host cannot
- * read, a recipe that will not parse — each is a 200 carrying a sentence, because the page asking
- * this question is drawing a panel and "we could not ask" is a thing it can say.
+ * read, a declaration that will not parse — each is a 200 carrying a sentence, because the page
+ * asking this question is drawing a panel and "we could not ask" is a thing it can say.
  *
- * <p>The third is about <b>which</b> file at the tag is read. A migrated repository declares one
- * {@code .config/qits/release.yml} and carries no pipeline files at all; a tag cut before that
- * migration carries the two old ones and always will, because a tree is immutable. So both readings
- * are permanent, the configuration is asked for first, and where it answers it is the whole answer —
- * the tests below pin each half and the precedence between them.
+ * <p>The third is about <b>which</b> file at the tag is read, and there is one: {@code
+ * .config/qits/release.yml}. A tag cut before its repository migrated carries the two retired
+ * pipeline files instead and always will, because a tree is immutable — and since 2026-09-18 neither
+ * is read, so such a tag answers the empty list rather than what its recipe declared. That is a real
+ * loss and it is pinned below rather than left to be discovered, beside the case it was traded for:
+ * one reader, of one file, in a repository where the pipeline files no longer exist.
  */
 @QuarkusTest
 public class ReleaseArtifactsTest {
@@ -51,9 +52,16 @@ public class ReleaseArtifactsTest {
   private static final String MERGED_SHA = "20c377ee71fabe6f32429d1506989efecec7798b";
 
   private static final String CONFIG = ".config/qits/release.yml";
-  private static final String RECIPE = ".config/qits/ci-event-release.yml";
-  private static final String QA_RECIPE = ".config/qits/ci-event-release-request.yml";
   private static final String DEPLOYMENTS = ".config/qits/deployments.yml";
+
+  /**
+   * The two retired pipeline files. They are still spelled here, and only here, because a tag cut
+   * before the migration carries them for ever and the point of the two tests that stage them is
+   * that <b>nothing reads them</b>.
+   */
+  private static final String RETIRED_RELEASE_RECIPE = ".config/qits/ci-event-release.yml";
+
+  private static final String RETIRED_QA_RECIPE = ".config/qits/ci-event-release-request.yml";
 
   private String repoId;
   private String projectId;
@@ -121,43 +129,13 @@ public class ReleaseArtifactsTest {
     given().get(artifactsOf(id)).then().statusCode(200).body("deployable", equalTo(false));
   }
 
-  /** The declaration is forwarded, entry for entry, at the version the release landed as. */
-  @Test
-  public void theReleaseRecipesDeclarationIsWhatTheAnswerCarries() {
-    String id = release();
-    tree(
-        Map.of(
-            DEPLOYMENTS,
-            "resources: []\n",
-            RECIPE,
-            """
-            event: SCMRelease
-            when:
-              - repository: { exact: qits-thing-service }
-            artifacts:
-              - { type: docker, name: qits/qits-thing }
-              - { type: maven, name: eu.wohlben.qits:qits-thing-domain }
-            steps:
-              - image: qits/build-images/node-docker-base:latest
-            """));
-
-    given()
-        .get(artifactsOf(id))
-        .then()
-        .statusCode(200)
-        .body("detail", nullValue())
-        .body("artifacts.type", contains("docker", "maven"))
-        .body("artifacts.name", contains("qits/qits-thing", "eu.wohlben.qits:qits-thing-domain"))
-        .body("artifacts.version", contains(VERSION, VERSION));
-  }
-
   /**
-   * <b>A repository with no recipe published nothing, and that is an answer rather than a problem.</b>
-   * Every SPA on this platform is in exactly this case, so a sentence on {@code detail} here would
-   * turn the ordinary outcome into a warning on half the release pages.
+   * <b>A repository with no declaration published nothing, and that is an answer rather than a
+   * problem.</b> Every SPA on this platform is in exactly this case, so a sentence on {@code detail}
+   * here would turn the ordinary outcome into a warning on half the release pages.
    */
   @Test
-  public void aRepositoryThatDeclaresNoRecipeAnswersEmptyWithNothingToExplain() {
+  public void aRepositoryThatDeclaresNothingAnswersEmptyWithNothingToExplain() {
     String id = release();
     tree("package.json", "angular.json", "src/main.ts");
 
@@ -171,61 +149,28 @@ public class ReleaseArtifactsTest {
   }
 
   /**
-   * A recipe that will not parse is said out loud instead of quietly answering a shorter list than
-   * the repository declares — the difference between "this published nothing" and "we cannot read
-   * what it published" is the whole reason {@code detail} exists.
+   * A repository that declares no bundle contributes none, which is most repositories — and {@code
+   * userflows: false} is the same answer as an absent key, said out loud.
    */
   @Test
-  public void aRecipeThatWillNotParseIsASentenceAndNeverAShorterList() {
-    String id = release();
-    tree(Map.of(RECIPE, "event: SCMRelease\nartifacts: a-string-is-not-a-list\n"));
-
-    given()
-        .get(artifactsOf(id))
-        .then()
-        .statusCode(200)
-        .body("artifacts", hasSize(0))
-        .body("detail", containsString("readable artifact list"));
-  }
-
-  /**
-   * <b>The userflow bundle is derived, and its version is the FOLD's sha.</b> That pipeline runs per
-   * release request and publishes at {@code $QITS_CI_SHA}, so asking for the calver would 404 on a
-   * bundle that is certainly there. Its site name comes out of the recipe too: {@code
-   * qits-projects-service} publishes {@code @userflows/qits-projects}, so a name composed from the
-   * repository's own would be a link to nothing.
-   */
-  @Test
-  public void theUserflowBundleRidesAlongAtTheFoldsShaAndUnderTheNameTheRecipeSpells() {
+  public void aDeclarationThatPublishesNoBundleAddsNothing() {
     String id = release();
     tree(
         Map.of(
-            RECIPE,
-            "event: SCMRelease\nartifacts:\n  - { type: docker, name: qits/qits-thing }\n",
-            QA_RECIPE,
+            CONFIG,
             """
-            event: ReleaseRequestChanged
-            steps:
-              - script: |
-                  curl -X PUT "$QITS_DOCS_URL/@userflows/qits-thing/-/$QITS_CI_SHA"
+            archetype: java-service
+            artifacts:
+              - { type: docker, name: qits/qits-thing }
+            userflows: false
             """));
 
     given()
         .get(artifactsOf(id))
         .then()
         .statusCode(200)
-        .body("artifacts.type", contains("docker", "userflows"))
-        .body("artifacts.name", contains("qits/qits-thing", "@userflows/qits-thing"))
-        .body("artifacts.version", contains(VERSION, MERGED_SHA));
-  }
-
-  /** A QA pipeline that publishes no bundle contributes nothing, which is most repositories. */
-  @Test
-  public void aQaPipelineThatPublishesNoBundleAddsNothing() {
-    String id = release();
-    tree(Map.of(QA_RECIPE, "event: ReleaseRequestChanged\nsteps:\n  - script: ./mvnw verify\n"));
-
-    given().get(artifactsOf(id)).then().statusCode(200).body("artifacts", hasSize(0));
+        .body("artifacts", hasSize(1))
+        .body("artifacts.name", contains("qits/qits-thing"));
   }
 
   /**
@@ -306,22 +251,23 @@ public class ReleaseArtifactsTest {
   }
 
   /**
-   * <b>The configuration wins outright, and reading both would be the bug.</b> A repository
-   * migrating in one commit can leave a legacy recipe at a tag — qits-ci skips it with a WARN on the
+   * <b>The configuration is the whole answer, and a retired recipe beside it is not consulted.</b> A
+   * repository migrating in one commit can leave one at a tag — qits-ci skips it with a WARN on the
    * pipeline side — and the two files were never written to agree, so answering out of both would
-   * publish an artifact list no release ever produced. The old declaration is simply not consulted,
+   * publish an artifact list no release ever produced. That was a precedence rule while both were
+   * read; since 2026-09-18 the old file has no reader at all, and this test is what says so,
    * userflow line included.
    */
   @Test
-  public void aTagCarryingBothDeclarationsIsAnsweredOutOfTheConfigurationAlone() {
+  public void aTagCarryingARetiredRecipeBesideItsConfigurationIgnoresTheRecipe() {
     String id = release();
     tree(
         Map.of(
             CONFIG,
             "artifacts:\n  - { type: docker, name: qits/qits-thing-composed }\n",
-            RECIPE,
+            RETIRED_RELEASE_RECIPE,
             "event: SCMRelease\nartifacts:\n  - { type: docker, name: qits/qits-thing-legacy }\n",
-            QA_RECIPE,
+            RETIRED_QA_RECIPE,
             """
             event: ReleaseRequestChanged
             steps:
@@ -336,6 +282,44 @@ public class ReleaseArtifactsTest {
         .body("detail", nullValue())
         .body("artifacts", hasSize(1))
         .body("artifacts.name", contains("qits/qits-thing-composed"));
+  }
+
+  /**
+   * <b>The price of the removal, pinned rather than discovered.</b> A tag cut before its repository
+   * migrated carries the two retired pipeline files and no {@code release.yml}, and a tree is
+   * immutable, so it is in that state for ever. It used to be answered out of those files — the
+   * artifact list from one, the userflow bundle hunted out of a shell line in the other. It is not
+   * any more.
+   *
+   * <p><b>The answer is the empty list with no {@code detail}</b>, which is deliberately the
+   * <em>same</em> answer a repository that publishes nothing gets rather than a sentence saying the
+   * declaration is unreadable: nothing failed, and the only honest thing to say about a file this
+   * service has stopped reading is nothing. What was traded for it is the whole of
+   * {@code ReleaseArtifacts} having one reader of one file — and the estate carries no repository
+   * whose {@code main} still holds either of these, so only tags cut before the migration are
+   * affected.
+   */
+  @Test
+  public void aTagPredatingTheMigrationAnswersEmptyBecauseItsRecipesAreNoLongerRead() {
+    String id = release();
+    tree(
+        Map.of(
+            RETIRED_RELEASE_RECIPE,
+            "event: SCMRelease\nartifacts:\n  - { type: docker, name: qits/qits-thing-legacy }\n",
+            RETIRED_QA_RECIPE,
+            """
+            event: ReleaseRequestChanged
+            steps:
+              - script: |
+                  curl -X PUT "$QITS_DOCS_URL/@userflows/qits-thing/-/$QITS_CI_SHA"
+            """));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("artifacts", hasSize(0))
+        .body("detail", nullValue());
   }
 
   /**

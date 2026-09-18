@@ -30,9 +30,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * <b>The regression, and it is the one that matters.</b> Almost every repository on this platform
- * carries {@code .config/qits/ci-event-release-request.yml} on its {@code main} and no {@code
- * release-requests.yml} at all, so almost every repository has to behave byte-identically before and
- * after the gate set landed: one CI gate, unconditional, and nobody ever asked to approve anything.
+ * declares an {@code archetype:} in {@code .config/qits/release.yml} on its {@code main} and no
+ * {@code release-requests.yml} at all, so almost every repository has to behave byte-identically
+ * before and after the gate set landed: one CI gate, unconditional, and nobody ever asked to approve
+ * anything.
  *
  * <p>It is written before the reporting and the cutover, and a green run here is what licenses the
  * rest. Where {@code ReleaseRequestFlowTest} asserts these rules as the machine's behaviour, this
@@ -68,10 +69,13 @@ public class CiRepositoryUnchangedTest {
     activeBuilds.answer(Optional.of(0));
     repoId = "ci-unchanged-repo-" + UUID.randomUUID();
     projectId = "ci-unchanged-project-" + UUID.randomUUID();
-    // THE POPULATION THIS CLASS IS ABOUT: a release-request recipe, and nothing else. No
-    // deployments.yml, no release-requests.yml — the state of almost every repository here.
+    // THE POPULATION THIS CLASS IS ABOUT: a release declaration naming an archetype, and nothing
+    // else. No deployments.yml, no release-requests.yml — the state of almost every repository here.
     gitHost.tree(
-        "refs/heads/main", Map.of(RecordingReleaseGitHost.CI_RECIPE, "steps:\n  - name: verify\n"));
+        "refs/heads/main",
+        Map.of(
+            RecordingReleaseGitHost.RELEASE_CONFIG,
+            RecordingReleaseGitHost.GATING_RELEASE_CONFIG));
     QuarkusTransaction.requiringNew()
         .run(
             () -> {

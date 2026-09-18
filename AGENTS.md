@@ -282,7 +282,8 @@ HTTP server they never wanted, because vertx-http rides in with the jar. That is
   when qits-maintenance becomes the lifecycle for libraries and a consumer's bump becomes the
   deployment it already is.
   **It hung off qits-ci's `SoftwareRelease` until 2026-09-04 and that was a gate only half the
-  platform could pass**: that event is emitted by a repository's `ci-event-release.yml` recipe, so
+  platform could pass**: that event was emitted by a repository's own `ci-event-release.yml` recipe
+  — the pipeline files the estate has since retired — so
   every recipe-less repository — every SPA — released tags that never reached `main` at all
   (qits-deployments-platform-frontend 2026.904.151913, `merged_at` null, main one commit behind for
   ever). A release is something this service performs itself, so the fork hangs off that now and
@@ -652,8 +653,7 @@ released, while any configured gate is unmet. One file at `main` turns on each g
 
 | file at `main` | gate |
 | --- | --- |
-| `.config/qits/ci-event-release-request.yml` | CI — a gating `BuildSuccessful` for the fold |
-| `.config/qits/release.yml` naming an `archetype:` | CI too — qits-ci composes the same QA pipeline from the wrapper's `release-archetypes/*.yml`, and its verdict gates the same way (fixed 2026-09-13: this repository used to miss it, so a migrated repository released before its QA run even started) |
+| `.config/qits/release.yml` naming an `archetype:` | CI — a gating `BuildSuccessful` for the fold. qits-ci composes the QA pipeline from the wrapper's `release-archetypes/*.yml` and its verdict gates the same way a hand-written recipe's used to (fixed 2026-09-13: this repository used to read only the recipe, so a migrated repository released before its QA run even started; the recipe reading itself went on 2026-09-18 when the last of those files left the estate) |
 | `.config/qits/deployments.yml` | deployment — the release is not finished until the deployment is live |
 | `.config/qits/release-requests.yml` with `manual-review: true` | approval — a person's yes |
 
@@ -677,7 +677,7 @@ declared, which is `ReleaseFinalization.deployability`'s reasoning applied twice
 
 | file at the released tag | gate |
 | --- | --- |
-| `.config/qits/ci-event-release.yml`, or a `release.yml` **qits-ci says it runs a release for** | publish — the tag's own release run must be green |
+| a `release.yml` **qits-ci says it runs a release for** | publish — the tag's own release run must be green |
 | `.config/qits/deployments.yml` | deployment — a `DeploymentActive` for the released version |
 
 **The publish gate's membership is qits-ci's answer and not this service's** (2026-09-16). It used

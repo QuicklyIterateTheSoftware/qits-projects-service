@@ -455,7 +455,8 @@ public class EventWireReflectionTest {
   /**
    * The publish phase's temporary half has NO listener of its own any more, and that is the fix of
    * 2026-09-04 rather than an omission. It used to consume qits-ci's {@code SoftwareRelease}, an
-   * event only a repository carrying a {@code ci-event-release.yml} recipe ever emits, so every
+   * event only a repository carrying its own {@code ci-event-release.yml} recipe ever emitted, back
+   * when those files existed, so every
    * recipe-less repository — every SPA — released tags that never reached {@code main}. The
    * deployability fork hangs off this service's OWN release now ({@code
    * ReleaseFinalization.onReleased}, plus its catch-up sweep), which needs no subscription at all.

@@ -52,15 +52,13 @@ import org.jboss.logging.Logger;
  * every configured gate having passed and the tag reaching {@code main}.
  *
  * <pre>
- *     .config/qits/ci-event-release-request.yml present  →  the CI gate
- *     .config/qits/release.yml naming an archetype:       →  the CI gate too
+ *     .config/qits/release.yml naming an archetype:      →  the CI gate
  *     .config/qits/deployments.yml present               →  the deployment gate
- *     .config/qits/release-requests.yml manual-review     →  the approval gate
+ *     .config/qits/release-requests.yml manual-review    →  the approval gate
  *
  *     AT THE RELEASED TAG, not at main:
- *     .config/qits/ci-event-release.yml present          →  the publish gate
  *     .config/qits/release.yml for which qits-ci says
- *       it runs a release                               →  the publish gate too
+ *       it runs a release                                →  the publish gate
  * </pre>
  *
  * <h2>Configured at the tag: the publish gate</h2>
@@ -84,22 +82,26 @@ import org.jboss.logging.Logger;
  * gate it governs is asked <em>before</em> the tag, about content nobody has accepted yet. The
  * publish gate is asked after: the run that must go green is the release run of the released commit,
  * composed from what <em>that commit</em> declared, and asking {@code main} instead would gate a
- * release on a pipeline it does not have (a repository that added {@code ci-event-release.yml} after
- * the tag) or wave one through that does (a repository that removed it since). There is no loophole
- * to open, because the content is already tagged and immutable. It is {@link
+ * release on a pipeline it does not have (a repository that added a release declaration after the
+ * tag) or wave one through that does (a repository that removed it since). There is no loophole to
+ * open, because the content is already tagged and immutable. It is {@link
  * ReleaseFinalization#deployability}'s reasoning exactly, for the same half of the lifecycle.
  *
- * <h2>A migrated repository's CI gate is composed, not local</h2>
+ * <h2>The CI gate is composed, not local</h2>
  *
- * <p>{@link ReleaseArtifacts#SLOT_CONFIG} replaces the two legacy recipe files for a repository that
- * has migrated (see that class's javadoc): its own {@code ci-event-release-request.yml} is gone from
- * the tree, and qits-ci composes the QA pipeline instead, from the wrapper's own
- * {@code .config/qits/release-archetypes/<archetype>.yml}. That pipeline still reports a gating
- * verdict the same way an in-repository recipe would, so the CI gate has to fire on the composed
- * source too — the bug this class existed to close on 2026-09-13: a repository that migrated lost
- * its CI gate entirely, because {@link #read} only ever looked for the file that no longer exists,
- * so every request of that repository skipped straight to {@code READY} and released before its QA
- * run had even started.
+ * <p>{@link ReleaseArtifacts#SLOT_CONFIG} is the whole of what turns this gate on. A repository
+ * carries no QA pipeline of its own any more; qits-ci composes one from the wrapper's
+ * {@code .config/qits/release-archetypes/<archetype>.yml}, and that pipeline reports a gating
+ * verdict exactly as an in-repository recipe used to.
+ *
+ * <p><b>Reading the composed source is what closed the 2026-09-13 bug</b>, and reading it is now the
+ * only reading there is. This class used to look first for a repository's own
+ * {@code .config/qits/ci-event-release-request.yml} and treat its presence as the CI gate — so a
+ * repository that migrated away from that file lost its CI gate entirely, skipped straight to
+ * {@code READY} and released before its QA run had even started. The archetype reading was added
+ * beside the file check then; the file check itself went on 2026-09-18, when no repository in the
+ * estate carried the file any more and the branch could only ever have answered for a repository
+ * that has since been migrated.
  *
  * <p><b>The rule is presence, not composition.</b> {@link #read} asks {@link ReleaseArchetypeParser}
  * one question — does {@link ReleaseArtifacts#SLOT_CONFIG} name a non-blank {@code archetype:} — and
@@ -163,12 +165,9 @@ public class ReleaseGates {
   /** The fallback default branch, for a repository row that names none. */
   private static final String DEFAULT_MAIN = "main";
 
-  /** The per-release-request CI pipeline. Its presence is the CI gate. */
-  static final String CI_RECIPE = ReleaseArtifacts.QA_RECIPE;
-
   /**
-   * A migrated repository's release declaration. Read for {@code archetype:} — see the class
-   * javadoc's "A migrated repository's CI gate is composed, not local".
+   * A repository's release declaration. Read for {@code archetype:} — see the class javadoc's "The
+   * CI gate is composed, not local".
    */
   static final String RELEASE_CONFIG = ReleaseArtifacts.SLOT_CONFIG;
 
@@ -277,8 +276,8 @@ public class ReleaseGates {
   /**
    * Which gates hold {@code repoId}'s release requests, read from its {@code main}.
    *
-   * <p>One tree listing, plus one file read where {@link #RELEASE_CONFIG} is in the tree and {@link
-   * #CI_RECIPE} is not, plus one file read where {@link #SETTINGS} is in it. A repository with no
+   * <p>One tree listing, plus one file read where {@link #RELEASE_CONFIG} is in the tree, plus one
+   * file read where {@link #SETTINGS} is in it. A repository with no
    * row, and a platform with no git host configured, are both {@link GateSet#unknown}: the honest
    * answer to "which rules apply" when the rules cannot be located is not "none".
    *
@@ -340,14 +339,11 @@ public class ReleaseGates {
     }
     List<String> paths = tree.value();
     EnumSet<Kind> kinds = EnumSet.noneOf(Kind.class);
-    if (paths.contains(CI_RECIPE)) {
-      kinds.add(Kind.CI);
-    }
-    if (!kinds.contains(Kind.CI) && paths.contains(RELEASE_CONFIG)) {
-      // The legacy recipe already answered the CI gate; a migrated repository never carries both,
-      // so this is skipped rather than redundant on every ordinary repository — one file read, not
-      // two, and the file this service reads to decide is exactly the one it already fetches for
-      // ReleaseArtifacts.
+    if (paths.contains(RELEASE_CONFIG)) {
+      // One file read on every repository that declares a release at all, and the file is exactly
+      // the one ReleaseArtifacts already fetches. The tree listing alone cannot answer this gate:
+      // a release.yml is present for every migrated repository and only the archetype: key inside
+      // it says whether qits-ci composes a QA pipeline to be gated by.
       ReleaseGitHost.Answer<String> config;
       try {
         config = host.file(repoId, rev, RELEASE_CONFIG);

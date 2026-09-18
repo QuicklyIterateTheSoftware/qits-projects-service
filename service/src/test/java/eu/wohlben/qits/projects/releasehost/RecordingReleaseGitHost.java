@@ -98,25 +98,38 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * The per-release-request CI recipe, and the reason it has a name here: its presence on a
-   * repository's {@code main} is the <b>CI gate</b>, which {@code ReleaseGates} reads through this
-   * fake. Almost every repository on the platform carries it, so {@link #reset} stages it — see
-   * {@link #GATED_MAIN}.
+   * The repository's release declaration, and the reason it has a name here: an {@code archetype:}
+   * in it on a repository's {@code main} is the <b>CI gate</b>, which {@code ReleaseGates} reads
+   * through this fake. Every repository on the platform carries one, so {@link #reset} stages it —
+   * see {@link #GATED_MAIN}.
    */
-  public static final String CI_RECIPE = ".config/qits/ci-event-release-request.yml";
+  public static final String RELEASE_CONFIG = ".config/qits/release.yml";
 
   /**
-   * What an ordinary repository's {@code main} looks like to the gate resolver: a release-request
-   * recipe and nothing else, so the CI gate applies and neither the approval nor the deployment gate
-   * does. <b>{@link #reset} stages it at {@code refs/heads/main}</b>, because that is the state
-   * almost every repository on this platform is in and the state every suite here was written
-   * against — a fake whose main could not be read would put every request in front of an unknown
-   * gate set instead.
+   * The content that turns {@link #RELEASE_CONFIG} into the CI gate: an archetype and nothing else.
+   * qits-ci composes the QA pipeline from the named archetype, so naming one is the whole of what
+   * this service reads — it never opens the archetype file.
+   */
+  public static final String GATING_RELEASE_CONFIG = "archetype: java-service\n";
+
+  /**
+   * What an ordinary repository's {@code main} looks like to the gate resolver: a release
+   * declaration naming an archetype and nothing else, so the CI gate applies and neither the
+   * approval nor the deployment gate does. <b>{@link #reset} stages it at {@code
+   * refs/heads/main}</b>, because that is the state every repository on this platform is in and the
+   * state every suite here was written against — a fake whose main could not be read would put
+   * every request in front of an unknown gate set instead.
+   *
+   * <p>It used to be {@code .config/qits/ci-event-release-request.yml}, whose bare presence was the
+   * CI gate, until that pair of hand-written pipeline files left the estate and this service stopped
+   * reading them (2026-09-18). <b>Which file says "CI-gated" moved; nothing about the gate did</b>,
+   * which is why every suite below asserts exactly what it asserted before.
    *
    * <p>A test wanting a different configuration stages {@code refs/heads/main} itself, which
    * replaces this; one wanting an <em>unreadable</em> one calls {@link #mainUnreadable}.
    */
-  public static final Map<String, String> GATED_MAIN = Map.of(CI_RECIPE, "steps: []\n");
+  public static final Map<String, String> GATED_MAIN =
+      Map.of(RELEASE_CONFIG, GATING_RELEASE_CONFIG);
 
   /** Put a tree at a sha — what a release will read its manifests out of. */
   public void tree(String sha, Map<String, String> files) {
@@ -124,9 +137,9 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   }
 
   /**
-   * The same, with the CI recipe added — for a test that stages {@code refs/heads/main} for some
-   * other reader (the estate gate reads the wrapper's branches) and does not mean to change which
-   * gates the repository configures.
+   * The same, with the gating release declaration added — for a test that stages {@code
+   * refs/heads/main} for some other reader (the estate gate reads the wrapper's branches) and does
+   * not mean to change which gates the repository configures.
    */
   public void gatedTree(String rev, Map<String, String> files) {
     Map<String, String> tree = new LinkedHashMap<>(files);
@@ -151,7 +164,8 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     trees.put(repoId + "|" + rev, new LinkedHashMap<>(files));
   }
 
-  /** {@link #treeFor} with the CI recipe added, so staging a main does not remove the CI gate. */
+  /** {@link #treeFor} with the gating release declaration added, so staging a main does not remove
+   * the CI gate. */
   public void gatedTreeFor(String repoId, String rev, Map<String, String> files) {
     Map<String, String> tree = new LinkedHashMap<>(files);
     tree.putAll(GATED_MAIN);

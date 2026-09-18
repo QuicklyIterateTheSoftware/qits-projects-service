@@ -121,9 +121,10 @@ import org.jboss.logging.Logger;
  *
  * <h2>The CI gate</h2>
  *
- * <p><b>It applies where {@code .config/qits/ci-event-release-request.yml} is on main</b>, which is
- * almost every repository here, and where it applies it is unchanged. A PENDING request becomes
- * READY when, for its {@code mergedSha}:
+ * <p><b>It applies where {@code .config/qits/release.yml} on main names an {@code archetype:}</b>,
+ * which is almost every repository here — qits-ci composes the QA pipeline from that archetype — and
+ * where it applies it is unchanged. A PENDING request becomes READY when, for its {@code
+ * mergedSha}:
  *
  * <ol>
  *   <li><b>No gating verdict is red.</b> One red gating run is a REJECTED request, immediately —
