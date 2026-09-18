@@ -135,7 +135,7 @@ public class ReleaseRequestController {
    * <p><b>The wrapper case is the one worth reading about.</b> Two workspaces of one project
    * releasing on the same night are two asks about one estate, not two releases, so on a {@code
    * PROJECT}-archetype repository the second ask becomes a named source of the first's request
-   * instead of minting a rival — one calver tag, one gating build, one approval, one deployment.
+   * instead of minting a rival — one calver tag, one build, one approval, one deployment.
    * Two consequences a caller has to expect: the summary and requester they sent do <b>not</b>
    * become the request's (they reach their own source row, and the opening ask's words stand), and
    * a red gate or a decline on the shared request holds every participant at once. {@code
@@ -544,8 +544,8 @@ public class ReleaseRequestController {
    * <p><b>A phase is a unit of work with a state and a rerun, and there are exactly three.</b>
    * {@code QA} is the qits-ci run at the fold, {@code PUBLISH} the qits-ci run at the tag, {@code
    * DEPLOY} the qits-deployments deployment request for the released version. A <em>step</em> inside
-   * one of those runs is not a phase and neither is the {@code gating: false} half of a pipeline:
-   * both are part of a run, and running the run again is what this door does. Adding a fourth word
+   * one of those runs is not a phase and neither is any other part a run is split into: each is
+   * part of a run, and running the run again is what this door does. Adding a fourth word
    * here would be a statement that a fourth thing can be re-run on its own.
    *
    * <p><b>{@code qits:admin} and {@code qits:system}, not admin alone</b> — and that is a deliberate

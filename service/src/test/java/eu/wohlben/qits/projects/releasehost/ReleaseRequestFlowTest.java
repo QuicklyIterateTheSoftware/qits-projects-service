@@ -190,7 +190,7 @@ public class ReleaseRequestFlowTest {
   }
 
   @Test
-  public void aGreenGatingVerdictReleasesAndTheDoorIsAskedForTheFold() {
+  public void aGreenVerdictReleasesAndTheDoorIsAskedForTheFold() {
     activeBuilds.answer(Optional.of(1));
     String id = create("work");
     String merged = mergedShaOf(id);
@@ -362,7 +362,7 @@ public class ReleaseRequestFlowTest {
   }
 
   @Test
-  public void aRedGatingVerdictRejectsWithTheRunOnTheDetail() {
+  public void aRedVerdictRejectsWithTheRunOnTheDetail() {
     String id = create("work");
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"TIMED_OUT\"");
     awaitState(id, "REJECTED");
@@ -373,18 +373,25 @@ public class ReleaseRequestFlowTest {
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
   }
 
+  /**
+   * <b>The deliberate behaviour change of ticket 9441bc6e.</b> A red verdict carrying {@code
+   * "gating":false} used to be read and ignored — the userflow pipelines' redness delayed nothing —
+   * and there is no such thing as a verdict that is read and ignored any more. The field is not
+   * bound at all, so the payload is accepted exactly as a qits-ci that still sends it will keep
+   * sending it, and the fold is rejected on it like any other red.
+   */
   @Test
-  public void aRedNonGatingVerdictNeverBlocksTheGreenOne() {
-    // The userflows case, the reason the flag exists: a red story delays nothing and blocks
-    // nothing once a gating run has vouched for the commit.
+  public void aRedVerdictStillCarryingTheOldFlagNowRejects() {
     String id = create("work");
     String merged = mergedShaOf(id);
 
     verdict("BuildFailed", merged, ",\"outcome\":\"FAILED\",\"gating\":false");
-    assertEquals("PENDING", stateOf(id), "a non-gating failure is read and ignored");
+    awaitState(id, "REJECTED");
 
+    // And a green one afterwards does not undo it: the fold is what was judged.
     verdict("BuildSuccessful", merged, "");
-    awaitState(id, "RELEASED");
+    assertEquals("REJECTED", stateOf(id), "a rejection is answered by a push, not by a second run");
+    assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
   }
 
   /**
@@ -419,7 +426,7 @@ public class ReleaseRequestFlowTest {
     assertEquals("PENDING", stateOf(id), "an idle CI is not a verdict and never becomes one");
     assertEquals(0, executor.calls().size(), "and nothing was released on nobody's word");
     String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
-    assertTrue(detail.contains("Waiting for a gating CI verdict"), detail);
+    assertTrue(detail.contains("Waiting for a CI verdict"), detail);
 
     // And the one thing that does open it, on the very same request.
     verdict("BuildSuccessful", mergedShaOf(id), "");

@@ -142,7 +142,6 @@ class BuildStatusListenerTest {
     assertEquals("main", verdict.branch());
     assertEquals("abc123", verdict.commitSha());
     assertEquals("SUCCESS", verdict.status());
-    assertTrue(verdict.gating(), "absent on the wire means gating");
     assertEquals(green.occurredAt(), verdict.finishedAt());
     assertEquals(UUID.fromString(green.id()), verdict.causationId());
     assertEquals(
@@ -151,15 +150,25 @@ class BuildStatusListenerTest {
         "the verdict that was just recorded resolves whatever request was waiting on it");
   }
 
+  /**
+   * <b>The crossing contract.</b> qits-ci still carries {@code gating} on both build events while
+   * its own release of ticket 9441bc6e is in flight, and this service went first — so a payload
+   * saying {@code "gating":false} has to be accepted and recorded as the ordinary red verdict it
+   * is, rather than parsed specially, refused, or read as something the gate may skip. Nothing
+   * handles the field: the wire mapper ignores unknown properties, which is exactly what makes a
+   * removal safe to land ahead of the publisher's.
+   */
   @Test
-  void aNonGatingVerdictIsRecordedAsSuch() {
+  void anIncomingGatingFieldIsIgnoredAndTheVerdictIsAnOrdinaryRedOne() {
     listener.onFrame(
         frame(
             "BuildFailed",
             "{\"commitSha\":\"abc123\",\"gating\":false,\"outcome\":\"FAILED\","
                 + "\"repoId\":\"repo-1\",\"runId\":\"run-uf\"}"));
 
-    assertEquals(false, ledger.recorded.get(0).gating());
+    assertEquals(1, ledger.recorded.size(), "the frame is not poison and is not skipped");
+    assertEquals("FAILED", ledger.recorded.get(0).status());
+    assertEquals("run-uf", ledger.recorded.get(0).runId());
   }
 
   @Test

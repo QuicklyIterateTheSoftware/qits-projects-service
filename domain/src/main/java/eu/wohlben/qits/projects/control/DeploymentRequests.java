@@ -11,8 +11,8 @@ import java.util.Optional;
  * <p><b>A phase is a unit of work with a state and a rerun, and the deployment is the third one.</b>
  * QA is a qits-ci run at the fold, publish is a qits-ci run at the tag, and deploy is a
  * qits-deployments <em>deployment request</em> for {@code (repository, version)}. Nothing else is a
- * phase: a step inside one of those runs is not one, and neither is a {@code gating: false} half of
- * a pipeline, because neither has a rerun of its own. The <b>gate</b> that follows this phase is a
+ * phase: a step inside one of those runs is not one, and neither is any other part a run is split
+ * into, because neither has a rerun of its own. The <b>gate</b> that follows this phase is a
  * different thing again and is not this port's business — {@code DEPLOYMENT} is closed by a {@code
  * DeploymentActive} arriving on the bus, {@code ReleaseFinalization} is where that is decided, and
  * nothing here re-decides it or is allowed to. A gate delays; this port reports.

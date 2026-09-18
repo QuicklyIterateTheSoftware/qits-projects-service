@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
 /**
  * <b>A wrapper repository converges per REPOSITORY, not per branch.</b> Two workspaces of one
  * project releasing on the same night are two asks about one estate, so the second ask joins the
- * request the first opened rather than minting a rival — one calver tag, one gating build, one
+ * request the first opened rather than minting a rival — one calver tag, one build, one
  * approval, one deployment for one night's work.
  *
  * <p>{@code WrapperEstatePinGateTest} is the template, and the fixture is deliberately its shape: a

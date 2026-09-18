@@ -51,7 +51,7 @@ import org.junit.jupiter.api.Test;
  * <p><b>The load-bearing test is {@link #maintenanceBeingDownHoldsTheRequestAndReleasesNothing}.</b>
  * Everything else here describes the happy shape; that one is the reason the record is positive
  * rather than negative, and it asserts the thing a negative record would get wrong — that the
- * executor is never reached, with a green gating verdict sitting there and a person's approval on
+ * executor is never reached, with a green verdict sitting there and a person's approval on
  * top of it.
  */
 @QuarkusTest
@@ -355,7 +355,7 @@ public class WrapperEstatePinGateTest {
   /**
    * <b>The load-bearing test.</b> qits-maintenance cannot be asked — no address, unreachable, refusing,
    * or a bump already in flight; from the domain they are one answer — and the request holds, says
-   * why, and <em>releases nothing</em>, with a green gating verdict and a person's approval both
+   * why, and <em>releases nothing</em>, with a green verdict and a person's approval both
    * sitting on the fold.
    *
    * <p>This is why the ledger's record is positive. A negative record — a flag written when a refresh

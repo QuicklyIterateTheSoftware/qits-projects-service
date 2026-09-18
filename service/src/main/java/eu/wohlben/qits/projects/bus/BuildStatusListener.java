@@ -68,11 +68,16 @@ public class BuildStatusListener implements QitsDurableEventListener {
 
   /**
    * The fields this ledger stores. {@code outcome} exists only on {@code BuildFailed}; {@code
-   * gating} is <b>null-means-true</b> on the wire (a gating build's payload predates the field
-   * byte-for-byte, and only the non-gating pipelines write {@code false}); {@code finishedAt} is
-   * deliberately not bound — it is the envelope's {@code occurredAt}, the log's own ordering key,
-   * read off the frame. Unknown fields are ignored by the library's mapper, which is what lets
-   * qits-ci add one.
+   * finishedAt} is deliberately not bound — it is the envelope's {@code occurredAt}, the log's own
+   * ordering key, read off the frame. Unknown fields are ignored by the library's mapper, which is
+   * what lets qits-ci add one — and what lets it keep sending one this service has stopped reading.
+   *
+   * <p><b>{@code gating} is exactly such a field.</b> qits-ci carried it on both build events, and
+   * this ledger bound it and let a red verdict be read and ignored. A verdict that is not a verdict
+   * about the commit is not a thing any more (ticket 9441bc6e): every terminal verdict for the fold
+   * is the CI gate's answer. The field is simply not bound, so a qits-ci still sending it — which is
+   * the whole state of the estate while the two releases cross — is accepted and recorded as an
+   * ordinary verdict.
    */
   public record BuildVerdictPayload(
       String runId,
@@ -81,7 +86,6 @@ public class BuildStatusListener implements QitsDurableEventListener {
       String repoName,
       String branch,
       String commitSha,
-      Boolean gating,
       String outcome) {}
 
   @Inject BuildStatusLedger ledger;
@@ -127,7 +131,6 @@ public class BuildStatusListener implements QitsDurableEventListener {
             build.branch(),
             build.commitSha(),
             statusOf(frame, build),
-            build.gating() == null || build.gating(),
             frame.occurredAt(),
             causeOf(frame)));
     // The other half of the reason the ledger lives in this service: the verdict that was just

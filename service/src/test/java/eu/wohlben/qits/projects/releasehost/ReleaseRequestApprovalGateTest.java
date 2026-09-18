@@ -37,7 +37,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p><b>Every case here is driven by inserting approval rows directly</b>, because the doors that
  * record a decision do not exist yet. The re-evaluation is then triggered the way the platform
- * already triggers one — a gating verdict arriving over the real bus listener for the request's
+ * already triggers one — a verdict arriving over the real bus listener for the request's
  * merged sha — which is exactly the path an approval door will take when it calls the gate after its
  * own write. Nothing here reaches a git host or qits-ci: the merger, the executor and the active-run
  * probe are the package's recording fakes.
@@ -432,7 +432,7 @@ public class ReleaseRequestApprovalGateTest {
   }
 
   /**
-   * Ask the gate again, which is what an approval door will do after its own write. A further gating
+   * Ask the gate again, which is what an approval door will do after its own write. A further
    * verdict for the same fold is the trigger the platform already has, and it settles the request in
    * the same consumption — so it stands in for the door until there is one.
    */

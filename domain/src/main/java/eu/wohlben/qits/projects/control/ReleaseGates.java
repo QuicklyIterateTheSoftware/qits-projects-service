@@ -27,9 +27,9 @@ import org.jboss.logging.Logger;
  * <p>A release is one pipeline of three phases, and each of these four kinds stands between two of
  * them. <b>A phase is a unit of work with a state and a rerun</b> — the QA run at {@code
  * release/<id>@mergedSha}, the publish run at {@code <version>@commitSha}, and the deployment of
- * that version — and nothing else is one: a <em>step</em> inside a run is not, and neither is the
- * {@code gating: false} half of a pipeline, which is part of the same run and has no rerun of its
- * own. <b>A gate is the condition between two phases.</b>
+ * that version — and nothing else is one: a <em>step</em> inside a run is not, and neither is any
+ * other part a run happens to be split into, because it has no state and no rerun of its own. <b>A
+ * gate is the condition between two phases.</b>
  *
  * <pre>
  *     P1 . QA        {@link Kind#CI}, {@link Kind#APPROVAL}   ->   P2 . Publish
@@ -94,8 +94,8 @@ import org.jboss.logging.Logger;
  * <p>{@link ReleaseArtifacts#SLOT_CONFIG} replaces the two legacy recipe files for a repository that
  * has migrated (see that class's javadoc): its own {@code ci-event-release-request.yml} is gone from
  * the tree, and qits-ci composes the QA pipeline instead, from the wrapper's own
- * {@code .config/qits/release-archetypes/<archetype>.yml}. That pipeline still reports a gating
- * verdict the same way an in-repository recipe would, so the CI gate has to fire on the composed
+ * {@code .config/qits/release-archetypes/<archetype>.yml}. That pipeline still reports its verdict
+ * the same way an in-repository recipe would, so the CI gate has to fire on the composed
  * source too — the bug this class existed to close on 2026-09-13: a repository that migrated lost
  * its CI gate entirely, because {@link #read} only ever looked for the file that no longer exists,
  * so every request of that repository skipped straight to {@code READY} and released before its QA
@@ -194,7 +194,7 @@ public class ReleaseGates {
 
   /** The four gates. A fifth is a new member here and nowhere else. */
   public enum Kind {
-    /** Before the tag: a gating {@code BuildSuccessful} for the fold. */
+    /** Before the tag: a {@code BuildSuccessful} for the fold. */
     CI,
     /** Before the tag, and standing alone: a person's yes. */
     APPROVAL,

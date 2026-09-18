@@ -438,7 +438,7 @@ public class ReleaseRequestApprovalDoorTest {
         .getList("approvals.decision", String.class);
   }
 
-  /** A green gating verdict for one fold, over the real bus listener. */
+  /** A green verdict for one fold, over the real bus listener. */
   private void verdict(String repoId, String sha) {
     listener.onFrame(
         new EventFrame(

@@ -17,8 +17,8 @@ import java.util.UUID;
  * service/…/bus/BuildStatusListener}.
  *
  * <p>Keyed on the <b>run</b>, not the commit: a commit can carry several runs (a push pipeline and
- * event pipelines, gating and non-gating), and what a reader wants is the set of verdicts, which it
- * folds by its own policy. Cancelled and superseded runs never publish, so every row here is a
+ * event pipelines), and what a reader wants is the set of verdicts, which it folds by its own
+ * policy. Cancelled and superseded runs never publish, so every row here is a
  * build that genuinely ran — or genuinely could not run — against exactly that commit; what is
  * <em>not</em> knowable from this table is a run that is still queued or running, because only
  * terminal runs announce. The release quality gate this ledger exists for reads it accordingly.
@@ -65,14 +65,6 @@ public class CommitBuildStatus extends PanacheEntityBase implements CausedRow {
   /** The terminal status's own word: SUCCESS, FAILED, TIMED_OUT or CONFIG_ERROR today. */
   @Column(name = "status", nullable = false)
   public String status;
-
-  /**
-   * Whether a red verdict of this run should stand in the way of releasing the commit — qits-ci's
-   * own flag, absent on the wire meaning true. The userflow pipelines are the ones that say false;
-   * the build gate ignores their redness and every reader still sees the verdict.
-   */
-  @Column(name = "gating", nullable = false)
-  public boolean gating = true;
 
   /** When the run finished — the event's {@code occurredAt}, never this row's write time. */
   @Column(name = "finished_at", nullable = false)
