@@ -62,6 +62,12 @@ class AgentDaemonRegistryTest {
                     "isResolvable".equals(method.getName()) ? Boolean.FALSE : null);
     registry.tunnels = noTunnels;
     registry.endedActivityTtlMs = java.time.Duration.ofMinutes(30).toMillis();
+    registry.staleActivityTtlMs = java.time.Duration.ofHours(4).toMillis();
+  }
+
+  /** {@code millis} ago, as the wire's {@code at} spells it. */
+  private static long agedBy(java.time.Duration age) {
+    return System.currentTimeMillis() - age.toMillis();
   }
 
   /** A {@code WebSocketConnection} answering only what the registry actually calls on one. */
@@ -212,6 +218,94 @@ class AgentDaemonRegistryTest {
     assertTrue(
         registry.agentActivity(PROJECT).isEmpty(),
         "past the TTL it says nothing, rather than saying ENDED for ever");
+  }
+
+  /**
+   * <b>The live defect, in one test.</b> A session whose agent died, was killed, or whose container
+   * was replaced before its {@code Stop} hook fired leaves a {@code BUSY} nothing ever takes back.
+   * With only the {@code ENDED} TTL ageing entries out that entry was immortal — and because it gates
+   * {@link AgentStaleImageSweep}'s stop rather than merely colouring a chip in a UI, it was a
+   * permanent veto on exactly the long-lived containers that sweep exists to reach. Observed on
+   * 2026-09-18 as a WARN on three consecutive passes and a container that could never be stopped.
+   */
+  @Test
+  void aBusyEntryOlderThanTheStaleHorizonStopsBeingEvidence() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(
+        connection,
+        "session-1",
+        DaemonProtocol.AgentState.BUSY,
+        agedBy(java.time.Duration.ofHours(5)));
+
+    assertTrue(
+        registry.agentActivity(PROJECT).isEmpty(),
+        "a BUSY that outlived its agent is not a claim that something is running");
+  }
+
+  /** Inside the horizon it is still evidence, which is the whole point of having one at all. */
+  @Test
+  void aBusyEntryInsideTheStaleHorizonStillCounts() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(
+        connection,
+        "session-1",
+        DaemonProtocol.AgentState.BUSY,
+        agedBy(java.time.Duration.ofHours(1)));
+
+    assertEquals(DaemonProtocol.AgentState.BUSY, registry.agentActivity(PROJECT).orElseThrow());
+  }
+
+  /** {@code WAITING} is the same kind of claim and expires on the same horizon. */
+  @Test
+  void aWaitingEntryOlderThanTheStaleHorizonDropsToo() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(
+        connection,
+        "session-1",
+        DaemonProtocol.AgentState.WAITING,
+        agedBy(java.time.Duration.ofHours(5)));
+
+    assertTrue(registry.agentActivity(PROJECT).isEmpty());
+  }
+
+  /**
+   * <b>The two horizons are two horizons, and this is the one test that can tell them apart.</b> One
+   * age — two hours — is read twice, and the answer differs on the entry's state: an {@code ENDED}
+   * session is already gone at it, because {@code endedActivityTtlMs} is half an hour, while a {@code
+   * BUSY} session of the identical age is still evidence, because the horizon that governs it is four
+   * hours away. {@link #anEndedSessionAgesOutOfTheRollup} proves the first half and cannot prove the
+   * second; a single horizon of either length would fail one of these two assertions, which is
+   * precisely what makes collapsing the pair into one value impossible to do quietly.
+   */
+  @Test
+  void theEndedTtlStillGovernsAnEndedEntryAndOnlyAnEndedOne() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(
+        connection,
+        "session-ended",
+        DaemonProtocol.AgentState.ENDED,
+        agedBy(java.time.Duration.ofHours(2)));
+    assertTrue(
+        registry.agentActivity(PROJECT).isEmpty(),
+        "the shorter TTL is the ENDED special case and still wins for an ENDED entry");
+
+    report(
+        connection,
+        "session-busy",
+        DaemonProtocol.AgentState.BUSY,
+        agedBy(java.time.Duration.ofHours(2)));
+    assertEquals(
+        DaemonProtocol.AgentState.BUSY,
+        registry.agentActivity(PROJECT).orElseThrow(),
+        "and it governs nothing else — the same age says nothing about an entry that never ended");
   }
 
   /** A report with no session id is keyed on its command id rather than dropped. */
