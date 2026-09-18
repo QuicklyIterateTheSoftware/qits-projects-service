@@ -57,6 +57,14 @@ public class AgentContainers {
 
   @Inject AgentTunnels tunnels;
 
+  /**
+   * The image pin, read for the staleness flag on every answer. {@link
+   * AgentContainerFactory#imageVersion()} and nothing else — it honours the emergency override, and
+   * a second reading of that key somewhere else is exactly how a read and a launch come to disagree
+   * about what is pinned.
+   */
+  @Inject AgentContainerFactory factory;
+
   /** One lock per project, so the ladder is serialized without serializing the whole service. */
   private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
@@ -169,13 +177,22 @@ public class AgentContainers {
    *
    * <p>Nothing here re-provisions — see {@link AgentContainerState#failedWith}. Recovery is to
    * remove the container and ensure it again.
+   *
+   * <p><b>It also says whether the running daemon is the pinned one</b>, which is a condition a
+   * person could not see at all before: the container is {@code RUNNING} and perfectly usable, and
+   * the only way it ever picks up a newer image is being stopped. {@link AgentStaleImageSweep} does
+   * that on a timer while the container is quiet; this field is what lets somebody do it themselves
+   * first, through the Stop verb one method up.
    */
   private AgentContainerState state(String projectId, AgentRuntimeStatus status) {
     AgentContainerState observed =
         registry
             .lookup(projectId)
-            .map(info -> new AgentContainerState(status, true, info.daemonVersion(), null))
-            .orElseGet(() -> AgentContainerState.of(status));
+            .map(
+                info ->
+                    new AgentContainerState(status, true, info.daemonVersion(), null, false, null))
+            .orElseGet(() -> AgentContainerState.of(status))
+            .against(factory.imageVersion());
     return registry.provisionFailure(projectId).map(observed::failedWith).orElse(observed);
   }
 }

@@ -61,6 +61,7 @@ class AgentDaemonRegistryTest {
                 (proxy, method, args) ->
                     "isResolvable".equals(method.getName()) ? Boolean.FALSE : null);
     registry.tunnels = noTunnels;
+    registry.endedActivityTtlMs = java.time.Duration.ofMinutes(30).toMillis();
   }
 
   /** A {@code WebSocketConnection} answering only what the registry actually calls on one. */
@@ -124,6 +125,128 @@ class AgentDaemonRegistryTest {
         registry.lastActivityAt(PROJECT).orElseThrow().isAfter(Instant.parse("2026-08-08T00:00:00Z")),
         "the stamp the idle sweep reads is the whole handling");
     assertEquals(List.of(), fired, "a heartbeat is not news for a browser");
+  }
+
+  /**
+   * The load-bearing negative, and the whole reason there are two stamps.
+   *
+   * <p>A project agent's daemon heartbeats every twenty seconds for as long as its container runs.
+   * If those frames counted as use, {@code lastAgentActivity} would never be more than twenty seconds
+   * old on a container nobody has touched for a month — which is precisely what {@code lastActivity}
+   * is, correctly, and precisely why the stale-image sweep cannot read it. Collapsing the two maps
+   * reinstates the defect in one line.
+   */
+  @Test
+  void aStreamOfHeartbeatsIsLivenessAndNeverUse() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    // Register itself stamps liveness only, so there is nothing on the use clock to start with.
+    assertTrue(registry.lastAgentActivityAt(PROJECT).isEmpty());
+
+    for (int beat = 0; beat < 5; beat++) {
+      registry.onMessage(PROJECT, connection, new Heartbeat(PROJECT));
+    }
+
+    assertTrue(registry.lastActivityAt(PROJECT).isPresent(), "the daemon is plainly alive");
+    assertTrue(
+        registry.lastAgentActivityAt(PROJECT).isEmpty(),
+        "and nothing has happened in the container — a heartbeat must never say otherwise");
+  }
+
+  /** Everything that is not a heartbeat or an Ack advances both clocks. */
+  @Test
+  void anythingElseAdvancesBothClocks() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    Instant before = Instant.now();
+
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity("cmd-1", "session-1", DaemonProtocol.AgentState.BUSY, "Stop", null, null, 0L));
+
+    assertFalse(registry.lastActivityAt(PROJECT).orElseThrow().isBefore(before));
+    assertFalse(registry.lastAgentActivityAt(PROJECT).orElseThrow().isBefore(before));
+  }
+
+  /**
+   * The rollup answers the busiest of a container's live sessions: one agent working while four sit
+   * idle is a container somebody is using, and a stop taken on the majority would land in the middle
+   * of that one's turn.
+   */
+  @Test
+  void theRollupAnswersTheBusiestSession() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(connection, "session-idle", DaemonProtocol.AgentState.IDLE, 0L);
+    report(connection, "session-waiting", DaemonProtocol.AgentState.WAITING, 0L);
+    assertEquals(DaemonProtocol.AgentState.WAITING, registry.agentActivity(PROJECT).orElseThrow());
+
+    report(connection, "session-busy", DaemonProtocol.AgentState.BUSY, 0L);
+    assertEquals(DaemonProtocol.AgentState.BUSY, registry.agentActivity(PROJECT).orElseThrow());
+
+    // The busy one finishes, and the answer falls back to what is still live rather than staying on
+    // the high-water mark.
+    report(connection, "session-busy", DaemonProtocol.AgentState.ENDED, 0L);
+    assertEquals(DaemonProtocol.AgentState.WAITING, registry.agentActivity(PROJECT).orElseThrow());
+  }
+
+  /**
+   * An {@code ENDED} session keeps a say for the TTL and then stops having one. Without the ageing
+   * out, a container whose last agent ended in the spring would still be described by it.
+   */
+  @Test
+  void anEndedSessionAgesOutOfTheRollup() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(connection, "session-1", DaemonProtocol.AgentState.ENDED, System.currentTimeMillis());
+    assertEquals(DaemonProtocol.AgentState.ENDED, registry.agentActivity(PROJECT).orElseThrow());
+
+    report(
+        connection,
+        "session-1",
+        DaemonProtocol.AgentState.ENDED,
+        System.currentTimeMillis() - java.time.Duration.ofHours(2).toMillis());
+    assertTrue(
+        registry.agentActivity(PROJECT).isEmpty(),
+        "past the TTL it says nothing, rather than saying ENDED for ever");
+  }
+
+  /** A report with no session id is keyed on its command id rather than dropped. */
+  @Test
+  void aReportWithNoSessionIdStillCounts() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity("cmd-1", "  ", DaemonProtocol.AgentState.BUSY, "PreToolUse", null, null, 0L));
+
+    assertEquals(DaemonProtocol.AgentState.BUSY, registry.agentActivity(PROJECT).orElseThrow());
+  }
+
+  /** A stop takes the whole container's record with it — both stamps and the rollup. */
+  @Test
+  void forgetClearsBothStampsAndTheRollup() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    report(connection, "session-1", DaemonProtocol.AgentState.BUSY, 0L);
+
+    registry.forget(PROJECT);
+
+    assertTrue(registry.lastActivityAt(PROJECT).isEmpty());
+    assertTrue(registry.lastAgentActivityAt(PROJECT).isEmpty());
+    assertTrue(
+        registry.agentActivity(PROJECT).isEmpty(),
+        "a restart starts every window afresh rather than inheriting the container before it");
+  }
+
+  private void report(WebSocketConnection connection, String sessionId, String state, long at) {
+    registry.onMessage(
+        PROJECT, connection, new AgentActivity("cmd-" + sessionId, sessionId, state, null, null, null, at));
   }
 
   @Test

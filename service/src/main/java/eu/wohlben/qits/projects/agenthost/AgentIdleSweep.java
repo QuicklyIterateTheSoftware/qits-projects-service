@@ -32,6 +32,12 @@ import org.jboss.logging.Logger;
  * The host also stamps a container when it starts one, so a fresh container gets the full window to
  * dial home in rather than being reaped for having said nothing yet.
  *
+ * <p><b>That is one question, and {@link AgentStaleImageSweep} answers the other.</b> Because the
+ * heartbeat counts here, this window does not elapse on a running container — which is right for
+ * "nobody is using this project" and useless for "this container is running an image nobody gated".
+ * The second sweep reads a second stamp, on a shorter window, and the two are deliberately not
+ * folded together: see its class javadoc.
+ *
  * <p><b>A container this process has never heard of is stamped on sight</b> rather than reaped or
  * made immortal — one whose daemon has never connected, or that outlived a restart of this service.
  * It then ages out normally, one window later.

@@ -52,6 +52,16 @@ public class AgentContainerController {
      * @param daemonConnected whether the in-container daemon holds an open control socket
      * @param daemonVersion the daemon binary's release identity, or null when it has not said or
      *     was built without a version stamp
+     * @param pinnedDaemonVersion the daemon build this service would start a container on today —
+     *     the agent image's pinned tag, so a client can name the version a restart would move to and
+     *     not only the one the container is on. Present whenever there is a container to compare it
+     *     against, and null for {@code ABSENT} or while a bring-up is still in flight.
+     * @param daemonVersionStale whether the connected daemon's version is not {@code
+     *     pinnedDaemonVersion}. False when no daemon is connected, because then nothing has said
+     *     what the container is running and "not stale" is the absence of a claim rather than a
+     *     verdict. A container reported stale is still {@code RUNNING} and still usable — it simply
+     *     will not pick the pin up until it is stopped, which the Stop verb below does and which a
+     *     host-side sweep also does once the container is quiet.
      * @param failureDetail why {@code runtimeStatus} is {@code FAILED} — an ensure that could not
      *     produce a container, or a daemon that could not clone the project into {@code /workspace}.
      *     Null for every other status. A detail rather than a sixth status constant, because the
@@ -61,6 +71,8 @@ public class AgentContainerController {
         AgentRuntimeStatus runtimeStatus,
         boolean daemonConnected,
         String daemonVersion,
+        String pinnedDaemonVersion,
+        boolean daemonVersionStale,
         String failureDetail) {}
 
     static AgentContainerResponse of(AgentContainerState state) {
@@ -69,6 +81,8 @@ public class AgentContainerController {
               state.runtimeStatus(),
               state.daemonConnected(),
               state.daemonVersion(),
+              state.pinnedDaemonVersion(),
+              state.daemonVersionStale(),
               state.failureDetail()));
     }
   }

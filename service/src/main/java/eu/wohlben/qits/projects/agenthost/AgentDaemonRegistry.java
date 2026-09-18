@@ -8,6 +8,7 @@ import eu.wohlben.qits.projectsdaemon.protocol.CommandChunk;
 import eu.wohlben.qits.projectsdaemon.protocol.CommandExit;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonLog;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonMessage;
+import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.Describe;
 import eu.wohlben.qits.projectsdaemon.protocol.Heartbeat;
 import eu.wohlben.qits.projectsdaemon.protocol.Hello;
@@ -22,8 +23,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
@@ -83,6 +87,58 @@ public class AgentDaemonRegistry {
    * read. It is dropped only when the container is stopped.
    */
   private final ConcurrentHashMap<String, Instant> lastActivity = new ConcurrentHashMap<>();
+
+  /**
+   * When anything last <em>happened</em> in each project's container — every inbound frame except a
+   * {@link Heartbeat} and an {@link Ack}.
+   *
+   * <h2>Why this is a second map and must never be collapsed into {@link #lastActivity}</h2>
+   *
+   * <p>The two answer different questions and only one of them can be answered by each map.
+   * {@link #lastActivity} answers <b>"is this daemon alive"</b>, and it includes the heartbeat on
+   * purpose — which is exactly what makes it useless for the other question. A project agent's daemon
+   * heartbeats every twenty seconds unconditionally, for as long as its container runs, so
+   * {@link #lastActivity} is never more than twenty seconds old on a container nobody has touched for
+   * a month. Anything that asks "is anyone using this" against it gets "yes", for ever.
+   *
+   * <p>This map answers <b>"has anything happened here"</b>. The heartbeat and the {@code Ack} are
+   * the two frames a daemon emits while nothing at all is going on, so they are the two frames that
+   * do not write it; everything else — the {@link Hello}, an {@link AgentActivity} report, a
+   * {@link ProjectChanged} nudge, a provision result, a log line — does.
+   *
+   * <p><b>Collapsing them is the defect this exists to end.</b> {@link AgentIdleSweep}'s window never
+   * elapsed because it reads {@link #lastActivity}, and that is correct for what it measures; making
+   * the heartbeat stop writing that map would instead make every live container look reapable. Two
+   * clocks, two readers, and neither one is a refinement of the other.
+   *
+   * <p>Not cleared on disconnect, for the same reason {@link #lastActivity} is not: a container whose
+   * daemon has dropped is still a container a sweep has to reason about. It goes in {@link #forget}.
+   */
+  private final ConcurrentHashMap<String, Instant> lastAgentActivity = new ConcurrentHashMap<>();
+
+  /**
+   * Per-project, per-session agent lifecycle state, rolled up by {@link #agentActivity}.
+   *
+   * <p>The same shape {@code RefinementDaemonRegistry} carries on the other axis, deliberately: both
+   * hosts are answering "is an agent running in this container right now" from the same
+   * {@link AgentActivity} frame, and a second design for one question would be a second thing to keep
+   * true. Sessions rather than one value per project because a container serves several at once and
+   * the busiest of them is the answer — see {@link #activityRank}.
+   */
+  private final ConcurrentHashMap<String, ConcurrentHashMap<String, ActivityEntry>> agentActivity =
+      new ConcurrentHashMap<>();
+
+  /**
+   * How long an {@code ENDED} session keeps a say in the rollup, mirroring {@code
+   * qits.projects.refinement.ended-activity-ttl-ms} and shipped at the same half hour. Long enough
+   * that a session somebody is reading the tail of still reads as this container's most recent state,
+   * short enough that a container whose last agent ended before lunch is not still described by it.
+   */
+  @ConfigProperty(name = "qits.projects.agent.ended-activity-ttl-ms", defaultValue = "1800000")
+  long endedActivityTtlMs;
+
+  /** One session's last reported state and when it said so. */
+  private record ActivityEntry(String state, long atMillis) {}
 
   /**
    * Why each project's last {@link ProvisionFailed} said its {@code /workspace} is not there.
@@ -159,6 +215,59 @@ public class AgentDaemonRegistry {
     return Optional.ofNullable(lastActivity.get(projectId));
   }
 
+  /**
+   * When anything last happened in this project's container, or empty when nothing ever has — the
+   * heartbeat-free stamp, read by {@link AgentStaleImageSweep}. See {@link #lastAgentActivity} for
+   * why it is not {@link #lastActivityAt}.
+   *
+   * <p>Empty is a real and useful answer here rather than a missing one: a container nothing has ever
+   * happened in is the quietest a container gets, and the sweep reads it that way.
+   */
+  public Optional<Instant> lastAgentActivityAt(String projectId) {
+    return Optional.ofNullable(lastAgentActivity.get(projectId));
+  }
+
+  /**
+   * This project's rolled-up agent state — the busiest of its live sessions — or empty when no
+   * session has reported one.
+   *
+   * <p>{@code ENDED} entries are aged out on read rather than on a timer, exactly as the refinement
+   * registry does it: the rollup has no reader but this one, so a pass over it costs nothing between
+   * reads and there is no second thread to reason about.
+   */
+  public Optional<String> agentActivity(String projectId) {
+    Map<String, ActivityEntry> sessions = agentActivity.get(projectId);
+    if (sessions == null || sessions.isEmpty()) {
+      return Optional.empty();
+    }
+    long now = System.currentTimeMillis();
+    sessions
+        .entrySet()
+        .removeIf(
+            entry ->
+                DaemonProtocol.AgentState.ENDED.equals(entry.getValue().state())
+                    && now - entry.getValue().atMillis() > endedActivityTtlMs);
+    return sessions.values().stream()
+        .map(ActivityEntry::state)
+        .max(Comparator.comparingInt(AgentDaemonRegistry::activityRank));
+  }
+
+  /**
+   * The ranking the rollup folds with, and it is {@code RefinementDaemonRegistry}'s verbatim: a
+   * container with one busy session and four idle ones is busy. An unknown state — a newer daemon's
+   * word this host has no view for — ranks below every known one rather than being dropped, so it can
+   * never outrank a {@code BUSY} it does not understand.
+   */
+  private static int activityRank(String state) {
+    return switch (state) {
+      case DaemonProtocol.AgentState.BUSY -> 4;
+      case DaemonProtocol.AgentState.WAITING -> 3;
+      case DaemonProtocol.AgentState.IDLE -> 2;
+      case DaemonProtocol.AgentState.ENDED -> 1;
+      default -> 0;
+    };
+  }
+
   /** Record activity now — called on every inbound frame and when the host starts a container. */
   public void touch(String projectId) {
     touch(projectId, Instant.now());
@@ -167,6 +276,15 @@ public class AgentDaemonRegistry {
   /** {@link #touch(String)} at a given instant, so a sweep test can drive a fake clock. */
   public void touch(String projectId, Instant at) {
     lastActivity.put(projectId, at);
+  }
+
+  /**
+   * Record that something happened in this project's container at {@code at} — the {@link
+   * #lastAgentActivity} stamp's only writer besides {@link #onMessage}, and there so a sweep test can
+   * drive a fake clock the same way {@link #touch(String, Instant)} lets one drive the other.
+   */
+  public void touchAgentActivity(String projectId, Instant at) {
+    lastAgentActivity.put(projectId, at);
   }
 
   /**
@@ -190,9 +308,17 @@ public class AgentDaemonRegistry {
     return Optional.ofNullable(provisionFailures.get(projectId));
   }
 
-  /** Forget a project's activity stamp and last provision failure — its container is stopped. */
+  /**
+   * Forget a project's activity stamps, its agent rollup and its last provision failure — its
+   * container is stopped.
+   *
+   * <p>Both stamps and the rollup go together on purpose: they describe one container, and a restart
+   * has to start every window afresh rather than inherit a stale one from the container before it.
+   */
   public void forget(String projectId) {
     lastActivity.remove(projectId);
+    lastAgentActivity.remove(projectId);
+    agentActivity.remove(projectId);
     provisionFailures.remove(projectId);
   }
 
@@ -224,6 +350,12 @@ public class AgentDaemonRegistry {
   /** Handle a decoded frame from {@code qits-projects-daemon} for {@code projectId}. */
   public void onMessage(String projectId, WebSocketConnection connection, DaemonMessage message) {
     touch(projectId);
+    // The second stamp, and the one frame pair that does NOT write it. A heartbeat and an Ack are
+    // what a daemon says while nothing is going on, so counting them here would reproduce exactly the
+    // blindness lastActivity has by design — see the field.
+    if (!(message instanceof Heartbeat) && !(message instanceof Ack)) {
+      lastAgentActivity.put(projectId, Instant.now());
+    }
     DaemonConnection client = clients.get(projectId);
     switch (message) {
       case Hello hello -> {
@@ -287,14 +419,38 @@ public class AgentDaemonRegistry {
   }
 
   /**
-   * A coding agent's lifecycle state changed in the container. The host caches nothing about it —
-   * the browser reads the agent surface through the proxy — so the whole handling is the {@link
-   * #touch} above plus a hint that says "re-read it".
+   * A coding agent's lifecycle state changed in the container. The browser still reads the agent
+   * surface through the proxy, so the hint that says "re-read it" is unchanged and is fired for every
+   * report, whatever the frame carries.
+   *
+   * <p><b>What is new is the rollup</b>, kept so {@link AgentStaleImageSweep} can ask whether
+   * anything is running in this container <em>right now</em>. The stamp one method up cannot answer
+   * that: an agent thinking between two frames leaves a stamp that keeps ageing while it works, and a
+   * container stopped in the middle of that loses the turn.
+   *
+   * <p><b>A frame with no session id is keyed on its {@code commandId} instead</b>, rather than being
+   * skipped. The two identify the same thing from opposite ends — a command is what a session is
+   * running — so a daemon that reports one and not the other still contributes one entry rather than
+   * none, and the fold is right either way. Only a frame with <em>neither</em>, or with no state at
+   * all, is dropped: there is nothing to key it on and nothing to rank.
+   *
+   * <p>The frame's own {@code at} is preferred over this host's clock, so a report that queued behind
+   * a slow socket is aged from when it happened; a daemon that sends none falls back to now.
    */
   private void onAgentActivity(String projectId, AgentActivity activity) {
     LOG.debugf(
         "projects-daemon agent activity for project %s: command %s is %s",
         projectId, activity.commandId(), activity.state());
+    String key =
+        activity.sessionId() != null && !activity.sessionId().isBlank()
+            ? activity.sessionId()
+            : activity.commandId();
+    if (key != null && !key.isBlank() && activity.state() != null) {
+      long at = activity.at() > 0 ? activity.at() : System.currentTimeMillis();
+      agentActivity
+          .computeIfAbsent(projectId, id -> new ConcurrentHashMap<>())
+          .put(key, new ActivityEntry(activity.state(), at));
+    }
     changePublisher.fire(projectId, ProjectChangeHint.Topic.AGENT_ACTIVITY);
   }
 

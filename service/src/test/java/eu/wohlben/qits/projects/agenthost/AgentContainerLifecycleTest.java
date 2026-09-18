@@ -6,11 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
+import eu.wohlben.qits.projectsdaemon.protocol.Hello;
 import eu.wohlben.qits.projectsdaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.projectsdaemon.protocol.Provisioned;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.websockets.next.WebSocketConnection;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +41,12 @@ class AgentContainerLifecycleTest {
   @Inject AgentContainers agentContainers;
 
   @Inject AgentDaemonRegistry registry;
+
+  /** Where the image pin the read reports is resolved from — one accessor, one answer. */
+  @Inject AgentContainerFactory factory;
+
+  /** Driven directly: its scheduled entry point returns early outside a packaged run. */
+  @Inject AgentStaleImageSweep staleImageSweep;
 
   private String projectId;
   private String slug;
@@ -235,7 +246,115 @@ class AgentContainerLifecycleTest {
         .body("container.runtimeStatus", org.hamcrest.Matchers.is("STOPPED"))
         .body("container.daemonConnected", org.hamcrest.Matchers.is(false))
         .body("container.daemonVersion", org.hamcrest.Matchers.nullValue())
+        .body("container.pinnedDaemonVersion", org.hamcrest.Matchers.is(factory.imageVersion()))
+        // With no daemon connected nothing has said what the container runs, and that is not a
+        // verdict — "not stale" here is the absence of a claim, which is what false has to mean.
+        .body("container.daemonVersionStale", org.hamcrest.Matchers.is(false))
         .body("container.failureDetail", org.hamcrest.Matchers.nullValue());
+  }
+
+  /**
+   * The condition the stale-image sweep acts on, made visible on the read a person already has.
+   *
+   * <p>The container is {@code RUNNING} and entirely usable — there is no sixth status and there must
+   * not be one — and the two extra fields say which daemon it is on and which one a restart would
+   * move it to. Seeing that is what lets somebody press the Stop below themselves rather than wait
+   * for a sweep.
+   */
+  @Test
+  void aRunningContainerOnAnOlderDaemonReadsStale() {
+    runtime.given(projectId, slug, true);
+    WebSocketConnection connection = daemonConnection();
+    registry.register(projectId, connection);
+    registry.onMessage(
+        projectId,
+        connection,
+        new Hello(projectId, "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "2026.101.1", null));
+    try {
+      given()
+          .when()
+          .get(base())
+          .then()
+          .statusCode(200)
+          .body("container.runtimeStatus", org.hamcrest.Matchers.is("RUNNING"))
+          .body("container.daemonConnected", org.hamcrest.Matchers.is(true))
+          .body("container.daemonVersion", org.hamcrest.Matchers.is("2026.101.1"))
+          .body("container.pinnedDaemonVersion", org.hamcrest.Matchers.is(factory.imageVersion()))
+          .body("container.daemonVersionStale", org.hamcrest.Matchers.is(true));
+    } finally {
+      registry.unregister(projectId, connection);
+      registry.forget(projectId);
+    }
+  }
+
+  /**
+   * The whole of what the stale-image sweep does to a container, and the whole of what it costs.
+   *
+   * <p>The sweep's action is one stop — never a remove — so the per-project {@code /workspace} volume
+   * is not created, claimed or discarded by it, and the container's commissioned credential is not
+   * handed back: both belong to a container that is still there, stopped. The next {@code ensure}
+   * then takes the wake arm, which is the one ask that carries {@code Recreate.ifChanged} and the
+   * only door in this harness through which a new image pin is ever applied. So the round trip is
+   * stop, wake, and no provision anywhere — exactly the cycle a person pressing Stop would get.
+   */
+  @Test
+  void aStopTakenForStalenessKeepsTheCheckoutAndWakesRatherThanProvisions() {
+    runtime.given(projectId, slug, true);
+    WebSocketConnection connection = daemonConnection();
+    registry.register(projectId, connection);
+    registry.onMessage(
+        projectId,
+        connection,
+        new Hello(projectId, "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "2026.101.1", null));
+    // Nothing has happened in it since before the quiet window — the Hello above stamped it.
+    registry.touchAgentActivity(projectId, Instant.now().minus(Duration.ofDays(1)));
+    String before = runtime.dockerId(projectId);
+
+    try {
+      assertEquals(1, staleImageSweep.sweep(Instant.now()));
+    } finally {
+      registry.unregister(projectId, connection);
+    }
+
+    assertEquals(
+        java.util.List.of("stop:" + projectId),
+        runtime.calls(),
+        "one stop and nothing else — no remove, and no stamp on the idle sweep's clock");
+    assertEquals(
+        java.util.List.of(),
+        runtime.volumes(),
+        "the checkout volume is neither re-created nor discarded: it is where uncommitted work is");
+
+    given()
+        .when()
+        .post(base() + "/ensure")
+        .then()
+        .statusCode(200)
+        .body("container.runtimeStatus", org.hamcrest.Matchers.is("RUNNING"));
+
+    assertEquals(
+        java.util.List.of("stop:" + projectId, "restart:" + projectId),
+        runtime.calls(),
+        "the wake arm, which is where Recreate.ifChanged applies the pin — never a provision");
+    assertEquals(before, runtime.dockerId(projectId));
+  }
+
+  /** A {@code WebSocketConnection} answering only what the registry calls on one. */
+  private WebSocketConnection daemonConnection() {
+    return (WebSocketConnection)
+        java.lang.reflect.Proxy.newProxyInstance(
+            getClass().getClassLoader(),
+            new Class<?>[] {WebSocketConnection.class},
+            (proxy, method, args) ->
+                switch (method.getName()) {
+                  case "id" -> "lifecycle-connection";
+                  case "isOpen" -> Boolean.TRUE;
+                  case "sendTextAndAwait" -> null;
+                  case "equals" -> proxy == args[0];
+                  case "hashCode" -> System.identityHashCode(proxy);
+                  case "toString" -> "connection lifecycle-connection";
+                  default -> null;
+                });
   }
 
   @Test

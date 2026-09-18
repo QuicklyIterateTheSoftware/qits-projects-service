@@ -477,6 +477,10 @@ components:
           type: boolean
         daemonVersion:
           type: string
+        pinnedDaemonVersion:
+          type: string
+        daemonVersionStale:
+          type: boolean
         failureDetail:
           type: string
     CreateEpicRequest:
@@ -5374,6 +5378,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:system
+        - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/sources:
     post:
       summary: Add a branch to an open release request
@@ -6123,4 +6128,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.917.194747
+  version: 2026.918.182810
