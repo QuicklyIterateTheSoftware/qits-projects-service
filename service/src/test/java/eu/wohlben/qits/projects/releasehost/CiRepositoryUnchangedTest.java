@@ -104,7 +104,7 @@ public class CiRepositoryUnchangedTest {
   }
 
   @Test
-  public void nothingReleasesUntilAGatingRunSaysSuccess() {
+  public void nothingReleasesUntilARunSaysSuccess() {
     String id = create("work");
     String merged = mergedShaOf(id);
     assertNotNull(merged, "the create folds the sources at once");
@@ -114,7 +114,7 @@ public class CiRepositoryUnchangedTest {
     assertEquals("PENDING", stateOf(id), "no verdict, no release");
     assertEquals(0, executor.calls().size());
     assertTrue(
-        detailOf(id).contains("Waiting for a gating CI verdict"),
+        detailOf(id).contains("Waiting for a CI verdict"),
         "and it says which gate it is waiting on: " + detailOf(id));
 
     verdict("BuildSuccessful", merged, "");
@@ -122,7 +122,7 @@ public class CiRepositoryUnchangedTest {
   }
 
   @Test
-  public void oneRedGatingVerdictRejectsImmediately() {
+  public void oneRedVerdictRejectsImmediately() {
     String id = create("work");
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
@@ -130,15 +130,19 @@ public class CiRepositoryUnchangedTest {
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
   }
 
+  /**
+   * A verdict that still carries the retired {@code gating} flag is an ordinary verdict now (ticket
+   * 9441bc6e), and that is the inversion this ticket makes: the field used to say "read this and
+   * ignore it", so the pair below changed nothing at all. A qits-ci that has not released its own
+   * half yet keeps sending it, which is exactly why the case is worth a test — the flag is not
+   * bound, so the green one vouches and the request releases on it.
+   */
   @Test
-  public void aNonGatingVerdictChangesNothing() {
+  public void aVerdictStillCarryingTheOldFlagIsAnOrdinaryVerdict() {
     String id = create("work");
     String merged = mergedShaOf(id);
-    verdict("BuildFailed", merged, ",\"outcome\":\"FAILED\",\"gating\":false");
-    assertEquals("PENDING", stateOf(id), "a userflow verdict is read and ignored");
     verdict("BuildSuccessful", merged, ",\"gating\":false");
-    assertEquals("PENDING", stateOf(id), "and a green one is no vouch either");
-    assertEquals(0, executor.calls().size());
+    awaitState(id, "RELEASED");
   }
 
   @Test

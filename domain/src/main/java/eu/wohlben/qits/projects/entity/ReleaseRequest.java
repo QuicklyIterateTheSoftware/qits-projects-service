@@ -33,7 +33,7 @@ import java.util.UUID;
  * and re-arms nothing.
  *
  * <p>The state machine: {@code PENDING → READY → RELEASED → FINALIZED}; {@code PENDING → REJECTED}
- * when a gating verdict is red; {@code READY → FAILED → READY} around a mechanical execution failure
+ * when a verdict is red; {@code READY → FAILED → READY} around a mechanical execution failure
  * — retried by the sweep only while {@link #retryable} says asking again can change the answer;
  * {@code → CONFLICTED} when the sources cannot be folded at all, cleared by the next fold that
  * succeeds; a new merged sha re-arms {@code REJECTED}, {@code FAILED} and {@code CONFLICTED} back to

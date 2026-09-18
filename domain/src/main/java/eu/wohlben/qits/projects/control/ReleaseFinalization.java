@@ -218,10 +218,9 @@ public class ReleaseFinalization {
    * on the row for {@code qits ci retry} to address, and the retry's green verdict arrives here and
    * finalizes. Nothing is rolled back and nothing is rejected.
    *
-   * <p><b>Gating is not consulted.</b> A publish run's {@code gating} flag is about the fold gate,
-   * which this is not; what selects this arm is the branch naming a released version of the same
-   * repository with a finalization still owed. A run for anything else — a QA run on {@code
-   * release/<id>}, a build of {@code main} — names no such version and settles nothing here.
+   * <p><b>What selects this arm is the branch</b>, naming a released version of the same repository
+   * with a finalization still owed. A run for anything else — a QA run on {@code release/<id>}, a
+   * build of {@code main} — names no such version and settles nothing here.
    *
    * <p>It never throws: the caller is a durable consumption whose watermark must not be held behind
    * one repository's publish run.

@@ -378,8 +378,6 @@ components:
           type: string
         branch:
           type: string
-        gating:
-          type: boolean
         finishedAt:
           $ref: "#/components/schemas/Instant"
     CommitChangesDto:

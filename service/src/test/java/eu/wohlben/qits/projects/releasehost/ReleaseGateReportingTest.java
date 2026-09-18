@@ -103,7 +103,7 @@ public class ReleaseGateReportingTest {
   }
 
   @Test
-  public void aRedGatingVerdictReportsTheCiGateFailed() {
+  public void aRedVerdictReportsTheCiGateFailed() {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");

@@ -75,7 +75,7 @@ import org.jboss.logging.Logger;
  * again for a branch that already participates answers that request. For the project's <b>wrapper</b>
  * ({@link eu.wohlben.qits.projects.entity.RepositoryArchetype#PROJECT}) the unit is the repository:
  * its content is the estate, so every ask joins the one open request as a further named source and
- * a night of work is one tag, one gating build, one approval and one deployment. {@link #request}
+ * a night of work is one tag, one build, one approval and one deployment. {@link #request}
  * holds the rule and the argument for it.
  *
  * <p>{@link #remerge} folds them into {@code refs/heads/release/<id>} through {@link
@@ -99,8 +99,8 @@ import org.jboss.logging.Logger;
  * ReleaseRequestChanged} is dispatched, which is what makes a trigger with no content behind it
  * free. A fold that cannot be made at all is {@code CONFLICTED} — no ref moved, the conflict stored
  * for a person to act on, and <b>no event</b>; the next fold that succeeds clears it and dispatches,
- * <em>including</em> one answering {@code unchanged}, unless that sha already carries a gating
- * verdict the gate can read.
+ * <em>including</em> one answering {@code unchanged}, unless that sha already carries a verdict the
+ * gate can read.
  *
  * <h2>The gate set</h2>
  *
@@ -127,18 +127,18 @@ import org.jboss.logging.Logger;
  * mergedSha}:
  *
  * <ol>
- *   <li><b>No gating verdict is red.</b> One red gating run is a REJECTED request, immediately —
- *       nothing to wait for. Non-gating verdicts (the userflow pipelines) are read and ignored.
- *   <li><b>A gating verdict is green.</b> <b>No verdict is not a pass</b>: the request stays PENDING
- *       and the sweep asks again, for as long as it takes. A repository that <em>declares</em> a
+ *   <li><b>No verdict is red.</b> One red verdict is a REJECTED request, immediately — nothing to
+ *       wait for.
+ *   <li><b>A verdict is green.</b> <b>No verdict is not a pass</b>: the request stays PENDING and
+ *       the sweep asks again, for as long as it takes. A repository that <em>declares</em> a
  *       pipeline and whose pipeline never materializes therefore cannot release, and that is what a
  *       release gate is <em>for</em>. What changed is only which repositories are asked: one that
- *       declares no recipe has no gating verdict coming and is not held for one.
+ *       declares no recipe has no verdict coming and is not held for one.
  *   <li><b>No run is still queued or running</b>, where qits-ci can be asked. The ledger cannot see
- *       those (only terminal runs announce), so {@link ActiveBuilds} asks; a second gating pipeline
- *       still grinding on the same fold could still come back red, and a positive count holds the
+ *       those (only terminal runs announce), so {@link ActiveBuilds} asks; a second pipeline still
+ *       grinding on the same fold could still come back red, and a positive count holds the
  *       request. An answer that cannot be had does <b>not</b> hold a vouched sha back — the green
- *       gating verdict is the gate, the probe only ever narrows it and never satisfies one.
+ *       verdict is the gate, the probe only ever narrows it and never satisfies one.
  * </ol>
  *
  * <p><b>There was a fourth arm and it was a hole.</b> A sha nothing vouched for used to pass
@@ -202,7 +202,7 @@ import org.jboss.logging.Logger;
  * they leave.
  *
  * <p><b>Where both gates apply, both must pass, and their order relative to each other is not a
- * rule.</b> It is asked last here for a reason that is a convenience rather than a law: a red gating
+ * rule.</b> It is asked last here for a reason that is a convenience rather than a law: a red
  * verdict rejects the request before anybody is asked, so nobody is put in front of a fold CI has
  * already failed, and the most expensive thing a gate can waste is a person's attention. What is
  * <em>not</em> true any more is that approval sits <em>behind</em> the CI gate — a repository with no
@@ -419,7 +419,7 @@ public class ReleaseRequests {
    * <p>The reason is what a wrapper <em>is</em>. Its content is the estate — the gitlink pins of
    * every component — so two workspaces releasing on the same night are not two releases: they are
    * two asks about one estate, and answering them with two requests gives that estate two calver
-   * tags, two gating builds, two approvals and two deployments for one night's work, each of them
+   * tags, two builds, two approvals and two deployments for one night's work, each of them
    * folding a different half. One request with many participating branches is the honest shape, and
    * it is the shape {@link ReleaseRequestSource} already models — a request is an octopus merge of N
    * sources and always was; what changed is only which asks are allowed to reach the same one.
@@ -1075,8 +1075,8 @@ public class ReleaseRequests {
    * the rerun.</b> {@code QA} and {@code PUBLISH} are qits-ci runs and go back to qits-ci through
    * {@link PipelinePhaseReruns}; {@code DEPLOY} is a qits-deployments deployment request and goes
    * back through {@link DeploymentRedeploys}, which re-posts the same intake the release itself
-   * posted. A step inside one of those runs is not a phase and cannot be asked for here, and neither
-   * is the {@code gating: false} half of a pipeline: both are part of a run, and re-running a run is
+   * posted. A step inside one of those runs is not a phase and cannot be asked for here, and
+   * neither is any other part a run is split into: each is part of a run, and re-running a run is
    * what this door does.
    *
    * <p><b>Nothing about the request changes here.</b> No row is written, no state moves, no gate is
@@ -2199,9 +2199,8 @@ public class ReleaseRequests {
                   row.state = ReleaseRequest.State.PENDING;
                   row.detail = "The conflict is resolved; the fold is unchanged";
                   row.mergedSha = outcome.sha();
-                  if (ledger.verdictsOf(row.repoId, row.mergedSha).stream()
-                      .anyMatch(CommitBuildStatusDto::gating)) {
-                    // A gating run has already answered for this exact sha, so evaluate() — which
+                  if (!ledger.verdictsOf(row.repoId, row.mergedSha).isEmpty()) {
+                    // A run has already answered for this exact sha, so evaluate() — which
                     // remerge calls the moment this returns — reads it, and announcing would ask
                     // for a second build of content already built. Same-datasource read, so it
                     // costs this transaction nothing.
@@ -2410,18 +2409,18 @@ public class ReleaseRequests {
                       gateSet.requires(ReleaseGates.Kind.CI)
                           ? ledger.verdictsOf(row.repoId, row.mergedSha)
                           : List.of();
-                  CommitBuildStatusDto redGating =
+                  CommitBuildStatusDto red =
                       verdicts.stream()
-                          .filter(v -> v.gating() && !"SUCCESS".equals(v.status()))
+                          .filter(v -> !"SUCCESS".equals(v.status()))
                           .findFirst()
                           .orElse(null);
-                  if (redGating != null) {
+                  if (red != null) {
                     row.state = ReleaseRequest.State.REJECTED;
                     row.detail =
-                        "Gating run "
-                            + redGating.runId()
+                        "Run "
+                            + red.runId()
                             + " finished "
-                            + redGating.status()
+                            + red.status()
                             + " for "
                             + row.mergedSha;
                     row.updatedAt = Instant.now();
@@ -2434,8 +2433,8 @@ public class ReleaseRequests {
                               row.repoName,
                               sources.listByRequest(row.id).stream().map(s -> s.name).toList(),
                               row.mergedSha,
-                              redGating.runId(),
-                              redGating.status(),
+                              red.runId(),
+                              red.status(),
                               row.detail,
                               row.requester,
                               row.gateTicketId));
@@ -2444,16 +2443,16 @@ public class ReleaseRequests {
                   }
                   if (gateSet.requires(ReleaseGates.Kind.CI)) {
                     boolean vouched =
-                        verdicts.stream().anyMatch(v -> v.gating() && "SUCCESS".equals(v.status()));
+                        verdicts.stream().anyMatch(v -> "SUCCESS".equals(v.status()));
                     if (!vouched) {
                       // THE CI GATE. Nothing has vouched for this fold, so it does not pass — not
-                      // after a window, not because CI looks idle, not ever until a gating run says
+                      // after a window, not because CI looks idle, not ever until a run says
                       // SUCCESS for this exact commit. The sweep asks again; a repository that
                       // declares a pipeline and whose pipeline never materializes stays PENDING,
                       // which is the correct answer and not a stall. A repository that declares
-                      // NONE is not here at all — no gating verdict is coming for it and holding it
-                      // for one is the wait this epic removed.
-                      waiting(row, "Waiting for a gating CI verdict for " + shortSha(row.mergedSha));
+                      // NONE is not here at all — no verdict is coming for it and holding it for
+                      // one is the wait this epic removed.
+                      waiting(row, "Waiting for a CI verdict for " + shortSha(row.mergedSha));
                       return false;
                     }
                     Integer active =
@@ -2461,8 +2460,8 @@ public class ReleaseRequests {
                             ? activeBuilds.get().activeFor(row.repoId, row.mergedSha).orElse(null)
                             : null;
                     if (active != null && active > 0) {
-                      // Vouched, but qits-ci still has runs on this very fold: a second gating
-                      // pipeline can still come back red. Only a POSITIVE count holds — "could not
+                      // Vouched, but qits-ci still has runs on this very fold: a second pipeline
+                      // can still come back red. Only a POSITIVE count holds — "could not
                       // ask" (no probe, unreachable, unreadable) never overrides the vouch, or a
                       // platform with no probe configured could never release a green commit. It
                       // narrows the CI gate and never satisfies one, which is why it is inside this
@@ -2480,7 +2479,7 @@ public class ReleaseRequests {
                   // the build gate and immediately before the approval gate because a person
                   // approves a specific fold: asking somebody to sign off an estate whose pins are
                   // about to be rewritten would invalidate their answer the moment the bump lands,
-                  // so the pin gate has to be the one that holds first. The red-gating arm above is
+                  // so the pin gate has to be the one that holds first. The red arm above is
                   // deliberately unchanged — a red build on a fold that is about to be superseded
                   // still rejects, exactly as it did, because a rejection is answerable and a
                   // wrongly-released estate is not.
@@ -2518,7 +2517,7 @@ public class ReleaseRequests {
                       // a human is already engaged.
                       return false;
                     }
-                    // APPROVED: fall through, exactly as a green gating verdict does.
+                    // APPROVED: fall through, exactly as a green verdict does.
                   }
                   row.state = ReleaseRequest.State.READY;
                   row.detail = null;
@@ -3049,7 +3048,7 @@ public class ReleaseRequests {
    * deployment. That is what keeps the report from becoming a second, disagreeing evaluation.
    *
    * <ul>
-   *   <li><b>CI</b> — a red gating verdict is FAILED (and has already rejected the request), a green
+   *   <li><b>CI</b> — a red verdict is FAILED (and has already rejected the request), a green
    *       one PASSED, nothing PENDING. The active-run probe is deliberately not asked here: it
    *       narrows the gate rather than answering it, and a read must not make an HTTP call per row.
    *   <li><b>Approval</b> — the decision at this fold. WAITING is PENDING, a decline is FAILED.
@@ -3087,9 +3086,9 @@ public class ReleaseRequests {
       List<ReleasePipelineRun> phaseRuns,
       ReleasePipelineAssembler.DeployReach reach) {
     Map<ReleaseGates.Kind, ReleaseGates.State> states = new java.util.EnumMap<>(ReleaseGates.Kind.class);
-    if (verdicts.stream().anyMatch(v -> v.gating() && !"SUCCESS".equals(v.status()))) {
+    if (verdicts.stream().anyMatch(v -> !"SUCCESS".equals(v.status()))) {
       states.put(ReleaseGates.Kind.CI, ReleaseGates.State.FAILED);
-    } else if (verdicts.stream().anyMatch(v -> v.gating() && "SUCCESS".equals(v.status()))) {
+    } else if (verdicts.stream().anyMatch(v -> "SUCCESS".equals(v.status()))) {
       states.put(ReleaseGates.Kind.CI, ReleaseGates.State.PASSED);
     }
     switch (approval.state()) {

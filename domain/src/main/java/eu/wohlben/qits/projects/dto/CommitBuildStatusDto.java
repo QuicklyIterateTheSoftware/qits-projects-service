@@ -9,4 +9,4 @@ import java.time.Instant;
  * do not appear: only terminal runs announce, so absence means "no verdict yet", never "no run".
  */
 public record CommitBuildStatusDto(
-    String runId, String status, String branch, boolean gating, Instant finishedAt) {}
+    String runId, String status, String branch, Instant finishedAt) {}
