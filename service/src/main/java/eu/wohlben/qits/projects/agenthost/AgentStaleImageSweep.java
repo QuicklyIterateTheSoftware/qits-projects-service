@@ -241,6 +241,14 @@ public class AgentStaleImageSweep {
    * and {@code WAITING} both say a session is live and neither is a moment to stop a container in;
    * {@code IDLE} and {@code ENDED} say it is not.
    *
+   * <p><b>The rollup's veto is bounded, and it has to be.</b> A session that stops reporting without
+   * ever saying it ended — an agent that died before its {@code Stop} hook fired — would otherwise
+   * hold a {@code BUSY} for ever and veto this sweep permanently, on precisely the long-lived
+   * containers it exists to reach. {@code qits.projects.agent.stale-activity-ttl-ms} is where that
+   * bound lives and where its four hours are argued; it is strictly longer than the quiet window
+   * above, because at equal values the fold could never veto anything the stamp had not already
+   * vetoed and this second condition would quietly stop meaning anything.
+   *
    * <p><b>A container that has never been stamped is quiet.</b> Nothing has ever happened in it —
    * one that outlived a restart of this service, or whose daemon connected and did nothing since —
    * and that is the emptiest a container gets rather than an unknown to be cautious about. It is a

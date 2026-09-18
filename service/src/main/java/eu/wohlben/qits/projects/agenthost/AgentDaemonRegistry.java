@@ -137,6 +137,46 @@ public class AgentDaemonRegistry {
   @ConfigProperty(name = "qits.projects.agent.ended-activity-ttl-ms", defaultValue = "1800000")
   long endedActivityTtlMs;
 
+  /**
+   * How long an entry of <b>any</b> state keeps a say in the rollup — the horizon past which a
+   * session stops being evidence that anything is live. Four hours, and it is the fix for a defect
+   * this rollup shipped with.
+   *
+   * <h2>Why an entry that is not {@code ENDED} has to expire too</h2>
+   *
+   * <p>{@link #endedActivityTtlMs} alone ages out only the sessions that <em>announced</em> they were
+   * over, which means a {@code BUSY} or {@code WAITING} entry was immortal. A session whose agent
+   * died, was killed, or whose container was replaced before its {@code Stop}/{@code SessionEnd} hook
+   * fired leaves a {@code BUSY} nothing ever takes back — and the control socket's reconnect adoption
+   * re-reports the daemon's retained per-command state, so the dead session is re-asserted every time
+   * this service restarts. Observed live on 2026-09-18: {@link AgentStaleImageSweep} named the same
+   * stale container in a WARN on three consecutive passes and could never stop it, because this fold
+   * answered {@code BUSY} for a session that had not existed for hours.
+   *
+   * <p><b>The shape was copied from {@code RefinementDaemonRegistry} and the copy was right; the
+   * consequence is what differs.</b> There the rollup is drawn in a UI, where a stuck {@code BUSY} is
+   * a chip somebody ignores. Here it <em>gates an action</em>, so a stuck {@code BUSY} is a permanent
+   * veto — and it vetoes hardest on exactly the long-lived containers the sweep exists to reach.
+   *
+   * <h2>Why four hours, and why it must be longer than the quiet window</h2>
+   *
+   * <p>It is a bound on <b>how long a single agent turn can plausibly be</b>, not a guess at how long
+   * a session lasts. The daemon's hooks fire at turn boundaries — {@code SessionStart}, {@code
+   * UserPromptSubmit}, {@code Stop}, {@code Notification}, {@code SessionEnd} — so a live session
+   * refreshes its entry at every boundary and an agent working all day is a stream of entries, never
+   * one old one. The only thing this horizon can cut short is a <em>single turn</em> still running
+   * four hours after it began, and the action it would release is lossless anyway: the container is
+   * stopped, never removed, and the checkout is on a volume nothing here can discard.
+   *
+   * <p><b>It must be strictly longer than {@code qits.projects.agent-stale-quiet-window}.</b> At
+   * equal values the fold could never veto anything the stamp had not already vetoed — every entry
+   * old enough to survive as evidence would also be a stamp inside the window — and the rollup's
+   * whole reason for existing is the case the stamp gets wrong: an agent thinking silently between
+   * two frames. Setting them equal deletes that, silently and with every test still green.
+   */
+  @ConfigProperty(name = "qits.projects.agent.stale-activity-ttl-ms", defaultValue = "14400000")
+  long staleActivityTtlMs;
+
   /** One session's last reported state and when it said so. */
   private record ActivityEntry(String state, long atMillis) {}
 
@@ -231,9 +271,15 @@ public class AgentDaemonRegistry {
    * This project's rolled-up agent state — the busiest of its live sessions — or empty when no
    * session has reported one.
    *
-   * <p>{@code ENDED} entries are aged out on read rather than on a timer, exactly as the refinement
-   * registry does it: the rollup has no reader but this one, so a pass over it costs nothing between
-   * reads and there is no second thread to reason about.
+   * <p>Entries are aged out on read rather than on a timer, exactly as the refinement registry does
+   * it: the rollup has no reader but this one, so a pass over it costs nothing between reads and
+   * there is no second thread to reason about.
+   *
+   * <p><b>Two horizons, and an entry goes when it passes either.</b> An {@code ENDED} session is over
+   * and expires at the short {@link #endedActivityTtlMs}; every entry, whatever it says, expires at
+   * the long {@link #staleActivityTtlMs}, because a session can stop reporting without ever saying it
+   * ended and a {@code BUSY} that outlives its agent is otherwise a permanent claim that something is
+   * running. The second horizon is the one that carries the argument — see the field.
    */
   public Optional<String> agentActivity(String projectId) {
     Map<String, ActivityEntry> sessions = agentActivity.get(projectId);
@@ -244,9 +290,12 @@ public class AgentDaemonRegistry {
     sessions
         .entrySet()
         .removeIf(
-            entry ->
-                DaemonProtocol.AgentState.ENDED.equals(entry.getValue().state())
-                    && now - entry.getValue().atMillis() > endedActivityTtlMs);
+            entry -> {
+              long age = now - entry.getValue().atMillis();
+              return (DaemonProtocol.AgentState.ENDED.equals(entry.getValue().state())
+                      && age > endedActivityTtlMs)
+                  || age > staleActivityTtlMs;
+            });
     return sessions.values().stream()
         .map(ActivityEntry::state)
         .max(Comparator.comparingInt(AgentDaemonRegistry::activityRank));
