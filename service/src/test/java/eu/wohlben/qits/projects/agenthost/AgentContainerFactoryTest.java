@@ -187,9 +187,10 @@ class AgentContainerFactoryTest {
         env.get("QITS_PROJECTS_DAEMON_REPO_NAME"),
         "the wrapper is <slug>-<slug>, and the clone is always name-addressed");
     assertEquals(
-        "http://dev-qits-githost:8080/git",
+        "http://githost.dev.internal:8080/git",
         env.get("QITS_PROJECTS_DAEMON_GIT_BASE"),
-        "stated outright: the git host is a different service from the control socket's");
+        "the internal alias, whose oauth2 transport turns the image's Basic helper into a Bearer;"
+            + " the service alias 401s it and the container cannot fetch");
     assertEquals("qits-projects-daemon", env.get("QITS_PROJECTS_DAEMON_API_TOKEN"));
     assertEquals("13338", env.get("QITS_PROJECTS_DAEMON_API_PORT"));
     assertEquals("13337", env.get("QITS_PROJECTS_DAEMON_HOOKS_PORT"));

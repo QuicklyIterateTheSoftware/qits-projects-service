@@ -270,10 +270,15 @@ public class AgentContainerFactory {
    * The git host the daemon's boot self-clone reads from, including qits-githost's own {@code /git}
    * prefix. Stated outright rather than left to the daemon's derivation, which would guess a
    * <em>different</em> service's address off this one's authority and say so in a WARN.
+   *
+   * <p>The <b>internal</b> githost alias, never the service alias: the container authenticates git
+   * with the credential helper baked into its image, the helper produces Basic, and only that
+   * alias's oauth2 transport turns it into the Bearer the git host accepts — see {@code
+   * qits.projects.refinement-git-url} for the same address arrived at the same way.
    */
   @ConfigProperty(
       name = "qits.projects.agent-git-base",
-      defaultValue = "http://dev-qits-githost:8080/git")
+      defaultValue = "http://githost.dev.internal:8080/git")
   String gitBase;
 
   /**
