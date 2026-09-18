@@ -22,9 +22,10 @@ import org.junit.jupiter.api.TestFactory;
  * The user's ruling, read off the annotations: an agent keeps every read and gains no write.
  *
  * <p>For each class below, one case: every GET or HEAD route admits {@code qits:agent}, and no other
- * route does — except the four release-request writes, which bind the agent to its own work (see
- * {@code ReleaseRequestAgentBoundsTest}). A method-level {@code @RolesAllowed} replaces the class
- * list, so the effective list is the method's when it has one.
+ * route does — except the five release-request writes an agent reaches (see {@code
+ * ReleaseRequestAgentBoundsTest}), four of which bind the agent to its own work. A method-level
+ * {@code @RolesAllowed} replaces the class list, so the effective list is the method's when it has
+ * one.
  */
 class AgentReadAccessTest {
 
@@ -59,13 +60,19 @@ class AgentReadAccessTest {
           RepositoryController.class,
           TechnicalProcessEventsController.class);
 
-  /** The writes an agent reaches, each bound to the agent's project and git_refs. */
-  private static final Set<String> BOUND_WRITES =
+  /**
+   * The writes an agent reaches. The first four are bound to the agent's project and git_refs; the
+   * fifth, {@code rerunPhase}, is deliberately unbound — it decides nothing, so there is nothing to
+   * bind. {@code approve} and {@code decline} are not here and must not arrive: those are the
+   * sign-off, and that distinction is what this set is a list of.
+   */
+  private static final Set<String> AGENT_WRITES =
       Set.of(
           "ReleaseRequestController.create",
           "ReleaseRequestController.addSource",
           "ReleaseRequestController.setSourcePriority",
-          "ReleaseRequestController.withdraw");
+          "ReleaseRequestController.withdraw",
+          "ReleaseRequestController.rerunPhase");
 
   @TestFactory
   Stream<DynamicTest> anAgentReadsEverythingAndWritesNothingElse() {
@@ -81,7 +88,7 @@ class AgentReadAccessTest {
                         if (isRead(method)) {
                           anyRead = true;
                           assertTrue(roles(type, method).contains(AGENT), name + " is a read");
-                        } else if (isWrite(method) && !BOUND_WRITES.contains(name)) {
+                        } else if (isWrite(method) && !AGENT_WRITES.contains(name)) {
                           assertFalse(roles(type, method).contains(AGENT), name + " is a write");
                         }
                       }

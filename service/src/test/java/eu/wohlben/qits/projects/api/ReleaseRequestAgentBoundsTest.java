@@ -4,12 +4,14 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import eu.wohlben.qits.projects.control.PipelinePhaseReruns;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
+import eu.wohlben.qits.projects.releasehost.RecordingPipelinePhaseReruns;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -25,7 +27,8 @@ import org.junit.jupiter.api.function.Executable;
 
 /**
  * An agent at the release-request door: it reads every request, writes only for its own project,
- * asks to release only a branch its token may push, and never approves.
+ * asks to release only a branch its token may push, re-asks a phase of any release, and never
+ * approves.
  *
  * <p>Two layers, tested where each can be reached. The <b>bounds</b> read the token's claims, and
  * a {@code @QuarkusTest} cannot put a token in front of this service: the forwarded-header
@@ -51,8 +54,11 @@ public class ReleaseRequestAgentBoundsTest {
 
   @Inject RepositoryService repositories;
 
+  @Inject RecordingPipelinePhaseReruns reruns;
+
   @BeforeEach
   void seed() {
+    reruns.reset();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -151,6 +157,38 @@ public class ReleaseRequestAgentBoundsTest {
     door(AGENT).list(FOREIGN_REPO, null);
   }
 
+  /**
+   * A rerun decides nothing, so an agent may re-ask a phase whose gate died on the estate rather
+   * than on the change.
+   */
+  @Test
+  void anAgentRerunsAPhase() {
+    String own = requestBySomebodyElse(OWN_REPO, "ticket/own");
+
+    assertEquals(own, door(AGENT).rerunPhase(OWN_REPO, own, "QA").request().id());
+    assertEquals(
+        List.of(new RecordingPipelinePhaseReruns.Asked(OWN_REPO, own, PipelinePhaseReruns.CI_PHASE_QA)),
+        reruns.asked());
+  }
+
+  /**
+   * And on a request of a repository its token does not cover — the one case that pins the
+   * deliberate absence of a binding here. Every other write on this door answers 403 to exactly
+   * this call; a rerun moves no state, no gate and no row, so re-asking somebody else's question
+   * gains the asker nothing and is not refused.
+   */
+  @Test
+  void anAgentRerunsAPhaseOfAnotherProjectsRequest() {
+    String foreign = requestBySomebodyElse(FOREIGN_REPO, "feature/elsewhere");
+
+    assertEquals(foreign, door(AGENT).rerunPhase(FOREIGN_REPO, foreign, "QA").request().id());
+    assertEquals(
+        List.of(
+            new RecordingPipelinePhaseReruns.Asked(
+                FOREIGN_REPO, foreign, PipelinePhaseReruns.CI_PHASE_QA)),
+        reruns.asked());
+  }
+
   /** A caller that also holds qits:system is judged as before, on any repository and branch. */
   @Test
   void aPlatformCallerIsJudgedAsBefore() {
@@ -158,6 +196,17 @@ public class ReleaseRequestAgentBoundsTest {
 
     assertEquals(
         FOREIGN_REPO, door(platform).create(FOREIGN_REPO, ask("feature/anything")).request().repoId());
+  }
+
+  /** An operator and a platform service re-ask a phase exactly as they did before. */
+  @Test
+  void adminAndSystemRerunAnyRepositorysPhase() {
+    String foreign = requestBySomebodyElse(FOREIGN_REPO, "feature/elsewhere");
+    SecurityIdentity platform = AgentTokens.token(Map.of(), "qits:system", "qits:agent");
+    SecurityIdentity operator = AgentTokens.token(Map.of(), "qits:admin");
+
+    assertEquals(foreign, door(platform).rerunPhase(FOREIGN_REPO, foreign, "QA").request().id());
+    assertEquals(foreign, door(operator).rerunPhase(FOREIGN_REPO, foreign, "QA").request().id());
   }
 
   // ---- the roles, over HTTP ----------------------------------------------------------------------
@@ -173,6 +222,11 @@ public class ReleaseRequestAgentBoundsTest {
     return "/projects/api/repositories/" + repoId + "/release-requests";
   }
 
+  /**
+   * The sign-off is the distinction the rerun's own javadoc rests on: a rerun re-asks a question and
+   * an approval answers one, so these two stay {@code qits:admin} alone and the door refuses the
+   * role outright — before any binding is consulted.
+   */
   @Test
   void anAgentNeverApprovesOrDeclines() {
     String own = requestBySomebodyElse(OWN_REPO, "ticket/own");
@@ -201,5 +255,11 @@ public class ReleaseRequestAgentBoundsTest {
         .post(base(OWN_REPO))
         .then()
         .statusCode(403);
+    // The rerun is the exception, and over HTTP is where that is visible: its role list admits the
+    // agent and nothing behind it reads a claim, so a tokenless agent re-asks the question too.
+    asForwardedAgent()
+        .post(base(OWN_REPO) + "/" + own + "/pipeline/QA/rerun")
+        .then()
+        .statusCode(200);
   }
 }

@@ -548,14 +548,31 @@ public class ReleaseRequestController {
    * part of a run, and running the run again is what this door does. Adding a fourth word
    * here would be a statement that a fourth thing can be re-run on its own.
    *
-   * <p><b>{@code qits:admin} and {@code qits:system}, not admin alone</b> — and that is a deliberate
-   * difference from {@code approve}/{@code decline} one method up rather than an oversight. Those two
-   * are a sign-off: a machine may ask for a release and may not judge one, because a gate a machine
-   * could satisfy is not that gate. A rerun judges nothing. It re-asks a question whose answer
-   * arrives where it always did, so the sweeps and robots that already drive this surface are
-   * entitled to press it. {@code qits:agent} is deliberately <b>not</b> on the list: an agent's four
-   * writes are bound to its own work through its token's claims, and a rerun reaches a sibling
-   * service on the platform's own credential.
+   * <p><b>{@code qits:admin}, {@code qits:system} and {@code qits:agent}</b> — and that is a
+   * deliberate difference from {@code approve}/{@code decline} one method up rather than an
+   * oversight. Those two are a sign-off and stay {@code qits:admin} alone: a machine may ask for a
+   * release and may not judge one, because a gate a machine could satisfy is not that gate. A rerun
+   * judges nothing. It re-asks a question whose answer arrives where it always did, so the sweeps
+   * and robots that already drive this surface are entitled to press it, and so is an agent.
+   *
+   * <p><b>The agent is on the list because a gate fails for reasons that are not the change's.</b> A
+   * gating run dies on the estate rather than on the diff: a native-image step OOM-killed by what
+   * else the host was building, a buildkit that could not resolve a sibling service's DNS name while
+   * that service was being redeployed. Whoever is watching the request is exactly who finds that
+   * out, and before this an agent had two moves, both bad — withdraw and re-ask, minting a new
+   * request id for no reason at all, or wait for some unrelated release to move {@code main} and
+   * refold the rejection away.
+   *
+   * <p><b>It is deliberately NOT bound to the caller's own work, unlike the four writes above.</b>
+   * Those state something — which branch is released, how urgently, that the ask is moot — so
+   * {@code requireAgentRequest} holds each of them to the token's {@code project} and {@code
+   * git_refs}. There is nothing here to hold: no state, no gate and no row moves, the new run
+   * reports on the bus exactly as the first one did, and qits-ci decides for itself whether the
+   * phase can be asked again at all. So re-asking somebody else's question gains the asker nothing,
+   * and a binding would buy no safety while costing the ordinary case — an agent that watched a
+   * neighbouring release die on the same OOM would have to fetch a person. Read against the
+   * sign-off, that is the whole rule of this surface: press a button that decides nothing, never one
+   * that decides something.
    *
    * <p>The answer is the whole {@link ReleaseRequestDto}, the same envelope every other verb here
    * answers with, so the caller replaces its row rather than guessing what moved — and what moved is
@@ -564,7 +581,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Path("/{requestId}/pipeline/{phase}/rerun")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
   @Operation(
       summary = "Run one phase of this release again",
       description =
