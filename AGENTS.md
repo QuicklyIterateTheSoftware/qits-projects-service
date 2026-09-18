@@ -375,6 +375,13 @@ write** (user ruling, 2026-09-12):
   on `ReleaseRequestController`. The repository must be in the token's `project`, a request must
   belong to that repository, and on create and sources the branch must be in the token's
   `git_refs` (exact, or under a trailing `/*`). Else 403. Approve and decline stay `qits:admin`.
+- **A fifth write takes it and is deliberately UNBOUND: `rerunPhase`.** A rerun moves no state, no
+  gate and no row, and the new run reports on the bus exactly as the first one did, so there is
+  nothing for a binding to protect — an agent re-asks a phase of any request, including one in a
+  repository its token does not cover. It is open at all because gates die on estate conditions
+  rather than on the change (an OOM-killed native-image step, a sibling service redeployed so
+  buildkit cannot resolve its name), and whoever is watching a request should be able to re-ask the
+  question. Approve and decline are the sign-off and stay `qits:admin` alone; that is the line.
 - **The two control sockets take it, bound to the agent's own container** (a socket is a control
   channel, not a read): `/projects/daemon/{projectId}` wants the token's `project`, and
   `/projects/refinement-daemon/{id}` wants the token's `sub` to be that row's commissioned client.
@@ -811,8 +818,10 @@ nothing else, and a phase and the gate behind it are two facts.
 
 **A phase can be run again, and the rerun decides nothing.**
 `POST /projects/api/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun`
-(`qits:admin` + `qits:system` — a rerun judges nothing, unlike approve/decline, so the sweeps and
-robots that already drive this surface may press it; `qits:agent` is deliberately not on the list).
+(`qits:admin` + `qits:system` + `qits:agent` — a rerun judges nothing, unlike approve/decline, so
+the sweeps, robots and agents that already drive this surface may press it, and the agent is
+deliberately **not** bound to its own project here: there is no state, no gate and no row for a
+binding to protect).
 `QA` and `PUBLISH` go to qits-ci's `POST /ci/api/runs/rerun` with `{repoId, releaseRequestId, phase}`
 over `control/PipelinePhaseReruns` on the existing `ci-url`; `DEPLOY` re-posts qits-deployments'
 release intake over `control/DeploymentRedeploys`, which is the door a redeploy has always gone
