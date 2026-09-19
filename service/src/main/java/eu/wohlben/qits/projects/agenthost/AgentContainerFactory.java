@@ -15,6 +15,7 @@ import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -290,7 +291,7 @@ public class AgentContainerFactory {
 
   /** The clone base the daemon is handed: the container git url plus qits-githost's own prefix. */
   String gitBase() {
-    return containerGitUrl.replaceAll("/+$", "") + "/git";
+    return trimSlash(containerGitUrl) + "/git";
   }
 
   /**
@@ -551,9 +552,25 @@ public class AgentContainerFactory {
         pair -> {
           env.put("QITS_COMMISSIONED_CLIENT_ID", pair.clientId());
           env.put("QITS_COMMISSIONED_CLIENT_SECRET", pair.secret());
-          env.put(
-              "QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL",
-              idpAuthServerUrl.replaceAll("/+$", "") + "/token");
+          // The git credential helper baked into the image — /etc/qits-gitconfig, which names
+          // /usr/local/bin/qits-git-credential — and the three names it reads. GIT_CONFIG_GLOBAL is
+          // the only thing that makes git read that file at all: the image's HOME is the checkout
+          // and no gitconfig is ever written there, so without it the helper is installed and never
+          // consulted. The host is the AUTHORITY of containerGitUrl because the helper answers
+          // Basic and only the internal githost alias's oauth2 transport turns that into the Bearer
+          // the git host accepts — see the field's javadoc and application.properties.
+          //
+          // Container-wide, which is a widening of what the daemon already does and not a fight
+          // with it: CheckoutFollower derives these same four names for the one child it
+          // supervises, and yields to an injected value, so stating them here makes that
+          // derivation a no-op rather than a conflict — and every other git in the container (a
+          // person's shell, a build, an agent opening a worktree) gets the credential only that
+          // one supervised child had.
+          env.put("GIT_CONFIG_GLOBAL", "/etc/qits-gitconfig");
+          env.put("QITS_GIT_AUTH_HOST", authority(containerGitUrl));
+          env.put("QITS_GIT_AUTH_TOKEN_URL", trimSlash(idpAuthServerUrl) + "/token");
+          env.put("QITS_GIT_AUTH_AUDIENCE", PLATFORM_AUDIENCE);
+          env.put("QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL", trimSlash(idpAuthServerUrl) + "/token");
           env.put("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE", PLATFORM_AUDIENCE);
           env.put("QITS_PROJECTS_DAEMON_GIT_AUTH_AUDIENCE", PLATFORM_AUDIENCE);
         });
@@ -732,6 +749,20 @@ public class AgentContainerFactory {
       throw new IllegalStateException(
           "Could not serialize the agent configuration document for a project agent container", e);
     }
+  }
+
+  /**
+   * A url with its trailing slashes off, so one appending a path cannot produce a double slash. The
+   * same helper {@code RefinementContainerFactory} carries, and the one expression of it here.
+   */
+  private static String trimSlash(String url) {
+    return url.replaceAll("/+$", "");
+  }
+
+  /** The {@code host[:port]} half of a url — what the git credential helper matches on. */
+  private static String authority(String url) {
+    URI uri = URI.create(url);
+    return uri.getPort() == -1 ? uri.getHost() : uri.getHost() + ":" + uri.getPort();
   }
 
   /** The configured zone, or this service's own default zone when blank. */

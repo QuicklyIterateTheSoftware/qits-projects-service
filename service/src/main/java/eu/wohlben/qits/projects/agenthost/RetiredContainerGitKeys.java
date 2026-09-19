@@ -31,6 +31,13 @@ import org.jboss.logging.Logger;
  *   githost.dev.internal:8080   Basic oauth2:&lt;token&gt; -&gt; 200    Bearer -&gt; 200
  * </pre>
  *
+ * <p>The internal alias <b>is</b> an alias of the qits-platform-edge container (qits-bootstrap's
+ * {@code ComposeTemplate} declares it under that service's {@code qits-net} aliases), and the edge
+ * is what does the work: {@code EdgeAuth.oauth2Token} decodes the Basic {@code oauth2:&lt;token&gt;}
+ * and rewrites it to Bearer. The service alias fails precisely <b>because</b> it bypasses the edge —
+ * qits-githost has no Basic handling at all. So the rule is about reaching the edge rather than
+ * avoiding it: the internal alias, never the service alias.
+ *
  * <p>The shipped defaults were corrected, and that changed nothing: <b>a stored configuration entry
  * outranks a shipped default</b>, and nothing on this platform deletes an entry — qits-configuration
  * reports an orphan and never cleans one up — while only a {@code qits:admin} caller can rewrite

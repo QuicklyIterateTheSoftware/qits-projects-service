@@ -91,6 +91,16 @@ class AgentCommissioningTest {
     // this service's own client id or a git-host-specific audience.
     assertEquals("qits-platform", env.get("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE"));
     assertEquals("qits-platform", env.get("QITS_PROJECTS_DAEMON_GIT_AUTH_AUDIENCE"));
+    // And the container's git: the four names the image's credential helper reads, which the
+    // refinement harness has injected all along and this one did not, so every git inside a project
+    // agent ran with no credential helper configured at all. GIT_CONFIG_GLOBAL is the load-bearing
+    // one — HOME's gitconfig is never written in this image, so without it /etc/qits-gitconfig is
+    // present and unread. The host is the AUTHORITY of qits.projects.container-git-url, not the
+    // whole url, because that is what git matches a credential against.
+    assertEquals("/etc/qits-gitconfig", env.get("GIT_CONFIG_GLOBAL"));
+    assertEquals("githost.dev.internal:8080", env.get("QITS_GIT_AUTH_HOST"));
+    assertEquals("http://qits-idp:8080/idp/token", env.get("QITS_GIT_AUTH_TOKEN_URL"));
+    assertEquals("qits-platform", env.get("QITS_GIT_AUTH_AUDIENCE"));
   }
 
   /**
@@ -156,6 +166,17 @@ class AgentCommissioningTest {
     assertNull(created.get("QITS_COMMISSIONED_CLIENT_SECRET"));
     assertNull(created.get("QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL"));
     assertNull(created.get("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE"));
+    // The git credential block is the commissioned pair's other half and goes with it, whole: the
+    // helper can only exchange a credential this deployment has not got, so a container handed
+    // GIT_CONFIG_GLOBAL and no client id would have git asking an endpoint that will refuse it.
+    // Mirrors RefinementContainerFactoryTest.noIdpMeansNoCredentialBlockAtAll.
+    assertNull(created.get("GIT_CONFIG_GLOBAL"));
+    assertNull(created.get("QITS_GIT_AUTH_HOST"));
+    assertNull(created.get("QITS_GIT_AUTH_TOKEN_URL"));
+    assertNull(created.get("QITS_GIT_AUTH_AUDIENCE"));
+    assertTrue(
+        created.keySet().stream().noneMatch(name -> name.startsWith("QITS_GIT_AUTH")),
+        "no git-auth name is in the map at all: " + created.keySet());
     assertTrue(
         created.keySet().stream().noneMatch(name -> name.startsWith("QITS_COMMISSIONED")),
         "no commissioning name is in the map at all: " + created.keySet());

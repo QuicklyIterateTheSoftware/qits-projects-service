@@ -1300,8 +1300,28 @@ one wrong fails silently: no url leaves the daemon idle, no token leaves its API
     QITS_COMMISSIONED_CLIENT_SECRET      its secret, answered once and stored here
     QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL  the idp token endpoint used before dial-home
     QITS_PROJECTS_DAEMON_AUTH_AUDIENCE   qits-platform — one audience for every service now (plan C4)
+    GIT_CONFIG_GLOBAL                    /etc/qits-gitconfig — the image's own credential helper
+    QITS_GIT_AUTH_HOST                   the AUTHORITY of the container git url, never the whole url
+    QITS_GIT_AUTH_TOKEN_URL              the idp token endpoint the helper exchanges at
+    QITS_GIT_AUTH_AUDIENCE               qits-platform, the same one — never a git-specific audience
 
-**The last two are a credential per container, not a shared one.** They are commissioned from
+**The last four are the git credential helper `qits/workspace-base` bakes in**, the identical block
+`RefinementContainerFactory` has always injected, and they are what make `git` work for *every*
+process in the container rather than for one. `/etc/qits-gitconfig` names
+`/usr/local/bin/qits-git-credential` and `GIT_CONFIG_GLOBAL` is the only thing that makes git read
+that file: the image's `HOME` is the checkout and nothing ever writes a gitconfig there, so without
+it the helper ships installed and unconsulted, `git config --list` reports no `credential.helper` at
+all, and a fetch dies on `could not read Username`. The helper answers **Basic** and only the
+internal githost alias rewrites that to the Bearer the git host accepts, which is why the host is
+the authority of `qits.projects.container-git-url` — a blank one makes the helper fail closed and
+answer nothing, which is correct and also useless.
+<br>**qits-projects-daemon's `CheckoutFollower` derives the same four for the one child it
+supervises** and yields to an injected value, so stating them here turns that derivation into a
+no-op rather than a conflict, and keeps it the only source for a container an older qits-projects
+composed. **This grants reads and no writes**: an agent container is commissioned `"gitRefs": []`,
+which qits-githost reads as "may push no ref". Fetch, clone and worktree; never push.
+
+**The commissioned pair is a credential per container, not a shared one.** They are commissioned from
 qits-idp's `POST /idp/api/clients` as `{agent-container, <projectId>}` and handed back when the
 container is gone, so what a container authenticates its pulls, its maven/npm resolution and its git
 reads with has the container's lifetime and no other. Read the section below before touching them —
