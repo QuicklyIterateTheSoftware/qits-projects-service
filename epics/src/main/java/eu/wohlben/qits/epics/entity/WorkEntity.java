@@ -169,8 +169,24 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   /** Who is looking at a ticket, as a free-text name. The platform has no person table. */
   public String assignee;
 
-  /** The principal that filed a ticket. Stamped from the request identity, never client-supplied. */
-  @Column(name = "created_by", updatable = false)
+  /**
+   * The principal that filed a ticket. Stamped from the request identity, <b>never
+   * client-supplied</b> — no surface reads it off a request body and none may start.
+   *
+   * <p><b>It is not {@code updatable = false}, and that is a decision rather than an omission.</b>
+   * The multi-entity transition re-archetypes existing rows, and a row demoted from {@code TICKET}
+   * to {@code FEATURE} has no slot for this property any more: it is <em>cleared</em> there, because
+   * leaving a reporter on a row that is no longer a report is a value nothing would ever correct and
+   * nothing could explain. An {@code updatable = false} column would have made that clear a silent
+   * no-op — the field null in Java, the column unchanged in postgres — which is the worst of the
+   * three possible behaviours.
+   *
+   * <p>The guarantee that stands is the one that was ever meant: this column is written by the
+   * server at create and by a re-archetype that removes it, and by nothing else. {@link #slug} keeps
+   * {@code updatable = false} precisely because <em>its</em> rule is the opposite one — a slug is
+   * never re-minted and never cleared, and the schema is where that is best said.
+   */
+  @Column(name = "created_by")
   public String createdBy;
 
   /**

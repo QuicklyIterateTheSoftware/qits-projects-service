@@ -107,6 +107,27 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
   }
 
   /**
+   * <b>Every row living in any of {@code slugScopes}</b> — the bulk half of {@link #slugsInScope},
+   * and it answers rows rather than strings because its caller needs to know <em>who</em> holds each
+   * slug.
+   *
+   * <p>It exists for the multi-entity transition's slug-scope layer. A move keeps the slug and
+   * changes the scope, so the question that has to be answered before anything is written is "does
+   * the post-state put two rows on one slug in one scope" — and the id is what says whether the
+   * resident is somebody else or the very row being moved. {@code slugsInScope} cannot answer that,
+   * and asking it once per moved entity would be the N+1 this model makes easy.
+   *
+   * <p>An empty input answers an empty list <em>without</em> asking the database, for {@link
+   * #listByIds}' reason: {@code in ()} is a syntax error in postgres.
+   */
+  public List<WorkEntity> listBySlugScopes(Collection<String> slugScopes) {
+    if (slugScopes == null || slugScopes.isEmpty()) {
+      return List.of();
+    }
+    return find("slugScope in ?1", OLDEST_FIRST, slugScopes).list();
+  }
+
+  /**
    * The slugs already taken in a scope — what {@code Slugs.unique} needs in order to mint the next
    * free {@code -2}, {@code -3}, … within it.
    */

@@ -232,6 +232,13 @@ components:
           pattern: \S
         note:
           type: string
+    Archetype:
+      type: string
+      enum:
+      - EPIC
+      - TICKET
+      - FEATURE
+      - TASK
     AttachmentDto:
       type: object
       properties:
@@ -709,6 +716,33 @@ components:
       properties:
         draft:
           $ref: "#/components/schemas/DraftDto"
+    EntityTransition:
+      type: object
+      properties:
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        membership:
+          $ref: "#/components/schemas/Membership"
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        ticketType:
+          $ref: "#/components/schemas/TicketType"
+        impetus:
+          type: string
+        assignee:
+          type: string
+        supersededBy:
+          type: string
+        repositoryId:
+          type: string
+        implementedAt:
+          $ref: "#/components/schemas/Instant"
+        dependsOn:
+          type: string
     Entry:
       type: object
       properties:
@@ -978,6 +1012,14 @@ components:
         readOnly:
           type: boolean
           description: Append agentReadOnly=true — the autonomous fence.
+    Membership:
+      type: object
+      properties:
+        parent:
+          type: string
+        position:
+          type: integer
+          format: int32
     MergeConflictDto:
       type: object
       properties:
@@ -2016,6 +2058,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceReferenceDto"
+    TicketType:
+      type: string
+      enum:
+      - BUG
+      - IMPROVEMENT
     TransitionEpicRequest:
       type: object
       properties:
@@ -2026,6 +2073,50 @@ components:
       properties:
         target:
           type: string
+    TransitionedEntity:
+      type: object
+      properties:
+        id:
+          type: string
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        projectId:
+          type: string
+        title:
+          type: string
+        slug:
+          type: string
+        slugScope:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        ticketType:
+          $ref: "#/components/schemas/TicketType"
+        impetus:
+          type: string
+        assignee:
+          type: string
+        createdBy:
+          type: string
+        supersededBy:
+          type: string
+        repositoryId:
+          type: string
+        implementedAt:
+          $ref: "#/components/schemas/Instant"
+        dependsOn:
+          type: string
+        parent:
+          type: string
+        position:
+          type: integer
+          format: int32
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
     UpdateDesign:
       type: object
       required:
@@ -2433,6 +2524,37 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/entities/transition:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/EntityTransition"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/TransitionedEntity"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Transition
+      tags:
+      - Entity Transition Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/epics/{epicId}/dossier:
     get:
       parameters:

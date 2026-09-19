@@ -239,7 +239,7 @@ public class TicketService {
           } else if (assignee != null) {
             row.assignee = blankToNull(assignee);
           }
-          requireArchetypeValid(row, TicketService::theImpetusTheColumnStillAllowsToBeAbsent);
+          requireArchetypeValid(row, ImpetusConcession::theImpetusTheColumnStillAllowsToBeAbsent);
           Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
@@ -250,29 +250,6 @@ public class TicketService {
               ticket);
           return ticket;
         });
-  }
-
-  /**
-   * <b>The one violation this module tolerates, and only on the ticket update path.</b>
-   *
-   * <p>{@code Archetypes} declares {@link EntityProperty#IMPETUS} <em>required</em> of a ticket, and
-   * that is right about intake: a REPORTED ticket is an impetus and nothing else, and {@link
-   * #create} enforces it before anything is written. It is <em>not</em> right about the column, and
-   * V7 made it nullable on purpose — rows that predate that migration have no impetus, triage may
-   * write one onto them, and the clear flag that empties one is behaviour the surfaces above rely on
-   * ({@code TicketServiceTest.theClearFlagsAreWhatEmptyTheNullableFields}, {@code
-   * TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields}).
-   *
-   * <p>Turning an accepted write into a refusal is a contract change and does not belong in the task
-   * that moves the storage. So the disagreement is <b>named here rather than skipped silently</b>,
-   * and it is narrow: this exact property with this exact reason, on this one path. Everything else
-   * — a foreign property, a status word from the other lifecycle, every violation on every other
-   * write — is refused with no exception. <b>A later task settles the registry and the column
-   * against each other</b>, and this predicate goes with it.
-   */
-  private static boolean theImpetusTheColumnStillAllowsToBeAbsent(ArchetypeViolation violation) {
-    return violation.property() == EntityProperty.IMPETUS
-        && violation.reason() == ArchetypeViolation.Reason.MISSING_REQUIRED;
   }
 
   /**
@@ -293,7 +270,7 @@ public class TicketService {
                   .orElseThrow(() -> new ConflictException("Unknown ticket status: " + target));
           TicketLifecycle.requireTransition(TicketStatus.valueOf(row.status), to);
           row.status = to.name();
-          requireArchetypeValid(row, TicketService::theImpetusTheColumnStillAllowsToBeAbsent);
+          requireArchetypeValid(row, ImpetusConcession::theImpetusTheColumnStillAllowsToBeAbsent);
           Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
@@ -453,7 +430,8 @@ public class TicketService {
    * <b>The archetype registry on the ordinary write.</b> A row the registry refuses is a 400 naming
    * every violation at once, which is what {@code Archetypes.validate} answers for and why it
    * returns all of them rather than the first. {@code tolerated} is the one documented narrowing —
-   * see {@link #theImpetusTheColumnStillAllowsToBeAbsent}.
+   * see {@link ImpetusConcession}, which is where that narrowing lives now: it is a property of
+   * every UPDATE path rather than of this one, and the multi-entity transition gets it too.
    */
   private static void requireArchetypeValid(
       WorkEntity candidate, java.util.function.Predicate<ArchetypeViolation> tolerated) {

@@ -431,41 +431,261 @@ added is `UnifiedDescendantsTest`, for the four things that are genuinely new an
 impossible to get wrong: a listing's order, a middle sibling's removal leaving dense positions, the
 two-hop walk to a task's epic, and the `Nesting`-not-consulted-for-`dependsOn` negative.
 
-## Open questions this task inherits and does not settle
+## The multi-entity transition, as shipped
 
-### `IMPETUS` is declared required and the column is nullable, and they disagree
+`POST /projects/api/entities/transition` takes a map of entity id to the **full** state that entity
+is to have afterwards, judges the whole of it as one post-state, applies it in **one transaction**
+and announces it **once**.
 
-`Archetypes` declares `IMPETUS` **required** of a `TICKET`. V7 made `entity.impetus`/`ticket.impetus`
-**nullable on purpose** — rows that predate it have none, triage may write one onto them, and
-*clearing* one is asserted behaviour (`TicketServiceTest.theClearFlagsAreWhatEmptyTheNullableFields`,
-`TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields`).
+```json
+{ "<id>":       { "archetype": "EPIC",    "membership": { "parent": null,   "position": 0 },
+                  "title": "…", "status": "REFINING", "description": "…" },
+  "<other-id>": { "archetype": "FEATURE", "membership": { "parent": "<id>", "position": 0 },
+                  "title": "…" } }
+```
 
-It is scoped today behind `TicketService.theImpetusTheColumnStillAllowsToBeAbsent`, a named predicate
-tolerating **exactly** that property with **exactly** the missing-required reason on **exactly** the
-ticket update path. Everything else — every create, every epic write, a foreign property, a status
-word from the other lifecycle — is refused with no exception.
+### Why it exists, and why it cannot be a loop over the existing PUTs
 
-**It is still open, and it is not this task's to close.** Two answers are available and they are not
-equivalent:
+**A feature becoming an epic while its tasks are rescoped is a state no ordering of single-entity
+writes reaches legally.** Re-archetype the feature first and there is an epic under an epic;
+reparent it first and there is a feature at the root; move the tasks first and they hang under
+something still shaped as a feature. Every intermediate shape is refused by a rule that is correct,
+and the whole is correct — which is the argument `Nesting`'s javadoc makes, and this endpoint is the
+caller it was written for. `EntityTransitionServiceTest.aFeatureBecomesAnEpicWhileItsTasksAre
+RescopedInOneRequest` is that case, and it is the test that fails loudest if atomicity regresses.
 
-1. **The registry is right and the column should be `not null`.** That is a migration plus a
-   backfill decision for the rows that have no impetus, and it turns a currently-accepted write
-   (clearing one) into a refusal — a contract change.
-2. **The column is right and `IMPETUS` should be *permitted* rather than *required*.** That is one
-   word in `Archetypes`, and it gives up the intake guarantee the registry is currently asserting.
+**The existing per-entity `PUT`s stay exactly as they are.** This is an addition, not a replacement:
+a caller that wants to retitle one epic still has a route that says so, and the ordinary write
+expressed here is simply a map of one.
 
-**No ticket test's assertions may be changed to settle it.** They are the record of the behaviour the
-surfaces above rely on, and moving them would make the disagreement disappear rather than decide it.
-**The transition-API task inherits this**, because it is the first one that judges a whole intended
-post-state through the registry and therefore the first that has to say which of the two is true.
+### Existing ids only, and refusals are collected rather than thrown
 
-**The dossier cutover looked at it and could not close it**, which is worth writing down so the next
-reader does not re-derive the same dead end: neither answer is reachable without changing a test's
-assertions — making the column `not null` turns an accepted write into a refusal (`TicketServiceTest`
-and `TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields` assert that clearing works), and
-demoting `IMPETUS` to merely *permitted* changes `ArchetypesTest`, which asserts the required set and
-the missing-required violation outright. Moving a foreign key gives no new leverage on either, so the
-predicate stands and the transition-API task still inherits the question.
+**Nothing is created and nothing is deleted here.** An id in the map that names no row is a refusal;
+so is a `membership.parent` in neither the map nor the store. Creating on an unknown id is the one
+thing a transition must never do — the caller supplied that id, and one it got wrong would become a
+row nobody meant rather than a message somebody reads.
+
+Both are **violations collected with the rest and answered as one 400**, deliberately not 404s thrown
+one at a time. A caller fixing one id per round trip is the failure mode the structured violations
+exist to avoid, and it is worse here than anywhere else in the module because the fixes are *moves*:
+told one at a time, a caller walks a tree through several invalid shapes to reach a valid one.
+
+**`membership.parent` resolves against the map first and the store second**, which is what lets two
+entities swap their relation in one request and what lets a child name a parent that does not exist
+in its target shape until the same request commits.
+
+### It is a PUT: an absent property is CLEARED
+
+The entry is **the entity in full**, not a move instruction — description and every
+archetype-specific property. That is deliberately not the partial update the four per-entity services
+offer, and the reason is what the operation is: a caller re-archetyping a row is stating what the row
+*becomes*, and a merge with what it used to be would carry a property the new kind has no meaning for
+into a state nobody asked for. There is no clear-flag pairing for the same reason — those flags exist
+on a PATCH because absent and "make it absent" are indistinguishable there, and under a PUT they are
+one statement.
+
+**A property the target archetype has no slot for is REJECTED, not dropped** — `Archetypes.validate`
+already answers in that shape, and for its reason: a value on a kind that cannot hold it means the
+caller and the model disagree, and dropping it would lose the value and the disagreement together.
+
+### The two server-owned properties, settled here
+
+Neither `slug` nor `createdBy` is caller-statable, so neither may be cleared merely by not being
+mentioned and neither may be a `NOT_PERMITTED` complaint. The rule is: **carried when the target
+archetype permits it, cleared when the target has no slot for it.**
+
+- **`slug` is never re-minted and never cleared.** It is permitted on all four archetypes, so it is
+  always carried. It names branches already cut and URLs people have sent each other, and it is
+  `@Column(updatable = false)` — which makes that a schema fact rather than a convention. **What
+  moves is `slug_scope`**, which is the whole point of those being two columns.
+- **`createdBy` is carried into a `TICKET` and cleared out of anything else.** A demotion from
+  `TICKET` to `FEATURE` clears it, because leaving a reporter on a row that is no longer a report is
+  a value nothing would ever correct and nothing could explain. It is never a violation, because the
+  caller could not have written it.
+
+**`WorkEntity.createdBy` therefore lost its `updatable = false`**, and that is a decision rather than
+a slip. The annotation would have made the clear a silent no-op — the field null in Java, the column
+unchanged in postgres — which is the worst of the three possible behaviours. The guarantee that
+stands is the one that was ever meant: the column is written by the server at create and by a
+re-archetype that removes it, and by nothing else. `slug` keeps `updatable = false` precisely because
+*its* rule is the opposite one.
+
+### Three validation layers, ONE rejection
+
+All three run **before anything is written**, and every finding from all three comes back together in
+one 400 whose message joins them with `"; "` — the same `BadRequestException` → `EpicsExceptionMapper`
+path the four services already take.
+
+1. **The row.** Each entry against its **target** archetype through `Archetypes.validate(EntityState)`.
+2. **The slug scope.** See below.
+3. **The tree.** `Nesting.check(stated, StoredEntityFacts)` — evaluated over the post-state
+   **including entities the request never mentions**: upwards for an untouched parent's archetype,
+   downwards because re-archetyping a row re-judges every child it already has.
+
+### The slug_scope trap, answered
+
+A move changes what a slug is unique within, so a slug that was free under one parent may be taken
+under another. That is a **validation refusal naming the slug and the new parent** — never a
+constraint violation arriving as a 500, and never a silent re-mint, which is exactly what the
+`slug_scope` section above owed a path.
+
+The occupancy is computed over the **post-state** of every affected scope, from the map *and* the
+store: every stored row in an affected scope counts, **except one that is itself in the map** and
+therefore about to be re-placed. That exclusion is what makes two siblings swapping parents legal
+rather than a collision against their own former selves. The bulk read it rests on is
+`WorkEntityRepository.listBySlugScopes`, which answers rows rather than strings because the question
+is *who* holds each slug: `slugsInScope` cannot say, and asking it once per moved entity would be the
+N+1 this model makes easy.
+
+### The concurrency answer is the transaction, and there is no version
+
+**Validation and application happen in the same transaction**, inside one `WritePatience` body, so
+nothing read during validation can move before it is written. There is **no subtree token and no
+re-read**, and deliberately **no per-entity version**: `WorkEntity` and `EntityMembership` carry no
+`@Version`, the single per-entity `PUT`s use none, and inventing optimistic locking here would be a
+second concurrency model for one table — reachable through one of two write paths, which is the way
+two rules drift invisibly.
+
+### Two rules the transition states itself
+
+- **An entry whose target archetype declares status words must state a status.** `Archetypes`
+  declares `STATUS` merely *permitted* on an `EPIC` because an epic's first status is minted by
+  `EpicService.create` and demanding it would fail every create (decision 8 above). **A transition
+  mints nothing**, so under the PUT rule an omitted status would *clear* one and leave a status-less
+  epic `EpicLifecycle.parse` cannot read. Requiring it of the caller is the only answer that neither
+  invents a value nor ships a lifecycle-broken row. The stated word is still judged by `Archetypes`
+  against the target's vocabulary, so a word from the other lifecycle is `ILLEGAL_STATUS` as ever.
+- **A transition does not move work between projects.** Every row carries `project_id` and a
+  descendant's is copied from its parent at create; a cross-project reparent would either leave a
+  stale value or need a cascade down into entities the request never mentioned. It is refused and
+  named. No surface asks for the move.
+
+**It is NOT a lifecycle move.** `EpicLifecycle.requireTransition` and `TicketLifecycle.requireTransition`
+are not run here and must not be: the adjacency rules — one step forward or back along five statuses
+— stay owned by the two existing transition endpoints, which is where a caller asking "advance this
+ticket" goes. This endpoint answers a different question, *make the shape of the plan be this*, and a
+status it is handed is part of the shape rather than a step along it.
+
+### Position, and the renumber that is one place
+
+`membership.position` is caller-stated and **clamped to the legal range rather than refused** — a
+caller stating 99 means "last", and making it count the siblings first would be a round trip bought
+for nothing. An entry with a parent and no position **appends**. An entry with `parent: null` is a
+root and **has no membership row**; any existing edge is deleted, because a root *has* no membership
+and that is a statement rather than an absence.
+
+**Both the old and the new parent end dense and zero-based**, through one renumber pass per affected
+parent in `EntityTransitionService.replaceMemberships`. A `closeGapAfter` per departing child — the
+idiom a single-entity delete uses — cannot be right here: several children leaving one parent in a
+single request would each compute their gap from positions a previous close had already moved.
+Everything is read before anything is mutated, for the same reason.
+
+**A reparent is an UPDATE of one edge, not a delete and an insert**, because an edge's id is the
+child's (V10's rule) and `uq_entity_membership_one_parent_per_child` already says a child has at most
+one.
+
+### The side effects, all of them
+
+- **Audit**: one `UPDATE` row per entry, with the `AuditEntityType` of the **target** archetype and
+  the **post-state subtree root** as its key — the epic's id for an `EPIC`/`FEATURE`/`TASK`, the
+  ticket's own id for a `TICKET`, which is what `AuditEntry.epicId` already means. The snapshot is
+  the same `WorkEntityProjections` shape every existing reader of `auditentry.snapshot` expects.
+  `AuditService.record` keeps its `@Transactional` and joins the write, exactly as elsewhere.
+- **SSE hints** are fired by the **controller**, after the service returns, never inside
+  `WritePatience` — that body re-runs on a retry. Both topics (`EPICS` and `TICKETS`) go out per
+  affected project, because a batch may well have moved a ticket and an epic tree at once.
+- **The announcement** is made after the transaction has committed, for the same reason.
+
+### The event: `EntityTransitioned`, one per batch
+
+`service/…/bus/EntityTransitioned`, published by `EntityTransitionAnnouncer` (`@ApplicationScoped
+@DefaultBean`) over the **optional** `epics/control/TransitionAnnouncer` port, injected as
+`Instance<T>`. That indirection is required rather than stylistic: the `epics` module depends on
+`domain` nowhere and publishes nothing, and the standing rule is that bus control flow lives in
+`service/…/bus/` and nowhere else. It mirrors `projects/control/RepositoryAnnouncer` exactly.
+
+Four rules ride with it, and each is the platform's rather than this endpoint's:
+
+- **The event class lives in `service/…/bus/`, not in a published vocabulary module.** Nothing
+  consumes it yet, and a jar this platform's Maven registry does not serve is a build that resolves
+  from a developer's `~/.m2` and fails in a release pipeline's step container.
+- **It is registered in `EventWireReflection` — and so is its NESTED payload record.** A nested
+  record is as invisible to the image builder as its enclosing one, so registering only the outer
+  record fails in exactly the same place and the same words as registering neither: inside
+  `CanonicalJson`, on the first publish, with the JVM suite green throughout.
+  `EventWireReflectionTest` pins both lines.
+- **No payload field spells `signature`, `name`, `eventId` or `occurredAt`.** `occurredAt()` is an
+  override backed by a differently-named component (`transitionedAt`), `RepositoryRenamed`'s exact
+  shape, because Jackson matches the canonical mix-in to a record's accessor *by name* and a
+  component sharing one would be dropped from every payload with nothing failing anywhere.
+- **One call for the batch, never one per entity.** Announcing the entities one at a time would
+  describe a sequence of illegal trees that never existed — which is the whole point of the
+  operation, said on the wire.
+
+`RecordingTransitionAnnouncer` in the `epics` suite is the recording double; it wins the port's
+injection point simply by existing, past the `@DefaultBean`.
+
+### The answer shape
+
+**A map of entity id to that entity's whole post-state**, keyed exactly the way the request is, so a
+caller can put its statement and the result side by side and read off what became of each entry. That
+symmetry is why it is not wrapped in an envelope the way the single-entity routes' responses are:
+those answer one named thing (`{"ticket": …}`) and this answers the collection it was handed.
+
+`TransitionedEntity` is the merged model and not one of the four projections, deliberately: every one
+of those drops the columns its kind has no slot for, and a transition's whole subject is a row
+changing which kind it is — so an answer shaped as one kind could not describe the other end of the
+change.
+
+### Why the path is `/entities`
+
+**The unified entity is the noun.** The four archetypes are one table discriminated by a column, and
+the subject of this endpoint is a row changing which of them it is — so putting it under `/epics` or
+`/tickets` would file the operation under one of the two ends it moves between, and a reader looking
+for the write surface of the merged model would have to know the answer before finding it.
+`/entities` is where that reader looks, and it is the segment the rest of the merged model's surface
+grows under as it arrives.
+
+It is under `/projects` like every other machine surface here, so **`quarkus.quinoa.ignored-path-prefixes`
+needs no change**: that key already carries the one prefix, and the SPA fallback cannot swallow a path
+a real route answers. The class is `@RolesAllowed("qits:admin")` and nothing else — a transition is a
+write, an agent keeps every read and gains no write, and there is nothing here to bind a re-shaping
+of a project's whole plan to.
+
+## The `IMPETUS` question, settled
+
+`Archetypes` keeps `IMPETUS` **required** of a `TICKET`. It is right about intake — a REPORTED ticket
+is an impetus and nothing else — and `TicketService.create` enforces it before anything is written.
+
+**What was hiding in `TicketService.theImpetusTheColumnStillAllowsToBeAbsent` is not a property of the
+ticket path. It is a property of every UPDATE path.** V7 made the column nullable for rows that
+predate it, and *clearing* one is asserted behaviour. An update **mints no row**, so it cannot demand
+of an existing row what intake demands of a row being born — and a transition that re-archetypes an
+existing row *into* a `TICKET` is an update by exactly that test.
+
+So the predicate is hoisted into `epics/control/ImpetusConcession`, one named and commented place,
+called by `TicketService.update`, `TicketService.transition` and `EntityTransitionService` alike. A
+promotion to `TICKET` with no impetus is therefore **accepted**; one carrying a foreign property, an
+illegal status word, or a missing title, ticket type or status is refused as ever. It is this exact
+property with this exact reason and nothing else, on update paths only — every create is refused with
+no exception.
+
+It is a class of its own rather than a static on `Archetypes` because the registry must go on saying
+that a ticket requires an impetus: a concession inside it would read as the registry disagreeing with
+itself, and the next reader could not tell the rule from the exception.
+
+**What this does NOT settle is the registry against the column**, and that is worth writing down so
+the next reader does not re-derive the dead end. Two answers exist and neither is reachable without
+changing an existing test's assertions:
+
+1. **The column should be `not null`** — a migration plus a backfill decision, and it turns a
+   currently-accepted write into a refusal. `TicketServiceTest.theClearFlagsAreWhatEmptyTheNullable
+   Fields` and `TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields` assert that clearing works.
+2. **`IMPETUS` should be merely *permitted*** — one word in `Archetypes`, giving up the intake
+   guarantee. `ArchetypesTest` asserts the required set and the missing-required violation outright.
+
+Both are **contract changes and need a person**. No test's assertions were moved to settle the
+question this task was handed, and none may be moved to settle the remaining one.
 
 ## The nesting rule
 
@@ -714,7 +934,10 @@ with the listing.
 | the lifecycle guards | `epics/…/control/EpicLifecycle.java` — every caller now hands it a projection of the `entity` row |
 | the legacy repositories | `epics/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` — **zero injections in `src/main`**; on disk until the cleanup feature deletes them, and used only by `EpicsTestSupport.wipe()` |
 | the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java` |
+| the multi-entity transition | `epics/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/epics/api/EntityTransitionController.java` |
+| the impetus concession | `epics/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
+| the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`; `service/src/test/…/epics/api/EntityTransitionApiTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should
