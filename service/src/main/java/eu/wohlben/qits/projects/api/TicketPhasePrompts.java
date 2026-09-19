@@ -66,10 +66,47 @@ import java.util.Optional;
  * <b>kimi</b> needs both added to qits-workspace-daemon's bucket and to {@code
  * AgentSurfaceDefaults}' copy of it on the same day, or the refine phase has been told to write its
  * result into a field it cannot write.
+ *
+ * <h2>Every dispatched turn opens with a pointer to the project's flow brief</h2>
+ *
+ * <p>{@link #FLOW_BRIEF_POINTER} is prepended at the {@code Phase.render(Ticket)} seam —
+ * <b>once, for all three templates</b> — and never inside {@link #refine}, {@link #implement} or
+ * {@link #verify}. That placement is the same argument this class opens with: there is one mapping
+ * and no second copy of the vocabulary, so a fourth template added beside those three inherits the
+ * pointer instead of being a template somebody forgot to prepend it to. {@link
+ * EpicDispatchController} reads the same constant rather than holding a second literal, which is
+ * what makes the two doors' pointer text byte-identical by construction rather than by review.
+ *
+ * <p><b>It goes first</b> because the brief it points at is context for everything that follows:
+ * the phase's own instructions are read against how work moves through this platform, not before
+ * it.
+ *
+ * <p><b>The path is absolute</b> because that is the one form knowable from here. A workspace
+ * container clones the project's repository at {@code /workspace} exactly ({@code
+ * Provisioner.WORKSPACE_DIR} in qits-workspace-daemon), while the agent's working directory is not
+ * guaranteed — so a relative path would be a guess made on this side about a shell on the other.
+ *
+ * <p><b>The absence clause is not padding.</b> These prompts are platform-wide rather than
+ * qits-only: every project's dispatch carries this sentence, and only a project whose repository
+ * carries the file has a brief to read. Without "if that file is not there", the first thing an
+ * agent on every other project does is fail to follow an instruction, which is exactly the tone
+ * this turn must not open in. Do not drop it.
  */
 final class TicketPhasePrompts {
 
   private TicketPhasePrompts() {}
+
+  /**
+   * The pointer every dispatched agent's first turn opens with, on a ticket phase and on an epic
+   * alike. Package-private so {@link EpicDispatchController} — in this same package — reads the one
+   * constant rather than repeating the words; see the class javadoc for why it is worded and placed
+   * as it is.
+   */
+  static final String FLOW_BRIEF_POINTER =
+      "Read /workspace/docs/development-flow.md first: a short brief on how work moves through this"
+          + " platform — branch per slug, release request per repository, the quality gates, the"
+          + " transitions, and when the workspace is resolved. If that file is not there, this"
+          + " project carries no brief; proceed without it.";
 
   /**
    * The phase a status starts, or empty where it starts none. Private, and the single {@code
@@ -87,12 +124,19 @@ final class TicketPhasePrompts {
       this.word = word;
     }
 
+    /**
+     * The single seam every phase's words come through, which is why the flow-brief pointer is
+     * prepended <b>here</b> rather than in the three templates — see the class javadoc. A fourth
+     * phase added to this switch carries the pointer without anybody remembering to add it.
+     */
     private String render(Ticket ticket) {
-      return switch (this) {
-        case REFINE -> refine(ticket);
-        case IMPLEMENT -> implement(ticket);
-        case VERIFY -> verify(ticket);
-      };
+      String phaseTurn =
+          switch (this) {
+            case REFINE -> refine(ticket);
+            case IMPLEMENT -> implement(ticket);
+            case VERIFY -> verify(ticket);
+          };
+      return FLOW_BRIEF_POINTER + " " + phaseTurn;
     }
   }
 

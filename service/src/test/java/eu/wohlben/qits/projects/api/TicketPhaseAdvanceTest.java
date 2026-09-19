@@ -184,12 +184,12 @@ public class TicketPhaseAdvanceTest {
         "a ticket names no repository, so the turn goes to the project's wrapper");
     assertEquals("ticket/walk-me-through", implement.branch());
     assertTrue(
-        implement.text().startsWith("Implement ticket \""),
+        implement.text().contains("Implement ticket \""),
         "REFINED starts implementation: " + implement.text());
 
     transition(ticketId, "IMPLEMENTED");
     assertTrue(
-        turns.lastCall().text().startsWith("Verify ticket \""),
+        turns.lastCall().text().contains("Verify ticket \""),
         "IMPLEMENTED starts verification: " + turns.lastCall().text());
 
     // VERIFIED and DONE start no phase: the work is over and closing is a person's move. VERIFIED
@@ -217,7 +217,7 @@ public class TicketPhaseAdvanceTest {
     transition(ticketId, "REPORTED");
 
     assertTrue(
-        turns.lastCall().text().startsWith("Refine ticket \""),
+        turns.lastCall().text().contains("Refine ticket \""),
         "REPORTED starts refinement: " + turns.lastCall().text());
   }
 
@@ -239,7 +239,7 @@ public class TicketPhaseAdvanceTest {
     transition(ticketId, "REFINED");
 
     assertTrue(
-        turns.lastCall().text().startsWith("Implement ticket \""),
+        turns.lastCall().text().contains("Implement ticket \""),
         "a move BACK to REFINED starts implementation again: " + turns.lastCall().text());
   }
 

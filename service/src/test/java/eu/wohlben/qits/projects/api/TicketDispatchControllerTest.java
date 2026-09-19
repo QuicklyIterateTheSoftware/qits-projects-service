@@ -146,7 +146,7 @@ public class TicketDispatchControllerTest {
     // A freshly created ticket is REPORTED, so the turn it is given is the refine phase's — the
     // templates themselves are asserted sentence by sentence in TicketPhasePromptsTest.
     assertTrue(
-        asked.instruction().startsWith("Refine ticket \""),
+        asked.instruction().contains("Refine ticket \""),
         "the status picks the phase, and a new ticket's phase is refinement: "
             + asked.instruction());
     assertTrue(
@@ -187,7 +187,7 @@ public class TicketDispatchControllerTest {
         .statusCode(200);
 
     assertTrue(
-        dispatch.lastCall().instruction().startsWith("Implement ticket \""),
+        dispatch.lastCall().instruction().contains("Implement ticket \""),
         "a REFINED ticket starts the implement phase: " + dispatch.lastCall().instruction());
 
     asAdmin("mallory")

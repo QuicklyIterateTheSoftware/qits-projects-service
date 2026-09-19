@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.epics.entity.Epic;
+import eu.wohlben.qits.epics.entity.EpicStatus;
 import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
 import eu.wohlben.qits.epics.entity.TicketType;
@@ -55,9 +57,9 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void eachStatusStartsItsOwnPhaseAndTwoStartNone() {
-    assertTrue(promptFor(TicketStatus.REPORTED).startsWith("Refine ticket \""));
-    assertTrue(promptFor(TicketStatus.REFINED).startsWith("Implement ticket \""));
-    assertTrue(promptFor(TicketStatus.IMPLEMENTED).startsWith("Verify ticket \""));
+    assertTrue(promptFor(TicketStatus.REPORTED).contains("Refine ticket \""));
+    assertTrue(promptFor(TicketStatus.REFINED).contains("Implement ticket \""));
+    assertTrue(promptFor(TicketStatus.IMPLEMENTED).contains("Verify ticket \""));
 
     assertEquals(
         Optional.empty(),
@@ -314,5 +316,60 @@ public class TicketPhasePromptsTest {
   /** The status an unfinished phase leaves behind: the one it was started from. */
   private static String leftAt(TicketStatus status) {
     return status.name();
+  }
+
+  // ---- the flow-brief pointer ------------------------------------------------------------------
+
+  /**
+   * <b>No dispatched turn on this platform may open without the flow brief's pointer.</b> That is
+   * the claim, and the way it is written is the point of the test: it walks <em>every</em> {@link
+   * TicketStatus} rather than the three phases by name, so a fourth phase added to {@code
+   * Phase.render}'s switch — or a fourth status that starts one — is covered on the day it is added
+   * and cannot silently ship a turn without the pointer. The epic door is the fourth instruction on
+   * the platform and is asserted here beside the three, against the <b>same constant</b>, which is
+   * what makes "byte-identical" a fact rather than a review note: a second literal anywhere fails
+   * this.
+   *
+   * <p>It is asserted as a <b>prefix</b>, not merely as present, because the brief it points at is
+   * context for everything that follows and a pointer buried mid-turn is a pointer read after the
+   * instructions it was meant to frame.
+   */
+  @Test
+  public void everyDispatchedInstructionOpensWithTheOneFlowBriefPointer() {
+    String pointer = TicketPhasePrompts.FLOW_BRIEF_POINTER;
+    assertTrue(
+        pointer.contains("/workspace/docs/development-flow.md"),
+        "the path is absolute, because a container's working directory is not guaranteed: "
+            + pointer);
+    assertTrue(
+        pointer.contains("If that file is not there"),
+        "and a project carrying no brief must not read as a broken instruction: " + pointer);
+
+    for (TicketStatus status : TicketStatus.values()) {
+      Optional<String> prompt = TicketPhasePrompts.promptFor(ticket(status));
+      if (prompt.isEmpty()) {
+        continue; // VERIFIED and DONE start no phase at all, which is asserted above.
+      }
+      assertTrue(
+          prompt.get().startsWith(pointer + " "),
+          status
+              + " starts a phase, so its turn opens with the pointer — a template that skipped the"
+              + " render seam would fail here: "
+              + prompt.get());
+    }
+
+    assertTrue(
+        EpicDispatchController.instruction(epic()).startsWith(pointer + " "),
+        "and so does the epic door, from the same constant and not a copy of the words");
+  }
+
+  private static Epic epic() {
+    Epic epic = new Epic();
+    epic.id = "epc-9";
+    epic.projectId = "prj-1";
+    epic.title = "Planning domain";
+    epic.slug = "planning-domain";
+    epic.status = EpicStatus.IMPLEMENTATION;
+    return epic;
   }
 }

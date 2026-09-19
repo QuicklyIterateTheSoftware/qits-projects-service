@@ -275,9 +275,18 @@ public class EpicDispatchController {
    * eu.wohlben.qits.projects.mcp.ReadOnlyRepositoryToolFilter} still fences the epic writes,
    * {@code mark_task_implemented} included, off an unattended run. If a dispatch ever starts marking
    * itself read-only, the marking half of this instruction goes silent.
+   *
+   * <p><b>It opens with {@link TicketPhasePrompts#FLOW_BRIEF_POINTER}</b>, the same sentence every
+   * ticket phase opens with, read from that one constant rather than copied — so the two doors
+   * cannot drift a byte apart. Why it is worded as it is (the absolute {@code /workspace} path, and
+   * the clause covering a project that carries no brief), and why it sits at the render seam over
+   * there rather than inside each template, is argued once in {@code TicketPhasePrompts}' class
+   * javadoc; it is not restated here.
    */
   static String instruction(Epic epic) {
-    return "Work on epic \""
+    return TicketPhasePrompts.FLOW_BRIEF_POINTER
+        + " "
+        + "Work on epic \""
         + epic.title
         + "\" (slug "
         + epic.slug

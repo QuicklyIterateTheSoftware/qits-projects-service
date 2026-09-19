@@ -196,6 +196,15 @@ public class EpicDispatchControllerTest {
     assertTrue(
         asked.instruction().contains("leave the epic in implementation"),
         "the other arm: an unfinished run says what is missing rather than claiming the epic");
+
+    // The flow brief comes FIRST and is the ticket doors' own constant, never a second literal —
+    // TicketPhasePromptsTest.everyDispatchedInstructionOpensWithTheOneFlowBriefPointer is where
+    // all four instructions are held to it together. What this half adds is that the sentence
+    // survives the real door, end to end, and is not merely a property of the renderer.
+    assertTrue(
+        asked.instruction().startsWith(TicketPhasePrompts.FLOW_BRIEF_POINTER + " "),
+        "an epic's agent is pointed at the project's flow brief before anything else: "
+            + asked.instruction());
   }
 
   @Test

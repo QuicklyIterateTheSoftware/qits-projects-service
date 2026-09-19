@@ -615,7 +615,7 @@ public class TicketMcpToolsTest {
     assertEquals(1, turns.calls().size(), "the agent's claim is what starts the next phase");
     assertEquals("ticket/refined-by-its-own-agent", turns.lastCall().branch());
     assertTrue(
-        turns.lastCall().text().startsWith("Implement ticket \""),
+        turns.lastCall().text().contains("Implement ticket \""),
         "REFINED starts implementation: " + turns.lastCall().text());
 
     // And it lands on this ticket's own thread, stamped like every other write this surface makes
