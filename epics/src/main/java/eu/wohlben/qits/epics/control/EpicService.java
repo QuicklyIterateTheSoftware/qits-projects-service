@@ -3,18 +3,15 @@ package eu.wohlben.qits.epics.control;
 import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
+import eu.wohlben.qits.epics.entity.EntityMembership;
 import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
 import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.ConflictException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.epics.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.epics.persistence.EpicRepository;
-import eu.wohlben.qits.epics.persistence.FeatureRepository;
-import eu.wohlben.qits.epics.persistence.TaskRepository;
 import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -50,15 +47,20 @@ import java.util.stream.Collectors;
  * the mappers, the DTO and the five controllers above are untouched.
  *
  * <p><b>The legacy {@code epic} row is still written, as a write-behind mirror</b>, and
- * {@link #mirrorLegacyRow} is the whole of it. Nothing here reads it; see that method for the three
- * reasons it cannot go yet and for when it does.
+ * {@link #mirrorLegacyRow} is the whole of it. Nothing here reads it; see that method for the one
+ * foreign key and the one reader that are still holding it, and for what takes it away.
  *
- * <p><b>The subtree walks stay on {@code Feature}/{@code Task}</b> — {@link #stampImplemented},
- * {@link #supersede} and the cascade in {@link #delete}. {@code FeatureService} and {@code
- * TaskService} are not part of this change and still write only the old tables, so a feature created
- * after it has no {@code entity} row at all and a membership-driven walk would silently find
- * nothing. What {@link #delete} <em>does</em> do through the memberships is remove the descendant
- * {@code entity} rows V10 backfilled, so a delete leaves no orphan behind.
+ * <h2>The subtree walks go through {@code entity_membership}</h2>
+ *
+ * <p>{@link #stampImplemented}, {@link #supersede} and the cascade in {@link #delete} walk the
+ * memberships and the merged table, not {@code FeatureRepository}/{@code TaskRepository}. They had
+ * to: {@code FeatureService} and {@code TaskService} write only {@code entity} now, so a feature
+ * created after that change has <b>no legacy row at all</b> and a walk over the old tables would
+ * silently find nothing.
+ *
+ * <p>Every one of the three reads <b>a whole level at a time</b> — {@code childrenOfAll} plus {@code
+ * listByIds} — and never one query per node. That is the single performance mistake this model makes
+ * easy, and these three are the deepest reads the module has.
  */
 @ApplicationScoped
 public class EpicService {
@@ -69,10 +71,6 @@ public class EpicService {
 
   /** The mirror's table, and nothing else — see {@link #mirrorLegacyRow}. */
   @Inject EpicRepository epicRepository;
-
-  @Inject FeatureRepository featureRepository;
-
-  @Inject TaskRepository taskRepository;
 
   @Inject AuditService auditService;
 
@@ -237,23 +235,36 @@ public class EpicService {
    * timestamps — a feature implemented in June stays implemented in June; the stamp records when
    * the declaration covered the rest, not a rewrite of history.
    *
-   * <p>It walks {@code Feature}/{@code Task} and not the memberships, for the reason the class
-   * javadoc gives: those two services still write only the old tables.
+   * <p>It walks the memberships, two levels, four queries whatever the size of the plan: the epic's
+   * children, their rows, those rows' children and <em>their</em> rows. Both levels take {@code
+   * entity.implemented_at} — the one column what were {@code feature.implemented_on} and {@code
+   * task.implemented_at} merged into.
    */
   private void stampImplemented(WorkEntity epic, String changedBy) {
     Instant now = Instant.now();
-    for (Feature feature : featureRepository.listByEpic(epic.id)) {
-      for (Task task : taskRepository.listByFeature(feature.id)) {
+    Subtree subtree = subtreeOf(epic.id);
+    for (WorkEntity feature : subtree.features()) {
+      for (WorkEntity task : subtree.tasksOf(feature.id)) {
         if (task.implementedAt == null) {
           task.implementedAt = now;
           auditService.record(
-              AuditEntityType.TASK, task.id, epic.id, AuditOperation.UPDATE, changedBy, task);
+              AuditEntityType.TASK,
+              task.id,
+              epic.id,
+              AuditOperation.UPDATE,
+              changedBy,
+              WorkEntityProjections.task(task, feature.id));
         }
       }
-      if (feature.implementedOn == null) {
-        feature.implementedOn = now;
+      if (feature.implementedAt == null) {
+        feature.implementedAt = now;
         auditService.record(
-            AuditEntityType.FEATURE, feature.id, epic.id, AuditOperation.UPDATE, changedBy, feature);
+            AuditEntityType.FEATURE,
+            feature.id,
+            epic.id,
+            AuditOperation.UPDATE,
+            changedBy,
+            WorkEntityProjections.feature(feature, epic.id));
       }
     }
   }
@@ -267,20 +278,7 @@ public class EpicService {
           Epic epic = WorkEntityProjections.epic(row);
           // Deliberately allowed in every status: this removes the row rather than editing a frozen
           // scope, and the audit log outlives it.
-          // Delete the subtree in-service (not via DB cascade) so every removed feature/task gets
-          // its own DELETE audit row. Feature dependencies are epic-local (validated on write), so
-          // no other epic can reference these rows — no external dependents to clear.
-          for (Feature feature : featureRepository.listByEpic(id)) {
-            for (Task task : taskRepository.listByFeature(feature.id)) {
-              taskRepository.delete(task);
-              auditService.record(
-                  AuditEntityType.TASK, task.id, id, AuditOperation.DELETE, changedBy, task);
-            }
-            featureRepository.delete(feature);
-            auditService.record(
-                AuditEntityType.FEATURE, feature.id, id, AuditOperation.DELETE, changedBy, feature);
-          }
-          deleteDescendantEntities(id);
+          deleteSubtree(id, changedBy);
           entities.delete(row);
           deleteLegacyRow(id);
           auditService.record(AuditEntityType.EPIC, id, id, AuditOperation.DELETE, changedBy, epic);
@@ -288,28 +286,55 @@ public class EpicService {
   }
 
   /**
-   * <b>The membership-reachable half of the cascade.</b> V10 copied every feature and task into
-   * {@code entity} and gave each one an {@code entity_membership} edge, so an epic deleted here
-   * would leave those rows standing with nothing above them. They are removed level by level — one
-   * membership query and one row read per level, never one query per node — and the edges themselves
-   * go with the FK's {@code on delete cascade}.
+   * <b>The cascade, done in-service so every removed feature and task gets its own DELETE audit
+   * row</b> — V1's stated reading of the FK, now driven by the memberships. Feature and task
+   * dependencies are parent-local (validated on write), so nothing outside this subtree can point
+   * into it and there are no external dependents to clear.
    *
-   * <p>No audit row is written for them: the feature/task DELETE entries the caller has already
-   * recorded are about the same planning rows, and a second entry per row would say one deletion
-   * twice. The walk terminates because the nesting rule makes a membership cycle impossible.
+   * <p>It is <b>one walk</b>, level by level — {@code childrenOfAll} then {@code listByIds} per
+   * level, never one query per node — where there used to be two nested loops over two tables. The
+   * {@code entity_membership} rows go with the FK's {@code on delete cascade} rather than being
+   * removed one at a time; the entity rows are removed here because the audit row has to be written
+   * from each of them anyway. The walk terminates because the nesting rule makes a membership cycle
+   * impossible, and {@code doomed} is a set so a malformed edge could not make it loop either.
+   *
+   * <p>The legacy {@code feature}/{@code task} rows V10 left behind are not touched here and do not
+   * need to be: {@link #deleteLegacyRow} removes the legacy {@code epic} row, and {@code
+   * fk_feature_epic on delete cascade} takes its features and their tasks with it.
    */
-  private void deleteDescendantEntities(String rootId) {
+  private void deleteSubtree(String rootId, String changedBy) {
     Collection<String> level = List.of(rootId);
     Set<String> doomed = new LinkedHashSet<>();
+    Map<String, String> parentOf = new LinkedHashMap<>();
     while (!level.isEmpty()) {
-      List<String> children =
-          memberships.childrenOfAll(level).stream()
-              .map(membership -> membership.childId)
-              .filter(doomed::add)
-              .toList();
+      List<String> children = new ArrayList<>();
+      for (EntityMembership edge : memberships.childrenOfAll(level)) {
+        if (doomed.add(edge.childId)) {
+          parentOf.put(edge.childId, edge.parentId);
+          children.add(edge.childId);
+        }
+      }
       level = children;
     }
     for (WorkEntity descendant : entities.listByIds(doomed)) {
+      String parentId = parentOf.get(descendant.id);
+      if (descendant.archetype == Archetype.FEATURE) {
+        auditService.record(
+            AuditEntityType.FEATURE,
+            descendant.id,
+            rootId,
+            AuditOperation.DELETE,
+            changedBy,
+            WorkEntityProjections.feature(descendant, parentId));
+      } else if (descendant.archetype == Archetype.TASK) {
+        auditService.record(
+            AuditEntityType.TASK,
+            descendant.id,
+            rootId,
+            AuditOperation.DELETE,
+            changedBy,
+            WorkEntityProjections.task(descendant, parentId));
+      }
       entities.delete(descendant);
     }
   }
@@ -353,50 +378,48 @@ public class EpicService {
    * free one exactly as a hand-created epic would.
    *
    * <p>The implemented markers reset to null (nothing is implemented in a draft) and {@code
-   * dependsOn*} is remapped to the new ids. Remapping needs the second pass: a dependency may point
+   * dependsOn} is remapped to the new ids. Remapping needs the second pass: a dependency may point
    * at a sibling created after it, so the whole id map has to exist before any pointer is set.
+   *
+   * <p><b>The memberships are copied with the rows</b>, and their positions are taken from the
+   * source's order rather than re-derived, so the successor's plan is drawn in the order the
+   * discarded one was. They stay dense and zero-based because the source's were.
    */
   private Epic supersede(WorkEntity old, String changedBy) {
     WorkEntity successorRow = insert(old.projectId, old.title, old.description);
 
-    List<Feature> oldFeatures = featureRepository.listByEpic(old.id);
-    List<Task> oldTasks = new ArrayList<>();
+    Subtree source = subtreeOf(old.id);
+    List<WorkEntity> oldTasks = new ArrayList<>();
     // Keyed by the old row's id, insertion-ordered so the audit rows land in the original order.
-    Map<String, Feature> featureCopies = new LinkedHashMap<>();
-    Map<String, Task> taskCopies = new LinkedHashMap<>();
+    Map<String, WorkEntity> featureCopies = new LinkedHashMap<>();
+    Map<String, WorkEntity> taskCopies = new LinkedHashMap<>();
 
-    for (Feature feature : oldFeatures) {
-      Feature copy = new Feature();
-      copy.id = UUID.randomUUID().toString();
-      copy.epicId = successorRow.id;
-      copy.title = feature.title;
-      copy.slug = feature.slug;
-      copy.description = feature.description;
-      featureRepository.persist(copy);
+    // The feature copy each task copy was attached to, so the audit snapshot can name its parent
+    // without asking for the edge back.
+    Map<String, String> taskCopyParents = new LinkedHashMap<>();
+
+    int featurePosition = 0;
+    for (WorkEntity feature : source.features()) {
+      WorkEntity copy = copyUnder(feature, successorRow.id, featurePosition++);
       featureCopies.put(feature.id, copy);
 
-      for (Task task : taskRepository.listByFeature(feature.id)) {
-        Task taskCopy = new Task();
-        taskCopy.id = UUID.randomUUID().toString();
-        taskCopy.featureId = copy.id;
-        taskCopy.repositoryId = task.repositoryId;
-        taskCopy.title = task.title;
-        taskCopy.slug = task.slug;
-        taskCopy.description = task.description;
-        taskRepository.persist(taskCopy);
-        oldTasks.add(task);
+      int taskPosition = 0;
+      for (WorkEntity task : source.tasksOf(feature.id)) {
+        WorkEntity taskCopy = copyUnder(task, copy.id, taskPosition++);
         taskCopies.put(task.id, taskCopy);
+        taskCopyParents.put(taskCopy.id, copy.id);
+        oldTasks.add(task);
       }
     }
 
     // Second pass: every copy exists now, so a pointer can be remapped whichever way it points.
-    for (Feature feature : oldFeatures) {
-      Feature target = featureCopies.get(feature.dependsOnFeatureId);
-      featureCopies.get(feature.id).dependsOnFeatureId = (target == null) ? null : target.id;
+    for (WorkEntity feature : source.features()) {
+      WorkEntity target = featureCopies.get(feature.dependsOnEntityId);
+      featureCopies.get(feature.id).dependsOnEntityId = (target == null) ? null : target.id;
     }
-    for (Task task : oldTasks) {
-      Task target = taskCopies.get(task.dependsOnTaskId);
-      taskCopies.get(task.id).dependsOnTaskId = (target == null) ? null : target.id;
+    for (WorkEntity task : oldTasks) {
+      WorkEntity target = taskCopies.get(task.dependsOnEntityId);
+      taskCopies.get(task.id).dependsOnEntityId = (target == null) ? null : target.id;
     }
 
     // Audited after the remap so each snapshot is the finished row. settled() flushes the whole
@@ -409,30 +432,132 @@ public class EpicService {
         AuditOperation.CREATE,
         changedBy,
         successor);
-    for (Feature copy : featureCopies.values()) {
+    for (WorkEntity copy : featureCopies.values()) {
       auditService.record(
-          AuditEntityType.FEATURE, copy.id, successor.id, AuditOperation.CREATE, changedBy, copy);
+          AuditEntityType.FEATURE,
+          copy.id,
+          successor.id,
+          AuditOperation.CREATE,
+          changedBy,
+          WorkEntityProjections.feature(copy, successor.id));
     }
-    for (Task copy : taskCopies.values()) {
+    for (WorkEntity copy : taskCopies.values()) {
       auditService.record(
-          AuditEntityType.TASK, copy.id, successor.id, AuditOperation.CREATE, changedBy, copy);
+          AuditEntityType.TASK,
+          copy.id,
+          successor.id,
+          AuditOperation.CREATE,
+          changedBy,
+          WorkEntityProjections.task(copy, taskCopyParents.get(copy.id)));
     }
     return successor;
   }
 
   /**
+   * A fresh row carrying {@code source}'s content under {@code parentId} at {@code position}, and
+   * the edge that puts it there.
+   *
+   * <p>The <b>slug is kept</b>: the new parent is a new scope, so the name is free again and the
+   * branch it would have named is the successor's own. The <b>implemented marker resets</b> —
+   * nothing is implemented in a draft — and {@code dependsOn} is left null for the second pass to
+   * fill. The edge's id is the child's, V10's rule.
+   */
+  private WorkEntity copyUnder(WorkEntity source, String parentId, int position) {
+    WorkEntity copy = new WorkEntity();
+    copy.id = UUID.randomUUID().toString();
+    copy.archetype = source.archetype;
+    copy.projectId = source.projectId;
+    copy.title = source.title;
+    copy.slug = source.slug;
+    copy.slugScope = parentId;
+    copy.description = source.description;
+    copy.repositoryId = source.repositoryId;
+    entities.persist(copy);
+
+    EntityMembership edge = new EntityMembership();
+    edge.id = copy.id;
+    edge.parentId = parentId;
+    edge.childId = copy.id;
+    edge.position = position;
+    memberships.persist(edge);
+    return copy;
+  }
+
+  /**
+   * <b>An epic's two levels, read in four queries.</b> The features in membership order, then every
+   * task under any of them, grouped by feature and each group still in its own membership order —
+   * {@code childrenOfAll} sorts by position globally, and filtering by parent preserves that.
+   *
+   * <p>It exists because all three subtree walks want exactly this and would otherwise each invent
+   * their own fan-out, which is where the N+1 would land.
+   */
+  private Subtree subtreeOf(String epicId) {
+    List<EntityMembership> featureEdges = memberships.childrenOf(epicId);
+    Map<String, WorkEntity> featureRows = indexById(entities.listByIds(childIds(featureEdges)));
+    List<WorkEntity> features = new ArrayList<>();
+    for (EntityMembership edge : featureEdges) {
+      WorkEntity row = featureRows.get(edge.childId);
+      if (row != null && row.archetype == Archetype.FEATURE) {
+        features.add(row);
+      }
+    }
+
+    List<String> featureIds = features.stream().map(row -> row.id).toList();
+    List<EntityMembership> taskEdges = memberships.childrenOfAll(featureIds);
+    Map<String, WorkEntity> taskRows = indexById(entities.listByIds(childIds(taskEdges)));
+    Map<String, List<WorkEntity>> tasksByFeature = new LinkedHashMap<>();
+    for (String featureId : featureIds) {
+      tasksByFeature.put(featureId, new ArrayList<>());
+    }
+    for (EntityMembership edge : taskEdges) {
+      WorkEntity row = taskRows.get(edge.childId);
+      if (row != null && row.archetype == Archetype.TASK) {
+        tasksByFeature.get(edge.parentId).add(row);
+      }
+    }
+    return new Subtree(List.copyOf(features), tasksByFeature);
+  }
+
+  /** The two levels below an epic, in the order the plan is drawn — see {@link #subtreeOf}. */
+  private record Subtree(List<WorkEntity> features, Map<String, List<WorkEntity>> tasks) {
+
+    List<WorkEntity> tasksOf(String featureId) {
+      return tasks.getOrDefault(featureId, List.of());
+    }
+  }
+
+  private static List<String> childIds(List<EntityMembership> edges) {
+    return edges.stream().map(edge -> edge.childId).toList();
+  }
+
+  private static Map<String, WorkEntity> indexById(List<WorkEntity> rows) {
+    Map<String, WorkEntity> indexed = new LinkedHashMap<>();
+    for (WorkEntity row : rows) {
+      indexed.put(row.id, row);
+    }
+    return indexed;
+  }
+
+  /**
    * <b>The legacy {@code epic} row, written from the entity row and never read back here.</b>
    *
-   * <p>It is a mirror and not a second source of truth. Three things still name that table and none
-   * of them is in this task's scope: {@code fk_feature_epic} is a live foreign key from
-   * {@code feature.epic_id}, {@code dossier_page.epic_id} is another, and {@code FeatureService},
-   * {@code TaskService} and {@code DossierService} all read the row — the first two to ask {@link
-   * EpicLifecycle} what the phase permits, the third to resolve a page's owner. Dropping the write
-   * would break every one of them on the first create.
+   * <p>It is a mirror and not a second source of truth. <b>What still holds it is now ONE foreign
+   * key and ONE reader, and they are both the dossier's:</b> {@code dossier_page.epic_id} is a live
+   * foreign key (epics V8, under {@code ck_dossier_page_owner}), and {@code DossierService} reads
+   * the legacy {@link Epic} row twice — to resolve a page's owner, and to apply the {@code REFINING}
+   * guard through {@link EpicLifecycle}. Dropping the write breaks a dossier create on the first
+   * epic written after it.
+   *
+   * <p><b>Two of the three original reasons have evaporated.</b> {@code fk_feature_epic} no longer
+   * points at anything this service writes, because {@code FeatureService} has stopped writing the
+   * legacy {@code feature} table entirely; and {@code FeatureService} and {@code TaskService} have
+   * stopped reading this row for the phase guard — they read the {@code entity} row's status, like
+   * everything else. The cascade that removal leans on is still real and is still used:
+   * {@link #deleteLegacyRow} takes the legacy features and tasks V10 left behind with it.
    *
    * <p><b>So the order is fixed: the entity row is written first and this second</b>, everywhere,
-   * and nothing in this class ever reads what it wrote. It goes in the task that moves those three
-   * services onto the merged table, together with the two tables themselves.
+   * and nothing in this class ever reads what it wrote. It goes with the dossier, in the task that
+   * moves {@code DossierService} and the audit vocabulary onto the merged model.
    */
   private void mirrorLegacyRow(WorkEntity source) {
     Epic row = epicRepository.findById(source.id);

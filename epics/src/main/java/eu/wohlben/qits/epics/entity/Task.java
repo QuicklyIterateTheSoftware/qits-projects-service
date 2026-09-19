@@ -19,6 +19,9 @@ import org.hibernate.annotations.UpdateTimestamp;
  * existence is validated in the {@code service} controller. {@code dependsOnTaskId} is a nullable
  * self-reference.
  *
+ * <p><b>This class is a SHAPE now, and its table is no longer written</b> — {@link Feature}'s
+ * paragraph applies here word for word, one level down.
+ *
  * <p><b>A {@link CausedRow}</b>, for the reason {@link Epic} gives — and the one of the three most
  * likely to be machine-minted, since a task is what an agent creates when it decides a feature
  * needs work in a concrete repository ({@code EpicMcpTools.createTask}).

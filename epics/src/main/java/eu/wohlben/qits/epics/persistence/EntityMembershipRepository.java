@@ -17,13 +17,13 @@ import java.util.Optional;
  * the session happens to be holding. {@code DossierService.move} is the third piece of that idiom
  * and belongs in the service that ends up owning a reorder here.
  *
- * <p><b>One caller so far, and it is a delete.</b> {@code EpicService.delete} walks {@link
- * #childrenOfAll} level by level to remove the descendant {@code entity} rows V10 backfilled under
- * an epic, so removing the epic leaves no orphan behind. Nothing writes an edge yet: {@code
- * FeatureService} and {@code TaskService} still write only the old tables, so the memberships in
- * play are the backfill's. The rest of the bulk reads are here so the tasks after this one inherit
- * them rather than each writing a per-node query — a merged tree is read by fanning out level by
- * level, and the N+1 that invites is the one performance mistake this model makes easy.
+ * <p><b>This table is the parent/child relation of the whole planning tree now.</b> {@code
+ * FeatureService} and {@code TaskService} write an edge per create and remove one per delete —
+ * {@link #maxPosition} to append, {@link #closeGapAfter} to keep the survivors dense — {@link
+ * #membershipOf} is how either of them answers "what is this part of", {@link #childrenOf} is the
+ * order a listing is drawn in, and {@code EpicService}'s three subtree walks fan out with {@link
+ * #childrenOfAll} a level at a time. Every read here is bulk by shape for that last reason: a merged
+ * tree walked one node per query is the one performance mistake this model makes easy.
  */
 @ApplicationScoped
 public class EntityMembershipRepository

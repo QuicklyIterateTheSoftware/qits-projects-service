@@ -6,6 +6,7 @@ import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.List;
 
+/** The legacy {@code task} table's CRUD — {@link FeatureRepository}'s note applies unchanged. */
 @ApplicationScoped
 public class TaskRepository implements PanacheRepositoryBase<Task, String> {
 

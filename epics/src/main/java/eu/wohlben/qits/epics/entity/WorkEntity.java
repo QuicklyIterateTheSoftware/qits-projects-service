@@ -23,15 +23,16 @@ import org.hibernate.annotations.UpdateTimestamp;
  * audit vocabularies, and a feature that could never be promoted to an epic because promotion would
  * have meant moving a row between tables while every id pointing at it stayed behind.
  *
- * <p><b>The two roots are read and written here now.</b> {@code EpicService} and {@code
- * TicketService} answer every read and judge every rule against the {@link Archetype#EPIC} and
- * {@link Archetype#TICKET} rows of this table, and hand their callers a detached projection shaped
- * as an {@link Epic} or a {@link Ticket} so that the mappers, the DTOs and the controllers above are
- * untouched. Those two old rows are still <em>written</em>, behind, because three foreign keys and
- * three services that are not part of that change still name them — see {@code
- * EpicService.mirrorLegacyRow} — and nothing reads them back. {@link Feature} and {@link Task} have
- * not moved at all yet: they are still written only to their own tables, so a feature created after
- * that change has no row here.
+ * <p><b>All four archetypes are read and written here now.</b> {@code EpicService}, {@code
+ * TicketService}, {@code FeatureService} and {@code TaskService} answer every read and judge every
+ * rule against this table, and hand their callers a detached projection shaped as an {@link Epic},
+ * a {@link Ticket}, a {@link Feature} or a {@link Task} so that the mappers, the DTOs and the
+ * controllers above are untouched. The legacy {@code feature} and {@code task} tables are <b>no
+ * longer written at all</b> — nothing foreign-keys to either and nothing reads them, so a mirror
+ * would have been a table that is written and never read. The legacy {@code epic} and {@code ticket}
+ * rows <em>are</em> still written behind, because the dossier's owner columns and the comment
+ * thread's foreign key still name them; see {@code EpicService.mirrorLegacyRow} for the exact
+ * remainder, and nothing reads them back.
  *
  * <p>The ids are the <em>same</em> id space — V10 copies each old row in under the id it already has
  * — because every dossier page, audit entry, branch name and URL on the platform names one of those

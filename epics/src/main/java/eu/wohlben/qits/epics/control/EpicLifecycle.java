@@ -22,12 +22,13 @@ import java.util.Set;
  * <p>Deleting an epic stays allowed in every status: it removes the row and its subtree rather than
  * changing a frozen scope, and the audit log outlives it.
  *
- * <p><b>Where the phase is stored has moved and no rule here has.</b> {@code EpicService} keeps the
- * status on the merged {@code entity} row and passes this class a detached projection of it, so
- * every legal move, every refusal and every message naming both ends is exactly what it was. The two
- * guards keep taking an {@link Epic} because {@code FeatureService}, {@code TaskService} and {@code
- * DossierService} still read the legacy row and call them with it; they answer the same question
- * whichever of the two the caller is holding.
+ * <p><b>Where the phase is stored has moved and no rule here has.</b> All three services keep the
+ * status on the merged {@code entity} row and pass this class a detached projection of it, so every
+ * legal move, every refusal and every message naming both ends is exactly what it was. The two
+ * guards keep taking an {@link Epic} rather than a {@code WorkEntity} for one remaining caller:
+ * {@code DossierService} still reads the legacy row to resolve a page's owner, and a guard with two
+ * signatures would be two places the condition is written. They answer the same question whichever
+ * of the two the caller is holding.
  */
 final class EpicLifecycle {
 

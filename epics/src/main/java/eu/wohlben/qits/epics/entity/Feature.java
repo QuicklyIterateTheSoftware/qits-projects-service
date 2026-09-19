@@ -16,6 +16,15 @@ import org.hibernate.annotations.UpdateTimestamp;
  * Akin to today's {@code feature-ideas}, owned by an epic. {@code epicId} is a real intra-module FK
  * (cascade-deleted with the epic); {@code dependsOnFeatureId} is a nullable self-reference.
  *
+ * <p><b>This class is a SHAPE now, and its table is no longer written.</b> {@code FeatureService}
+ * reads and writes the merged {@link WorkEntity} table and hands its callers a detached {@code
+ * WorkEntityProjections.feature} built as one of these — so the mapper, the DTO and every controller
+ * above stay exactly as they are. The legacy {@code feature} table is left standing as the recovery
+ * path and the verification door's comparison target, and it is deliberately <b>not</b> mirrored:
+ * nothing foreign-keys to it and nothing reads it, so a write-behind would have been a table that is
+ * written and never read. See {@code docs/unified-entity-model.md}. The rows the entity manager
+ * still holds are V10's; they go with the tables, in the task that drops them.
+ *
  * <p><b>A {@link CausedRow}</b>, for the reason {@link Epic} gives: {@code FeatureService.create}
  * is reached from the SPA and from {@code EpicMcpTools} alike, on the request thread, where the
  * scope the causation filter restored is still standing. The copies a supersede makes are written

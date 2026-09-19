@@ -417,10 +417,12 @@ public class TicketService {
    * <b>The legacy {@code ticket} row, written from the entity row and never read back here.</b>
    *
    * <p>A mirror, not a second source of truth, and it exists for the reasons {@code
-   * EpicService.mirrorLegacyRow} gives about the epic half: {@code fk_ticket_comment_ticket} and
-   * {@code dossier_page.ticket_id} are live foreign keys onto that table, and {@code DossierService}
-   * reads the row to resolve a page's owner. Dropping the write would break the comment thread and
-   * the ticket dossier on the first create.
+   * EpicService.mirrorLegacyRow} gives about the epic half. <b>Two live foreign keys and one reader
+   * hold it, and none of them moved when the feature and task services did:</b> {@code
+   * fk_ticket_comment_ticket} (and this class still writes {@link TicketComment} rows, which are not
+   * an archetype of the merged model at all), {@code dossier_page.ticket_id} under {@code
+   * ck_dossier_page_owner}, and {@code DossierService} reading the row to resolve a page's owner.
+   * Dropping the write would break the comment thread and the ticket dossier on the first create.
    *
    * <p><b>The entity row is written first and this second</b>, everywhere, and nothing in this class
    * reads what it wrote. It goes in the task that moves the dossier and the comments onto the merged

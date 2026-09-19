@@ -83,6 +83,21 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
   }
 
   /**
+   * The rows whose {@code depends_on_entity_id} points at {@code entityId} — {@code
+   * FeatureRepository.listDependents}' and {@code TaskRepository.listDependents}' question, asked
+   * once now that the two columns are one.
+   *
+   * <p>It is reached only from a delete, which clears each dependent's pointer in-service so the
+   * clear gets its own UPDATE audit row rather than happening invisibly under the FK's {@code on
+   * delete set null}. No read path calls it, which is why {@code ReadPatience} does not wrap it: it
+   * runs inside an open transaction, where a retry would re-run on a connection already marked
+   * rollback-only.
+   */
+  public List<WorkEntity> listDependents(String entityId) {
+    return find("dependsOnEntityId", OLDEST_FIRST, entityId).list();
+  }
+
+  /**
    * The row holding {@code slug} within {@code slugScope}, or empty. At most one, because {@code
    * uq_entity_slug_scope_slug} says so — that constraint is today's three slug constraints
    * expressed once (see {@link WorkEntity#slugScope}).

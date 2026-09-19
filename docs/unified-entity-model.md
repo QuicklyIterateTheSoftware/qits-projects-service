@@ -5,12 +5,16 @@ parent/child relation as a row of its own. This file is the contract the rest of
 against: what shipped in V9, which old field became which column, what each archetype declares, and
 every decision that had to be made along the way.
 
-**The two roots read and write the new model now**; the two descendants do not. V9 was additive in
-the strongest sense — no existing table, column, entity, service or controller touched, no row
-copied — and V10 copied the rows and still read none of them. What changed after that is "The
-cutover of the two roots" below: `EpicService`, `TicketService`, `EpicLifecycle` and
-`TicketLifecycle` answer every read and judge every rule against `entity`, while `FeatureService`,
-`TaskService` and `DossierService` are untouched and still read and write the four old tables.
+**All four archetypes read and write the new model now.** V9 was additive in the strongest sense —
+no existing table, column, entity, service or controller touched, no row copied — and V10 copied the
+rows and still read none of them. Then "The cutover of the two roots" below moved `EpicService`,
+`TicketService`, `EpicLifecycle` and `TicketLifecycle` onto `entity`; and "The cutover of the two
+descendants" moved `FeatureService` and `TaskService` onto `entity` **plus `entity_membership`,
+which is the parent/child relation of the whole planning tree from that point on**.
+
+**`DossierService` is the one service still on an old table**, and it is what holds the remaining
+mirror. See "What is left of the mirror" below, which names the exact foreign key and the exact
+reader.
 
 ## Reserved migration versions
 
@@ -159,39 +163,116 @@ explicit flush, because `@CreationTimestamp` and `@UpdateTimestamp` are populate
 create is promised a `createdAt` the moment it returns. The same projection is what goes into the
 audit log as the snapshot, so the JSON in `auditentry.snapshot` keeps exactly the shape it had.
 
-### The descendants stay on the old tables, and the oracle is why
+## The cutover of the two descendants
 
-The subtree walks — `stampImplemented`, `supersede`'s deep copy with its `dependsOn` remap, and
-`delete`'s manual cascade with one DELETE audit row per feature and task — still run over
-`FeatureRepository` and `TaskRepository`. The alternative was to walk `entity_membership` instead,
-and the existing tests refuse it rather than anybody preferring it this way: `FeatureService` and
-`TaskService` are out of this task's scope and still write only the old `feature` and `task` tables,
-so a feature created after this change has **no `entity` row at all**. A membership-driven walk would
-find nothing, silently, and `EpicServiceTest.deleteCascadesToFeaturesAndTasks` and
-`deleteRecordsAuditForWholeSubtreeAndSurvivesDeletion` would both go red. The walks move in the task
-that moves those two services.
+`FeatureService` and `TaskService` read and write `entity` + `entity_membership`. They answer
+`Feature` and `Task` as detached `WorkEntityProjections` — the identical device the two roots use,
+for the identical reason — so `FeatureDto`, `TaskDto`, `FeatureController`, `TaskController`,
+`EpicController`, `EpicChangeHints`, `EpicMcpTools` and `EpicDispatchController` are untouched and
+every route, status code and error body is what it was. The three merged columns are read back under
+their old names: `depends_on_entity_id` is a feature's `dependsOnFeatureId` and a task's
+`dependsOnTaskId`, and `implemented_at` is a feature's `implementedOn`.
 
-One membership-aware addition is made anyway, because it costs nothing and prevents debris:
-`EpicService.delete` also removes the descendant `entity` rows reachable from the epic through
-`entity_membership`, level by level with `childrenOfAll` and `listByIds` — bulk reads, never one
-query per row. V10 backfilled every feature and task into `entity`, so without it a delete would
-leave orphans with nothing above them. The membership rows themselves go with the FK's
-`on delete cascade`, and no audit row is written for them: the feature/task DELETE entries the same
-method already records are about the same planning rows.
+The parent is the change that is not merely a rename. **`feature.epic_id` and `task.feature_id` are
+`entity_membership` rows now**, and four things follow:
 
-### The legacy row is a write-behind MIRROR
+- **"The same epic" is "the same parent".** The dependency scope check is one `membershipOf` lookup
+  plus an archetype check, not a column comparison. Both refusal messages are unchanged
+  (`Unknown or out-of-epic dependsOnFeatureId: …`, `Unknown or out-of-feature dependsOnTaskId: …`).
+- **A task's epic is TWO hops** — task → feature → epic — where it was two columns. It is resolved
+  **once per service call** and passed down to the phase guard and to every audit row, rather than
+  re-walked per row.
+- **The slug scope is the parent id**, which is what `uq_entity_slug_scope_slug` makes of
+  `uq_feature_epic_slug` and `uq_task_feature_slug`. `Slugs.slugify`/`unique` are unchanged, so a
+  slug minted now is one either old writer would have minted.
+- **Every row carries `project_id`**, copied from the parent's row at create. No walk answers "whose
+  is this" any more.
+
+### Ordering and position, as implemented
+
+`entity_membership.position` is **dense and zero-based**, `dossier_page.position`'s rule and
+`DossierPageRepository.maxPosition`/`closeGapAfter` copied rather than reinvented.
+
+- **A create appends** at `maxPosition(parent) + 1`.
+- **A delete closes the gap** (`closeGapAfter(parent, position)`), so the survivors are `0, 1, 2, …`
+  and never `0, 2, 3`. A sparse sequence sorts the same way, which is exactly why the test asserts
+  the numbers and not only the order.
+- **A listing is drawn in the edges' order**, not the rows'. `childrenOf` answers in position order;
+  `listByIds` answers oldest-first; so the rows are indexed by id and re-emitted in the edges' order.
+  **Two queries per listing, never one per row** — the N+1 is the single performance mistake this
+  model makes easy, and a tree listing is where it would land first.
+- **`supersede` copies the edges with the rows**, taking each copy's position from the source's
+  order, so the successor draft is drawn in the order of the plan that was discarded.
+
+### The subtree walks moved with them
+
+`EpicService.stampImplemented`, `supersede` and the cascade in `delete` walk `entity_membership` +
+`entity` now. They **had to**: a feature created after this change has no legacy row at all, so a
+walk over `FeatureRepository`/`TaskRepository` would have found nothing, silently. Each one reads a
+whole level at a time (`childrenOf`/`childrenOfAll` then `listByIds`) and never one query per node.
+`delete`'s two nested loops are one membership-driven walk that records a DELETE audit row per
+FEATURE and TASK descendant; the edges go with the FK's `on delete cascade`.
+
+`EpicServiceTest.deleteCascadesToFeaturesAndTasks` and
+`deleteRecordsAuditForWholeSubtreeAndSurvivesDeletion` pass with their assertions unchanged, which
+is the oracle this cutover was steered by.
+
+### `Nesting` judges every new membership, and NEVER a `dependsOn`
+
+`control/StoredEntityFacts` is the `EntityFacts` implementation over the two repositories — bulk by
+shape, two queries per question, a row with no edge answering as a root rather than as an absence —
+and it is what `Nesting.check` reads the untouched half of the post-state from. Both services run it
+on the edge they have just written.
+
+**`dependsOn` is a column and is never handed to it.** The two are easy to conflate (both are a
+self-reference between two planning rows) and conflating them would be silent in the ordinary
+direction and wrong in the interesting one: a feature depending on a sibling feature is what the
+planning surface is *for*, while a feature *under* a feature is an illegal membership.
+`UnifiedDescendantsTest.nestingIsNotConsultedForADependency` is the negative that pins it — the
+dependency is accepted, the depended-on row does **not** become the parent, and the same pair offered
+to `Nesting` as a membership comes back `NOT_NESTABLE`.
+
+### There is NO feature/task mirror, and that is a decision
+
+**`FeatureService` and `TaskService` stopped writing the legacy `feature` and `task` tables
+entirely.** No write-behind mirror was introduced, and one must not be.
+
+The mirror that exists for `epic`/`ticket` is there because live foreign keys and out-of-scope
+readers name those two tables. **Nothing on this platform foreign-keys to `feature` or to `task`**,
+and once `EpicService`'s three subtree walks moved onto the memberships, nothing read those rows
+either. A mirror would therefore have bought a table that is written, never read and never
+constrained — and **a half-live table is the worst of the three states**: it looks authoritative to
+anyone who opens it, it drifts the first time a path forgets to write it, and the drift is invisible
+because no reader would notice.
+
+**No old table is dropped, renamed or altered.** `feature`, `task`, `epic` and `ticket` are the
+recovery path until the verification door has run clean against live data, and they are that door's
+comparison target. They simply stop growing.
+
+### What is left of the mirror, and what holds it
 
 `EpicService.mirrorLegacyRow` and `TicketService.mirrorLegacyRow` write the old `epic` and `ticket`
 row from the entity row, after it, in every path. **Nothing in either service reads what it wrote**,
-and neither row is ever returned to a caller.
+and neither row is ever returned to a caller. They **cannot go in this commit**, and this is the
+whole of what still holds each one:
 
-It is there because three things still name those two tables and none of them is part of this
-change. `fk_feature_epic` (`feature.epic_id` → `Epic.id`) and `fk_ticket_comment_ticket`
-(`ticketcomment.ticket_id` → `Ticket.id`) are live foreign keys, as are the dossier's two owner
-columns; and `FeatureService`, `TaskService` and `DossierService` all read the old row — the first
-two to ask `EpicLifecycle` what the epic's phase permits, the third to resolve a page's owner.
-Dropping the write breaks every one of them on the first create. **The mirror is deleted in the next
-task of this epic**, with the three readers and the two tables.
+| mirror | what holds it |
+| --- | --- |
+| `epic` | `dossier_page.epic_id` — a live FK under `ck_dossier_page_owner` (epics V8) — and `DossierService`, which reads the legacy `Epic` row **twice**: to resolve a page's owner, and for the `REFINING` guard it applies through `EpicLifecycle` |
+| `ticket` | `fk_ticket_comment_ticket` — a live FK — and `TicketService` itself, which still writes `TicketComment` rows; plus `dossier_page.ticket_id` and the same `DossierService` owner read |
+
+**Two of the epic mirror's three original reasons have evaporated.** `fk_feature_epic` no longer
+points at anything anybody writes, and `FeatureService`/`TaskService` have stopped reading the legacy
+epic row for the phase guard — they read the `entity` row's status, like everything else. The
+cascade that FK provides is still used, once: `EpicService.deleteLegacyRow` removes the legacy `epic`
+row and `fk_feature_epic on delete cascade` takes the legacy features (and their tasks) V10 left
+behind with it.
+
+**Handed to the next task, in writing:** what remains is the **dossier, the MCP tools and the audit
+vocabulary**. Moving `DossierService` onto `entity` — resolving a page's owner and its `REFINING`
+guard from the merged row — retires the epic mirror; moving `TicketComment` retires the ticket one.
+Neither is reachable from a task about feature and task storage, and neither should be attempted
+without the dossier's two owner columns moving in the same change.
 
 ### An epic and a ticket now share one slug scope
 
@@ -231,6 +312,42 @@ Two test fixtures moved with the storage and no assertion did: `ConnectionLosing
 `WorkEntityRepository.listByProjectAndArchetype` and `FailingEpicWrites` now fails after
 `WorkEntityRepository.persist`, because those are the read and the write an epic list and an epic
 create actually make now. `EpicsTestSupport.wipe()` clears the two new tables, children first.
+
+**The descendants' cutover moved no fixture and changed no assertion at all.** Both doubles already
+sever the merged table, which is now the read and the write a feature or a task makes too;
+`FeatureServiceTest`, `TaskServiceTest`, `EpicServiceTest`, `EpicLifecycleTest`, `EpicApiTest`,
+`EpicLifecycleApiTest`, `EpicMcpToolsTest` and `EpicPlanningIT` all pass exactly as written. What was
+added is `UnifiedDescendantsTest`, for the four things that are genuinely new and were previously
+impossible to get wrong: a listing's order, a middle sibling's removal leaving dense positions, the
+two-hop walk to a task's epic, and the `Nesting`-not-consulted-for-`dependsOn` negative.
+
+## Open questions this task inherits and does not settle
+
+### `IMPETUS` is declared required and the column is nullable, and they disagree
+
+`Archetypes` declares `IMPETUS` **required** of a `TICKET`. V7 made `entity.impetus`/`ticket.impetus`
+**nullable on purpose** — rows that predate it have none, triage may write one onto them, and
+*clearing* one is asserted behaviour (`TicketServiceTest.theClearFlagsAreWhatEmptyTheNullableFields`,
+`TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields`).
+
+It is scoped today behind `TicketService.theImpetusTheColumnStillAllowsToBeAbsent`, a named predicate
+tolerating **exactly** that property with **exactly** the missing-required reason on **exactly** the
+ticket update path. Everything else — every create, every epic write, a foreign property, a status
+word from the other lifecycle — is refused with no exception.
+
+**It is still open, and it is not this task's to close.** Two answers are available and they are not
+equivalent:
+
+1. **The registry is right and the column should be `not null`.** That is a migration plus a
+   backfill decision for the rows that have no impetus, and it turns a currently-accepted write
+   (clearing one) into a refusal — a contract change.
+2. **The column is right and `IMPETUS` should be *permitted* rather than *required*.** That is one
+   word in `Archetypes`, and it gives up the intake guarantee the registry is currently asserting.
+
+**No ticket test's assertions may be changed to settle it.** They are the record of the behaviour the
+surfaces above rely on, and moving them would make the disagreement disappear rather than decide it.
+**The transition-API task inherits this**, because it is the first one that judges a whole intended
+post-state through the registry and therefore the first that has to say which of the two is true.
 
 ## The nesting rule
 
@@ -475,9 +592,9 @@ with the listing.
 | entities | `epics/…/entity/Archetype.java`, `WorkEntity.java`, `EntityMembership.java` |
 | repositories | `epics/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
 | the registry | `epics/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
-| the two cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `WorkEntityProjections.java` |
-| the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `NestingViolation.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java` |
+| the four cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `WorkEntityProjections.java` |
+| the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should
