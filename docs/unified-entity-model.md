@@ -6,15 +6,16 @@ against: what shipped in V9, which old field became which column, what each arch
 every decision that had to be made along the way.
 
 **Nothing reads the new model yet.** V9 is additive in the strongest sense — no existing table,
-column, entity, service or controller is touched, and no row is copied. The four old tables are
-still what answers every route.
+column, entity, service or controller is touched, and no row is copied. V10 copies the rows and
+still nothing reads them: it writes to `entity` and `entity_membership` and to nothing else, so the
+four old tables are untouched and are still what answers every route.
 
 ## Reserved migration versions
 
 | version | what it is | state |
 | --- | --- | --- |
 | `V9__entity_membership.sql` | the two tables, empty | **shipped** |
-| `V10` | the backfill — every Epic/Ticket/Feature/Task row copied in, **ids unchanged** | reserved |
+| `V10__backfill_unified.sql` | the backfill — every Epic/Ticket/Feature/Task row copied in, **ids unchanged** | **shipped** |
 | `V11` | the id settlement (the numeric id the merged model wants) | reserved |
 | `V12+` | the drop of the four old tables, once nothing reads them | reserved |
 
@@ -295,9 +296,10 @@ two constraints, and nothing stops it; the branch prefixes differ (`epic/<slug>`
 `ticket/<slug>`) so no branch collides either.
 
 Under `slug_scope` they share the project id as their scope and **can no longer**. That is a real
-change, and **V10 has to answer for it**: a colliding epic/ticket pair must be re-slugged there,
-deliberately and with the branch names it moves accounted for, rather than being discovered as a
-migration that will not apply against the live database.
+change, and **V10 answers for it** (see "The backfill, as shipped" below): the colliding pair is
+detected in SQL, the epic keeps its slug and the ticket's `entity` row is re-slugged, deliberately
+and with the branch name it moves written into the deployment log — rather than being discovered as
+a migration that will not apply against the live database.
 
 It is accepted because the alternative — folding the archetype into the root scope
 (`<projectId>:EPIC`) — buys a collision nobody wants and costs the property that makes the column
@@ -305,16 +307,83 @@ readable: **the scope of a row is the id of the thing it belongs to, and nothing
 backfill finds the collision is common rather than theoretical, that escape hatch is one line in the
 writer and one sentence here.
 
+## The backfill, as shipped
+
+`V10__backfill_unified.sql` is the copy and nothing more: four `insert ... select` statements into
+`entity`, two into `entity_membership`, and a plpgsql block that decides one ticket slug. It reads
+the four old tables and **writes to none of them** — no drop, no rename, no trigger, no column
+change, no UPDATE, not even against the row whose slug it spells differently on the other side. They
+are the recovery path until the verification door has run clean against live data: `entity` can be
+emptied and rebuilt by re-running the file.
+
+**Each archetype is ONE statement, in the order EPIC, TICKET, FEATURE, TASK.** That is a
+requirement, not tidiness: `fk_entity_superseded_by` and `fk_entity_depends_on` are self-foreign-keys
+and a row may be inserted before the row it names, or in a mutual pair. Postgres fires RI triggers at
+the end of the statement, so every reference inside one `insert ... select` resolves whatever the
+physical order turns out to be. The memberships come last because both of their keys reach `entity`
+across statements.
+
+**`project_id` is derived exactly once, upwards.** A feature inherits its epic's, a task walks
+task → feature → epic. Both joins are inner and total (`feature.epic_id` and `task.feature_id` are
+`not null` with real FKs), so no row is lost to the join.
+
+### The de-collision rule: the epic keeps, the ticket moves
+
+A colliding epic/ticket pair in one project is detected in SQL — never assumed absent, because the
+live database is not the test database — and **the epic keeps its slug**. An epic's slug is the
+`slug_scope` of every feature under it and a path segment of `epic/<e>`, `feature/<e>/<f>` and
+`task/<e>/<f>/<t>`; a ticket's slug names one thing and one branch, `ticket/<slug>`. Least blast
+radius wins.
+
+The ticket's **`entity` row** takes the next free `-2`, `-3`, … under the 40-character cap, with the
+base trimmed to `40 - length(suffix)` and trailing dashes stripped from the trimmed head — that is
+`Slugs.unique`'s arithmetic transcribed, so the result is a slug the writer itself could have minted.
+The taken set is every epic slug and every ticket slug in the project **plus every value this pass
+has already assigned**, which is what stops two tickets whose slugs trim to one head from both
+landing on `-2`; that makes the assignment sequential, hence a `do $$ … $$` block walking the
+colliding rows in `(project_id, created_at, id)` order into a `on commit drop` working table the
+ticket insert reads through `coalesce(fix.slug, t.slug)`. It is deterministic because it reads only
+the immutable old tables in a fixed order.
+
+**The cost, stated rather than hidden:** a ticket whose slug moves may already have work on a branch
+cut at `ticket/<old-slug>`, and **that branch does not move**. Nothing here renames a ref and nothing
+should. Every re-slug is announced with `raise notice` naming the project, the ticket, the old slug
+and the new one, because the deployment log is where an operator learns that a branch name moved.
+
+### Idempotence is `on conflict (id) do nothing`
+
+Flyway will not re-run a V10 that succeeded, so this is about the half-applied deployment that was
+retried. `on conflict (id) do nothing` is one statement with no read-then-write window, and it says
+"already copied" in the words the primary key already says it: this id is in this table. A
+`where not exists` is a weaker second spelling of the same predicate, evaluated at a different
+instant from the insert it guards. It is deliberately **not** an upsert: `do update` would let a
+retry overwrite a row the settlement or a reader had already touched.
+
+### `entity_membership.id` is the child's id
+
+Not `gen_random_uuid()` — a random id would make every re-run mint a second edge for the same pair,
+which the `on conflict (id)` clause cannot see and only
+`uq_entity_membership_one_parent_per_child` would catch, as a failed migration rather than a no-op.
+The child's id is deterministic and unique by construction, since that constraint already says a
+child has at most one parent; and it is the only value in reach that means anything, because an
+edge's identity **is** the child — the end of it that can only be in one.
+
+`position` is `row_number() over (partition by <parent> order by created_at, id) - 1`, which is
+`Sort.by("createdAt").and("id")` — `FeatureRepository.listByEpic`'s and `TaskRepository.listByFeature`'s
+own sort — made dense and zero-based. Never insertion order: a heap scan's order changes with a
+VACUUM and between databases, and would produce a plausible dense sequence that silently disagreed
+with the listing.
+
 ## Where the code is
 
 | | |
 | --- | --- |
-| migration | `epics/src/main/resources/db/epics/migration/V9__entity_membership.sql` |
+| migrations | `epics/src/main/resources/db/epics/migration/V9__entity_membership.sql`, `V10__backfill_unified.sql` |
 | entities | `epics/…/entity/Archetype.java`, `WorkEntity.java`, `EntityMembership.java` |
 | repositories | `epics/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
 | the registry | `epics/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
 | the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `NestingViolation.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should
