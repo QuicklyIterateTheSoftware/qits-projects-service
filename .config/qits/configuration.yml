@@ -89,7 +89,7 @@ keys:
 
   env.QITS_PROJECTS_AGENT_GIT_BASE:
     type: string
-    description: "The git base URL, with the /git path, that an agent container clones the project's wrapper from."
+    description: "The git base URL, with the /git path, that an agent container clones the project's wrapper from. The INTERNAL githost alias, like the CI and workspace container git urls: the container's baked-in credential helper answers Basic, and only that alias's oauth2 transport turns it into a Bearer."
 
   env.QITS_PROJECTS_AGENT_IMAGE_VERSION_OVERRIDE:
     type: string
