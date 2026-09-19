@@ -70,6 +70,7 @@ class AgentStaleImageSweepTest {
           }
         };
     registry.endedActivityTtlMs = Duration.ofMinutes(30).toMillis();
+    registry.staleActivityTtlMs = Duration.ofHours(4).toMillis();
     // The emergency override IS the pin once it is set, and it is the one value imageVersion()
     // prefers — which is what lets this test name a tag without pinning itself to the released one.
     factory.imageVersionOverride = Optional.of(PIN);
@@ -206,6 +207,54 @@ class AgentStaleImageSweepTest {
 
     assertEquals(0, sweep.sweep(NOW));
     assertEquals(List.of(), stopped, "an agent thinking between frames is not a quiet container");
+  }
+
+  /**
+   * <b>The scenario observed live on 2026-09-18, which this sweep could not act on.</b> The container
+   * is stale, nothing has happened in it for hours, and its only session has said {@code BUSY} since
+   * long before anyone could still be in that turn — a session whose agent died before its {@code
+   * Stop} hook fired, re-asserted on every reconnect by the control socket's adoption of the daemon's
+   * retained state. The sweep named it in a WARN on three consecutive passes and stopped it on none
+   * of them, because an entry that only ages out when it says {@code ENDED} never does.
+   *
+   * <p><b>This test and {@link #leavesAStaleContainerWhoseAgentIsStillBusy} are the whole rule, and
+   * neither half states it alone.</b> A <em>recent</em> {@code BUSY} still protects the container —
+   * that is the veto's entire job, and that test must keep passing, because an agent thinking between
+   * two frames is exactly what the stamp reads straight through. An <em>ancient</em> one does not,
+   * because it is no longer evidence of anything. Read either one on its own and the rule looks like
+   * "the fold always vetoes" or "the fold never does"; the pair is what says where the line is.
+   *
+   * <p><b>That line is strictly longer than this sweep's quiet window, on purpose.</b> At equal
+   * values the fold could never veto anything the stamp had not already vetoed — every entry old
+   * enough to survive as evidence would also be a stamp inside the window — so the second condition
+   * would quietly stop meaning anything and the case the rollup exists for, an agent silent
+   * mid-turn, would go back to being stopped on. The sweep's window here is thirty minutes and the
+   * horizon is four hours; collapsing them deletes the rollup's reason for existing with every test
+   * in this file still green.
+   */
+  @Test
+  void stopsAStaleContainerWhoseOnlySessionHasBeenBusySinceBeforeTheHorizon() {
+    project("project-stuck", "stuck");
+    runtime.given("project-stuck", "stuck", true);
+    daemon("project-stuck", "2026.901.120000");
+    registry.onMessage(
+        "project-stuck",
+        null,
+        new AgentActivity(
+            "cmd-1",
+            "session-1",
+            DaemonProtocol.AgentState.BUSY,
+            "PreToolUse",
+            null,
+            null,
+            System.currentTimeMillis() - Duration.ofHours(6).toMillis()));
+    registry.touchAgentActivity("project-stuck", NOW.minus(Duration.ofHours(2)));
+
+    assertEquals(1, sweep.sweep(NOW));
+    assertEquals(
+        List.of("project-stuck"),
+        stopped,
+        "a BUSY nobody has refreshed for six hours is not an agent mid-turn");
   }
 
   /** The same container once that session has ended is quiet, and is taken. */
