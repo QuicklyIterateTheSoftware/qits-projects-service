@@ -81,6 +81,30 @@ public class RefinementContainerFactoryTest {
     assertEquals(Recreate.ifChanged, request.recreate());
   }
 
+  /**
+   * The git address is the shared {@code qits.projects.container-git-url} now — the same key the
+   * agent harness reads, carrying no path, with each factory appending qits-githost's own {@code
+   * /git}. The retired {@code qits.projects.refinement-git-url} is read by nobody; that half is
+   * asserted over both factories' declarations in {@code AgentContainerFactoryTest}.
+   *
+   * <p>Behaviour-identical by construction: no deployment carries an entry for the old key, so this
+   * harness ran on the default, and the default has not moved.
+   */
+  @Test
+  public void theGitAddressIsTheSharedInternalAlias() {
+    Map<String, String> env =
+        factory
+            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo")
+            .spec()
+            .env();
+
+    assertEquals(
+        "http://githost.dev.internal:8080",
+        org.eclipse.microprofile.config.ConfigProvider.getConfig()
+            .getValue("qits.projects.container-git-url", String.class));
+    assertEquals("http://githost.dev.internal:8080/git", env.get("QITS_WORKSPACE_DAEMON_GIT_BASE_URL"));
+  }
+
   @Test
   public void noIdpMeansNoCredentialBlockAtAll() {
     EnsureRequest request =

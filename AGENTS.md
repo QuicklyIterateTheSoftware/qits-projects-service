@@ -1843,9 +1843,15 @@ Where it differs from the agent harness, each difference is the domain line:
   `.config/qits/configuration.yml`; the agent image's pin
   (`QITS_PROJECTS_AGENT_IMAGE_VERSION`, `qits/project-agent`) is a different image on a different
   train and is **unchanged**, still configuration-driven and still declared there.
-- **Git reaches the edge** (`qits.projects.refinement-git-url`, default
-  `http://qits-platform-edge:8080`): the workspace image's credential helper speaks oauth2 Basic and
-  the edge rewrites it to a Bearer, exactly as a workspace's does. The three registry keys
+- **Git is reached at the internal githost alias** (`qits.projects.container-git-url`, default
+  `http://githost.dev.internal:8080` — **the same key the agent harness reads**, one key for one
+  concept, carrying no path so each factory appends `/git` itself): the image's credential helper
+  answers oauth2 Basic and only that alias's oauth2 transport rewrites it to the Bearer the git host
+  accepts, exactly as a workspace's does. Neither the edge nor qits-githost's *service* alias
+  answers that credential — the two names this key replaced,
+  `qits.projects.refinement-git-url` and `qits.projects.agent-git-base`, are read by nobody now and
+  `agenthost/RetiredContainerGitKeys` WARNs at boot while a deployment still carries either entry.
+  The three registry keys
   (`refinement-maven-repository-url` / `-npm-registry-url` / `-npm-proxy-url`) ship blank like
   qits-workspaces' — unset injects nothing.
 

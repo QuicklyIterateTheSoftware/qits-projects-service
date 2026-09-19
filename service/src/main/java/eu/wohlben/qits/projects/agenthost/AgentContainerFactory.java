@@ -267,19 +267,31 @@ public class AgentContainerFactory {
   static final String PLATFORM_AUDIENCE = "qits-platform";
 
   /**
-   * The git host the daemon's boot self-clone reads from, including qits-githost's own {@code /git}
-   * prefix. Stated outright rather than left to the daemon's derivation, which would guess a
-   * <em>different</em> service's address off this one's authority and say so in a WARN.
+   * The address a <em>container</em> reaches git at — scheme, host and port, no path. The daemon's
+   * boot self-clone reads from this plus qits-githost's own {@code /git} prefix, which {@link
+   * #gitBase()} appends exactly as {@code RefinementContainerFactory} does, so the two harnesses are
+   * one expression of one idea. Stated outright rather than left to the daemon's derivation, which
+   * would guess a <em>different</em> service's address off this one's authority and say so in a
+   * WARN.
    *
    * <p>The <b>internal</b> githost alias, never the service alias: the container authenticates git
    * with the credential helper baked into its image, the helper produces Basic, and only that
-   * alias's oauth2 transport turns it into the Bearer the git host accepts — see {@code
-   * qits.projects.refinement-git-url} for the same address arrived at the same way.
+   * alias's oauth2 transport turns it into the Bearer the git host accepts. {@code
+   * application.properties} carries the measurement.
+   *
+   * <p>It was {@code qits.projects.agent-git-base} — with the path baked in — until 2026-09-18, and
+   * that key is read by nobody now; see {@link RetiredContainerGitKeys} for why the move is a rename
+   * rather than a rewrite.
    */
   @ConfigProperty(
-      name = "qits.projects.agent-git-base",
-      defaultValue = "http://githost.dev.internal:8080/git")
-  String gitBase;
+      name = "qits.projects.container-git-url",
+      defaultValue = "http://githost.dev.internal:8080")
+  String containerGitUrl;
+
+  /** The clone base the daemon is handed: the container git url plus qits-githost's own prefix. */
+  String gitBase() {
+    return containerGitUrl.replaceAll("/+$", "") + "/git";
+  }
 
   /**
    * The <b>one</b> MCP server an agent launch attaches — this service's own, at {@code
@@ -523,7 +535,7 @@ public class AgentContainerFactory {
     env.put("QITS_PROJECTS_DAEMON_REPO_NAME", repoName);
     // Stated, never derived: the git host is qits-githost, a different service from the one the
     // control socket points at, so the daemon's own fallback would be a guess with a WARN on it.
-    env.put("QITS_PROJECTS_DAEMON_GIT_BASE", gitBase);
+    env.put("QITS_PROJECTS_DAEMON_GIT_BASE", gitBase());
     // The bearer the daemon's loopback API requires. Unset means the API does not bind at all.
     env.put("QITS_PROJECTS_DAEMON_API_TOKEN", daemonApiToken);
     // The container's OWN platform credential, commissioned from qits-idp for this container and
