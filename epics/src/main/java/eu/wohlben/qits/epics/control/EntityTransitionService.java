@@ -14,6 +14,7 @@ import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -244,7 +245,16 @@ public class EntityTransitionService {
           changedBy,
           snapshotOf(row, entry.getValue().parent()));
     }
-    return Map.copyOf(written);
+    // Collections.unmodifiableMap and NOT Map.copyOf: the caller's order is this operation's
+    // contract — it decides the order violations are reported in, the order two entries claiming
+    // one position resolve in, and the order the batch is announced in — and Map.copyOf answers an
+    // ImmutableCollections.MapN whose iteration order is a hash order perturbed by a per-JVM salt
+    // (ImmutableCollections.SALT32L, seeded from System.nanoTime() at class init). It is therefore
+    // not merely "some other order" but a DIFFERENT order in different runs of the same code,
+    // which is what made a batch of two come back reversed in one JVM and forward in the next.
+    // `written` is local to this method and escapes only through this wrapper, so the view cannot
+    // be written behind a caller's back.
+    return Collections.unmodifiableMap(written);
   }
 
   // --- validation -----------------------------------------------------------
