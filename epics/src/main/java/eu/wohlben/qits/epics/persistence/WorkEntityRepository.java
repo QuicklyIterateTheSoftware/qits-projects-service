@@ -98,6 +98,20 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
   }
 
   /**
+   * <b>The row a qualified id names</b>, or empty — {@code uq_entity_project_number} hit directly,
+   * which is the whole reason that constraint is over {@code (project_id, number)} and nothing
+   * else. At most one row by construction, whatever its archetype: the number names a NODE.
+   *
+   * <p>Its caller is {@code projects/epicshost/CommitSubjectEntities}, which reads {@code
+   * <project-slug>-<number>} off a commit subject. <b>Empty is an ordinary answer there</b> — a
+   * subject may name a number nobody ever allocated — so this answers an {@link Optional} rather
+   * than throwing, and nothing here logs.
+   */
+  public Optional<WorkEntity> findByProjectAndNumber(String projectId, long number) {
+    return find("projectId = ?1 and number = ?2", projectId, number).firstResultOptional();
+  }
+
+  /**
    * The row holding {@code slug} within {@code slugScope}, or empty. At most one, because {@code
    * uq_entity_slug_scope_slug} says so — that constraint is today's three slug constraints
    * expressed once (see {@link WorkEntity#slugScope}).

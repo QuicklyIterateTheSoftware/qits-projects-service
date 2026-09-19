@@ -7,6 +7,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
@@ -73,6 +74,24 @@ public class Task extends PanacheEntityBase implements CausedRow {
   /** Set when the task is done; null while unimplemented. */
   @Column(name = "implemented_at")
   public Instant implementedAt;
+
+  /**
+   * <b>The per-project numeric id, carried out of {@code entity.number}.</b> {@code @Transient}: the
+   * legacy table this class is still mapped to has no such column, and this class is a SHAPE the
+   * services answer with rather than a row anybody writes. It is the bare number — the qualified
+   * form {@code <project-slug>-<number>} is assembled in the {@code service} module, because the
+   * slug lives in {@code domain}'s {@code project} table and {@code epics} depends on {@code domain}
+   * nowhere. See {@code projects/api/QualifiedEntityIds}.
+   */
+  @Transient public long number;
+
+  /**
+   * <b>The owning project, carried out of {@code entity.project_id}.</b> {@code @Transient} for
+   * {@link #number}'s reason — the legacy table never had it, because a descendant used to reach its
+   * project by walking up. Every merged row carries one, and it is what {@code
+   * projects/api/QualifiedEntityIds} resolves the project slug from.
+   */
+  @Transient public String projectId;
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)

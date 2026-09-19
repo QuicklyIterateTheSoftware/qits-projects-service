@@ -21,12 +21,26 @@ import java.time.Instant;
  * answerable while the storage moved underneath them, and every one of those four drops the columns
  * its kind has no slot for. A transition's whole subject is a row changing which kind it is, so an
  * answer shaped as one kind could not describe the other end of the change. This record carries
- * every property the merged table has, null where the archetype has no slot for it.
+ * every property the merged table has, null where the archetype has no slot for it — {@link
+ * #number} included, which the sentence above used to claim and did not deliver.
+ *
+ * <p><b>{@link #qualifiedId} is the one component this module cannot fill.</b> The qualified form
+ * is {@code <project-slug>-<number>} and the project slug lives in {@code domain}'s {@code project}
+ * table, in a different physical database, which {@code epics} depends on nowhere. So {@link #of}
+ * leaves it null and the {@code service} module puts it on through {@link #withQualifiedId} — the
+ * device {@code EpicDto.withWorkspaces} already is, for the same boundary and the same reason. See
+ * {@code projects/api/QualifiedEntityIds}.
  *
  * @param id the entity
  * @param archetype what it is now
  * @param projectId the owning project. Carried unchanged — a transition does not move work between
  *     projects; see {@code EntityTransitionService} for the refusal that enforces it
+ * @param number the per-project numeric id, unique within {@link #projectId} and never reused. A
+ *     transition allocates nothing and moves none: the number names a NODE, and a node that changes
+ *     which kind it is is still the same node
+ * @param qualifiedId {@code <project-slug>-<number>}, the form that is written by hand into a
+ *     commit subject — or <b>null</b> when nobody has resolved the slug yet, which is what {@link
+ *     #of} always answers
  * @param title the label
  * @param slug the git-safe path segment. <b>Never re-minted and never cleared</b>: it is
  *     {@code @Column(updatable = false)} and names branches already cut
@@ -51,6 +65,8 @@ public record TransitionedEntity(
     String id,
     Archetype archetype,
     String projectId,
+    long number,
+    String qualifiedId,
     String title,
     String slug,
     String slugScope,
@@ -70,14 +86,49 @@ public record TransitionedEntity(
     Instant updatedAt) {
 
   /**
+   * The same entity, told what it is called in a commit subject. {@code EpicDto.withWorkspaces}'
+   * device, for the same boundary: the value is resolved in {@code service} and put on here.
+   */
+  public TransitionedEntity withQualifiedId(String rendered) {
+    return new TransitionedEntity(
+        id,
+        archetype,
+        projectId,
+        number,
+        rendered,
+        title,
+        slug,
+        slugScope,
+        description,
+        status,
+        ticketType,
+        impetus,
+        assignee,
+        createdBy,
+        supersededBy,
+        repositoryId,
+        implementedAt,
+        dependsOn,
+        parent,
+        position,
+        createdAt,
+        updatedAt);
+  }
+
+  /**
    * The row and its edge, read back. {@code edge} is null for a root, which is a statement and not
    * an omission — see {@code EntityFact.parentId}.
+   *
+   * <p><b>{@code qualifiedId} is left null here and that is deliberate</b>, not an oversight: see
+   * the class javadoc. {@link #withQualifiedId} is how it is filled.
    */
   static TransitionedEntity of(WorkEntity row, EntityMembership edge) {
     return new TransitionedEntity(
         row.id,
         row.archetype,
         row.projectId,
+        row.number,
+        null,
         row.title,
         row.slug,
         row.slugScope,

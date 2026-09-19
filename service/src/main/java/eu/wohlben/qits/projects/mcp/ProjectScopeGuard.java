@@ -19,6 +19,21 @@ public class ProjectScopeGuard {
   @Inject ProjectService projectService;
 
   /**
+   * <b>The slug of the project this session is scoped to</b> — the qualifier in {@code
+   * <project-slug>-<number>}, which is the form every entity-shaped MCP return carries.
+   *
+   * <p>It lives here for the reason the whole class does: {@code epics} depends on {@code domain}
+   * nowhere and the slug is {@code domain}'s, in a different physical database, so the tool classes
+   * cross through this guard rather than each reaching for {@code ProjectService} themselves.
+   *
+   * <p><b>Resolve it ONCE per tool call</b> and hand it to the summarizers. A listing of forty
+   * entities is forty rows of one project, and asking per row would be forty identical queries.
+   */
+  public String scopedProjectSlug() {
+    return projectService.get(scope.requireProjectId()).slug;
+  }
+
+  /**
    * Ensures {@code repoId} names a repository inside the project this session is scoped to. When
    * the session is narrowed to a single repository, also rejects any other repository in the
    * project. Throws {@link NotFoundException} otherwise (also covering a non-existent repository).

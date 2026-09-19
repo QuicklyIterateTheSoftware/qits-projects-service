@@ -828,6 +828,11 @@ components:
           type: string
         projectId:
           type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
         title:
           type: string
         slug:
@@ -852,6 +857,13 @@ components:
         id:
           type: string
         epicId:
+          type: string
+        projectId:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
           type: string
         title:
           type: string
@@ -1964,6 +1976,13 @@ components:
           type: string
         featureId:
           type: string
+        projectId:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
         repositoryId:
           type: string
         title:
@@ -2034,6 +2053,11 @@ components:
           type: string
         projectId:
           type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
         title:
           type: string
         slug:
@@ -2081,6 +2105,11 @@ components:
         archetype:
           $ref: "#/components/schemas/Archetype"
         projectId:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
           type: string
         title:
           type: string

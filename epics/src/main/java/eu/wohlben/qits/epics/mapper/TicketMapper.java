@@ -13,7 +13,12 @@ public interface TicketMapper {
    * live in another context, behind a port the service layer holds. So the mapped shape is the empty
    * answer, and a door that wants the real one decorates it with {@code TicketDto.withWorkspaces}.
    * Empty rather than null, so no reader has to guess whether "none" means none or means unasked.
+   *
+   * <p>{@code qualifiedId} is the same shape of answer one field over: {@code number} maps by name,
+   * and the rendering is ignored here explicitly because the project slug it needs lives in {@code
+   * domain}. See {@code EpicMapper}.
    */
   @Mapping(target = "workspaces", expression = "java(java.util.List.of())")
+  @Mapping(target = "qualifiedId", ignore = true)
   TicketDto toDto(Ticket entity);
 }

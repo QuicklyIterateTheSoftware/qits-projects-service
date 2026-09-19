@@ -27,6 +27,15 @@ import eu.wohlben.qits.epics.entity.WorkEntity;
  * went and fetched its own membership would be a query per row on exactly the listings this model
  * makes an N+1 easy on.
  *
+ * <p><b>The per-project number and the project id travel on all four now.</b> {@code
+ * entity.number} is copied onto every projection, and {@code entity.project_id} onto {@link
+ * Feature} and {@link Task} as well — a descendant used to reach its project by walking up and the
+ * merged row carries it outright. Both are {@code @Transient} on the four shape classes, because
+ * the legacy tables they are still mapped to have neither column. The <em>qualified</em> form
+ * {@code <project-slug>-<number>} is assembled one module up, in {@code
+ * projects/api/QualifiedEntityIds}: the slug lives in {@code domain}'s {@code project} table, in a
+ * different physical database, and this module depends on {@code domain} nowhere.
+ *
  * <p><b>Every value a caller sees comes from the {@code entity} row</b>, timestamps included. The
  * four legacy tables are not read here and are not written anywhere any more — the {@code
  * epic}/{@code ticket} mirror went when the dossier's foreign keys were repointed at {@code entity}
@@ -49,6 +58,7 @@ final class WorkEntityProjections {
     epic.id = source.id;
     epic.causationId = source.causationId;
     epic.projectId = source.projectId;
+    epic.number = source.number;
     epic.title = source.title;
     epic.slug = source.slug;
     epic.status = source.status == null ? null : EpicStatus.valueOf(source.status);
@@ -65,6 +75,7 @@ final class WorkEntityProjections {
     ticket.id = source.id;
     ticket.causationId = source.causationId;
     ticket.projectId = source.projectId;
+    ticket.number = source.number;
     ticket.title = source.title;
     ticket.slug = source.slug;
     ticket.type = source.ticketType;
@@ -93,6 +104,8 @@ final class WorkEntityProjections {
     feature.id = source.id;
     feature.causationId = source.causationId;
     feature.epicId = epicId;
+    feature.projectId = source.projectId;
+    feature.number = source.number;
     feature.title = source.title;
     feature.slug = source.slug;
     feature.description = source.description;
@@ -114,6 +127,8 @@ final class WorkEntityProjections {
     task.id = source.id;
     task.causationId = source.causationId;
     task.featureId = featureId;
+    task.projectId = source.projectId;
+    task.number = source.number;
     task.repositoryId = source.repositoryId;
     task.title = source.title;
     task.slug = source.slug;

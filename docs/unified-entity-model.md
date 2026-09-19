@@ -117,9 +117,9 @@ turns "which subject does this change belong to" from a guess into a recorded fa
 **Per project rather than global**, so the numbers stay small enough to read and the qualified form
 carries its own scope. The qualifier is the **project's slug** (`qits`), which lives in `domain`'s
 `project` table and is therefore resolved at the surface rather than stored here; `entity` holds the
-bare number and `project_id`. Putting the two together on a DTO, an MCP return and the SPA is the
-**next task's**, together with the commit-subject parser. This task makes the id exist and be
-allocated correctly.
+bare number and `project_id`. **Putting the two together — on the DTOs, on the MCP returns and in a
+commit subject — is done**, and "The qualified form, and where it is rendered" below is the record
+of it. This section is what makes the id exist and be allocated correctly.
 
 **`uq_entity_project_number` is over `(project_id, number)` and over nothing else, which is the
 statement that the id names a NODE and not a ticket.** The unified table holds every archetype, so
@@ -249,6 +249,163 @@ write this table when a project is created or deleted.
 **No existing test's assertions moved.** The only test changes are mechanical: the wipe above, and
 `WorkEntityPersistenceTest`'s hand-built fixtures taking a distinct number each, since every one of
 them is in one project and `uq_entity_project_number` now applies.
+
+## The qualified form, and where it is rendered
+
+`<project-slug>-<number>` — `qits-1337`. The bare number is `entity.number`; the qualifier is
+`project.slug`. **The two are in two different physical databases, in two modules that do not
+depend on each other**, and everything below follows from that one fact.
+
+### `epics` never sees it, and that is the constraint rather than a preference
+
+`CLAUDE.md` is emphatic that `epics` depends on neither `domain` nor any auth module. **What
+actually enforces that is `epics/pom.xml`** — the dependency is simply not declared, so a reach into
+`domain` from that module does not compile. `epics`' `ArchRulesTest` is *not* the guard, whatever
+its name suggests: it runs `CausationRowRules` and nothing else, and it would pass a module that had
+just grown the dependency. The project slug lives in
+`domain`'s `project` table, in the `projects` database. `epics` therefore knows the bare `number`
+and the `project_id` and nothing else; **it cannot render the qualified form even if the module
+boundary had permitted the reach**, because there is no join across two physical databases to make.
+
+So the assembly happens one module up, at the DTO boundary, in
+`service/…/projects/api/QualifiedEntityIds` — **modelled directly on `DispatchedWorkspaces`**, which
+is the sanctioned place `epics.api` responses are already decorated with data from another context,
+and which sits in the same package for the same declared reason. The `epics` side carries the datum
+and a `withQualifiedId` setter; the `service` side carries the rendering.
+
+| where | what it carries |
+| --- | --- |
+| `entity.number`, `entity.project_id` | the storage |
+| `WorkEntityProjections` → `Epic`/`Ticket`/`Feature`/`Task` | `number` on all four, `projectId` on all four (new on the two descendants), both `@Transient` — the legacy tables have neither column |
+| `EpicDto`/`TicketDto`/`FeatureDto`/`TaskDto` | `number`, `qualifiedId` (null off the mapper), and `projectId` on the two descendants |
+| `TransitionedEntity` | `number`, `qualifiedId` (null out of `of(…)`), plus `withQualifiedId` |
+| `service/…/projects/api/QualifiedEntityIds` | **the only renderer**: `render(slug, number)` |
+| `service/…/projects/epicshost/CommitSubjectEntities` | **the only reader**: the grammar and the lookup |
+
+The mappers spell `@Mapping(target = "qualifiedId", ignore = true)` **explicitly** rather than
+letting MapStruct's silence produce the null: the null is a statement about the module boundary, and
+a reader who finds it has to be able to tell it from an omission.
+
+### The N+1 answer: one lookup per listing, never one per row
+
+`ProjectRepository.list(Collection<String>)` and `ProjectService.slugsByIds(Collection<String>)` are
+one query — `id in (…)` — and `QualifiedEntityIds` collects the **distinct** project ids of a whole
+page before asking. That is `WorkEntityRepository.listByIds`' rule and `DispatchedWorkspaces`' rule
+applied a third time, and it is asserted rather than described: `QualifiedEntityIdsTest` counts the
+lookups a forty-row listing across two projects makes (one) and what it was asked about (two ids).
+An empty listing asks nothing at all, and a `projectId` naming no project row leaves `qualifiedId`
+**null** and never throws — a decoration degrades to what the screen showed before the field
+existed.
+
+**The two project-scoped listings pay nothing extra.** `ProjectEpicsController` and
+`ProjectTicketsController` already call `projectService.get(projectId)` for the 404 and discarded
+the result; they read the slug off it and render inline, so no second lookup is made there.
+
+Every response path carries the field: both project listings, both creates, the single gets, the
+updates, both lifecycle transitions (the epic's successor included), the feature and task listings
+and creates, and the multi-entity transition's whole map.
+
+### MCP returns carry `qualifiedId` ONLY, never the bare number
+
+Every entity-shaped record on the `repository` server gained one field and only one:
+`EpicMcpTools.{EpicSummary, EpicDetail, FeatureSummary, FeatureDetail, TaskSummary, TaskDetail,
+TaskImplemented}` and `TicketMcpTools.{TicketSummary, TicketDetail}`. `EntityMcpTools` answers
+`TransitionedEntity` and qualifies it on both tools. **`DossierMcpTools`' pages and `DossierFigure`
+are not entities in the merged table and gained nothing.**
+
+The reason is the surface's purpose. **An agent that is shown a bare number will hand-prefix it, and
+it will get the qualifier wrong** — the repository's name, the epic's slug, its own project when the
+id came from somebody else's. The surface that exists so an id can be written into a commit subject
+should only ever hand out the form that belongs in one. The REST DTOs carry both because the SPA
+needs the datum as well as the rendering: it sorts, filters and links on the number and is not the
+thing that types a commit message.
+
+The slug is resolved **once per tool call** — `ProjectScopeGuard.scopedProjectSlug()`, the precedent
+that class already sets for an MCP class reaching `domain`'s `ProjectService` — and handed into the
+`summarize(…)`/detail builders, never asked per row. **No tool was added, renamed or reshaped**, so
+`RepositoryMcpToolsTest.exposesExactlyTheRepositoryContextToolset` and the three MCP suites pass
+with their assertions unchanged.
+
+## Reading it back: the commit-subject parser
+
+`service/…/projects/epicshost/CommitSubjectEntities` — **one parser, in one place, and it is the
+only thing in the estate that knows this grammar.** It lives in `service` because resolution needs
+*both* databases (the slug in `domain`, the `(project_id, number)` pair in `epics`) and `service` is
+the only module that can hold the pair; `projects/epicshost/` is where this repository already
+declares a service-layer bridge into `epics` (`TicketUnattendedGateTickets`).
+
+    /** the grammar, pure and side-effect free */
+    static Optional<QualifiedId> reference(String subject);
+    record QualifiedId(String projectSlug, long number) { String rendered(); }
+
+    /** grammar + lookup, in one call */
+    Optional<NamedEntity> resolve(String subject);
+    record NamedEntity(String id, String qualifiedId, String projectId, String projectSlug,
+                       long number, Archetype archetype, String status, String title);
+
+`NamedEntity` is shaped for its first consumer — a wrapper release request refusing a branch whose
+subject does not name a VERIFIED entity — so **the entity, its archetype and its status come from
+one lookup**. That consumer is not built here. The lookup hits `uq_entity_project_number` directly,
+through `WorkEntityRepository.findByProjectAndNumber`; the two reads are in two separate
+transactions because the two datasources are local and non-XA and Narayana enlists one such resource
+per transaction, which is the rule `EpicMcpTools` already states.
+
+### The grammar
+
+`term(<project-slug>-<n>): message` — the id sits in the conventional-commit **scope**.
+
+- **Only the first line is considered.** Everything from the first `\n` on is the body and is
+  ignored, *including a body that itself contains something id-shaped* — which is the ordinary case
+  of a message quoting an id it is not filed under.
+- The term before `(` may be absent (`(qits-1337): msg`) or contain a slash (`epics/control`). It
+  may not contain whitespace or a colon, which is what stops `fix: tidy (qits-7): …` from reading
+  its parenthesised aside as a scope.
+- An optional breaking-change `!` may sit between `)` and `:`.
+- Inside the parens, `<slug>-<digits>`, split on the **LAST** hyphen-then-digits — so a project slug
+  that itself ends in digits (`other-2`) still reads correctly. The digit run is bounded at 18, so a
+  number that could not fit a `long` reads as no id rather than as an exception.
+
+### "No subject" is a NORMAL answer, and it is NEVER a complaint
+
+**Every commit already in this platform's history predates this convention and always will**, and
+most commits written after it will not carry an id either. A subject with no id, a malformed id and
+a well-formed id naming no entity are therefore one answer — `Optional.empty()` — and **nothing is
+logged for any of them: no warning, no error, no debug-level complaint, no counter, no metric,
+nothing any reader could ever take for a degraded state.** The class holds no logger field at all,
+which is the cheapest way to make that unbreakable, and
+`CommitSubjectEntitiesTest.aSubjectWithNoIdIsNotAnErrorAndIsNotEvenMentioned` attaches a JUL handler
+at WARNING+ to the class's own category and asserts nothing was recorded.
+
+Get this wrong once and every reader built on top inherits a false alarm that can never be cleared,
+because the condition it fires on is the ordinary case. A caller that *needs* an id says so itself,
+in its own words, at its own call site.
+
+### Cross-project: it RESOLVES
+
+`resolve` takes **no "current project" argument**, and that is a decision rather than an omission.
+**The form is project-qualified, which is the entire reason it is qualified**: `other-7` names
+project `other`'s entity 7 unambiguously and globally, and a resolver that silently refused it — or,
+worse, read it as the caller's own entity 7 — would be answering a question nobody asked. What a
+consumer that cares about the project does is **compare**: `NamedEntity` carries `projectId` and
+`projectSlug` precisely so the refusal can be made on that consumer's terms and in its words, rather
+than disguised as "no id found". `anIdFromAnotherProjectResolvesToThatProjectsEntity` pins it, over
+two projects whose runs both start at 1.
+
+## What is left for the SPA
+
+Nothing on the SPA was touched (it is a separate repository). What it will find, all additive:
+
+| shape | new fields |
+| --- | --- |
+| `EpicDto`, `TicketDto` | `number` (`long`), `qualifiedId` (`String`, e.g. `qits-1337`) |
+| `FeatureDto`, `TaskDto` | `projectId`, `number`, `qualifiedId` |
+| `TransitionedEntity` (the transition's answer map and `list_entities`) | `number`, `qualifiedId` |
+
+`qualifiedId` is the string to render and to offer for copying; `number` is the datum to sort,
+filter and search on. `qualifiedId` is **nullable** and a client must treat it so: it is null
+exactly when the owning project row could not be resolved, which is the degraded case the renderer
+answers with rather than failing the read. No field was removed or renamed, and `docs/openapi.yml`
+is regenerated with the new shapes.
 
 ## The column-per-property map
 
@@ -1192,9 +1349,11 @@ with the listing.
 | the multi-entity transition | `epics/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/epics/api/EntityTransitionController.java` |
 | the merged read | `epics/…/control/EntityCatalogService.java` — `listByProject`/`byIds`, answering `TransitionedEntity` |
 | the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
+| the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |
+| the commit-subject parser | `service/…/projects/epicshost/CommitSubjectEntities.java` — the only reader of the grammar; `epics/…/persistence/WorkEntityRepository.findByProjectAndNumber` behind it |
 | the impetus concession | `epics/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`; `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`; `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should

@@ -22,8 +22,11 @@ import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -467,6 +470,37 @@ public class ProjectService {
 
   public List<Project> list() {
     return projectRepository.listAll();
+  }
+
+  /**
+   * The project a slug names, or empty. Slugs are unique (V6), so at most one. The reading half of
+   * the qualified entity id {@code <project-slug>-<number>}; see {@code
+   * projects/epicshost/CommitSubjectEntities}. <b>Empty is an ordinary answer</b>, not a failure —
+   * the slug it was handed came out of a commit subject somebody typed.
+   */
+  public Optional<Project> findBySlug(String slug) {
+    return slug == null || slug.isBlank()
+        ? Optional.empty()
+        : projectRepository.findBySlug(slug);
+  }
+
+  /**
+   * <b>The slugs of {@code projectIds}, in ONE query.</b> Keyed by project id, and an id naming no
+   * project is simply absent from the map rather than an exception — this read exists to decorate
+   * other people's answers (the qualified entity id {@code <project-slug>-<number>}), and a
+   * decoration must never be able to fail the read it decorates.
+   *
+   * <p><b>One query per listing, never one per row.</b> {@code
+   * projects/api/QualifiedEntityIds} collects the distinct project ids of a whole page and asks
+   * once; asking {@link #get} per entity would be the N+1 that {@code DispatchedWorkspaces} and
+   * {@code WorkEntityRepository.listByIds} both already exist to avoid.
+   */
+  public Map<String, String> slugsByIds(Collection<String> projectIds) {
+    Map<String, String> slugs = new HashMap<>();
+    for (Project project : projectRepository.list(projectIds)) {
+      slugs.put(project.id, project.slug);
+    }
+    return slugs;
   }
 
   /**

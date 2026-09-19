@@ -78,6 +78,13 @@ public class EntityMcpTools {
 
   @Inject ProjectChangePublisher changePublisher;
 
+  /**
+   * Fills {@code qualifiedId} on everything this class answers. One slug lookup per tool call — see
+   * {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, which is also where the reason the
+   * {@code epics} module leaves the field null is written down.
+   */
+  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
+
   @Inject SecurityIdentity identity;
 
   // --- The read side --------------------------------------------------------
@@ -106,11 +113,12 @@ public class EntityMcpTools {
                       + " you are not moving are the ones that say what is already taken.")
           String archetype) {
     List<TransitionedEntity> all = catalog.listByProject(scope.requireProjectId());
-    if (archetype == null || archetype.isBlank()) {
-      return all;
+    if (archetype != null && !archetype.isBlank()) {
+      String wanted = archetype.trim().toUpperCase(java.util.Locale.ROOT);
+      all = all.stream().filter(entity -> entity.archetype().name().equals(wanted)).toList();
     }
-    String wanted = archetype.trim().toUpperCase(java.util.Locale.ROOT);
-    return all.stream().filter(entity -> entity.archetype().name().equals(wanted)).toList();
+    // Filtered first, then qualified: one slug lookup for whatever survives, never one per entry.
+    return qualifiedIds.qualifyEntities(all);
   }
 
   // --- The write ------------------------------------------------------------
@@ -188,7 +196,8 @@ public class EntityMcpTools {
 
     Map<String, TransitionedEntity> written = transitions.transition(entities, changedBy());
     announce(projectId);
-    return written;
+    // The map keeps its keys; one slug lookup for the whole batch.
+    return qualifiedIds.qualifyEntities(written);
   }
 
   // --- Scoping --------------------------------------------------------------

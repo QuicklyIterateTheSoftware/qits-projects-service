@@ -1,6 +1,7 @@
 package eu.wohlben.qits.epics.api;
 
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
+import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.epics.control.EpicService;
 import eu.wohlben.qits.epics.dto.EpicDto;
@@ -56,7 +57,9 @@ public class ProjectEpicsController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public ListEpicsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
-    projectService.get(projectId); // 404 if the project does not exist
+    // 404 if the project does not exist — and the slug the qualified id is rendered from, which
+    // this route already had in hand and used to discard. No second lookup is made here.
+    String slug = projectService.get(projectId).slug;
     // Mapped first, then decorated in one call: the workspaces lookup is asked once about the whole
     // board, never once per epic.
     var entries =
@@ -64,6 +67,7 @@ public class ProjectEpicsController {
             .decorateEpics(
                 epicService.listByProject(projectId, status).stream()
                     .map(epicMapper::toDto)
+                    .map(epic -> epic.withQualifiedId(QualifiedEntityIds.render(slug, epic.number())))
                     .toList())
             .stream()
             .map(ListEpicsRequest.Response.Entry::new)
@@ -78,11 +82,12 @@ public class ProjectEpicsController {
   @POST
   public CreateEpicRequest.Response create(
       @PathParam("projectId") String projectId, @Valid CreateEpicRequest request) {
-    projectService.get(projectId); // 404 if the project does not exist
+    String slug = projectService.get(projectId).slug; // 404 if the project does not exist
     var epic =
         epicService.create(
             projectId, request.title(), request.description(), EpicsPrincipal.changedBy(identity));
     hints.fire(projectId);
-    return new CreateEpicRequest.Response(epicMapper.toDto(epic));
+    return new CreateEpicRequest.Response(
+        epicMapper.toDto(epic).withQualifiedId(QualifiedEntityIds.render(slug, epic.number)));
   }
 }

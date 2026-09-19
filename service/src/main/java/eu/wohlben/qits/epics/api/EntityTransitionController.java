@@ -62,6 +62,13 @@ public class EntityTransitionController {
   @Inject TicketChangeHints ticketHints;
 
   /**
+   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
+   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
+   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
+   */
+  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
+
+  /**
    * Applies the stated post-state and answers what was written.
    *
    * <p><b>The answer is keyed the way the request is</b> — a map of entity id to that entity's whole
@@ -90,6 +97,8 @@ public class EntityTransitionController {
       epicHints.fire(projectId);
       ticketHints.fire(projectId);
     }
-    return written;
+    // One slug lookup for the whole batch, and the map keeps its keys. The service leaves
+    // qualifiedId null because epics cannot see domain; this is where it is filled.
+    return qualifiedIds.qualifyEntities(written);
   }
 }

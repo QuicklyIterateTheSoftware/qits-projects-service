@@ -6,6 +6,7 @@ import eu.wohlben.qits.epics.entity.TicketComment;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
+import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
@@ -66,6 +67,9 @@ public class TicketMcpTools {
 
   @Inject ProjectScope scope;
 
+  /** The session's project slug, which is the qualifier in {@code <project-slug>-<number>}. */
+  @Inject ProjectScopeGuard scopeGuard;
+
   @Inject TicketService ticketService;
 
   @Inject ProjectChangePublisher changePublisher;
@@ -86,9 +90,14 @@ public class TicketMcpTools {
    * {@code impetus} (what was originally asked for) and {@code description} (what refinement
    * decided to do about it), because which of the two is present is how a reader tells a bare
    * report from a refined one without asking again.
+   *
+   * <p>{@code qualifiedId} ({@code qits-1337}) and never the bare number — the decision and its
+   * reason are on {@link EpicMcpTools.EpicSummary}, and they are this server's rule rather than
+   * that class's.
    */
   public record TicketSummary(
       String id,
+      String qualifiedId,
       String slug,
       String title,
       String type,
@@ -104,6 +113,7 @@ public class TicketMcpTools {
   /** One ticket with its whole thread, oldest first. */
   public record TicketDetail(
       String id,
+      String qualifiedId,
       String slug,
       String title,
       String type,
@@ -135,8 +145,9 @@ public class TicketMcpTools {
                   "exact status to filter by: REPORTED, REFINED, IMPLEMENTED, VERIFIED or DONE."
                       + " Omit for every ticket.")
           String status) {
+    String projectSlug = projectSlug(); // once for the listing, never once per row
     return ticketService.listByProject(scope.requireProjectId(), status).stream()
-        .map(TicketMcpTools::summarize)
+        .map(ticket -> summarize(ticket, projectSlug))
         .toList();
   }
 
@@ -155,6 +166,7 @@ public class TicketMcpTools {
             .toList();
     return new TicketDetail(
         ticket.id,
+        QualifiedEntityIds.render(projectSlug(), ticket.number),
         ticket.slug,
         ticket.title,
         ticket.type.name(),
@@ -205,7 +217,7 @@ public class TicketMcpTools {
         ticketService.create(
             scope.requireProjectId(), title, impetus, description, type, assignee, changedBy());
     announce();
-    return summarize(ticket);
+    return summarize(ticket, projectSlug());
   }
 
   @McpServer("repository")
@@ -243,7 +255,7 @@ public class TicketMcpTools {
         ticketService.update(
             id, title, impetus, false, description, false, type, assignee, false, changedBy());
     announce();
-    return summarize(ticket);
+    return summarize(ticket, projectSlug());
   }
 
   @McpServer("repository")
@@ -285,7 +297,7 @@ public class TicketMcpTools {
       // into a tool error the model would read as "the move did not happen".
       LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
     }
-    return summarize(ticket);
+    return summarize(ticket, projectSlug());
   }
 
   @McpServer("repository")
@@ -368,9 +380,18 @@ public class TicketMcpTools {
     return identity.getPrincipal().getName();
   }
 
-  private static TicketSummary summarize(Ticket ticket) {
+  /**
+   * The project slug the qualified ids in this call are rendered with, <b>resolved once</b>. Every
+   * ticket a tool answers is in the session's project, so one lookup covers a whole listing.
+   */
+  private String projectSlug() {
+    return scopeGuard.scopedProjectSlug();
+  }
+
+  private static TicketSummary summarize(Ticket ticket, String projectSlug) {
     return new TicketSummary(
         ticket.id,
+        QualifiedEntityIds.render(projectSlug, ticket.number),
         ticket.slug,
         ticket.title,
         ticket.type.name(),
