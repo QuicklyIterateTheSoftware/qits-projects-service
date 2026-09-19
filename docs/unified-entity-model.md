@@ -26,7 +26,7 @@ have no writer and no referent; they are a frozen snapshot.
 | `V10__backfill_unified.sql` | the backfill — every Epic/Ticket/Feature/Task row copied in, **ids unchanged** | **shipped** |
 | `V11__entity_number.sql` | the numeric id: the column, `uq_entity_project_number`, the backfill and the allocator's counter | **shipped** |
 | `V12__owner_keys_to_entity.sql` | the four outward foreign keys repointed at `entity(id)`, which retires the mirror | **shipped** |
-| `V13+` | the drop of the four old tables, still owed — nothing reads them now, but they are the verification door's comparison target until it has run clean against live data | reserved |
+| `V13+` | the drop of the four old tables, still owed — nothing reads them now, but they are the verification door's comparison target until it has run clean against live data. **It also deletes the door**: `epics/…/migration/`, `service/…/epics/api/MigrationVerificationController.java` and `epics/src/test/…/migration/MigrationVerificationTest.java` — see "The verification door" below | reserved |
 
 The ids are the **same id space**: `entity.id` is `varchar(255)` exactly as `epic.id` is, because
 V10 copies each old row in under the id it already has. Every dossier page, audit entry, branch
@@ -1359,6 +1359,175 @@ own sort — made dense and zero-based. Never insertion order: a heap scan's ord
 VACUUM and between databases, and would produce a plausible dense sequence that silently disagreed
 with the listing.
 
+## The verification door, as shipped
+
+`GET /projects/api/entities/migration-verification` — **admin only, temporary, and deleted by V13
+with the tables it compares.** It puts the four frozen old tables beside the unified model on
+whatever database the running process is pointed at and answers **every discrepancy it finds**. A
+clean run against live data is the evidence that authorises V13; nothing else is.
+
+It exists because every migration test in this repository starts from a database a test seeded,
+which proves the statements are right about the rows a test wrote and says nothing at all about
+three months of real planning. So it had to be a door on the running process, runnable on demand,
+repeatedly, against production, with no deployment.
+
+### What it compares
+
+| category | kind | the question |
+| --- | --- | --- |
+| `archetype-census` | informational | how many rows each old table holds against how many entity rows carry that archetype — always listed |
+| `archetype-counts` | **discrepancy** | `entity >= old` per archetype. Never equality; see below |
+| `missing-entities` | **discrepancy** | every old row has an entity row under the same id |
+| `property-round-trip` | **discrepancy** | one row per differing property: title, slug, slug_scope, description, status, project_id, the epic's superseded-by, the ticket's type/impetus/assignee/created_by, the task's repository_id, and both merged markers (`implemented_on`/`implemented_at`, `depends_on`) |
+| `membership-parents` | **discrepancy** | every `feature.epic_id` / `task.feature_id` has an edge naming the same parent |
+| `membership-order` | **discrepancy** | the siblings' **relative order** matches `(created_at, id)` — its own category, never folded into the property check |
+| `orphaned-memberships` | **discrepancy** | no edge names a parent or child that is not an entity |
+| `rootless-entities` | **discrepancy** | every FEATURE and TASK has an edge (EPIC and TICKET are roots — `ArchetypeSpec.mayBeRoot`) |
+| `dangling-owner-references` | **discrepancy** | `dossier_page.epic_id`, `dossier_page.ticket_id`, `dossier_asset.epic_id`, `ticketcomment.ticket_id` all resolve in `entity` |
+| `dangling-audit-references` | **discrepancy** | audit entries naming a row an old table **still holds** and `entity` does not |
+| `work-branches` | **discrepancy** | the branch name the old tables imply equals the one the unified model implies, for all four archetypes |
+| `entities-created-since-the-cutover` | informational | entity rows with no old row at all |
+| `expected-de-collided-slugs` | expected | the tickets V10 re-slugged, with both values |
+| `expected-changed-since-the-cutover` | expected | properties that differ on a row written since the copy |
+| `expected-reparented-since-the-cutover` | expected | edges whose parent moved since the copy |
+| `expected-deleted-since-the-cutover` | expected | old rows removed through the unified model, per the DELETE audit entry |
+
+**It answers the discrepancies themselves and never a boolean.** Every category is present on a
+clean run, each carrying how many rows of what kind it compared, and the response's `scope` block
+states in words what was deliberately not checked. The operation this authorises is destructive and
+irreversible, so what a person needs is not "yes" but the material to disagree with "yes" — and a
+count of zero beside a compared count of zero is a vacuous pass, which this shape makes visible
+rather than reassuring. Each category lists at most 100 rows with the **full** count beside it, so a
+truncated list is never mistaken for a short one and a broken estate cannot exhaust the service.
+
+### What it deliberately does NOT check, and why
+
+**1. FORWARD ONLY.** The epic asked for both directions — every old row has an entity, *and* no
+entity has an id no old row had. The second half was correct when it was written and has been false
+since `FeatureService`/`TaskService` stopped writing legacy rows; with the mirror retired by V12 it
+is false for all four archetypes. "What this means for the verification door" above is the standing
+statement of it. **The reverse assertion is not made anywhere**, and the omission is on the wire
+(`scope.direction`) rather than only in javadoc, because a person reading a clean result has to know
+which half of the comparison it was.
+
+**2. The V10 slug de-collision is expected, and is reported.** A ticket whose slug collided with an
+epic's in the same project had its **entity** row re-slugged and its `Ticket` row left alone. The
+door detects those rows exactly the way V10 chose them — a ticket whose slug equals some epic's slug
+in the same project, read off the **old** tables, so the predicate cannot drift with the new model —
+and reports them under `expected-de-collided-slugs` with both values, naming the epic and the branch
+that does not move. They are exempt from the slug property comparison and from the work-branch
+comparison, and from nothing else. Silently ignoring them would hide the one consequence that
+matters: `ticket/<old-slug>` still has somebody's work on it.
+
+**3. Counts are a relation, not an equality.** Anything created since the cutover has no old row, so
+`entity >= old` per archetype is what is asserted and the surplus is listed as evidence under
+`entities-created-since-the-cutover`. Only the wrong direction fails.
+
+**4. The model has been written the whole time** — which the epic did not name and which matters as
+much as the other three. A row *edited* through the unified model legitimately disagrees with its
+frozen old row, and a row *deleted* through it legitimately has no entity row. `entity.updated_at`
+is the discriminator for the first (V10 copies it verbatim; every later write bumps it) and a DELETE
+audit entry is the discriminator for the second (the doc's own wording, and the log is deliberately
+not foreign-keyed back so that it outlives the row). Both are reported as expected differences
+carrying both values. **The cost, stated rather than hidden:** a genuine backfill defect on a row
+that has since been edited is misfiled into the expected category. It is still listed, with both
+values; what is lost is the failing verdict, not the evidence.
+
+**Ordering is compared as relative order and never as absolute position**, and that is not a
+weakening: `EntityMembershipRepository.closeGapAfter` renumbers a removal's tail with a bulk update
+that leaves no timestamp behind, so absolute positions drift the moment anything is deleted with
+nothing to discriminate on — while the *order* of the surviving siblings is exactly what V10
+promised and exactly what a listing draws.
+
+**No work branch is stored in this database.** `control/WorkBranches` derives it from slugs and
+ancestry, so what the door compares is the derived name on each side — which folds in the ancestry
+as well as the slug and is therefore more than the property check. The stored `refinement.branch` is
+in the **projects** database, which this door holds no connection to (the epics module depends on
+`domain` nowhere); that is named in `scope.notChecked` along with everything else a reader might
+reasonably assume was covered.
+
+### How to run it against live data
+
+It is a `GET`, it issues `select` and only `select`, and it stores nothing — so it may be pressed as
+often as anybody likes. From inside the platform network, against the service's own alias, with the
+forward-auth pair the edge strips from every inbound request (which is what makes it trustworthy
+there and unusable from outside):
+
+```sh
+curl -sS -H 'X-Qits-User: <you>' -H 'X-Qits-Roles: qits:admin' \
+     http://dev-qits-projects:8080/projects/api/entities/migration-verification | jq .
+
+# the one-line answer, and the categories that found something
+curl -sS -H 'X-Qits-User: <you>' -H 'X-Qits-Roles: qits:admin' \
+     http://dev-qits-projects:8080/projects/api/entities/migration-verification \
+  | jq '{verdict, discrepancies,
+         failing: [.categories[] | select(.kind=="DISCREPANCY" and .findings>0)
+                                 | {name, findings, compared, comparedRows}]}'
+```
+
+An administrator in a browser reaches the same route on the projects host under their own session.
+**Do not forge a role you do not hold** — it is privilege escalation, not a workaround, and this
+door is `qits:admin` precisely because it is an operator's gate. A machine bearer does not open it:
+it carries `qits:system` or `qits:agent` and answers 403.
+
+**Read `scope` before `verdict`.** A clean verdict is a statement about the copy and about nothing
+else.
+
+### Why admin alone, with no `qits:agent`
+
+This is the only GET on this surface an agent does not hold, so the exception is argued rather than
+assumed. It is an operator's gate on a destructive migration; it reads whole frozen tables —
+sixteen set-based scans of the whole estate per press, where every other read an agent holds here is
+a bounded indexed query about the agent's own work; and no agent workflow has any use for a column-by-column
+comparison of a copy it never saw. The class is therefore **deliberately outside
+`AgentReadAccessTest`'s explicit `CLASSES` list**, and that test's javadoc names it and this reason —
+because a class silently missing from that list and a class deliberately kept off it look identical.
+No assertion in that test moved.
+
+### What it costs
+
+Sixteen statements, every one set-based, **not one query per row**. The checks are anti-joins and
+left joins against `entity(id)` and `entity_membership(child_id)`, both unique indexes, so
+postgres hashes or merges the old table against an index rather than probing per row; the dominant
+cost is one sequential scan of each old table per category that reads it, and the whole run is
+O(estate) with a small constant. Memory is bounded by construction: every finding query carries
+`count(*) over ()` beside a `limit`, so one statement answers both "how many" and "the first N" and
+at most 100 rows per category are ever materialised.
+
+The run is **not one snapshot and does not pretend to be** — statements are READ COMMITTED and each
+sees its own instant. That is harmless here, and why is the point: the four old tables have had no
+writer for several commits and cannot move at all, and the only table that can move is `entity`,
+where a row arriving mid-run lands in an informational category rather than a failing one. Buying a
+repeatable-read snapshot would mean a long transaction on a live database to remove a discrepancy
+that cannot occur.
+
+### What proves it
+
+`epics/src/test/…/migration/MigrationVerificationTest` — plain JUnit over `EmbeddedPg` + Flyway,
+`UnifiedBackfillMigrationTest`'s shape and no `@TestProfile`, over **two estates built once and
+compared once**. The clean one is produced by running V10 itself rather than by hand-writing what a
+correct copy looks like: a hand-built fixture would be a second implementation of the backfill, free
+to be wrong in the same direction as the door. The broken one carries one named defect per category
+— a missing entity, each property in turn, a wrong parent, a permuted order, an orphaned edge, a
+rootless descendant, four dangling outward references, a dangling audit row, a moved branch — plus
+the three findings as their own cases: a row created after the cutover is not a discrepancy, a
+de-collided slug is expected rather than a mismatch, and counts unequal in the right direction are
+clean while the wrong direction fails.
+
+Two of those defects **cannot be seeded while the schema stands** — V9's membership foreign key and
+V12's four repointed owner keys forbid them outright — so the test drops those constraints in its
+own database. The door checks them regardless, and that is deliberate: "the schema forbids it" is a
+claim about one database's current DDL, not about the rows in front of you, and this door also runs
+against a database restored from a dump or repaired by hand. The constraint is the mechanism; the
+check is the evidence.
+
+`service/src/test/…/epics/api/MigrationVerificationApiTest` is the other half, a plain `@QuarkusTest`
+with no profile: it proves the persistence unit hands out a usable connection outside any caller's
+transaction, that twenty statements of hand-written SQL parse against the schema Flyway actually
+builds, and that the record tree serialises. It asserts CLEAN over a database where the old tables
+are **empty** and `entity` is full — which is the shape the three findings are about, and exactly
+what a door written with the reverse assertion would report as broken.
+
 ## Where the code is
 
 | | |
@@ -1376,9 +1545,10 @@ with the listing.
 | the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
 | the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |
 | the commit-subject parser | `service/…/projects/epicshost/CommitSubjectEntities.java` — the only reader of the grammar; `epics/…/persistence/WorkEntityRepository.findByProjectAndNumber` behind it |
+| the verification door — **TEMPORARY, deleted whole by V13** | `epics/…/migration/` (`package-info.java` carries the deletion instruction; `MigrationVerification.java` is the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge); `service/…/epics/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone |
 | the impetus concession | `epics/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`; `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`, `…/migration/MigrationVerificationTest.java`; `service/src/test/…/epics/api/MigrationVerificationApiTest.java`, `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should

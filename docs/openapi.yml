@@ -2235,6 +2235,85 @@ components:
           type: string
         clearAssignee:
           type: boolean
+    VerificationCategory:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/VerificationKind"
+        question:
+          type: string
+        comparedRows:
+          type: integer
+          format: int64
+        compared:
+          type: string
+        findings:
+          type: integer
+          format: int64
+        truncated:
+          type: boolean
+        sample:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationFinding"
+    VerificationFinding:
+      type: object
+      properties:
+        id:
+          type: string
+        archetype:
+          type: string
+        detail:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+    VerificationKind:
+      type: string
+      enum:
+      - DISCREPANCY
+      - EXPECTED
+      - INFORMATIONAL
+    VerificationReport:
+      type: object
+      properties:
+        generatedAt:
+          $ref: "#/components/schemas/Instant"
+        verdict:
+          type: string
+        discrepancies:
+          type: integer
+          format: int64
+        scope:
+          $ref: "#/components/schemas/VerificationScope"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationCategory"
+    VerificationScope:
+      type: object
+      properties:
+        direction:
+          type: string
+        createdSinceCutover:
+          type: string
+        deCollidedSlugs:
+          type: string
+        changedSinceCutover:
+          type: string
+        deletedSinceCutover:
+          type: string
+        workBranches:
+          type: string
+        truncation:
+          type: string
+        notChecked:
+          type: array
+          items:
+            type: string
     WithdrawReleaseRequest:
       type: object
       properties:
@@ -2553,6 +2632,28 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/entities/migration-verification:
+    get:
+      summary: "Compare the four frozen legacy planning tables against the unified\
+        \ entity model, on this process's own database"
+      responses:
+        "200":
+          description: "The comparison. `verdict` is CLEAN or DISCREPANCIES; `scope`\
+            \ states what was deliberately not checked; every category carries what\
+            \ it compared, even when it found nothing."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationReport"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Migration Verification Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/entities/transition:
     post:
       requestBody:
