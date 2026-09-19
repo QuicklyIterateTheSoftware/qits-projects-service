@@ -12,9 +12,11 @@ rows and still read none of them. Then "The cutover of the two roots" below move
 descendants" moved `FeatureService` and `TaskService` onto `entity` **plus `entity_membership`,
 which is the parent/child relation of the whole planning tree from that point on**.
 
-**`DossierService` is the one service still on an old table**, and it is what holds the remaining
-mirror. See "What is left of the mirror" below, which names the exact foreign key and the exact
-reader.
+**Nothing is on an old table any more.** "The cutover of the dossier" below moved `DossierService`
+onto `entity` and `V12__owner_keys_to_entity.sql` repointed the four outward foreign keys that were
+holding the mirror, so the write-behind mirror is gone and **no class under `src/main` constructs,
+persists, updates or deletes an `Epic`, `Ticket`, `Feature` or `Task` row**. The four old tables
+have no writer and no referent; they are a frozen snapshot.
 
 ## Reserved migration versions
 
@@ -23,7 +25,8 @@ reader.
 | `V9__entity_membership.sql` | the two tables, empty | **shipped** |
 | `V10__backfill_unified.sql` | the backfill — every Epic/Ticket/Feature/Task row copied in, **ids unchanged** | **shipped** |
 | `V11` | the id settlement (the numeric id the merged model wants) | reserved |
-| `V12+` | the drop of the four old tables, once nothing reads them | reserved |
+| `V12__owner_keys_to_entity.sql` | the four outward foreign keys repointed at `entity(id)`, which retires the mirror | **shipped** |
+| `V13+` | the drop of the four old tables, still owed — nothing reads them now, but they are the verification door's comparison target until it has run clean against live data | reserved |
 
 The ids are the **same id space**: `entity.id` is `varchar(255)` exactly as `epic.id` is, because
 V10 copies each old row in under the id it already has. Every dossier page, audit entry, branch
@@ -237,8 +240,9 @@ to `Nesting` as a membership comes back `NOT_NESTABLE`.
 **`FeatureService` and `TaskService` stopped writing the legacy `feature` and `task` tables
 entirely.** No write-behind mirror was introduced, and one must not be.
 
-The mirror that exists for `epic`/`ticket` is there because live foreign keys and out-of-scope
-readers name those two tables. **Nothing on this platform foreign-keys to `feature` or to `task`**,
+The mirror that existed for `epic`/`ticket` was there because live foreign keys and out-of-scope
+readers named those two tables; "The cutover of the dossier" below is where that stopped being true
+and the mirror went. **Nothing on this platform foreign-keys to `feature` or to `task`**,
 and once `EpicService`'s three subtree walks moved onto the memberships, nothing read those rows
 either. A mirror would therefore have bought a table that is written, never read and never
 constrained — and **a half-live table is the worst of the three states**: it looks authoritative to
@@ -249,30 +253,136 @@ because no reader would notice.
 recovery path until the verification door has run clean against live data, and they are that door's
 comparison target. They simply stop growing.
 
-### What is left of the mirror, and what holds it
+## The cutover of the dossier, and the end of the mirror
 
-`EpicService.mirrorLegacyRow` and `TicketService.mirrorLegacyRow` write the old `epic` and `ticket`
-row from the entity row, after it, in every path. **Nothing in either service reads what it wrote**,
-and neither row is ever returned to a caller. They **cannot go in this commit**, and this is the
-whole of what still holds each one:
+`DossierService` reads `entity` and no old table. It made three legacy reads — the `REFINING` guard
+in `requireWritable`, and two `findByIdOptional` existence checks in `requireOwner` — and all three
+are now one `WorkEntityRepository` lookup **by id and archetype**, which is `EpicService.entity` and
+`TicketService.entity` applied a third time and for their reason: the four kinds share one id space,
+so a row of the wrong archetype is a 404. Both refusal messages are byte-identical (`Epic not found:
+<id>`, `Ticket not found: <id>`). The guard is
+`EpicLifecycle.requireRefining(WorkEntityProjections.epic(row))` — the idiom `EpicService`,
+`FeatureService` and `TaskService` already use, and **no second signature was added to
+`EpicLifecycle`**: one place, one condition.
 
-| mirror | what holds it |
-| --- | --- |
-| `epic` | `dossier_page.epic_id` — a live FK under `ck_dossier_page_owner` (epics V8) — and `DossierService`, which reads the legacy `Epic` row **twice**: to resolve a page's owner, and for the `REFINING` guard it applies through `EpicLifecycle` |
-| `ticket` | `fk_ticket_comment_ticket` — a live FK — and `TicketService` itself, which still writes `TicketComment` rows; plus `dossier_page.ticket_id` and the same `DossierService` owner read |
+With that reader gone, `EpicService.mirrorLegacyRow`, `TicketService.mirrorLegacyRow` and both
+`deleteLegacyRow`s are **deleted**, along with the two `EpicRepository`/`TicketRepository`
+injections. `EpicRepository`, `TicketRepository`, `FeatureRepository` and `TaskRepository` are still
+on disk — the cleanup feature deletes them — with **zero injections in `src/main`**.
 
-**Two of the epic mirror's three original reasons have evaporated.** `fk_feature_epic` no longer
-points at anything anybody writes, and `FeatureService`/`TaskService` have stopped reading the legacy
-epic row for the phase guard — they read the `entity` row's status, like everything else. The
-cascade that FK provides is still used, once: `EpicService.deleteLegacyRow` removes the legacy `epic`
-row and `fk_feature_epic on delete cascade` takes the legacy features (and their tasks) V10 left
-behind with it.
+### The decision: repoint the keys, do not keep the mirror
 
-**Handed to the next task, in writing:** what remains is the **dossier, the MCP tools and the audit
-vocabulary**. Moving `DossierService` onto `entity` — resolving a page's owner and its `REFINING`
-guard from the merged row — retires the epic mirror; moving `TicketComment` retires the ticket one.
-Neither is reachable from a task about feature and task storage, and neither should be attempted
-without the dossier's two owner columns moving in the same change.
+Four live foreign keys pointed at the two tables the mirror existed to keep populated. Two answers
+were available:
+
+- **(a) keep the mirror.** Go on writing `epic` and `ticket` behind every entity write so the
+  constraints resolve.
+- **(b) repoint the keys at `entity(id)`.** Taken, as `V12__owner_keys_to_entity.sql`.
+
+| column | dropped | replaced by |
+| --- | --- | --- |
+| `dossier_page.epic_id` | `dossier_page_epic_id_fkey` (postgres-derived; V5 wrote it inline) | `fk_dossier_page_owner_epic` |
+| `dossier_page.ticket_id` | `dossier_page_ticket_id_fkey` (postgres-derived; V8 wrote it inline) | `fk_dossier_page_owner_ticket` |
+| `dossier_asset.epic_id` | `dossier_asset_epic_id_fkey` (postgres-derived; V6 wrote it inline) | `fk_dossier_asset_epic` |
+| `ticketcomment.ticket_id` | `fk_ticket_comment_ticket` (named, V4) | `fk_ticket_comment_ticket` — same name, same id, one table to the left |
+
+Every replacement keeps `on delete cascade` and every one is **named**, so the next change is an
+ordinary drop rather than a second round of guessing what postgres derived. The three derived names
+were read off V5, V6 and V8 before the drops were written — V4 and V5 both had to do exactly this
+dance for `auditentry_entity_type_check`, and their headers are the precedent. The migration changes
+nothing else: no column renamed, no column dropped, `ck_dossier_page_owner` untouched, the four old
+tables untouched, not one row written.
+
+**It is safe because the ids are one id space.** V10 copied every epic, ticket, feature and task
+into `entity` under the id it already had, so every value in these four columns already resolves in
+`entity`: the `add constraint` **validates** against rows that are all present rather than failing
+on the first orphan, with no backfill and no `not valid` escape hatch.
+
+**(a) was refused on the descendants' own terms.** Keeping the mirror means the old tables still
+have a writer purely to satisfy a constraint, and a half-live table written by nobody's intent is
+exactly the state "There is NO feature/task mirror, and that is a decision" already rejected: it
+looks authoritative to anyone who opens it, it drifts the first time a path forgets to write it, and
+the drift is invisible because no reader would notice. Repointing leaves the old four with **no
+writer and no referent**, which is a cleaner thing for the verification door to compare.
+
+### What this means for the verification door — including the half it must not assume
+
+The door (epic feature "Migration verification, against live data") compares the old tables against
+the unified model and checks that dossier pages, dossier assets, audit entries, ticket comments and
+work branches **still resolve to an entity**. V12 changes no column on any of the four old tables
+and copies nothing; it only changes which table those outward references are *constrained* against
+— and the direction it constrains them in is precisely the one the door asserts, so that check is
+now enforced by the schema rather than merely verified by it.
+
+**What the door must not assume is the reverse direction — "no entity has an id no old row had".**
+That has been impossible since `FeatureService`/`TaskService` stopped writing legacy rows, and with
+the mirror gone it is now equally impossible for epics and tickets. **The old four tables are a
+frozen snapshot of the estate as V10 found it, not a live mirror.** The comparison is forward and
+only forward: every old row resolves to an entity, or to the DELETE audit row that says it was
+removed through the new model. A door written the other way round would report every row created
+since the cutover as a defect.
+
+### The narrowing the foreign key gives up, stated rather than hidden
+
+`dossier_page.epic_id` used to be constrained to an actual epic, and `ticket_id` to an actual
+ticket. Against `entity(id)` each is constrained to a row of **any** archetype — the database can no
+longer tell an epic's id from a ticket's, because they are one table.
+
+Two things stand where that stood. `ck_dossier_page_owner` still enforces exactly-one-owner, so the
+shape of the row is unchanged; and `DossierService` refuses a row of the wrong archetype with a 404
+**before it writes**. So the rule is enforced one layer up, which is where `ck_entity_status` already
+put the equivalent question: the constraint spells the vocabulary and `control/Archetypes` spells the
+rule.
+
+### The cascade is preserved and its source moves
+
+Deleting an epic used to take its dossier pages and assets with it through the legacy row's cascade,
+fired by the mirror's own delete. It takes them through the **`entity` row's** cascade now — the row
+the service actually deletes — so the safety net hangs off the real write instead of off a
+bookkeeping one. Same for a ticket and its comments; `TicketService` still deletes comments
+in-service first so each gets its own DELETE audit row, and the cascade stays what V4 called it.
+
+`TicketComment` rows are still written by `TicketService` and still carry `ticketId`, holding the
+same string they always did. Only the foreign key under them moved.
+
+### What this task deliberately did NOT touch, and why
+
+Three things were checked and left exactly as they are. Each is recorded because "not mentioned" and
+"checked and correct" are indistinguishable to a later reader, and the second is the truth here.
+
+- **`AuditService`, `AuditEntityType` and `ck_audit_entity_type`.** `AuditService` reads and writes
+  only `auditentry` and touches no legacy table, so it needed no change; and the vocabulary is
+  deliberately left as it is because **the verification door compares old against new and needs the
+  old words to compare with**. Renaming or widening it here would move the door's own yardstick.
+- **`control/WorkBranches`.** A pure derivation over slugs and the parent ids the projections carry
+  — no repository, no table, nothing to move. **`WorkBranchesTest` is the oracle**: it constructs
+  `Epic`/`Feature`/`Task`/`Ticket` directly and asserts against those signatures, and its assertions
+  are untouched, which is what says the branch names an agent is given did not move by one byte.
+- **The whole service-side dispatch and phase-prompt path** — `TicketUnattendedGateTickets`,
+  `TicketPhasePrompts`, `TicketPhaseAdvance`, `TicketDispatchController`, `EpicDispatchController`,
+  `TicketWorkspaces`, `DispatchedWorkspaces`, `EpicResolutions`, `RefinementService`,
+  `DossierFigures`, `EpicMcpTools`, `TicketMcpTools`, `DossierMcpTools`. Every one of them goes
+  through `EpicService`/`TicketService`/`FeatureService`/`TaskService`/`DossierService` and passes
+  projections around; **none touches a legacy repository or a Panache static call**. The campaign
+  epic drives that path automatically later, so it matters that a reader can see it was checked
+  rather than missed.
+
+`DossierAssetService` is the fourth: it touches only `dossier_asset`/`dossier_page_asset` and needed
+no change, though `dossier_asset.epic_id` is one of the four keys V12 repoints.
+
+### The one test assertion that had to move
+
+`EpicWriteCutoverTest` counted what a create left behind through `EpicRepository.listByProject` —
+which answered only because the mirror wrote a legacy row behind every create. With the mirror gone
+that table has no writer at all and the same query answers **zero** for every case in the class,
+which is a green-looking nothing rather than a failure. So the **subject** moved to
+`WorkEntityRepository.listByProjectAndArchetype(…, EPIC)` and the claim did not: exactly one epic
+row, counted in the table the create actually writes. Every other assertion in the module is
+untouched — the dossier's six suites included, which is what steered the cutover.
+
+`EpicsTestSupport.wipe()` needed no reordering: the dossier pages, the dossier assets and the ticket
+comments already went before `workEntityRepository.deleteAll()`, which is what the repointed keys
+now require. Its javadoc says so rather than describing the FK graph it used to have.
 
 ### An epic and a ticket now share one slug scope
 
@@ -348,6 +458,14 @@ equivalent:
 surfaces above rely on, and moving them would make the disagreement disappear rather than decide it.
 **The transition-API task inherits this**, because it is the first one that judges a whole intended
 post-state through the registry and therefore the first that has to say which of the two is true.
+
+**The dossier cutover looked at it and could not close it**, which is worth writing down so the next
+reader does not re-derive the same dead end: neither answer is reachable without changing a test's
+assertions — making the column `not null` turns an accepted write into a refusal (`TicketServiceTest`
+and `TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields` assert that clearing works), and
+demoting `IMPETUS` to merely *permitted* changes `ArchetypesTest`, which asserts the required set and
+the missing-required violation outright. Moving a foreign key gives no new leverage on either, so the
+predicate stands and the transition-API task still inherits the question.
 
 ## The nesting rule
 
@@ -588,13 +706,15 @@ with the listing.
 
 | | |
 | --- | --- |
-| migrations | `epics/src/main/resources/db/epics/migration/V9__entity_membership.sql`, `V10__backfill_unified.sql` |
+| migrations | `epics/src/main/resources/db/epics/migration/V9__entity_membership.sql`, `V10__backfill_unified.sql`, `V12__owner_keys_to_entity.sql` |
 | entities | `epics/…/entity/Archetype.java`, `WorkEntity.java`, `EntityMembership.java` |
 | repositories | `epics/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
 | the registry | `epics/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
-| the four cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `WorkEntityProjections.java` |
+| the five cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java`, `WorkEntityProjections.java` |
+| the lifecycle guards | `epics/…/control/EpicLifecycle.java` — every caller now hands it a projection of the `entity` row |
+| the legacy repositories | `epics/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` — **zero injections in `src/main`**; on disk until the cleanup feature deletes them, and used only by `EpicsTestSupport.wipe()` |
 | the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should

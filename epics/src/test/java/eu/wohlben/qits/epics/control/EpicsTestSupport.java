@@ -21,10 +21,15 @@ import org.junit.jupiter.api.BeforeEach;
  * spawns as a child process (see {@code testdb/EmbeddedPg} and
  * src/test/resources/application.properties) — no docker, no auth variant.
  *
- * <p>The order is the FK graph read leaves-first, and the two roots are independent: comments
- * before tickets, tasks before features before epics, and the membership edges before the merged
- * {@code entity} rows they point at. A new table wiped in the wrong place fails with a constraint
- * violation rather than a wrong answer, which is the failure worth having.
+ * <p>The order is the FK graph read leaves-first, and since epics V12 that graph hangs off ONE root:
+ * the dossier pages, the dossier assets and the ticket comments are foreign-keyed to {@code entity}
+ * now, not to the legacy {@code epic}/{@code ticket} tables, so all three have to go before {@code
+ * workEntityRepository} — which they already did and still do, so no line moved. The membership
+ * edges go before the merged rows they point at, for the same reason. The four legacy tables are
+ * wiped too and are now unconstrained in both directions: nothing writes them and nothing points at
+ * them, so their position in this list is the only thing about them that is arbitrary. A new table
+ * wiped in the wrong place fails with a constraint violation rather than a wrong answer, which is
+ * the failure worth having.
  */
 public abstract class EpicsTestSupport {
 

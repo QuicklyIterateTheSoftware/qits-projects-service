@@ -12,7 +12,6 @@ import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.ConflictException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.epics.persistence.TicketCommentRepository;
-import eu.wohlben.qits.epics.persistence.TicketRepository;
 import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -44,23 +43,32 @@ import java.util.stream.Collectors;
  * mirror-image reason: a severed connection would draw a project with no tickets, or a ticket whose
  * discussion never happened, and both read as an answer.
  *
- * <h2>The merged table is the source of truth, and the old one is a mirror</h2>
+ * <h2>The merged table is the source of truth, and there is no mirror left</h2>
  *
  * <p>{@code entity} answers every read and every rule here, and a caller gets back a {@link
  * WorkEntityProjections detached projection} of the row shaped as a {@link Ticket}, so the mapper,
- * the DTO and the controllers above are untouched. The legacy {@code ticket} row is still written,
- * behind, and never read back — {@link #mirrorLegacyRow} says why it cannot go yet.
+ * the DTO and the controllers above are untouched.
  *
- * <p><b>Comments stay on {@code TicketComment}</b>: {@code fk_ticket_comment_ticket} names the old
- * table, and a comment is not an archetype of the merged model at all.
+ * <p><b>The legacy {@code ticket} row is not written at all any more.</b> The write-behind mirror
+ * was held by two live foreign keys and one reader, and epics V12 and {@code DossierService} have
+ * answered all three: {@code fk_ticket_comment_ticket}, {@code dossier_page.ticket_id} and {@code
+ * dossier_asset.epic_id} name {@code entity(id)} now, and the dossier resolves a page's owner from
+ * the merged row. Keeping the mirror would have left a table written by nobody's intent purely to
+ * satisfy a constraint — the half-live state {@code docs/unified-entity-model.md} already refused
+ * for {@code feature}/{@code task}. So {@code ticket} has <b>no writer and no referent</b>: a frozen
+ * snapshot of what V10 found, which is what the verification door compares against.
+ *
+ * <p><b>Comments stay on {@code TicketComment} and nothing about them moved but the key under
+ * them.</b> This class still writes those rows, they still carry {@code ticket_id}, and the column
+ * still holds the ticket's id — which is the {@code entity} row's id, because the backfill copied
+ * every row in under the id it already had. Only the foreign key's referent changed. A comment is
+ * not an archetype of the merged model at all, and the in-service cascade delete stays exactly where
+ * it was so every removed remark keeps getting its own DELETE audit row.
  */
 @ApplicationScoped
 public class TicketService {
 
   @Inject WorkEntityRepository entities;
-
-  /** The mirror's table, and nothing else — see {@link #mirrorLegacyRow}. */
-  @Inject TicketRepository ticketRepository;
 
   @Inject TicketCommentRepository commentRepository;
 
@@ -157,7 +165,6 @@ public class TicketService {
           row.description = description;
           requireArchetypeValid(row);
           entities.persist(row);
-          mirrorLegacyRow(row);
           Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
@@ -233,7 +240,6 @@ public class TicketService {
             row.assignee = blankToNull(assignee);
           }
           requireArchetypeValid(row, TicketService::theImpetusTheColumnStillAllowsToBeAbsent);
-          mirrorLegacyRow(row);
           Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
@@ -288,7 +294,6 @@ public class TicketService {
           TicketLifecycle.requireTransition(TicketStatus.valueOf(row.status), to);
           row.status = to.name();
           requireArchetypeValid(row, TicketService::theImpetusTheColumnStillAllowsToBeAbsent);
-          mirrorLegacyRow(row);
           Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
@@ -324,7 +329,6 @@ public class TicketService {
                 comment);
           }
           entities.delete(row);
-          deleteLegacyRow(id);
           auditService.record(
               AuditEntityType.TICKET, id, id, AuditOperation.DELETE, changedBy, ticket);
         });
@@ -411,51 +415,6 @@ public class TicketService {
               changedBy,
               comment);
         });
-  }
-
-  /**
-   * <b>The legacy {@code ticket} row, written from the entity row and never read back here.</b>
-   *
-   * <p>A mirror, not a second source of truth, and it exists for the reasons {@code
-   * EpicService.mirrorLegacyRow} gives about the epic half. <b>Two live foreign keys and one reader
-   * hold it, and none of them moved when the feature and task services did:</b> {@code
-   * fk_ticket_comment_ticket} (and this class still writes {@link TicketComment} rows, which are not
-   * an archetype of the merged model at all), {@code dossier_page.ticket_id} under {@code
-   * ck_dossier_page_owner}, and {@code DossierService} reading the row to resolve a page's owner.
-   * Dropping the write would break the comment thread and the ticket dossier on the first create.
-   *
-   * <p><b>The entity row is written first and this second</b>, everywhere, and nothing in this class
-   * reads what it wrote. It goes in the task that moves the dossier and the comments onto the merged
-   * table, together with the table itself.
-   */
-  private void mirrorLegacyRow(WorkEntity source) {
-    Ticket row = ticketRepository.findById(source.id);
-    boolean fresh = row == null;
-    if (fresh) {
-      row = new Ticket();
-      row.id = source.id;
-      // @Column(updatable = false) on both sides — settable on the insert alone.
-      row.slug = source.slug;
-      row.createdBy = source.createdBy;
-    }
-    row.projectId = source.projectId;
-    row.title = source.title;
-    row.type = source.ticketType;
-    row.status = TicketStatus.valueOf(source.status);
-    row.assignee = source.assignee;
-    row.impetus = source.impetus;
-    row.description = source.description;
-    if (fresh) {
-      ticketRepository.persist(row);
-    }
-  }
-
-  /** The mirror's removal — see {@link #mirrorLegacyRow} for why there is one at all. */
-  private void deleteLegacyRow(String id) {
-    Ticket row = ticketRepository.findById(id);
-    if (row != null) {
-      ticketRepository.delete(row);
-    }
   }
 
   /**

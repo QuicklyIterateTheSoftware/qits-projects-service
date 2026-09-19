@@ -28,9 +28,10 @@ import eu.wohlben.qits.epics.entity.WorkEntity;
  * makes an N+1 easy on.
  *
  * <p><b>Every value a caller sees comes from the {@code entity} row</b>, timestamps included. The
- * legacy {@code epic}/{@code ticket} row is a write-behind mirror and is never read back here — see
- * {@code EpicService.mirrorLegacyRow} for why it still exists at all. A projection is therefore only
- * ever taken <em>after</em> an explicit flush, because {@code @CreationTimestamp} and
+ * four legacy tables are not read here and are not written anywhere any more — the {@code
+ * epic}/{@code ticket} mirror went when the dossier's foreign keys were repointed at {@code entity}
+ * (epics V12). A projection is only ever taken <em>after</em> an explicit flush, because {@code
+ * @CreationTimestamp} and
  * {@code @UpdateTimestamp} are populated at flush and a caller is promised a {@code createdAt} the
  * moment a create returns.
  *

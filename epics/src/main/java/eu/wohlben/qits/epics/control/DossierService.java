@@ -1,17 +1,18 @@
 package eu.wohlben.qits.epics.control;
 
 import eu.wohlben.qits.epics.dto.DossierPageDto;
+import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
 import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
 import eu.wohlben.qits.epics.entity.Epic;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.epics.error.StaleWriteException;
 import eu.wohlben.qits.epics.persistence.DossierPageRepository;
-import eu.wohlben.qits.epics.persistence.EpicRepository;
-import eu.wohlben.qits.epics.persistence.TicketRepository;
+import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
@@ -59,15 +60,39 @@ import java.util.UUID;
  * ticket-owned page that is the ticket's id, which needs no schema change: {@code auditentry.epic_id}
  * is the subtree key rather than literally an epic (V4's stated reading — a {@code TICKET} row is
  * its own root), so "the whole history of this ticket" keeps including what its pages did.
+ *
+ * <h2>The owner is a row of the merged table, whichever kind it is</h2>
+ *
+ * <p><b>This class reads {@code entity} and no old table.</b> Both owner resolutions — the one
+ * behind every write and the public {@link #requireOwner} the read doors call — are one {@link
+ * WorkEntityRepository} lookup by id <b>and archetype</b>, which is {@code EpicService.entity} and
+ * {@code TicketService.entity} applied a third time and for their reason: the four kinds share one
+ * table and one id space now, so "no epic with this id" has to mean "no EPIC row with this id"
+ * rather than "no row at all", and a ticket id offered to an epic route is a 404 rather than a page
+ * written under the wrong owner. Both refusals are the sentences they always were.
+ *
+ * <p>The {@code REFINING} guard reads that same row, projected — {@code
+ * EpicLifecycle.requireRefining(WorkEntityProjections.epic(row))}, exactly as {@code EpicService},
+ * {@code FeatureService} and {@code TaskService} already call it. The guard keeps its one signature:
+ * a second one taking a {@code WorkEntity} would be the freeze condition written in two places, and
+ * there is only ever one condition.
+ *
+ * <p><b>What that retired is the write-behind mirror.</b> {@code EpicService} and {@code
+ * TicketService} used to keep the legacy {@code epic} and {@code ticket} rows populated because this
+ * class read them and because {@code dossier_page}'s two owner keys pointed at them. Both halves are
+ * gone: epics V12 repoints {@code dossier_page.epic_id}, {@code dossier_page.ticket_id}, {@code
+ * dossier_asset.epic_id} and {@code fk_ticket_comment_ticket} at {@code entity(id)}, and this class
+ * reads the merged row. The <b>archetype narrowing the foreign key gives up</b> is enforced here
+ * instead: against {@code entity(id)} a page's owner column is constrained to any archetype, and it
+ * is this resolution that refuses a row of the wrong one before anything is written.
  */
 @ApplicationScoped
 public class DossierService {
 
   @Inject DossierPageRepository pages;
 
-  @Inject EpicRepository epics;
-
-  @Inject TicketRepository tickets;
+  /** The merged planning rows — an owner is a row of this table, epic or ticket alike. */
+  @Inject WorkEntityRepository entities;
 
   @Inject AuditService auditService;
 
@@ -260,15 +285,15 @@ public class DossierService {
     if (owner == null) {
       throw new NotFoundException("Dossier owner not found: null");
     }
+    WorkEntity row = entity(owner);
     if (owner.isEpic()) {
       // The freeze, and only here. A ticket owner is resolved and then left alone.
-      EpicLifecycle.requireRefining(
-          epics
-              .findByIdOptional(owner.id())
-              .orElseThrow(() -> new NotFoundException("Epic not found: " + owner.id())));
-      return;
+      //
+      // The phase is read off the entity row, projected only so the rule keeps the one signature
+      // its three other callers use — EpicService.update, FeatureService and TaskService all reach
+      // it exactly this way.
+      EpicLifecycle.requireRefining(WorkEntityProjections.epic(row));
     }
-    requireOwner(owner);
   }
 
   /**
@@ -280,15 +305,31 @@ public class DossierService {
     if (owner == null) {
       throw new NotFoundException("Dossier owner not found: null");
     }
-    if (owner.isEpic()) {
-      epics
-          .findByIdOptional(owner.id())
-          .orElseThrow(() -> new NotFoundException("Epic not found: " + owner.id()));
-      return;
+    entity(owner);
+  }
+
+  /**
+   * <b>The owner's row in the merged table, or a 404 — and a row of the wrong archetype is a 404
+   * too.</b>
+   *
+   * <p>The archetype half is not belt-and-braces. The four kinds are one table and one id space
+   * now, so a ticket's id resolves perfectly well through an epic route's {@code DossierOwner} and
+   * would, without this, write a page whose {@code epic_id} names a ticket — which the repointed
+   * foreign key can no longer refuse, since it constrains the column to {@code entity(id)} and not
+   * to an epic. {@code EpicService.entity} and {@code TicketService.entity} make the same check for
+   * the same reason; this is the third of the three.
+   *
+   * <p>Both refusals are byte-identical to what the legacy reads answered, because the id in them
+   * is the id the caller supplied and nothing else about the question changed.
+   */
+  private WorkEntity entity(DossierOwner owner) {
+    Archetype archetype = owner.isEpic() ? Archetype.EPIC : Archetype.TICKET;
+    WorkEntity row = entities.findById(owner.id());
+    if (row == null || row.archetype != archetype) {
+      throw new NotFoundException(
+          (owner.isEpic() ? "Epic not found: " : "Ticket not found: ") + owner.id());
     }
-    tickets
-        .findByIdOptional(owner.id())
-        .orElseThrow(() -> new NotFoundException("Ticket not found: " + owner.id()));
+    return row;
   }
 
   /**

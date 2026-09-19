@@ -11,7 +11,6 @@ import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.ConflictException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.epics.persistence.EntityMembershipRepository;
-import eu.wohlben.qits.epics.persistence.EpicRepository;
 import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -38,7 +37,7 @@ import java.util.stream.Collectors;
  * way the status moves, and {@link EpicLifecycle} is where both the legal moves and the freeze
  * rules live.
  *
- * <h2>The merged table is the source of truth, and the old one is a mirror</h2>
+ * <h2>The merged table is the source of truth, and there is no mirror left</h2>
  *
  * <p><b>Every read and every rule here is answered from {@code entity}.</b> The status a transition
  * is judged against, the slugs a new one is minted around, the listing the board draws and the
@@ -46,9 +45,22 @@ import java.util.stream.Collectors;
  * back is a {@link WorkEntityProjections detached projection} of it, shaped as an {@link Epic} so
  * the mappers, the DTO and the five controllers above are untouched.
  *
- * <p><b>The legacy {@code epic} row is still written, as a write-behind mirror</b>, and
- * {@link #mirrorLegacyRow} is the whole of it. Nothing here reads it; see that method for the one
- * foreign key and the one reader that are still holding it, and for what takes it away.
+ * <p><b>The legacy {@code epic} row is not written at all any more, and the write-behind mirror that
+ * kept it populated is gone.</b> It existed for two things and both have been answered rather than
+ * dropped. The foreign keys that named the old table — {@code dossier_page.epic_id} and {@code
+ * dossier_asset.epic_id}, under {@code ck_dossier_page_owner} — point at {@code entity(id)} from
+ * epics V12, so the cascade a delete leans on now hangs off the row this class actually removes;
+ * and {@code DossierService}, the one reader, resolves a page's owner and its {@code REFINING} guard
+ * from the merged row.
+ *
+ * <p>Keeping the mirror was the alternative and it was refused on the descendants' own terms. A
+ * table written by nobody's intent, purely to satisfy a constraint, is the half-live state {@code
+ * docs/unified-entity-model.md} already rejected for {@code feature}/{@code task} ("There is NO
+ * feature/task mirror, and that is a decision"): it looks authoritative to anyone who opens it, it
+ * drifts the first time a path forgets to write it, and no reader would notice. With the write gone,
+ * {@code epic} has <b>no writer and no referent</b> — a frozen snapshot of the estate as V10 found
+ * it, which is a cleaner thing for the verification door to compare against than a mirror that was
+ * still moving.
  *
  * <h2>The subtree walks go through {@code entity_membership}</h2>
  *
@@ -68,9 +80,6 @@ public class EpicService {
   @Inject WorkEntityRepository entities;
 
   @Inject EntityMembershipRepository memberships;
-
-  /** The mirror's table, and nothing else — see {@link #mirrorLegacyRow}. */
-  @Inject EpicRepository epicRepository;
 
   @Inject AuditService auditService;
 
@@ -178,7 +187,6 @@ public class EpicService {
           row.title = title;
           row.description = description;
           requireArchetypeValid(row);
-          mirrorLegacyRow(row);
           Epic epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
@@ -221,7 +229,6 @@ public class EpicService {
             row.supersededByEntityId = successor.id;
           }
           requireArchetypeValid(row);
-          mirrorLegacyRow(row);
           Epic epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
@@ -280,7 +287,6 @@ public class EpicService {
           // scope, and the audit log outlives it.
           deleteSubtree(id, changedBy);
           entities.delete(row);
-          deleteLegacyRow(id);
           auditService.record(AuditEntityType.EPIC, id, id, AuditOperation.DELETE, changedBy, epic);
         });
   }
@@ -298,9 +304,12 @@ public class EpicService {
    * from each of them anyway. The walk terminates because the nesting rule makes a membership cycle
    * impossible, and {@code doomed} is a set so a malformed edge could not make it loop either.
    *
-   * <p>The legacy {@code feature}/{@code task} rows V10 left behind are not touched here and do not
-   * need to be: {@link #deleteLegacyRow} removes the legacy {@code epic} row, and {@code
-   * fk_feature_epic on delete cascade} takes its features and their tasks with it.
+   * <p><b>No legacy row is touched here, and that is the whole of the old tables' new state.</b>
+   * The legacy {@code epic}, {@code feature} and {@code task} rows V10 left behind stay where they
+   * are: nothing writes them, nothing points at them, and they are the frozen snapshot the
+   * verification door compares against. A delete is therefore recorded rather than mirrored — the
+   * DELETE audit rows written above are what say the row went, which is the direction that door
+   * reads in.
    */
   private void deleteSubtree(String rootId, String changedBy) {
     Collection<String> level = List.of(rootId);
@@ -363,7 +372,6 @@ public class EpicService {
     row.status = EpicStatus.REFINING.name();
     requireArchetypeValid(row);
     entities.persist(row);
-    mirrorLegacyRow(row);
     return row;
   }
 
@@ -536,54 +544,6 @@ public class EpicService {
       indexed.put(row.id, row);
     }
     return indexed;
-  }
-
-  /**
-   * <b>The legacy {@code epic} row, written from the entity row and never read back here.</b>
-   *
-   * <p>It is a mirror and not a second source of truth. <b>What still holds it is now ONE foreign
-   * key and ONE reader, and they are both the dossier's:</b> {@code dossier_page.epic_id} is a live
-   * foreign key (epics V8, under {@code ck_dossier_page_owner}), and {@code DossierService} reads
-   * the legacy {@link Epic} row twice — to resolve a page's owner, and to apply the {@code REFINING}
-   * guard through {@link EpicLifecycle}. Dropping the write breaks a dossier create on the first
-   * epic written after it.
-   *
-   * <p><b>Two of the three original reasons have evaporated.</b> {@code fk_feature_epic} no longer
-   * points at anything this service writes, because {@code FeatureService} has stopped writing the
-   * legacy {@code feature} table entirely; and {@code FeatureService} and {@code TaskService} have
-   * stopped reading this row for the phase guard — they read the {@code entity} row's status, like
-   * everything else. The cascade that removal leans on is still real and is still used:
-   * {@link #deleteLegacyRow} takes the legacy features and tasks V10 left behind with it.
-   *
-   * <p><b>So the order is fixed: the entity row is written first and this second</b>, everywhere,
-   * and nothing in this class ever reads what it wrote. It goes with the dossier, in the task that
-   * moves {@code DossierService} and the audit vocabulary onto the merged model.
-   */
-  private void mirrorLegacyRow(WorkEntity source) {
-    Epic row = epicRepository.findById(source.id);
-    boolean fresh = row == null;
-    if (fresh) {
-      row = new Epic();
-      row.id = source.id;
-      // @Column(updatable = false) on both sides — settable on the insert alone.
-      row.slug = source.slug;
-    }
-    row.projectId = source.projectId;
-    row.title = source.title;
-    row.description = source.description;
-    row.status = EpicStatus.valueOf(source.status);
-    row.supersededByEpicId = source.supersededByEntityId;
-    if (fresh) {
-      epicRepository.persist(row);
-    }
-  }
-
-  /** The mirror's removal — see {@link #mirrorLegacyRow} for why there is one at all. */
-  private void deleteLegacyRow(String id) {
-    Epic row = epicRepository.findById(id);
-    if (row != null) {
-      epicRepository.delete(row);
-    }
   }
 
   /**
