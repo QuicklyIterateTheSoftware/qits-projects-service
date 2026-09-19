@@ -216,6 +216,49 @@ HTTP server they never wanted, because vertx-http rides in with the jar. That is
 `quarkus.http.test-port=0` is doing in two more properties files; without it the suites die on
 `Port already bound: 8081`, which is the platform's own npm registry and not a code failure.
 
+**`CausationStamp` is an entity LISTENER, and two persistence units resolving one listener race.**
+That third unit is what makes it bite here. `JPAConfig.startAll()` gives **every** persistence unit
+its own bare thread and joins only afterwards, and every unit's registry resolves the same
+`@Singleton` `QuarkusArcBeanContainer` — whose Hibernate superclass `AbstractCdiBeanContainer` keeps
+its `beanCache` in a plain `HashMap` and its `registeredBeans` in a plain `ArrayList`, with nothing
+synchronized anywhere in the class. `@EntityListeners` is resolved through that container (a
+`ListenerCallback` calls `registry.getBean`), and entities in **both** `projects` and `epics` carry
+`@EntityListeners(CausationStamp.class)` — so two threads hit `registeredBeans.add` on a still-empty
+list and one writes index 1 of a length-0 array. The gate then fails at boot with `Failed to start
+quarkus` / `Unable to build Hibernate SessionFactory` / `ArrayIndexOutOfBoundsException: Index 1 out
+of bounds for length 0` at `AbstractCdiBeanContainer.createBean` — **measured at 2 runs in 7**, on
+either unit, in a different test class each time. Adding an entity to either unit widens it; commit
+2c6b3c0 (two more `epics` entities) is what made it loud. **A wandering boot failure in an unrelated
+`@TestProfile` is this, not a flaky test — do not re-run past it and do not chase the test it
+names.**
+
+`startup/CausationStampWarmup` is the fix and its javadoc carries the full reasoning. It resolves
+the listener once, under its own lock, on each unit's startup thread before that thread builds its
+`SessionFactory`, after which every later lookup is a cache hit and `registeredBeans.add` never runs
+a second time. Four things about it are rules:
+
+- **There is no configuration for this.** `QuarkusManagedBeanRegistryInitiator` never reads its
+  settings map, so no property gives a unit its own bean container or serialises the threads; and no
+  ordinary lifecycle hook is early enough, because the step that calls `startAll()` *produces*
+  `ServiceStartBuildItem` and `StartupEvent` is fired only after all of those. The seam used is the
+  eager `@PersistenceUnitExtension` `StatementInspector` lookup in
+  `FastBootEntityManagerFactoryBuilder.populate()`, which is the one application-reachable point on
+  the unit's own thread ahead of the SessionFactory. The `StatementInspector` is a carrier; it
+  inspects nothing.
+- **One bean per unit — a repeated `@PersistenceUnitExtension` resolves for NONE of them.** The
+  annotation is `@Repeatable` and stacking three on one class is accepted, removes nothing and runs
+  nothing. It was measured here, and the suite was **green** while the warm-up never executed once.
+- **So the test asserts the warm-up RAN, not that it is declared.** `CausationStampWarmupTest`
+  compares the units that actually reached it against the `quarkus.hibernate-orm.*.datasource` keys,
+  so a new persistence unit fails the build until it is warmed.
+- **Adding an entity to a unit needs nothing; adding a unit does.** The listener annotation is
+  unchanged on all 26 entities and stays that way — the shared rule
+  `CausationRowRules.everyCausedRowAttachesTheStamp` requires it declared on each `CausedRow` entity
+  and `@EntityListeners` is not `@Inherited`, which is exactly why the callback could not simply be
+  moved onto a `@MappedSuperclass` (where it would compile to an `EntityCallback` and never touch the
+  bean container at all). That is the better fix and it belongs in the eventstream jar, for the whole
+  estate, together with the rule that pins it.
+
 - **`ScmBackupTriggerListener` is a `QitsDurableEventListener`, and durable is the point.** It
   replaced `api/GitHostEventController`, a fire-and-forget `POST /projects/api/events/post-receive`
   the git host made from inside somebody's `git push` — so a push landing while this process was
