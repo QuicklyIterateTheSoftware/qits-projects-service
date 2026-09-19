@@ -23,6 +23,11 @@ import java.util.Set;
  * of answer as asking for one that is not reachable), while an absent target is a <b>400</b> — a
  * malformed request rather than a refused move. A {@code type} that names nothing is a 400 instead,
  * and that is not an inconsistency: a type is a field being written, not a move being requested.
+ *
+ * <p><b>Where the status is stored has moved and nothing here has.</b> {@code TicketService} keeps
+ * it on the merged {@code entity} row, as the enum's own {@code name()}, and reads it back into
+ * {@link TicketStatus} before asking anything of this class — so the adjacency graph, the refusals
+ * and their wording are byte for byte what they were.
  */
 final class TicketLifecycle {
 

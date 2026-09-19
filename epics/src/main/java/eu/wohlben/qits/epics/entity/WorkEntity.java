@@ -23,10 +23,19 @@ import org.hibernate.annotations.UpdateTimestamp;
  * audit vocabularies, and a feature that could never be promoted to an epic because promotion would
  * have meant moving a row between tables while every id pointing at it stayed behind.
  *
- * <p><b>Nothing reads this yet.</b> The four old entities are untouched and are still what answers
- * every route; this class and its table exist so a later task can backfill into them. The ids are
- * the <em>same</em> id space — V10 copies each old row in under the id it already has — because
- * every dossier page, audit entry, branch name and URL on the platform names one of those strings.
+ * <p><b>The two roots are read and written here now.</b> {@code EpicService} and {@code
+ * TicketService} answer every read and judge every rule against the {@link Archetype#EPIC} and
+ * {@link Archetype#TICKET} rows of this table, and hand their callers a detached projection shaped
+ * as an {@link Epic} or a {@link Ticket} so that the mappers, the DTOs and the controllers above are
+ * untouched. Those two old rows are still <em>written</em>, behind, because three foreign keys and
+ * three services that are not part of that change still name them — see {@code
+ * EpicService.mirrorLegacyRow} — and nothing reads them back. {@link Feature} and {@link Task} have
+ * not moved at all yet: they are still written only to their own tables, so a feature created after
+ * that change has no row here.
+ *
+ * <p>The ids are the <em>same</em> id space — V10 copies each old row in under the id it already has
+ * — because every dossier page, audit entry, branch name and URL on the platform names one of those
+ * strings.
  *
  * <p><b>Why it is not called {@code Entity}.</b> {@code jakarta.persistence.Entity} owns that word.
  * A class named {@code Entity} would have to import its own annotation under an alias in every file

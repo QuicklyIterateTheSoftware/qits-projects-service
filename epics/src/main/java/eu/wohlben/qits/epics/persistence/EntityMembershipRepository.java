@@ -17,9 +17,13 @@ import java.util.Optional;
  * the session happens to be holding. {@code DossierService.move} is the third piece of that idiom
  * and belongs in the service that ends up owning a reorder here.
  *
- * <p><b>Nothing calls this yet</b>; the bulk reads are here so the tasks after this one inherit them
- * rather than each writing a per-node query. A merged tree is read by fanning out level by level,
- * and the N+1 that invites is the one performance mistake this model makes easy.
+ * <p><b>One caller so far, and it is a delete.</b> {@code EpicService.delete} walks {@link
+ * #childrenOfAll} level by level to remove the descendant {@code entity} rows V10 backfilled under
+ * an epic, so removing the epic leaves no orphan behind. Nothing writes an edge yet: {@code
+ * FeatureService} and {@code TaskService} still write only the old tables, so the memberships in
+ * play are the backfill's. The rest of the bulk reads are here so the tasks after this one inherit
+ * them rather than each writing a per-node query — a merged tree is read by fanning out level by
+ * level, and the N+1 that invites is the one performance mistake this model makes easy.
  */
 @ApplicationScoped
 public class EntityMembershipRepository

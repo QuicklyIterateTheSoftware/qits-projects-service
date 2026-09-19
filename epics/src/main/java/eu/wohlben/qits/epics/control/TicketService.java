@@ -1,26 +1,30 @@
 package eu.wohlben.qits.epics.control;
 
+import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
 import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketComment;
 import eu.wohlben.qits.epics.entity.TicketStatus;
 import eu.wohlben.qits.epics.entity.TicketType;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.ConflictException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.epics.persistence.TicketCommentRepository;
 import eu.wohlben.qits.epics.persistence.TicketRepository;
+import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * CRUD, lifecycle and comments for {@link Ticket}. {@code projectId} is stored verbatim —
- * cross-boundary existence against {@code domain}'s {@code Project} is validated in the {@code
- * service} controller (this module has no dependency on {@code domain}), exactly as {@link
- * EpicService} has it.
+ * CRUD, lifecycle and comments for the {@link Archetype#TICKET} rows of the merged {@link
+ * WorkEntity} table. {@code projectId} is stored verbatim — cross-boundary existence against {@code
+ * domain}'s {@code Project} is validated in the {@code service} controller (this module has no
+ * dependency on {@code domain}), exactly as {@link EpicService} has it.
  *
  * <p>A new ticket starts {@link TicketStatus#REPORTED}; {@link #transition} is the only thing that
  * moves the status, one step at a time, and {@link TicketLifecycle} is where the adjacency rule
@@ -39,10 +43,23 @@ import java.util.UUID;
  * rather than a question retried for fifteen seconds. Reads go through {@link ReadPatience} for the
  * mirror-image reason: a severed connection would draw a project with no tickets, or a ticket whose
  * discussion never happened, and both read as an answer.
+ *
+ * <h2>The merged table is the source of truth, and the old one is a mirror</h2>
+ *
+ * <p>{@code entity} answers every read and every rule here, and a caller gets back a {@link
+ * WorkEntityProjections detached projection} of the row shaped as a {@link Ticket}, so the mapper,
+ * the DTO and the controllers above are untouched. The legacy {@code ticket} row is still written,
+ * behind, and never read back — {@link #mirrorLegacyRow} says why it cannot go yet.
+ *
+ * <p><b>Comments stay on {@code TicketComment}</b>: {@code fk_ticket_comment_ticket} names the old
+ * table, and a comment is not an archetype of the merged model at all.
  */
 @ApplicationScoped
 public class TicketService {
 
+  @Inject WorkEntityRepository entities;
+
+  /** The mirror's table, and nothing else — see {@link #mirrorLegacyRow}. */
   @Inject TicketRepository ticketRepository;
 
   @Inject TicketCommentRepository commentRepository;
@@ -64,22 +81,28 @@ public class TicketService {
    * enum name; a value naming none is a 400 rather than an empty list, so a typo in the filter is
    * visible instead of reading as "no tickets". Parsed before the wrap, so that 400 lands on the
    * first attempt.
+   *
+   * <p>One query either way, with the rows projected in memory — nothing is resolved per row.
    */
   public List<Ticket> listByProject(String projectId, String status) {
     if (status == null || status.isBlank()) {
-      return patience.hold("ticket list", () -> ticketRepository.listByProject(projectId));
+      return patience.hold(
+          "ticket list",
+          () -> project(entities.listByProjectAndArchetype(projectId, Archetype.TICKET)));
     }
     TicketStatus filter =
         TicketLifecycle.parse(status)
             .orElseThrow(() -> new BadRequestException("Unknown ticket status: " + status));
     return patience.hold(
-        "ticket list by status", () -> ticketRepository.listByProjectAndStatus(projectId, filter));
+        "ticket list by status",
+        () ->
+            project(
+                entities.listByProjectArchetypeAndStatus(
+                    projectId, Archetype.TICKET, filter.name())));
   }
 
   public Ticket get(String id) {
-    return ticketRepository
-        .findByIdOptional(id)
-        .orElseThrow(() -> new NotFoundException("Ticket not found: " + id));
+    return WorkEntityProjections.ticket(entity(id));
   }
 
   /**
@@ -112,25 +135,30 @@ public class TicketService {
     return writes.hold(
         "ticket create",
         () -> {
-          Ticket ticket = new Ticket();
+          WorkEntity row = new WorkEntity();
           // Minted INSIDE the wrap, which is what makes a second attempt a fresh row rather than a
           // duplicate of a lost one.
-          ticket.id = UUID.randomUUID().toString();
-          ticket.projectId = projectId;
-          ticket.title = title;
+          row.id = UUID.randomUUID().toString();
+          row.archetype = Archetype.TICKET;
+          row.projectId = projectId;
+          row.title = title;
           // Minted once, at create, and never re-derived on update: the slug is a stable address
-          // for the row, so retitling must not move it. Unique within the project.
-          ticket.slug =
+          // for the row, so retitling must not move it. Its scope is the project id — which is the
+          // epics' scope too now, the narrowing docs/unified-entity-model.md states.
+          row.slugScope = projectId;
+          row.slug =
               Slugs.unique(
-                  Slugs.slugify(title, ticket.id, "ticket-"),
-                  ticketRepository.listByProject(projectId).stream().map(t -> t.slug).toList());
-          ticket.type = kind;
-          ticket.status = TicketStatus.REPORTED;
-          ticket.assignee = blankToNull(assignee);
-          ticket.createdBy = changedBy;
-          ticket.impetus = impetus;
-          ticket.description = description;
-          ticketRepository.persist(ticket);
+                  Slugs.slugify(title, row.id, "ticket-"), entities.slugsInScope(projectId));
+          row.ticketType = kind;
+          row.status = TicketStatus.REPORTED.name();
+          row.assignee = blankToNull(assignee);
+          row.createdBy = changedBy;
+          row.impetus = impetus;
+          row.description = description;
+          requireArchetypeValid(row);
+          entities.persist(row);
+          mirrorLegacyRow(row);
+          Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
               ticket.id,
@@ -182,28 +210,31 @@ public class TicketService {
     return writes.hold(
         "ticket update",
         () -> {
-          Ticket ticket = get(id);
+          WorkEntity row = entity(id);
           if (title != null) {
-            ticket.title = title;
+            row.title = title;
           }
           if (clearImpetus) {
-            ticket.impetus = null;
+            row.impetus = null;
           } else if (impetus != null) {
-            ticket.impetus = impetus;
+            row.impetus = impetus;
           }
           if (clearDescription) {
-            ticket.description = null;
+            row.description = null;
           } else if (description != null) {
-            ticket.description = description;
+            row.description = description;
           }
           if (kind != null) {
-            ticket.type = kind;
+            row.ticketType = kind;
           }
           if (clearAssignee) {
-            ticket.assignee = null;
+            row.assignee = null;
           } else if (assignee != null) {
-            ticket.assignee = blankToNull(assignee);
+            row.assignee = blankToNull(assignee);
           }
+          requireArchetypeValid(row, TicketService::theImpetusTheColumnStillAllowsToBeAbsent);
+          mirrorLegacyRow(row);
+          Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
               ticket.id,
@@ -213,6 +244,29 @@ public class TicketService {
               ticket);
           return ticket;
         });
+  }
+
+  /**
+   * <b>The one violation this module tolerates, and only on the ticket update path.</b>
+   *
+   * <p>{@code Archetypes} declares {@link EntityProperty#IMPETUS} <em>required</em> of a ticket, and
+   * that is right about intake: a REPORTED ticket is an impetus and nothing else, and {@link
+   * #create} enforces it before anything is written. It is <em>not</em> right about the column, and
+   * V7 made it nullable on purpose — rows that predate that migration have no impetus, triage may
+   * write one onto them, and the clear flag that empties one is behaviour the surfaces above rely on
+   * ({@code TicketServiceTest.theClearFlagsAreWhatEmptyTheNullableFields}, {@code
+   * TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields}).
+   *
+   * <p>Turning an accepted write into a refusal is a contract change and does not belong in the task
+   * that moves the storage. So the disagreement is <b>named here rather than skipped silently</b>,
+   * and it is narrow: this exact property with this exact reason, on this one path. Everything else
+   * — a foreign property, a status word from the other lifecycle, every violation on every other
+   * write — is refused with no exception. <b>A later task settles the registry and the column
+   * against each other</b>, and this predicate goes with it.
+   */
+  private static boolean theImpetusTheColumnStillAllowsToBeAbsent(ArchetypeViolation violation) {
+    return violation.property() == EntityProperty.IMPETUS
+        && violation.reason() == ArchetypeViolation.Reason.MISSING_REQUIRED;
   }
 
   /**
@@ -227,12 +281,15 @@ public class TicketService {
     return writes.hold(
         "ticket transition",
         () -> {
-          Ticket ticket = get(id);
+          WorkEntity row = entity(id);
           TicketStatus to =
               TicketLifecycle.parse(target)
                   .orElseThrow(() -> new ConflictException("Unknown ticket status: " + target));
-          TicketLifecycle.requireTransition(ticket.status, to);
-          ticket.status = to;
+          TicketLifecycle.requireTransition(TicketStatus.valueOf(row.status), to);
+          row.status = to.name();
+          requireArchetypeValid(row, TicketService::theImpetusTheColumnStillAllowsToBeAbsent);
+          mirrorLegacyRow(row);
+          Ticket ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
               ticket.id,
@@ -254,7 +311,8 @@ public class TicketService {
     writes.run(
         "ticket delete",
         () -> {
-          Ticket ticket = get(id);
+          WorkEntity row = entity(id);
+          Ticket ticket = WorkEntityProjections.ticket(row);
           for (TicketComment comment : commentRepository.listByTicket(id)) {
             commentRepository.delete(comment);
             auditService.record(
@@ -265,7 +323,8 @@ public class TicketService {
                 changedBy,
                 comment);
           }
-          ticketRepository.delete(ticket);
+          entities.delete(row);
+          deleteLegacyRow(id);
           auditService.record(
               AuditEntityType.TICKET, id, id, AuditOperation.DELETE, changedBy, ticket);
         });
@@ -297,7 +356,7 @@ public class TicketService {
     return writes.hold(
         "ticket comment create",
         () -> {
-          Ticket ticket = get(ticketId); // 404 if the ticket does not exist
+          WorkEntity ticket = entity(ticketId); // 404 if the ticket does not exist
           TicketComment comment = new TicketComment();
           comment.id = UUID.randomUUID().toString();
           comment.ticketId = ticket.id;
@@ -352,6 +411,99 @@ public class TicketService {
               changedBy,
               comment);
         });
+  }
+
+  /**
+   * <b>The legacy {@code ticket} row, written from the entity row and never read back here.</b>
+   *
+   * <p>A mirror, not a second source of truth, and it exists for the reasons {@code
+   * EpicService.mirrorLegacyRow} gives about the epic half: {@code fk_ticket_comment_ticket} and
+   * {@code dossier_page.ticket_id} are live foreign keys onto that table, and {@code DossierService}
+   * reads the row to resolve a page's owner. Dropping the write would break the comment thread and
+   * the ticket dossier on the first create.
+   *
+   * <p><b>The entity row is written first and this second</b>, everywhere, and nothing in this class
+   * reads what it wrote. It goes in the task that moves the dossier and the comments onto the merged
+   * table, together with the table itself.
+   */
+  private void mirrorLegacyRow(WorkEntity source) {
+    Ticket row = ticketRepository.findById(source.id);
+    boolean fresh = row == null;
+    if (fresh) {
+      row = new Ticket();
+      row.id = source.id;
+      // @Column(updatable = false) on both sides — settable on the insert alone.
+      row.slug = source.slug;
+      row.createdBy = source.createdBy;
+    }
+    row.projectId = source.projectId;
+    row.title = source.title;
+    row.type = source.ticketType;
+    row.status = TicketStatus.valueOf(source.status);
+    row.assignee = source.assignee;
+    row.impetus = source.impetus;
+    row.description = source.description;
+    if (fresh) {
+      ticketRepository.persist(row);
+    }
+  }
+
+  /** The mirror's removal — see {@link #mirrorLegacyRow} for why there is one at all. */
+  private void deleteLegacyRow(String id) {
+    Ticket row = ticketRepository.findById(id);
+    if (row != null) {
+      ticketRepository.delete(row);
+    }
+  }
+
+  /**
+   * The row as a caller sees it, taken after an explicit flush so the Hibernate-managed timestamps
+   * are populated — a create is promised a {@code createdAt} and an update an {@code updatedAt} that
+   * is not before it.
+   */
+  private Ticket settled(WorkEntity row) {
+    entities.getEntityManager().flush();
+    return WorkEntityProjections.ticket(row);
+  }
+
+  private List<Ticket> project(List<WorkEntity> rows) {
+    return rows.stream().map(WorkEntityProjections::ticket).toList();
+  }
+
+  /**
+   * The row this id names, or a 404 — and a row of another archetype is a 404 too. The four kinds
+   * share one table and one id space now, so "no ticket with this id" has to mean "no TICKET row
+   * with this id" rather than "no row at all".
+   */
+  private WorkEntity entity(String id) {
+    WorkEntity row = id == null ? null : entities.findById(id);
+    if (row == null || row.archetype != Archetype.TICKET) {
+      throw new NotFoundException("Ticket not found: " + id);
+    }
+    return row;
+  }
+
+  /** Every violation refused — the create's gate, and the shape the update narrows. */
+  private static void requireArchetypeValid(WorkEntity candidate) {
+    requireArchetypeValid(candidate, violation -> false);
+  }
+
+  /**
+   * <b>The archetype registry on the ordinary write.</b> A row the registry refuses is a 400 naming
+   * every violation at once, which is what {@code Archetypes.validate} answers for and why it
+   * returns all of them rather than the first. {@code tolerated} is the one documented narrowing —
+   * see {@link #theImpetusTheColumnStillAllowsToBeAbsent}.
+   */
+  private static void requireArchetypeValid(
+      WorkEntity candidate, java.util.function.Predicate<ArchetypeViolation> tolerated) {
+    List<String> refused =
+        Archetypes.validate(candidate).stream()
+            .filter(violation -> !tolerated.test(violation))
+            .map(ArchetypeViolation::message)
+            .toList();
+    if (!refused.isEmpty()) {
+      throw new BadRequestException(refused.stream().collect(Collectors.joining("; ")));
+    }
   }
 
   /** A supplied-but-empty assignee means nobody, not the empty string. */

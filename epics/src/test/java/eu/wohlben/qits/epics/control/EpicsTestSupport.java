@@ -4,11 +4,13 @@ import eu.wohlben.qits.epics.persistence.AuditRepository;
 import eu.wohlben.qits.epics.persistence.DossierAssetRepository;
 import eu.wohlben.qits.epics.persistence.DossierPageAssetRepository;
 import eu.wohlben.qits.epics.persistence.DossierPageRepository;
+import eu.wohlben.qits.epics.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.epics.persistence.EpicRepository;
 import eu.wohlben.qits.epics.persistence.FeatureRepository;
 import eu.wohlben.qits.epics.persistence.TaskRepository;
 import eu.wohlben.qits.epics.persistence.TicketCommentRepository;
 import eu.wohlben.qits.epics.persistence.TicketRepository;
+import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,8 +22,9 @@ import org.junit.jupiter.api.BeforeEach;
  * src/test/resources/application.properties) — no docker, no auth variant.
  *
  * <p>The order is the FK graph read leaves-first, and the two roots are independent: comments
- * before tickets, tasks before features before epics. A new table wiped in the wrong place fails
- * with a constraint violation rather than a wrong answer, which is the failure worth having.
+ * before tickets, tasks before features before epics, and the membership edges before the merged
+ * {@code entity} rows they point at. A new table wiped in the wrong place fails with a constraint
+ * violation rather than a wrong answer, which is the failure worth having.
  */
 public abstract class EpicsTestSupport {
 
@@ -34,6 +37,8 @@ public abstract class EpicsTestSupport {
   @Inject DossierPageRepository dossierPageRepository;
   @Inject DossierAssetRepository dossierAssetRepository;
   @Inject DossierPageAssetRepository dossierPageAssetRepository;
+  @Inject EntityMembershipRepository entityMembershipRepository;
+  @Inject WorkEntityRepository workEntityRepository;
 
   @BeforeEach
   void wipe() {
@@ -49,6 +54,8 @@ public abstract class EpicsTestSupport {
               taskRepository.deleteAll();
               featureRepository.deleteAll();
               epicRepository.deleteAll();
+              entityMembershipRepository.deleteAll();
+              workEntityRepository.deleteAll();
             });
   }
 

@@ -5,10 +5,12 @@ parent/child relation as a row of its own. This file is the contract the rest of
 against: what shipped in V9, which old field became which column, what each archetype declares, and
 every decision that had to be made along the way.
 
-**Nothing reads the new model yet.** V9 is additive in the strongest sense — no existing table,
-column, entity, service or controller is touched, and no row is copied. V10 copies the rows and
-still nothing reads them: it writes to `entity` and `entity_membership` and to nothing else, so the
-four old tables are untouched and are still what answers every route.
+**The two roots read and write the new model now**; the two descendants do not. V9 was additive in
+the strongest sense — no existing table, column, entity, service or controller touched, no row
+copied — and V10 copied the rows and still read none of them. What changed after that is "The
+cutover of the two roots" below: `EpicService`, `TicketService`, `EpicLifecycle` and
+`TicketLifecycle` answer every read and judge every rule against `entity`, while `FeatureService`,
+`TaskService` and `DossierService` are untouched and still read and write the four old tables.
 
 ## Reserved migration versions
 
@@ -139,6 +141,96 @@ dropping it would lose the value and the disagreement together.
 
 Violations are structured (`ArchetypeViolation`: archetype, property, reason, detail) so a caller
 can put the complaint on the offending field, with `message()` for a log line or a plain error body.
+
+## The cutover of the two roots
+
+`EpicService`, `TicketService`, `EpicLifecycle` and `TicketLifecycle` read and write `entity`. That
+table is the source of truth for every value a caller sees and for every rule either service
+applies: the status a transition is judged against, the slugs a create mints around, the two
+listings the board draws, and the `createdAt`/`updatedAt` a write answers with. Nothing above them
+moved by one byte — `EpicDto` and `TicketDto` keep every field, in order, under the same JSON names;
+the five epic and ticket controllers, both mappers, the MCP tools, `DossierService` and
+`EpicChangeHints` are untouched; and every route, status code and error body is what it was.
+
+What makes that possible is that the two services still **return** `Epic` and `Ticket`. They are
+built by `control/WorkEntityProjections` as detached projections of the `entity` row — a fresh
+object that is never persisted, merged or attached — and a projection is only ever taken after an
+explicit flush, because `@CreationTimestamp` and `@UpdateTimestamp` are populated at flush and a
+create is promised a `createdAt` the moment it returns. The same projection is what goes into the
+audit log as the snapshot, so the JSON in `auditentry.snapshot` keeps exactly the shape it had.
+
+### The descendants stay on the old tables, and the oracle is why
+
+The subtree walks — `stampImplemented`, `supersede`'s deep copy with its `dependsOn` remap, and
+`delete`'s manual cascade with one DELETE audit row per feature and task — still run over
+`FeatureRepository` and `TaskRepository`. The alternative was to walk `entity_membership` instead,
+and the existing tests refuse it rather than anybody preferring it this way: `FeatureService` and
+`TaskService` are out of this task's scope and still write only the old `feature` and `task` tables,
+so a feature created after this change has **no `entity` row at all**. A membership-driven walk would
+find nothing, silently, and `EpicServiceTest.deleteCascadesToFeaturesAndTasks` and
+`deleteRecordsAuditForWholeSubtreeAndSurvivesDeletion` would both go red. The walks move in the task
+that moves those two services.
+
+One membership-aware addition is made anyway, because it costs nothing and prevents debris:
+`EpicService.delete` also removes the descendant `entity` rows reachable from the epic through
+`entity_membership`, level by level with `childrenOfAll` and `listByIds` — bulk reads, never one
+query per row. V10 backfilled every feature and task into `entity`, so without it a delete would
+leave orphans with nothing above them. The membership rows themselves go with the FK's
+`on delete cascade`, and no audit row is written for them: the feature/task DELETE entries the same
+method already records are about the same planning rows.
+
+### The legacy row is a write-behind MIRROR
+
+`EpicService.mirrorLegacyRow` and `TicketService.mirrorLegacyRow` write the old `epic` and `ticket`
+row from the entity row, after it, in every path. **Nothing in either service reads what it wrote**,
+and neither row is ever returned to a caller.
+
+It is there because three things still name those two tables and none of them is part of this
+change. `fk_feature_epic` (`feature.epic_id` → `Epic.id`) and `fk_ticket_comment_ticket`
+(`ticketcomment.ticket_id` → `Ticket.id`) are live foreign keys, as are the dossier's two owner
+columns; and `FeatureService`, `TaskService` and `DossierService` all read the old row — the first
+two to ask `EpicLifecycle` what the epic's phase permits, the third to resolve a page's owner.
+Dropping the write breaks every one of them on the first create. **The mirror is deleted in the next
+task of this epic**, with the three readers and the two tables.
+
+### An epic and a ticket now share one slug scope
+
+Both archetypes mint their slug with `slug_scope = projectId`, against `WorkEntityRepository.slugsInScope`.
+That is the narrowing "The one narrowing, stated rather than discovered" below already argues for and
+V10 already answered for in the backfill; this is the writer's half of it. No existing test depended
+on the two being independent scopes. `Slugs.slugify` and `Slugs.unique` are unchanged, 40-character
+cap included, so a slug minted now is a slug either old writer would have minted.
+
+### The registry judges the ordinary write, with one named exception
+
+`Archetypes.validate(WorkEntity)` runs on every create and every update in both services, and a
+candidate the registry refuses is a 400 whose message joins every violation — which is what
+`validate` returning all of them rather than the first is for.
+
+**The exception is `IMPETUS` on the ticket update path alone.** The registry declares it *required*
+of a `TICKET`, which is right about intake and is enforced at create; V7 made the column nullable on
+purpose, because rows that predate it have no impetus and because clearing one is asserted behaviour
+(`TicketServiceTest.theClearFlagsAreWhatEmptyTheNullableFields`,
+`TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields`). Enforcing the registry there would turn
+an accepted write into a refusal, which is a contract change and does not belong in a task about
+storage. So `TicketService.theImpetusTheColumnStillAllowsToBeAbsent` tolerates exactly that property
+with exactly the missing-required reason, on exactly that path, as a named and commented predicate
+rather than a silent skip. Everything else — creates, every epic write, a foreign property, a status
+word from the other lifecycle — is refused with no exception. **A later task reconciles the registry
+and the column**, and the predicate goes with it.
+
+### What did not change
+
+The retry seams are where they were. `ReadPatience.hold` still wraps the list reads outside any
+transaction, `WritePatience.hold`/`run` still replaces `@Transactional` on the write seams and
+flushes the `epics` persistence unit last, nothing gained a `@Transactional`, validations that need
+no row still run before the wrap, and ids and slugs are still minted inside it. Both listings are
+still one query and nothing is resolved per row.
+
+Two test fixtures moved with the storage and no assertion did: `ConnectionLosingEpics` now severs
+`WorkEntityRepository.listByProjectAndArchetype` and `FailingEpicWrites` now fails after
+`WorkEntityRepository.persist`, because those are the read and the write an epic list and an epic
+create actually make now. `EpicsTestSupport.wipe()` clears the two new tables, children first.
 
 ## The nesting rule
 
@@ -296,7 +388,8 @@ two constraints, and nothing stops it; the branch prefixes differ (`epic/<slug>`
 `ticket/<slug>`) so no branch collides either.
 
 Under `slug_scope` they share the project id as their scope and **can no longer**. That is a real
-change, and **V10 answers for it** (see "The backfill, as shipped" below): the colliding pair is
+change, it is live for every epic and ticket written since the cutover above, and **V10 answers for
+it** in the rows that predate it (see "The backfill, as shipped" below): the colliding pair is
 detected in SQL, the epic keeps its slug and the ticket's `entity` row is re-slugged, deliberately
 and with the branch name it moves written into the deployment log — rather than being discovered as
 a migration that will not apply against the live database.
@@ -382,6 +475,7 @@ with the listing.
 | entities | `epics/…/entity/Archetype.java`, `WorkEntity.java`, `EntityMembership.java` |
 | repositories | `epics/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
 | the registry | `epics/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
+| the two cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `WorkEntityProjections.java` |
 | the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `NestingViolation.java` |
 | tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java` |
 

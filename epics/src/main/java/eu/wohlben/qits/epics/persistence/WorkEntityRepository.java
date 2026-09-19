@@ -13,10 +13,13 @@ import java.util.Optional;
  * The merged planning rows, plain CRUD; the caller owns the transaction, exactly as {@link
  * EpicRepository} and {@link DossierPageRepository} leave it.
  *
- * <p><b>Nothing calls this yet.</b> It carries the reads the tasks after this one need, and it
- * carries them <em>now</em> so that those tasks inherit a shape rather than each inventing one — in
- * particular {@link #listByIds}, which exists so a tree read is two queries instead of one per node.
- * A merged model is read by fanning out over memberships, and the N+1 that invites is the one
+ * <p><b>{@code EpicService} and {@code TicketService} read every epic and every ticket through
+ * this.</b> {@link #listByProjectAndArchetype} and {@link #listByProjectArchetypeAndStatus} are the
+ * two listings the board draws, one query each; {@link #slugsInScope} is what a create mints its
+ * slug against. The reads the rest of the merge still needs are carried here too, and were carried
+ * <em>before</em> they had a caller so that each task inherits a shape rather than inventing one —
+ * in particular {@link #listByIds}, which exists so a tree read is two queries instead of one per
+ * node. A merged model is read by fanning out over memberships, and the N+1 that invites is the one
  * performance mistake this table makes easy.
  *
  * <p>The orders match today's: oldest first, id as the tie-break, which is what {@code

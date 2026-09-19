@@ -1,7 +1,7 @@
 package eu.wohlben.qits.epics.control;
 
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.persistence.EpicRepository;
+import eu.wohlben.qits.epics.entity.WorkEntity;
+import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Alternative;
 import java.sql.SQLTransientConnectionException;
@@ -9,8 +9,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.hibernate.exception.JDBCConnectionException;
 
 /**
- * The epic table with a postgres cutover in the middle of a <b>write</b>: the row is staged, and
- * then the insert throws what a caller sees when its connection dies mid-flight.
+ * The merged planning table with a postgres cutover in the middle of a <b>write</b>: the row is
+ * staged, and then the insert throws what a caller sees when its connection dies mid-flight. That is
+ * the insert an epic create makes now — {@code EpicService} writes {@code entity} and mirrors the
+ * old row behind it, so this is the write that decides whether the create landed.
  *
  * <p><b>The order is the whole point.</b> {@code super.persist} runs first, so the failure lands
  * <em>after</em> the write is in the transaction rather than before it. That is what makes the
@@ -33,11 +35,11 @@ import org.hibernate.exception.JDBCConnectionException;
  *
  * <p><b>{@code @Alternative} with no {@code @Priority}</b>: one test profile enables it and it is
  * inert everywhere else in this suite, which matters more here than for a read — a globally enabled
- * one would sit in the path of every epic insert the module's other tests make.
+ * one would sit in the path of every planning insert the module's other tests make.
  */
 @Alternative
 @ApplicationScoped
-public class FailingEpicWrites extends EpicRepository {
+public class FailingEpicWrites extends WorkEntityRepository {
 
   /** The message the non-connection arm fails with, so a test can name it rather than a type. */
   public static final String NOT_THE_CONNECTION = "the epic slug is already taken";
@@ -69,8 +71,8 @@ public class FailingEpicWrites extends EpicRepository {
   }
 
   @Override
-  public void persist(Epic epic) {
-    super.persist(epic);
+  public void persist(WorkEntity entity) {
+    super.persist(entity);
     if (cutovers.getAndDecrement() > 0) {
       throw new JDBCConnectionException(
           "Unable to acquire JDBC Connection",
