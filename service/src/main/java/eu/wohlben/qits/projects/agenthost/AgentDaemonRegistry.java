@@ -89,8 +89,8 @@ public class AgentDaemonRegistry {
   private final ConcurrentHashMap<String, Instant> lastActivity = new ConcurrentHashMap<>();
 
   /**
-   * When anything last <em>happened</em> in each project's container — every inbound frame except a
-   * {@link Heartbeat} and an {@link Ack}.
+   * When somebody last <em>used</em> each project's container — written for the four frames {@link
+   * #evidencesUse} admits, and for no others.
    *
    * <h2>Why this is a second map and must never be collapsed into {@link #lastActivity}</h2>
    *
@@ -101,10 +101,9 @@ public class AgentDaemonRegistry {
    * {@link #lastActivity} is never more than twenty seconds old on a container nobody has touched for
    * a month. Anything that asks "is anyone using this" against it gets "yes", for ever.
    *
-   * <p>This map answers <b>"has anything happened here"</b>. The heartbeat and the {@code Ack} are
-   * the two frames a daemon emits while nothing at all is going on, so they are the two frames that
-   * do not write it; everything else — the {@link Hello}, an {@link AgentActivity} report, a
-   * {@link ProjectChanged} nudge, a provision result, a log line — does.
+   * <p>This map answers <b>"is a person or an agent doing something in here"</b>, which is strictly
+   * narrower than "did a frame arrive". The membership rule and the argument for its direction are
+   * {@link #evidencesUse}'s; read it before adding a writer.
    *
    * <p><b>Collapsing them is the defect this exists to end.</b> {@link AgentIdleSweep}'s window never
    * elapsed because it reads {@link #lastActivity}, and that is correct for what it measures; making
@@ -396,13 +395,87 @@ public class AgentDaemonRegistry {
                 LOG.debugf("could not ask project %s for a stream: %s", projectId, failure));
   }
 
+  /**
+   * Whether this frame is evidence that a <b>person or an agent is doing something</b> in the
+   * project's container — the one question {@link #lastAgentActivity} stores the answer to, and the
+   * only thing that may stamp it.
+   *
+   * <h2>Why an allowlist, and never a denylist</h2>
+   *
+   * <p>This was a denylist until 2026-09-18 — every frame stamped except a {@link Heartbeat} and an
+   * {@link Ack} — and the shape is what failed rather than the membership. <b>The protocol grows.</b>
+   * Under a denylist a frame nobody has considered yet defaults to "somebody is using this
+   * container", so each new frame class is a chance to silently reinstate the defect this stamp
+   * exists to prevent, with every test still green. Under an allowlist it defaults to not-use, and a
+   * frame that really is evidence is a one-line addition somebody makes deliberately.
+   *
+   * <p><b>The two costs are not symmetric, which is what settles the direction.</b> A wrong "not in
+   * use" is bounded: the container is stopped, never removed, the checkout is on a named volume
+   * nothing here discards, and the next ensure starts it again. A wrong "in use" is unbounded: the
+   * container is stale for ever and no sweep can ever reach it. Default to the bounded mistake.
+   *
+   * <h2>What stamps</h2>
+   *
+   * <ul>
+   *   <li>{@link AgentActivity} — an agent's own turn boundary, reported by its hooks.
+   *   <li>{@link CommandChunk} — somebody's terminal producing output.
+   *   <li>{@link CommandExit} — a command finishing.
+   *   <li>{@link ProjectChanged} — the daemon's command-lifecycle nudge. {@code ControlSocket.nudge}
+   *       is called from {@code CommandLifecycleService} and the agent launch path alone, so it means
+   *       a command started or ended rather than "something changed somewhere".
+   * </ul>
+   *
+   * <h2>What does not, and why each one</h2>
+   *
+   * <ul>
+   *   <li>{@link Heartbeat} — liveness, unconditional and every twenty seconds. The original defect.
+   *   <li>{@link Ack} — protocol bookkeeping.
+   *   <li>{@link DaemonLog} — <b>the daemon talking about itself</b>, a supervised subprocess's
+   *       stderr included, and the one found live. On the platform on 2026-09-18 a project agent
+   *       container relayed {@code checkout-daemon: Cannot reach …/events/api/stream: ConnectException;
+   *       reconnecting in 30 s} as a {@code DaemonLog} <b>every thirty seconds, for ever</b>. Under
+   *       the denylist that stamped the clock twice a minute, so the container was never quiet and
+   *       {@link AgentStaleImageSweep} could never stop it — a self-generated periodic frame
+   *       defeating a quietness window, exactly the heartbeat's defect one frame class over. Daemon
+   *       self-talk is unbounded by construction and must never mean "in use".
+   *   <li>{@link Hello} — <b>a reconnect is not use.</b> Counting it made the sweep sleep for a full
+   *       quiet window after every restart of this service, which on an estate that redeploys hourly
+   *       is most of the time it could have been acting.
+   *   <li>{@link Provisioned}, {@link ProvisionFailed}, {@link ProjectInfo} — boot results and replies
+   *       to questions this host asked. Nobody is in the container.
+   *   <li>{@link RunCommand}, {@link Describe}, {@link OpenStream} — this host's own outbound frames,
+   *       handled here only because an echo must not break the socket.
+   * </ul>
+   *
+   * <p>A {@code switch} over the sealed permits-list rather than an {@code instanceof} chain, so
+   * adding a frame to the protocol <b>fails this compilation</b> and the decision is made once,
+   * here, instead of being inherited by default.
+   */
+  private static boolean evidencesUse(DaemonMessage message) {
+    return switch (message) {
+      case AgentActivity ignored -> true;
+      case CommandChunk ignored -> true;
+      case CommandExit ignored -> true;
+      case ProjectChanged ignored -> true;
+      case Heartbeat ignored -> false;
+      case Ack ignored -> false;
+      case DaemonLog ignored -> false;
+      case Hello ignored -> false;
+      case Provisioned ignored -> false;
+      case ProvisionFailed ignored -> false;
+      case ProjectInfo ignored -> false;
+      case RunCommand ignored -> false;
+      case Describe ignored -> false;
+      case OpenStream ignored -> false;
+    };
+  }
+
   /** Handle a decoded frame from {@code qits-projects-daemon} for {@code projectId}. */
   public void onMessage(String projectId, WebSocketConnection connection, DaemonMessage message) {
     touch(projectId);
-    // The second stamp, and the one frame pair that does NOT write it. A heartbeat and an Ack are
-    // what a daemon says while nothing is going on, so counting them here would reproduce exactly the
-    // blindness lastActivity has by design — see the field.
-    if (!(message instanceof Heartbeat) && !(message instanceof Ack)) {
+    // The second stamp, written only for the frames that are evidence somebody is using this
+    // container. The rule is an allowlist and the argument for that is in evidencesUse.
+    if (evidencesUse(message)) {
       lastAgentActivity.put(projectId, Instant.now());
     }
     DaemonConnection client = clients.get(projectId);

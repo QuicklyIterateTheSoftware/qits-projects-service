@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projectsdaemon.protocol.AgentActivity;
+import eu.wohlben.qits.projectsdaemon.protocol.DaemonLog;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.Hello;
 import io.quarkus.websockets.next.WebSocketConnection;
@@ -352,6 +353,11 @@ class AgentStaleImageSweepTest {
    * restart of this service, or whose daemon connected and did nothing since. It is not an unknown to
    * be cautious about, and treating it as one would leave the longest-stale containers untouched for
    * ever.
+   *
+   * <p>The fixture's {@code Hello} leaves the use clock untouched, which is the rule as of
+   * 2026-09-18 and is the assertion here rather than a detail of the setup: <b>a reconnect is not
+   * use</b>. It used to stamp, so this test had to {@code forget} the container to reach the state
+   * it is about — and every restart of this service blinded the sweep for a whole quiet window.
    */
   @Test
   void aContainerThatWasNeverStampedIsQuiet() {
@@ -360,11 +366,48 @@ class AgentStaleImageSweepTest {
     daemon("project-fresh", "2026.901.120000");
 
     assertTrue(
-        registry.lastAgentActivityAt("project-fresh").isPresent(),
-        "the Hello itself is something happening — this fixture has a stamp");
-    registry.forget("project-fresh");
+        registry.lastAgentActivityAt("project-fresh").isEmpty(),
+        "the Hello is the daemon dialling home, not somebody using the container");
 
     assertEquals(1, sweep.sweep(NOW));
     assertEquals(List.of("project-fresh"), stopped);
+  }
+
+  /**
+   * <b>The scenario observed live on 2026-09-18, and the one this sweep could not act on at all.</b>
+   * The project agent container relayed a supervised subprocess's retry loop as a {@code DaemonLog}
+   * every thirty seconds, for ever — {@code checkout-daemon: … ConnectException; reconnecting in
+   * 30 s}. Under the denylist that preceded the allowlist every one of those frames stamped the use
+   * clock, so this container could never be more than thirty seconds' quiet however long nobody
+   * touched it, and the stop below never happened: a self-generated periodic frame defeating a
+   * quietness window, which is precisely the defect the heartbeat exclusion was written for, one
+   * frame class over.
+   *
+   * <p>The frames here are the container's <b>only</b> traffic since the stamp, which is what the
+   * live case looked like — nobody had opened a terminal in it for hours.
+   */
+  @Test
+  void stopsAStaleContainerWhoseOnlyTrafficHasBeenDaemonLogs() {
+    project("project-chatty", "chatty");
+    runtime.given("project-chatty", "chatty", true);
+    daemon("project-chatty", "2026.901.120000");
+    registry.touchAgentActivity("project-chatty", NOW.minus(Duration.ofHours(2)));
+
+    for (int line = 0; line < 10; line++) {
+      registry.onMessage(
+          "project-chatty",
+          null,
+          new DaemonLog(
+              "INFO",
+              "checkout-daemon: qits checkout-daemon: Cannot reach"
+                  + " http://dev-qits-events:8080/events/api/stream?names=SCMRelease:"
+                  + " ConnectException; reconnecting in 30 s"));
+    }
+
+    assertEquals(1, sweep.sweep(NOW));
+    assertEquals(
+        List.of("project-chatty"),
+        stopped,
+        "a daemon talking about itself is not somebody using the container");
   }
 }

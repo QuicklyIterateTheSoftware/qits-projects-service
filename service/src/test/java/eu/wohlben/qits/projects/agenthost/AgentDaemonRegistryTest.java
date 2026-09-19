@@ -9,12 +9,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projectsdaemon.protocol.AgentActivity;
+import eu.wohlben.qits.projectsdaemon.protocol.CommandChunk;
+import eu.wohlben.qits.projectsdaemon.protocol.CommandExit;
+import eu.wohlben.qits.projectsdaemon.protocol.DaemonLog;
+import eu.wohlben.qits.projectsdaemon.protocol.DaemonMessage;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.Heartbeat;
 import eu.wohlben.qits.projectsdaemon.protocol.Hello;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectChanged;
 import eu.wohlben.qits.projectsdaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.projectsdaemon.protocol.Provisioned;
+import eu.wohlben.qits.projectsdaemon.protocol.Stream;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.inject.Instance;
 import java.lang.reflect.Proxy;
@@ -159,20 +164,98 @@ class AgentDaemonRegistryTest {
         "and nothing has happened in the container — a heartbeat must never say otherwise");
   }
 
-  /** Everything that is not a heartbeat or an Ack advances both clocks. */
+  /**
+   * <b>The live defect this allowlist was written for.</b> On the platform on 2026-09-18 a project
+   * agent container relayed its supervised subprocess's retry loop as a {@code DaemonLog} <em>every
+   * thirty seconds, for ever</em> — {@code checkout-daemon: Cannot reach
+   * http://dev-qits-events:8080/events/api/stream?names=SCMRelease: ConnectException; reconnecting in
+   * 30 s}. Under the denylist that preceded this rule every one of those frames stamped the use
+   * clock, so the container was never quiet and {@link AgentStaleImageSweep} could never stop it:
+   * a self-generated periodic frame defeating a quietness window, which is the heartbeat's defect
+   * reappearing one frame class over.
+   *
+   * <p>A daemon's self-talk is unbounded by construction — nothing on this side decides how much of
+   * it there is — so it may say the daemon is alive and may never say somebody is using the
+   * container.
+   */
   @Test
-  void anythingElseAdvancesBothClocks() {
+  void aStreamOfDaemonLogsIsLivenessAndNeverUse() {
     WebSocketConnection connection = connection("c1");
     registry.register(PROJECT, connection);
-    Instant before = Instant.now();
+
+    for (int line = 0; line < 5; line++) {
+      registry.onMessage(
+          PROJECT,
+          connection,
+          new DaemonLog(
+              "INFO",
+              "checkout-daemon: qits checkout-daemon: Cannot reach"
+                  + " http://dev-qits-events:8080/events/api/stream?names=SCMRelease:"
+                  + " ConnectException; reconnecting in 30 s"));
+    }
+
+    assertTrue(registry.lastActivityAt(PROJECT).isPresent(), "the daemon is plainly alive");
+    assertTrue(
+        registry.lastAgentActivityAt(PROJECT).isEmpty(),
+        "and nobody is in the container — the daemon is talking about itself");
+  }
+
+  /**
+   * A reconnect is not use. The {@link Hello} stamped the use clock until 2026-09-18, which meant
+   * every restart of <em>this</em> service blinded {@link AgentStaleImageSweep} for a whole quiet
+   * window: every daemon on the estate redials at once and every container's clock is reset to now.
+   * On an estate that redeploys hourly that is most of the time the sweep could have been acting.
+   */
+  @Test
+  void aHelloIsLivenessAndNeverUse() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
 
     registry.onMessage(
         PROJECT,
         connection,
-        new AgentActivity("cmd-1", "session-1", DaemonProtocol.AgentState.BUSY, "Stop", null, null, 0L));
+        new Hello(PROJECT, "demo-demo", DaemonProtocol.CAPABILITY_VERSION, "2026.918.1", null));
 
-    assertFalse(registry.lastActivityAt(PROJECT).orElseThrow().isBefore(before));
-    assertFalse(registry.lastAgentActivityAt(PROJECT).orElseThrow().isBefore(before));
+    assertTrue(registry.lastActivityAt(PROJECT).isPresent(), "the daemon has just said hello");
+    assertTrue(
+        registry.lastAgentActivityAt(PROJECT).isEmpty(),
+        "a daemon reconnecting is not somebody using the container it runs in");
+  }
+
+  /**
+   * The allowlist's positive half: the four frames that <em>are</em> evidence of a person or an
+   * agent at work, each proved on its own. One of these failing to stamp is a container stopped
+   * under somebody — the bounded mistake, but still a mistake — so the negatives above cannot stand
+   * alone.
+   */
+  @Test
+  void theFourFramesThatEvidenceUseEachAdvanceBothClocks() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    List<DaemonMessage> use =
+        List.of(
+            new AgentActivity(
+                "cmd-1", "session-1", DaemonProtocol.AgentState.BUSY, "Stop", null, null, 0L),
+            new CommandChunk("cmd-1", Stream.STDOUT, "total 0\n"),
+            new CommandExit("cmd-1", 0),
+            new ProjectChanged(PROJECT, "COMMANDS"));
+
+    for (DaemonMessage frame : use) {
+      // Forget first, so each frame has to write the stamp itself rather than inheriting the one
+      // its predecessor left.
+      registry.forget(PROJECT);
+      Instant before = Instant.now();
+
+      registry.onMessage(PROJECT, connection, frame);
+
+      assertFalse(
+          registry.lastActivityAt(PROJECT).orElseThrow().isBefore(before),
+          frame.getClass().getSimpleName() + " must advance the liveness clock");
+      assertFalse(
+          registry.lastAgentActivityAt(PROJECT).orElseThrow().isBefore(before),
+          frame.getClass().getSimpleName() + " must advance the use clock");
+    }
   }
 
   /**
