@@ -85,6 +85,9 @@ public class FeatureService {
 
   @Inject WritePatience writes;
 
+  /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
+  @Inject EntityNumbers numbers;
+
   /**
    * The epic's features, in membership position order, held through a postgres cutover ({@link
    * ReadPatience}). The caller is a plain GET with no transaction of its own; the same repository
@@ -140,6 +143,9 @@ public class FeatureService {
           row.archetype = Archetype.FEATURE;
           // On every row, root and descendant alike — no walk up to answer "whose is this".
           row.projectId = epicRow.projectId;
+          // Per PROJECT, not per epic: the number qualifies as <project>-<n> and a descendant is in
+          // the same run of integers as its root. See EntityNumbers.
+          row.number = numbers.next(row.projectId);
           row.title = title;
           // The scope is the PARENT, which is what uq_entity_slug_scope_slug makes of
           // uq_feature_epic_slug: the same rule, written once.

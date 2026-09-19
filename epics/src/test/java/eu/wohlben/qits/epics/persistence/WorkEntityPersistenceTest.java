@@ -33,6 +33,9 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class WorkEntityPersistenceTest {
 
+  private static final java.util.concurrent.atomic.AtomicLong NUMBERS =
+      new java.util.concurrent.atomic.AtomicLong();
+
   @Inject WorkEntityRepository entities;
   @Inject EntityMembershipRepository memberships;
 
@@ -177,6 +180,9 @@ class WorkEntityPersistenceTest {
     entity.title = slug + " title";
     entity.slug = slug;
     entity.slugScope = slugScope;
+    // V11's uq_entity_project_number: every fixture row is in proj-1, so each needs a number of
+    // its own. The value is not the subject of any assertion here — only its distinctness is.
+    entity.number = NUMBERS.incrementAndGet();
     return entity;
   }
 

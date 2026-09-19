@@ -70,6 +70,9 @@ public class TaskService {
 
   @Inject WritePatience writes;
 
+  /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
+  @Inject EntityNumbers numbers;
+
   /**
    * The feature's tasks, in membership position order, held through a postgres cutover ({@link
    * ReadPatience}). Same placement and same two-query shape as {@link FeatureService#listByEpic}:
@@ -122,6 +125,8 @@ public class TaskService {
           row.archetype = Archetype.TASK;
           // Carried on the row rather than walked up to, like every other entity row.
           row.projectId = featureRow.projectId;
+          // Per PROJECT, not per feature — the same run of integers the epic above it draws from.
+          row.number = numbers.next(row.projectId);
           row.repositoryId = repositoryId;
           row.title = title;
           // The scope is the PARENT — uq_entity_slug_scope_slug's reading of uq_task_feature_slug.

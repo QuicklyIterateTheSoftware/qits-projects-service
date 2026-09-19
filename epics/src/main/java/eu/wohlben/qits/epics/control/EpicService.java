@@ -87,6 +87,9 @@ public class EpicService {
 
   @Inject WritePatience writes;
 
+  /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
+  @Inject EntityNumbers numbers;
+
   /**
    * The outcome of a {@link #transition}: the epic in its new status, plus the successor draft when
    * the move was to {@link EpicStatus#SUPERSEDED} (null otherwise).
@@ -361,6 +364,9 @@ public class EpicService {
     row.id = UUID.randomUUID().toString();
     row.archetype = Archetype.EPIC;
     row.projectId = projectId;
+    // Allocated inside the write's transaction but committed outside it, which is what makes a
+    // create that rolls back leave a gap rather than hand the number back. See EntityNumbers.
+    row.number = numbers.next(projectId);
     row.title = title;
     row.slugScope = projectId;
     // Minted once, at create, and never re-derived on update: the slug is a branch path segment,
@@ -406,14 +412,23 @@ public class EpicService {
     // without asking for the edge back.
     Map<String, String> taskCopyParents = new LinkedHashMap<>();
 
+    // ONE bump for the whole discarded tree rather than one per copied row: the count is known
+    // before anything is written, and a block is what EntityNumbers.allocate exists for. The
+    // successor epic's own number came out of insert() above, so this block is the descendants'.
+    int copies = source.features().size();
+    for (WorkEntity feature : source.features()) {
+      copies += source.tasksOf(feature.id).size();
+    }
+    long nextCopyNumber = (copies == 0) ? 0 : numbers.allocate(old.projectId, copies);
+
     int featurePosition = 0;
     for (WorkEntity feature : source.features()) {
-      WorkEntity copy = copyUnder(feature, successorRow.id, featurePosition++);
+      WorkEntity copy = copyUnder(feature, successorRow.id, featurePosition++, nextCopyNumber++);
       featureCopies.put(feature.id, copy);
 
       int taskPosition = 0;
       for (WorkEntity task : source.tasksOf(feature.id)) {
-        WorkEntity taskCopy = copyUnder(task, copy.id, taskPosition++);
+        WorkEntity taskCopy = copyUnder(task, copy.id, taskPosition++, nextCopyNumber++);
         taskCopies.put(task.id, taskCopy);
         taskCopyParents.put(taskCopy.id, copy.id);
         oldTasks.add(task);
@@ -470,11 +485,15 @@ public class EpicService {
    * nothing is implemented in a draft — and {@code dependsOn} is left null for the second pass to
    * fill. The edge's id is the child's, V10's rule.
    */
-  private WorkEntity copyUnder(WorkEntity source, String parentId, int position) {
+  private WorkEntity copyUnder(WorkEntity source, String parentId, int position, long number) {
     WorkEntity copy = new WorkEntity();
     copy.id = UUID.randomUUID().toString();
     copy.archetype = source.archetype;
     copy.projectId = source.projectId;
+    // A COPY IS A NEW ENTITY AND TAKES A NEW NUMBER. The source keeps its own: a superseded epic's
+    // tree is the record of what was discarded, and two rows sharing a number would make the
+    // qualified form ambiguous in exactly the project it is scoped by.
+    copy.number = number;
     copy.title = source.title;
     copy.slug = source.slug;
     copy.slugScope = parentId;

@@ -24,7 +24,7 @@ have no writer and no referent; they are a frozen snapshot.
 | --- | --- | --- |
 | `V9__entity_membership.sql` | the two tables, empty | **shipped** |
 | `V10__backfill_unified.sql` | the backfill — every Epic/Ticket/Feature/Task row copied in, **ids unchanged** | **shipped** |
-| `V11` | the id settlement (the numeric id the merged model wants) | reserved |
+| `V11__entity_number.sql` | the numeric id: the column, `uq_entity_project_number`, the backfill and the allocator's counter | **shipped** |
 | `V12__owner_keys_to_entity.sql` | the four outward foreign keys repointed at `entity(id)`, which retires the mirror | **shipped** |
 | `V13+` | the drop of the four old tables, still owed — nothing reads them now, but they are the verification door's comparison target until it has run clean against live data | reserved |
 
@@ -42,6 +42,7 @@ create table entity
     causation_id uuid,
     project_id varchar(255) not null,          -- no cross-DB FK, indexed String
     archetype varchar(32) not null,            -- ck_entity_archetype
+    number bigint not null,                    -- V11; uq_entity_project_number, with project_id
     title varchar(512) not null,
     slug varchar(255) not null,
     slug_scope varchar(255) not null,          -- uq_entity_slug_scope_slug, with slug
@@ -84,11 +85,177 @@ overlap on `IMPLEMENTED`. A check constraint has no way to say "these five when 
 EPIC" without becoming a second place the vocabulary is written down, so **the constraint spells the
 vocabulary and `control/Archetypes` spells the rule**. That split is V1's, applied again.
 
+## The per-project numeric id (V11)
+
+Every entity carries a `long` that is **unique within its project and never reused**, written by
+hand in its qualified form `<project>-<n>` — `qits-1337`.
+
+```sql
+alter table entity add column number bigint not null;
+alter table entity add constraint uq_entity_project_number unique (project_id, number);
+
+create table entity_number_sequence
+(
+    project_id  varchar(255) not null,
+    next_number bigint       not null,
+    primary key (project_id)
+);
+```
+
+**The uuid is still the primary key.** This is a second identifier, not a replacement: every dossier
+page, audit entry, branch name, workspace and URL on the platform names `entity.id`, and "The ids
+are the same id space" above is the argument for why that may not move.
+
+### Why a number when there is already a uuid and a slug
+
+Because the id has to survive where neither does. A uuid does not fit in a commit subject. A slug is
+truncated at 40 characters and is minted from a title, so it is neither complete nor — before the
+first branch is cut — reliably the thing anybody remembers. The number is short enough to write by
+hand, stable for the life of the entity, and unambiguous once qualified by its project. That is what
+turns "which subject does this change belong to" from a guess into a recorded fact.
+
+**Per project rather than global**, so the numbers stay small enough to read and the qualified form
+carries its own scope. The qualifier is the **project's slug** (`qits`), which lives in `domain`'s
+`project` table and is therefore resolved at the surface rather than stored here; `entity` holds the
+bare number and `project_id`. Putting the two together on a DTO, an MCP return and the SPA is the
+**next task's**, together with the commit-subject parser. This task makes the id exist and be
+allocated correctly.
+
+**`uq_entity_project_number` is over `(project_id, number)` and over nothing else, which is the
+statement that the id names a NODE and not a ticket.** The unified table holds every archetype, so
+an epic, its features, its tasks and the project's tickets all draw from one run of integers and a
+ticket and a feature in the same project can never share a number. A partition by archetype would
+have made `qits-7` ambiguous in exactly the project that scopes it.
+
+### The allocator: a counter row, bumped in a transaction of its own
+
+`epics/control/EntityNumbers` is the one place a number comes from. Two properties are wanted and
+they pull against each other:
+
+- **Two simultaneous creates cannot collide.**
+- **A rolled-back create does not make its number reappear.**
+
+| implementation | no collision | no reuse |
+| --- | --- | --- |
+| `max(number) + 1`, read then write | **no** — two creates read one maximum | **no** |
+| a postgres **sequence per project** | yes | yes (`nextval` is non-transactional) |
+| a counter row in the **caller's** transaction | yes (row lock) | **no** — the rollback undoes the bump |
+| **a counter row in its OWN transaction** — taken | yes | yes |
+
+The sequence is the textbook answer and it is right about both properties, which is why the taken
+answer imitates it. What rules it out is the *per project*: a sequence per project is one `create
+sequence` per project — DDL the platform's deployer does not run, that no migration in this lineage
+could account for afterwards, and that two concurrent creates of a brand-new project's first entity
+would race on in the system catalogue.
+
+So: a counter row, bumped by `update … set next_number = next_number + n`, which takes the row's
+write lock and is atomic under READ COMMITTED — that is the first property — inside a transaction of
+its own, which commits before the create's transaction does anything further, and that is the
+second. It is a sequence emulated in a row, with the one behaviour that matters preserved: **the
+number leaves the counter for good the moment it is handed out**.
+
+**Gaps are therefore ordinary and are fine.** The id is a name, not a count: nothing sums it,
+nothing pages by it, and nothing reads a missing number as a missing row.
+
+**What it costs, stated rather than hidden.** One extra short transaction per created row — a second
+pooled connection, held for the length of two statements, nested inside the create's own
+transaction. That is why the concurrent-create test runs eight threads rather than sixteen: the pool
+ceiling is what bounds a create, not the allocator, and `EntityNumbersTest` hammers `EntityNumbers`
+directly at sixteen threads to prove the allocator itself. What the cost buys back is real — the
+counter's row lock is held for the bump alone rather than for the whole create, so two people
+planning in one project do not serialise on each other's slug reads and audit writes.
+
+`allocate(projectId, count)` is the batch form, and `EpicService.supersede` is its caller: a
+supersede copies a whole feature/task tree, the size is known before anything is written, and one
+bump for the block is one round trip instead of N.
+
+### The module boundary, and how the tension was resolved
+
+`domain`'s `ProjectService` is the platform's other per-project derivation — it is where the project
+slug is allocated, and where the cap of 31 comes from so `<slug>-<slug>` still fits a git-host
+repository id. It is also the wrong module, and **`CLAUDE.md` is emphatic that `epics` depends on
+neither `domain` nor any auth module and should stay that way**: it is the module most likely to be
+lifted out next, and a lift-out dragging `domain` behind it would move a database rather than tables
+out of somebody else's.
+
+The resolution is the one this module has already reached for exactly this tension, once:
+`Slugs.slugify` is a **deliberate copy** of `ProjectService.slugify`, duplicated rather than shared,
+with each side told to change the other. The idiom travels; the dependency does not.
+
+Here not even a copy was needed, and the reason is stronger than style: **a project slug is
+allocated against the `project` table in the `projects` database and an entity number against the
+`entity` table in the `epics` database — two separate physical databases.** A shared allocator could
+not have been in one transaction with either write even if the module boundary had permitted it. So
+`EntityNumbers` sits in `epics/control/`, beside the services that create the rows it numbers, and
+its javadoc carries the rule and its reason rather than a reference across a boundary that does not
+exist.
+
+### Every create path allocates; the transition allocates nothing
+
+| path | what it allocates |
+| --- | --- |
+| `EpicService.create` → `insert` | one |
+| `TicketService.create` | one |
+| `FeatureService.create` | one, from the **project's** run and not the epic's |
+| `TaskService.create` | one, from the **project's** run and not the feature's |
+| `EpicService.supersede` → `copyUnder` | one block for the whole copied tree — a copy is a new entity |
+| `EntityTransitionService` | **nothing** |
+
+The last row is the one worth stating. A transition **creates nothing** — "Existing ids only, and
+refusals are collected rather than thrown" above is the rule — so a re-archetype, a reparent and a
+whole tree restructured in one request leave every number exactly where it was. That is also the
+right answer on its own terms: the number names a node, and a node that changes which kind it is is
+still the same node. `WorkEntity.number` is `@Column(updatable = false)`, so the schema says it
+rather than a convention, and a write that tried to move one would be a silent no-op rather than a
+wrong row.
+
+### The backfill, and where the allocator starts
+
+V11 backfills in the same migration that creates the column. By the time it runs, V10 has copied
+every Epic, Ticket, Feature and Task into `entity`, so one pass over `entity` is the whole backfill:
+
+    row_number() over (partition by project_id order by created_at, id)
+
+**`(created_at, id)` is V10's own total order** — the one it derived `entity_membership.position`
+from — and it is total rather than merely plausible: `created_at` ties (V10's fixtures tie on
+purpose) and `id` is the primary key, so the pair cannot. Numbering by the order rows come back
+instead is a fact about physical layout that changes with a VACUUM and differs between the test
+database and the live one; it would produce a plausible-looking sequence that silently disagreed
+with itself between two runs.
+
+**The counter is seeded `max(number) + 1` per project by the same file**, which is the whole of "the
+allocator starts above the highest backfilled value". Deriving a floor at runtime instead would be a
+`max()` read — the read-then-write this design exists not to do. A project with no entity row gets no
+counter row at all and the allocator mints it at 1 on first use, which is also why nothing has to
+write this table when a project is created or deleted.
+
+### What proves it
+
+- `EntityNumbersTest` — **an actually concurrent run** (sixteen threads × twenty allocations in one
+  project: 320 numbers, no repeat; and eight threads creating epics at once through the real path),
+  **an actually rolled-back transaction** whose number never comes back, one run of integers across
+  all four archetypes, two projects both starting at 1, and a supersede numbering its copies afresh.
+  A `max(n) + 1` allocator passes every sequential assertion in that class and fails those two,
+  which is why they are there.
+- `EntityNumberMigrationTest` — the backfill over an estate that already exists, which no other
+  suite can reach because every one of them starts from an empty database. The same estate inserted
+  in the **opposite order** into a second database is numbered identically; the counter is above the
+  highest backfilled value in each project; and the constraint refuses a second row on one number in
+  one project while permitting it in another.
+- `EpicsTestSupport.wipe()` clears `entity_number_sequence` with the rows it numbered. In production
+  a number is never reused, which is exactly why that line is needed: without it a test's first epic
+  is numbered by however many rows the previous test happened to create.
+
+**No existing test's assertions moved.** The only test changes are mechanical: the wipe above, and
+`WorkEntityPersistenceTest`'s hand-built fixtures taking a distinct number each, since every one of
+them is in one project and `uq_entity_project_number` now applies.
+
 ## The column-per-property map
 
 | old table.column | new column | note |
 | --- | --- | --- |
 | `epic.id`, `ticket.id`, `feature.id`, `task.id` | `entity.id` | unchanged values; one id space |
+| — | `entity.number` | new (V11): the per-project numeric id, `<project>-<n>` — see above |
 | `epic.project_id`, `ticket.project_id` | `entity.project_id` | now on **every** row, descendants included |
 | *(derived by walking up)* | `entity.project_id` | a feature/task no longer reaches its project by a join |
 | — | `entity.archetype` | new: the discriminator |

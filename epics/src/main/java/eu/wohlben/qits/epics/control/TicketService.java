@@ -78,6 +78,9 @@ public class TicketService {
 
   @Inject WritePatience writes;
 
+  /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
+  @Inject EntityNumbers numbers;
+
   // --- Tickets --------------------------------------------------------------
 
   public List<Ticket> listByProject(String projectId) {
@@ -149,6 +152,9 @@ public class TicketService {
           row.id = UUID.randomUUID().toString();
           row.archetype = Archetype.TICKET;
           row.projectId = projectId;
+          // Drawn from the SAME per-project run of integers every other archetype draws from: the
+          // number names a node in this project's plan, not a ticket. See EntityNumbers.
+          row.number = numbers.next(projectId);
           row.title = title;
           // Minted once, at create, and never re-derived on update: the slug is a stable address
           // for the row, so retitling must not move it. Its scope is the project id — which is the

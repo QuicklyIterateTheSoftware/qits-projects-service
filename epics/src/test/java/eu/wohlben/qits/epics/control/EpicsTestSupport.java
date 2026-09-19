@@ -11,8 +11,10 @@ import eu.wohlben.qits.epics.persistence.TaskRepository;
 import eu.wohlben.qits.epics.persistence.TicketCommentRepository;
 import eu.wohlben.qits.epics.persistence.TicketRepository;
 import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
+import io.quarkus.hibernate.orm.PersistenceUnit;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
@@ -45,6 +47,11 @@ public abstract class EpicsTestSupport {
   @Inject EntityMembershipRepository entityMembershipRepository;
   @Inject WorkEntityRepository workEntityRepository;
 
+  /** For {@code entity_number_sequence}, which has no entity class and so no repository. */
+  @Inject
+  @PersistenceUnit("epics")
+  EntityManager epicsEntityManager;
+
   @BeforeEach
   void wipe() {
     QuarkusTransaction.requiringNew()
@@ -61,6 +68,14 @@ public abstract class EpicsTestSupport {
               epicRepository.deleteAll();
               entityMembershipRepository.deleteAll();
               workEntityRepository.deleteAll();
+              // The allocator's counters go with the rows they numbered. In production a number is
+              // NEVER reused, which is exactly why this line is needed here: without it the counter
+              // survives the wipe and the next test's first epic is numbered by however many rows
+              // the previous one happened to create. The rule under test is uniqueness within a
+              // project, not the absolute value, but a suite whose numbers depend on execution
+              // order is one nobody can assert against.
+              epicsEntityManager.createNativeQuery("delete from entity_number_sequence")
+                  .executeUpdate();
             });
   }
 

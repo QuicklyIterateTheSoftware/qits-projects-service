@@ -100,6 +100,32 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   @Column(nullable = false, length = 32)
   public Archetype archetype;
 
+  /**
+   * <b>The per-project numeric id</b> (V11): unique within {@link #projectId}, never reused, and
+   * written by hand in its qualified form {@code <project>-<n>} — {@code qits-1337}. Allocated by
+   * {@code control/EntityNumbers} at create and by nothing else.
+   *
+   * <p><b>It does not replace {@link #id}.</b> The uuid is still the primary key and is still what
+   * every dossier page, audit entry, branch name, workspace and URL on the platform names. This is a
+   * second identifier, and it exists because the id has to survive where neither the uuid nor the
+   * slug does: a uuid does not fit in a commit subject, and a slug is truncated at 40 characters and
+   * minted from a title. The number is short enough to write by hand, stable for the life of the
+   * row, and unambiguous once qualified by its project.
+   *
+   * <p><b>It names a NODE, not a ticket.</b> The unified table holds every archetype and the numbers
+   * are drawn from one run of integers per project, so a ticket and a feature in the same project
+   * can never share one. {@code uq_entity_project_number} is what makes that a fact rather than a
+   * convention.
+   *
+   * <p><b>{@code updatable = false}, for {@link #slug}'s reason and one of its own.</b> A number is
+   * stable for the life of the entity, and the multi-entity transition — which re-archetypes and
+   * re-parents existing rows — creates nothing and must therefore allocate nothing. The schema is
+   * where that is best said: a re-archetype that tried to move the number would be a silent no-op
+   * rather than a wrong row.
+   */
+  @Column(nullable = false, updatable = false)
+  public long number;
+
   /** Short label for lists and breadcrumbs. */
   @Column(nullable = false)
   public String title;
