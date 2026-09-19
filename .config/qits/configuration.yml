@@ -48,6 +48,17 @@
 #     refinementhost/RetiredRefinementImageVersionKey and agenthost/RetiredImageVersionKeys WARN once
 #     at boot naming the key, its stale value and the version being started instead, so the residue
 #     is a work item rather than a trap.
+#   * env.QITS_PROJECTS_AGENT_GIT_BASE, REMOVED 2026-09-18 with the key it named. Where a container
+#     reaches git is env.QITS_PROJECTS_CONTAINER_GIT_URL below now — one key for one concept, read by
+#     both container harnesses, carrying no path. The removal is the point rather than a side effect:
+#     the stored entry names qits-githost's SERVICE alias, which 401s the Basic credential every
+#     container image's git helper produces (only the internal alias's oauth2 transport turns it into
+#     a Bearer), a stored entry outranks a shipped default, nothing on this platform deletes one and
+#     only qits:admin can rewrite one. So the code reads a different name and the residue is read by
+#     nobody; leaving the declaration here would keep the configuration UI from ever offering to
+#     remove it. agenthost/RetiredContainerGitKeys WARNs once at boot while it is still set.
+#     qits.projects.refinement-git-url, retired in the same change, was never declared here and needs
+#     no line: no deployment carries an entry for it.
 #
 # NO serviceAddress AND NO packageVersion, on purpose. Both change what the container gets, so both
 # belong to a later step. There was a `packageVersion` migration waiting on this file for the two
@@ -87,9 +98,9 @@ keys:
     type: string
     description: "The host name agent and refinement containers use to reach this service."
 
-  env.QITS_PROJECTS_AGENT_GIT_BASE:
+  env.QITS_PROJECTS_CONTAINER_GIT_URL:
     type: string
-    description: "The git base URL, with the /git path, that an agent container clones the project's wrapper from. The INTERNAL githost alias, like the CI and workspace container git urls: the container's baked-in credential helper answers Basic, and only that alias's oauth2 transport turns it into a Bearer."
+    description: "Where a container reaches git: scheme, host and port, no path — both container harnesses append qits-githost's own /git. The INTERNAL githost alias, like the CI and workspace container git urls: the container's baked-in credential helper answers Basic, and only that alias's oauth2 transport turns it into a Bearer. The service alias 401s it and the container cannot fetch at all."
 
   env.QITS_PROJECTS_AGENT_IMAGE_VERSION_OVERRIDE:
     type: string

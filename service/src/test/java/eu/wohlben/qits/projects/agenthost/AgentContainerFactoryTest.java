@@ -198,6 +198,65 @@ class AgentContainerFactoryTest {
   }
 
   /**
+   * One key for one concept, and the two it replaced are read by nobody.
+   *
+   * <p>This is the regression that matters, and it is asserted over the <b>declarations</b> rather
+   * than over a value: {@code env.QITS_PROJECTS_AGENT_GIT_BASE} is still in every deployment's
+   * environment naming qits-githost's <em>service</em> alias, which 401s the Basic credential every
+   * container image's git helper produces, and nothing on this platform deletes a configuration
+   * entry. A stored entry outranks a shipped default, so correcting the default fixed nothing; what
+   * makes the residue inert is that no {@code @ConfigProperty} anywhere names it any more. A test
+   * that set the poisoned key and asserted the value would need a second {@code @TestProfile} — a
+   * whole second Quarkus application — to prove strictly less than this does.
+   *
+   * <p>Both factories are checked here rather than one each, because "the two are one expression of
+   * one idea" is the claim, and a claim about two classes belongs in one assertion.
+   */
+  @Test
+  void bothFactoriesReadTheOneContainerGitKeyAndNeitherReadsARetiredOne() {
+    assertEquals(
+        "http://githost.dev.internal:8080",
+        ConfigProvider.getConfig().getValue("qits.projects.container-git-url", String.class),
+        "the INTERNAL githost alias, scheme host and port with no path: only that alias's oauth2"
+            + " transport turns the image helper's Basic into the Bearer the git host accepts");
+    assertEquals(
+        List.of("qits.projects.container-git-url"),
+        gitKeysRead(AgentContainerFactory.class),
+        "qits.projects.agent-git-base is the poisoned name and must be read by nobody");
+    assertEquals(
+        List.of("qits.projects.container-git-url"),
+        gitKeysRead(eu.wohlben.qits.projects.refinementhost.RefinementContainerFactory.class),
+        "qits.projects.refinement-git-url was the second name for the same fact and is retired too");
+  }
+
+  /** Every {@code @ConfigProperty} name a class reads that is about a git address, in order. */
+  private static List<String> gitKeysRead(Class<?> factory) {
+    return java.util.Arrays.stream(factory.getDeclaredFields())
+        .map(field -> field.getAnnotation(org.eclipse.microprofile.config.inject.ConfigProperty.class))
+        .filter(java.util.Objects::nonNull)
+        .map(org.eclipse.microprofile.config.inject.ConfigProperty::name)
+        .filter(name -> name.contains("git"))
+        .toList();
+  }
+
+  /**
+   * The clone base is the container git url plus qits-githost's own {@code /git} prefix, appended
+   * here exactly as the refinement harness appends it — the key carries no path, so the two
+   * harnesses cannot disagree about where one ends and the other begins.
+   */
+  @Test
+  void theCloneBaseIsTheInternalAliasPlusTheGitPrefix() {
+    String base = spec().env().get("QITS_PROJECTS_DAEMON_GIT_BASE");
+
+    assertEquals("http://githost.dev.internal:8080/git", base);
+    assertTrue(base.endsWith("/git"), "the daemon appends /<projectId>/<repoName> to this");
+    assertTrue(
+        base.startsWith(
+            ConfigProvider.getConfig().getValue("qits.projects.container-git-url", String.class)),
+        "the path is this reader's, never the key's");
+  }
+
+  /**
    * The container is born holding what its sessions are configured to run as.
    *
    * <p>Two variables, and both are addressed to the shared harness library rather than to this

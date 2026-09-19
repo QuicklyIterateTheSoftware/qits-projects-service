@@ -198,14 +198,19 @@ public class RefinementContainerFactory {
   static final String PLATFORM_AUDIENCE = "qits-platform";
 
   /**
-   * The address a refinement container reaches git at — the same authority the deployed
-   * qits-workspaces injects into every workspace container, whose oauth2 transport rewrites the
-   * image's Basic credential helper into a Bearer. The daemon's clone base is this plus
-   * {@code /git}; {@code QITS_GIT_AUTH_HOST} is its authority. The shipped default is the platform's
-   * own spelling and {@code application.properties} carries the measurement behind it.
+   * The address a <em>container</em> reaches git at — scheme, host and port, no path. The daemon's
+   * clone base is this plus {@code /git}; {@code QITS_GIT_AUTH_HOST} is its authority. The shipped
+   * default is the internal githost alias and {@code application.properties} carries the
+   * measurement behind it: the image's credential helper answers Basic and only that alias's oauth2
+   * transport turns it into the Bearer the git host accepts.
+   *
+   * <p><b>The same key {@code AgentContainerFactory} reads</b>, because it is the same fact about
+   * the same platform — one concept, one key, one expression. It was {@code
+   * qits.projects.refinement-git-url} until 2026-09-18; see {@code
+   * agenthost.RetiredContainerGitKeys} for why the move is a rename rather than a rewrite.
    */
   @ConfigProperty(
-      name = "qits.projects.refinement-git-url",
+      name = "qits.projects.container-git-url",
       defaultValue = "http://githost.dev.internal:8080")
   String containerGitUrl;
 
