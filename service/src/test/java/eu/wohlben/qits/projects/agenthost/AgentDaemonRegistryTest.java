@@ -62,6 +62,7 @@ class AgentDaemonRegistryTest {
                     "isResolvable".equals(method.getName()) ? Boolean.FALSE : null);
     registry.tunnels = noTunnels;
     registry.endedActivityTtlMs = java.time.Duration.ofMinutes(30).toMillis();
+    registry.staleActivityTtlMs = java.time.Duration.ofHours(4).toMillis();
   }
 
   /** A {@code WebSocketConnection} answering only what the registry actually calls on one. */
@@ -212,6 +213,90 @@ class AgentDaemonRegistryTest {
     assertTrue(
         registry.agentActivity(PROJECT).isEmpty(),
         "past the TTL it says nothing, rather than saying ENDED for ever");
+  }
+
+  /**
+   * The defect ticket 5f52c45b ends. A session that reports {@code WAITING} and then goes silent for
+   * ever used to answer for its container permanently, because the prune tested {@code ENDED} alone —
+   * the one state that can veto nothing. A Claude Code session is exactly that: it stays {@code
+   * RUNNING} and emits no {@code ENDED}, so the container could never be recreated onto a moved image
+   * pin.
+   */
+  @Test
+  void aWaitingSessionThatWentSilentAgesOutOfTheRollup() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(
+        connection,
+        "session-1",
+        DaemonProtocol.AgentState.WAITING,
+        System.currentTimeMillis() - java.time.Duration.ofHours(5).toMillis());
+
+    assertTrue(
+        registry.agentActivity(PROJECT).isEmpty(),
+        "a WAITING nobody has refreshed in five hours is a stale entry, not a person waiting");
+  }
+
+  /**
+   * And the horizon is a backstop rather than a timeout on work: inside it, a {@code WAITING} still
+   * vetoes. Shortening this to anything a turn can outlast would un-veto a genuinely long tool call,
+   * which is the whole case the stale-image sweep's rollup half exists for.
+   */
+  @Test
+  void aWaitingSessionInsideTheHorizonStillVetoes() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(
+        connection,
+        "session-1",
+        DaemonProtocol.AgentState.WAITING,
+        System.currentTimeMillis() - java.time.Duration.ofHours(3).toMillis());
+
+    assertEquals(DaemonProtocol.AgentState.WAITING, registry.agentActivity(PROJECT).orElseThrow());
+  }
+
+  /**
+   * {@code BUSY} goes on the same rule, and this is the load-bearing half of the pair: a fix that
+   * aged out {@code WAITING} alone would leave {@code BUSY(4)} — the highest rank there is —
+   * immortal, and the container just as un-sweepable.
+   */
+  @Test
+  void aBusySessionAgesOutOnTheSameRule() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+
+    report(
+        connection,
+        "session-1",
+        DaemonProtocol.AgentState.BUSY,
+        System.currentTimeMillis() - java.time.Duration.ofHours(5).toMillis());
+
+    assertTrue(registry.agentActivity(PROJECT).isEmpty(), "no state is exempt from the backstop");
+  }
+
+  /**
+   * The two horizons are independent rather than collapsed. An hour old is past the {@code ENDED}
+   * horizon (30 minutes) and well inside the stale one (4 hours), so the same age answers differently
+   * for the two states — which is the whole point of there being two numbers.
+   */
+  @Test
+  void theTwoHorizonsAreIndependent() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    long anHourAgo = System.currentTimeMillis() - java.time.Duration.ofHours(1).toMillis();
+
+    report(connection, "session-ended", DaemonProtocol.AgentState.ENDED, anHourAgo);
+    assertTrue(
+        registry.agentActivity(PROJECT).isEmpty(),
+        "an ENDED entry still ages out at the SHORT horizon");
+
+    report(connection, "session-waiting", DaemonProtocol.AgentState.WAITING, anHourAgo);
+    assertEquals(
+        DaemonProtocol.AgentState.WAITING,
+        registry.agentActivity(PROJECT).orElseThrow(),
+        "and a live claim of the same age is kept — the stale horizon is eight times longer");
   }
 
   /** A report with no session id is keyed on its command id rather than dropped. */

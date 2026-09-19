@@ -137,6 +137,50 @@ public class AgentDaemonRegistry {
   @ConfigProperty(name = "qits.projects.agent.ended-activity-ttl-ms", defaultValue = "1800000")
   long endedActivityTtlMs;
 
+  /**
+   * How long an entry in <em>any</em> state keeps a say in the rollup — the backstop against a
+   * session that died or lied, and the second of two horizons that are deliberately not one number
+   * (ticket 5f52c45b).
+   *
+   * <h2>Why two horizons, and why this one is eight times the other</h2>
+   *
+   * <p><b>The two say different things.</b> An {@code ENDED} entry merely describes the past, so it
+   * can be dropped as soon as it stops being the most recent thing that happened — half an hour, and
+   * it vetoes nothing while it lives because {@code ENDED} ranks below every other state. A {@code
+   * BUSY}/{@code WAITING} entry is a claim that something is <b>live</b>, and it vetoes
+   * {@link AgentStaleImageSweep}'s rollup half on its own. Dropping that early would un-veto a
+   * genuinely long turn, which is the exact case that half exists for — a long tool call is minutes
+   * of silence in the middle of a turn. So this horizon has to be longer than any plausible turn: it
+   * is a backstop against a session that died or lied, <b>never a timeout on work</b>.
+   *
+   * <p><b>Four hours is borrowed rather than invented.</b> {@link AgentIdleSweep#idleTimeout} already
+   * treats {@code PT4H} as the point at which a container nobody has come back to is gone, so this
+   * reuses that estate's existing reading of "long enough that this cannot be live any more" instead
+   * of minting a second number for the same judgement.
+   *
+   * <p><b>What it costs nothing.</b> {@code AgentStaleImageSweep.isQuiet}'s <em>stamp</em> half is
+   * untouched by this and must stay so. A truly busy session emits frames — {@link CommandChunk},
+   * {@link CommandExit}, {@link AgentActivity} — and every one of them stamps
+   * {@link #lastAgentActivity}, which vetoes on its own inside that sweep's quiet window. Widening
+   * this prune therefore removes a veto that <b>silence alone</b> was holding; it cannot make the
+   * sweep stop a container somebody is using.
+   *
+   * <p><b>The invariant, and where it is reported.</b> This has to stay strictly longer than {@code
+   * qits.projects.agent-stale-quiet-window}, or the rollup can only ever veto what the stamp has
+   * already vetoed and its whole reason for existing is gone with every test still green. That is not
+   * enforceable here — both values are a deployment's — so
+   * {@code startup/AgentActivityHorizonAudit} says so at boot.
+   *
+   * <p><b>The defect this ends.</b> The prune used to test {@code ENDED} alone, so {@code BUSY(4)}
+   * and {@code WAITING(3)} never aged out at all while the one state that can veto nothing was the
+   * only one with a horizon. A Claude Code session launched through the agent surface stays {@code
+   * RUNNING} for ever and emits no {@code ENDED}, so its last {@code WAITING} answered for the
+   * container permanently and no moved image pin could ever reach it. Measured live 2026-09-19: three
+   * sessions left open for 2h40m held one container un-sweepable across two sweep passes.
+   */
+  @ConfigProperty(name = "qits.projects.agent.stale-activity-ttl-ms", defaultValue = "14400000")
+  long staleActivityTtlMs;
+
   /** One session's last reported state and when it said so. */
   private record ActivityEntry(String state, long atMillis) {}
 
@@ -231,9 +275,22 @@ public class AgentDaemonRegistry {
    * This project's rolled-up agent state — the busiest of its live sessions — or empty when no
    * session has reported one.
    *
-   * <p>{@code ENDED} entries are aged out on read rather than on a timer, exactly as the refinement
-   * registry does it: the rollup has no reader but this one, so a pass over it costs nothing between
-   * reads and there is no second thread to reason about.
+   * <p>Entries are aged out on read rather than on a timer, exactly as the refinement registry does
+   * it: the rollup has no reader but this one, so a pass over it costs nothing between reads and there
+   * is no second thread to reason about.
+   *
+   * <p><b>Two horizons, and an entry goes when EITHER has passed.</b> An {@code ENDED} entry older
+   * than {@link #endedActivityTtlMs} (half an hour) stops describing the container's most recent
+   * state; an entry in <em>any</em> state older than {@link #staleActivityTtlMs} (four hours) is a
+   * claim nobody has refreshed and is dropped whatever it claims. The second field carries the whole
+   * argument for why these are two numbers and not one, and why collapsing them is a regression in
+   * both directions.
+   *
+   * <p><b>{@code RefinementDaemonRegistry} keeps the {@code ENDED}-only prune, and that is
+   * deliberate.</b> On its axis the same code is not a defect: a refinement container is discarded
+   * when its epic resolves, so a stale entry dies with the container. A project agent container has no
+   * such turnover, which is what turns the identical prune into this bug here. Do not "fix" both for
+   * symmetry — if the refinement axis ever grows long-lived containers, it is one file over.
    */
   public Optional<String> agentActivity(String projectId) {
     Map<String, ActivityEntry> sessions = agentActivity.get(projectId);
@@ -245,8 +302,9 @@ public class AgentDaemonRegistry {
         .entrySet()
         .removeIf(
             entry ->
-                DaemonProtocol.AgentState.ENDED.equals(entry.getValue().state())
-                    && now - entry.getValue().atMillis() > endedActivityTtlMs);
+                (DaemonProtocol.AgentState.ENDED.equals(entry.getValue().state())
+                        && now - entry.getValue().atMillis() > endedActivityTtlMs)
+                    || now - entry.getValue().atMillis() > staleActivityTtlMs);
     return sessions.values().stream()
         .map(ActivityEntry::state)
         .max(Comparator.comparingInt(AgentDaemonRegistry::activityRank));

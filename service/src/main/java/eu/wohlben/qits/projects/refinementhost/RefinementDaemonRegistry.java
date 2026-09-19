@@ -155,7 +155,17 @@ public class RefinementDaemonRegistry {
     return Optional.ofNullable(gitClean.get(refinementId));
   }
 
-  /** The refinement's rolled-up agent activity, or empty when no session has reported. */
+  /**
+   * The refinement's rolled-up agent activity, or empty when no session has reported.
+   *
+   * <p><b>The prune tests {@code ENDED} alone, and that is deliberate on this axis</b> (ticket
+   * 5f52c45b). {@code AgentDaemonRegistry} grew a second horizon that ages out <em>every</em> state,
+   * because a project agent container has no turnover: a session that reports {@code WAITING} and then
+   * goes silent for ever held its container un-sweepable permanently. A refinement container is
+   * discarded when its epic resolves, so a stale entry here dies with the container it describes and
+   * there is nothing for a backstop to catch. Do not copy the second horizon over for symmetry — if
+   * this axis ever grows long-lived containers, that is when it earns one.
+   */
   public Optional<String> agentActivity(Long refinementId) {
     Map<String, ActivityEntry> sessions = activity.get(refinementId);
     if (sessions == null || sessions.isEmpty()) {

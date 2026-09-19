@@ -1419,6 +1419,40 @@ project", not "nothing is happening": a long silent build still heartbeats. A co
 has never heard from is stamped on sight and ages out one window later, rather than being immortal
 or reaped immediately.
 
+**`AgentStaleImageSweep` is the second sweep and it asks a different question on a different clock:
+"is this container behind the image pin, and is it quiet enough to take away right now".** Quiet needs
+**both** halves — the heartbeat-free stamp (`lastAgentActivity`) older than
+`qits.projects.agent-stale-quiet-window` (PT30M), *and* a rolled-up agent state that is not
+`BUSY`/`WAITING` — because each catches what the other cannot: the stamp catches an open terminal,
+which emits no agent activity at all, and the rollup catches an agent thinking between two frames.
+
+**That rollup ages entries out on read against TWO horizons, and they are not one number** (ticket
+5f52c45b):
+
+| key | shipped | what it drops |
+| --- | --- | --- |
+| `qits.projects.agent.ended-activity-ttl-ms` | 1800000 (30m) | an `ENDED` entry — it merely describes the past, and vetoes nothing while it lives |
+| `qits.projects.agent.stale-activity-ttl-ms` | 14400000 (4h) | an entry in **any** state, `BUSY` and `WAITING` included |
+
+The second is the backstop against a session that **died or lied**, never a timeout on work: a
+`BUSY`/`WAITING` entry is a claim that something is live and vetoes on its own, so dropping it early
+would un-veto a genuinely long turn — which is the case the rollup half exists for. Four hours is
+borrowed from `qits.projects.agent-idle-timeout` rather than invented. It fixed a total failure: the
+prune used to test `ENDED` alone, the one state that can veto nothing, so a Claude Code session — which
+stays `RUNNING` for ever and emits no `ENDED` — held its container un-sweepable permanently and no
+moved image pin could ever reach it (measured live: three sessions, 2h40m, two sweep passes).
+**The stamp half is untouched by that and must stay so** — a truly busy session emits frames and every
+one of them stamps `lastAgentActivity` — so widening the prune removes a veto that *silence* was
+holding, never one that work was.
+
+**The stale horizon must stay strictly longer than the quiet window**, or every entry that could veto
+is pruned before the sweep reads it and the rollup stops being able to say anything the stamp has not
+already said, with every test still green. That is a deployment's pair rather than a compiled one, so
+`startup/AgentActivityHorizonAudit` reports it at boot — one ERROR naming both values, never blocking
+the boot, `ReservedSlugAudit`'s shape (ticket e319ed55). **`RefinementDaemonRegistry` keeps the
+`ENDED`-only prune deliberately**: a refinement container is discarded when its epic resolves, so a
+stale entry dies with the container, and the identical code is not a defect on that axis.
+
 **A failed provision is reported, not swallowed.** The daemon clones the project into
 `/workspace` on boot; when that fails it says `ProvisionFailed`, and docker still calls the
 container healthy. So the frame is *recorded* per project and the agent-container read answers

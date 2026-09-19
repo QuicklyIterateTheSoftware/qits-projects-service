@@ -70,6 +70,7 @@ class AgentStaleImageSweepTest {
           }
         };
     registry.endedActivityTtlMs = Duration.ofMinutes(30).toMillis();
+    registry.staleActivityTtlMs = Duration.ofHours(4).toMillis();
     // The emergency override IS the pin once it is set, and it is the one value imageVersion()
     // prefers — which is what lets this test name a tag without pinning itself to the released one.
     factory.imageVersionOverride = Optional.of(PIN);
@@ -223,6 +224,71 @@ class AgentStaleImageSweepTest {
 
     assertEquals(1, sweep.sweep(NOW));
     assertEquals(List.of("project-thinking"), stopped);
+  }
+
+  /**
+   * The defect ticket 5f52c45b ends, read from this end. A Claude Code session left open reports
+   * {@code WAITING} and then says nothing for ever, and that entry used to veto the rollup half for
+   * the life of the process — so a container anybody had ever launched a session in could never be
+   * recreated onto a moved pin. Past the stale horizon the entry is gone and the container is taken.
+   *
+   * <p>The frame's own timestamp is the registry's clock rather than this test's {@code NOW}: the
+   * rollup ages on wall-clock millis, which is why the stale age is expressed against {@code
+   * System.currentTimeMillis()} while the stamp below travels on the fake clock.
+   */
+  @Test
+  void stopsAStaleContainerWhoseOnlySessionIsALongSilentWaiting() {
+    project("project-forgotten", "forgotten");
+    runtime.given("project-forgotten", "forgotten", true);
+    daemon("project-forgotten", "2026.901.120000");
+    registry.onMessage(
+        "project-forgotten",
+        null,
+        new AgentActivity(
+            "cmd-1",
+            "session-1",
+            DaemonProtocol.AgentState.WAITING,
+            "Stop",
+            null,
+            null,
+            System.currentTimeMillis() - Duration.ofHours(5).toMillis()));
+    registry.touchAgentActivity("project-forgotten", NOW.minus(Duration.ofHours(2)));
+
+    assertEquals(1, sweep.sweep(NOW));
+    assertEquals(
+        List.of("project-forgotten"),
+        stopped,
+        "a WAITING nobody has refreshed in five hours is a stale entry, not a person waiting");
+  }
+
+  /**
+   * <b>The regression that matters most.</b> The same forgotten {@code WAITING} entry, but something
+   * happened in the container five minutes ago — an open terminal, a person reading files through the
+   * proxy, a frame from a session that is genuinely alive. The stamp half vetoes on its own, so
+   * widening the rollup's prune removes a veto that <em>silence</em> was holding and never one that
+   * work was. If this test ever goes green the other way round, the change stops a container somebody
+   * is using.
+   */
+  @Test
+  void aFreshStampStillProtectsTheSameContainer() {
+    project("project-forgotten", "forgotten");
+    runtime.given("project-forgotten", "forgotten", true);
+    daemon("project-forgotten", "2026.901.120000");
+    registry.onMessage(
+        "project-forgotten",
+        null,
+        new AgentActivity(
+            "cmd-1",
+            "session-1",
+            DaemonProtocol.AgentState.WAITING,
+            "Stop",
+            null,
+            null,
+            System.currentTimeMillis() - Duration.ofHours(5).toMillis()));
+    registry.touchAgentActivity("project-forgotten", NOW.minus(Duration.ofMinutes(5)));
+
+    assertEquals(0, sweep.sweep(NOW));
+    assertEquals(List.of(), stopped, "the stamp half is untouched by the wider prune");
   }
 
   /**
