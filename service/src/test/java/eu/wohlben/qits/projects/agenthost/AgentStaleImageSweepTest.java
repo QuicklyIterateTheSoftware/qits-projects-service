@@ -8,6 +8,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projectsdaemon.protocol.AgentActivity;
+import eu.wohlben.qits.projectsdaemon.protocol.CommandExit;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonLog;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.Hello;
@@ -273,6 +274,126 @@ class AgentStaleImageSweepTest {
 
     assertEquals(1, sweep.sweep(NOW));
     assertEquals(List.of("project-thinking"), stopped);
+  }
+
+  /**
+   * <b>The reason the four-hour horizon stopped being the normal path.</b> The container's only
+   * session last said {@code WAITING} — the ordinary end of a turn, since {@code ENDED} comes from
+   * the {@code SessionEnd} hook alone and a terminate produces no activity frame at all — and then its
+   * command exited. Before the reconciliation that entry vetoed this sweep until the horizon expired,
+   * so every container anybody had ever worked in waited four hours for a moved pin. It is stopped as
+   * soon as the quiet window passes now, with the entry only minutes old.
+   */
+  @Test
+  void stopsAStaleContainerWhoseOnlySessionHasExited() {
+    project("project-done", "done");
+    runtime.given("project-done", "done", true);
+    daemon("project-done", "2026.901.120000");
+    registry.onMessage(
+        "project-done",
+        null,
+        new AgentActivity(
+            "cmd-1",
+            "session-1",
+            DaemonProtocol.AgentState.WAITING,
+            "Notification",
+            null,
+            null,
+            System.currentTimeMillis() - Duration.ofMinutes(5).toMillis()));
+    registry.onMessage("project-done", null, new CommandExit("cmd-1", 0));
+    // After the frames, because handling one stamps the use clock: the quiet window still has to
+    // pass, and it is the only thing this container is now waiting on.
+    registry.touchAgentActivity("project-done", NOW.minus(Duration.ofHours(2)));
+
+    assertEquals(1, sweep.sweep(NOW));
+    assertEquals(
+        List.of("project-done"),
+        stopped,
+        "the entry is five minutes old and the horizon is four hours — the exit is what freed it");
+  }
+
+  /**
+   * The pair to the test above, and the one that would pass anyway if the reconciliation cleared a
+   * project's whole rollup on any exit: a second session is still live, so the container is not quiet
+   * and is not stopped.
+   */
+  @Test
+  void leavesAStaleContainerWhoseOtherSessionIsStillBusy() {
+    project("project-two-up", "two-up");
+    runtime.given("project-two-up", "two-up", true);
+    daemon("project-two-up", "2026.901.120000");
+    registry.onMessage(
+        "project-two-up",
+        null,
+        new AgentActivity(
+            "cmd-1", "session-1", DaemonProtocol.AgentState.WAITING, "Notification", null, null, 0L));
+    registry.onMessage(
+        "project-two-up",
+        null,
+        new AgentActivity(
+            "cmd-2", "session-2", DaemonProtocol.AgentState.BUSY, "PreToolUse", null, null, 0L));
+    registry.onMessage("project-two-up", null, new CommandExit("cmd-1", 0));
+    registry.touchAgentActivity("project-two-up", NOW.minus(Duration.ofHours(2)));
+
+    assertEquals(0, sweep.sweep(NOW));
+    assertEquals(
+        List.of(), stopped, "one session ending is not the container falling quiet");
+  }
+
+  /**
+   * And a live, non-exited {@code BUSY} still vetoes, which is the veto's entire job. The
+   * reconciliation removes an entry on evidence that its command is over and on nothing else.
+   */
+  @Test
+  void leavesAStaleContainerWithALiveBusySessionAndNoExit() {
+    project("project-live", "live");
+    runtime.given("project-live", "live", true);
+    daemon("project-live", "2026.901.120000");
+    registry.onMessage(
+        "project-live",
+        null,
+        new AgentActivity(
+            "cmd-1", "session-1", DaemonProtocol.AgentState.BUSY, "PreToolUse", null, null, 0L));
+    registry.touchAgentActivity("project-live", NOW.minus(Duration.ofHours(2)));
+
+    assertEquals(0, sweep.sweep(NOW));
+    assertEquals(List.of(), stopped, "nothing said that command is over");
+  }
+
+  /**
+   * The boot pass, driven directly because both of its entry points return early outside a packaged
+   * run. With the daemons already back it is an ordinary pass and stops what a scheduled one would.
+   */
+  @Test
+  void theBootPassStopsAStaleQuietContainerOnceTheDaemonsAreBack() {
+    sweep.startupSettle = Duration.ZERO;
+    project("project-old", "old");
+    runtime.given("project-old", "old", true);
+    daemon("project-old", "2026.901.120000");
+    registry.touchAgentActivity("project-old", NOW.minus(Duration.ofHours(2)));
+
+    sweep.sweepAfterSettle();
+
+    assertEquals(List.of("project-old"), stopped);
+  }
+
+  /**
+   * <b>The case the settle delay exists for.</b> No daemon has reconnected yet, so nothing has told
+   * this service what any container is running — which is not "behind" — and the pass stops nothing.
+   * A boot pass fired at {@code StartupEvent} is exactly this state for every container on the host,
+   * which is why shortening the settle to zero makes it a no-op rather than making it aggressive.
+   */
+  @Test
+  void theBootPassIsANoOpWhileNoDaemonHasReconnected() {
+    sweep.startupSettle = Duration.ZERO;
+    project("project-old", "old");
+    runtime.given("project-old", "old", true);
+    registry.touchAgentActivity("project-old", NOW.minus(Duration.ofHours(2)));
+
+    sweep.sweepAfterSettle();
+
+    assertEquals(List.of(), stopped, "no daemon has said what this container is running");
+    assertEquals(List.of(), runtime.calls());
   }
 
   /**

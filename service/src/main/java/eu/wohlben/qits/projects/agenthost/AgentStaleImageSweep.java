@@ -4,9 +4,11 @@ import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import io.quarkus.runtime.LaunchMode;
+import io.quarkus.runtime.StartupEvent;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
+import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
@@ -103,6 +105,73 @@ public class AgentStaleImageSweep {
    */
   @ConfigProperty(name = "qits.projects.agent-stale-quiet-window", defaultValue = "PT30M")
   Duration quietWindow;
+
+  /**
+   * How long the one-shot pass at boot waits before it runs — a <b>settle for daemon reconnection</b>
+   * and nothing else.
+   *
+   * <h2>Why a delay is required rather than tidy</h2>
+   *
+   * <p>{@link #sweep} never judges a container whose daemon is not connected: {@link
+   * AgentDaemonRegistry#lookup} answers empty, "we have not been told" is not "behind", and the
+   * container is skipped. The registry's client map is <em>this process's memory</em>, so at {@code
+   * StartupEvent} it is empty for every container on the host — a pass fired there would skip all of
+   * them and do nothing at all. The daemons come back on their own: each one reconnects on a capped
+   * backoff (`qits.projects-daemon.reconnect-max-backoff-ms`, 30s), so a minute is comfortably past
+   * the point where every live container has re-announced what it is running.
+   *
+   * <p><b>Shortening this to zero does not make the boot pass more aggressive — it makes it a
+   * no-op.</b> That is the opposite of how every other duration in this class reads, which is exactly
+   * why it is spelled out here: {@link #quietWindow} is a threshold something has to exceed, and a
+   * smaller one stops more containers; this is a wait for evidence to arrive, and a smaller one
+   * arrives before the evidence does. It is emphatically not a second quiet window and it relaxes
+   * none of the conditions {@link #isQuiet} applies.
+   *
+   * <p>There is deliberately no retry ladder and no "wait until N daemons have connected" handshake:
+   * a boot pass that fires too early costs nothing, because {@link #sweepStaleAgents()} comes round
+   * on its own interval and is the backstop. Zero or negative runs the pass immediately, which is
+   * supported and is what a test that has already connected its daemons wants.
+   */
+  @ConfigProperty(name = "qits.projects.agent-stale-startup-settle", defaultValue = "PT1M")
+  Duration startupSettle;
+
+  /**
+   * One pass shortly after boot, so a deploy picks up stale containers promptly instead of waiting
+   * out an interval — and, more to the point, instead of waiting out a quiet window that is this
+   * service's own invention rather than anything the estate requires.
+   *
+   * <p>On a virtual thread and off the startup path, the {@link AgentCredentialReconcile#onStart}
+   * precedent: it sleeps for {@link #startupSettle} and then reaches the orchestrator over the
+   * network, and readiness must wait on neither. Gated to {@link LaunchMode#NORMAL} exactly as the
+   * scheduled pass is, so a suite or a {@code quarkus:dev} session never starts stopping containers
+   * in the background; the suite drives {@link #sweepAfterSettle()} directly instead.
+   */
+  void onStart(@Observes StartupEvent event) {
+    if (LaunchMode.current() != LaunchMode.NORMAL) {
+      return;
+    }
+    Thread.ofVirtual().name("qits-agent-stale-image-startup-sweep").start(this::sweepAfterSettle);
+  }
+
+  /**
+   * The boot pass's body: settle, then one ordinary pass.
+   *
+   * <p>Package-private and interruptible — an interrupt during the settle is a shutdown, and the
+   * answer to it is to abandon the pass rather than to sweep on the way out. Nothing is rethrown,
+   * for {@link #sweepQuietly()}'s reason.
+   */
+  void sweepAfterSettle() {
+    try {
+      if (startupSettle != null && !startupSettle.isZero() && !startupSettle.isNegative()) {
+        Thread.sleep(startupSettle);
+      }
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      LOG.debug("The stale-image boot sweep was interrupted while settling — not run.");
+      return;
+    }
+    sweepQuietly();
+  }
 
   /**
    * How often the sweep runs. A floor on how late a stop is, not a window: a stale container that
@@ -241,6 +310,11 @@ public class AgentStaleImageSweep {
    * through it — so a container could pass the window while an agent was mid-sentence. {@code BUSY}
    * and {@code WAITING} both say a session is live and neither is a moment to stop a container in;
    * {@code IDLE} and {@code ENDED} say it is not.
+   *
+   * <p><b>The rollup's veto is released as soon as the session's command exits</b>, which is the
+   * ordinary way it ends: {@code AgentDaemonRegistry.onCommandExit} drops the entry on the {@code
+   * CommandExit} frame, so a container whose last agent has finished reads quiet within seconds
+   * rather than at the horizon below. Read that method before touching either.
    *
    * <p><b>The rollup's veto is bounded, and it has to be.</b> A session that stops reporting without
    * ever saying it ended — an agent that died before its {@code Stop} hook fired — would otherwise

@@ -176,8 +176,18 @@ public class AgentDaemonRegistry {
   @ConfigProperty(name = "qits.projects.agent.stale-activity-ttl-ms", defaultValue = "14400000")
   long staleActivityTtlMs;
 
-  /** One session's last reported state and when it said so. */
-  private record ActivityEntry(String state, long atMillis) {}
+  /**
+   * One session's last reported state, when it said so, and the command it was running under.
+   *
+   * <p><b>The {@code commandId} is carried here rather than in a second map, and that is the whole
+   * of what {@link #onCommandExit} needs.</b> {@link #onAgentActivity} keys an entry by
+   * {@code sessionId} and falls back to {@code commandId}, so the key alone cannot answer "which
+   * entries belong to this command" — but the frame carries both, so the association is already in
+   * hand at the one moment it is knowable. A side map from command to session would be a second
+   * thing to write, to age out and to clear in {@link #forget}, kept in step with this one by
+   * convention; a field on the record cannot fall out of step with the entry it is part of.
+   */
+  private record ActivityEntry(String state, long atMillis, String commandId) {}
 
   /**
    * Why each project's last {@link ProvisionFailed} said its {@code /workspace} is not there.
@@ -279,6 +289,11 @@ public class AgentDaemonRegistry {
    * the long {@link #staleActivityTtlMs}, because a session can stop reporting without ever saying it
    * ended and a {@code BUSY} that outlives its agent is otherwise a permanent claim that something is
    * running. The second horizon is the one that carries the argument — see the field.
+   *
+   * <p><b>Neither horizon is the ordinary way an entry goes.</b> {@link #onCommandExit} drops a
+   * session's entry the moment its command exits, which is what makes this fold answer within seconds
+   * of a session ending rather than four hours later. The horizons are the backstop for the sessions
+   * that never get one; see that method.
    */
   public Optional<String> agentActivity(String projectId) {
     Map<String, ActivityEntry> sessions = agentActivity.get(projectId);
@@ -527,11 +542,13 @@ public class AgentDaemonRegistry {
                 ? "The daemon reported a failed provision with no reason."
                 : failed.message());
       }
+      // A command is over. The chunk stream it closes has no reader here, but WHICH command ended is
+      // the one fact the rollup cannot derive for itself — see onCommandExit.
+      case CommandExit exit -> onCommandExit(projectId, exit.correlationId());
       // Replies to frames this host never sends, and qits -> daemon requests echoed back. Both are
       // dropped rather than treated as errors: a daemon must not be able to break its own control
       // socket by saying something this backend has no view for.
       case CommandChunk ignored -> {}
-      case CommandExit ignored -> {}
       case ProjectInfo ignored -> {}
       case Ack ignored -> {}
       case RunCommand ignored -> {}
@@ -571,9 +588,63 @@ public class AgentDaemonRegistry {
       long at = activity.at() > 0 ? activity.at() : System.currentTimeMillis();
       agentActivity
           .computeIfAbsent(projectId, id -> new ConcurrentHashMap<>())
-          .put(key, new ActivityEntry(activity.state(), at));
+          .put(key, new ActivityEntry(activity.state(), at, activity.commandId()));
     }
     changePublisher.fire(projectId, ProjectChangeHint.Topic.AGENT_ACTIVITY);
+  }
+
+  /**
+   * A command has exited: every rollup entry belonging to it is dropped, at once.
+   *
+   * <h2>The defect this closes</h2>
+   *
+   * <p>An entry was only ever <em>replaced</em> by another {@link AgentActivity} frame, and {@code
+   * ENDED} has exactly one producer — the Claude Code {@code SessionEnd} hook, through the daemon's
+   * hook webhook. Terminating a command emits no {@code AgentActivity} at all, and a turn-finishing
+   * {@code Stop} is explicitly guarded from downgrading a pending {@code WAITING}. So the ordinary way
+   * a session ends left a {@code BUSY}/{@code WAITING} fossil, which {@link
+   * AgentStaleImageSweep#isQuiet} reads as a live session and refuses to stop the container over. The
+   * four-hour horizon then had to expire before a moved image pin could reach a container anybody had
+   * ever worked in — a backstop designed for the rare dead agent, doing duty as the normal path.
+   *
+   * <p><b>Reconciliation beats waiting the horizon out because the service is already told.</b> The
+   * exit arrives on the frame this method handles; the only thing missing was the association back to
+   * the entry, and {@link AgentActivity} carries both ids, so it is recorded on {@link ActivityEntry}
+   * at report time and read here. Nothing is asked of the daemon and no frame is added.
+   *
+   * <p><b>Removal is immediate and there is no grace period.</b> A {@code CommandExit} arrives once
+   * and is authoritative: a command that has exited is not somebody's live session, so there is
+   * nothing for a delay to protect. What protects a container that is genuinely in use is the
+   * <em>other</em> half of {@code isQuiet} — the {@link #lastAgentActivity} stamp, which this exit
+   * itself advances.
+   *
+   * <p><b>The horizons stay, and the two compose rather than overlap.</b> This reconciliation catches
+   * a session that exits cleanly while its last hook said {@code WAITING}; {@link
+   * #staleActivityTtlMs} catches one that vanishes without ever producing a {@code CommandExit} — an
+   * agent killed with its container, a daemon that dropped mid-turn. Neither can do the other's job.
+   *
+   * <p><b>The edge being accepted:</b> on a reconnect the daemon's hook webhook re-sends the last
+   * activity for every command it is still tracking, and it stops tracking one only on {@code
+   * ENDED} — so a command that exited without one can be re-reported after a reconnect and mint a
+   * fresh entry here. That entry is bounded by the four-hour horizon exactly as it was before, which
+   * is part of why the horizon stays.
+   */
+  private void onCommandExit(String projectId, String commandId) {
+    if (commandId == null || commandId.isBlank()) {
+      return;
+    }
+    Map<String, ActivityEntry> sessions = agentActivity.get(projectId);
+    if (sessions == null) {
+      return;
+    }
+    // Scoped to this project AND to this command. Clearing the project's whole rollup on any exit
+    // would pass a test that only ever has one session in it and would stop a container out from
+    // under a second agent still working in it.
+    if (sessions.entrySet().removeIf(entry -> commandId.equals(entry.getValue().commandId()))) {
+      LOG.debugf(
+          "projects-daemon command %s exited in project %s: its agent session is no longer live",
+          commandId, projectId);
+    }
   }
 
   /**

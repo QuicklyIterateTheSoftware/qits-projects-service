@@ -421,6 +421,121 @@ class AgentDaemonRegistryTest {
         "a restart starts every window afresh rather than inheriting the container before it");
   }
 
+  /**
+   * <b>The defect this reconciliation closes.</b> {@code ENDED} has exactly one producer — the
+   * {@code SessionEnd} hook — and a turn-finishing {@code Stop} is guarded from downgrading a pending
+   * {@code WAITING}, so the ordinary way a session ends left a {@code WAITING} fossil that only the
+   * four-hour horizon could clear. The exit is the fact the service already has; using it is what
+   * makes the fold answer within seconds of a session ending instead of within four hours.
+   */
+  @Test
+  void aWaitingSessionIsDroppedWhenItsCommandExits() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity(
+            "cmd-1", "session-1", DaemonProtocol.AgentState.WAITING, "Notification", null, null, 0L));
+    assertEquals(DaemonProtocol.AgentState.WAITING, registry.agentActivity(PROJECT).orElseThrow());
+
+    registry.onMessage(PROJECT, connection, new CommandExit("cmd-1", 0));
+
+    assertTrue(
+        registry.agentActivity(PROJECT).isEmpty(),
+        "a command that has exited is not somebody's live session, four hours or not");
+  }
+
+  /**
+   * <b>The load-bearing negative.</b> A fix that cleared the whole project's rollup on any exit would
+   * pass the test above and would stop a container out from under a second agent still working in it.
+   * The removal is scoped to the command that exited, and nothing else.
+   */
+  @Test
+  void anExitOfADifferentCommandLeavesTheEntryAlone() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity(
+            "cmd-1", "session-1", DaemonProtocol.AgentState.BUSY, "PreToolUse", null, null, 0L));
+
+    registry.onMessage(PROJECT, connection, new CommandExit("cmd-other", 0));
+
+    assertEquals(
+        DaemonProtocol.AgentState.BUSY,
+        registry.agentActivity(PROJECT).orElseThrow(),
+        "somebody else's command ending says nothing about this session");
+  }
+
+  /**
+   * A container serves several sessions at once, which is the whole reason the rollup is per session.
+   * One of them exiting takes its own entry and leaves the other's answer standing.
+   */
+  @Test
+  void oneSessionExitingLeavesTheOtherFolding() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity(
+            "cmd-1", "session-1", DaemonProtocol.AgentState.BUSY, "PreToolUse", null, null, 0L));
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity(
+            "cmd-2", "session-2", DaemonProtocol.AgentState.WAITING, "Notification", null, null, 0L));
+    assertEquals(DaemonProtocol.AgentState.BUSY, registry.agentActivity(PROJECT).orElseThrow());
+
+    registry.onMessage(PROJECT, connection, new CommandExit("cmd-1", 0));
+
+    assertEquals(
+        DaemonProtocol.AgentState.WAITING,
+        registry.agentActivity(PROJECT).orElseThrow(),
+        "the busy session is gone and the waiting one still answers for itself");
+
+    registry.onMessage(PROJECT, connection, new CommandExit("cmd-2", 130));
+    assertTrue(registry.agentActivity(PROJECT).isEmpty(), "and then nothing is running in there");
+  }
+
+  /**
+   * The fallback key and the reconciliation have to agree. A frame with no session id is keyed on its
+   * command id, and the same command exiting must still find it — the two ends of the association are
+   * the same field.
+   */
+  @Test
+  void aSessionlessEntryIsDroppedByItsCommandsExitToo() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity("cmd-1", null, DaemonProtocol.AgentState.BUSY, "PreToolUse", null, null, 0L));
+
+    registry.onMessage(PROJECT, connection, new CommandExit("cmd-1", 0));
+
+    assertTrue(registry.agentActivity(PROJECT).isEmpty());
+  }
+
+  /** An exit naming no command reconciles nothing, and in particular does not clear the project. */
+  @Test
+  void anExitWithNoCommandIdClearsNothing() {
+    WebSocketConnection connection = connection("c1");
+    registry.register(PROJECT, connection);
+    registry.onMessage(
+        PROJECT,
+        connection,
+        new AgentActivity(
+            "cmd-1", "session-1", DaemonProtocol.AgentState.BUSY, "PreToolUse", null, null, 0L));
+
+    registry.onMessage(PROJECT, connection, new CommandExit(null, 0));
+    registry.onMessage(PROJECT, connection, new CommandExit("   ", 0));
+
+    assertEquals(DaemonProtocol.AgentState.BUSY, registry.agentActivity(PROJECT).orElseThrow());
+  }
+
   private void report(WebSocketConnection connection, String sessionId, String state, long at) {
     registry.onMessage(
         PROJECT, connection, new AgentActivity("cmd-" + sessionId, sessionId, state, null, null, null, at));
