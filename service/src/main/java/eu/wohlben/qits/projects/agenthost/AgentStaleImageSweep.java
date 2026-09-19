@@ -58,7 +58,8 @@ import org.jboss.logging.Logger;
  * is measured from everything the daemon says <em>including</em> the heartbeat, and that is correct
  * for what it decides. This one asks "is this container behind the pin, and is it quiet enough to
  * take away right now", which is measured from {@link AgentDaemonRegistry#lastAgentActivityAt} — the
- * stamp the heartbeat does not write. Folding the two together would put the heartbeat back into this
+ * stamp that only a frame evidencing somebody at work writes, which is neither the heartbeat nor the
+ * daemon's own log lines. Folding the two together would put the heartbeat back into this
  * decision, which is the defect, or take it out of the idle one, which would make every live
  * container look reapable. The windows differ by an order of magnitude for the same reason: four
  * hours is "nobody came back today", thirty minutes is "nobody is mid-sentence".
