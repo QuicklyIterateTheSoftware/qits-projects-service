@@ -131,6 +131,18 @@ import java.util.Set;
 @ApplicationScoped
 public class EntityTransitionService {
 
+  /**
+   * <b>The two properties a caller neither states nor clears</b>, in one place because two things
+   * read them: {@link #propertyViolations} below, which carries them onto the candidate so neither
+   * is a {@code NOT_PERMITTED} complaint and neither is cleared by omission, and {@code
+   * ArchetypeRegistryDocument}, which serves them so a client renders no form field for either. Left
+   * as a literal in both, the list a client is told and the list the server enforces would be free
+   * to drift, and the drift would show up as a field a caller can fill in and the server silently
+   * ignores. {@link EntityTransition} carries the full reasoning for each.
+   */
+  public static final Set<EntityProperty> SERVER_OWNED =
+      Set.of(EntityProperty.SLUG, EntityProperty.CREATED_BY);
+
   @Inject WorkEntityRepository entities;
 
   @Inject EntityMembershipRepository memberships;
@@ -325,11 +337,23 @@ public class EntityTransitionService {
     add(present, EntityProperty.IMPLEMENTED_AT, target.implementedAt());
     add(present, EntityProperty.DEPENDS_ON, target.dependsOn());
 
-    // The slug travels with the row and is permitted everywhere; createdBy travels only where the
-    // target has a slot for it, and is cleared rather than refused where it has not.
-    add(present, EntityProperty.SLUG, row.slug);
-    if (spec.permits(EntityProperty.CREATED_BY)) {
-      add(present, EntityProperty.CREATED_BY, row.createdBy);
+    // The SERVER_OWNED pair, read off the constant rather than named here, so the list this check
+    // carries and the list the registry document serves are the same list. The two travel
+    // differently and the switch is that difference: the slug travels with the row and is permitted
+    // everywhere; createdBy travels only where the target has a slot for it, and is cleared rather
+    // than refused where it has not. A third server-owned property added to the constant and to
+    // nothing else throws here by name rather than being carried by accident.
+    for (EntityProperty owned : SERVER_OWNED) {
+      add(
+          present,
+          owned,
+          switch (owned) {
+            case SLUG -> row.slug;
+            case CREATED_BY -> spec.permits(EntityProperty.CREATED_BY) ? row.createdBy : null;
+            default ->
+                throw new IllegalStateException(
+                    "SERVER_OWNED names " + owned + " and nothing here says how it travels");
+          });
     }
 
     List<String> refused = new ArrayList<>();
@@ -340,9 +364,10 @@ public class EntityTransitionService {
       }
     }
 
-    // The transition's own rule — see the class javadoc. Stated in the registry's vocabulary so a
-    // caller reads one kind of sentence, but it is this operation's rule and not the registry's.
-    if (!spec.legalStatuses().isEmpty() && blankToNull(target.status()) == null) {
+    // The transition's own rule — see the class javadoc and requiresStatusOnTransition. Stated in
+    // the registry's vocabulary so a caller reads one kind of sentence, but it is this operation's
+    // rule and not the registry's.
+    if (requiresStatusOnTransition(spec) && blankToNull(target.status()) == null) {
       refused.add(
           new ArchetypeViolation(
                   archetype,
@@ -352,6 +377,30 @@ public class EntityTransitionService {
               .message());
     }
     return refused;
+  }
+
+  /**
+   * <b>Whether a transition entry for this archetype must state a status.</b> True exactly when the
+   * kind declares any status words — so both ends of the epic/ticket asymmetry come out right
+   * without either being named.
+   *
+   * <p><b>It is the transition's rule and not the registry's</b>, which is why it is a method here
+   * rather than a field on {@link ArchetypeSpec}. {@code Archetypes} declares {@code STATUS} merely
+   * <em>permitted</em> on an {@code EPIC} because an epic's first status is minted by {@code
+   * EpicService.create} and requiring it would fail every create before the writer had run. A
+   * transition mints nothing, so under the PUT rule an omitted status would <em>clear</em> one and
+   * leave a status-less epic {@code EpicLifecycle.parse} cannot read.
+   *
+   * <p>It is public and named because it has two readers that must not drift: {@link
+   * #propertyViolations}, which enforces it after the press, and {@code ArchetypeRegistryDocument},
+   * which serves it so a form can gather the status before the press. Two spellings of {@code
+   * !spec.legalStatuses().isEmpty()} would be two rules the day either end changed.
+   *
+   * @param spec the <b>target</b> archetype's declaration — what the entity becomes, never what it
+   *     was
+   */
+  public static boolean requiresStatusOnTransition(ArchetypeSpec spec) {
+    return !spec.legalStatuses().isEmpty();
   }
 
   /**

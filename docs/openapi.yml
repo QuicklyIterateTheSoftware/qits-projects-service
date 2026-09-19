@@ -239,6 +239,21 @@ components:
       - TICKET
       - FEATURE
       - TASK
+    ArchetypeRegistryDocument:
+      type: object
+      properties:
+        properties:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        serverOwned:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        archetypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeclaredArchetype"
     AttachmentDto:
       type: object
       properties:
@@ -600,6 +615,32 @@ components:
           pattern: \S
         assignee:
           type: string
+    DeclaredArchetype:
+      type: object
+      properties:
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        depth:
+          type: integer
+          format: int32
+        mayBeRoot:
+          type: boolean
+        required:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        requiredOnTransition:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        permitted:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        legalStatuses:
+          type: array
+          items:
+            type: string
     DeclineReleaseRequest:
       type: object
       required:
@@ -716,6 +757,21 @@ components:
       properties:
         draft:
           $ref: "#/components/schemas/DraftDto"
+    EntityProperty:
+      type: string
+      enum:
+      - TITLE
+      - SLUG
+      - DESCRIPTION
+      - STATUS
+      - TICKET_TYPE
+      - IMPETUS
+      - ASSIGNEE
+      - CREATED_BY
+      - SUPERSEDED_BY
+      - REPOSITORY_ID
+      - IMPLEMENTED_AT
+      - DEPENDS_ON
     EntityTransition:
       type: object
       properties:
@@ -2628,6 +2684,26 @@ paths:
       summary: Revisions
       tags:
       - Agent Surface Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/entities/archetypes:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchetypeRegistryDocument"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Archetypes
+      tags:
+      - Entity Archetypes Controller
       security:
       - SecurityScheme:
         - qits:admin

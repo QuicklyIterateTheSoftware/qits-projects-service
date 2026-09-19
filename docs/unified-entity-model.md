@@ -1000,6 +1000,82 @@ a real route answers. The class is `@RolesAllowed("qits:admin")` and nothing els
 write, an agent keeps every read and gains no write, and there is nothing here to bind a re-shaping
 of a project's whole plan to.
 
+### The registry, served
+
+`GET /projects/api/entities/archetypes` answers the whole of `Archetypes` as one JSON object:
+
+```json
+{ "properties":  ["TITLE","SLUG","DESCRIPTION","STATUS","TICKET_TYPE","IMPETUS","ASSIGNEE",
+                  "CREATED_BY","SUPERSEDED_BY","REPOSITORY_ID","IMPLEMENTED_AT","DEPENDS_ON"],
+  "serverOwned": ["SLUG","CREATED_BY"],
+  "archetypes":  [ { "archetype": "EPIC", "depth": 0, "mayBeRoot": true,
+                     "required": ["TITLE"], "requiredOnTransition": ["TITLE","STATUS"],
+                     "permitted": ["TITLE","SLUG","DESCRIPTION","STATUS","SUPERSEDED_BY"],
+                     "legalStatuses": ["ABANDONED","IMPLEMENTATION","IMPLEMENTED","REFINING",
+                                       "SUPERSEDED"] } ] }
+```
+
+**It exists so the archetype gate is met as form fields rather than as an error after a button
+press.** That is `Archetypes.validate` returning *every* violation at once, moved one step earlier:
+told after the press, a caller fixes one problem per round trip; told before it, there is no round
+trip. The caller this was written for is the Angular client assembling a transition, and an agent
+doing the same — which has no screen to be told about a missing impetus on.
+
+**It is derived at read time and is never a second declaration.** `ArchetypeRegistryDocument.describe()`
+walks `Archetype.values()` and reads `Archetypes.spec(...)`; nothing in it is written down twice, and
+a fifth archetype or a twelfth property appears in the answer with no edit to any file on the path.
+The alternative — the registry copied into TypeScript — is a copy that drifts the day a property is
+added, and drifts *silently*, because nothing compiles the two against each other. Prefer served over
+duplicated.
+
+**`requiredOnTransition` is the transition's rule, not the registry's**, and it is served precisely
+because the two differ. `required` is what `Archetypes` demands of a row; `requiredOnTransition` is
+that plus `STATUS` wherever the kind declares status words, which is "Two rules the transition states
+itself" above said as data — a transition mints nothing, so an omitted status would *clear* one. An
+epic's lists therefore disagree (`["TITLE"]` against `["TITLE","STATUS"]`) and a ticket's agree. The
+condition is `EntityTransitionService.requiresStatusOnTransition`, one method read by both the check
+after the press and the document before it, so the two cannot come apart.
+
+**`serverOwned` is `EntityTransitionService.SERVER_OWNED`, the same constant the check reads.** A
+client renders no field for `SLUG` or `CREATED_BY`; "The two server-owned properties, settled here"
+is why. It is a constant rather than a literal in two places for the same reason the status rule is a
+method: a list a client is shown and a list the server enforces, spelled twice, is a field a caller
+can fill in and the server silently ignores.
+
+**No archetype PAIR is served, deliberately.** Whether a kind may contain another is
+`Nesting.mayContain`, which is `parent.depth < child.depth` and nothing else, so a client holding the
+depths derives the whole nesting rule with one comparison. A served matrix would be a second spelling
+of the same rule — which is the argument `Archetypes` already makes for declaring a depth at all:
+only the ORDER of the numbers means anything, and the order is what travels.
+
+**Two orderings, and one of them means nothing.** `required`, `requiredOnTransition` and `permitted`
+are `Set`s in Java and are answered in `EntityProperty` declaration order — the same order
+`Archetypes.validate` reports violations in, so a form's fields and a refusal's complaints read in one
+sequence. `legalStatuses` is a `Set<String>` whose source enum order is **not recoverable** from
+`ArchetypeSpec`, so it is sorted alphabetically to make the answer deterministic, and **a client must
+not read a lifecycle, an ordering or a first phase out of it**: `ABANDONED` leads an epic's list and
+is its last word. The adjacency rules stay on the two lifecycle endpoints and are not served here.
+
+**It is a class of its own, `service/…/epics/api/EntityArchetypesController`, and it takes
+`qits:agent`.** Every read route on this surface takes the agent, and this is a read of four public
+declarations — no row, no project, no identity, the same answer for every caller. It is not a method
+on `EntityTransitionController` because that class is `@RolesAllowed("qits:admin")` at class level
+with an argument for it, a method-level `@RolesAllowed` *replaces* the class list rather than adding
+to it, and the exception would be harder to read than the rule. A second root resource at `/entities`
+is the shape the segment already has (`MigrationVerificationController` is the other).
+
+**One honest wrinkle: `ImpetusConcession`.** The registry declares `IMPETUS` required of a `TICKET`
+and this document says so, but every UPDATE path — including a transition that re-archetypes an
+existing row *into* a `TICKET` — tolerates exactly that property missing with exactly that reason
+(see "The `IMPETUS` question, settled"). So a client gathering `required` faithfully asks for
+slightly **more** than the server insists on: it will demand an impetus for a promotion the server
+would have accepted without one. That is the safe direction — the field is asked for, the write
+succeeds, nothing is refused that would have been allowed — and it is stated here rather than papered
+over, because the alternatives are both worse: serving the concession would put an update-path
+exception into a document about the model, and dropping `IMPETUS` from `required` would stop intake
+being described correctly. It resolves itself when the registry and the column are reconciled, which
+is a contract change and needs a person.
+
 ### The agent surface: ONE tool, `transition_entities`
 
 The same operation on the `repository` MCP server (`/projects/mcp`, still named `repository` —
@@ -1541,6 +1617,7 @@ what a door written with the reverse assertion would report as broken.
 | the legacy repositories | `epics/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` — **zero injections in `src/main`**; on disk until the cleanup feature deletes them, and used only by `EpicsTestSupport.wipe()` |
 | the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
 | the multi-entity transition | `epics/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/epics/api/EntityTransitionController.java` |
+| the registry, served | `epics/…/control/ArchetypeRegistryDocument.java` — derived from `Archetypes` at read time, and the `SERVER_OWNED` / `requiresStatusOnTransition` pair on `EntityTransitionService.java` it reads; `service/…/epics/api/EntityArchetypesController.java` — `GET /projects/api/entities/archetypes`, `qits:admin` + `qits:agent` |
 | the merged read | `epics/…/control/EntityCatalogService.java` — `listByProject`/`byIds`, answering `TransitionedEntity` |
 | the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
 | the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |
@@ -1548,7 +1625,7 @@ what a door written with the reverse assertion would report as broken.
 | the verification door — **TEMPORARY, deleted whole by V13** | `epics/…/migration/` (`package-info.java` carries the deletion instruction; `MigrationVerification.java` is the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge); `service/…/epics/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone |
 | the impetus concession | `epics/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`, `…/migration/MigrationVerificationTest.java`; `service/src/test/…/epics/api/MigrationVerificationApiTest.java`, `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`, `…/migration/MigrationVerificationTest.java`; `service/src/test/…/epics/api/MigrationVerificationApiTest.java`, `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/epics/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should

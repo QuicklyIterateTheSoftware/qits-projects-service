@@ -46,6 +46,7 @@ class AgentReadAccessTest {
       List.of(
           eu.wohlben.qits.epics.api.DossierAssetController.class,
           eu.wohlben.qits.epics.api.DossierController.class,
+          eu.wohlben.qits.epics.api.EntityArchetypesController.class,
           eu.wohlben.qits.epics.api.EpicController.class,
           eu.wohlben.qits.epics.api.FeatureController.class,
           eu.wohlben.qits.epics.api.ProjectEpicsController.class,
