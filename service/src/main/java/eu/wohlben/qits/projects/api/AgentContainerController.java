@@ -93,8 +93,15 @@ public class AgentContainerController {
    * Synchronous, so a 200 means docker has accepted the container; the daemon's own boot self-clone
    * runs after it and is reported through {@code daemonConnected} on a later read.
    */
+  // TEMPORARY: qits:agent is on this verb only for the on-platform verification of ticket 440de8ac.
+  // The four git-credential env names that ticket shipped are baked into a container at creation, so
+  // the only way to observe them is in a container created after the release — and nothing but this
+  // verb and the stop beside it creates one, while the sole credential a workspace holds is
+  // qits:agent. A person authorised this widening deliberately; it is to be reverted, together with
+  // the stop below and the exception in AgentReadAccessTest, as soon as that verification is done.
   @POST
   @Path("/ensure")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public AgentContainerResponse ensure(@PathParam("projectId") String projectId) {
     return AgentContainerResponse.of(agentContainers.ensure(projectId));
   }
@@ -103,8 +110,13 @@ public class AgentContainerController {
    * Stop the agent container gracefully, keeping it and its checkout for a later lossless start.
    * Idempotent: a project with no container answers {@code ABSENT} rather than failing.
    */
+  // TEMPORARY, the other half of the ensure above: a recreate is stop-then-ensure, so widening one
+  // without the other verifies nothing. qits:agent is here for the on-platform verification of
+  // ticket 440de8ac alone, a person authorised it deliberately, and it is reverted as soon as that
+  // verification is done.
   @POST
   @Path("/stop")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public AgentContainerResponse stop(@PathParam("projectId") String projectId) {
     return AgentContainerResponse.of(agentContainers.stop(projectId));
   }

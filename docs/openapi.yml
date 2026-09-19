@@ -3257,6 +3257,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/agent-container/stop:
     post:
       parameters:
@@ -3282,6 +3283,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/epics:
     get:
       parameters:
@@ -6128,4 +6130,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.918.182810
+  version: 2026.919.85004
