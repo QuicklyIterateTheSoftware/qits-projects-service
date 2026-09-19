@@ -109,7 +109,7 @@ are the same id space" above is the argument for why that may not move.
 ### Why a number when there is already a uuid and a slug
 
 Because the id has to survive where neither does. A uuid does not fit in a commit subject. A slug is
-truncated at 40 characters and is minted from a title, so it is neither complete nor — before the
+truncated at 55 characters (`Slugs.MAX_LENGTH`) and is minted from a title, so it is neither complete nor — before the
 first branch is cut — reliably the thing anybody remembers. The number is short enough to write by
 hand, stable for the life of the entity, and unambiguous once qualified by its project. That is what
 turns "which subject does this change belong to" from a guess into a recorded fact.
@@ -713,8 +713,32 @@ now require. Its javadoc says so rather than describing the FK graph it used to 
 Both archetypes mint their slug with `slug_scope = projectId`, against `WorkEntityRepository.slugsInScope`.
 That is the narrowing "The one narrowing, stated rather than discovered" below already argues for and
 V10 already answered for in the backfill; this is the writer's half of it. No existing test depended
-on the two being independent scopes. `Slugs.slugify` and `Slugs.unique` are unchanged, 40-character
-cap included, so a slug minted now is a slug either old writer would have minted.
+on the two being independent scopes. `Slugs.slugify` and `Slugs.unique` are unchanged in shape, so a
+slug minted now is a slug either old writer would have minted; only the cap has moved since — see
+"The slug cap is 55" below.
+
+### The slug cap is 55
+
+`Slugs.MAX_LENGTH` moved from **40 to 55**, and it is the single constant both `Slugs.slugify` and
+`Slugs.unique` read.
+
+Nothing in git or in this database enforces a bound — slug columns are `varchar(255)` and
+qits-githost validates refnames through JGit, which has no length cap. What binds is
+`WorkspaceService.toWorkspaceSlug` in **qits-workspaces-service**: it sanitizes a branch name and
+hard-cuts it at **64 characters**, because the result becomes a filesystem path segment. The longest
+branch prefix minted here is `refining/` (9 characters), so `55 + 9 = 64` is the largest slug that
+cannot overflow that cut.
+
+Going beyond 55 means fixing the 64-cut first, and that is not a free change: `toWorkspaceSlug`
+truncates with **no de-collision**, so two branches whose first 64 sanitized characters agree
+collapse onto one workspace id and the second dispatch fails as "Workspace already exists" — a name
+clash presenting as a duplicate.
+
+**No backfill.** A slug is minted once at create and never re-derived, deliberately, so that a
+rename cannot orphan a branch already cut from the old slug. Names already truncated under the old
+40-character cap stay truncated for ever; the new cap widens new slugs only. V10's transcribed
+arithmetic below is likewise frozen at the 40 that was current when it was written — it is an
+applied migration and its numbers are history, not the live rule.
 
 ### The registry judges the ordinary write, with one named exception
 
@@ -1295,9 +1319,10 @@ live database is not the test database — and **the epic keeps its slug**. An e
 `task/<e>/<f>/<t>`; a ticket's slug names one thing and one branch, `ticket/<slug>`. Least blast
 radius wins.
 
-The ticket's **`entity` row** takes the next free `-2`, `-3`, … under the 40-character cap, with the
-base trimmed to `40 - length(suffix)` and trailing dashes stripped from the trimmed head — that is
-`Slugs.unique`'s arithmetic transcribed, so the result is a slug the writer itself could have minted.
+The ticket's **`entity` row** takes the next free `-2`, `-3`, … under the 40-character cap that was
+current when V10 was written (see "The slug cap is 55" above — the live cap is 55 now, and an
+applied migration's numbers do not move), with the base trimmed to `40 - length(suffix)` and
+trailing dashes stripped from the trimmed head — that is `Slugs.unique`'s arithmetic transcribed, so the result is a slug the writer itself could have minted.
 The taken set is every epic slug and every ticket slug in the project **plus every value this pass
 has already assigned**, which is what stops two tickets whose slugs trim to one head from both
 landing on `-2`; that makes the assignment sequential, hence a `do $$ … $$` block walking the

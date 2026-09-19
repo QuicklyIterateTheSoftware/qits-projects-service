@@ -671,7 +671,7 @@ a pattern.
 - **Absent is safe both ways.** Without `gitRefs`, qits-workspaces allows the workspace's own branch;
   a qits-workspaces older than the member ignores it.
 - **Size.** The idp takes at most 500 refs of at most 255 characters each (contract C2). A slug is at
-  most 40 characters, so a task ref is at most 138. The count is not checked here: an epic with more
+  most 55 characters (`Slugs.MAX_LENGTH`), so a task ref is at most 183. The count is not checked here: an epic with more
   than 499 features and tasks together would exceed it.
 
 The idp commissions of this service's own containers state refs too (contract C2):

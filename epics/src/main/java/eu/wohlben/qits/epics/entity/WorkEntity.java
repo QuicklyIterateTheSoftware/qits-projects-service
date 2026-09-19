@@ -108,9 +108,9 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    * <p><b>It does not replace {@link #id}.</b> The uuid is still the primary key and is still what
    * every dossier page, audit entry, branch name, workspace and URL on the platform names. This is a
    * second identifier, and it exists because the id has to survive where neither the uuid nor the
-   * slug does: a uuid does not fit in a commit subject, and a slug is truncated at 40 characters and
-   * minted from a title. The number is short enough to write by hand, stable for the life of the
-   * row, and unambiguous once qualified by its project.
+   * slug does: a uuid does not fit in a commit subject, and a slug is truncated at {@code
+   * Slugs.MAX_LENGTH} (55) characters and minted from a title. The number is short enough to write
+   * by hand, stable for the life of the row, and unambiguous once qualified by its project.
    *
    * <p><b>It names a NODE, not a ticket.</b> The unified table holds every archetype and the numbers
    * are drawn from one run of integers per project, so a ticket and a feature in the same project
