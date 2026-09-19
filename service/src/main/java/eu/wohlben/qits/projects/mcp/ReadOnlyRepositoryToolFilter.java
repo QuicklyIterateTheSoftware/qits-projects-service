@@ -66,6 +66,15 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * is the sharpest of the five and the least obviously so: it rewrites a remark that is already on
    * the thread, so an unattended run holding it could edit what a person wrote and leave a record
    * saying something nobody said.
+   *
+   * <p>{@code transition_entities} is the sharpest of all of them and belongs here on the strongest
+   * reading in this list: it restates part of the plan <em>in full</em> in one transaction, so an
+   * unattended run steered by an untrusted commit message could re-archetype, re-parent and clear
+   * properties across a whole tree in a single call — and every property it did not restate would be
+   * cleared, which no other tool on this server can do. The agents that own it (the refining one and
+   * the implementing one) connect without the marker, exactly as they do for the epic tools.
+   * {@code list_entities} beside it is a read and is deliberately not here: an unattended run may
+   * always see the plan it must not rewrite.
    */
   private static final Set<String> MUTATING_TOOLS =
       Set.of(
@@ -92,7 +101,8 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "update_ticket",
           "transition_ticket",
           "add_ticket_comment",
-          "update_ticket_comment");
+          "update_ticket_comment",
+          "transition_entities");
 
   @Inject HttpServerRequest request;
 

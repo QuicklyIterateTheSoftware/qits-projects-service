@@ -652,6 +652,94 @@ a real route answers. The class is `@RolesAllowed("qits:admin")` and nothing els
 write, an agent keeps every read and gains no write, and there is nothing here to bind a re-shaping
 of a project's whole plan to.
 
+### The agent surface: ONE tool, `transition_entities`
+
+The same operation on the `repository` MCP server (`/projects/mcp`, still named `repository` —
+qits-workspace-daemon addresses it by name and nothing about the declaration moved):
+
+    transition_entities(entities: { "<id>": { archetype, membership: {parent, position},
+                                             title, description, status, ticketType, impetus,
+                                             assignee, repositoryId, implementedAt, dependsOn } })
+      -> { "<id>": <the post-state> }
+
+**It is one tool because it has to be.** An agent restructuring a refinement through several
+single-entity tool calls is precisely the sequence of illegal intermediate states this design rules
+out, so a tool that could only move one entity would reintroduce at the agent surface the exact
+problem the endpoint exists to prevent. There is deliberately no single-entity spelling, and
+`EntityMcpToolsTest.exposesOneTransitionToolTakingAMap` asserts the absence as well as the presence.
+
+**It is `service/…/projects/mcp/EntityMcpTools`, a class of its own**, and that is
+`EntityTransitionController`'s argument one layer up: the unified entity is the noun, so hanging the
+tool off `EpicMcpTools` or `TicketMcpTools` would file it under one of the two ends it moves
+between, and an agent looking for "how do I restructure this plan" would have to know the answer
+before finding it. The REST surface answers that with a resource of its own; the MCP surface answers
+it with a tool class of its own, in the same package and on the same server as its three neighbours.
+
+Everything else is the house pattern applied again: scope from the `X-QITS-Project` header and never
+from an argument, `@WrapBusinessError` so the refusal arrives as a readable tool error rather than a
+JSON-RPC protocol error, both SSE topics fired after the write, no `@Transactional` (two persistence
+units, non-XA). Two rules are this tool's own:
+
+- **Every entity the request NAMES must be in the caller's project** — every key of the map *and*
+  every `membership.parent`, whether or not that parent is itself an entry. One belonging to another
+  project reads as not found, the rule the epic and ticket surfaces already apply. A parent is
+  checked for the same reason a key is: a reparent onto somebody else's epic is a cross-project reach
+  expressed as a membership.
+- **An id that names nothing at all is NOT refused by the tool.** It falls through to
+  `EntityTransitionService` and is collected with every other complaint into one refusal. Refusing it
+  at the scope check would hand the model one wrong id per round trip, which is the failure mode the
+  collected violations exist to avoid — and worse here than anywhere else, because the fixes are
+  moves.
+
+`transition_entities` is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`, on the strongest reading
+in that list: it restates part of the plan *in full*, so an unattended run steered by an untrusted
+commit message could re-archetype, re-parent and clear properties across a whole tree in one call.
+
+**The description is the deliverable.** An agent only ever sees that string, so it states, in this
+order and in the imperative: the value is the entity's full target state and not a diff; an omitted
+property is cleared, and what that costs on a demotion; every id must already exist — create first,
+then transition, nothing is created or deleted here; **a plain edit is a map of one**, said outright
+because otherwise agents keep reaching for the older per-entity tools out of habit and this one only
+ever gets used for exotic moves; and that a rejection naming missing properties **is the archetype
+gate**, whose fix is to supply them rather than to retry. Those sentences are pinned by a test, so a
+later edit that drops one fails the build.
+
+### The read side had to keep up, and it is an ADDITION
+
+**Whatever tool an agent uses to see the tree must show archetype and membership, or it cannot
+construct a valid request** — an entry is judged against its *target* archetype and names its parent,
+and `get_epic`, `list_epics`, `get_ticket` and `list_tickets` report neither.
+
+The answer is a **new read tool, `list_entities`**, on the same class: the project's whole planning
+tree as one flat list, each entry carrying archetype, parent and position, roots first and each
+followed by its descendants in order. **No existing tool changed name or shape**, which the epic
+requires — an agent mid-refinement must not be able to tell this shipped, and `EpicMcpToolsTest`,
+`TicketMcpToolsTest` and `DossierMcpToolsTest` pass with their assertions unchanged. The
+additive-field route was available and was not taken: a new field on `EpicDetail` would still leave
+`list_tickets` and `get_ticket` blind, and `EpicDetail`'s nesting is the epic-shaped tree the merged
+model exists not to be the only reading of.
+
+**It answers `TransitionedEntity`**, the transition's own answer shape, so the read and the write
+speak one vocabulary: an entry read there is an entry restatable here. Flat rather than nested
+because the membership is a property of the row now — a nested answer would have to pick one shape
+per archetype again.
+
+Behind it is `epics/…/control/EntityCatalogService`: `listByProject` and `byIds`, each a bulk row
+read plus a bulk edge read (**two queries, never one per row**) wrapped in `ReadPatience` like every
+other list read in the module. It adds a reading and changes none — the four per-archetype services
+keep every method, shape and caller.
+
+### `exposesNoTransitionTool` does not collide, and that was checked
+
+`EpicMcpToolsTest.exposesNoTransitionTool` asserts that no tool named `transition_epic`,
+`supersede_epic` or `mark_epic_implemented` exists. It matches on **those three exact names**, not on
+a name containing "transition", so `transition_entities` does not trip it and the test passes
+unmodified — and its claim is untouched in substance: an epic **lifecycle** move is still a person's
+press in the UI, and an **archetype** transition is a different operation that happens to share a
+word. `transition_ticket` carries the same ambiguity (it *is* a lifecycle move, and is the one the
+cleanup feature owes a note). Nothing was weakened to make room; the new test states the distinction
+where a reader of either will find it.
+
 ## The `IMPETUS` question, settled
 
 `Archetypes` keeps `IMPETUS` **required** of a `TICKET`. It is right about intake — a REPORTED ticket
@@ -935,9 +1023,11 @@ with the listing.
 | the legacy repositories | `epics/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` — **zero injections in `src/main`**; on disk until the cleanup feature deletes them, and used only by `EpicsTestSupport.wipe()` |
 | the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
 | the multi-entity transition | `epics/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/epics/api/EntityTransitionController.java` |
+| the merged read | `epics/…/control/EntityCatalogService.java` — `listByProject`/`byIds`, answering `TransitionedEntity` |
+| the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
 | the impetus concession | `epics/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`; `service/src/test/…/epics/api/EntityTransitionApiTest.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`; `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should
