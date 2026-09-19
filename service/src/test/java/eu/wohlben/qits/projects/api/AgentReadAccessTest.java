@@ -72,14 +72,7 @@ class AgentReadAccessTest {
           "ReleaseRequestController.addSource",
           "ReleaseRequestController.setSourcePriority",
           "ReleaseRequestController.withdraw",
-          "ReleaseRequestController.rerunPhase",
-          // TEMPORARY, alongside the two comments on AgentContainerController: qits:agent reaches
-          // ensure and stop only for the on-platform verification of ticket 440de8ac, because the
-          // git-credential environment that ticket shipped is only observable in a container created
-          // after the release and nothing but these two verbs creates one. A person authorised the
-          // widening; these two entries come back out with the annotations, in the next release.
-          "AgentContainerController.ensure",
-          "AgentContainerController.stop");
+          "ReleaseRequestController.rerunPhase");
 
   @TestFactory
   Stream<DynamicTest> anAgentReadsEverythingAndWritesNothingElse() {
