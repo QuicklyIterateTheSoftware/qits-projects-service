@@ -61,7 +61,28 @@ public final class AgentSurfaceDefaults {
   // The vocabulary
   // ---------------------------------------------------------------------------------------------
 
-  /** The refinement agent on a project's epics overview. Projects daemon, {@code PROJECT} scope. */
+  /**
+   * The refinement agent on a project's epics overview. Projects daemon, {@code PROJECT} scope.
+   *
+   * <p><b>The word {@code epics} survives the {@code entities} rename here deliberately, and this
+   * is the one place it is not simply "deployment configuration or applied history".</b> It is a
+   * cross-repository WIRE CONTRACT: {@code AgentSurface} in {@code
+   * eu.wohlben.qits:qits-coding-agents} is a closed list, and {@code AgentSurface.of} refuses
+   * anything outside it — so both qits-projects-daemon (on the launch body) and qits-workspace-daemon
+   * (on its own surface parameter) answer a 400 to a spelling neither was released with. Renaming
+   * this constant is a coordinated release of this service, its SPA and two daemons, not a rename.
+   *
+   * <p><b>Nothing in this repository would notice, which is exactly why the note is here.</b> The
+   * store is permissive on purpose — {@code surface_key} carries no check constraint (V16) and an
+   * unknown key reads as {@link #shippedDefault}/{@link #neutralDefault} rather than 404ing — so a
+   * rename would seed a new row, pass this whole suite, and fail for the first person who pressed a
+   * button in a deployed image.
+   *
+   * <p>The rename is therefore deferred to epic qits-310, which proposes collapsing the epics and
+   * tickets desks into one front desk and may merge this surface with {@link #PROJECT_TICKETS}
+   * altogether. Renaming it first would be renaming it twice, or minting a name that collides with
+   * whatever that epic lands on.
+   */
   public static final String PROJECT_EPICS = "project.epics";
 
   /** The triage agent on a project's tickets overview. Projects daemon, {@code PROJECT} scope. */

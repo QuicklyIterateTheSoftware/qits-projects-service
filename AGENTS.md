@@ -151,8 +151,14 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   not code, and the module name and the datasource name having been the same word was a coincidence.
   So `entities/src/main/resources/db/epics/migration/` is the intended result. Likewise unmoved:
   every REST route (`/projects/api/epics/…`), every DTO field, every MCP tool name, the SSE topics
-  `epics`/`tickets` (see "The event bus"), and `AgentSurface`'s `project.epics`, which is shared
-  with qits-projects-daemon. `docs/unified-entity-model.md` § "The 'epics' vocabulary rename, as
+  `epics`/`tickets` (see "The event bus"), and `AgentSurface`'s `project.epics`, which is not
+  merely shared with qits-projects-daemon but **validated against a closed list** — `AgentSurface`
+  in the qits-coding-agents javalib, which both daemons refuse a surface outside of with a 400 — so
+  changing it is a coordinated release of this service, its SPA and two daemons rather than a
+  rename, and nothing here would notice one (the store has no check constraint and an unknown key
+  reads as its shipped default). It is deferred to epic qits-310, which may merge it with
+  `project.tickets` anyway; `AgentSurfaceDefaults.PROJECT_EPICS` carries the argument.
+  `docs/unified-entity-model.md` § "The 'epics' vocabulary rename, as
   shipped" is the full table and the argument.
 
 `control/` is flat. The monorepo split this code across `domain.project.*`, `domain.repository.*`
