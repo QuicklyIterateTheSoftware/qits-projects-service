@@ -11,11 +11,7 @@ import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditEntry;
 import eu.wohlben.qits.epics.entity.AuditOperation;
-import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
 import eu.wohlben.qits.epics.entity.TicketType;
 import eu.wohlben.qits.epics.entity.WorkEntity;
@@ -78,50 +74,52 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void aFeatureBecomesAnEpicWhileItsTasksAreRescopedInOneRequest() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature feature = featureService.create(epic.id, "The part", "a part of the plan", null, WHO);
-    Task staying = taskService.create(feature.id, "repo-1", "Stays", null, null, WHO);
-    Task moving = taskService.create(feature.id, "repo-2", "Moves", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested feature = featureService.create(epic.id, "The part", "a part of the plan", null, WHO);
+    Nested staying = taskService.create(feature.entity().id, "repo-1", "Stays", null, null, WHO);
+    Nested moving = taskService.create(feature.entity().id, "repo-2", "Moves", null, null, WHO);
 
     Map<String, TransitionedEntity> after =
         transitions.transition(
             stated(
-                feature.id,
+                feature.entity().id,
                 epicEntry("The part", "a part of the plan", null, EpicStatus.REFINING),
-                staying.id,
-                taskEntry(feature.id, 0, "Stays", "repo-1"),
-                moving.id,
+                staying.entity().id,
+                taskEntry(feature.entity().id, 0, "Stays", "repo-1"),
+                moving.entity().id,
                 taskEntry(epic.id, 0, "Moves", "repo-2")),
             WHO);
 
     assertEquals(3, after.size(), "one answer per stated entity, keyed as the request was");
-    assertEquals(Archetype.EPIC, after.get(feature.id).archetype());
-    assertNull(after.get(feature.id).parent(), "the promoted feature stands at the root");
+    assertEquals(Archetype.EPIC, after.get(feature.entity().id).archetype());
+    assertNull(after.get(feature.entity().id).parent(), "the promoted feature stands at the root");
     assertEquals(
-        EpicStatus.REFINING.name(), after.get(feature.id).status(), "an epic must have a phase");
-    assertEquals(feature.id, after.get(staying.id).parent());
-    assertEquals(epic.id, after.get(moving.id).parent());
+        EpicStatus.REFINING.name(), after.get(feature.entity().id).status(), "an epic must have a phase");
+    assertEquals(feature.entity().id, after.get(staying.entity().id).parent());
+    assertEquals(epic.id, after.get(moving.entity().id).parent());
 
     inFreshTx(
         () -> {
-          WorkEntity promoted = entities.findById(feature.id);
+          WorkEntity promoted = entities.findById(feature.entity().id);
           assertEquals(Archetype.EPIC, promoted.archetype, "the row itself is an epic now");
           assertEquals(
               PROJECT, promoted.slugScope, "a root's slug scope is its project, recomputed here");
           assertEquals(
-              feature.slug, promoted.slug, "a move never re-mints a slug — branches are cut on it");
-          assertTrue(memberships.membershipOf(feature.id).isEmpty(), "a root has no edge");
+              feature.entity().slug,
+              promoted.slug,
+              "a move never re-mints a slug — branches are cut on it");
+          assertTrue(memberships.membershipOf(feature.entity().id).isEmpty(), "a root has no edge");
 
-          assertEquals(List.of(staying.id), childIdsOf(feature.id));
-          assertEquals(List.of(moving.id), childIdsOf(epic.id));
-          assertEquals(List.of(0), positionsUnder(feature.id));
+          assertEquals(List.of(staying.entity().id), childIdsOf(feature.entity().id));
+          assertEquals(List.of(moving.entity().id), childIdsOf(epic.id));
+          assertEquals(List.of(0), positionsUnder(feature.entity().id));
           assertEquals(
               List.of(0), positionsUnder(epic.id), "the old parent ends dense and zero-based too");
           assertEquals(
-              feature.id,
-              entities.findById(staying.id).slugScope,
+              feature.entity().id,
+              entities.findById(staying.entity().id).slugScope,
               "a task's slug scope is its parent, and the parent is the promoted row");
-          assertEquals(epic.id, entities.findById(moving.id).slugScope);
+          assertEquals(epic.id, entities.findById(moving.entity().id).slugScope);
         });
   }
 
@@ -134,9 +132,9 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void nothingIsAppliedWhenAnyPartIsRefused() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature feature = featureService.create(epic.id, "The part", null, null, WHO);
-    Task task = taskService.create(feature.id, "repo-1", "The work", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested feature = featureService.create(epic.id, "The part", null, null, WHO);
+    Nested task = taskService.create(feature.entity().id, "repo-1", "The work", null, null, WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -144,12 +142,12 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
             () ->
                 transitions.transition(
                     stated(
-                        feature.id,
+                        feature.entity().id,
                         epicEntry("The part", null, null, EpicStatus.REFINING),
-                        task.id,
+                        task.entity().id,
                         new EntityTransition(
                             Archetype.TASK,
-                            new EntityTransition.Membership(feature.id, 0),
+                            new EntityTransition.Membership(feature.entity().id, 0),
                             "The work",
                             null,
                             null,
@@ -167,12 +165,12 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
         () -> {
           assertEquals(
               Archetype.FEATURE,
-              entities.findById(feature.id).archetype,
+              entities.findById(feature.entity().id).archetype,
               "the valid half of a refused request is not written either");
-          assertEquals(epic.id, memberships.membershipOf(feature.id).orElseThrow().parentId);
-          assertEquals(feature.id, memberships.membershipOf(task.id).orElseThrow().parentId);
-          assertEquals("repo-1", entities.findById(task.id).repositoryId);
-          assertEquals(epic.id, entities.findById(feature.id).slugScope);
+          assertEquals(epic.id, memberships.membershipOf(feature.entity().id).orElseThrow().parentId);
+          assertEquals(feature.entity().id, memberships.membershipOf(task.entity().id).orElseThrow().parentId);
+          assertEquals("repo-1", entities.findById(task.entity().id).repositoryId);
+          assertEquals(epic.id, entities.findById(feature.entity().id).slugScope);
         });
     assertEquals(List.of(), announcer.batches(), "a refused post-state is announced to nobody");
   }
@@ -185,20 +183,20 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void anEpicIsExplodedIntoSeveralTickets() {
-    Epic epic = epicService.create(PROJECT, "Too much at once", null, WHO);
-    Feature one = featureService.create(epic.id, "First", null, null, WHO);
-    Feature two = featureService.create(epic.id, "Second", null, null, WHO);
-    Feature three = featureService.create(epic.id, "Third", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "Too much at once", null, WHO);
+    Nested one = featureService.create(epic.id, "First", null, null, WHO);
+    Nested two = featureService.create(epic.id, "Second", null, null, WHO);
+    Nested three = featureService.create(epic.id, "Third", null, null, WHO);
 
     Map<String, TransitionedEntity> after =
         transitions.transition(
             stated(
-                one.id, ticketEntry("First", "it came up"),
-                two.id, ticketEntry("Second", "it came up"),
-                three.id, ticketEntry("Third", "it came up")),
+                one.entity().id, ticketEntry("First", "it came up"),
+                two.entity().id, ticketEntry("Second", "it came up"),
+                three.entity().id, ticketEntry("Third", "it came up")),
             WHO);
 
-    for (String id : List.of(one.id, two.id, three.id)) {
+    for (String id : List.of(one.entity().id, two.entity().id, three.entity().id)) {
       assertEquals(Archetype.TICKET, after.get(id).archetype());
       assertNull(after.get(id).parent(), "a ticket is a root");
       assertEquals(TicketStatus.REPORTED.name(), after.get(id).status());
@@ -207,8 +205,8 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
     inFreshTx(
         () -> {
           assertEquals(List.of(), childIdsOf(epic.id), "the epic keeps nothing");
-          for (Ticket ticket : ticketService.listByProject(PROJECT)) {
-            assertEquals(TicketType.BUG, ticket.type);
+          for (WorkEntity ticket : ticketService.listByProject(PROJECT)) {
+            assertEquals(TicketType.BUG, ticket.ticketType);
           }
         });
   }
@@ -218,7 +216,7 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** A plain single-entity edit expressed as a map of one — the ordinary write path now. */
   @Test
   void aPlainEditIsAMapOfOne() {
-    Epic epic = epicService.create(PROJECT, "Before", "the old body", WHO);
+    WorkEntity epic = epicService.create(PROJECT, "Before", "the old body", WHO);
 
     Map<String, TransitionedEntity> after =
         transitions.transition(
@@ -238,22 +236,22 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void aParentMayBeNamedOnlyWithinTheMap() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature promoted = featureService.create(epic.id, "Becomes an epic", null, null, WHO);
-    Feature child = featureService.create(epic.id, "Goes under it", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested promoted = featureService.create(epic.id, "Becomes an epic", null, null, WHO);
+    Nested child = featureService.create(epic.id, "Goes under it", null, null, WHO);
 
     transitions.transition(
         stated(
-            promoted.id,
+            promoted.entity().id,
             epicEntry("Becomes an epic", null, null, EpicStatus.REFINING),
-            child.id,
-            featureEntry(promoted.id, null, "Goes under it")),
+            child.entity().id,
+            featureEntry(promoted.entity().id, null, "Goes under it")),
         WHO);
 
     inFreshTx(
         () -> {
-          assertEquals(Archetype.EPIC, entities.findById(promoted.id).archetype);
-          assertEquals(promoted.id, memberships.membershipOf(child.id).orElseThrow().parentId);
+          assertEquals(Archetype.EPIC, entities.findById(promoted.entity().id).archetype);
+          assertEquals(promoted.entity().id, memberships.membershipOf(child.entity().id).orElseThrow().parentId);
           assertEquals(List.of(), childIdsOf(epic.id));
         });
   }
@@ -261,20 +259,20 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** A parent that is in neither the map nor the store is a refusal and never a create. */
   @Test
   void aParentThatIsInNeitherTheMapNorTheStoreIsRefused() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature feature = featureService.create(epic.id, "The part", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested feature = featureService.create(epic.id, "The part", null, null, WHO);
 
     BadRequestException refusal =
         assertThrows(
             BadRequestException.class,
             () ->
                 transitions.transition(
-                    stated(feature.id, featureEntry("no-such-entity", null, "The part")), WHO));
+                    stated(feature.entity().id, featureEntry("no-such-entity", null, "The part")), WHO));
     assertTrue(refusal.getMessage().contains("no-such-entity"), refusal.getMessage());
 
     inFreshTx(
         () -> {
-          assertEquals(epic.id, memberships.membershipOf(feature.id).orElseThrow().parentId);
+          assertEquals(epic.id, memberships.membershipOf(feature.entity().id).orElseThrow().parentId);
           assertNull(entities.findById("no-such-entity"), "nothing was created for the unknown id");
         });
   }
@@ -282,7 +280,7 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** An id in the map that names no row is a violation collected with the rest, not a 404. */
   @Test
   void anIdInTheMapThatNamesNothingIsCollectedAsAViolation() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -309,8 +307,8 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void aDemotionActuallyClearsTheDroppedProperties() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Ticket ticket =
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    WorkEntity ticket =
         ticketService.create(PROJECT, "Turns out to be scope", "it came up", null, "BUG", "me", WHO);
 
     transitions.transition(stated(ticket.id, featureEntry(epic.id, null, "Turns out to be scope")), WHO);
@@ -332,8 +330,8 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** A demotion carrying a property the target has no slot for is refused, never silently dropped. */
   @Test
   void aDemotionCarryingAForeignPropertyIsRefused() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Ticket ticket =
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    WorkEntity ticket =
         ticketService.create(PROJECT, "Turns out to be scope", "it came up", null, "BUG", null, WHO);
 
     BadRequestException refusal =
@@ -364,8 +362,8 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** Both validation layers report together, in one refusal, so a caller fixes everything once. */
   @Test
   void violationsFromBothLayersComeBackTogether() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature feature = featureService.create(epic.id, "The part", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested feature = featureService.create(epic.id, "The part", null, null, WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -373,7 +371,7 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
             () ->
                 transitions.transition(
                     stated(
-                        feature.id,
+                        feature.entity().id,
                         new EntityTransition(
                             Archetype.FEATURE,
                             new EntityTransition.Membership(epic.id, null),
@@ -389,7 +387,7 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
                             null),
                         epic.id,
                         // layer two: an epic cannot be part of a feature
-                        epicEntry("The plan", null, feature.id, EpicStatus.REFINING)),
+                        epicEntry("The plan", null, feature.entity().id, EpicStatus.REFINING)),
                     WHO));
 
     assertTrue(refusal.getMessage().contains("has no status"), refusal.getMessage());
@@ -404,25 +402,25 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void aMoveIntoAScopeThatAlreadyHoldsTheSlugIsRefusedByName() {
-    Epic here = epicService.create(PROJECT, "Here", null, WHO);
-    Epic there = epicService.create(PROJECT, "There", null, WHO);
-    Feature moving = featureService.create(here.id, "Shared name", null, null, WHO);
-    Feature resident = featureService.create(there.id, "Shared name", null, null, WHO);
-    assertEquals(moving.slug, resident.slug, "two epics may each hold this slug — that is the trap");
+    WorkEntity here = epicService.create(PROJECT, "Here", null, WHO);
+    WorkEntity there = epicService.create(PROJECT, "There", null, WHO);
+    Nested moving = featureService.create(here.id, "Shared name", null, null, WHO);
+    Nested resident = featureService.create(there.id, "Shared name", null, null, WHO);
+    assertEquals(moving.entity().slug, resident.entity().slug, "two epics may each hold this slug — that is the trap");
 
     BadRequestException refusal =
         assertThrows(
             BadRequestException.class,
             () ->
                 transitions.transition(
-                    stated(moving.id, featureEntry(there.id, null, "Shared name")), WHO));
+                    stated(moving.entity().id, featureEntry(there.id, null, "Shared name")), WHO));
 
-    assertTrue(refusal.getMessage().contains(moving.slug), refusal.getMessage());
+    assertTrue(refusal.getMessage().contains(moving.entity().slug), refusal.getMessage());
     assertTrue(refusal.getMessage().contains(there.id), refusal.getMessage());
     inFreshTx(
         () -> {
-          assertEquals(here.id, memberships.membershipOf(moving.id).orElseThrow().parentId);
-          assertEquals(moving.slug, entities.findById(moving.id).slug, "and never re-minted");
+          assertEquals(here.id, memberships.membershipOf(moving.entity().id).orElseThrow().parentId);
+          assertEquals(moving.entity().slug, entities.findById(moving.entity().id).slug, "and never re-minted");
         });
   }
 
@@ -435,13 +433,13 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void aPromotionToTicketWithNoImpetusIsAccepted() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature feature = featureService.create(epic.id, "Really a bug", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested feature = featureService.create(epic.id, "Really a bug", null, null, WHO);
 
     Map<String, TransitionedEntity> after =
         transitions.transition(
             stated(
-                feature.id,
+                feature.entity().id,
                 new EntityTransition(
                     Archetype.TICKET,
                     null,
@@ -457,11 +455,11 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
                     null)),
             WHO);
 
-    assertEquals(Archetype.TICKET, after.get(feature.id).archetype());
-    assertNull(after.get(feature.id).impetus());
+    assertEquals(Archetype.TICKET, after.get(feature.entity().id).archetype());
+    assertNull(after.get(feature.entity().id).impetus());
     inFreshTx(
         () -> {
-          WorkEntity row = entities.findById(feature.id);
+          WorkEntity row = entities.findById(feature.entity().id);
           assertEquals(Archetype.TICKET, row.archetype);
           assertNull(row.impetus);
           assertEquals(TicketStatus.REPORTED.name(), row.status);
@@ -471,8 +469,8 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** Everything else about a promotion to TICKET is refused as ever — the concession is narrow. */
   @Test
   void aPromotionToTicketStillNeedsItsTypeAndAStatusFromItsOwnLifecycle() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature feature = featureService.create(epic.id, "Really a bug", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested feature = featureService.create(epic.id, "Really a bug", null, null, WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -480,7 +478,7 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
             () ->
                 transitions.transition(
                     stated(
-                        feature.id,
+                        feature.entity().id,
                         new EntityTransition(
                             Archetype.TICKET,
                             null,
@@ -506,7 +504,7 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void anEntryWhoseTargetHasALifecycleMustStateAStatus() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
 
     BadRequestException refusal =
         assertThrows(
@@ -521,22 +519,22 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** A stated position lands the entity at that index; a stated position past the end is clamped. */
   @Test
   void aStatedPositionLandsAtThatIndexAndIsClampedRatherThanRefused() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature a = featureService.create(epic.id, "A", null, null, WHO);
-    Feature b = featureService.create(epic.id, "B", null, null, WHO);
-    Feature c = featureService.create(epic.id, "C", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested a = featureService.create(epic.id, "A", null, null, WHO);
+    Nested b = featureService.create(epic.id, "B", null, null, WHO);
+    Nested c = featureService.create(epic.id, "C", null, null, WHO);
 
-    transitions.transition(stated(c.id, featureEntry(epic.id, 0, "C")), WHO);
+    transitions.transition(stated(c.entity().id, featureEntry(epic.id, 0, "C")), WHO);
     inFreshTx(
         () -> {
-          assertEquals(List.of(c.id, a.id, b.id), childIdsOf(epic.id));
+          assertEquals(List.of(c.entity().id, a.entity().id, b.entity().id), childIdsOf(epic.id));
           assertEquals(List.of(0, 1, 2), positionsUnder(epic.id));
         });
 
-    transitions.transition(stated(c.id, featureEntry(epic.id, 99, "C")), WHO);
+    transitions.transition(stated(c.entity().id, featureEntry(epic.id, 99, "C")), WHO);
     inFreshTx(
         () -> {
-          assertEquals(List.of(a.id, b.id, c.id), childIdsOf(epic.id));
+          assertEquals(List.of(a.entity().id, b.entity().id, c.entity().id), childIdsOf(epic.id));
           assertEquals(List.of(0, 1, 2), positionsUnder(epic.id));
         });
   }
@@ -546,21 +544,21 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
   /** <b>One event for the batch, never one per entity.</b> */
   @Test
   void oneEventIsAnnouncedForTheWholeBatch() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature one = featureService.create(epic.id, "First", null, null, WHO);
-    Feature two = featureService.create(epic.id, "Second", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested one = featureService.create(epic.id, "First", null, null, WHO);
+    Nested two = featureService.create(epic.id, "Second", null, null, WHO);
 
     Instant before = Instant.now();
     transitions.transition(
         stated(
-            one.id, ticketEntry("First", "it came up"),
-            two.id, ticketEntry("Second", "it came up")),
+            one.entity().id, ticketEntry("First", "it came up"),
+            two.entity().id, ticketEntry("Second", "it came up")),
         WHO);
 
     assertEquals(1, announcer.batches().size(), "one call for the batch, not one per entity");
     RecordingTransitionAnnouncer.Batch batch = announcer.batches().get(0);
     assertEquals(
-        List.of(one.id, two.id),
+        List.of(one.entity().id, two.entity().id),
         batch.entities().stream().map(TransitionedEntity::id).toList(),
         "every entity of the batch, in the order the caller stated them");
     assertFalse(batch.transitionedAt().isBefore(before));
@@ -577,24 +575,24 @@ class EntityTransitionServiceTest extends EpicsTestSupport {
    */
   @Test
   void everyTransitionedEntityGetsAnUpdateAuditRowUnderItsNewSubtree() {
-    Epic epic = epicService.create(PROJECT, "The plan", null, WHO);
-    Feature staying = featureService.create(epic.id, "Stays", null, null, WHO);
-    Feature leaving = featureService.create(epic.id, "Leaves", null, null, WHO);
+    WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
+    Nested staying = featureService.create(epic.id, "Stays", null, null, WHO);
+    Nested leaving = featureService.create(epic.id, "Leaves", null, null, WHO);
 
     transitions.transition(
         stated(
-            staying.id, featureEntry(epic.id, 0, "Stays"),
-            leaving.id, ticketEntry("Leaves", "it came up")),
+            staying.entity().id, featureEntry(epic.id, 0, "Stays"),
+            leaving.entity().id, ticketEntry("Leaves", "it came up")),
         WHO);
 
-    List<AuditEntry> featureLog = auditService.listForEntity(AuditEntityType.FEATURE, staying.id);
+    List<AuditEntry> featureLog = auditService.listForEntity(AuditEntityType.FEATURE, staying.entity().id);
     assertEquals(AuditOperation.UPDATE, featureLog.get(0).operation);
     assertEquals(epic.id, featureLog.get(0).epicId, "the subtree key is the post-state root");
 
-    List<AuditEntry> ticketLog = auditService.listForEntity(AuditEntityType.TICKET, leaving.id);
+    List<AuditEntry> ticketLog = auditService.listForEntity(AuditEntityType.TICKET, leaving.entity().id);
     assertEquals(AuditOperation.UPDATE, ticketLog.get(0).operation);
     assertEquals(
-        leaving.id, ticketLog.get(0).epicId, "a ticket carries its own id as the subtree key");
+        leaving.entity().id, ticketLog.get(0).epicId, "a ticket carries its own id as the subtree key");
     assertNotNull(ticketLog.get(0).snapshot);
   }
 

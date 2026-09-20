@@ -35,11 +35,12 @@ class EpicChangeHints {
     return epicService.get(epicId).projectId;
   }
 
+  /** The parent is the membership edge's, carried beside the row as a {@code control/Nested}. */
   String projectOfFeature(String featureId) {
-    return projectOfEpic(featureService.get(featureId).epicId);
+    return projectOfEpic(featureService.get(featureId).parentId());
   }
 
   String projectOfTask(String taskId) {
-    return projectOfFeature(taskService.get(taskId).featureId);
+    return projectOfFeature(taskService.get(taskId).parentId());
   }
 }

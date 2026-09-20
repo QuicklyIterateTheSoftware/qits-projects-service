@@ -1,7 +1,8 @@
 package eu.wohlben.qits.epics.entity;
 
 /**
- * The state a {@link Ticket} is in. Stored as the enum name (V4, widened in V7), and moved only
+ * The state a {@link Archetype#TICKET} entity is in. Stored as the enum name (V4, widened in V7) in
+ * {@link WorkEntity#status}, and moved only
  * through {@code TicketService.transition} — see {@code TicketLifecycle} for which moves are legal.
  *
  * <p><b>A status says what has been ACHIEVED, never what is being done.</b> That is the whole

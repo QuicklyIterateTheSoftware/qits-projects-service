@@ -5,11 +5,7 @@ import eu.wohlben.qits.epics.persistence.DossierAssetRepository;
 import eu.wohlben.qits.epics.persistence.DossierPageAssetRepository;
 import eu.wohlben.qits.epics.persistence.DossierPageRepository;
 import eu.wohlben.qits.epics.persistence.EntityMembershipRepository;
-import eu.wohlben.qits.epics.persistence.EpicRepository;
-import eu.wohlben.qits.epics.persistence.FeatureRepository;
-import eu.wohlben.qits.epics.persistence.TaskRepository;
 import eu.wohlben.qits.epics.persistence.TicketCommentRepository;
-import eu.wohlben.qits.epics.persistence.TicketRepository;
 import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import io.quarkus.hibernate.orm.PersistenceUnit;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -25,21 +21,20 @@ import org.junit.jupiter.api.BeforeEach;
  *
  * <p>The order is the FK graph read leaves-first, and since epics V12 that graph hangs off ONE root:
  * the dossier pages, the dossier assets and the ticket comments are foreign-keyed to {@code entity}
- * now, not to the legacy {@code epic}/{@code ticket} tables, so all three have to go before {@code
- * workEntityRepository} — which they already did and still do, so no line moved. The membership
- * edges go before the merged rows they point at, for the same reason. The four legacy tables are
- * wiped too and are now unconstrained in both directions: nothing writes them and nothing points at
- * them, so their position in this list is the only thing about them that is arbitrary. A new table
- * wiped in the wrong place fails with a constraint violation rather than a wrong answer, which is
- * the failure worth having.
+ * now — {@code fk_ticket_comment_ticket}, {@code fk_dossier_page_owner_epic}, {@code
+ * fk_dossier_page_owner_ticket} and {@code fk_dossier_asset_epic} all name {@code entity (id)} — so
+ * all three have to go before {@code workEntityRepository}. The membership edges go before the
+ * merged rows they point at, for the same reason. A new table wiped in the wrong place fails with a
+ * constraint violation rather than a wrong answer, which is the failure worth having.
+ *
+ * <p><b>The four legacy wipes are gone with the four legacy tables</b> (epics V13). {@code
+ * TicketCommentRepository} stays and its position does not move: a comment is not an archetype of
+ * the merged model, it is still written by {@code TicketService}, and its key is {@code entity (id)}
+ * — which is exactly why it goes before the merged rows and not after them.
  */
 public abstract class EpicsTestSupport {
 
-  @Inject EpicRepository epicRepository;
-  @Inject FeatureRepository featureRepository;
-  @Inject TaskRepository taskRepository;
   @Inject AuditRepository auditRepository;
-  @Inject TicketRepository ticketRepository;
   @Inject TicketCommentRepository ticketCommentRepository;
   @Inject DossierPageRepository dossierPageRepository;
   @Inject DossierAssetRepository dossierAssetRepository;
@@ -59,13 +54,9 @@ public abstract class EpicsTestSupport {
             () -> {
               auditRepository.deleteAll();
               ticketCommentRepository.deleteAll();
-              ticketRepository.deleteAll();
               dossierPageAssetRepository.deleteAll();
               dossierAssetRepository.deleteAll();
               dossierPageRepository.deleteAll();
-              taskRepository.deleteAll();
-              featureRepository.deleteAll();
-              epicRepository.deleteAll();
               entityMembershipRepository.deleteAll();
               workEntityRepository.deleteAll();
               // The allocator's counters go with the rows they numbered. In production a number is

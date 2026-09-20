@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketComment;
 import eu.wohlben.qits.epics.entity.TicketStatus;
 import eu.wohlben.qits.epics.entity.TicketType;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import io.quarkus.test.junit.QuarkusTest;
@@ -26,7 +26,7 @@ class TicketServiceTest extends EpicsTestSupport {
   @Inject TicketService ticketService;
   @Inject AuditService auditService;
 
-  private Ticket bug(String title) {
+  private WorkEntity bug(String title) {
     return ticketService.create(
         "proj-1",
         title,
@@ -41,22 +41,22 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void createReadUpdateDelete() {
-    Ticket ticket = bug("Login button does nothing");
+    WorkEntity ticket = bug("Login button does nothing");
     assertNotNull(ticket.id);
     assertEquals("proj-1", ticket.projectId);
-    assertEquals(TicketType.BUG, ticket.type);
-    assertEquals(TicketStatus.REPORTED, ticket.status);
+    assertEquals(TicketType.BUG, ticket.ticketType);
+    assertEquals(TicketStatus.REPORTED.name(), ticket.status);
     assertNull(ticket.assignee);
     assertNotNull(ticket.createdAt);
     assertNotNull(ticket.updatedAt);
 
     assertEquals("Login button does nothing", ticketService.get(ticket.id).title);
 
-    Ticket updated =
+    WorkEntity updated =
         ticketService.update(
             ticket.id, "Login button is inert", null, false, null, false, "IMPROVEMENT", "bob", false, "bob");
     assertEquals("Login button is inert", updated.title);
-    assertEquals(TicketType.IMPROVEMENT, updated.type);
+    assertEquals(TicketType.IMPROVEMENT, updated.ticketType);
     assertEquals("bob", updated.assignee);
     // The body was not named in the call, so it is untouched.
     assertEquals("what went wrong", updated.description);
@@ -88,8 +88,8 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void createdByIsNotRewrittenByALaterEdit() {
-    Ticket ticket = bug("Filed by alice");
-    Ticket edited =
+    WorkEntity ticket = bug("Filed by alice");
+    WorkEntity edited =
         ticketService.update(ticket.id, "Edited by bob", null, false, null, false, null, null, false, "bob");
     assertEquals("alice", edited.createdBy);
   }
@@ -107,9 +107,9 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void listByProjectIsOldestFirst() {
-    Ticket first = bug("First");
-    Ticket second = bug("Second");
-    Ticket third = bug("Third");
+    WorkEntity first = bug("First");
+    WorkEntity second = bug("Second");
+    WorkEntity third = bug("Third");
     assertEquals(
         List.of(first.id, second.id, third.id),
         ticketService.listByProject("proj-1").stream().map(t -> t.id).toList());
@@ -117,8 +117,8 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void listByProjectFiltersByStatus() {
-    Ticket reported = bug("Still broken");
-    Ticket refined = bug("Described");
+    WorkEntity reported = bug("Still broken");
+    WorkEntity refined = bug("Described");
     ticketService.transition(refined.id, "REFINED", "t");
 
     assertEquals(2, ticketService.listByProject("proj-1").size());
@@ -164,8 +164,8 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void updateLeavesTheSlugAlone() {
-    Ticket ticket = bug("Login button does nothing");
-    Ticket renamed =
+    WorkEntity ticket = bug("Login button does nothing");
+    WorkEntity renamed =
         ticketService.update(
             ticket.id, "Something else entirely", null, false, null, false, null, null, false, "t");
     // The slug is the row's stable address; retitling must not move it.
@@ -174,18 +174,18 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void theClearFlagsAreWhatEmptyTheNullableFields() {
-    Ticket ticket =
+    WorkEntity ticket =
         ticketService.create(
             "proj-1", "Assigned", "the list is unsorted", "a body", "BUG", "alice", "alice");
 
     // A title-only edit touches none of the three.
-    Ticket retitled =
+    WorkEntity retitled =
         ticketService.update(ticket.id, "Renamed", null, false, null, false, null, null, false, "t");
     assertEquals("the list is unsorted", retitled.impetus);
     assertEquals("a body", retitled.description);
     assertEquals("alice", retitled.assignee);
 
-    Ticket cleared =
+    WorkEntity cleared =
         ticketService.update(ticket.id, null, null, true, null, true, null, null, true, "t");
     assertNull(cleared.impetus);
     assertNull(cleared.description);
@@ -196,7 +196,7 @@ class TicketServiceTest extends EpicsTestSupport {
   void theImpetusIsWhatAFiledTicketConsistsOf() {
     // A REPORTED ticket is an impetus and nothing else: the description is the refinement's output
     // and is ordinarily written later, by the phase this status starts.
-    Ticket filed =
+    WorkEntity filed =
         ticketService.create(
             "proj-1",
             "Login button does nothing",
@@ -205,7 +205,7 @@ class TicketServiceTest extends EpicsTestSupport {
             "BUG",
             null,
             "alice");
-    assertEquals(TicketStatus.REPORTED, filed.status);
+    assertEquals(TicketStatus.REPORTED.name(), filed.status);
     assertEquals("clicking the login button does nothing on the sign-in page", filed.impetus);
     assertNull(filed.description, "refinement has not run yet");
 
@@ -227,12 +227,12 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void theImpetusIsEditableAndTheRefinementIsWrittenBesideit() {
-    Ticket filed =
+    WorkEntity filed =
         ticketService.create(
             "proj-1", "Inert button", "the login button does nothing", null, "BUG", null, "alice");
 
     // Triage corrects the words; the refinement writes its own field. Neither overwrites the other.
-    Ticket refined =
+    WorkEntity refined =
         ticketService.update(
             filed.id,
             null,
@@ -255,7 +255,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void aBlankAssigneeMeansNobody() {
-    Ticket ticket =
+    WorkEntity ticket =
         ticketService.create(
             "proj-1", "T", "something occurs on the login page", null, "BUG", "   ", "t");
     assertNull(ticket.assignee);
@@ -274,7 +274,7 @@ class TicketServiceTest extends EpicsTestSupport {
         BadRequestException.class,
         () -> ticketService.create("proj-1", "T", "something occurs on the login page", null, "DEFECT", null, "t"));
 
-    Ticket ticket = bug("Live");
+    WorkEntity ticket = bug("Live");
     assertThrows(
         BadRequestException.class,
         () -> ticketService.update(ticket.id, "  ", null, false, null, false, null, null, false, "t"));
@@ -293,7 +293,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void commentsAreReadOldestFirst() {
-    Ticket ticket = bug("Threaded");
+    WorkEntity ticket = bug("Threaded");
     TicketComment first = ticketService.addComment(ticket.id, "I can reproduce it", "alice");
     TicketComment second = ticketService.addComment(ticket.id, "It is the cache", "bob");
     TicketComment third = ticketService.addComment(ticket.id, "Fixed on main", "alice");
@@ -306,8 +306,8 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void commentsAreScopedToTheirTicket() {
-    Ticket one = bug("One");
-    Ticket two = bug("Two");
+    WorkEntity one = bug("One");
+    WorkEntity two = bug("Two");
     ticketService.addComment(one.id, "on one", "t");
     ticketService.addComment(two.id, "on two", "t");
 
@@ -317,7 +317,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void theAuthorIsStampedAndAnEditDoesNotRewriteIt() {
-    Ticket ticket = bug("Attributed");
+    WorkEntity ticket = bug("Attributed");
     TicketComment comment = ticketService.addComment(ticket.id, "mine", "alice");
     assertEquals("alice", comment.author);
 
@@ -334,7 +334,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void blankCommentBodiesAreRejected() {
-    Ticket ticket = bug("T");
+    WorkEntity ticket = bug("T");
     assertThrows(BadRequestException.class, () -> ticketService.addComment(ticket.id, "  ", "t"));
     TicketComment comment = ticketService.addComment(ticket.id, "real", "t");
     assertThrows(
@@ -343,7 +343,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void deletingACommentLeavesTheTicketAndItsSiblings() {
-    Ticket ticket = bug("T");
+    WorkEntity ticket = bug("T");
     TicketComment kept = ticketService.addComment(ticket.id, "kept", "t");
     TicketComment gone = ticketService.addComment(ticket.id, "gone", "t");
 
@@ -361,7 +361,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void deletingATicketCascadesToItsComments() {
-    Ticket ticket = bug("Doomed");
+    WorkEntity ticket = bug("Doomed");
     TicketComment comment = ticketService.addComment(ticket.id, "still here", "t");
 
     ticketService.delete(ticket.id, "t");
@@ -377,7 +377,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void everyMutationIsAudited() {
-    Ticket ticket = bug("Audited");
+    WorkEntity ticket = bug("Audited");
     ticketService.update(ticket.id, "Audited twice", null, false, null, false, null, null, false, "bob");
 
     var history = auditService.listForEntity(AuditEntityType.TICKET, ticket.id);
@@ -395,7 +395,7 @@ class TicketServiceTest extends EpicsTestSupport {
     // AuditEntry.epicId is the subtree key rather than a foreign key to an epic: a ticket's own
     // rows and its comments' rows carry the TICKET's id, so one indexed query answers "the whole
     // history of this thing" — and still answers after the live rows are gone.
-    Ticket ticket = bug("Rooted");
+    WorkEntity ticket = bug("Rooted");
     TicketComment comment = ticketService.addComment(ticket.id, "a remark", "alice");
     ticketService.updateComment(comment.id, "a better remark", "alice");
 
@@ -409,7 +409,7 @@ class TicketServiceTest extends EpicsTestSupport {
 
   @Test
   void deleteAuditsEveryRemovedRowAndSurvivesTheDeletion() {
-    Ticket ticket = bug("Doomed");
+    WorkEntity ticket = bug("Doomed");
     TicketComment comment = ticketService.addComment(ticket.id, "goes with it", "carol");
 
     ticketService.delete(ticket.id, "carol");

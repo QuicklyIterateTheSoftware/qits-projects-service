@@ -3,9 +3,8 @@ package eu.wohlben.qits.projects.mcp;
 import eu.wohlben.qits.epics.control.EpicService;
 import eu.wohlben.qits.epics.control.FeatureService;
 import eu.wohlben.qits.epics.control.TaskService;
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
+import eu.wohlben.qits.epics.control.Nested;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
@@ -195,7 +194,7 @@ public class EpicMcpTools {
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return epicService.listByProject(scope.requireProjectId(), status).stream()
-        .map(epic -> summarize(epic, projectSlug))
+        .map(epic -> summarizeEpic(epic, projectSlug))
         .toList();
   }
 
@@ -210,42 +209,45 @@ public class EpicMcpTools {
               + " mark_task_implemented.")
   public EpicDetail getEpic(
       @ToolArg(description = "id of an epic in this project") String id) {
-    Epic epic = requireEpicInProject(id);
+    WorkEntity epic = requireEpicInProject(id);
     String projectSlug = projectSlug(); // once for the whole tree, never once per node
     List<FeatureDetail> features =
         featureService.listByEpic(epic.id).stream()
             .map(
-                feature ->
-                    new FeatureDetail(
-                        feature.id,
-                        QualifiedEntityIds.render(projectSlug, feature.number),
-                        feature.slug,
-                        feature.title,
-                        feature.description,
-                        feature.dependsOnFeatureId,
-                        feature.implementedOn,
-                        taskService.listByFeature(feature.id).stream()
-                            .map(
-                                task ->
-                                    new TaskDetail(
-                                        task.id,
-                                        QualifiedEntityIds.render(projectSlug, task.number),
-                                        task.slug,
-                                        task.title,
-                                        task.description,
-                                        task.repositoryId,
-                                        task.dependsOnTaskId,
-                                        task.implementedAt))
-                            .toList()))
+                nested -> {
+                  WorkEntity feature = nested.entity();
+                  return new FeatureDetail(
+                      feature.id,
+                      QualifiedEntityIds.render(projectSlug, feature.number),
+                      feature.slug,
+                      feature.title,
+                      feature.description,
+                      feature.dependsOnEntityId,
+                      feature.implementedAt,
+                      taskService.listByFeature(feature.id).stream()
+                          .map(Nested::entity)
+                          .map(
+                              task ->
+                                  new TaskDetail(
+                                      task.id,
+                                      QualifiedEntityIds.render(projectSlug, task.number),
+                                      task.slug,
+                                      task.title,
+                                      task.description,
+                                      task.repositoryId,
+                                      task.dependsOnEntityId,
+                                      task.implementedAt))
+                          .toList());
+                })
             .toList();
     return new EpicDetail(
         epic.id,
         QualifiedEntityIds.render(projectSlug, epic.number),
         epic.slug,
         epic.title,
-        epic.status.name(),
+        epic.status,
         epic.description,
-        epic.supersededByEpicId,
+        epic.supersededByEntityId,
         features);
   }
 
@@ -260,9 +262,9 @@ public class EpicMcpTools {
   public EpicSummary proposeEpic(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(required = false, description = "the long-form Markdown spine") String description) {
-    Epic epic = epicService.create(scope.requireProjectId(), title, description, changedBy());
+    WorkEntity epic = epicService.create(scope.requireProjectId(), title, description, changedBy());
     announce();
-    return summarize(epic, projectSlug());
+    return summarizeEpic(epic, projectSlug());
   }
 
   @McpServer("repository")
@@ -277,15 +279,15 @@ public class EpicMcpTools {
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
       @ToolArg(required = false, description = "new description; omit to keep it")
           String description) {
-    Epic current = requireEpicInProject(id);
-    Epic epic =
+    WorkEntity current = requireEpicInProject(id);
+    WorkEntity epic =
         epicService.update(
             id,
             (title == null || title.isBlank()) ? current.title : title,
             description == null ? current.description : description,
             changedBy());
     announce();
-    return summarize(epic, projectSlug());
+    return summarizeEpic(epic, projectSlug());
   }
 
   // --- Features -------------------------------------------------------------
@@ -307,10 +309,10 @@ public class EpicMcpTools {
                   "id of another feature IN THE SAME EPIC that this one depends on; omit for none")
           String dependsOnFeatureId) {
     requireEpicInProject(epicId);
-    Feature feature =
+    Nested feature =
         featureService.create(epicId, title, description, dependsOnFeatureId, changedBy());
     announce();
-    return summarize(feature, projectSlug());
+    return summarizeFeature(feature, projectSlug());
   }
 
   @McpServer("repository")
@@ -332,11 +334,11 @@ public class EpicMcpTools {
                       + " one")
           String dependsOnFeatureId) {
     requireFeatureInProject(id);
-    Feature feature =
+    Nested feature =
         featureService.update(
             id, title, description, dependsOnFeatureId, false, null, false, changedBy());
     announce();
-    return summarize(feature, projectSlug());
+    return summarizeFeature(feature, projectSlug());
   }
 
   @McpServer("repository")
@@ -377,11 +379,11 @@ public class EpicMcpTools {
     // Same cross-check the REST create does, through the guard the repository tools already use:
     // a task must not bind a repository from another project.
     scopeGuard.requireRepoInProject(repositoryId);
-    Task task =
+    Nested task =
         taskService.create(
             featureId, repositoryId, title, description, dependsOnTaskId, changedBy());
     announce();
-    return summarize(task, projectSlug());
+    return summarizeTask(task, projectSlug());
   }
 
   @McpServer("repository")
@@ -404,11 +406,11 @@ public class EpicMcpTools {
                       + " one")
           String dependsOnTaskId) {
     requireTaskInProject(id);
-    Task task =
+    Nested task =
         taskService.update(
             id, title, description, dependsOnTaskId, false, null, false, changedBy());
     announce();
-    return summarize(task, projectSlug());
+    return summarizeTask(task, projectSlug());
   }
 
   /**
@@ -449,8 +451,8 @@ public class EpicMcpTools {
   public TaskImplemented markTaskImplemented(
       @ToolArg(description = "id of a task in this project") String id) {
     requireTaskInProject(id);
-    Task task =
-        taskService.update(id, null, null, null, false, Instant.now(), false, changedBy());
+    WorkEntity task =
+        taskService.update(id, null, null, null, false, Instant.now(), false, changedBy()).entity();
     announce();
     return new TaskImplemented(
         task.id,
@@ -479,23 +481,24 @@ public class EpicMcpTools {
    * Ensures {@code epicId} names an epic of the scoped project. An epic elsewhere reads as not
    * found rather than as forbidden — the model is told nothing about what other projects hold.
    */
-  private Epic requireEpicInProject(String epicId) {
-    Epic epic = epicService.get(epicId);
+  private WorkEntity requireEpicInProject(String epicId) {
+    WorkEntity epic = epicService.get(epicId);
     if (!scope.requireProjectId().equals(epic.projectId)) {
       throw new NotFoundException("Epic not found in this project: " + epicId);
     }
     return epic;
   }
 
-  private Feature requireFeatureInProject(String featureId) {
-    Feature feature = featureService.get(featureId);
-    requireEpicInProject(feature.epicId);
+  /** The owning epic is the membership edge's parent now, carried beside the row as a {@link Nested}. */
+  private Nested requireFeatureInProject(String featureId) {
+    Nested feature = featureService.get(featureId);
+    requireEpicInProject(feature.parentId());
     return feature;
   }
 
-  private Task requireTaskInProject(String taskId) {
-    Task task = taskService.get(taskId);
-    requireFeatureInProject(task.featureId);
+  private Nested requireTaskInProject(String taskId) {
+    Nested task = taskService.get(taskId);
+    requireFeatureInProject(task.parentId());
     return task;
   }
 
@@ -523,27 +526,34 @@ public class EpicMcpTools {
     return scopeGuard.scopedProjectSlug();
   }
 
-  private static EpicSummary summarize(Epic epic, String projectSlug) {
+  private static EpicSummary summarizeEpic(WorkEntity epic, String projectSlug) {
     return new EpicSummary(
         epic.id,
         QualifiedEntityIds.render(projectSlug, epic.number),
         epic.slug,
         epic.title,
-        epic.status.name(),
+        // The merged column holds the enum's own name(), which is what the old status.name() was.
+        epic.status,
         epic.description);
   }
 
-  private static FeatureSummary summarize(Feature feature, String projectSlug) {
+  /**
+   * Named apart from its two neighbours rather than overloaded: a feature and a task are both a
+   * {@link Nested} now, so the three would share one erasure.
+   */
+  private static FeatureSummary summarizeFeature(Nested nested, String projectSlug) {
+    WorkEntity feature = nested.entity();
     return new FeatureSummary(
         feature.id,
         QualifiedEntityIds.render(projectSlug, feature.number),
         feature.slug,
         feature.title,
         feature.description,
-        feature.dependsOnFeatureId);
+        feature.dependsOnEntityId);
   }
 
-  private static TaskSummary summarize(Task task, String projectSlug) {
+  private static TaskSummary summarizeTask(Nested nested, String projectSlug) {
+    WorkEntity task = nested.entity();
     return new TaskSummary(
         task.id,
         QualifiedEntityIds.render(projectSlug, task.number),
@@ -551,6 +561,6 @@ public class EpicMcpTools {
         task.title,
         task.description,
         task.repositoryId,
-        task.dependsOnTaskId);
+        task.dependsOnEntityId);
   }
 }

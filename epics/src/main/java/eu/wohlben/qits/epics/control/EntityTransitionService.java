@@ -250,12 +250,12 @@ public class EntityTransitionService {
     for (Map.Entry<String, TransitionedEntity> entry : written.entrySet()) {
       WorkEntity row = rows.get(entry.getKey());
       auditService.record(
-          auditTypeOf(row.archetype),
+          AuditEntityType.of(row.archetype),
           row.id,
           subtreeRootOf(row.id, stated),
           AuditOperation.UPDATE,
           changedBy,
-          snapshotOf(row, entry.getValue().parent()));
+          row);
     }
     // Collections.unmodifiableMap and NOT Map.copyOf: the caller's order is this operation's
     // contract — it decides the order violations are reported in, the order two entries claiming
@@ -656,30 +656,6 @@ public class EntityTransitionService {
       cursor = parentId;
     }
     return cursor;
-  }
-
-  /**
-   * The audit snapshot, shaped as the projection every existing reader of {@code
-   * auditentry.snapshot} already expects. A transition writes the merged row, but the log is read by
-   * the same two histories the four services write, so the JSON in it keeps the shape it has.
-   */
-  private static Object snapshotOf(WorkEntity row, String parentId) {
-    return switch (row.archetype) {
-      case EPIC -> WorkEntityProjections.epic(row);
-      case TICKET -> WorkEntityProjections.ticket(row);
-      case FEATURE -> WorkEntityProjections.feature(row, parentId);
-      case TASK -> WorkEntityProjections.task(row, parentId);
-    };
-  }
-
-  /** The audit vocabulary's word for an archetype. The two enums are the same four kinds. */
-  private static AuditEntityType auditTypeOf(Archetype archetype) {
-    return switch (archetype) {
-      case EPIC -> AuditEntityType.EPIC;
-      case TICKET -> AuditEntityType.TICKET;
-      case FEATURE -> AuditEntityType.FEATURE;
-      case TASK -> AuditEntityType.TASK;
-    };
   }
 
   /** One call for the batch, never one per entity — see {@link TransitionAnnouncer}. */

@@ -16,27 +16,28 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 /**
- * The merged planning row: an {@link Epic}, a {@link Ticket}, a {@link Feature} or a {@link Task},
- * said by {@link #archetype} (V9). The four were always one noun with different columns filled in —
+ * The merged planning row: an epic, a ticket, a feature or a task, said by {@link #archetype} (V9).
+ * The four were always one noun with different columns filled in —
  * a titled, slugged, described thing owned by a project, possibly hanging under another one — and
  * the cost of keeping them apart was four services repeating one create, four slug rules, four
  * audit vocabularies, and a feature that could never be promoted to an epic because promotion would
  * have meant moving a row between tables while every id pointing at it stayed behind.
  *
- * <p><b>All four archetypes are read and written here now.</b> {@code EpicService}, {@code
- * TicketService}, {@code FeatureService} and {@code TaskService} answer every read and judge every
- * rule against this table, and hand their callers a detached projection shaped as an {@link Epic},
- * a {@link Ticket}, a {@link Feature} or a {@link Task} so that the mappers, the DTOs and the
- * controllers above are untouched. The legacy {@code feature} and {@code task} tables are <b>no
- * longer written at all</b> — nothing foreign-keys to either and nothing reads them, so a mirror
- * would have been a table that is written and never read. The legacy {@code epic} and {@code ticket}
- * rows <em>are</em> still written behind, because the dossier's owner columns and the comment
- * thread's foreign key still name them; see {@code EpicService.mirrorLegacyRow} for the exact
- * remainder, and nothing reads them back.
+ * <p><b>This is the only planning row there is.</b> {@code EpicService}, {@code TicketService},
+ * {@code FeatureService} and {@code TaskService} answer every read and judge every rule against this
+ * table, and hand their callers <em>this row</em> — bare for the two roots, and beside its parent's
+ * id ({@code control/Nested}) for the two descendants, whose parent is an {@link EntityMembership}
+ * edge rather than a column.
  *
- * <p>The ids are the <em>same</em> id space — V10 copies each old row in under the id it already has
+ * <p>The four old classes and their four tables are <b>gone</b> (V13). They stood for two releases
+ * as shapes the services answered with, so that the mappers, the DTOs and the controllers above
+ * could be left untouched while the storage moved underneath them; {@code mapper/WorkEntityMapper}
+ * reads this row into all four DTOs now and not one of those DTOs moved by a byte.
+ *
+ * <p>The ids are the <em>same</em> id space — V10 copied each old row in under the id it already had
  * — because every dossier page, audit entry, branch name and URL on the platform names one of those
- * strings.
+ * strings. That is also what made V12's repointing of the outward foreign keys and V13's drop
+ * possible without re-keying anything.
  *
  * <p><b>Why it is not called {@code Entity}.</b> {@code jakarta.persistence.Entity} owns that word.
  * A class named {@code Entity} would have to import its own annotation under an alias in every file
@@ -55,8 +56,8 @@ import org.hibernate.annotations.UpdateTimestamp;
  * the SPA sends no header and leaves a rootless row, which is the correct answer rather than a
  * missing one.
  *
- * <p>Panache active-record with public fields and no getters, matching {@link Epic} and {@link
- * Ticket}; the id is a string minted by the service, like every other id here.
+ * <p>Panache active-record with public fields and no getters, the idiom every entity in this module
+ * uses; the id is a string minted by the service, like every other id here.
  */
 @Entity
 @Table(name = "entity")
@@ -82,10 +83,10 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   /**
    * The owning project — {@code domain}'s {@code Project} by String id, with no JPA relation and no
    * cross-DB FK (epics is a separate physical database); existence is validated in {@code
-   * service}'s controllers, exactly as {@link Epic} has it.
+   * service}'s controllers, which is where it always was.
    *
-   * <p>It is carried on <em>every</em> row, root and descendant alike, where today a {@link
-   * Feature} reaches its project by walking up to its epic. A merged tree is read project-first —
+   * <p>It is carried on <em>every</em> row, root and descendant alike, where a feature used to reach
+   * its project by walking up to its epic. A merged tree is read project-first —
    * the board, the listing, the change hint — and a walk per row to answer "whose is this" would be
    * a join this column makes unnecessary.
    */
@@ -187,8 +188,23 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public TicketType ticketType;
 
   /**
-   * Why a ticket came about, in the reporter's or the triage agent's own words — see {@link
-   * Ticket#impetus} for the length rule and why it exists. Never rewritten by a later phase.
+   * <b>Why a ticket came about, in the reporter's or the triage agent's own words.</b> It is what a
+   * {@link TicketStatus#REPORTED} ticket consists of — an impetus and nothing else.
+   *
+   * <p><b>The length rule, which is the whole of the field's discipline.</b> An impetus takes one of
+   * two shapes — <em>"{some error} occurs {in some context}"</em> or <em>"{an existing part} should
+   * be {something to introduce or improve}"</em> — and is almost always one sentence, rarely a
+   * paragraph, very rarely two. A bug's steps to reproduce may be included and do not count against
+   * that length: they are part of saying what occurs.
+   *
+   * <p><b>Why the rule exists.</b> An impetus that grows into an essay is indistinguishable from the
+   * refined {@link #description}, and at that point it stops being a record of what was originally
+   * asked for — which is the one thing nothing else in the row holds.
+   *
+   * <p><b>It is never rewritten by a later phase.</b> Refinement writes {@link #description};
+   * implementation and verification write neither. It stays editable by triage, because a report
+   * filed in haste is often the wrong words for the right problem. Nullable in the column and
+   * required at every intake surface: rows that predate V7 have none.
    */
   public String impetus;
 
@@ -230,9 +246,9 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String repositoryId;
 
   /**
-   * <b>One implemented marker for what were two</b>: {@link Feature#implementedOn} and {@link
-   * Task#implementedAt}. They were never two facts — both mean "this is done, as of then" — and the
-   * two names are an accident of the two tables having been written apart. {@code implementedAt}
+   * <b>One implemented marker for what were two</b>: a feature's {@code implemented_on} and a task's
+   * {@code implemented_at}. They were never two facts — both mean "this is done, as of then" — and
+   * the two names are an accident of the two tables having been written apart. {@code implementedAt}
    * wins because a timestamp answers "at", and because the epic lifecycle's guard already speaks of
    * "the implemented markers" in the plural as one rule.
    */
@@ -240,8 +256,9 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public Instant implementedAt;
 
   /**
-   * <b>One sibling-dependency edge for what were two</b>: {@link Feature#dependsOnFeatureId} and
-   * {@link Task#dependsOnTaskId}. Self-FK with {@code on delete set null}.
+   * <b>One sibling-dependency edge for what were two</b>: a feature's {@code depends_on_feature_id}
+   * and a task's {@code depends_on_task_id}. Self-FK with {@code on delete set null}. The DTOs keep
+   * both old spellings — see {@code mapper/WorkEntityMapper}.
    *
    * <p><b>This is not nesting and must never be validated as nesting.</b> A dependency says "do
    * that one first"; a membership says "this one is part of that one". They point in unrelated

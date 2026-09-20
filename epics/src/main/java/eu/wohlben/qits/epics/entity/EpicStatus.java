@@ -1,7 +1,8 @@
 package eu.wohlben.qits.epics.entity;
 
 /**
- * The phase an {@link Epic} is in. Stored as the enum name (V3), and the only thing that decides
+ * The phase an {@link Archetype#EPIC} entity is in. Stored as the enum name (V3) in {@link
+ * WorkEntity#status}, and the only thing that decides
  * which mutations the services accept — see {@code EpicLifecycle}.
  *
  * <p>"Done" used to be derived only — {@link #IMPLEMENTATION} with every feature's {@code
@@ -30,7 +31,7 @@ public enum EpicStatus {
 
   /**
    * Back to the drawing board. The row keeps its frozen scope as the record of what was discarded
-   * and points at the successor draft it spawned ({@link Epic#supersededByEpicId}).
+   * and points at the successor draft it spawned ({@link WorkEntity#supersededByEntityId}).
    */
   SUPERSEDED,
 

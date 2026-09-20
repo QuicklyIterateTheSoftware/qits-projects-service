@@ -4,11 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.epics.entity.Epic;
+import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.EpicStatus;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
 import eu.wohlben.qits.epics.entity.TicketType;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -31,14 +31,15 @@ import org.junit.jupiter.api.Test;
  */
 public class TicketPhasePromptsTest {
 
-  private static Ticket ticket(TicketStatus status) {
-    Ticket ticket = new Ticket();
+  private static WorkEntity ticket(TicketStatus status) {
+    WorkEntity ticket = new WorkEntity();
     ticket.id = "tkt-123";
     ticket.projectId = "prj-1";
+    ticket.archetype = Archetype.TICKET;
     ticket.title = "Login button is the wrong colour";
     ticket.slug = "login-button-is-the-wrong-colour";
-    ticket.type = TicketType.BUG;
-    ticket.status = status;
+    ticket.ticketType = TicketType.BUG;
+    ticket.status = status.name();
     ticket.impetus = "The login button renders puce on the sign-in page.";
     return ticket;
   }
@@ -363,13 +364,14 @@ public class TicketPhasePromptsTest {
         "and so does the epic door, from the same constant and not a copy of the words");
   }
 
-  private static Epic epic() {
-    Epic epic = new Epic();
+  private static WorkEntity epic() {
+    WorkEntity epic = new WorkEntity();
     epic.id = "epc-9";
     epic.projectId = "prj-1";
+    epic.archetype = Archetype.EPIC;
     epic.title = "Planning domain";
     epic.slug = "planning-domain";
-    epic.status = EpicStatus.IMPLEMENTATION;
+    epic.status = EpicStatus.IMPLEMENTATION.name();
     return epic;
   }
 }

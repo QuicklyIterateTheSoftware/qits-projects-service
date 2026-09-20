@@ -16,13 +16,13 @@ import java.time.Instant;
  * the request is keyed in, so a caller can put the two side by side and see exactly what its
  * statement became.
  *
- * <p><b>It is the merged model and not one of the four projections.</b> {@code
- * WorkEntityProjections} exists to keep {@code Epic}/{@code Ticket}/{@code Feature}/{@code Task}
- * answerable while the storage moved underneath them, and every one of those four drops the columns
- * its kind has no slot for. A transition's whole subject is a row changing which kind it is, so an
- * answer shaped as one kind could not describe the other end of the change. This record carries
- * every property the merged table has, null where the archetype has no slot for it — {@link
- * #number} included, which the sentence above used to claim and did not deliver.
+ * <p><b>It is the merged model and not one kind's shape.</b> The four old classes each dropped the
+ * columns their kind had no slot for; a transition's whole subject is a row changing which kind it
+ * is, so an answer shaped as one kind could not describe the other end of the change. This record
+ * carries every property the merged table has, null where the archetype has no slot for it — {@link
+ * #number} included. That argument is why this record was written against {@link WorkEntity} from
+ * the start rather than against a projection, and why nothing about it moved when the four shapes
+ * were deleted in V13.
  *
  * <p><b>{@link #qualifiedId} is the one component this module cannot fill.</b> The qualified form
  * is {@code <project-slug>-<number>} and the project slug lives in {@code domain}'s {@code project}

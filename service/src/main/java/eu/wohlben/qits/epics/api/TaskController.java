@@ -2,7 +2,7 @@ package eu.wohlben.qits.epics.api;
 
 import eu.wohlben.qits.epics.control.TaskService;
 import eu.wohlben.qits.epics.dto.TaskDto;
-import eu.wohlben.qits.epics.mapper.TaskMapper;
+import eu.wohlben.qits.epics.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -26,7 +26,8 @@ public class TaskController {
 
   @Inject TaskService taskService;
 
-  @Inject TaskMapper taskMapper;
+  /** One mapper where there were four; a task's parent travels beside the row as a {@code Nested}. */
+  @Inject WorkEntityMapper workEntityMapper;
 
   @Inject SecurityIdentity identity;
 
@@ -47,7 +48,9 @@ public class TaskController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetTaskRequest.Response get(@PathParam("id") String id) {
-    return new GetTaskRequest.Response(qualifiedIds.qualify(taskMapper.toDto(taskService.get(id))));
+    var task = taskService.get(id);
+    return new GetTaskRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toTaskDto(task.entity(), task.parentId())));
   }
 
   /**
@@ -80,8 +83,9 @@ public class TaskController {
             request.implementedAt(),
             request.clearImplementedAt(),
             EpicsPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfFeature(task.featureId));
-    return new UpdateTaskRequest.Response(qualifiedIds.qualify(taskMapper.toDto(task)));
+    hints.fire(hints.projectOfFeature(task.parentId()));
+    return new UpdateTaskRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toTaskDto(task.entity(), task.parentId())));
   }
 
   public record DeleteTaskRequest() {

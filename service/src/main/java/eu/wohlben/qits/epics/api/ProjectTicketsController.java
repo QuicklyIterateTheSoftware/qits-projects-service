@@ -2,7 +2,7 @@ package eu.wohlben.qits.epics.api;
 
 import eu.wohlben.qits.epics.control.TicketService;
 import eu.wohlben.qits.epics.dto.TicketDto;
-import eu.wohlben.qits.epics.mapper.TicketMapper;
+import eu.wohlben.qits.epics.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -34,7 +34,8 @@ public class ProjectTicketsController {
 
   @Inject TicketService ticketService;
 
-  @Inject TicketMapper ticketMapper;
+  /** One mapper where there were four; this route answers the ticket shape. */
+  @Inject WorkEntityMapper workEntityMapper;
 
   @Inject ProjectService projectService;
 
@@ -69,7 +70,7 @@ public class ProjectTicketsController {
         dispatchedWorkspaces
             .decorateTickets(
                 ticketService.listByProject(projectId, status).stream()
-                    .map(ticketMapper::toDto)
+                    .map(workEntityMapper::toTicketDto)
                     .map(t -> t.withQualifiedId(QualifiedEntityIds.render(slug, t.number())))
                     .toList())
             .stream()
@@ -113,6 +114,8 @@ public class ProjectTicketsController {
             EpicsPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new CreateTicketRequest.Response(
-        ticketMapper.toDto(ticket).withQualifiedId(QualifiedEntityIds.render(slug, ticket.number)));
+        workEntityMapper
+            .toTicketDto(ticket)
+            .withQualifiedId(QualifiedEntityIds.render(slug, ticket.number)));
   }
 }

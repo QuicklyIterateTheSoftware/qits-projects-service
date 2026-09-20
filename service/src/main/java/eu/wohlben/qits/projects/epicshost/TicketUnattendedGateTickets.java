@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.epicshost;
 
 import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.entity.TicketType;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
@@ -66,7 +66,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   @Override
   public Optional<String> rejected(Rejection rejection) {
     try {
-      Ticket open = reusableTicket(rejection.existingTicketId());
+      WorkEntity open = reusableTicket(rejection.existingTicketId());
       if (open != null) {
         tickets.addComment(open.id, comment(rejection), REPORTER);
         redraw(rejection.projectId());
@@ -75,7 +75,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
             rejection.requestId(), open.id);
         return Optional.of(open.id);
       }
-      Ticket filed =
+      WorkEntity filed =
           tickets.create(
               rejection.projectId(),
               title(rejection),
@@ -108,7 +108,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   @Override
   public void released(String ticketId, String requestId, String repoName, String version) {
     try {
-      Ticket ticket = reusableTicket(ticketId);
+      WorkEntity ticket = reusableTicket(ticketId);
       if (ticket == null) {
         // DONE already, or gone. Either way somebody has finished with it and a comment on a
         // closed thread is noise.
@@ -150,11 +150,11 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
    * verification from the fix it is verifying and hide the most useful fact either one has. The
    * same reading covers REPORTED, REFINED and VERIFIED: none of them claims anybody is done.
    */
-  private Ticket reusableTicket(String ticketId) {
+  private WorkEntity reusableTicket(String ticketId) {
     if (ticketId == null || ticketId.isBlank()) {
       return null;
     }
-    Ticket ticket;
+    WorkEntity ticket;
     try {
       // In a transaction of its own, and that is not decoration: the release arm runs on the
       // release-request worker, a plain thread with no request scope and no session on it, where a
@@ -166,7 +166,8 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
       LOG.debugf("Gate-failure ticket %s could not be read; treating it as gone", ticketId);
       return null;
     }
-    return ticket.status == TicketStatus.DONE ? null : ticket;
+    // The merged row stores the status word, so DONE is compared by name against the column.
+    return TicketStatus.DONE.name().equals(ticket.status) ? null : ticket;
   }
 
   static String title(Rejection rejection) {
@@ -174,7 +175,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
   }
 
   /**
-   * The one sentence that says what occurs, in the shape {@code Ticket.impetus} asks for — the
+   * The one sentence that says what occurs, in the shape {@code WorkEntity.impetus} asks for — the
    * whole report is the description, and the length rule there is why it is not repeated here.
    *
    * <p>It names the repository and not the request id: a request is re-armed and superseded while

@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.refinementhost;
 
 import eu.wohlben.qits.epics.control.EpicService;
-import eu.wohlben.qits.epics.entity.Epic;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.entity.EpicStatus;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -123,8 +123,9 @@ public class RefinementService {
     if (existing.isPresent()) {
       return existing.get();
     }
-    Epic epic = epics.get(epicId);
-    if (epic.status != EpicStatus.REFINING) {
+    WorkEntity epic = epics.get(epicId);
+    // The merged row stores the status word, so REFINING is compared by name against the column.
+    if (!EpicStatus.REFINING.name().equals(epic.status)) {
       throw new DomainException(
           409,
           "Epic " + epicId + " is " + epic.status + " — only a REFINING epic can be refined.");

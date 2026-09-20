@@ -7,8 +7,7 @@ import eu.wohlben.qits.epics.control.FeatureService;
 import eu.wohlben.qits.epics.control.TaskService;
 import eu.wohlben.qits.epics.dto.FeatureDto;
 import eu.wohlben.qits.epics.dto.TaskDto;
-import eu.wohlben.qits.epics.mapper.FeatureMapper;
-import eu.wohlben.qits.epics.mapper.TaskMapper;
+import eu.wohlben.qits.epics.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -40,9 +39,8 @@ public class FeatureController {
 
   @Inject EpicService epicService;
 
-  @Inject FeatureMapper featureMapper;
-
-  @Inject TaskMapper taskMapper;
+  /** One mapper where there were four — this route answers a feature shape and a task shape. */
+  @Inject WorkEntityMapper workEntityMapper;
 
   @Inject RepositoryService repositoryService;
 
@@ -67,8 +65,9 @@ public class FeatureController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetFeatureRequest.Response get(@PathParam("id") String id) {
+    var feature = featureService.get(id);
     return new GetFeatureRequest.Response(
-        qualifiedIds.qualify(featureMapper.toDto(featureService.get(id))));
+        qualifiedIds.qualify(workEntityMapper.toFeatureDto(feature.entity(), feature.parentId())));
   }
 
   /**
@@ -101,8 +100,9 @@ public class FeatureController {
             request.implementedOn(),
             request.clearImplementedOn(),
             EpicsPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfEpic(feature.epicId));
-    return new UpdateFeatureRequest.Response(qualifiedIds.qualify(featureMapper.toDto(feature)));
+    hints.fire(hints.projectOfEpic(feature.parentId()));
+    return new UpdateFeatureRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toFeatureDto(feature.entity(), feature.parentId())));
   }
 
   public record DeleteFeatureRequest() {
@@ -136,7 +136,10 @@ public class FeatureController {
     // whole list, never once per task.
     var entries =
         qualifiedIds
-            .qualifyTasks(taskService.listByFeature(featureId).stream().map(taskMapper::toDto).toList())
+            .qualifyTasks(
+                taskService.listByFeature(featureId).stream()
+                    .map(t -> workEntityMapper.toTaskDto(t.entity(), t.parentId()))
+                    .toList())
             .stream()
             .map(ListTasksRequest.Response.Entry::new)
             .toList();
@@ -159,7 +162,7 @@ public class FeatureController {
     // must
     // not bind a repository from an unrelated project.
     var feature = featureService.get(featureId);
-    var epic = epicService.get(feature.epicId);
+    var epic = epicService.get(feature.parentId());
     Repository repo = repositoryService.get(request.repositoryId()); // 404 if absent
     if (repo.project == null || !epic.projectId.equals(repo.project.id)) {
       throw new BadRequestException(
@@ -174,6 +177,7 @@ public class FeatureController {
             request.dependsOnTaskId(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(epic.projectId);
-    return new CreateTaskRequest.Response(qualifiedIds.qualify(taskMapper.toDto(task)));
+    return new CreateTaskRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toTaskDto(task.entity(), task.parentId())));
   }
 }

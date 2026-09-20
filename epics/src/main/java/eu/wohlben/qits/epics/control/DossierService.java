@@ -6,7 +6,6 @@ import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
 import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
-import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
@@ -44,7 +43,7 @@ import java.util.UUID;
  * </ul>
  *
  * <p><b>Slug.</b> Minted from the title at create, unique <b>per owner</b> with a numeric suffix on
- * collision, and never changed afterwards — the rule {@link Epic#slug} follows and for the same
+ * collision, and never changed afterwards — the rule {@code WorkEntity.slug} follows and for the same
  * reason: it is in URLs people have already sent each other. A rename changes the title only. The
  * same slug under an epic and under a ticket is two different addresses that never meet.
  *
@@ -71,11 +70,10 @@ import java.util.UUID;
  * rather than "no row at all", and a ticket id offered to an epic route is a 404 rather than a page
  * written under the wrong owner. Both refusals are the sentences they always were.
  *
- * <p>The {@code REFINING} guard reads that same row, projected — {@code
- * EpicLifecycle.requireRefining(WorkEntityProjections.epic(row))}, exactly as {@code EpicService},
- * {@code FeatureService} and {@code TaskService} already call it. The guard keeps its one signature:
- * a second one taking a {@code WorkEntity} would be the freeze condition written in two places, and
- * there is only ever one condition.
+ * <p>The {@code REFINING} guard reads that same row — {@code EpicLifecycle.requireRefining(row)},
+ * exactly as {@code EpicService}, {@code FeatureService} and {@code TaskService} already call it.
+ * The guard keeps its one signature: a second would be the freeze condition written in two places,
+ * and there is only ever one condition.
  *
  * <p><b>What that retired is the write-behind mirror.</b> {@code EpicService} and {@code
  * TicketService} used to keep the legacy {@code epic} and {@code ticket} rows populated because this
@@ -289,10 +287,9 @@ public class DossierService {
     if (owner.isEpic()) {
       // The freeze, and only here. A ticket owner is resolved and then left alone.
       //
-      // The phase is read off the entity row, projected only so the rule keeps the one signature
-      // its three other callers use — EpicService.update, FeatureService and TaskService all reach
-      // it exactly this way.
-      EpicLifecycle.requireRefining(WorkEntityProjections.epic(row));
+      // The phase is read off the entity row through the module's one guard — EpicService.update,
+      // FeatureService and TaskService all reach it exactly this way.
+      EpicLifecycle.requireRefining(row);
     }
   }
 

@@ -3,7 +3,6 @@ package eu.wohlben.qits.epics.control;
 import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketComment;
 import eu.wohlben.qits.epics.entity.TicketStatus;
 import eu.wohlben.qits.epics.entity.TicketType;
@@ -45,9 +44,11 @@ import java.util.stream.Collectors;
  *
  * <h2>The merged table is the source of truth, and there is no mirror left</h2>
  *
- * <p>{@code entity} answers every read and every rule here, and a caller gets back a {@link
- * WorkEntityProjections detached projection} of the row shaped as a {@link Ticket}, so the mapper,
- * the DTO and the controllers above are untouched.
+ * <p>{@code entity} answers every read and every rule here, and <b>that row is what a caller gets
+ * back</b>. It used to be a detached {@code Ticket}-shaped projection, so the mapper and the DTO
+ * above could stay written against the old class while the storage moved underneath them; the old
+ * class is gone and the projection with it. {@code WorkEntityMapper.toTicketDto} reads the merged
+ * row directly and {@code TicketDto} did not move by one byte.
  *
  * <p><b>The legacy {@code ticket} row is not written at all any more.</b> The write-behind mirror
  * was held by two live foreign keys and one reader, and epics V12 and {@code DossierService} have
@@ -83,7 +84,7 @@ public class TicketService {
 
   // --- Tickets --------------------------------------------------------------
 
-  public List<Ticket> listByProject(String projectId) {
+  public List<WorkEntity> listByProject(String projectId) {
     return listByProject(projectId, null);
   }
 
@@ -95,11 +96,10 @@ public class TicketService {
    *
    * <p>One query either way, with the rows projected in memory — nothing is resolved per row.
    */
-  public List<Ticket> listByProject(String projectId, String status) {
+  public List<WorkEntity> listByProject(String projectId, String status) {
     if (status == null || status.isBlank()) {
       return patience.hold(
-          "ticket list",
-          () -> project(entities.listByProjectAndArchetype(projectId, Archetype.TICKET)));
+          "ticket list", () -> entities.listByProjectAndArchetype(projectId, Archetype.TICKET));
     }
     TicketStatus filter =
         TicketLifecycle.parse(status)
@@ -107,19 +107,18 @@ public class TicketService {
     return patience.hold(
         "ticket list by status",
         () ->
-            project(
-                entities.listByProjectArchetypeAndStatus(
-                    projectId, Archetype.TICKET, filter.name())));
+            entities.listByProjectArchetypeAndStatus(projectId, Archetype.TICKET, filter.name()));
   }
 
-  public Ticket get(String id) {
-    return WorkEntityProjections.ticket(entity(id));
+  /** The {@code TICKET} row this id names, or a 404 — see {@link #entity}. */
+  public WorkEntity get(String id) {
+    return entity(id);
   }
 
   /**
    * A new {@link TicketStatus#REPORTED} ticket. {@code type} is the enum name and is required — a
    * ticket that says neither bug nor improvement is a report nobody can triage — and so is {@code
-   * impetus}, which is what a REPORTED ticket consists of: see {@link Ticket#impetus} for the
+   * impetus}, which is what a REPORTED ticket consists of: see {@code WorkEntity.impetus} for the
    * length rule the intake surfaces quote. {@code description} is the refinement's output and is
    * ordinarily absent here.
    *
@@ -128,7 +127,7 @@ public class TicketService {
    * join against the log. It is never a client-supplied value — the surfaces above read it from the
    * request identity.
    */
-  public Ticket create(
+  public WorkEntity create(
       String projectId,
       String title,
       String impetus,
@@ -171,7 +170,7 @@ public class TicketService {
           row.description = description;
           requireArchetypeValid(row);
           entities.persist(row);
-          Ticket ticket = settled(row);
+          WorkEntity ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
               ticket.id,
@@ -194,11 +193,11 @@ public class TicketService {
    * predate V7 have none, and triage may write one onto them), so it is a nullable field on this
    * surface like the other two: an omitted impetus never overwrites one, and emptying it is a
    * deliberate act rather than the side effect of a blank form field. What this method must never
-   * be used for is restating the refinement here — see {@link Ticket#impetus}.
+   * be used for is restating the refinement here — see {@code WorkEntity.impetus}.
    *
    * <p>The status is deliberately not settable here: {@link #transition} is the only way it moves.
    */
-  public Ticket update(
+  public WorkEntity update(
       String id,
       String title,
       String impetus,
@@ -246,7 +245,7 @@ public class TicketService {
             row.assignee = blankToNull(assignee);
           }
           requireArchetypeValid(row, ImpetusConcession::theImpetusTheColumnStillAllowsToBeAbsent);
-          Ticket ticket = settled(row);
+          WorkEntity ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
               ticket.id,
@@ -265,7 +264,7 @@ public class TicketService {
    * too, for the reason {@link EpicService#transition} gives; an absent one is a 400, because that
    * is a malformed request rather than a refused move.
    */
-  public Ticket transition(String id, String target, String changedBy) {
+  public WorkEntity transition(String id, String target, String changedBy) {
     Validations.requireText(target, "target");
     return writes.hold(
         "ticket transition",
@@ -277,7 +276,7 @@ public class TicketService {
           TicketLifecycle.requireTransition(TicketStatus.valueOf(row.status), to);
           row.status = to.name();
           requireArchetypeValid(row, ImpetusConcession::theImpetusTheColumnStillAllowsToBeAbsent);
-          Ticket ticket = settled(row);
+          WorkEntity ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
               ticket.id,
@@ -300,7 +299,6 @@ public class TicketService {
         "ticket delete",
         () -> {
           WorkEntity row = entity(id);
-          Ticket ticket = WorkEntityProjections.ticket(row);
           for (TicketComment comment : commentRepository.listByTicket(id)) {
             commentRepository.delete(comment);
             auditService.record(
@@ -313,7 +311,7 @@ public class TicketService {
           }
           entities.delete(row);
           auditService.record(
-              AuditEntityType.TICKET, id, id, AuditOperation.DELETE, changedBy, ticket);
+              AuditEntityType.TICKET, id, id, AuditOperation.DELETE, changedBy, row);
         });
   }
 
@@ -405,13 +403,9 @@ public class TicketService {
    * are populated — a create is promised a {@code createdAt} and an update an {@code updatedAt} that
    * is not before it.
    */
-  private Ticket settled(WorkEntity row) {
+  private WorkEntity settled(WorkEntity row) {
     entities.getEntityManager().flush();
-    return WorkEntityProjections.ticket(row);
-  }
-
-  private List<Ticket> project(List<WorkEntity> rows) {
-    return rows.stream().map(WorkEntityProjections::ticket).toList();
+    return row;
   }
 
   /**

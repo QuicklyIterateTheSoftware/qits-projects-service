@@ -8,8 +8,8 @@ import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
 import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
-import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.ConflictException;
 import eu.wohlben.qits.epics.error.StaleWriteException;
@@ -34,13 +34,13 @@ class DossierServiceTest extends EpicsTestSupport {
   @Inject DossierService dossier;
   @Inject AuditService auditService;
 
-  private Epic epic() {
+  private WorkEntity epic() {
     return epicService.create("proj-1", "Epic", null, "t");
   }
 
   @Test
   void slugIsDerivedFromTheTitleAndUniqueWithinTheEpic() {
-    Epic e = epic();
+    WorkEntity e = epic();
     assertEquals("the-claim-loop", dossier.create(DossierOwner.epic(e.id), "The claim loop", "", "t").slug);
     assertEquals("the-claim-loop-2", dossier.create(DossierOwner.epic(e.id), "The CLAIM  loop!", "", "t").slug);
 
@@ -58,7 +58,7 @@ class DossierServiceTest extends EpicsTestSupport {
 
   @Test
   void createAppendsAndPositionsStayDense() {
-    Epic e = epic();
+    WorkEntity e = epic();
     dossier.create(DossierOwner.epic(e.id), "One", "", "t");
     dossier.create(DossierOwner.epic(e.id), "Two", "", "t");
     DossierPage third = dossier.create(DossierOwner.epic(e.id), "Three", "", "t");
@@ -78,7 +78,7 @@ class DossierServiceTest extends EpicsTestSupport {
 
   @Test
   void aPositionPastTheEndMeansLast() {
-    Epic e = epic();
+    WorkEntity e = epic();
     DossierPage first = dossier.create(DossierOwner.epic(e.id), "One", "", "t");
     dossier.create(DossierOwner.epic(e.id), "Two", "", "t");
     dossier.move(first.id, 99, "t");
@@ -108,7 +108,7 @@ class DossierServiceTest extends EpicsTestSupport {
 
   @Test
   void aFrozenEpicIsReadableAndUnwritable() {
-    Epic e = epic();
+    WorkEntity e = epic();
     DossierPage page = dossier.create(DossierOwner.epic(e.id), "The claim loop", "the body", "t");
     epicService.transition(e.id, EpicStatus.IMPLEMENTATION.name(), "t");
 
@@ -123,7 +123,7 @@ class DossierServiceTest extends EpicsTestSupport {
 
   @Test
   void everyChangeLeavesAnAuditEntryUnderTheEpic() {
-    Epic e = epic();
+    WorkEntity e = epic();
     DossierPage page = dossier.create(DossierOwner.epic(e.id), "The claim loop", "", "t");
     dossier.update(page.id, "Renamed", null, 0L, "t");
     dossier.delete(page.id, "t");

@@ -38,9 +38,9 @@ import org.junit.jupiter.api.Test;
  *       after the deployment cannot collide with a row the deployment itself numbered.
  * </ul>
  *
- * <p>Plain JUnit and deliberately not a {@code @QuarkusTest}, {@code UnifiedBackfillMigrationTest}'s
- * reasoning: a {@code @TestProfile} is a whole Quarkus application at roughly 125 MB of retained
- * metaspace inside a 4 GB CI step, and nothing asserted here needs one.
+ * <p>Plain JUnit and deliberately not a {@code @QuarkusTest}, this module's standing reasoning for
+ * a migration test: a {@code @TestProfile} is a whole Quarkus application at roughly 125 MB of
+ * retained metaspace inside a 4 GB CI step, and nothing asserted here needs one.
  */
 class EntityNumberMigrationTest {
 

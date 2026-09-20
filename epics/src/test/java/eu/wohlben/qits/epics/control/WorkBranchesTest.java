@@ -3,45 +3,45 @@ package eu.wohlben.qits.epics.control;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
-import eu.wohlben.qits.epics.entity.Ticket;
+import eu.wohlben.qits.epics.entity.Archetype;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** The branch of each kind of dispatched work, and the refs an agent on it may push. */
+/**
+ * The branch of each kind of dispatched work, and the refs an agent on it may push.
+ *
+ * <p><b>The fixtures are merged {@link WorkEntity} rows now and not one asserted value moved.</b>
+ * That is the whole claim of this file after the merge: the four old shapes are gone, a descendant's
+ * parent arrives as {@link Nested#parentId} instead of as a column, and every branch name and every
+ * ref below is character for character what it was. A branch name that changed would orphan work an
+ * agent is standing on.
+ */
 class WorkBranchesTest {
 
-  private static Ticket ticket(String slug) {
-    Ticket ticket = new Ticket();
-    ticket.id = "t-1";
-    ticket.slug = slug;
-    return ticket;
+  private static WorkEntity row(String id, Archetype archetype, String slug) {
+    WorkEntity entity = new WorkEntity();
+    entity.id = id;
+    entity.archetype = archetype;
+    entity.slug = slug;
+    return entity;
   }
 
-  private static Epic epic(String slug) {
-    Epic epic = new Epic();
-    epic.id = "e-1";
-    epic.slug = slug;
-    return epic;
+  private static WorkEntity ticket(String slug) {
+    return row("t-1", Archetype.TICKET, slug);
   }
 
-  private static Feature feature(String id, Epic epic, String slug) {
-    Feature feature = new Feature();
-    feature.id = id;
-    feature.epicId = epic.id;
-    feature.slug = slug;
-    return feature;
+  private static WorkEntity epic(String slug) {
+    return row("e-1", Archetype.EPIC, slug);
   }
 
-  private static Task task(String id, Feature feature, String slug) {
-    Task task = new Task();
-    task.id = id;
-    task.featureId = feature.id;
-    task.slug = slug;
-    return task;
+  private static Nested feature(String id, WorkEntity epic, String slug) {
+    return new Nested(row(id, Archetype.FEATURE, slug), epic.id);
+  }
+
+  private static Nested task(String id, Nested feature, String slug) {
+    return new Nested(row(id, Archetype.TASK, slug), feature.entity().id);
   }
 
   @Test
@@ -63,8 +63,8 @@ class WorkBranchesTest {
 
   @Test
   void aTaskMayPushItsOwnBranchOnly() {
-    Epic epic = epic("planning");
-    Feature feature = feature("f-1", epic, "slugs");
+    WorkEntity epic = epic("planning");
+    Nested feature = feature("f-1", epic, "slugs");
 
     WorkBranches.Scope scope = WorkBranches.task(epic, feature, task("k-1", feature, "mint"));
 
@@ -74,16 +74,16 @@ class WorkBranchesTest {
 
   @Test
   void anEpicMayPushItsBranchAndEveryFeatureAndTaskBranch() {
-    Epic epic = epic("planning");
-    Feature lifecycle = feature("f-1", epic, "lifecycle");
-    Feature slugs = feature("f-2", epic, "slugs");
-    Map<String, List<Task>> tasks =
+    WorkEntity epic = epic("planning");
+    Nested lifecycle = feature("f-1", epic, "lifecycle");
+    Nested slugs = feature("f-2", epic, "slugs");
+    Map<String, List<Nested>> tasks =
         Map.of(
             "f-1", List.of(),
             "f-2", List.of(task("k-1", slugs, "mint"), task("k-2", slugs, "suffix")));
 
     WorkBranches.Scope scope =
-        WorkBranches.epic(epic, List.of(lifecycle, slugs), f -> tasks.get(f.id));
+        WorkBranches.epic(epic, List.of(lifecycle, slugs), f -> tasks.get(f.entity().id));
 
     assertEquals("epic/planning", scope.branch());
     assertEquals(
@@ -107,11 +107,11 @@ class WorkBranchesTest {
   /** A feature or task from other work would put that work's branch on this list. */
   @Test
   void aRowFromOtherWorkIsRefused() {
-    Epic epic = epic("planning");
-    Epic other = epic("other");
+    WorkEntity epic = epic("planning");
+    WorkEntity other = epic("other");
     other.id = "e-2";
-    Feature foreign = feature("f-9", other, "elsewhere");
-    Feature own = feature("f-1", epic, "own");
+    Nested foreign = feature("f-9", other, "elsewhere");
+    Nested own = feature("f-1", epic, "own");
 
     assertThrows(
         IllegalArgumentException.class,

@@ -4,8 +4,6 @@ import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
 import eu.wohlben.qits.epics.entity.EntityMembership;
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Task;
 import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
@@ -47,12 +45,12 @@ import java.util.stream.Collectors;
  * row it writes — re-walking per audit row would be two queries a piece for a fact that cannot have
  * changed inside one transaction.
  *
- * <p>What a caller gets back is a {@link WorkEntityProjections detached projection} shaped as a
- * {@link Task}, so {@code TaskController}, {@code TaskMapper}, {@code TaskDto}, {@code
- * FeatureController}, {@code EpicChangeHints}, {@code EpicMcpTools} and {@code
- * EpicDispatchController} are untouched. The slug scope is the <b>parent feature</b>, positions on
- * the edges stay dense and zero-based, and the legacy {@code task} table is <b>no longer written at
- * all</b> — see {@link FeatureService}'s class javadoc for why there is no mirror here.
+ * <p>What a caller gets back is a {@link Nested} — the merged row and, beside it, the feature its
+ * membership edge names — which is {@link FeatureService}'s answer shape one level down and carries
+ * its reasoning word for word. It used to be a detached {@code Task}-shaped projection; that class
+ * is gone and {@code WorkEntityMapper.toTaskDto(entity, featureId)} takes the two halves, with
+ * {@code TaskDto} unmoved. The slug scope is the <b>parent feature</b>, positions on the edges stay
+ * dense and zero-based, and the legacy {@code task} table is dropped outright in V13.
  */
 @ApplicationScoped
 public class TaskService {
@@ -79,30 +77,30 @@ public class TaskService {
    * the wrap is on the read path only, and the identical repository calls inside this module's
    * writes are left alone.
    */
-  public List<Task> listByFeature(String featureId) {
+  public List<Nested> listByFeature(String featureId) {
     return patience.hold(
         "task list",
         () -> {
           List<EntityMembership> edges = memberships.childrenOf(featureId);
           Map<String, WorkEntity> rows = byId(entities.listByIds(childIds(edges)));
-          List<Task> tasks = new ArrayList<>();
+          List<Nested> tasks = new ArrayList<>();
           for (EntityMembership edge : edges) {
             WorkEntity row = rows.get(edge.childId);
             if (row != null && row.archetype == Archetype.TASK) {
-              tasks.add(WorkEntityProjections.task(row, featureId));
+              tasks.add(new Nested(row, featureId));
             }
           }
           return List.copyOf(tasks);
         });
   }
 
-  public Task get(String id) {
+  public Nested get(String id) {
     WorkEntity row = entity(id);
-    return WorkEntityProjections.task(row, parentOf(id));
+    return new Nested(row, parentOf(id));
   }
 
   /** A new task, held through a postgres cutover ({@link WritePatience}). */
-  public Task create(
+  public Nested create(
       String featureId,
       String repositoryId,
       String title,
@@ -116,7 +114,7 @@ public class TaskService {
         () -> {
           WorkEntity featureRow = feature(featureId);
           String epicId = parentOf(featureId);
-          EpicLifecycle.requireRefining(WorkEntityProjections.epic(epic(epicId)));
+          EpicLifecycle.requireRefining(epic(epicId));
           if (dependsOnTaskId != null) {
             requireDependencyUnder(dependsOnTaskId, featureId);
           }
@@ -139,9 +137,9 @@ public class TaskService {
           requireArchetypeValid(row);
           entities.persist(row);
           attach(featureId, row);
-          Task task = settled(row, featureId);
+          Nested task = settled(row, featureId);
           auditService.record(
-              AuditEntityType.TASK, task.id, epicId, AuditOperation.CREATE, changedBy, task);
+              AuditEntityType.TASK, row.id, epicId, AuditOperation.CREATE, changedBy, row);
           return task;
         });
   }
@@ -152,7 +150,7 @@ public class TaskService {
    *
    * <p>Held through a postgres cutover ({@link WritePatience}).
    */
-  public Task update(
+  public Nested update(
       String id,
       String title,
       String description,
@@ -175,7 +173,7 @@ public class TaskService {
                   || clearDependsOn
                   || !touchesMarker;
           String epicId = epicIdOf(featureId);
-          Epic epic = WorkEntityProjections.epic(epic(epicId));
+          WorkEntity epic = epic(epicId);
           if (touchesScope) {
             EpicLifecycle.requireRefining(epic);
           }
@@ -205,9 +203,9 @@ public class TaskService {
             row.implementedAt = implementedAt;
           }
           requireArchetypeValid(row);
-          Task task = settled(row, featureId);
+          Nested task = settled(row, featureId);
           auditService.record(
-              AuditEntityType.TASK, task.id, epicId, AuditOperation.UPDATE, changedBy, task);
+              AuditEntityType.TASK, row.id, epicId, AuditOperation.UPDATE, changedBy, row);
           return task;
         });
   }
@@ -225,8 +223,7 @@ public class TaskService {
           EntityMembership edge = memberships.membershipOf(id).orElse(null);
           String featureId = edge == null ? null : edge.parentId;
           String epicId = epicIdOf(featureId);
-          EpicLifecycle.requireRefining(WorkEntityProjections.epic(epic(epicId)));
-          Task task = WorkEntityProjections.task(row, featureId);
+          EpicLifecycle.requireRefining(epic(epicId));
 
           // A dependency is scoped to the feature (validated on write), so every dependent is a
           // sibling and shares this task's epic — the walk is not made again for each of them.
@@ -241,7 +238,7 @@ public class TaskService {
                 epicId,
                 AuditOperation.UPDATE,
                 changedBy,
-                WorkEntityProjections.task(dependent, featureId));
+                dependent);
           }
 
           if (edge != null) {
@@ -251,7 +248,7 @@ public class TaskService {
           }
           entities.delete(row);
           auditService.record(
-              AuditEntityType.TASK, id, epicId, AuditOperation.DELETE, changedBy, task);
+              AuditEntityType.TASK, id, epicId, AuditOperation.DELETE, changedBy, row);
         });
   }
 
@@ -334,9 +331,9 @@ public class TaskService {
   }
 
   /** The row as a caller sees it, taken after an explicit flush — see {@code EpicService.settled}. */
-  private Task settled(WorkEntity row, String featureId) {
+  private Nested settled(WorkEntity row, String featureId) {
     entities.getEntityManager().flush();
-    return WorkEntityProjections.task(row, featureId);
+    return new Nested(row, featureId);
   }
 
   /** <b>The archetype registry on the ordinary write</b> — {@link FeatureService}'s rule, unchanged. */

@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import java.util.Optional;
 
 /**
@@ -14,7 +14,7 @@ import java.util.Optional;
  * <em>achieved</em> and the phase that runs while it holds is what happens <em>next</em> ({@link
  * TicketStatus}). So REPORTED starts the refine phase, REFINED starts implement, IMPLEMENTED starts
  * verify, and VERIFIED and DONE start nothing at all — the work is over and closing is a person's
- * move. {@link #promptFor(Ticket)} is that reading, and it is the <b>only</b> place in this service
+ * move. {@link #promptFor(WorkEntity)} is that reading, and it is the <b>only</b> place in this service
  * that turns a status into words.
  *
  * <p>Two things follow from the prompt being derived rather than passed in, and both are the point
@@ -69,7 +69,7 @@ import java.util.Optional;
  *
  * <h2>Every dispatched turn opens with a pointer to the project's flow brief</h2>
  *
- * <p>{@link #FLOW_BRIEF_POINTER} is prepended at the {@code Phase.render(Ticket)} seam —
+ * <p>{@link #FLOW_BRIEF_POINTER} is prepended at the {@code Phase.render(WorkEntity)} seam —
  * <b>once, for all three templates</b> — and never inside {@link #refine}, {@link #implement} or
  * {@link #verify}. That placement is the same argument this class opens with: there is one mapping
  * and no second copy of the vocabulary, so a fourth template added beside those three inherits the
@@ -129,7 +129,7 @@ final class TicketPhasePrompts {
      * prepended <b>here</b> rather than in the three templates — see the class javadoc. A fourth
      * phase added to this switch carries the pointer without anybody remembering to add it.
      */
-    private String render(Ticket ticket) {
+    private String render(WorkEntity ticket) {
       String phaseTurn =
           switch (this) {
             case REFINE -> refine(ticket);
@@ -141,8 +141,12 @@ final class TicketPhasePrompts {
   }
 
   /** The one mapping: what has been achieved decides what runs next. */
-  private static Optional<Phase> phaseOf(Ticket ticket) {
-    return switch (ticket.status) {
+  private static Optional<Phase> phaseOf(WorkEntity ticket) {
+    // The merged row stores the word, so it is read back into the lifecycle's own enum before the
+    // mapping is made — the same reading TicketService makes before it asks TicketLifecycle
+    // anything, and what keeps this switch exhaustive over the five statuses rather than open over
+    // ck_entity_status' nine words.
+    return switch (TicketStatus.valueOf(ticket.status)) {
       case REPORTED -> Optional.of(Phase.REFINE);
       case REFINED -> Optional.of(Phase.IMPLEMENT);
       case IMPLEMENTED -> Optional.of(Phase.VERIFY);
@@ -164,7 +168,7 @@ final class TicketPhasePrompts {
    * no phase to begin and standing a workspace up for it would put a container on a branch nobody is
    * going to push.
    */
-  static Optional<Started> startedBy(Ticket ticket) {
+  static Optional<Started> startedBy(WorkEntity ticket) {
     return phaseOf(ticket).map(phase -> new Started(phase.word, phase.render(ticket)));
   }
 
@@ -172,7 +176,7 @@ final class TicketPhasePrompts {
    * The agent's first turn alone, which is what every assertion about the words reads. Same mapping
    * as {@link #startedBy}, and deliberately expressed through it rather than beside it.
    */
-  static Optional<String> promptFor(Ticket ticket) {
+  static Optional<String> promptFor(WorkEntity ticket) {
     return startedBy(ticket).map(Started::instruction);
   }
 
@@ -187,7 +191,7 @@ final class TicketPhasePrompts {
    *
    * <p><b>"the impetus is what was asked for and the thread is the rest".</b> A REPORTED ticket is
    * an impetus and nothing else — one or two sentences in the reporter's words — and the field is
-   * deliberately small ({@code Ticket.impetus}). An agent handed a small field assumes it has been
+   * deliberately small ({@code WorkEntity.impetus}). An agent handed a small field assumes it has been
    * handed a small problem, so the next sentence sends it further than the impetus goes: the ticket
    * is the report, not the investigation.
    *
@@ -223,11 +227,11 @@ final class TicketPhasePrompts {
    * could not get there says what is missing on the thread and leaves the ticket REPORTED — which
    * costs one re-press and is the cheap correct answer.
    */
-  private static String refine(Ticket ticket) {
+  private static String refine(WorkEntity ticket) {
     return "Refine ticket \""
         + ticket.title
         + "\" ("
-        + ticket.type
+        + ticket.ticketType
         + ", slug "
         + ticket.slug
         + "). It is REPORTED, so the phase that runs now is refinement. Read it first with"
@@ -294,11 +298,11 @@ final class TicketPhasePrompts {
    * <p><b>The ending</b>, the same as the other two: transition to IMPLEMENTED as the claim, and
    * blocked or part-released means saying so on the thread and leaving the ticket REFINED.
    */
-  private static String implement(Ticket ticket) {
+  private static String implement(WorkEntity ticket) {
     return "Implement ticket \""
         + ticket.title
         + "\" ("
-        + ticket.type
+        + ticket.ticketType
         + ", slug "
         + ticket.slug
         + "). It is REFINED, so the phase that runs now is implementation. Read it first with"
@@ -355,11 +359,11 @@ final class TicketPhasePrompts {
    * deciding there is nothing left on the thread, which is a judgement about the ticket rather than
    * a report about the work, and the agent has no standing to make it.
    */
-  private static String verify(Ticket ticket) {
+  private static String verify(WorkEntity ticket) {
     return "Verify ticket \""
         + ticket.title
         + "\" ("
-        + ticket.type
+        + ticket.ticketType
         + ", slug "
         + ticket.slug
         + "). It is IMPLEMENTED, so the change is released and deployed and the phase that runs now"

@@ -4,7 +4,7 @@ import eu.wohlben.qits.epics.control.TicketService;
 import eu.wohlben.qits.epics.dto.TicketCommentDto;
 import eu.wohlben.qits.epics.dto.TicketDto;
 import eu.wohlben.qits.epics.mapper.TicketCommentMapper;
-import eu.wohlben.qits.epics.mapper.TicketMapper;
+import eu.wohlben.qits.epics.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
@@ -47,7 +47,8 @@ public class TicketController {
 
   @Inject TicketService ticketService;
 
-  @Inject TicketMapper ticketMapper;
+  /** One mapper where there were four; this route answers the ticket shape. */
+  @Inject WorkEntityMapper workEntityMapper;
 
   @Inject TicketCommentMapper commentMapper;
 
@@ -86,7 +87,7 @@ public class TicketController {
   public GetTicketRequest.Response get(@PathParam("id") String id) {
     return new GetTicketRequest.Response(
         qualifiedIds.qualify(
-            dispatchedWorkspaces.decorate(ticketMapper.toDto(ticketService.get(id)))));
+            dispatchedWorkspaces.decorate(workEntityMapper.toTicketDto(ticketService.get(id)))));
   }
 
   /**
@@ -129,7 +130,8 @@ public class TicketController {
             request.clearAssignee(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(ticket.projectId);
-    return new UpdateTicketRequest.Response(qualifiedIds.qualify(ticketMapper.toDto(ticket)));
+    return new UpdateTicketRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toTicketDto(ticket)));
   }
 
   /**
@@ -160,7 +162,8 @@ public class TicketController {
       // already been recorded and already been answered for.
       LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
     }
-    return new TransitionTicketRequest.Response(qualifiedIds.qualify(ticketMapper.toDto(ticket)));
+    return new TransitionTicketRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toTicketDto(ticket)));
   }
 
   public record DeleteTicketRequest() {

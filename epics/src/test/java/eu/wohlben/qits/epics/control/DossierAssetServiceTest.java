@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.epics.entity.DossierAsset;
 import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
-import eu.wohlben.qits.epics.entity.Epic;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.persistence.DossierAssetRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -35,7 +35,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
   @Inject DossierAssetService assets;
   @Inject DossierAssetRepository store;
 
-  private Epic epic() {
+  private WorkEntity epic() {
     return epicService.create("proj-1", "Epic", null, "t");
   }
 
@@ -62,7 +62,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
 
   @Test
   void theCopyKeepsTheSourcesIdAndReInliningIsIdempotent() {
-    Epic e = epic();
+    WorkEntity e = epic();
     String sourceId = UUID.randomUUID().toString();
 
     DossierAsset first = copy(e.id, sourceId);
@@ -75,7 +75,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
 
   @Test
   void anAssetSurvivesWhileAnyPageStillInlinesItAndGoesWithTheLast() {
-    Epic e = epic();
+    WorkEntity e = epic();
     String assetId = copy(e.id, UUID.randomUUID().toString()).id;
 
     DossierPage one = dossier.create(DossierOwner.epic(e.id), "One", "before " + line(e.id, assetId), "t");
@@ -91,7 +91,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
 
   @Test
   void editingABodyToDropTheOnlyReferenceCollectsTheAssetInThatSave() {
-    Epic e = epic();
+    WorkEntity e = epic();
     String assetId = copy(e.id, UUID.randomUUID().toString()).id;
     DossierPage page = dossier.create(DossierOwner.epic(e.id), "One", line(e.id, assetId), "t");
     assertNotNull(stored(assetId));
@@ -102,8 +102,8 @@ class DossierAssetServiceTest extends EpicsTestSupport {
 
   @Test
   void aUrlBelongingToAnotherEpicIsNotAReference() {
-    Epic mine = epic();
-    Epic theirs = epic();
+    WorkEntity mine = epic();
+    WorkEntity theirs = epic();
     String assetId = copy(mine.id, UUID.randomUUID().toString()).id;
     dossier.create(DossierOwner.epic(mine.id), "Mine", line(mine.id, assetId), "t");
 
@@ -119,7 +119,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
 
   @Test
   void aFigureWhoseSourceIsLongGoneStillRenders() {
-    Epic e = epic();
+    WorkEntity e = epic();
     // Nothing here reads the source at all — the copy IS the reason a discarded refinement costs
     // the dossier nothing.
     String assetId = copy(e.id, UUID.randomUUID().toString()).id;
@@ -132,7 +132,7 @@ class DossierAssetServiceTest extends EpicsTestSupport {
 
   @Test
   void inUseAnswersAWholeListingAtOnce() {
-    Epic e = epic();
+    WorkEntity e = epic();
     String inlined = copy(e.id, UUID.randomUUID().toString()).id;
     String dangling = UUID.randomUUID().toString();
     dossier.create(DossierOwner.epic(e.id), "One", line(e.id, inlined), "t");

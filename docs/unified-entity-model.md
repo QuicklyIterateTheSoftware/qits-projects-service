@@ -26,7 +26,7 @@ have no writer and no referent; they are a frozen snapshot.
 | `V10__backfill_unified.sql` | the backfill — every Epic/Ticket/Feature/Task row copied in, **ids unchanged** | **shipped** |
 | `V11__entity_number.sql` | the numeric id: the column, `uq_entity_project_number`, the backfill and the allocator's counter | **shipped** |
 | `V12__owner_keys_to_entity.sql` | the four outward foreign keys repointed at `entity(id)`, which retires the mirror | **shipped** |
-| `V13+` | the drop of the four old tables, still owed — nothing reads them now, but they are the verification door's comparison target until it has run clean against live data. **It also deletes the door**: `epics/…/migration/`, `service/…/epics/api/MigrationVerificationController.java` and `epics/src/test/…/migration/MigrationVerificationTest.java` — see "The verification door" below | reserved |
+| `V13__drop_legacy_planning_tables.sql` | the four old tables dropped, and `ck_audit_entity_type` re-stated off the archetype set over an unchanged vocabulary. It deletes the verification door with them — `epics/…/migration/`, `service/…/epics/api/MigrationVerificationController.java` and both its test classes — because a door whose comparison target no longer exists can only answer about nothing. See "The cleanup, as shipped" below | **shipped** |
 
 The ids are the **same id space**: `entity.id` is `varchar(255)` exactly as `epic.id` is, because
 V10 copies each old row in under the id it already has. Every dossier page, audit entry, branch
@@ -276,7 +276,7 @@ and a `withQualifiedId` setter; the `service` side carries the rendering.
 | where | what it carries |
 | --- | --- |
 | `entity.number`, `entity.project_id` | the storage |
-| `WorkEntityProjections` → `Epic`/`Ticket`/`Feature`/`Task` | `number` on all four, `projectId` on all four (new on the two descendants), both `@Transient` — the legacy tables have neither column |
+| ~~`WorkEntityProjections` → `Epic`/`Ticket`/`Feature`/`Task`~~ | carried `number` and `projectId` on all four as `@Transient`, because the legacy tables had neither column. **Deleted**: the row a service answers with is the `entity` row itself, where both are real columns |
 | `EpicDto`/`TicketDto`/`FeatureDto`/`TaskDto` | `number`, `qualifiedId` (null off the mapper), and `projectId` on the two descendants |
 | `TransitionedEntity` | `number`, `qualifiedId` (null out of `of(…)`), plus `withQualifiedId` |
 | `service/…/projects/api/QualifiedEntityIds` | **the only renderer**: `render(slug, number)` |
@@ -483,22 +483,30 @@ moved by one byte — `EpicDto` and `TicketDto` keep every field, in order, unde
 the five epic and ticket controllers, both mappers, the MCP tools, `DossierService` and
 `EpicChangeHints` are untouched; and every route, status code and error body is what it was.
 
-What makes that possible is that the two services still **return** `Epic` and `Ticket`. They are
-built by `control/WorkEntityProjections` as detached projections of the `entity` row — a fresh
-object that is never persisted, merged or attached — and a projection is only ever taken after an
-explicit flush, because `@CreationTimestamp` and `@UpdateTimestamp` are populated at flush and a
-create is promised a `createdAt` the moment it returns. The same projection is what goes into the
-audit log as the snapshot, so the JSON in `auditentry.snapshot` keeps exactly the shape it had.
+What made that possible at the time was that the two services still **returned** `Epic` and `Ticket`,
+built by `control/WorkEntityProjections` as detached projections of the `entity` row — a fresh object
+that was never persisted, merged or attached, taken only after an explicit flush, because
+`@CreationTimestamp` and `@UpdateTimestamp` are populated at flush and a create is promised a
+`createdAt` the moment it returns.
+
+**That device was scaffolding and it is gone.** The two services answer the merged `WorkEntity` row
+itself now and `WorkEntityProjections` is deleted with the four shapes it built; the flush rule
+survives it unchanged, because the row a write answers with is still read back after the flush that
+populates its timestamps. Nothing on the HTTP surface moved either time — see "The cleanup, as
+shipped" below, which is the record of the second half and of the one consequence it carries for
+`auditentry.snapshot`.
 
 ## The cutover of the two descendants
 
-`FeatureService` and `TaskService` read and write `entity` + `entity_membership`. They answer
-`Feature` and `Task` as detached `WorkEntityProjections` — the identical device the two roots use,
+`FeatureService` and `TaskService` read and write `entity` + `entity_membership`. They answered
+`Feature` and `Task` as detached `WorkEntityProjections` — the identical device the two roots used,
 for the identical reason — so `FeatureDto`, `TaskDto`, `FeatureController`, `TaskController`,
-`EpicController`, `EpicChangeHints`, `EpicMcpTools` and `EpicDispatchController` are untouched and
-every route, status code and error body is what it was. The three merged columns are read back under
-their old names: `depends_on_entity_id` is a feature's `dependsOnFeatureId` and a task's
-`dependsOnTaskId`, and `implemented_at` is a feature's `implementedOn`.
+`EpicController`, `EpicChangeHints`, `EpicMcpTools` and `EpicDispatchController` were untouched and
+every route, status code and error body is what it was. They answer `control/Nested` — the merged row
+beside its parent's id — since the cleanup; the three merged columns are read back under their old
+names at the DTO boundary instead, in `mapper/WorkEntityMapper`, which is where
+`depends_on_entity_id` becomes a feature's `dependsOnFeatureId` and a task's `dependsOnTaskId` and
+`implemented_at` becomes a feature's `implementedOn`.
 
 The parent is the change that is not merely a rename. **`feature.epic_id` and `task.feature_id` are
 `entity_membership` rows now**, and four things follow:
@@ -584,15 +592,16 @@ in `requireWritable`, and two `findByIdOptional` existence checks in `requireOwn
 are now one `WorkEntityRepository` lookup **by id and archetype**, which is `EpicService.entity` and
 `TicketService.entity` applied a third time and for their reason: the four kinds share one id space,
 so a row of the wrong archetype is a 404. Both refusal messages are byte-identical (`Epic not found:
-<id>`, `Ticket not found: <id>`). The guard is
-`EpicLifecycle.requireRefining(WorkEntityProjections.epic(row))` — the idiom `EpicService`,
-`FeatureService` and `TaskService` already use, and **no second signature was added to
-`EpicLifecycle`**: one place, one condition.
+<id>`, `Ticket not found: <id>`). The guard is `EpicLifecycle.requireRefining(row)` — the idiom
+`EpicService`, `FeatureService` and `TaskService` already use, and **no second signature was added to
+`EpicLifecycle`**: one place, one condition. (It read
+`requireRefining(WorkEntityProjections.epic(row))` while the projections stood; the argument is the
+merged row itself now, and the condition it applies is the same one.)
 
 With that reader gone, `EpicService.mirrorLegacyRow`, `TicketService.mirrorLegacyRow` and both
 `deleteLegacyRow`s are **deleted**, along with the two `EpicRepository`/`TicketRepository`
-injections. `EpicRepository`, `TicketRepository`, `FeatureRepository` and `TaskRepository` are still
-on disk — the cleanup feature deletes them — with **zero injections in `src/main`**.
+injections. `EpicRepository`, `TicketRepository`, `FeatureRepository` and `TaskRepository` then stood
+on disk with **zero injections in `src/main`**, and the cleanup deleted them with their tables.
 
 ### The decision: repoint the keys, do not keep the mirror
 
@@ -675,21 +684,27 @@ Three things were checked and left exactly as they are. Each is recorded because
 "checked and correct" are indistinguishable to a later reader, and the second is the truth here.
 
 - **`AuditService`, `AuditEntityType` and `ck_audit_entity_type`.** `AuditService` reads and writes
-  only `auditentry` and touches no legacy table, so it needed no change; and the vocabulary is
-  deliberately left as it is because **the verification door compares old against new and needs the
-  old words to compare with**. Renaming or widening it here would move the door's own yardstick.
+  only `auditentry` and touches no legacy table, so it needed no change; and the vocabulary was
+  deliberately left as it was because **the verification door compares old against new and needed the
+  old words to compare with**. Renaming or widening it there would have moved the door's own
+  yardstick. (V13 re-states the constraint over the same six words and derives the four planning ones
+  from `Archetype`; the yardstick had done its work by then.)
 - **`control/WorkBranches`.** A pure derivation over slugs and the parent ids the projections carry
-  — no repository, no table, nothing to move. **`WorkBranchesTest` is the oracle**: it constructs
-  `Epic`/`Feature`/`Task`/`Ticket` directly and asserts against those signatures, and its assertions
-  are untouched, which is what says the branch names an agent is given did not move by one byte.
+  — no repository, no table, nothing to move. **`WorkBranchesTest` is the oracle**: it constructed
+  `Epic`/`Feature`/`Task`/`Ticket` directly and asserted against those signatures, and its assertions
+  were untouched, which is what says the branch names an agent is given did not move by one byte.
+  (The four shapes are `WorkEntity` and `Nested` since the cleanup; the test's fixtures moved with
+  them and not one asserted literal did.)
 - **The whole service-side dispatch and phase-prompt path** — `TicketUnattendedGateTickets`,
   `TicketPhasePrompts`, `TicketPhaseAdvance`, `TicketDispatchController`, `EpicDispatchController`,
   `TicketWorkspaces`, `DispatchedWorkspaces`, `EpicResolutions`, `RefinementService`,
   `DossierFigures`, `EpicMcpTools`, `TicketMcpTools`, `DossierMcpTools`. Every one of them goes
-  through `EpicService`/`TicketService`/`FeatureService`/`TaskService`/`DossierService` and passes
+  through `EpicService`/`TicketService`/`FeatureService`/`TaskService`/`DossierService` and passed
   projections around; **none touches a legacy repository or a Panache static call**. The campaign
   epic drives that path automatically later, so it matters that a reader can see it was checked
-  rather than missed.
+  rather than missed. (The cleanup retyped every one of them onto `WorkEntity`/`Nested` — a
+  mechanical retype with no behaviour in it, which is exactly what the projections' whole existence
+  had been deferring.)
 
 `DossierAssetService` is the fourth: it touches only `dossier_asset`/`dossier_page_asset` and needed
 no change, though `dossier_asset.epic_id` is one of the four keys V12 repoints.
@@ -936,9 +951,11 @@ one.
 
 - **Audit**: one `UPDATE` row per entry, with the `AuditEntityType` of the **target** archetype and
   the **post-state subtree root** as its key — the epic's id for an `EPIC`/`FEATURE`/`TASK`, the
-  ticket's own id for a `TICKET`, which is what `AuditEntry.epicId` already means. The snapshot is
-  the same `WorkEntityProjections` shape every existing reader of `auditentry.snapshot` expects.
-  `AuditService.record` keeps its `@Transactional` and joins the write, exactly as elsewhere.
+  ticket's own id for a `TICKET`, which is what `AuditEntry.epicId` already means. The snapshot was
+  the same `WorkEntityProjections` shape every existing reader of `auditentry.snapshot` expected; it
+  is the merged `WorkEntity` since the cleanup, and "One consequence, stated rather than left to be
+  discovered" is what that costs. `AuditService.record` keeps its `@Transactional` and joins the
+  write, exactly as elsewhere.
 - **SSE hints** are fired by the **controller**, after the service returns, never inside
   `WritePatience` — that body re-runs on a retry. Both topics (`EPICS` and `TICKETS`) go out per
   affected project, because a batch may well have moved a ticket and an epic tree at once.
@@ -1062,7 +1079,8 @@ declarations — no row, no project, no identity, the same answer for every call
 on `EntityTransitionController` because that class is `@RolesAllowed("qits:admin")` at class level
 with an argument for it, a method-level `@RolesAllowed` *replaces* the class list rather than adding
 to it, and the exception would be harder to read than the rule. A second root resource at `/entities`
-is the shape the segment already has (`MigrationVerificationController` is the other).
+is the shape the segment already has (`EntityTransitionController` is the other; the verification
+door was a third until V13 deleted it).
 
 **One honest wrinkle: `ImpetusConcession`.** The registry declares `IMPETUS` required of a `TICKET`
 and this document says so, but every UPDATE path — including a transition that re-archetypes an
@@ -1435,14 +1453,197 @@ own sort — made dense and zero-based. Never insertion order: a heap scan's ord
 VACUUM and between databases, and would produce a plausible dense sequence that silently disagreed
 with the listing.
 
-## The verification door, as shipped
+## The cleanup, as shipped
+
+The four old classes and the four old tables are **gone**, and with them the scaffolding that let the
+storage move under an unchanged HTTP surface for two releases. This section is the record of what was
+deleted, what took its place, and the three questions that had to be decided rather than assumed.
+
+### What went, and what answers in its place
+
+Deleted outright: the entities `Epic`, `Ticket`, `Feature` and `Task`; their repositories
+`EpicRepository`, `TicketRepository`, `FeatureRepository` and `TaskRepository`; their mappers
+`EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`; `control/WorkEntityProjections`; and
+the whole verification door — `epics/…/migration/`, `service/…/epics/api/MigrationVerificationController`
+and both its test classes.
+
+What answers instead:
+
+| | |
+| --- | --- |
+| `EpicService`, `TicketService` | the merged `WorkEntity` row, bare |
+| `FeatureService`, `TaskService` | `control/Nested` — the row beside its parent's id |
+| the four DTOs | `mapper/WorkEntityMapper`, four methods where there were four files |
+
+**`Nested` exists because the parent has nowhere on the row to sit.** `feature.epic_id` and
+`task.feature_id` were columns and are an `entity_membership` row; a merged row carries no parent id
+of its own, and a row that fetched its own edge would be a query per row on exactly the tree listings
+this model makes an N+1 easy on. Every caller has already read the edge — a listing reads the whole
+level in one query, a create writes it, a get resolves it once — so handing it back beside the row
+costs nothing and asks nothing again. That is the deleted projections' own argument ("the parent is
+passed in, never read from the row") surviving the shapes it was written for.
+
+**Not one DTO moved by a byte, which is why the mapper has four methods and not one.** The HTTP
+contract is four shapes and stays four shapes; what moved is only where each value is read from, and
+`WorkEntityMapper` is where the three merges are read back under their old names —
+`supersededByEntityId` → `supersededByEpicId`, `ticketType` → `type`, `implementedAt` →
+`implementedOn` on a feature, `dependsOnEntityId` → `dependsOnFeatureId`/`dependsOnTaskId`, and
+`epicId`/`featureId` as **parameters** taken from `Nested.parentId()`. The two status methods go
+through `EpicStatus.valueOf`/`TicketStatus.valueOf` rather than passing the column straight through,
+because `ck_entity_status` spells the union of both lifecycles and an `EPIC` row holding `REPORTED`
+satisfies it — the projections refused that at exactly this boundary and the mapper keeps the refusal
+where it was.
+
+**Three migration tests went with the tables**, and the third had no choice about it.
+`MigrationVerificationTest` is the door's own oracle and goes with the door. The other two —
+`UnifiedBackfillMigrationTest` (V10's copy) and `TicketLifecycleMigrationTest` (V7's rewrite) — each
+stood at an intermediate Flyway version, wrote rows into `epic`/`ticket`/`feature`/`task` with
+hand-written SQL, and read the result back. **Neither was forced out by the drop**, and that is worth
+saying plainly rather than implying: they target V10 and V7, where the four tables still exist, and a
+fresh database still runs the whole lineage V1 → V13, so V10's backfill still executes against tables
+V1 still creates. They were removed with the model they were written about, not because they had
+stopped being runnable. **No assertion in them was weakened to keep them alive** — they are absent,
+not softened — and restoring either is a small, self-contained thing to do if their coverage is
+wanted back. `EntityMembershipMigrationTest` and `EntityNumberMigrationTest` stay untouched: both
+write into `entity` and neither ever named an old table.
+
+**`AuditEntityType.of(Archetype)` replaces a hand-written switch.** The four planning words were a
+parallel list of the four kinds with a translation written out by hand; they are derived now, so the
+kinds are declared once in `control/Archetypes` and `AuditEntityTypeTest` fails the build if an
+archetype ever gains a constant without a matching audit word. `TICKET_COMMENT` and `DOSSIER_PAGE`
+stay hand-written because they are not archetypes and are not rows in `entity` at all.
+
+### `V13__drop_legacy_planning_tables.sql`
+
+`Task`, `Feature`, `Ticket`, `Epic` — dropped in that order, which is their own V1 foreign keys read
+leaves-first, so no `cascade` clause is needed on any drop. `cascade` would have worked and would
+have been the wrong instruction to leave behind: it silently drops a constraint somebody added later,
+which is the one thing a reader of that file needs to be told did not happen.
+
+It also drops and re-adds `ck_audit_entity_type`. **The permitted set is identical** — `EPIC`,
+`FEATURE`, `TASK`, `TICKET`, `TICKET_COMMENT`, `DOSSIER_PAGE`, six words before and the same six
+after. **This is not a widening**, and nothing in it permits a value the column did not already
+permit. What changed is the Java side above it: the constraint is re-stated so that this file is the
+one place a reader goes to see the vocabulary as it stands after the merge, beside the tables whose
+names it used to echo. V4 replaced V1's inline unnamed constraint with the named one precisely so
+every later statement of it would be an ordinary drop; V5 took that offer and so does V13.
+
+It writes no row, reads no row, renames no column and touches no other table. `entity`,
+`entity_membership`, `entity_number_sequence`, `dossier_page`, `dossier_asset`, `dossier_page_asset`
+and every column, row and index of `auditentry` are left exactly as they are.
+
+### `TicketComment` stays exactly as it is — and that was checked, not assumed
+
+`V12__owner_keys_to_entity.sql` had **already** dropped and re-added `fk_ticket_comment_ticket`
+against `entity (id)`. So by the time this task began the comment thread was keyed on an entity id,
+not on a ticket row: there was no key left pointing at the table V13 drops, and therefore nothing to
+drop and nothing to rekey. The table needed no migration at all.
+
+**`ticket_id` keeps its name**, and that is a decision on the reasoning V4 already recorded for
+`auditentry.epic_id`: renaming a column across an applied lineage and a live log buys a better word
+and nothing else. The column holds the same string it always did, the constraint under it is already
+pointing at the right table, and every row written since V12 has resolved there. A rename would be a
+migration, a re-checksum risk on a lineage people run, an entity class edit and a fresh round of
+"which name does this reader expect" — paid for with a word.
+
+`TicketComment` is also not an archetype and must not become one: a comment is a remark on a row
+rather than a node of the plan, it has no slug, no number and no membership, and it lives in its own
+table. `AuditEntityType.TICKET_COMMENT` says so, which is why that constant stays hand-written beside
+the four derived ones.
+
+### Every per-entity endpoint stays, and the reason is a cross-repository check
+
+**No route was removed.** The tempting reading was that the multi-entity transition had retired the
+per-entity surface, and it is wrong in two separate ways, both of which were checked against the
+deployed SPA (qits-projects-frontend `main`, released 2026.920.846) rather than reasoned about:
+
+- **The SPA still calls both per-entity PUTs for ordinary edits.** `PUT /projects/api/epics/{id}` is
+  how the refining page inserts an image (`refining-page.ts:769`) and `PUT /projects/api/tickets/{id}`
+  is how a ticket is edited (`ticket-detail-page.ts:964`). The transition replaced the per-entity
+  **UPDATE** surface only in the sense that it *can* express the same write as a map of one; nothing
+  has moved onto it, and removing either PUT would break the product today.
+- **The transition creates nothing and deletes nothing.** "Existing ids only, and refusals are
+  collected rather than thrown" is the rule and it is absolute — an id naming no row is a violation,
+  never a create. So the transition never stood in for `POST` or `DELETE` on any archetype, and could
+  not have, whatever the SPA did.
+
+`POST /epics/{id}/transition` and `POST /tickets/{id}/transition` also stay, and conflating them with
+the archetype transition would break the product. Those are **lifecycle** moves — a status along
+`REFINING → IMPLEMENTATION → …` or `REPORTED → REFINED → …`, judged by `EpicLifecycle` and
+`TicketLifecycle`, one step at a time, with a supersede that spawns a successor draft and a phase
+that starts itself. `POST /entities/transition` moves archetype and membership and judges a
+post-state. The two share a word and nothing else.
+
+**The routes the SPA no longer calls are kept deliberately**, as a retained follow-up rather than as
+dead code: `POST /projects/{id}/epics`, `DELETE /epics/{id}`, `POST /epics/{id}/features`, `PUT` and
+`DELETE /features/{id}`, `POST /features/{id}/tasks`, and `PUT` and `DELETE /tasks/{id}`. They are
+still reached by this repository's own REST suite, and the MCP planning tools (`propose_epic`,
+`add_feature`, `update_feature`, `remove_feature`, `add_task`, `update_task`, `remove_task`,
+`mark_task_implemented`) call the same services those routes call — so the create and delete paths
+are live code with live callers whatever the browser does. Retiring an endpoint is a contract change
+against a generated client and belongs to a task that says so.
+
+### The evidence, and where it is kept
+
+The verification door was run against **live data** on **2026-09-20T01:32:01Z**, against deployed
+**2026.920.12314** — the release that shipped the door for exactly this moment:
+
+    verdict: CLEAN, discrepancies: 0
+
+- **309 old rows against 309 entity rows** — `EPIC` 17/17, `TICKET` 84/84, `FEATURE` 66/66, `TASK`
+  142/142, surplus 0.
+- **208 membership edges** compared, for parent and for relative order.
+- **All ten `DISCREPANCY` categories: 0 findings.**
+
+The full report is committed at **`docs/migration-verification-2026-09-20.json`**, so it outlives the
+door that produced it. That is the whole point of keeping it: the door is deleted, the tables it
+compared are dropped, and the run can never be repeated — so the artifact is the only remaining
+answer to "what was the evidence". A verdict quoted in prose is a claim; the report is the material
+to disagree with it, which is the shape that section argues for at length.
+
+### One consequence, stated rather than left to be discovered
+
+**`auditentry.snapshot` now serializes the merged `WorkEntity`.** It used to serialize whichever of
+four shapes the row was, because the projections were what the services handed the audit writer. Those
+classes are gone, so there is nothing left to serialize the old form from — the new snapshot is the
+merged row, and that is a consequence of the deletion rather than a choice made beside it.
+
+Concretely: a feature's snapshot carries `implementedAt`, `dependsOnEntityId`, `archetype` and
+`slugScope` where it used to carry `implementedOn`, `dependsOnFeatureId` and `epicId`. **Historical
+rows keep the old shape**, because an audit row is a record of what a write saw and is never
+rewritten — so the log genuinely holds two shapes, split at this release, and a reader of it has to
+know that.
+
+It is not repaired and should not be. Backfilling the column would mean rewriting history to say
+something the write never saw; keeping a fifth class alive purely to shape a JSON blob would be the
+half-live artifact this whole merge exists to stop. What the snapshot is for — "what did this row
+look like when somebody changed it" — is answered correctly by both shapes.
+
+### What is deliberately NOT done here
+
+**The "epics" vocabulary rename**, and it is the whole of the remaining debt. The maven module is
+still `epics`, the package is still `eu.wohlben.qits.epics`, and `EpicsPrincipal`,
+`EpicsExceptionMapper`, `EpicChangeHints` and `TicketChangeHints` still carry the word — on a module
+whose one table holds four archetypes and whose nouns are no longer epic-shaped. That is a rename
+across a module boundary, a package, a database name (`qits_epics`), a datasource key and a
+deployment resource, and it touches nothing this task is about. It is its own task and it is owed.
+
+## The verification door, as shipped — and as deleted
 
 `GET /projects/api/entities/migration-verification` — **admin only, temporary, and deleted by V13
-with the tables it compares.** It puts the four frozen old tables beside the unified model on
-whatever database the running process is pointed at and answers **every discrepancy it finds**. A
-clean run against live data is the evidence that authorises V13; nothing else is.
+with the tables it compared.** It put the four frozen old tables beside the unified model on whatever
+database the running process was pointed at and answered **every discrepancy it found**. A clean run
+against live data is the evidence that authorises V13; nothing else is.
 
-It exists because every migration test in this repository starts from a database a test seeded,
+**It ran, it came back clean, and it is gone.** The run and its report are recorded under "The
+evidence, and where it is kept" in "The cleanup, as shipped" just above. Everything in this section is
+written in the present tense because it is the record of a door that existed and of what it asserted
+— read it as the specification of the evidence, not as a route you can still press. The whole of
+`epics/…/migration/`, `service/…/epics/api/MigrationVerificationController` and both test classes
+went in the same change as V13: its own `package-info` carried the instruction, and a door whose
+comparison target no longer exists can only ever answer about nothing.
+
+It existed because every migration test in this repository starts from a database a test seeded,
 which proves the statements are right about the rows a test wrote and says nothing at all about
 three months of real planning. So it had to be a door on the running process, runnable on demand,
 repeatedly, against production, with no deployment.
@@ -1555,10 +1756,11 @@ This is the only GET on this surface an agent does not hold, so the exception is
 assumed. It is an operator's gate on a destructive migration; it reads whole frozen tables —
 sixteen set-based scans of the whole estate per press, where every other read an agent holds here is
 a bounded indexed query about the agent's own work; and no agent workflow has any use for a column-by-column
-comparison of a copy it never saw. The class is therefore **deliberately outside
-`AgentReadAccessTest`'s explicit `CLASSES` list**, and that test's javadoc names it and this reason —
+comparison of a copy it never saw. The class was therefore **deliberately outside
+`AgentReadAccessTest`'s explicit `CLASSES` list**, and that test's javadoc named it and this reason —
 because a class silently missing from that list and a class deliberately kept off it look identical.
-No assertion in that test moved.
+No assertion in that test moved, then or at the deletion: the paragraph now records that the
+exception went with the door, and every read controller on the surface is in the list again.
 
 ### What it costs
 
@@ -1608,13 +1810,14 @@ what a door written with the reverse assertion would report as broken.
 
 | | |
 | --- | --- |
-| migrations | `epics/src/main/resources/db/epics/migration/V9__entity_membership.sql`, `V10__backfill_unified.sql`, `V12__owner_keys_to_entity.sql` |
+| migrations | `epics/src/main/resources/db/epics/migration/V9__entity_membership.sql`, `V10__backfill_unified.sql`, `V11__entity_number.sql`, `V12__owner_keys_to_entity.sql`, `V13__drop_legacy_planning_tables.sql` |
 | entities | `epics/…/entity/Archetype.java`, `WorkEntity.java`, `EntityMembership.java` |
 | repositories | `epics/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
 | the registry | `epics/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
-| the five cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java`, `WorkEntityProjections.java` |
-| the lifecycle guards | `epics/…/control/EpicLifecycle.java` — every caller now hands it a projection of the `entity` row |
-| the legacy repositories | `epics/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` — **zero injections in `src/main`**; on disk until the cleanup feature deletes them, and used only by `EpicsTestSupport.wipe()` |
+| the five cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java` — answering `WorkEntity` and `control/Nested.java`; `WorkEntityProjections.java` is **deleted** |
+| the lifecycle guards | `epics/…/control/EpicLifecycle.java` — every caller hands it the `entity` row itself |
+| the one mapper | `epics/…/mapper/WorkEntityMapper.java` — `toEpicDto`/`toTicketDto`/`toFeatureDto`/`toTaskDto`, replacing `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`, all four **deleted** |
+| the four old entities and their repositories | **deleted** with their tables (V13): `epics/…/entity/Epic.java`, `Ticket.java`, `Feature.java`, `Task.java`; `epics/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` |
 | the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
 | the multi-entity transition | `epics/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/epics/api/EntityTransitionController.java` |
 | the registry, served | `epics/…/control/ArchetypeRegistryDocument.java` — derived from `Archetypes` at read time, and the `SERVER_OWNED` / `requiresStatusOnTransition` pair on `EntityTransitionService.java` it reads; `service/…/epics/api/EntityArchetypesController.java` — `GET /projects/api/entities/archetypes`, `qits:admin` + `qits:agent` |
@@ -1622,10 +1825,10 @@ what a door written with the reverse assertion would report as broken.
 | the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
 | the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |
 | the commit-subject parser | `service/…/projects/epicshost/CommitSubjectEntities.java` — the only reader of the grammar; `epics/…/persistence/WorkEntityRepository.findByProjectAndNumber` behind it |
-| the verification door — **TEMPORARY, deleted whole by V13** | `epics/…/migration/` (`package-info.java` carries the deletion instruction; `MigrationVerification.java` is the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge); `service/…/epics/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone |
+| the verification door — **DELETED WHOLE BY V13** | was `epics/…/migration/` (`package-info.java` carried the deletion instruction; `MigrationVerification.java` the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge) and `service/…/epics/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone. Its one clean run against live data survives it, at `docs/migration-verification-2026-09-20.json` |
 | the impetus concession | `epics/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/UnifiedBackfillMigrationTest.java`, `…/migration/MigrationVerificationTest.java`; `service/src/test/…/epics/api/MigrationVerificationApiTest.java`, `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/epics/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
+| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/entity/AuditEntityTypeTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/EntityNumberMigrationTest.java` (the three that wrote rows into the four old tables — `UnifiedBackfillMigrationTest`, `TicketLifecycleMigrationTest`, `MigrationVerificationTest` — went with those tables, and `service/src/test/…/epics/api/MigrationVerificationApiTest.java` with the door); `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/epics/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should

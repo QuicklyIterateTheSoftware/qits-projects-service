@@ -2,8 +2,8 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.epics.control.TicketService;
 import eu.wohlben.qits.epics.control.WorkBranches;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -37,7 +37,7 @@ import org.jboss.logging.Logger;
  * <h2>One rule, and it is {@link TicketPhasePrompts} unchanged</h2>
  *
  * <p><b>The prompt for a status is the work that starts from it</b>, which is exactly what {@link
- * TicketPhasePrompts#startedBy(Ticket)} already computes for the dispatch door. This class adds no
+ * TicketPhasePrompts#startedBy(WorkEntity)} already computes for the dispatch door. This class adds no
  * second table and no second switch: it reads that one, and everything else follows from it.
  *
  * <p><b>Direction is deliberately not consulted.</b> The ticket's new status is the entire input, so
@@ -197,7 +197,7 @@ public class TicketPhaseAdvance {
    * Both call sites wrap it anyway; that belt is theirs and this one is ours.
    *
    * <p><b>The signature takes {@code changedBy}, where the epic wrote {@code
-   * afterTransition(Ticket)}.</b> The comment is stamped from the caller's identity exactly as the
+   * afterTransition(WorkEntity)}.</b> The comment is stamped from the caller's identity exactly as the
    * transition itself is, and the two surfaces do not resolve identity the same way: {@code
    * EpicsPrincipal.changedBy} answers {@code null} for an unnamed caller, while {@code
    * TicketMcpTools.changedBy()} answers its own {@code AGENT} fallback, because a tool call arriving
@@ -211,8 +211,10 @@ public class TicketPhaseAdvance {
    *     which phase starts
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
-  public void afterTransition(Ticket ticket, String changedBy) {
-    if (ticket.status == TicketStatus.VERIFIED) {
+  public void afterTransition(WorkEntity ticket, String changedBy) {
+    // The merged row stores the status word; VERIFIED is compared against it by name, which is what
+    // the column holds. See TicketPhasePrompts.phaseOf for the same reading made one call down.
+    if (TicketStatus.VERIFIED.name().equals(ticket.status)) {
       // The one move that starts no phase and is still not nothing: the work is good, so the branch
       // it was done on is asked to be released. See the class javadoc.
       releaseWorkspace(ticket, changedBy);
@@ -236,7 +238,7 @@ public class TicketPhaseAdvance {
       return;
     }
     deliver(ticket, started.get(), target.get(), changedBy);
-    if (ticket.status == TicketStatus.IMPLEMENTED) {
+    if (TicketStatus.IMPLEMENTED.name().equals(ticket.status)) {
       noteTheReleaseThatStandsOpen(ticket, target.get(), changedBy);
     }
   }
@@ -249,7 +251,7 @@ public class TicketPhaseAdvance {
    * ask would be a PENDING request the sweep retries for ever. The class javadoc argues that, and
    * why the request is made here rather than through the release door.
    */
-  private void releaseWorkspace(Ticket ticket, String changedBy) {
+  private void releaseWorkspace(WorkEntity ticket, String changedBy) {
     if (dispatchedWorkspaces.isUnsatisfied()) {
       // No implementation of the port: there is nothing standing anywhere, so there is nothing to
       // release and nothing to say. The same silence an absent turn port gets.
@@ -344,7 +346,7 @@ public class TicketPhaseAdvance {
    * withdraw, so the tail is dropped again on the way past.
    */
   private void noteTheReleaseThatStandsOpen(
-      Ticket ticket, TicketWorkspaces.Target target, String changedBy) {
+      WorkEntity ticket, TicketWorkspaces.Target target, String changedBy) {
     String branch = target.branch();
     ReleaseRequestDto open;
     try {
@@ -393,7 +395,7 @@ public class TicketPhaseAdvance {
    * with the answer.
    */
   private void deliver(
-      Ticket ticket,
+      WorkEntity ticket,
       TicketPhasePrompts.Started started,
       TicketWorkspaces.Target target,
       String changedBy) {
@@ -452,7 +454,7 @@ public class TicketPhaseAdvance {
    * started by pressing the ticket's own button.
    */
   private static String comment(
-      Ticket ticket, String phase, String branch, WorkspaceAgentTurns.Turn turn) {
+      WorkEntity ticket, String phase, String branch, WorkspaceAgentTurns.Turn turn) {
     return switch (turn.outcome()) {
       case DELIVERED ->
           "Started the "
@@ -483,7 +485,7 @@ public class TicketPhaseAdvance {
    * reach the caller as a failure of a move that already happened. The hint is fired here and only
    * here, which is what makes "a hint only where something was written" true by construction.
    */
-  private void say(Ticket ticket, String body, String changedBy) {
+  private void say(WorkEntity ticket, String body, String changedBy) {
     try {
       tickets.addComment(ticket.id, body, changedBy);
       publisher.fire(ticket.projectId, ProjectChangeHint.Topic.TICKETS);

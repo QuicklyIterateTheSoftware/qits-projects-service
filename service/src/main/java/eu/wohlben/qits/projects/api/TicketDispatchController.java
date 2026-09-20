@@ -2,8 +2,8 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.epics.api.EpicsPrincipal;
 import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -49,7 +49,7 @@ import org.jboss.logging.Logger;
  *
  * <h2>The agent's first turn is picked by the ticket's status</h2>
  *
- * <p>{@link TicketPhasePrompts#promptFor(Ticket)} is the whole of it, and that class holds the
+ * <p>{@link TicketPhasePrompts#promptFor(WorkEntity)} is the whole of it, and that class holds the
  * argument for every sentence in the three templates — including the two seams that have to hold
  * for any of them to be an instruction rather than a dead letter, which moved there with the words
  * they are about. What this door does with the answer is the rest of this section.
@@ -116,7 +116,7 @@ public class TicketDispatchController {
   @POST
   @Path("/{id}/dispatch-agent")
   public DispatchAgentRequest.Response dispatchAgent(@PathParam("id") String id) {
-    Ticket ticket = tickets.get(id); // 404 if the ticket does not exist
+    WorkEntity ticket = tickets.get(id); // 404 if the ticket does not exist
     // Before anything is asked of anybody: a ticket past the work starts no phase and no workspace.
     TicketPhasePrompts.Started started = phaseOrRefuse(ticket);
     if (dispatch.isUnsatisfied()) {
@@ -165,7 +165,7 @@ public class TicketDispatchController {
    * The message names the status back, because "409" alone leaves the caller guessing which of the
    * two it walked into and what would make the ticket dispatchable again.
    */
-  private static TicketPhasePrompts.Started phaseOrRefuse(Ticket ticket) {
+  private static TicketPhasePrompts.Started phaseOrRefuse(WorkEntity ticket) {
     return TicketPhasePrompts.startedBy(ticket)
         .orElseThrow(
             () ->

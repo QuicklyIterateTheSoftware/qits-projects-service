@@ -5,7 +5,7 @@ import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.epics.control.EpicService;
 import eu.wohlben.qits.epics.dto.EpicDto;
-import eu.wohlben.qits.epics.mapper.EpicMapper;
+import eu.wohlben.qits.epics.mapper.WorkEntityMapper;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -32,7 +32,8 @@ public class ProjectEpicsController {
 
   @Inject EpicService epicService;
 
-  @Inject EpicMapper epicMapper;
+  /** One mapper where there were four; this route answers the epic shape. */
+  @Inject WorkEntityMapper workEntityMapper;
 
   @Inject ProjectService projectService;
 
@@ -66,7 +67,7 @@ public class ProjectEpicsController {
         dispatchedWorkspaces
             .decorateEpics(
                 epicService.listByProject(projectId, status).stream()
-                    .map(epicMapper::toDto)
+                    .map(workEntityMapper::toEpicDto)
                     .map(epic -> epic.withQualifiedId(QualifiedEntityIds.render(slug, epic.number())))
                     .toList())
             .stream()
@@ -88,6 +89,8 @@ public class ProjectEpicsController {
             projectId, request.title(), request.description(), EpicsPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new CreateEpicRequest.Response(
-        epicMapper.toDto(epic).withQualifiedId(QualifiedEntityIds.render(slug, epic.number)));
+        workEntityMapper
+            .toEpicDto(epic)
+            .withQualifiedId(QualifiedEntityIds.render(slug, epic.number)));
   }
 }

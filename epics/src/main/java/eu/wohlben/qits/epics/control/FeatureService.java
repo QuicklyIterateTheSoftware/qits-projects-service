@@ -4,9 +4,6 @@ import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
 import eu.wohlben.qits.epics.entity.EntityMembership;
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
 import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
@@ -43,10 +40,15 @@ import java.util.stream.Collectors;
  *
  * <p><b>Every read and every rule here is answered from {@code entity} and {@code
  * entity_membership}</b>, exactly as {@code EpicService}'s are. What a caller gets back is a {@link
- * WorkEntityProjections detached projection} shaped as a {@link Feature}, so {@code
- * FeatureController}, {@code FeatureMapper}, {@code FeatureDto}, {@code EpicController}, {@code
- * EpicChangeHints}, {@code EpicMcpTools} and {@code EpicDispatchController} are untouched and every
- * route, status code and error body is what it was.
+ * Nested} — the merged row itself, and beside it the parent its membership edge names, because that
+ * parent is a row now and has nowhere on the entity to sit. {@code Nested}'s javadoc carries the
+ * argument; the short version is that this service has just read the edge anyway and a row that
+ * fetched its own would be a query per row on exactly this listing.
+ *
+ * <p>It used to be a detached {@code Feature}-shaped projection, so {@code FeatureMapper} and {@code
+ * FeatureDto} could stay written against the old class while the storage moved underneath them. The
+ * old class is gone; {@code WorkEntityMapper.toFeatureDto(entity, epicId)} takes the two halves of a
+ * {@code Nested} and {@code FeatureDto} did not move by one byte.
  *
  * <p>The old {@code feature.epic_id} column is an {@link EntityMembership} row now, and three things
  * follow from that and are rules rather than details:
@@ -98,30 +100,30 @@ public class FeatureService {
    * come back oldest-first, so the rows are indexed and re-emitted in the edges' order rather than
    * being fetched one at a time.
    */
-  public List<Feature> listByEpic(String epicId) {
+  public List<Nested> listByEpic(String epicId) {
     return patience.hold(
         "feature list",
         () -> {
           List<EntityMembership> edges = memberships.childrenOf(epicId);
           Map<String, WorkEntity> rows = byId(entities.listByIds(childIds(edges)));
-          List<Feature> features = new ArrayList<>();
+          List<Nested> features = new ArrayList<>();
           for (EntityMembership edge : edges) {
             WorkEntity row = rows.get(edge.childId);
             if (row != null && row.archetype == Archetype.FEATURE) {
-              features.add(WorkEntityProjections.feature(row, epicId));
+              features.add(new Nested(row, epicId));
             }
           }
           return List.copyOf(features);
         });
   }
 
-  public Feature get(String id) {
+  public Nested get(String id) {
     WorkEntity row = entity(id);
-    return WorkEntityProjections.feature(row, parentOf(id));
+    return new Nested(row, parentOf(id));
   }
 
   /** A new feature, held through a postgres cutover ({@link WritePatience}). */
-  public Feature create(
+  public Nested create(
       String epicId,
       String title,
       String description,
@@ -132,9 +134,7 @@ public class FeatureService {
         "feature create",
         () -> {
           WorkEntity epicRow = epic(epicId);
-          // The phase is read off the entity row, projected only so the rule keeps the signature
-          // its other callers use.
-          EpicLifecycle.requireRefining(WorkEntityProjections.epic(epicRow));
+          EpicLifecycle.requireRefining(epicRow);
           if (dependsOnFeatureId != null) {
             requireDependencyUnder(dependsOnFeatureId, epicId);
           }
@@ -159,14 +159,9 @@ public class FeatureService {
           requireArchetypeValid(row);
           entities.persist(row);
           attach(epicId, row);
-          Feature feature = settled(row, epicId);
+          Nested feature = settled(row, epicId);
           auditService.record(
-              AuditEntityType.FEATURE,
-              feature.id,
-              epicId,
-              AuditOperation.CREATE,
-              changedBy,
-              feature);
+              AuditEntityType.FEATURE, row.id, epicId, AuditOperation.CREATE, changedBy, row);
           return feature;
         });
   }
@@ -182,7 +177,7 @@ public class FeatureService {
    *
    * <p>Held through a postgres cutover ({@link WritePatience}).
    */
-  public Feature update(
+  public Nested update(
       String id,
       String title,
       String description,
@@ -204,7 +199,7 @@ public class FeatureService {
                   || dependsOnFeatureId != null
                   || clearDependsOn
                   || !touchesMarker;
-          Epic epic = WorkEntityProjections.epic(epic(epicId));
+          WorkEntity epic = epic(epicId);
           if (touchesScope) {
             EpicLifecycle.requireRefining(epic);
           }
@@ -234,14 +229,9 @@ public class FeatureService {
             row.implementedAt = implementedOn;
           }
           requireArchetypeValid(row);
-          Feature feature = settled(row, epicId);
+          Nested feature = settled(row, epicId);
           auditService.record(
-              AuditEntityType.FEATURE,
-              feature.id,
-              epicId,
-              AuditOperation.UPDATE,
-              changedBy,
-              feature);
+              AuditEntityType.FEATURE, row.id, epicId, AuditOperation.UPDATE, changedBy, row);
           return feature;
         });
   }
@@ -260,8 +250,7 @@ public class FeatureService {
           WorkEntity row = entity(id);
           EntityMembership edge = memberships.membershipOf(id).orElse(null);
           String epicId = edge == null ? null : edge.parentId;
-          EpicLifecycle.requireRefining(WorkEntityProjections.epic(epic(epicId)));
-          Feature feature = WorkEntityProjections.feature(row, epicId);
+          EpicLifecycle.requireRefining(epic(epicId));
 
           // Clear same-epic dependents' pointer in-service (audited) rather than leaning on the FK's
           // SET NULL, which would leave no trace.
@@ -276,7 +265,7 @@ public class FeatureService {
                 epicId,
                 AuditOperation.UPDATE,
                 changedBy,
-                WorkEntityProjections.feature(dependent, epicId));
+                dependent);
           }
 
           // Delete child tasks in-service so each gets a DELETE audit row, edge included.
@@ -287,11 +276,10 @@ public class FeatureService {
             if (child == null || child.archetype != Archetype.TASK) {
               continue;
             }
-            Task task = WorkEntityProjections.task(child, id);
             memberships.delete(childEdge);
             entities.delete(child);
             auditService.record(
-                AuditEntityType.TASK, task.id, epicId, AuditOperation.DELETE, changedBy, task);
+                AuditEntityType.TASK, child.id, epicId, AuditOperation.DELETE, changedBy, child);
           }
 
           if (edge != null) {
@@ -301,7 +289,7 @@ public class FeatureService {
           }
           entities.delete(row);
           auditService.record(
-              AuditEntityType.FEATURE, id, epicId, AuditOperation.DELETE, changedBy, feature);
+              AuditEntityType.FEATURE, id, epicId, AuditOperation.DELETE, changedBy, row);
         });
   }
 
@@ -391,9 +379,9 @@ public class FeatureService {
    * are populated — a create is promised a {@code createdAt} and an update an {@code updatedAt} that
    * is not before it.
    */
-  private Feature settled(WorkEntity row, String epicId) {
+  private Nested settled(WorkEntity row, String epicId) {
     entities.getEntityManager().flush();
-    return WorkEntityProjections.feature(row, epicId);
+    return new Nested(row, epicId);
   }
 
   /**

@@ -5,8 +5,7 @@ import eu.wohlben.qits.epics.control.EpicService;
 import eu.wohlben.qits.epics.control.TicketService;
 import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Ticket;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
@@ -243,7 +242,7 @@ public class DossierMcpTools {
       @ToolArg(description = "id of an epic in this project") String epicId,
       @ToolArg(description = "id of the attachment or design to inline") String sourceId,
       @ToolArg(description = "IMAGE for a sketch, DESIGN for a design") String kind) {
-    Epic epic = requireEpicInProject(epicId);
+    WorkEntity epic = requireEpicInProject(epicId);
     var inlined = figures.inline(epic.id, sourceId, kind);
     return new DossierFigure(
         inlined.id(), inlined.kind(), inlined.label(), inlined.url(), inlined.markdown());
@@ -252,8 +251,8 @@ public class DossierMcpTools {
   // --- Scoping --------------------------------------------------------------
 
   /** The epic, if it is in the scoped project. One in another project reads as absent. */
-  private Epic requireEpicInProject(String epicId) {
-    Epic epic = epicService.get(epicId);
+  private WorkEntity requireEpicInProject(String epicId) {
+    WorkEntity epic = epicService.get(epicId);
     if (!scope.requireProjectId().equals(epic.projectId)) {
       throw new NotFoundException("Epic not found: " + epicId);
     }
@@ -261,8 +260,8 @@ public class DossierMcpTools {
   }
 
   /** The ticket, checked back to the session's project the same way, and absent otherwise. */
-  private Ticket requireTicketInProject(String ticketId) {
-    Ticket ticket = ticketService.get(ticketId);
+  private WorkEntity requireTicketInProject(String ticketId) {
+    WorkEntity ticket = ticketService.get(ticketId);
     if (!scope.requireProjectId().equals(ticket.projectId)) {
       throw new NotFoundException("Ticket not found: " + ticketId);
     }
@@ -294,11 +293,11 @@ public class DossierMcpTools {
               + " this call names neither.");
     }
     if (hasEpic) {
-      Epic epic = requireEpicInProject(epicId);
+      WorkEntity epic = requireEpicInProject(epicId);
       return new Owner(
           DossierOwner.epic(epic.id), epic.projectId, ProjectChangeHint.Topic.EPICS);
     }
-    Ticket ticket = requireTicketInProject(ticketId);
+    WorkEntity ticket = requireTicketInProject(ticketId);
     return new Owner(
         DossierOwner.ticket(ticket.id), ticket.projectId, ProjectChangeHint.Topic.TICKETS);
   }

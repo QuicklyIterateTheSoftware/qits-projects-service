@@ -11,7 +11,7 @@ import java.util.Optional;
 
 /**
  * The merged planning rows, plain CRUD; the caller owns the transaction, exactly as {@link
- * EpicRepository} and {@link DossierPageRepository} leave it.
+ * DossierPageRepository} leaves it.
  *
  * <p><b>{@code EpicService} and {@code TicketService} read every epic and every ticket through
  * this.</b> {@link #listByProjectAndArchetype} and {@link #listByProjectArchetypeAndStatus} are the
@@ -22,8 +22,8 @@ import java.util.Optional;
  * node. A merged model is read by fanning out over memberships, and the N+1 that invites is the one
  * performance mistake this table makes easy.
  *
- * <p>The orders match today's: oldest first, id as the tie-break, which is what {@code
- * EpicRepository.listByProject} already answers and what V2's slug backfill ranked duplicates by.
+ * <p>The orders are the ones the four old repositories answered: oldest first, id as the tie-break,
+ * which is also what V2's slug backfill ranked duplicates by.
  *
  * <p><b>The by-id read is the inherited {@code findByIdOptional}</b> and is deliberately not
  * re-declared here: Panache's own {@code findById} returns the entity or null, so an override

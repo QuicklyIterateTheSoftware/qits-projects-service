@@ -10,9 +10,8 @@ import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.DossierAsset;
 import eu.wohlben.qits.epics.entity.DossierOwner;
 import eu.wohlben.qits.epics.entity.DossierPage;
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.ConflictException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -44,11 +43,11 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
   @Inject DossierAssetService assets;
   @Inject AuditService auditService;
 
-  private Epic epic() {
+  private WorkEntity epic() {
     return epicService.create("proj-1", "Epic", null, "t");
   }
 
-  private Ticket ticket() {
+  private WorkEntity ticket() {
     return ticketService.create("proj-1", "The button is wrong", "It is wrong.", null, "BUG", null, "t");
   }
 
@@ -56,8 +55,8 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
 
   @Test
   void theDatabaseRefusesAPageWithTwoOwnersAndOneWithNone() {
-    Epic e = epic();
-    Ticket t = ticket();
+    WorkEntity e = epic();
+    WorkEntity t = ticket();
 
     String both = insertFailure(e.id, t.id);
     assertTrue(both.contains("ck_dossier_page_owner"), both);
@@ -101,12 +100,12 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
 
   @Test
   void aTicketOwnedPageIsWritableAtEveryStatus() {
-    Ticket t = ticket();
+    WorkEntity t = ticket();
     DossierOwner owner = DossierOwner.ticket(t.id);
 
     // REPORTED: the refine phase's own write.
     DossierPage page = dossier.create(owner, "The root cause", "four services deep", "t");
-    assertEquals(TicketStatus.REPORTED, ticketService.get(t.id).status);
+    assertEquals(TicketStatus.REPORTED.name(), ticketService.get(t.id).status);
 
     ticketService.transition(t.id, TicketStatus.REFINED.name(), "t");
     ticketService.transition(t.id, TicketStatus.IMPLEMENTED.name(), "t");
@@ -126,7 +125,7 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
 
   @Test
   void anEpicOwnedPageIsStillRefusedOutsideRefining() {
-    Epic e = epic();
+    WorkEntity e = epic();
     DossierOwner owner = DossierOwner.epic(e.id);
     DossierPage page = dossier.create(owner, "The claim loop", "the body", "t");
     epicService.transition(e.id, "IMPLEMENTATION", "t");
@@ -139,8 +138,8 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
 
   @Test
   void slugsCollideWithinAnOwnerAndNeverAcrossOwners() {
-    Ticket t = ticket();
-    Epic e = epic();
+    WorkEntity t = ticket();
+    WorkEntity e = epic();
 
     assertEquals("the-claim-loop", dossier.create(DossierOwner.ticket(t.id), "The claim loop", "", "t").slug);
     assertEquals(
@@ -154,7 +153,7 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
 
   @Test
   void deletingATicketTakesItsPages() {
-    Ticket t = ticket();
+    WorkEntity t = ticket();
     DossierPage page = dossier.create(DossierOwner.ticket(t.id), "The root cause", "", "t");
 
     ticketService.delete(t.id, "t");
@@ -168,7 +167,7 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
 
   @Test
   void aTicketOwnedPagesAuditEntriesCarryTheTicketAsTheirSubtreeKey() {
-    Ticket t = ticket();
+    WorkEntity t = ticket();
     DossierPage page = dossier.create(DossierOwner.ticket(t.id), "The root cause", "", "t");
 
     // V4's reading of auditentry.epic_id is the subtree key, not literally an epic — so the whole
@@ -185,8 +184,8 @@ class DossierTicketOwnerTest extends EpicsTestSupport {
 
   @Test
   void aTicketPageNamingAnAssetNeitherCopiesItNorReferencesIt() {
-    Epic e = epic();
-    Ticket t = ticket();
+    WorkEntity e = epic();
+    WorkEntity t = ticket();
     String assetId = UUID.randomUUID().toString();
     QuarkusTransaction.requiringNew()
         .run(

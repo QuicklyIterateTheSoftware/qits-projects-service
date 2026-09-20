@@ -7,8 +7,7 @@ import eu.wohlben.qits.epics.dto.AuditEntryDto;
 import eu.wohlben.qits.epics.dto.EpicDto;
 import eu.wohlben.qits.epics.dto.FeatureDto;
 import eu.wohlben.qits.epics.mapper.AuditEntryMapper;
-import eu.wohlben.qits.epics.mapper.EpicMapper;
-import eu.wohlben.qits.epics.mapper.FeatureMapper;
+import eu.wohlben.qits.epics.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -40,9 +39,8 @@ public class EpicController {
 
   @Inject AuditService auditService;
 
-  @Inject EpicMapper epicMapper;
-
-  @Inject FeatureMapper featureMapper;
+  /** One mapper where there were four — this route answers an epic shape and a feature shape. */
+  @Inject WorkEntityMapper workEntityMapper;
 
   @Inject AuditEntryMapper auditEntryMapper;
 
@@ -75,7 +73,8 @@ public class EpicController {
   @Path("/{id}")
   public GetEpicRequest.Response get(@PathParam("id") String id) {
     return new GetEpicRequest.Response(
-        qualifiedIds.qualify(dispatchedWorkspaces.decorate(epicMapper.toDto(epicService.get(id)))));
+        qualifiedIds.qualify(
+            dispatchedWorkspaces.decorate(workEntityMapper.toEpicDto(epicService.get(id)))));
   }
 
   public record UpdateEpicRequest(@NotBlank String title, String description) {
@@ -90,7 +89,7 @@ public class EpicController {
         epicService.update(
             id, request.title(), request.description(), EpicsPrincipal.changedBy(identity));
     hints.fire(epic.projectId);
-    return new UpdateEpicRequest.Response(qualifiedIds.qualify(epicMapper.toDto(epic)));
+    return new UpdateEpicRequest.Response(qualifiedIds.qualify(workEntityMapper.toEpicDto(epic)));
   }
 
   /**
@@ -117,10 +116,10 @@ public class EpicController {
     // A supersede spawns a second epic in the same project, so one hint still covers both rows.
     hints.fire(result.epic().projectId);
     return new TransitionEpicRequest.Response(
-        qualifiedIds.qualify(epicMapper.toDto(result.epic())),
+        qualifiedIds.qualify(workEntityMapper.toEpicDto(result.epic())),
         result.successor() == null
             ? null
-            : qualifiedIds.qualify(epicMapper.toDto(result.successor())));
+            : qualifiedIds.qualify(workEntityMapper.toEpicDto(result.successor())));
   }
 
   public record DeleteEpicRequest() {
@@ -154,7 +153,10 @@ public class EpicController {
     // whole list, never once per feature.
     var entries =
         qualifiedIds
-            .qualifyFeatures(featureService.listByEpic(epicId).stream().map(featureMapper::toDto).toList())
+            .qualifyFeatures(
+                featureService.listByEpic(epicId).stream()
+                    .map(f -> workEntityMapper.toFeatureDto(f.entity(), f.parentId()))
+                    .toList())
             .stream()
             .map(ListFeaturesRequest.Response.Entry::new)
             .toList();
@@ -178,7 +180,8 @@ public class EpicController {
             request.dependsOnFeatureId(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(hints.projectOfEpic(epicId));
-    return new CreateFeatureRequest.Response(qualifiedIds.qualify(featureMapper.toDto(feature)));
+    return new CreateFeatureRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toFeatureDto(feature.entity(), feature.parentId())));
   }
 
   // --- Audit subtree ---

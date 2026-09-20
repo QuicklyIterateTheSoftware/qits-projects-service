@@ -4,7 +4,6 @@ import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
 import eu.wohlben.qits.epics.entity.EntityMembership;
-import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
 import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
@@ -39,11 +38,18 @@ import java.util.stream.Collectors;
  *
  * <h2>The merged table is the source of truth, and there is no mirror left</h2>
  *
- * <p><b>Every read and every rule here is answered from {@code entity}.</b> The status a transition
- * is judged against, the slugs a new one is minted around, the listing the board draws and the
- * timestamps a caller is handed all come from that row and from nothing else. What a caller gets
- * back is a {@link WorkEntityProjections detached projection} of it, shaped as an {@link Epic} so
- * the mappers, the DTO and the five controllers above are untouched.
+ * <p><b>Every read and every rule here is answered from {@code entity}, and that row is what a
+ * caller gets back.</b> The status a transition is judged against, the slugs a new one is minted
+ * around, the listing the board draws and the timestamps a caller is handed all come from that row
+ * and from nothing else.
+ *
+ * <p>It used to be handed back as a detached {@code Epic}-shaped projection, so that the mappers and
+ * the DTO above could stay written against the old class while the storage moved underneath them.
+ * <b>The old classes are gone</b> and the projection with them: {@code WorkEntityMapper.toEpicDto}
+ * reads the merged row directly and {@code EpicDto} did not move by one byte. A row that is handed
+ * out is still only ever taken <em>after</em> an explicit flush — see {@link #settled} — because
+ * {@code @CreationTimestamp} and {@code @UpdateTimestamp} are populated at flush and a create is
+ * promised a {@code createdAt} the moment it returns.
  *
  * <p><b>The legacy {@code epic} row is not written at all any more, and the write-behind mirror that
  * kept it populated is gone.</b> It existed for two things and both have been answered rather than
@@ -94,7 +100,7 @@ public class EpicService {
    * The outcome of a {@link #transition}: the epic in its new status, plus the successor draft when
    * the move was to {@link EpicStatus#SUPERSEDED} (null otherwise).
    */
-  public record Transition(Epic epic, Epic successor) {}
+  public record Transition(WorkEntity epic, WorkEntity successor) {}
 
   /**
    * What a {@link #transition} to {@code target} would be: the epic as it stands, the status it
@@ -107,20 +113,20 @@ public class EpicService {
    * answers. The move is then re-checked inside {@link #transition}, which is where it is decided;
    * this is a preview and never a reservation.
    */
-  public record PlannedTransition(Epic epic, EpicStatus target, boolean resolving) {}
+  public record PlannedTransition(WorkEntity epic, EpicStatus target, boolean resolving) {}
 
   /** The preview of a move — see {@link PlannedTransition}. */
   public PlannedTransition planTransition(String id, String target) {
     Validations.requireText(target, "target");
-    Epic epic = get(id);
+    WorkEntity epic = entity(id);
     EpicStatus to =
         EpicLifecycle.parse(target)
             .orElseThrow(() -> new ConflictException("Unknown epic status: " + target));
-    EpicLifecycle.requireTransition(epic.status, to);
+    EpicLifecycle.requireTransition(EpicStatus.valueOf(epic.status), to);
     return new PlannedTransition(epic, to, EpicLifecycle.resolves(to));
   }
 
-  public List<Epic> listByProject(String projectId) {
+  public List<WorkEntity> listByProject(String projectId) {
     return listByProject(projectId, null);
   }
 
@@ -137,11 +143,10 @@ public class EpicService {
    * question retried for fifteen seconds. Neither caller — the controller and the MCP tool — opens
    * a transaction, which is what makes the wrap legal here.
    */
-  public List<Epic> listByProject(String projectId, String status) {
+  public List<WorkEntity> listByProject(String projectId, String status) {
     if (status == null || status.isBlank()) {
       return patience.hold(
-          "epic list",
-          () -> project(entities.listByProjectAndArchetype(projectId, Archetype.EPIC)));
+          "epic list", () -> entities.listByProjectAndArchetype(projectId, Archetype.EPIC));
     }
     EpicStatus filter =
         EpicLifecycle.parse(status)
@@ -149,13 +154,12 @@ public class EpicService {
     return patience.hold(
         "epic list by status",
         () ->
-            project(
-                entities.listByProjectArchetypeAndStatus(
-                    projectId, Archetype.EPIC, filter.name())));
+            entities.listByProjectArchetypeAndStatus(projectId, Archetype.EPIC, filter.name()));
   }
 
-  public Epic get(String id) {
-    return WorkEntityProjections.epic(entity(id));
+  /** The {@code EPIC} row this id names, or a 404 — see {@link #entity}. */
+  public WorkEntity get(String id) {
+    return entity(id);
   }
 
   /**
@@ -164,13 +168,13 @@ public class EpicService {
    * than a question retried for fifteen seconds; the id and the slug are minted <em>inside</em> it,
    * which is what makes a second attempt a fresh row rather than a duplicate of a lost one.
    */
-  public Epic create(String projectId, String title, String description, String changedBy) {
+  public WorkEntity create(String projectId, String title, String description, String changedBy) {
     Validations.requireText(projectId, "projectId");
     Validations.requireText(title, "title");
     return writes.hold(
         "epic create",
         () -> {
-          Epic epic = settled(insert(projectId, title, description));
+          WorkEntity epic = settled(insert(projectId, title, description));
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.CREATE, changedBy, epic);
           return epic;
@@ -178,19 +182,18 @@ public class EpicService {
   }
 
   /** Retitles an epic, held through a cutover ({@link WritePatience}). */
-  public Epic update(String id, String title, String description, String changedBy) {
+  public WorkEntity update(String id, String title, String description, String changedBy) {
     return writes.hold(
         "epic update",
         () -> {
           WorkEntity row = entity(id);
-          // Title and description are scope, so an edit needs a draft. The phase is read off the
-          // entity row, projected only so the rule keeps the signature its three other callers use.
-          EpicLifecycle.requireRefining(WorkEntityProjections.epic(row));
+          // Title and description are scope, so an edit needs a draft.
+          EpicLifecycle.requireRefining(row);
           Validations.requireText(title, "title");
           row.title = title;
           row.description = description;
           requireArchetypeValid(row);
-          Epic epic = settled(row);
+          WorkEntity epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
           return epic;
@@ -223,7 +226,7 @@ public class EpicService {
                   .orElseThrow(() -> new ConflictException("Unknown epic status: " + target));
           EpicLifecycle.requireTransition(EpicStatus.valueOf(row.status), to);
 
-          Epic successor = (to == EpicStatus.SUPERSEDED) ? supersede(row, changedBy) : null;
+          WorkEntity successor = (to == EpicStatus.SUPERSEDED) ? supersede(row, changedBy) : null;
           if (to == EpicStatus.IMPLEMENTED) {
             stampImplemented(row, changedBy);
           }
@@ -232,7 +235,7 @@ public class EpicService {
             row.supersededByEntityId = successor.id;
           }
           requireArchetypeValid(row);
-          Epic epic = settled(row);
+          WorkEntity epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
           return new Transition(epic, successor);
@@ -263,7 +266,7 @@ public class EpicService {
               epic.id,
               AuditOperation.UPDATE,
               changedBy,
-              WorkEntityProjections.task(task, feature.id));
+              task);
         }
       }
       if (feature.implementedAt == null) {
@@ -274,7 +277,7 @@ public class EpicService {
             epic.id,
             AuditOperation.UPDATE,
             changedBy,
-            WorkEntityProjections.feature(feature, epic.id));
+            feature);
       }
     }
   }
@@ -285,12 +288,11 @@ public class EpicService {
         "epic delete",
         () -> {
           WorkEntity row = entity(id);
-          Epic epic = WorkEntityProjections.epic(row);
           // Deliberately allowed in every status: this removes the row rather than editing a frozen
           // scope, and the audit log outlives it.
           deleteSubtree(id, changedBy);
           entities.delete(row);
-          auditService.record(AuditEntityType.EPIC, id, id, AuditOperation.DELETE, changedBy, epic);
+          auditService.record(AuditEntityType.EPIC, id, id, AuditOperation.DELETE, changedBy, row);
         });
   }
 
@@ -329,23 +331,14 @@ public class EpicService {
       level = children;
     }
     for (WorkEntity descendant : entities.listByIds(doomed)) {
-      String parentId = parentOf.get(descendant.id);
-      if (descendant.archetype == Archetype.FEATURE) {
+      if (descendant.archetype == Archetype.FEATURE || descendant.archetype == Archetype.TASK) {
         auditService.record(
-            AuditEntityType.FEATURE,
+            AuditEntityType.of(descendant.archetype),
             descendant.id,
             rootId,
             AuditOperation.DELETE,
             changedBy,
-            WorkEntityProjections.feature(descendant, parentId));
-      } else if (descendant.archetype == Archetype.TASK) {
-        auditService.record(
-            AuditEntityType.TASK,
-            descendant.id,
-            rootId,
-            AuditOperation.DELETE,
-            changedBy,
-            WorkEntityProjections.task(descendant, parentId));
+            descendant);
       }
       entities.delete(descendant);
     }
@@ -399,7 +392,7 @@ public class EpicService {
    * source's order rather than re-derived, so the successor's plan is drawn in the order the
    * discarded one was. They stay dense and zero-based because the source's were.
    */
-  private Epic supersede(WorkEntity old, String changedBy) {
+  private WorkEntity supersede(WorkEntity old, String changedBy) {
     WorkEntity successorRow = insert(old.projectId, old.title, old.description);
 
     Subtree source = subtreeOf(old.id);
@@ -407,10 +400,6 @@ public class EpicService {
     // Keyed by the old row's id, insertion-ordered so the audit rows land in the original order.
     Map<String, WorkEntity> featureCopies = new LinkedHashMap<>();
     Map<String, WorkEntity> taskCopies = new LinkedHashMap<>();
-
-    // The feature copy each task copy was attached to, so the audit snapshot can name its parent
-    // without asking for the edge back.
-    Map<String, String> taskCopyParents = new LinkedHashMap<>();
 
     // ONE bump for the whole discarded tree rather than one per copied row: the count is known
     // before anything is written, and a block is what EntityNumbers.allocate exists for. The
@@ -430,7 +419,6 @@ public class EpicService {
       for (WorkEntity task : source.tasksOf(feature.id)) {
         WorkEntity taskCopy = copyUnder(task, copy.id, taskPosition++, nextCopyNumber++);
         taskCopies.put(task.id, taskCopy);
-        taskCopyParents.put(taskCopy.id, copy.id);
         oldTasks.add(task);
       }
     }
@@ -447,7 +435,7 @@ public class EpicService {
 
     // Audited after the remap so each snapshot is the finished row. settled() flushes the whole
     // batch, which is what populates the copies' creation timestamps.
-    Epic successor = settled(successorRow);
+    WorkEntity successor = settled(successorRow);
     auditService.record(
         AuditEntityType.EPIC,
         successor.id,
@@ -462,7 +450,7 @@ public class EpicService {
           successor.id,
           AuditOperation.CREATE,
           changedBy,
-          WorkEntityProjections.feature(copy, successor.id));
+          copy);
     }
     for (WorkEntity copy : taskCopies.values()) {
       auditService.record(
@@ -471,7 +459,7 @@ public class EpicService {
           successor.id,
           AuditOperation.CREATE,
           changedBy,
-          WorkEntityProjections.task(copy, taskCopyParents.get(copy.id)));
+          copy);
     }
     return successor;
   }
@@ -570,13 +558,9 @@ public class EpicService {
    * are populated — a create is promised a {@code createdAt} and an update an {@code updatedAt} that
    * is not before it.
    */
-  private Epic settled(WorkEntity row) {
+  private WorkEntity settled(WorkEntity row) {
     entities.getEntityManager().flush();
-    return WorkEntityProjections.epic(row);
-  }
-
-  private List<Epic> project(List<WorkEntity> rows) {
-    return rows.stream().map(WorkEntityProjections::epic).toList();
+    return row;
   }
 
   /**

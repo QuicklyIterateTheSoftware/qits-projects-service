@@ -1,9 +1,6 @@
 package eu.wohlben.qits.epics.control;
 
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
-import eu.wohlben.qits.epics.entity.Ticket;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -29,6 +26,16 @@ import java.util.function.Function;
  * <p>The refs are exact refs ({@code refs/heads/<branch>}), never {@code /*} patterns: qits-workspaces
  * removes one exact ref from an epic's list when a sub-workspace takes that branch, and it cannot do
  * that to a pattern. See {@code principal-bound-git-refs-plan.md}, contracts C1 and C4.
+ *
+ * <p><b>It reads merged {@link WorkEntity} rows now, and not one branch name moved.</b> It used to
+ * take the four old shapes; a feature and a task carry their parent <em>beside</em> the row as a
+ * {@link Nested} rather than on it, because the parent is an {@code entity_membership} row. That is
+ * the only change: the segments are still each row's {@code slug}, the order is still the epic then
+ * each feature followed by its tasks, and {@code WorkBranchesTest} asserts every literal it always
+ * did — which is what says the branch names an agent is given did not move by one byte.
+ *
+ * <p>This is still a <b>pure derivation</b> over slugs and parent ids: no repository, no query, no
+ * table. It is handed what the caller has already read.
  */
 public final class WorkBranches {
 
@@ -49,13 +56,23 @@ public final class WorkBranches {
     }
   }
 
-  /** A ticket's agent may push its own branch and nothing else. */
-  public static Scope ticket(Ticket ticket) {
+  /**
+   * A ticket's agent may push its own branch and nothing else.
+   *
+   * @param ticket a {@code TICKET} row — a root, so there is no parent to state
+   */
+  public static Scope ticket(WorkEntity ticket) {
     return own("ticket/" + ticket.slug);
   }
 
-  /** A task's agent may push its own branch and nothing else. */
-  public static Scope task(Epic epic, Feature feature, Task task) {
+  /**
+   * A task's agent may push its own branch and nothing else.
+   *
+   * @param epic the {@code EPIC} row at the top of the branch name
+   * @param feature the task's feature, with the epic its membership edge names
+   * @param task the task, with the feature its membership edge names
+   */
+  public static Scope task(WorkEntity epic, Nested feature, Nested task) {
     return own(taskBranch(epic, feature, task));
   }
 
@@ -67,17 +84,18 @@ public final class WorkBranches {
    * given. Call it on a frozen epic (IMPLEMENTATION): then no feature or task can be added, and the
    * list is complete.
    *
-   * @param features the epic's features
-   * @param tasksOf the tasks of one feature
+   * @param epic the {@code EPIC} row
+   * @param features the epic's features, each with the parent its membership edge names
+   * @param tasksOf the tasks of one feature, each with its own parent
    */
   public static Scope epic(
-      Epic epic, List<Feature> features, Function<Feature, List<Task>> tasksOf) {
+      WorkEntity epic, List<Nested> features, Function<Nested, List<Nested>> tasksOf) {
     String branch = epicBranch(epic);
     Set<String> refs = new LinkedHashSet<>();
     refs.add(ref(branch));
-    for (Feature feature : features) {
+    for (Nested feature : features) {
       refs.add(ref(featureBranch(epic, feature)));
-      for (Task task : tasksOf.apply(feature)) {
+      for (Nested task : tasksOf.apply(feature)) {
         refs.add(ref(taskBranch(epic, feature, task)));
       }
     }
@@ -93,22 +111,31 @@ public final class WorkBranches {
     return new Scope(branch, List.of(ref(branch)));
   }
 
-  private static String epicBranch(Epic epic) {
+  private static String epicBranch(WorkEntity epic) {
     return "epic/" + epic.slug;
   }
 
-  private static String featureBranch(Epic epic, Feature feature) {
-    requireChild(epic.id, feature.epicId, "feature " + feature.id, "epic " + epic.id);
-    return "feature/" + epic.slug + "/" + feature.slug;
+  private static String featureBranch(WorkEntity epic, Nested feature) {
+    requireChild(epic.id, feature.parentId(), "feature " + feature.entity().id, "epic " + epic.id);
+    return "feature/" + epic.slug + "/" + feature.entity().slug;
   }
 
-  private static String taskBranch(Epic epic, Feature feature, Task task) {
-    requireChild(epic.id, feature.epicId, "feature " + feature.id, "epic " + epic.id);
-    requireChild(feature.id, task.featureId, "task " + task.id, "feature " + feature.id);
-    return "task/" + epic.slug + "/" + feature.slug + "/" + task.slug;
+  private static String taskBranch(WorkEntity epic, Nested feature, Nested task) {
+    requireChild(epic.id, feature.parentId(), "feature " + feature.entity().id, "epic " + epic.id);
+    requireChild(
+        feature.entity().id,
+        task.parentId(),
+        "task " + task.entity().id,
+        "feature " + feature.entity().id);
+    return "task/" + epic.slug + "/" + feature.entity().slug + "/" + task.entity().slug;
   }
 
-  /** A row given with the wrong parent would name a branch of some other work. */
+  /**
+   * A row given with the wrong parent would name a branch of some other work.
+   *
+   * <p>The child's parent is read off its {@link Nested#parentId} — the {@code entity_membership}
+   * edge — where it used to be read off a column. Same question, same refusal, same message.
+   */
   private static void requireChild(String parentId, String childsParentId, String child, String parent) {
     if (!Objects.equals(parentId, childsParentId)) {
       throw new IllegalArgumentException(child + " is not part of " + parent);

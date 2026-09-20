@@ -42,7 +42,7 @@ import java.util.UUID;
  * a write, so a person editing in the SPA while an agent writes from a prompt is the ordinary case;
  * a write carrying a stale version is refused with the current page attached, never merged.
  *
- * <p>Public fields and no getters, matching {@link Epic} and {@link Feature}; the id is a string
+ * <p>Public fields and no getters, matching {@link WorkEntity}; the id is a string
  * minted by the service, like every other id in this module.
  */
 @Entity
@@ -94,7 +94,7 @@ public class DossierPage extends PanacheEntityBase implements CausedRow {
   public String ticketId;
 
   /**
-   * Minted from the title at create and never changed after — the rule {@link Epic#slug} follows,
+   * Minted from the title at create and never changed after — the rule {@link WorkEntity#slug} follows,
    * and for the same reason: it is in URLs people have already sent each other. Unique <b>per
    * owner</b>: the same slug under an epic and under a ticket is two different addresses.
    */

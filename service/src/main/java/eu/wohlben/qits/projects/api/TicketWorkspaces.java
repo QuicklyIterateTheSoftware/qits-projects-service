@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.epics.control.WorkBranches;
-import eu.wohlben.qits.epics.entity.Ticket;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entity.Project;
@@ -32,15 +32,15 @@ import java.util.Optional;
  * stand a workspace on and guessing one from the text would be a guess the agent then has to work
  * around. The project's <b>wrapper</b> is the answer — the aggregate over the whole estate — which is
  * the rule "The wrapper is the project" in AGENTS.md, applied where {@code RefinementService} and the
- * dispatch door already apply it. The branch comes from {@link WorkBranches#ticket(Ticket)}, the one
+ * dispatch door already apply it. The branch comes from {@link WorkBranches#ticket(WorkEntity)}, the one
  * place that computes a branch and the refs its agent may push, so a ref can never drift from the
  * branch it belongs to.
  *
  * <h2>Two verbs, because a missing wrapper means different things to the two callers</h2>
  *
- * <p>{@link #require(Ticket)} refuses with the dispatch door's own <b>409</b>, word for word as that
+ * <p>{@link #require(WorkEntity)} refuses with the dispatch door's own <b>409</b>, word for word as that
  * door has always phrased it: somebody pressed a button, nothing can be stood up, and the sentence
- * has to reach them. {@link #find(Ticket)} answers empty instead, because the advance path is told
+ * has to reach them. {@link #find(WorkEntity)} answers empty instead, because the advance path is told
  * <em>after</em> a transition that is already recorded and has nobody to refuse — a project without a
  * wrapper is simply a project where no workspace can be standing, which is the {@code NO_WORKSPACE}
  * case reached one step earlier and gets the same silence.
@@ -82,7 +82,7 @@ class TicketWorkspaces {
    * The address, or the <b>409</b> that says this project has no wrapper to make one on. For a
    * caller somebody is waiting on.
    */
-  Target require(Ticket ticket) {
+  Target require(WorkEntity ticket) {
     Project project = projects.get(ticket.projectId);
     String wrapperName = ProjectService.wrapperName(project);
     Repository wrapper =
@@ -105,7 +105,7 @@ class TicketWorkspaces {
    * refuse: see the class javadoc — no wrapper means no workspace can be standing on that branch,
    * and that is an answer rather than a failure.
    */
-  Optional<Target> find(Ticket ticket) {
+  Optional<Target> find(WorkEntity ticket) {
     Project project = projects.get(ticket.projectId);
     return repositories
         .findByProjectAndName(project.id, ProjectService.wrapperName(project))

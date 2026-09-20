@@ -22,8 +22,8 @@ import org.junit.jupiter.api.Test;
  * only that the DDL applies. The interesting half of this migration is the <em>constraints</em> —
  * the merged slug scope, the one-parent-per-child rule, and the two closed vocabularies — and none
  * of them can be observed except by trying to break them. So this drives Flyway directly, on a
- * database of its own, exactly as {@link TicketLifecycleMigrationTest} does; the embedded postgres
- * is the module's, so it costs no second server and it boots no Quarkus application.
+ * database of its own, and stops at V9 — the embedded postgres is the module's, so it costs no
+ * second server and it boots no Quarkus application.
  */
 class EntityMembershipMigrationTest {
 

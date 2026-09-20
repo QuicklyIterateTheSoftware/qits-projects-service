@@ -13,7 +13,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 /**
- * One remark on a {@link Ticket} — the conversation an epic does not have, because an epic's
+ * One remark on a {@link Archetype#TICKET} entity — the conversation an epic does not have, because an epic's
  * discussion is its description and its tree while a ticket's is a thread of people saying what
  * they found. {@code ticketId} is a real intra-module FK (cascade-deleted with the ticket).
  *
@@ -23,9 +23,9 @@ import org.hibernate.annotations.UpdateTimestamp;
  * the opposite of {@link AuditEntry}'s newest-first, and deliberately: a log is scanned from the
  * top, a conversation is read from the start.
  *
- * <p><b>{@link #author} is stamped, never supplied</b>, exactly as {@link Ticket#createdBy} is.
+ * <p><b>{@link #author} is stamped, never supplied</b>, exactly as {@link WorkEntity#createdBy} is.
  *
- * <p><b>A {@link CausedRow}</b>, for the reason {@link Ticket} gives.
+ * <p><b>A {@link CausedRow}</b>, for the reason {@link WorkEntity} gives.
  */
 @Entity
 @EntityListeners(CausationStamp.class)

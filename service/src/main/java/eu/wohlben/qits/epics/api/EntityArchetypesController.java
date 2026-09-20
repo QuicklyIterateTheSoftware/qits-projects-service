@@ -35,8 +35,8 @@ import jakarta.ws.rs.core.MediaType;
  * list says the honest thing: this whole class is a read.
  *
  * <p>A second root resource at {@code /entities} is the shape the segment already has — {@code
- * MigrationVerificationController} is the other one — and for the same reason: JAX-RS gives a class
- * one {@code @Path}, and these are separate subjects with separate doors. {@code /entities} is the
+ * EntityTransitionController} is the other one — and for the same reason: JAX-RS gives a class one
+ * {@code @Path}, and these are separate subjects with separate doors. {@code /entities} is the
  * merged model's segment, argued once in {@code EntityTransitionController}: the unified entity is
  * the noun, and a question about all four archetypes filed under {@code /epics} or {@code /tickets}
  * would be filed under one of them. It sits under {@code /projects} like every machine surface here,

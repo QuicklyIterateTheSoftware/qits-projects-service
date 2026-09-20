@@ -62,7 +62,7 @@ public class AuditEntry extends PanacheEntityBase implements CausedRow {
    * rows, which live-row joins could not.
    *
    * <p><b>It is the subtree key, not a foreign key</b>, and V4's tickets are what make the
-   * distinction visible: a {@link Ticket} belongs to no epic, so its rows and its comments' rows
+   * distinction visible: a {@link Archetype#TICKET} entity belongs to no epic, so its rows and its comments' rows
    * carry the <em>ticket's</em> id here. The column keeps its name because renaming an applied
    * migration's column across a live log buys nothing — what it has always meant is "the root this
    * change hangs under", and a ticket is its own root exactly as an epic is.

@@ -1,7 +1,7 @@
 package eu.wohlben.qits.epics.control;
 
-import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.ConflictException;
 import java.util.EnumSet;
 import java.util.Map;
@@ -22,16 +22,21 @@ import java.util.Set;
  * <p>Deleting an epic stays allowed in every status: it removes the row and its subtree rather than
  * changing a frozen scope, and the audit log outlives it.
  *
- * <p><b>Where the phase is stored has moved and no rule here has.</b> Every caller keeps the status
- * on the merged {@code entity} row and passes this class a {@link WorkEntityProjections} projection
- * of it — {@link EpicService}, {@link FeatureService}, {@link TaskService} and {@link
- * DossierService} alike — so every legal move, every refusal and every message naming both ends is
- * exactly what it was. <b>No legacy row is read anywhere</b>, so the two guards are a function of
- * the merged row's status and of nothing else.
+ * <p><b>Where the phase is stored has moved and no rule here has.</b> Every caller reads the status
+ * off the merged {@link WorkEntity} row and hands this class that row — {@link EpicService}, {@link
+ * FeatureService}, {@link TaskService} and {@link DossierService} alike — so every legal move, every
+ * refusal and every message naming both ends is exactly what it was. <b>No legacy row is read
+ * anywhere</b>, so the two guards are a function of the merged row's status and of nothing else.
  *
- * <p>They go on taking an {@link Epic} rather than a {@code WorkEntity} because one signature is the
- * point: a second would be two places the freeze condition is written, and the projection is what
- * every caller already has in hand at the moment it asks.
+ * <p><b>The two guards read {@link WorkEntity#status}, which is a {@code String}</b>, and compare it
+ * against {@link EpicStatus#name()} rather than parsing it. That is deliberate: a guard's job is to
+ * refuse, and a row whose status word is unreadable must be refused rather than blow up with a
+ * different exception on the way to the refusal. The message interpolates the stored word, which is
+ * the enum's own {@code name()} and therefore the sentence these two always produced.
+ *
+ * <p>There is still exactly <b>one signature per guard</b>, which is the point: a second would be
+ * two places the freeze condition is written, and the merged row is what every caller already has in
+ * hand at the moment it asks.
  */
 final class EpicLifecycle {
 
@@ -79,16 +84,16 @@ final class EpicLifecycle {
   }
 
   /** Rejects a structural change to an epic whose scope is no longer a draft. */
-  static void requireRefining(Epic epic) {
-    if (epic.status != EpicStatus.REFINING) {
+  static void requireRefining(WorkEntity epic) {
+    if (!EpicStatus.REFINING.name().equals(epic.status)) {
       throw new ConflictException(
           "The scope of epic " + epic.id + " is frozen: it is " + epic.status);
     }
   }
 
   /** Rejects an implemented-marker change to an epic that is not being implemented. */
-  static void requireImplementation(Epic epic) {
-    if (epic.status != EpicStatus.IMPLEMENTATION) {
+  static void requireImplementation(WorkEntity epic) {
+    if (!EpicStatus.IMPLEMENTATION.name().equals(epic.status)) {
       throw new ConflictException(
           "Implemented markers need an epic in IMPLEMENTATION: epic "
               + epic.id

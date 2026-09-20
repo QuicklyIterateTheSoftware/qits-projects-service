@@ -7,9 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import io.quarkus.test.junit.QuarkusTest;
@@ -17,6 +15,10 @@ import jakarta.inject.Inject;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
+/**
+ * <p>{@link FeatureServiceTest}'s note one level down: a task is a merged row plus the feature its
+ * membership edge names, and every assertion is the one it always made.
+ */
 @QuarkusTest
 class TaskServiceTest extends EpicsTestSupport {
 
@@ -25,52 +27,54 @@ class TaskServiceTest extends EpicsTestSupport {
   @Inject TaskService taskService;
   @Inject AuditService auditService;
 
-  private Feature feature() {
-    Epic e = epicService.create("proj-1", "Epic", null, "t");
+  private Nested feature() {
+    WorkEntity e = epicService.create("proj-1", "Epic", null, "t");
     return featureService.create(e.id, "Feature", null, null, "t");
   }
 
   @Test
   void createReadUpdateDelete() {
-    Feature f = feature();
-    Task task = taskService.create(f.id, "repo-1", "Wire it up", "body", null, "alice");
-    assertNotNull(task.id);
-    assertEquals("repo-1", task.repositoryId);
-    assertEquals(f.id, task.featureId);
+    Nested f = feature();
+    Nested task = taskService.create(f.entity().id, "repo-1", "Wire it up", "body", null, "alice");
+    assertNotNull(task.entity().id);
+    assertEquals("repo-1", task.entity().repositoryId);
+    assertEquals(f.entity().id, task.parentId());
 
-    Task fetched = taskService.get(task.id);
-    assertEquals("Wire it up", fetched.title);
+    Nested fetched = taskService.get(task.entity().id);
+    assertEquals("Wire it up", fetched.entity().title);
 
-    Task updated =
-        taskService.update(task.id, "Wire it up v2", "body2", null, false, null, false, "bob");
-    assertEquals("Wire it up v2", updated.title);
-    assertEquals(task.createdAt, updated.createdAt);
+    Nested updated =
+        taskService.update(task.entity().id, "Wire it up v2", "body2", null, false, null, false, "bob");
+    assertEquals("Wire it up v2", updated.entity().title);
+    assertEquals(task.entity().createdAt, updated.entity().createdAt);
 
-    taskService.delete(task.id, "bob");
-    inFreshTx(() -> assertThrows(NotFoundException.class, () -> taskService.get(task.id)));
+    taskService.delete(task.entity().id, "bob");
+    inFreshTx(() -> assertThrows(NotFoundException.class, () -> taskService.get(task.entity().id)));
   }
 
   @Test
   void slugIsDerivedFromTheTitleAndUniqueWithinTheFeature() {
-    Feature f = feature();
-    Task first = taskService.create(f.id, "repo-1", "Planning domain", null, null, "t");
-    assertEquals("planning-domain", first.slug);
+    Nested f = feature();
+    Nested first = taskService.create(f.entity().id, "repo-1", "Planning domain", null, null, "t");
+    assertEquals("planning-domain", first.entity().slug);
 
-    Task second = taskService.create(f.id, "repo-1", "Planning   DOMAIN!", null, null, "t");
-    assertEquals("planning-domain-2", second.slug);
+    Nested second = taskService.create(f.entity().id, "repo-1", "Planning   DOMAIN!", null, null, "t");
+    assertEquals("planning-domain-2", second.entity().slug);
 
     // Another feature is another scope, so the clean slug is free again.
-    Feature other = feature();
+    Nested other = feature();
     assertEquals(
         "planning-domain",
-        taskService.create(other.id, "repo-1", "Planning domain", null, null, "t").slug);
+        taskService.create(other.entity().id, "repo-1", "Planning domain", null, null, "t")
+            .entity()
+            .slug);
   }
 
   @Test
   void updateLeavesTheSlugAlone() {
-    Task task = taskService.create(feature().id, "repo-1", "Planning domain", null, null, "t");
-    Task renamed = taskService.update(task.id, "Renamed", null, null, false, null, false, "t");
-    assertEquals("planning-domain", renamed.slug);
+    Nested task = taskService.create(feature().entity().id, "repo-1", "Planning domain", null, null, "t");
+    Nested renamed = taskService.update(task.entity().id, "Renamed", null, null, false, null, false, "t");
+    assertEquals("planning-domain", renamed.entity().slug);
   }
 
   @Test
@@ -82,67 +86,67 @@ class TaskServiceTest extends EpicsTestSupport {
 
   @Test
   void blankRepositoryIdIsRejected() {
-    Feature f = feature();
+    Nested f = feature();
     assertThrows(
-        BadRequestException.class, () -> taskService.create(f.id, " ", "T", null, null, "t"));
+        BadRequestException.class, () -> taskService.create(f.entity().id, " ", "T", null, null, "t"));
   }
 
   @Test
   void dependencySetClearAndSelfCycleGuard() {
-    Feature f = feature();
-    Task a = taskService.create(f.id, "repo-1", "A", null, null, "t");
-    Task b = taskService.create(f.id, "repo-1", "B", null, a.id, "t");
-    assertEquals(a.id, b.dependsOnTaskId);
+    Nested f = feature();
+    Nested a = taskService.create(f.entity().id, "repo-1", "A", null, null, "t");
+    Nested b = taskService.create(f.entity().id, "repo-1", "B", null, a.entity().id, "t");
+    assertEquals(a.entity().id, b.entity().dependsOnEntityId);
 
-    Task cleared = taskService.update(b.id, null, null, null, true, null, false, "t");
-    assertNull(cleared.dependsOnTaskId);
+    Nested cleared = taskService.update(b.entity().id, null, null, null, true, null, false, "t");
+    assertNull(cleared.entity().dependsOnEntityId);
 
     // Self-dependency, unknown dependency, and multi-hop cycles are all rejected.
     assertThrows(
         BadRequestException.class,
-        () -> taskService.update(a.id, null, null, a.id, false, null, false, "t"));
+        () -> taskService.update(a.entity().id, null, null, a.entity().id, false, null, false, "t"));
     assertThrows(
         BadRequestException.class,
-        () -> taskService.update(a.id, null, null, "ghost", false, null, false, "t"));
-    taskService.update(b.id, null, null, a.id, false, null, false, "t"); // B -> A
+        () -> taskService.update(a.entity().id, null, null, "ghost", false, null, false, "t"));
+    taskService.update(b.entity().id, null, null, a.entity().id, false, null, false, "t"); // B -> A
     assertThrows(
         BadRequestException.class,
         () ->
             taskService.update(
-                a.id, null, null, b.id, false, null, false, "t")); // A -> B closes cycle
+                a.entity().id, null, null, b.entity().id, false, null, false, "t")); // A -> B closes cycle
   }
 
   @Test
   void crossFeatureDependencyIsRejected() {
-    Feature f1 = feature();
-    Feature f2 = feature();
-    Task inOther = taskService.create(f2.id, "repo-1", "Other", null, null, "t");
+    Nested f1 = feature();
+    Nested f2 = feature();
+    Nested inOther = taskService.create(f2.entity().id, "repo-1", "Other", null, null, "t");
     assertThrows(
         BadRequestException.class,
-        () -> taskService.create(f1.id, "repo-1", "A", null, inOther.id, "t"));
+        () -> taskService.create(f1.entity().id, "repo-1", "A", null, inOther.entity().id, "t"));
   }
 
   @Test
   void implementedAtTransitions() {
-    Feature f = feature();
-    Task t = taskService.create(f.id, "repo-1", "A", null, null, "t");
-    assertNull(t.implementedAt);
+    Nested f = feature();
+    Nested t = taskService.create(f.entity().id, "repo-1", "A", null, null, "t");
+    assertNull(t.entity().implementedAt);
     // The marker only moves once the epic's scope is frozen.
-    epicService.transition(f.epicId, "IMPLEMENTATION", "t");
+    epicService.transition(f.parentId(), "IMPLEMENTATION", "t");
 
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
-    Task done = taskService.update(t.id, null, null, null, false, when, false, "t");
-    assertEquals(when, done.implementedAt);
+    Nested done = taskService.update(t.entity().id, null, null, null, false, when, false, "t");
+    assertEquals(when, done.entity().implementedAt);
 
-    Task reopened = taskService.update(t.id, null, null, null, false, null, true, "t");
-    assertNull(reopened.implementedAt);
+    Nested reopened = taskService.update(t.entity().id, null, null, null, false, null, true, "t");
+    assertNull(reopened.entity().implementedAt);
   }
 
   @Test
   void mutationsAreAudited() {
-    Feature f = feature();
-    Task t = taskService.create(f.id, "repo-1", "A", null, null, "alice");
-    var entries = auditService.listForEntity(AuditEntityType.TASK, t.id);
+    Nested f = feature();
+    Nested t = taskService.create(f.entity().id, "repo-1", "A", null, null, "alice");
+    var entries = auditService.listForEntity(AuditEntityType.TASK, t.entity().id);
     assertEquals(1, entries.size());
     assertEquals(AuditOperation.CREATE, entries.get(0).operation);
     assertEquals("alice", entries.get(0).changedBy);

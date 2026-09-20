@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
 import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.entity.Ticket;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.entity.TicketComment;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
@@ -159,7 +159,7 @@ public class TicketMcpTools {
               + " oldest first. Read it before working on a ticket — the thread is usually where"
               + " the reproduction and the decisions are.")
   public TicketDetail getTicket(@ToolArg(description = "id of a ticket in this project") String id) {
-    Ticket ticket = requireTicketInProject(id);
+    WorkEntity ticket = requireTicketInProject(id);
     List<CommentDetail> comments =
         ticketService.listComments(ticket.id).stream()
             .map(c -> new CommentDetail(c.id, c.author, c.body, c.createdAt))
@@ -169,8 +169,8 @@ public class TicketMcpTools {
         QualifiedEntityIds.render(projectSlug(), ticket.number),
         ticket.slug,
         ticket.title,
-        ticket.type.name(),
-        ticket.status.name(),
+        ticket.ticketType.name(),
+        ticket.status,
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,
@@ -213,7 +213,7 @@ public class TicketMcpTools {
           String description,
       @ToolArg(required = false, description = "who is looking at it; omit for nobody")
           String assignee) {
-    Ticket ticket =
+    WorkEntity ticket =
         ticketService.create(
             scope.requireProjectId(), title, impetus, description, type, assignee, changedBy());
     announce();
@@ -251,7 +251,7 @@ public class TicketMcpTools {
     // Omitted means unchanged on this surface: the clear flags the REST route carries are a
     // deliberate act in a form, and a model that meant "no value" would reach for a null it cannot
     // express here anyway.
-    Ticket ticket =
+    WorkEntity ticket =
         ticketService.update(
             id, title, impetus, false, description, false, type, assignee, false, changedBy());
     announce();
@@ -285,7 +285,7 @@ public class TicketMcpTools {
           String target) {
     requireTicketInProject(id);
     String changedBy = changedBy();
-    Ticket ticket = ticketService.transition(id, target, changedBy);
+    WorkEntity ticket = ticketService.transition(id, target, changedBy);
     announce();
     // The agent's claim IS the trigger for the next phase, and this is where it lands: after the
     // move is recorded, outside its transaction, so a transition that failed speaks to nobody. The
@@ -343,8 +343,8 @@ public class TicketMcpTools {
    * Ensures {@code ticketId} names a ticket of the scoped project. A ticket elsewhere reads as not
    * found rather than as forbidden — the model is told nothing about what other projects hold.
    */
-  private Ticket requireTicketInProject(String ticketId) {
-    Ticket ticket = ticketService.get(ticketId);
+  private WorkEntity requireTicketInProject(String ticketId) {
+    WorkEntity ticket = ticketService.get(ticketId);
     if (!scope.requireProjectId().equals(ticket.projectId)) {
       throw new NotFoundException("Ticket not found in this project: " + ticketId);
     }
@@ -388,14 +388,14 @@ public class TicketMcpTools {
     return scopeGuard.scopedProjectSlug();
   }
 
-  private static TicketSummary summarize(Ticket ticket, String projectSlug) {
+  private static TicketSummary summarize(WorkEntity ticket, String projectSlug) {
     return new TicketSummary(
         ticket.id,
         QualifiedEntityIds.render(projectSlug, ticket.number),
         ticket.slug,
         ticket.title,
-        ticket.type.name(),
-        ticket.status.name(),
+        ticket.ticketType.name(),
+        ticket.status,
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,

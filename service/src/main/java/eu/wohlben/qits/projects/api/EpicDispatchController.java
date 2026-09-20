@@ -5,7 +5,7 @@ import eu.wohlben.qits.epics.control.EpicService;
 import eu.wohlben.qits.epics.control.FeatureService;
 import eu.wohlben.qits.epics.control.TaskService;
 import eu.wohlben.qits.epics.control.WorkBranches;
-import eu.wohlben.qits.epics.entity.Epic;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.entity.EpicStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
@@ -143,7 +143,7 @@ public class EpicDispatchController {
   @POST
   @Path("/{id}/dispatch-agent")
   public DispatchAgentRequest.Response dispatchAgent(@PathParam("id") String id) {
-    Epic epic = epics.get(id); // 404 if the epic does not exist
+    WorkEntity epic = epics.get(id); // 404 if the epic does not exist
     requireStartable(epic);
     if (dispatch.isUnsatisfied()) {
       throw new DomainException(
@@ -153,7 +153,7 @@ public class EpicDispatchController {
     Project project = projects.get(epic.projectId);
     Repository wrapper = wrapperOf(project);
 
-    if (epic.status == EpicStatus.REFINING) {
+    if (EpicStatus.REFINING.name().equals(epic.status)) {
       // First, and through EpicResolutions — see the class javadoc for both halves of why.
       epic = resolutions.transition(id, EpicStatus.IMPLEMENTATION.name(), changedBy()).epic();
       // The status moved, so open boards redraw. A re-press moved nothing and announces nothing.
@@ -164,7 +164,9 @@ public class EpicDispatchController {
     // epic branch plus every feature and task branch of the epic.
     WorkBranches.Scope scope =
         WorkBranches.epic(
-            epic, features.listByEpic(epic.id), feature -> tasks.listByFeature(feature.id));
+            epic,
+            features.listByEpic(epic.id),
+            feature -> tasks.listByFeature(feature.entity().id));
     String branch = scope.branch();
 
     WorkspaceAgentDispatch.Dispatch made =
@@ -191,8 +193,11 @@ public class EpicDispatchController {
    * re-press; everything else names the status back, because "409" alone would leave the caller
    * guessing which of three finished statuses it walked into.
    */
-  private static void requireStartable(Epic epic) {
-    if (epic.status != EpicStatus.REFINING && epic.status != EpicStatus.IMPLEMENTATION) {
+  private static void requireStartable(WorkEntity epic) {
+    // The merged row stores the status word, so the two startable statuses are compared by name
+    // against the column.
+    if (!EpicStatus.REFINING.name().equals(epic.status)
+        && !EpicStatus.IMPLEMENTATION.name().equals(epic.status)) {
       throw new DomainException(
           409,
           "Epic "
@@ -283,7 +288,7 @@ public class EpicDispatchController {
    * there rather than inside each template, is argued once in {@code TicketPhasePrompts}' class
    * javadoc; it is not restated here.
    */
-  static String instruction(Epic epic) {
+  static String instruction(WorkEntity epic) {
     return TicketPhasePrompts.FLOW_BRIEF_POINTER
         + " "
         + "Work on epic \""

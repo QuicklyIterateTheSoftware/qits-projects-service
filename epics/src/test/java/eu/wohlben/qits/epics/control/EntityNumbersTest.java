@@ -4,10 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -146,23 +142,24 @@ class EntityNumbersTest extends EpicsTestSupport {
    */
   @Test
   void everyArchetypeInAProjectDrawsFromOneRunOfIntegers() {
-    Epic epic = epicService.create("proj-1", "The epic", null, "t");
-    Feature feature = featureService.create(epic.id, "The feature", null, null, "t");
-    Task task = taskService.create(feature.id, "repo-1", "The task", null, null, "t");
-    Ticket ticket = ticketService.create("proj-1", "The ticket", "it occurs", null, "BUG", null, "t");
+    WorkEntity epic = epicService.create("proj-1", "The epic", null, "t");
+    Nested feature = featureService.create(epic.id, "The feature", null, null, "t");
+    Nested task = taskService.create(feature.entity().id, "repo-1", "The task", null, null, "t");
+    WorkEntity ticket =
+        ticketService.create("proj-1", "The ticket", "it occurs", null, "BUG", null, "t");
 
     assertEquals(1L, numberOf(epic.id));
-    assertEquals(2L, numberOf(feature.id));
-    assertEquals(3L, numberOf(task.id));
+    assertEquals(2L, numberOf(feature.entity().id));
+    assertEquals(3L, numberOf(task.entity().id));
     assertEquals(4L, numberOf(ticket.id));
   }
 
   /** Per project, so the numbers stay small and the qualified form carries its own scope. */
   @Test
   void eachProjectHasItsOwnRunAndBothStartAtOne() {
-    Epic here = epicService.create("proj-1", "Here", null, "t");
-    Epic there = epicService.create("proj-2", "There", null, "t");
-    Epic alsoHere = epicService.create("proj-1", "Also here", null, "t");
+    WorkEntity here = epicService.create("proj-1", "Here", null, "t");
+    WorkEntity there = epicService.create("proj-2", "There", null, "t");
+    WorkEntity alsoHere = epicService.create("proj-1", "Also here", null, "t");
 
     assertEquals(1L, numberOf(here.id));
     assertEquals(1L, numberOf(there.id));
@@ -177,9 +174,9 @@ class EntityNumbersTest extends EpicsTestSupport {
    */
   @Test
   void supersedingNumbersTheWholeCopiedTreeAfresh() {
-    Epic epic = epicService.create("proj-1", "Plan", null, "t");
-    Feature feature = featureService.create(epic.id, "Feature", null, null, "t");
-    taskService.create(feature.id, "repo-1", "Task", null, null, "t");
+    WorkEntity epic = epicService.create("proj-1", "Plan", null, "t");
+    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
+    taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
     epicService.transition(epic.id, "IMPLEMENTATION", "t");
 
     epicService.transition(epic.id, "SUPERSEDED", "t");
@@ -200,9 +197,9 @@ class EntityNumbersTest extends EpicsTestSupport {
   /** A re-archetype creates nothing, so it allocates nothing and the row keeps its number. */
   @Test
   void aTransitionAllocatesNothing() {
-    Epic epic = epicService.create("proj-1", "Plan", null, "t");
-    Feature feature = featureService.create(epic.id, "Feature", null, null, "t");
-    long before = numberOf(feature.id);
+    WorkEntity epic = epicService.create("proj-1", "Plan", null, "t");
+    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
+    long before = numberOf(feature.entity().id);
 
     long after = numbers.next("proj-1");
 

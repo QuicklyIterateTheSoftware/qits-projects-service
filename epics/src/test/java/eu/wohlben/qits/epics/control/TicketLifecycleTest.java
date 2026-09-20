@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
-import eu.wohlben.qits.epics.entity.Ticket;
 import eu.wohlben.qits.epics.entity.TicketStatus;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.ConflictException;
 import io.quarkus.test.junit.QuarkusTest;
@@ -38,7 +38,7 @@ class TicketLifecycleTest extends EpicsTestSupport {
   @Inject TicketService ticketService;
   @Inject AuditService auditService;
 
-  private Ticket reported() {
+  private WorkEntity reported() {
     return ticketService.create(
         "proj-1",
         "Login button does nothing",
@@ -50,8 +50,8 @@ class TicketLifecycleTest extends EpicsTestSupport {
   }
 
   /** A ticket walked forward to {@code status}, one legal step at a time. */
-  private Ticket at(TicketStatus status) {
-    Ticket ticket = reported();
+  private WorkEntity at(TicketStatus status) {
+    WorkEntity ticket = reported();
     for (int step = 1; step <= ORDER.indexOf(status); step++) {
       ticket = ticketService.transition(ticket.id, ORDER.get(step).name(), "t");
     }
@@ -62,11 +62,13 @@ class TicketLifecycleTest extends EpicsTestSupport {
 
   @Test
   void aTicketWalksTheWholeLifecycleForward() {
-    Ticket ticket = reported();
-    assertEquals(TicketStatus.REPORTED, ticket.status, "a filed ticket has been reported and no more");
+    WorkEntity ticket = reported();
+    assertEquals(
+        TicketStatus.REPORTED.name(), ticket.status, "a filed ticket has been reported and no more");
     for (int step = 1; step < ORDER.size(); step++) {
       assertEquals(
-          ORDER.get(step), ticketService.transition(ticket.id, ORDER.get(step).name(), "t").status);
+          ORDER.get(step).name(),
+          ticketService.transition(ticket.id, ORDER.get(step).name(), "t").status);
     }
   }
 
@@ -74,10 +76,11 @@ class TicketLifecycleTest extends EpicsTestSupport {
   void aTicketWalksTheWholeLifecycleBackward() {
     // Nothing is terminal, DONE included: it reopens to VERIFIED like every other status moves
     // back. The alternative to a status that reopens is a second row saying the same thing.
-    Ticket ticket = at(TicketStatus.DONE);
+    WorkEntity ticket = at(TicketStatus.DONE);
     for (int step = ORDER.size() - 2; step >= 0; step--) {
       assertEquals(
-          ORDER.get(step), ticketService.transition(ticket.id, ORDER.get(step).name(), "t").status);
+          ORDER.get(step).name(),
+          ticketService.transition(ticket.id, ORDER.get(step).name(), "t").status);
     }
   }
 
@@ -85,12 +88,14 @@ class TicketLifecycleTest extends EpicsTestSupport {
   void aFailedVerificationIsTheOrdinaryMoveBackToRefined() {
     // There is no reject verb: what a failed verification establishes is that the ticket needs
     // deciding again, which is the state a just-refined ticket is in.
-    Ticket ticket = at(TicketStatus.IMPLEMENTED);
+    WorkEntity ticket = at(TicketStatus.IMPLEMENTED);
     assertEquals(
-        TicketStatus.REFINED, ticketService.transition(ticket.id, "REFINED", "alice").status);
+        TicketStatus.REFINED.name(),
+        ticketService.transition(ticket.id, "REFINED", "alice").status);
     // And forward again from there, as many times as the fix takes.
     assertEquals(
-        TicketStatus.IMPLEMENTED, ticketService.transition(ticket.id, "IMPLEMENTED", "alice").status);
+        TicketStatus.IMPLEMENTED.name(),
+        ticketService.transition(ticket.id, "IMPLEMENTED", "alice").status);
   }
 
   @Test
@@ -100,7 +105,7 @@ class TicketLifecycleTest extends EpicsTestSupport {
         if (Math.abs(ORDER.indexOf(from) - ORDER.indexOf(to)) == 1) {
           continue;
         }
-        Ticket ticket = at(from);
+        WorkEntity ticket = at(from);
         assertThrows(
             ConflictException.class,
             () -> ticketService.transition(ticket.id, to.name(), "t"),
@@ -114,7 +119,7 @@ class TicketLifecycleTest extends EpicsTestSupport {
     // Covered by the sweep above (a distance of zero is not a distance of one), and stated on its
     // own because it is the case a caller most often expects to be a no-op.
     for (TicketStatus status : ORDER) {
-      Ticket ticket = at(status);
+      WorkEntity ticket = at(status);
       assertThrows(
           ConflictException.class, () -> ticketService.transition(ticket.id, status.name(), "t"));
     }
@@ -122,7 +127,7 @@ class TicketLifecycleTest extends EpicsTestSupport {
 
   @Test
   void theRefusalNamesBothEnds() {
-    Ticket ticket = reported();
+    WorkEntity ticket = reported();
     ConflictException refused =
         assertThrows(
             ConflictException.class, () -> ticketService.transition(ticket.id, "VERIFIED", "t"));
@@ -132,7 +137,7 @@ class TicketLifecycleTest extends EpicsTestSupport {
 
   @Test
   void transitionIsAuditedAsAnUpdate() {
-    Ticket ticket = reported();
+    WorkEntity ticket = reported();
     ticketService.transition(ticket.id, "REFINED", "alice");
 
     var history = auditService.listForEntity(AuditEntityType.TICKET, ticket.id);
@@ -145,7 +150,7 @@ class TicketLifecycleTest extends EpicsTestSupport {
 
   @Test
   void anUnknownTargetIsAConflict() {
-    Ticket ticket = reported();
+    WorkEntity ticket = reported();
     // The caller asked for a state that does not exist, which is the same kind of answer as asking
     // for one that is not reachable — so 409, exactly as an epic answers.
     assertThrows(ConflictException.class, () -> ticketService.transition(ticket.id, "CLOSED", "t"));
@@ -155,7 +160,7 @@ class TicketLifecycleTest extends EpicsTestSupport {
 
   @Test
   void anAbsentTargetIsABadRequest() {
-    Ticket ticket = reported();
+    WorkEntity ticket = reported();
     // A malformed request rather than a refused move, and the split matters to the surfaces above.
     assertThrows(BadRequestException.class, () -> ticketService.transition(ticket.id, null, "t"));
     assertThrows(BadRequestException.class, () -> ticketService.transition(ticket.id, "  ", "t"));
@@ -167,9 +172,9 @@ class TicketLifecycleTest extends EpicsTestSupport {
   void aDoneTicketIsStillEditable() {
     // The whole difference from EpicLifecycle. A ticket carries one small thing rather than a scope
     // that was committed to, so closing it commits to nothing and freezes nothing.
-    Ticket ticket = at(TicketStatus.DONE);
+    WorkEntity ticket = at(TicketStatus.DONE);
 
-    Ticket edited =
+    WorkEntity edited =
         ticketService.update(
             ticket.id,
             "Better title",
@@ -185,19 +190,19 @@ class TicketLifecycleTest extends EpicsTestSupport {
     assertEquals("the login button is still inert on the sign-in page", edited.impetus);
     assertEquals("more detail", edited.description);
     assertEquals("bob", edited.assignee);
-    assertEquals(TicketStatus.DONE, edited.status, "an edit does not move the status");
+    assertEquals(TicketStatus.DONE.name(), edited.status, "an edit does not move the status");
   }
 
   @Test
   void aDoneTicketStillTakesComments() {
-    Ticket ticket = at(TicketStatus.DONE);
+    WorkEntity ticket = at(TicketStatus.DONE);
     assertNotNull(ticketService.addComment(ticket.id, "it came back", "alice"));
     assertEquals(1, ticketService.listComments(ticket.id).size());
   }
 
   @Test
   void aDoneTicketCanStillBeDeleted() {
-    Ticket ticket = at(TicketStatus.DONE);
+    WorkEntity ticket = at(TicketStatus.DONE);
     ticketService.delete(ticket.id, "t");
     inFreshTx(() -> assertTrue(ticketService.listByProject("proj-1").isEmpty()));
   }
@@ -206,10 +211,10 @@ class TicketLifecycleTest extends EpicsTestSupport {
   void theUpdateEndpointCannotMoveTheStatus() {
     // transition is the ONLY writer of the column, which is why UpdateTicketRequest has no status
     // field at all — there is no argument here that could carry one.
-    Ticket ticket = reported();
-    Ticket edited =
+    WorkEntity ticket = reported();
+    WorkEntity edited =
         ticketService.update(
             ticket.id, "Renamed", null, false, null, false, null, null, false, "t");
-    assertEquals(TicketStatus.REPORTED, edited.status);
+    assertEquals(TicketStatus.REPORTED.name(), edited.status);
   }
 }
