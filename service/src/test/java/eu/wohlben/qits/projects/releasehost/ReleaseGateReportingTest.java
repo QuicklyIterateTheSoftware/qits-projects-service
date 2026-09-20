@@ -112,6 +112,33 @@ public class ReleaseGateReportingTest {
     assertEquals(List.of("FAILED"), states(id));
   }
 
+  /**
+   * <b>And a green retry turns that same gate PASSED</b> (ticket qits-309). The gate is a fold of
+   * the ledger's rows for this commit with any-red-wins, so the only thing that can take a FAILED CI
+   * gate back at an unmoved fold is the red row ceasing to exist — which is exactly what a retry
+   * does to the run it re-fires. Nothing here re-decides the gate: it is the same reading, over a
+   * ledger with one row fewer.
+   */
+  @Test
+  public void aGreenRetryTurnsTheFailedCiGatePassedAtTheSameFold() {
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    // Unique ids: commit_build_status is keyed on the run and nothing empties it between tests, so
+    // a literal shared with another class is one primary key and one retry lineage.
+    String red = "run-red-" + UUID.randomUUID();
+    String green = "run-green-" + UUID.randomUUID();
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    assertEquals(List.of("FAILED"), states(id));
+
+    verdict("BuildSuccessful", merged, green, red, "");
+    awaitState(id, "RELEASED");
+
+    assertEquals(List.of("CI"), kinds(id), "the same gate set, read from the same main");
+    assertEquals(List.of("PASSED"), states(id), "a superseded red is not a verdict about this fold");
+  }
+
   @Test
   public void aRepositoryWaitingOnAPersonSaysThatInsteadOfSayingBuild() {
     gitHost.tree("refs/heads/main", Map.of(".config/qits/release-requests.yml", "manual-review: true\n"));
@@ -245,6 +272,15 @@ public class ReleaseGateReportingTest {
   }
 
   private void verdict(String name, String sha, String extra) {
+    verdict(name, sha, "run-" + UUID.randomUUID(), null, extra);
+  }
+
+  /**
+   * The same with the run pinned, and optionally saying which run it re-fires — {@code qits ci
+   * retry}'s shape. A retry is about <em>which</em> run answered, so both ends of the lineage have
+   * to be nameable; the helper above mints a random id, which is right for every other test here.
+   */
+  private void verdict(String name, String sha, String runId, String retryOfRunId, String extra) {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -254,8 +290,10 @@ public class ReleaseGateReportingTest {
                 + sha
                 + "\",\"repoId\":\""
                 + repoId
-                + "\",\"runId\":\"run-"
-                + UUID.randomUUID()
+                + "\""
+                + (retryOfRunId == null ? "" : ",\"retryOfRunId\":\"" + retryOfRunId + "\"")
+                + ",\"runId\":\""
+                + runId
                 + "\""
                 + extra
                 + "}",

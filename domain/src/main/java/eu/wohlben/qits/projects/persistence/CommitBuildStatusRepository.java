@@ -45,4 +45,21 @@ public class CommitBuildStatusRepository
     deleteById(row.runId);
     persist(row);
   }
+
+  /**
+   * Whether some row already names {@code runId} as the run it superseded — i.e. whether a retry of
+   * this run has already been recorded here.
+   *
+   * <p>The forward half of the retry lineage, and it exists for one case: a <b>redelivery</b>. The
+   * ledger write commits on this datasource while the durable claim commits on another, so a claim
+   * that rolls back after the write has landed offers the same verdict again — and the class javadoc
+   * on {@code BuildStatusLedger} already names that as the shape this table converges under. Once a
+   * retry has deleted a run's row, re-persisting that run from a redelivered frame would resurrect a
+   * verdict the retry answered, and on the commonest shape (a red answered by a green) that is a
+   * release gate back down with nothing to push. Asking this first makes the write converge on the
+   * same set of rows whichever order the chain arrives in.
+   */
+  public boolean isSuperseded(String runId) {
+    return count("retryOfRunId = ?1", runId) > 0;
+  }
 }

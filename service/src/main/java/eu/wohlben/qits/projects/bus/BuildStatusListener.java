@@ -78,6 +78,15 @@ public class BuildStatusListener implements QitsDurableEventListener {
    * is the CI gate's answer. The field is simply not bound, so a qits-ci still sending it — which is
    * the whole state of the estate while the two releases cross — is accepted and recorded as an
    * ordinary verdict.
+   *
+   * <p><b>{@code retryOfRunId} is the opposite crossing and the reason ticket qits-309 exists.</b>
+   * qits-ci is adding it to both build events: a {@code qits ci retry} mints a NEW run at the SAME
+   * fold and says which run it re-fires. Bound here it makes the retry an <em>answer</em> to that
+   * run rather than a second opinion beside it — see {@link BuildStatusLedger#record}. It is
+   * additive on exactly the terms the field above states in reverse: this service may land first,
+   * and against a qits-ci that has not released yet it binds <b>null</b> on every verdict, which is
+   * "not a retry" and behaves precisely as this listener did before the field existed. No ordering
+   * between the two releases is required in either direction.
    */
   public record BuildVerdictPayload(
       String runId,
@@ -86,7 +95,8 @@ public class BuildStatusListener implements QitsDurableEventListener {
       String repoName,
       String branch,
       String commitSha,
-      String outcome) {}
+      String outcome,
+      String retryOfRunId) {}
 
   @Inject BuildStatusLedger ledger;
 
@@ -122,22 +132,29 @@ public class BuildStatusListener implements QitsDurableEventListener {
           frame.name(), frame.id());
       return;
     }
-    ledger.record(
-        new BuildStatusLedger.Verdict(
-            build.runId(),
-            build.repoId(),
-            build.projectId(),
-            build.repoName(),
-            build.branch(),
-            build.commitSha(),
-            statusOf(frame, build),
-            frame.occurredAt(),
-            causeOf(frame)));
+    Set<String> superseded =
+        ledger.record(
+            new BuildStatusLedger.Verdict(
+                build.runId(),
+                build.repoId(),
+                build.projectId(),
+                build.repoName(),
+                build.branch(),
+                build.commitSha(),
+                statusOf(frame, build),
+                frame.occurredAt(),
+                causeOf(frame),
+                build.retryOfRunId()));
     // The other half of the reason the ledger lives in this service: the verdict that was just
     // recorded resolves whatever release request was waiting on it. The evaluation brackets its
     // own transactions and hands any execution to its own worker, so the claim never spans this
     // datasource and never waits on a door.
-    releaseRequests.onVerdict(build.repoId(), build.commitSha());
+    //
+    // What the ledger answers travels with it, and it is the ledger's answer rather than the
+    // payload's on purpose: the payload names one superseded run, the ledger walked the whole
+    // ancestry it belongs to, and a request rejected two retries back is only reachable from the
+    // second. Nothing is re-derived here — this listener decides neither lineage nor gate.
+    releaseRequests.onVerdict(build.repoId(), build.commitSha(), superseded);
     // AND the same verdict may be a PUBLISH run — the release run of a tag, whose branch IS the
     // version. That is a gate on a request that has released and is still open, and the only thing
     // separating it from the fold verdict above is what the branch names; both arms are asked

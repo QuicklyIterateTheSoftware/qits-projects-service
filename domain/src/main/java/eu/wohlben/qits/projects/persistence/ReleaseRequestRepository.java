@@ -106,6 +106,30 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
   }
 
   /**
+   * Every request this commit's verdict <b>rejected</b> and could therefore un-reject — REJECTED, at
+   * this exact fold, and carrying the run that rejected it.
+   *
+   * <p><b>A sibling of {@link #findPendingByCommit} rather than a widening of it, and that is the
+   * point.</b> The two answer different questions: that one is "who is waiting for this verdict",
+   * this one is "whose rejection might this verdict have answered". Widening the first to {@code
+   * state in (PENDING, REJECTED)} would put both through the one path and make the caller re-derive
+   * which it had, and — the part that matters — it would hand the verdict path every REJECTED
+   * request including the ones a person declined. The {@code rejectingRunId is not null} clause here
+   * is what keeps a human decline out of a query about builds; see {@link
+   * ReleaseRequest#rejectingRunId}.
+   *
+   * <p>It does not decide anything. Whether an arriving verdict actually superseded the run each row
+   * names is {@code ReleaseRequests.onVerdict}'s, against what the ledger reported it cleared.
+   */
+  public List<ReleaseRequest> findRejectedByCommit(String repoId, String commitSha) {
+    return list(
+        "repoId = ?1 and mergedSha = ?2 and state = ?3 and rejectingRunId is not null",
+        repoId,
+        commitSha,
+        ReleaseRequest.State.REJECTED);
+  }
+
+  /**
    * Every unreleased request, oldest first — the gate sweep's worklist. A RELEASED request is open
    * but has no gate left in front of its tag; what is still owed for it is the publish phase's, and
    * {@code ReleaseFinalization.sweep} is the belt under that.

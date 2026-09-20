@@ -1875,8 +1875,21 @@ public class ReleaseRequests {
    * a verdict for a superseded merge names no request and settles nothing. {@link #evaluate(String,
    * String)} re-checks the same equality inside its transaction, because the fold can move between
    * the two.
+   *
+   * <p><b>A verdict can also UN-reject, and that is ticket qits-309's half of this method.</b> A
+   * {@code qits ci retry} re-fires a run at the same fold, so its verdict is the answer to a
+   * rejection rather than news about a new one — and since the fold never moved there is no push to
+   * re-arm the request with, which is why such a request used to sit REJECTED for ever with a green
+   * build behind it. {@code supersededRunIds} is what makes that safe to act on: it is the lineage
+   * the ledger just cleared, so a REJECTED request is reconsidered only where the run that rejected
+   * it is in that set. Anything else — a green that is not a retry, a person's decline — is left
+   * exactly where it was, which is what {@code ReleaseRequestFlowTest} pins from both sides.
+   *
+   * @param supersededRunIds the runs this verdict superseded, as {@link BuildStatusLedger#record}
+   *     answered it. Empty for every ordinary build, which is almost all of them, and then this
+   *     method is exactly what it was.
    */
-  public void onVerdict(String repoId, String commitSha) {
+  public void onVerdict(String repoId, String commitSha, Set<String> supersededRunIds) {
     List<String> pending =
         QuarkusTransaction.requiringNew()
             .call(
@@ -1885,6 +1898,67 @@ public class ReleaseRequests {
                         .map(row -> row.id)
                         .toList());
     pending.forEach(id -> evaluate(id, commitSha));
+    if (supersededRunIds.isEmpty()) {
+      return;
+    }
+    List<String> answered =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests.findRejectedByCommit(repoId, commitSha).stream()
+                        .filter(row -> supersededRunIds.contains(row.rejectingRunId))
+                        .map(row -> row.id)
+                        .toList());
+    answered.forEach(id -> reconsider(id, commitSha, "the run that rejected it was retried"));
+  }
+
+  /**
+   * Put a REJECTED request back in front of its gates <b>at the fold it already has</b>, and
+   * evaluate it there.
+   *
+   * <p><b>This is not a re-arm and must never become one.</b> {@link #rearm} is the one place a
+   * request changes sha — it restarts the window, drops the version and says what folded — and
+   * nothing about a retried run changes what would be released: the sources are the same, the merge
+   * is the same, {@code mergedSha} is the same commit qits-ci has just built again. Moving the sha
+   * here would invalidate the approval somebody has already given at this fold and re-announce a
+   * fold nothing re-folded. So the state goes back to PENDING, the rejection's run and sentence go,
+   * and nothing else on the row is touched.
+   *
+   * <p><b>The state is flipped BEFORE {@link #evaluate} rather than by relaxing its guard</b>, and
+   * that is the design decision behind this method existing at all. {@code evaluate} is a function
+   * of a PENDING row — every arm of it assumes nothing has judged this fold yet — and admitting
+   * REJECTED to it would put the question "is this rejection answerable?" inside the gate machine,
+   * where the answer would have to be re-decided on every sweep tick and on every unrelated
+   * evaluation. Deciding it once, here, keeps the gate's own precondition exactly as it was, and
+   * keeps the whole of the discrimination in the two callers that have the evidence for it.
+   *
+   * <p>The sentence is dropped rather than rewritten: what it said was which run rejected this fold,
+   * and that run has been superseded. What holds the request now, if anything does, is
+   * {@code evaluate}'s to say in the very next breath.
+   */
+  private void reconsider(String id, String verdictSha, String why) {
+    boolean reopened =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
+                  if (row == null
+                      || row.state != ReleaseRequest.State.REJECTED
+                      || row.rejectingRunId == null) {
+                    return false;
+                  }
+                  LOG.infof(
+                      "Release request %s is reconsidered at %s: %s (run %s)",
+                      id, shortSha(row.mergedSha), why, row.rejectingRunId);
+                  row.state = ReleaseRequest.State.PENDING;
+                  row.rejectingRunId = null;
+                  row.detail = null;
+                  row.updatedAt = Instant.now();
+                  return true;
+                });
+    if (reopened) {
+      evaluate(id, verdictSha);
+    }
   }
 
   /**
@@ -1898,6 +1972,14 @@ public class ReleaseRequests {
    * <p><b>It is also the only thing that will ever release a request whose verdict arrived while
    * this service was down.</b> The gate now passes on a verdict and nothing else, so a missed
    * consumption is a request that sits PENDING until something asks again — which is this.
+   *
+   * <p><b>A REJECTED request is visited now, and it is visited to ask ONE question</b> (ticket
+   * qits-309): whether the run that rejected it still stands in the ledger. A {@code qits ci retry}
+   * supersedes that run at the same fold, and since the fold never moved there is no push coming to
+   * re-arm the request with — so without this arm a green retry would leave the request rejected
+   * whenever the verdict's own path did not reach it. It is not a re-evaluation of every rejection:
+   * a rejection nothing superseded is answered by a push exactly as it always was, and a rejection a
+   * person made names no run and is never touched here.
    *
    * <p>A CONFLICTED request is deliberately <b>not</b> re-folded here. A conflict is a fact about
    * content that answers the same on every knock, and knocking anyway is the unbounded-loop defect
@@ -1918,6 +2000,24 @@ public class ReleaseRequests {
         case FAILED -> {
           if (row.retryable) {
             enqueueExecution(row.id);
+          }
+        }
+        case REJECTED -> {
+          // THE BELT UNDER THE RETRY PATH, and the only reason REJECTED is not still `default`.
+          // A rejection is answered by a push, which re-arms — with one exception: a `qits ci retry`
+          // re-fires the rejecting run at this very fold, and the verdict that lands is what takes
+          // the rejection back. The event path does that already; this is what does it when the
+          // event path could not, which is every reason the sweep exists for the others (this
+          // service was down, the claim rolled back, the request was mid-flight when the verdict
+          // arrived).
+          //
+          // The question asked is the ledger's and nothing is re-derived: the run this request
+          // names is either still standing there or it has been superseded, and absent means
+          // superseded because a retry is the only thing that ever deletes a row. A human decline
+          // names no run at all, so it is not asked about and can never be re-opened here — which
+          // is the same discrimination the event path makes, made from the other end.
+          if (row.rejectingRunId != null && !ledger.stands(row.rejectingRunId)) {
+            reconsider(row.id, row.mergedSha, "the run that rejected it no longer stands");
           }
         }
         default -> {}
@@ -2266,6 +2366,10 @@ public class ReleaseRequests {
     open.detail = "Re-armed onto " + shortSha(open.mergedSha) + " (" + why + ")";
     open.version = null;
     open.retryable = false;
+    // The fold moved, so a run that rejected the old one judged content this request no longer has.
+    // Leaving the id would let a retry of a long-dead run answer a rejection about a different sha
+    // — and the ledger's rows for the old fold are kept, so the run really can come back.
+    open.rejectingRunId = null;
     open.armedAt = Instant.now();
     open.updatedAt = open.armedAt;
   }
@@ -2416,6 +2520,12 @@ public class ReleaseRequests {
                           .orElse(null);
                   if (red != null) {
                     row.state = ReleaseRequest.State.REJECTED;
+                    // The run is recorded as a KEY beside the sentence, not only inside it: a retry
+                    // of exactly this run is what may take the rejection back, and reading an id
+                    // back out of prose is a parser standing in for a column. See
+                    // ReleaseRequest.rejectingRunId, and note the decline arm below deliberately
+                    // leaves it null — that is the whole discrimination.
+                    row.rejectingRunId = red.runId();
                     row.detail =
                         "Run "
                             + red.runId()
@@ -2509,6 +2619,11 @@ public class ReleaseRequests {
                     }
                     if (decision.decision == ReleaseRequestApproval.Decision.DECLINED) {
                       row.state = ReleaseRequest.State.REJECTED;
+                      // NO rejecting run, and the null is load-bearing rather than incidental: it
+                      // is what stops a CI verdict from ever undoing a person's no. A decline is
+                      // answered by a push or by the same person changing their mind, and no run
+                      // that could be retried had anything to do with it.
+                      row.rejectingRunId = null;
                       row.detail = declinedDetail(decision);
                       row.updatedAt = Instant.now();
                       // NO unattended-gate ticket, and that is the whole difference from a red
@@ -2521,6 +2636,10 @@ public class ReleaseRequests {
                   }
                   row.state = ReleaseRequest.State.READY;
                   row.detail = null;
+                  // Every gate passed, so whatever run once rejected this fold is history: the
+                  // column is cleared wherever the request leaves REJECTED, and this is one of the
+                  // three places it does.
+                  row.rejectingRunId = null;
                   row.updatedAt = Instant.now();
                   return true;
                 });

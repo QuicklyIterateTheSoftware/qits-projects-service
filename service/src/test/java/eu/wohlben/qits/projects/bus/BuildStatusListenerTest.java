@@ -33,21 +33,30 @@ class BuildStatusListenerTest {
   private RecordingRequests requests;
   private RecordingFinalization finalization;
 
+  /**
+   * The ledger stands in for the whole supersession walk here: this class is about what the listener
+   * binds and hands over, and {@code answerSuperseded} is how a test says "the ledger reported that
+   * this verdict cleared an ancestry" without a database to clear one in.
+   */
   private static final class RecordingLedger extends BuildStatusLedger {
     final List<Verdict> recorded = new ArrayList<>();
+    Set<String> superseded = Set.of();
 
     @Override
-    public void record(Verdict verdict) {
+    public Set<String> record(Verdict verdict) {
       recorded.add(verdict);
+      return superseded;
     }
   }
 
   private static final class RecordingRequests extends ReleaseRequests {
     final List<String> resolved = new ArrayList<>();
+    final List<Set<String>> supersededSeen = new ArrayList<>();
 
     @Override
-    public void onVerdict(String repoId, String commitSha) {
+    public void onVerdict(String repoId, String commitSha, Set<String> supersededRunIds) {
       resolved.add(repoId + "@" + commitSha);
+      supersededSeen.add(supersededRunIds);
     }
   }
 
@@ -169,6 +178,47 @@ class BuildStatusListenerTest {
     assertEquals(1, ledger.recorded.size(), "the frame is not poison and is not skipped");
     assertEquals("FAILED", ledger.recorded.get(0).status());
     assertEquals("run-uf", ledger.recorded.get(0).runId());
+  }
+
+  /**
+   * <b>The retry lineage is bound, and an absent one is null.</b> qits-ci carries {@code
+   * retryOfRunId} on both build events from ticket qits-309 on; this service may land first, so the
+   * two payloads below are the two states of the estate while the releases cross and both have to
+   * be an ordinary verdict.
+   */
+  @Test
+  void aRetrysVerdictCarriesTheRunItReFiresAndAnOrdinaryOneCarriesNull() {
+    listener.onFrame(
+        frame(
+            "BuildSuccessful",
+            "{\"commitSha\":\"abc123\",\"repoId\":\"repo-1\",\"retryOfRunId\":\"run-5\","
+                + "\"runId\":\"run-6\"}"));
+    assertEquals("run-5", ledger.recorded.get(0).retryOfRunId());
+
+    listener.onFrame(
+        frame("BuildSuccessful", "{\"commitSha\":\"abc123\",\"repoId\":\"repo-1\",\"runId\":\"run-7\"}"));
+    assertNull(
+        ledger.recorded.get(1).retryOfRunId(),
+        "a qits-ci that has not released the field yet binds null, which is 'not a retry'");
+  }
+
+  /**
+   * <b>What the request side is told is the LEDGER's answer, not the payload's.</b> The payload
+   * names one superseded run; the ledger walked the ancestry that run belongs to, and a request
+   * rejected two retries back is reachable only from the walk. The listener re-derives nothing — it
+   * carries what it was handed.
+   */
+  @Test
+  void theSupersededAncestryTheLedgerClearedIsWhatReachesTheRequests() {
+    ledger.superseded = Set.of("run-1", "run-2");
+
+    listener.onFrame(
+        frame(
+            "BuildSuccessful",
+            "{\"commitSha\":\"abc123\",\"repoId\":\"repo-1\",\"retryOfRunId\":\"run-2\","
+                + "\"runId\":\"run-3\"}"));
+
+    assertEquals(List.of(Set.of("run-1", "run-2")), requests.supersededSeen);
   }
 
   @Test
