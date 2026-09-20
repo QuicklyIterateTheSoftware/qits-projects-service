@@ -63,6 +63,9 @@ public class ReleaseRequestApprovalGateTest {
 
   @Inject RecordingBackingBranchMerger merger;
 
+  /** Injected for one test only: the sweep is the belt under the retry path and has to be asked. */
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequests releaseRequests;
+
   /**
    * Not a subject here, and injected precisely so that it is not one. The <b>estate gate</b> sits in
    * front of the approval gate and holds a wrapper request whose gitlink pins it cannot read, so the
@@ -245,6 +248,41 @@ public class ReleaseRequestApprovalGateTest {
     // here is an absent ticket for good.
     assertNull(request.getString("gateTicketId"), "a person decided; nobody needs telling");
     assertEquals(List.of(), ticketsOnProject());
+    assertEquals(0, executor.calls().size());
+  }
+
+  /**
+   * <b>A CI verdict never takes a person's no back</b> (ticket qits-309). A green retry re-opens a
+   * rejection a red build made, at the same fold and with nothing pushed — which is exactly the
+   * shape that could undo a decline if the path were admitted by <em>state</em>. It is admitted by
+   * RUN: the request records which run rejected it, a decline records none, and a verdict that
+   * superseded some other run therefore matches nothing here.
+   *
+   * <p>The retry below re-fires the very run whose green verdict put this request in front of a
+   * person, which is the most dangerous shape available — a genuine supersession of a genuine run of
+   * this very fold. Both paths are exercised: the verdict's own, and the sweep that is the belt
+   * under it.
+   */
+  @Test
+  public void aGreenRetryNeverReOpensARequestAPersonDeclined() {
+    String id = create(wrapperRepoId, "work", ROBOT);
+    String merged = mergedShaOf(wrapperRepoId, id);
+    // Unique ids: commit_build_status is keyed on the run and nothing empties it between tests.
+    String qa = "run-qa-" + UUID.randomUUID();
+    String retry = "run-qa-retry-" + UUID.randomUUID();
+    verdict(wrapperRepoId, "BuildSuccessful", merged, qa, null, "");
+
+    record(id, merged, ReleaseRequestApproval.Decision.DECLINED, "ada", "not before the freeze");
+    reEvaluate(wrapperRepoId, merged);
+    assertEquals("REJECTED", stateOf(wrapperRepoId, id));
+
+    verdict(wrapperRepoId, "BuildSuccessful", merged, retry, qa, "");
+    releaseRequests.sweep();
+
+    var request = request(wrapperRepoId, id);
+    assertEquals("REJECTED", request.getString("state"), "a run was retried; a person still said no");
+    assertEquals("Declined by ada: not before the freeze", request.getString("detail"));
+    assertEquals("DECLINED", request.getString("approvalState"));
     assertEquals(0, executor.calls().size());
   }
 
@@ -441,6 +479,15 @@ public class ReleaseRequestApprovalGateTest {
   }
 
   private void verdict(String repoId, String name, String sha, String extra) {
+    verdict(repoId, name, sha, "run-" + UUID.randomUUID(), null, extra);
+  }
+
+  /**
+   * The same with the run pinned, and optionally saying which run it re-fires — {@code qits ci
+   * retry}'s shape, needed here only to prove that no lineage reaches a rejection a person made.
+   */
+  private void verdict(
+      String repoId, String name, String sha, String runId, String retryOfRunId, String extra) {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -450,8 +497,10 @@ public class ReleaseRequestApprovalGateTest {
                 + sha
                 + "\",\"repoId\":\""
                 + repoId
-                + "\",\"runId\":\"run-"
-                + UUID.randomUUID()
+                + "\""
+                + (retryOfRunId == null ? "" : ",\"retryOfRunId\":\"" + retryOfRunId + "\"")
+                + ",\"runId\":\""
+                + runId
                 + "\""
                 + extra
                 + "}",

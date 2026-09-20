@@ -179,6 +179,53 @@ public class ReleasePipelineReportingTest {
   }
 
   /**
+   * <b>No green QA phase over a red CI gate</b> — the user-visible symptom ticket qits-309 was filed
+   * for. The two readings come from two consumptions of two different events: the phase mirrors
+   * {@code BuildStatusChanged} keyed on the run and folds newest-wins, so a retry's SUCCESS replaced
+   * the failed run's transition and the phase went green; the gate folds the verdict ledger with
+   * any-red-wins, and the superseded run's row sat there for ever. The retry now supersedes that row
+   * too, so the two agree again — which is what this asserts, in one read, from both directions.
+   *
+   * <p>Nothing was changed in the mirror to make this true, and nothing may be: {@code
+   * ReleasePipelineRuns} decides nothing. What moved is the ledger the gate reads.
+   */
+  @Test
+  public void aGreenRetryLeavesNoGreenQaPhaseStandingOverARedCiGate() {
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String backing = ReleaseRequest.backingBranchOf(id);
+    // Unique ids: commit_build_status is keyed on the run and nothing empties it between tests.
+    String first = "run-qa-1-" + UUID.randomUUID();
+    String retry = "run-qa-2-" + UUID.randomUUID();
+
+    transitionAt(first, "RELEASE_REQUEST", backing, "FAILED", Instant.parse("2026-09-20T10:00:00Z"));
+    verdict("BuildFailed", merged, first, null);
+    awaitState(id, "REJECTED");
+    assertEquals(List.of("FAILED"), strings(id, "request.pipeline.phases.state"));
+    assertEquals(List.of("FAILED"), strings(id, "request.gates.state"), "and they agree while red");
+
+    // `qits ci retry`: a NEW run at the SAME fold, saying which run it re-fires.
+    transitionAt(retry, "RELEASE_REQUEST", backing, "SUCCESS", Instant.parse("2026-09-20T10:05:00Z"));
+    verdict("BuildSuccessful", merged, retry, first);
+    awaitState(id, "RELEASED");
+
+    assertEquals(
+        List.of("SUCCESS"),
+        strings(id, "request.pipeline.phases.state"),
+        "the retry is the QA phase now, newest transition winning");
+    assertEquals(List.of(retry), strings(id, "request.pipeline.phases.runId"));
+    assertEquals(
+        List.of("PASSED"),
+        strings(id, "request.gates.state"),
+        "and the gate agrees rather than reading FAILED under a green phase");
+    assertEquals(
+        strings(id, "request.gates.state"),
+        strings(id, "request.pipeline.gates.state"),
+        "one evaluation, answered twice");
+  }
+
+  /**
    * <b>The publish phase appears after the tag and not before</b>, and it is correlated the way the
    * publish gate already correlates: a release run's branch IS the version, which is the tag name
    * {@code released_tag_pending_merge} is keyed on beside the repository. Nothing before the tag can
@@ -625,6 +672,16 @@ public class ReleasePipelineReportingTest {
   }
 
   private void verdict(String name, String sha) {
+    verdict(name, sha, "run-" + UUID.randomUUID(), null);
+  }
+
+  /**
+   * The same with the run pinned and optionally naming the run it re-fires. A retry's two events —
+   * the transition that draws the phase and the verdict that answers the gate — have to name the
+   * SAME run id or the test would be asserting about two unrelated builds, which is precisely the
+   * disagreement this class exists to catch.
+   */
+  private void verdict(String name, String sha, String runId, String retryOfRunId) {
     verdicts.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -634,8 +691,10 @@ public class ReleasePipelineReportingTest {
                 + sha
                 + "\",\"repoId\":\""
                 + repoId
-                + "\",\"runId\":\"run-"
-                + UUID.randomUUID()
+                + "\""
+                + (retryOfRunId == null ? "" : ",\"retryOfRunId\":\"" + retryOfRunId + "\"")
+                + ",\"runId\":\""
+                + runId
                 + "\"}",
             null,
             null,

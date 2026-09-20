@@ -141,13 +141,28 @@ public class ReleaseRequestFlowTest {
   }
 
   private void verdict(String name, String sha, String extra) {
+    verdict(name, sha, "run-" + UUID.randomUUID(), null, extra);
+  }
+
+  /**
+   * The same, with the run PINNED and optionally saying which run it re-fires — what {@code qits ci
+   * retry} produces. The helper above mints a random run id, which is right for every test that only
+   * cares that <em>a</em> run answered; a retry is about <em>which</em> run answered, so its lineage
+   * cannot be written without naming both ends of it.
+   *
+   * <p>{@code retryOfRunId} is simply absent from the payload when null, which is byte for byte what
+   * a qits-ci that has not released the field yet publishes.
+   */
+  private void verdict(String name, String sha, String runId, String retryOfRunId, String extra) {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
             name,
             Instant.now(),
             "{\"branch\":\"work\",\"commitSha\":\"" + sha + "\",\"repoId\":\"" + repoId
-                + "\",\"runId\":\"run-" + UUID.randomUUID() + "\"" + extra + "}",
+                + "\""
+                + (retryOfRunId == null ? "" : ",\"retryOfRunId\":\"" + retryOfRunId + "\"")
+                + ",\"runId\":\"" + runId + "\"" + extra + "}",
             null,
             null,
             null));
@@ -164,6 +179,12 @@ public class ReleaseRequestFlowTest {
         .statusCode(200)
         .extract()
         .path("request.mergedSha");
+  }
+
+  /** The sentence, never null, so a test can say what it does and does not name in one breath. */
+  private String detailOf(String id) {
+    String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
+    return detail == null ? "" : detail;
   }
 
   /** The execution runs on the request worker, so a terminal state is polled, never assumed. */
@@ -183,6 +204,17 @@ public class ReleaseRequestFlowTest {
       }
     }
     fail("request " + id + " never reached " + expected + "; last seen " + last);
+  }
+
+  /**
+   * A run id nothing else in this database can collide with. {@code commit_build_status} is keyed on
+   * the run and is NOT emptied between tests — nothing cascades it and no fixture deletes it — so a
+   * literal like {@code run-red} shared by two tests is one primary key, and, worse now, one retry
+   * lineage: a row left behind naming {@code run-red} as the run it superseded makes the next test's
+   * {@code run-red} arrive already answered and skipped.
+   */
+  private static String run(String what) {
+    return "run-" + what + "-" + UUID.randomUUID();
   }
 
   private static String sha() {
@@ -392,6 +424,120 @@ public class ReleaseRequestFlowTest {
     verdict("BuildSuccessful", merged, "");
     assertEquals("REJECTED", stateOf(id), "a rejection is answered by a push, not by a second run");
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
+  }
+
+  /**
+   * <b>A green retry answers the rejection it re-fires, at the fold that was rejected</b> (ticket
+   * qits-309). {@code qits ci retry} mints a new run at the SAME commit carrying the id of the run
+   * it replaces, so there is no push to re-arm the request with and nothing about what would be
+   * released has changed. The rejection is nonetheless answerable — and answering it is the whole
+   * ticket, because until this landed such a request sat REJECTED for ever with a green build behind
+   * it.
+   *
+   * <p>The two assertions that make it a <em>retry</em> and not a re-arm are the last two: the fold
+   * is the same commit, and nothing was folded a second time.
+   */
+  @Test
+  public void aGreenRetryOfTheRejectingRunReleasesAtTheVerySameFold() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    int foldsAfterCreate = merger.folds().size();
+    String red = run("red");
+    String green = run("green");
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    assertTrue(detailOf(id).contains(red), detailOf(id));
+
+    verdict("BuildSuccessful", merged, green, red, "");
+    awaitState(id, "RELEASED");
+
+    org.junit.jupiter.api.Assertions.assertNull(
+        given().get(base() + "/" + id).then().extract().path("request.detail"),
+        "and the sentence naming the superseded run goes with it");
+    assertEquals(merged, mergedShaOf(id), "the retry is not a re-arm: the fold never moved");
+    assertEquals(
+        foldsAfterCreate, merger.folds().size(), "and nothing was re-folded to make it happen");
+    assertEquals(merged, executor.calls().get(0).expectedSha(), "released at the fold that was judged");
+  }
+
+  /**
+   * <b>A chain, not a star.</b> qits-ci's {@code retryOfRunId} names the immediately previous run
+   * only, so red → red → green is three links and clearing one generation would leave the first red
+   * standing — and any-red-wins would hold the gate down on a fold whose build has passed. The whole
+   * ancestry goes.
+   */
+  @Test
+  public void aChainOfRetriesClearsTheWholeAncestryAndNotOneGeneration() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String first = run("1");
+    String second = run("2");
+    String third = run("3");
+
+    verdict("BuildFailed", merged, first, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    verdict("BuildFailed", merged, second, first, ",\"outcome\":\"TIMED_OUT\"");
+    awaitState(id, "REJECTED");
+    assertTrue(
+        detailOf(id).contains(second) && !detailOf(id).contains(first),
+        "the second red replaces the first rather than joining it: " + detailOf(id));
+
+    verdict("BuildSuccessful", merged, third, second, "");
+    awaitState(id, "RELEASED");
+  }
+
+  /**
+   * <b>A red retry is still a red verdict</b>, and it renames the rejection rather than softening
+   * it. This is the arm that keeps the supersession from being a way out of a gate: what the retry
+   * removes is the superseded run's <em>row</em>, never the gate's answer, so a chain of reds is one
+   * rejection that keeps being re-stated by whichever run said it last.
+   */
+  @Test
+  public void aRedRetryLeavesTheRequestRejectedNamingTheNewRun() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String old = run("old");
+    String fresh = run("new");
+
+    verdict("BuildFailed", merged, old, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    verdict("BuildFailed", merged, fresh, old, ",\"outcome\":\"CONFIG_ERROR\"");
+    awaitState(id, "REJECTED");
+
+    String detail = detailOf(id);
+    assertTrue(detail.contains(fresh), detail);
+    assertTrue(detail.contains("CONFIG_ERROR"), detail);
+    assertTrue(!detail.contains(old), "the superseded run is not what holds this fold: " + detail);
+    assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
+  }
+
+  /**
+   * <b>The discrimination, from the other side.</b> A green retry of some <em>other</em> run — one
+   * that never rejected this request — is not an answer to this rejection, and the request must sit
+   * exactly where {@code aRedVerdictStillCarryingTheOldFlagNowRejects} leaves it. The verdict path
+   * is admitted by RUN and not by state, which is what also keeps a person's decline out of it.
+   *
+   * <p>The sweep is run afterwards because the sweep carries the belt under the same rule, and a
+   * belt that re-opened what the event path refused would be a second answer free to disagree.
+   */
+  @Test
+  public void aGreenRetryOfSomeOtherRunAnswersNothingHere() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String mine = run("mine");
+
+    verdict("BuildFailed", merged, mine, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    verdict("BuildSuccessful", merged, run("stranger"), run("somebody-elses"), "");
+    releaseRequests.sweep();
+
+    assertEquals("REJECTED", stateOf(id), "this rejection was never re-fired");
+    assertTrue(detailOf(id).contains(mine), detailOf(id));
+    assertEquals(0, executor.calls().size());
   }
 
   /**

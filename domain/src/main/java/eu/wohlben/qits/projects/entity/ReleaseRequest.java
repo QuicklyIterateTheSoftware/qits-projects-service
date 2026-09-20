@@ -42,6 +42,14 @@ import java.util.UUID;
  * Stored as a string with no check constraint, the platform's usual reasoning — which is why
  * CONFLICTED cost no DDL and neither did these two.
  *
+ * <p><b>One move is NOT a re-arm: {@code REJECTED → PENDING} at the same sha</b> (ticket qits-309).
+ * A {@code qits ci retry} re-fires the run that rejected this request against the very fold it
+ * rejected, so the answer to the rejection arrives without anything having been pushed — and a
+ * request whose only path back was a new {@link #mergedSha} had no way to take it. The
+ * re-consideration therefore moves the state and nothing else: same fold, same window, same
+ * approval, and {@link #rejectingRunId} is what says whether this rejection is the kind a run can
+ * answer at all. The re-merge is still the re-arm and is still the only thing that moves a fold.
+ *
  * <p><b>RELEASED IS NOT THE END, and that is the change ticket b27384a3 made.</b> The tag being cut
  * used to finish a request: a publish run that failed afterwards had nothing holding it open, and a
  * QA run still queued kept grinding on a branch that no longer existed. A request is finished when
@@ -204,6 +212,33 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
 
   /** Why a request is REJECTED, FAILED or WITHDRAWN — a sentence for the person who asked. */
   @Column public String detail;
+
+  /**
+   * The run whose red verdict rejected this request, and <b>null on every rejection that is not a
+   * build's</b> — which today means null on a rejection a person made by declining the approval.
+   *
+   * <p><b>It is the discriminator, and it is a column because REJECTED has two causes (ticket
+   * qits-309).</b> A {@code qits ci retry} re-fires a run at the same fold, so a green retry is the
+   * answer to a red verdict and has to be able to take the rejection back — the fold never moved, so
+   * there is no push to re-arm it with. But the other cause of REJECTED is somebody saying no, and a
+   * CI event must never undo a human decision. Admitting REJECTED to the verdict path wholesale
+   * would do exactly that, so the path is admitted by <em>run</em> instead: the rejection is
+   * answerable only by a verdict that superseded the very run named here, which a decline has none
+   * of and never will. {@link #detail} is not that discriminator and could not be — it is a
+   * sentence, and matching a run id back out of prose is a parser standing in for a key.
+   *
+   * <p><b>Cleared wherever the request leaves REJECTED</b>: by the re-arm that folds a new sha, by
+   * the evaluation that takes the request to READY, and by the reconsideration a superseding verdict
+   * triggers. Stale here is not merely untidy — it is a rejection the next retry of a long-dead run
+   * could answer — and the belt under that is the sweep, which re-evaluates a REJECTED request whose
+   * named run no longer stands in the ledger.
+   *
+   * <p>A key with no foreign key, for {@link CommitBuildStatus#runId}'s reason: the run lives in
+   * qits-ci's database, and the ledger row it names here is deleted by the very supersession this
+   * column exists to notice.
+   */
+  @Column(name = "rejecting_run_id")
+  public String rejectingRunId;
 
   /**
    * On a FAILED request: whether the sweep retries the execution. The executor classifies — a

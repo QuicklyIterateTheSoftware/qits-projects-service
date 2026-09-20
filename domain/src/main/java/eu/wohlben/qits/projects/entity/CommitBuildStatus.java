@@ -23,6 +23,14 @@ import java.util.UUID;
  * <em>not</em> knowable from this table is a run that is still queued or running, because only
  * terminal runs announce. The release quality gate this ledger exists for reads it accordingly.
  *
+ * <p><b>A row is nonetheless REMOVED when a retry supersedes it</b> (ticket qits-309), and that is
+ * the one exception to "every run that announced has a row here". {@code qits ci retry} mints a new
+ * run at the same fold carrying {@link #retryOfRunId}, so the two runs are not two opinions about
+ * the commit — the second is the answer to the first. Leaving both would make the reader's
+ * any-red-wins fold permanently red however green the retry was, which is precisely what a retry
+ * exists to undo. So the superseded run's row goes and the retry's takes its place, and what the
+ * ledger holds for a fold stays "the verdicts still standing" rather than "everything ever said".
+ *
  * <p><b>{@code runId} is a key, never a relation.</b> The run row lives in qits-ci's own database;
  * no foreign key can span a context boundary and none is coming. Same for {@code repoId}: rows
  * outlive repositories deliberately, because a verdict about a commit does not stop having happened
@@ -69,6 +77,25 @@ public class CommitBuildStatus extends PanacheEntityBase implements CausedRow {
   /** When the run finished — the event's {@code occurredAt}, never this row's write time. */
   @Column(name = "finished_at", nullable = false)
   public Instant finishedAt;
+
+  /**
+   * The run this one was fired to replace — {@code qits ci retry}'s {@code retryOfRunId}, and null
+   * on every run that is not a retry, which is almost all of them.
+   *
+   * <p><b>It is the lineage and not a relation</b>, the same reasoning {@link #runId} carries one
+   * field up: the run it names lives in qits-ci's database, and by the time this row is written the
+   * row it names <em>here</em> has normally just been deleted, because a retry supersedes what it
+   * re-fires. It is nonetheless stored, and the reason is the only thing it is ever read for: a
+   * retry of a retry names the immediately previous run only, so clearing the whole ancestry means
+   * walking it, and the walk needs a link on each surviving row to follow. Without the column the
+   * ledger could clear one generation and no more, and a red two retries back would hold a release
+   * gate down for ever.
+   *
+   * <p>Null on every row written by a qits-ci that does not carry the field yet, which reads as
+   * "not a retry" and behaves exactly as this ledger did before it existed.
+   */
+  @Column(name = "retry_of_run_id")
+  public String retryOfRunId;
 
   /** The platform's uniform column, never part of any constraint. */
   @Column(name = "causation_id")
