@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.control;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,15 +56,26 @@ public interface EntityFacts {
    * CI step, and rules that are pure functions should cost none of it.
    */
   static EntityFacts of(Collection<EntityFact> facts) {
+    // LinkedHashMap, not a plain HashMap: childrenOfAll below turns this map's .values() into a
+    // List that feeds Nesting.check. That is harmless today only because Nesting explicitly sorts
+    // the violations it builds before returning them — if that sort is ever dropped, an unordered
+    // map here would reintroduce the same run-to-run order hazard Map.copyOf caused elsewhere in
+    // this module. Insertion order (the order `facts` was handed in) is deterministic and cheap
+    // to keep, so there is no reason to leave it to hashing.
     Map<String, EntityFact> byId =
-        facts.stream().collect(Collectors.toMap(EntityFact::id, Function.identity()));
+        facts.stream()
+            .collect(
+                Collectors.toMap(
+                    EntityFact::id, Function.identity(), (a, b) -> a, LinkedHashMap::new));
     return new EntityFacts() {
       @Override
       public Map<String, EntityFact> byIds(Collection<String> ids) {
         return ids.stream()
             .filter(byId::containsKey)
             .distinct()
-            .collect(Collectors.toMap(Function.identity(), byId::get));
+            .collect(
+                Collectors.toMap(
+                    Function.identity(), byId::get, (a, b) -> a, LinkedHashMap::new));
       }
 
       @Override

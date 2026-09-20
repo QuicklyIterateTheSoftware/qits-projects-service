@@ -63,8 +63,12 @@ public final class Slugs {
    *
    * <p><b>Total by construction</b> — a title with nothing alphanumeric in it ({@code "***"}, a
    * pure-unicode title) slugifies to the empty string, so it falls back to {@code fallbackPrefix}
-   * plus the id's first 8 characters, which are UUID hex and therefore always valid.
-   * {@code V2__slugs.sql}'s backfill mirrors this in SQL.
+   * plus the id's first 8 characters, which are UUID hex and therefore always valid. A SQL
+   * backfill once mirrored this same fallback for rows that predated the slug column, in the old
+   * H2 lineage's {@code V2__slugs.sql} — but that lineage was deleted rather than continued when
+   * this module moved onto PostgreSQL (see {@code V1__init.sql}'s header), and every database
+   * reaching the current V1 is empty, so there is no backfill to mirror any more: this method is
+   * the only minter of a slug, in SQL or otherwise.
    */
   public static String slugify(String title, String entityId, String fallbackPrefix) {
     String slug =

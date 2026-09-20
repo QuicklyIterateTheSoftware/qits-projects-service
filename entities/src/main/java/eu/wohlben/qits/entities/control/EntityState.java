@@ -2,6 +2,7 @@ package eu.wohlben.qits.entities.control;
 
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -36,7 +37,13 @@ public record EntityState(Archetype archetype, String status, Set<EntityProperty
     } else {
       normalised.add(EntityProperty.STATUS);
     }
-    present = Set.copyOf(normalised);
+    // NOT Set.copyOf: it would rewrap this EnumSet as an ImmutableCollections.SetN, whose
+    // iteration order is salted at class-init and differs on every JVM run. Nothing reads this
+    // set's order today (the sole reader is a `contains` inside a loop over
+    // EntityProperty.values()), but EntityState is a record and its generated toString() renders
+    // this field in whatever order the set iterates — so a log line or an assertion on the string
+    // form would flap between runs. unmodifiableSet keeps the EnumSet's own ordinal order intact.
+    present = Collections.unmodifiableSet(normalised);
   }
 
   /** A candidate with no status, spelled without the null. */
