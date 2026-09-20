@@ -1,13 +1,13 @@
 package eu.wohlben.qits.projects.mcp;
 
-import eu.wohlben.qits.epics.control.DossierService;
-import eu.wohlben.qits.epics.control.EpicService;
-import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.entity.DossierOwner;
-import eu.wohlben.qits.epics.entity.DossierPage;
-import eu.wohlben.qits.epics.entity.WorkEntity;
-import eu.wohlben.qits.epics.error.BadRequestException;
-import eu.wohlben.qits.epics.error.NotFoundException;
+import eu.wohlben.qits.entities.control.DossierService;
+import eu.wohlben.qits.entities.control.EpicService;
+import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.entity.DossierOwner;
+import eu.wohlben.qits.entities.entity.DossierPage;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.error.BadRequestException;
+import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import io.quarkiverse.mcp.server.McpServer;

@@ -1,9 +1,9 @@
 package eu.wohlben.qits.projects.mcp;
 
-import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.entity.WorkEntity;
-import eu.wohlben.qits.epics.entity.TicketComment;
-import eu.wohlben.qits.epics.error.NotFoundException;
+import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.TicketComment;
+import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
@@ -258,6 +258,19 @@ public class TicketMcpTools {
     return summarize(ticket, projectSlug());
   }
 
+  /**
+   * <b>"Transition" here is a LIFECYCLE move, and it is not the other transition.</b> This tool
+   * moves one ticket one step along {@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}: it
+   * writes {@code entity.status} and nothing else, and it is judged against {@code TicketLifecycle}
+   * — adjacency, in either direction, over the TICKET archetype's own status words.
+   *
+   * <p>{@code transition_entities} ({@link EntityMcpTools}, over {@code EntityTransitionService})
+   * is the ARCHETYPE transition, which the unified-entity epic introduced: it restates what KIND a
+   * row is and whose child it is. The two share a word and share nothing else — a lifecycle move
+   * never changes an archetype, an archetype transition never applies a lifecycle's adjacency rule,
+   * and neither is reachable from the other. The word alone will not tell a later reader which one
+   * a call site means; the noun after it will.
+   */
   @McpServer("repository")
   @Tool(
       name = "transition_ticket",

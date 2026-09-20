@@ -22,7 +22,7 @@ public class ProjectScopeGuard {
    * <b>The slug of the project this session is scoped to</b> — the qualifier in {@code
    * <project-slug>-<number>}, which is the form every entity-shaped MCP return carries.
    *
-   * <p>It lives here for the reason the whole class does: {@code epics} depends on {@code domain}
+   * <p>It lives here for the reason the whole class does: {@code entities} depends on {@code domain}
    * nowhere and the slug is {@code domain}'s, in a different physical database, so the tool classes
    * cross through this guard rather than each reaching for {@code ProjectService} themselves.
    *

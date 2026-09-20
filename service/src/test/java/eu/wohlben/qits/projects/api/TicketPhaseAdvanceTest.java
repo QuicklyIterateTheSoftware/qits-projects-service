@@ -115,7 +115,7 @@ public class TicketPhaseAdvanceTest {
         .statusCode(200);
   }
 
-  /** The transition body, spelled here so this suite needs nothing of the epics module's API. */
+  /** The transition body, spelled here so this suite needs nothing of the entities module's API. */
   private record Transition(String target) {}
 
   private String wrapperIdOf(String projectId) {

@@ -30,7 +30,7 @@ Concretely:
 | the project's domain | a `{domain, type, value}` dns record embedded on `Project` — required when a project is created, offered to a nameserver through a port nothing implements today, and a **declared placeholder**: when a service owns domain configuration the embeddable and its three columns go (`ProjectDnsRecord`, `main-environment-plan.md` §1) |
 | `.qits-config.yml` | ingestion of the repository's own committed configuration, degrading loudly and never blocking |
 | remote-login | an interactive PTY sign-in against a repository's backup remote, so a push can prompt for credentials — a `java.lang.foreign` pseudo-terminal (`ForeignPty`) with git launched onto it by `setsid --ctty`, which is the one thing this service needs from the host besides git itself |
-| `epics/` | the planning module — epics → features → tasks, tickets → comments, and one audit log over both, on its own datasource, depending on nothing else here |
+| `entities/` | the planning module — epics → features → tasks, tickets → comments, and one audit log over both, on its own datasource, depending on nothing else here |
 
 ## What it deliberately does NOT own
 
@@ -45,7 +45,7 @@ smart-HTTP host that serves these bare origins over the wire is
 ## Layout
 
     domain/   the aggregate, persistence, control, and the ports out (a library jar, no JAX-RS)
-    epics/    the planning module, own datasource + own Flyway lineage, no dependency on domain
+    entities/ the planning module, own datasource + own Flyway lineage, no dependency on domain
     service/  the REST + MCP + websocket boundary over both — THE APPLICATION
 
 `service/` carries `<packaging>quarkus</packaging>` and produces a process, as a JVM fast-jar or as
@@ -105,7 +105,7 @@ a repository of its own, checked out as a submodule at `service/src/main/webui` 
 Quinoa.
 
 Coordinates are namespaced (`eu.wohlben.qits:qits-projects-*`) because the directories are the
-generic `domain`/`service`/`epics` and installing `eu.wohlben:domain` would clobber the monorepo jar
+generic `domain`/`service`/`entities` and installing `eu.wohlben:domain` would clobber the monorepo jar
 in the shared `~/.m2` every workspace container mounts.
 
 ## The ports out
@@ -123,7 +123,7 @@ container is a real one.
 | `ReleasedBranchWorkspaces` | qits-workspaces (`workspacehost/HttpReleasedBranchWorkspaces` is the shipped adapter) | a released branch's workspace is never told its branch was deleted, so it stays ACTIVE holding a container, a volume and a credential until somebody abandons it by hand — exactly the behaviour before the port existed |
 | `WorkspaceAgentDispatch` | qits-workspaces (`workspacehost/HttpWorkspaceAgentDispatch` is the shipped adapter) | neither a ticket nor an epic can be handed to an agent: `POST /projects/api/tickets/{id}/dispatch-agent` and `POST /projects/api/epics/{id}/dispatch-agent` both answer **503** naming what is missing, and the row is left exactly as it was — the ticket keeps its thread unstamped and the epic stays `REFINING`. The one port here whose absence a caller sees, because a dispatch is a request somebody is waiting on rather than a fact announced afterwards |
 | `WorkspaceAgentTurns` | qits-workspaces (`workspacehost/HttpWorkspaceAgentTurns` is the shipped adapter) | nothing is ever said to the agent already standing on a branch, so a ticket's next phase starts when somebody presses "Assign agent" instead of at the transition that ended the last one. Nothing is stranded: the status moved, the thread is stamped and the workspace is still there — this port is a hand-off, never a transition, which is why absent is one WARN and no failure anywhere |
-| `UnattendedGateTickets` | this deployable's own epics module (`epicshost/TicketUnattendedGateTickets` is the shipped adapter) | a red gate on a release request **nobody is waiting on** — a maintenance bump's — is written on the request and logged, and nothing puts it in front of a person; the repository stops moving until somebody notices, which is what this platform did until 2026-09-10 |
+| `UnattendedGateTickets` | this deployable's own entities module (`entitieshost/TicketUnattendedGateTickets` is the shipped adapter) | a red gate on a release request **nobody is waiting on** — a maintenance bump's — is written on the request and logged, and nothing puts it in front of a person; the repository stops moving until somebody notices, which is what this platform did until 2026-09-10 |
 | `TechnicalProcessRegistry` (+ `TechnicalProcess`, `RepoProcessLease`, `RepoReservation`, `TechnicalProcessFrame`) | qits-workspace-daemon | pull/push/sync still run, on the same worker thread, against the same origins — unnarrated, returning a null process id, with no single-flight guard |
 | `ProjectDomainRegistrar` | **nothing, today** — qits-platform-dns implemented it and was removed from the platform | a created project's domain is stored and registered nowhere, which is what a project whose dns lives at a registrar's control panel wants — and is the state every deployment is in |
 | `CommandOutputSink` | the service module's websocket | — (an SPI this context calls, not one it looks up) |
@@ -131,7 +131,7 @@ container is a real one.
 **What a dispatched agent may push.** A ticket or epic dispatch sends qits-workspaces a `gitRefs`
 list: the Git refs its agent may push. A ticket's agent gets its own branch,
 `refs/heads/ticket/<slug>`. An epic's agent gets the epic branch plus every feature and task branch
-of the epic (`feature/<epic>/<feature>`, `task/<epic>/<feature>/<task>`). `epics/control/WorkBranches`
+of the epic (`feature/<epic>/<feature>`, `task/<epic>/<feature>/<task>`). `entities/control/WorkBranches`
 computes the branch and its refs together. This service's own idp commissions state refs too: an
 agent container states `gitRefs: []` (it pushes nothing), and a refinement container states
 `gitRefs: ["refs/heads/refining/<epicSlug>"]`, the one branch it pushes. If the idp refuses a stated
@@ -277,7 +277,7 @@ deliberately: one row per project holding the idp client commissioned for that p
 container. A container outlives its project, so a foreign key would drop the row while the container
 still held the credential. See AGENTS.md, "The commissioned credential".
 
-`epics/` keeps its own separate `epics` datasource, its own `db/epics/migration` lineage and its own
+`entities/` keeps its own separate `epics` datasource, its own `db/epics/migration` lineage and its own
 physical database — which is what makes it liftable without moving anybody else's tables.
 
 **Both databases are asked for, not configured.** `.config/qits/deployments.yml` carries

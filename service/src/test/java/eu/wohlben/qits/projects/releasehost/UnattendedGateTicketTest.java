@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
  * ticket when it eventually releases.
  *
  * <p>This drives the shipped adapter rather than a recording double, on purpose: what is actually
- * under test is the crossing between {@code domain}'s gate and the {@code epics} ticket store, which
+ * under test is the crossing between {@code domain}'s gate and the {@code entities} ticket store, which
  * a double would replace with the thing that cannot go wrong. The tickets are then read back over
  * the ordinary ticket API, because that is what a person's browser reads.
  *

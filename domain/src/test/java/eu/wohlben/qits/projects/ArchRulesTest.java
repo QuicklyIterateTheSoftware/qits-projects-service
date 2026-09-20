@@ -14,7 +14,7 @@ import eu.wohlben.qits.archrules.CausationRowRules;
  * trace.
  *
  * <p><b>One of these per ENTITY module, not one in {@code service}.</b> A module owns its entities
- * and must fail its own build for them; {@code epics} in particular depends on nothing — a rule
+ * and must fail its own build for them; {@code entities} in particular depends on nothing — a rule
  * enforced only from a module downstream of it would not see its four classes, and lifting it out
  * would take the entities and leave the guard behind. The package analysed is this module's, so the
  * sibling's classes are neither needed here nor missed.

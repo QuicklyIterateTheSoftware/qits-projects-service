@@ -9,8 +9,8 @@ package eu.wohlben.qits.projects.api;
  * <p>The hint carries no data: the frontend reacts by re-fetching through the unchanged REST
  * endpoints, so a dropped or missed hint self-heals on the next hint or on reconnect.
  *
- * <p>It lives in {@code service} rather than in {@code epics} because every producer is here — the
- * epics module stays free of anything the SSE boundary needs, and it depends on this package
+ * <p>It lives in {@code service} rather than in {@code entities} because every producer is here — the
+ * entities module stays free of anything the SSE boundary needs, and it depends on this package
  * nowhere.
  */
 public record ProjectChangeHint(String projectId, Topic topic) {

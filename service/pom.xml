@@ -46,7 +46,7 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>qits-projects-epics</artifactId>
+            <artifactId>qits-projects-entities</artifactId>
         </dependency>
         <dependency>
             <!-- The projects-daemon wire contract, spoken by the agent harness in agenthost/. A
@@ -133,7 +133,7 @@
             <artifactId>quarkus-oidc</artifactId>
         </dependency>
         <dependency>
-            <!-- PatientPgDriver. It arrives transitively through `domain` and `epics` too, and is
+            <!-- PatientPgDriver. It arrives transitively through `domain` and `entities` too, and is
                  declared here because THIS module's application.properties names it as well — for
                  the eventstream datasource the bus jar brings, whose own defaults do not carry the
                  baseline yet. A config key naming a class belongs in the pom that spells it. -->
@@ -221,7 +221,7 @@
             <version>2.8.2</version>
         </dependency>
         <dependency>
-            <!-- SecurityIdentity (the epics controllers stamp the audit log with the caller) plus
+            <!-- SecurityIdentity (the entities controllers stamp the audit log with the caller) plus
                  the HttpAuthenticationMechanism SPI, for the single thing this service does about
                  auth: read qits-gateway's X-Qits-User header into an identity (see
                  security/ForwardAuthMechanism). NOT an auth variant and NOT an authorization
@@ -240,7 +240,7 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <!-- @TestSecurity, so the epics audit test can name its caller. The monorepo got a
+            <!-- @TestSecurity, so the entities audit test can name its caller. The monorepo got a
                  `dev` identity from the forwardauth auth variant; auth is unassigned
                  (migration-plan.md §4) and no auth/* module is carried here. -->
             <groupId>io.quarkus</groupId>
@@ -387,7 +387,7 @@
     <profiles>
         <!-- GraalVM native build (the same profile qits-gateway and qits-workspace-daemon carry):
              `-Dnative` disables the fast-jar and enables the native image. It lives in THIS module,
-             not the root pom, because only this module is an application — `domain` and `epics` are
+             not the root pom, because only this module is an application — `domain` and `entities` are
              library jars with nothing to native-compile. skipITs flips with it so a native build
              runs any @QuarkusIntegrationTest against the binary rather than skipping it silently. -->
         <profile>

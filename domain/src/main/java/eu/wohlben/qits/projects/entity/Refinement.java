@@ -23,7 +23,7 @@ import java.util.UUID;
  * verbs, the daemon proxy, the SSE channel — carries the numeric row id, the same shape the
  * workspaces domain used and the shape the SPA's panels already take.
  *
- * <p><b>The epic id is a key, not a relation.</b> The epic lives in the {@code epics} module's own
+ * <p><b>The epic id is a key, not a relation.</b> The epic lives in the {@code entities} module's own
  * database and Flyway lineage; a foreign key across persistence units is not a thing, and the epics
  * module deliberately depends on nothing here. The row is torn down by an explicit discard, never
  * by a cascade from a table it cannot see.

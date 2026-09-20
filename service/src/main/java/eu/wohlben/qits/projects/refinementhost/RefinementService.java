@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.refinementhost;
 
-import eu.wohlben.qits.epics.control.EpicService;
-import eu.wohlben.qits.epics.entity.WorkEntity;
-import eu.wohlben.qits.epics.entity.EpicStatus;
+import eu.wohlben.qits.entities.control.EpicService;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.EpicStatus;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;

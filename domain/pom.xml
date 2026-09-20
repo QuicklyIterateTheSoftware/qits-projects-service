@@ -62,7 +62,7 @@
         <dependency>
             <!-- Flyway 10 split its database support out of the core: without this module Flyway
                  refuses a postgres url with "no database found to handle". It sits here because
-                 this module owns the `projects` lineage; `epics` carries it too, for its own. -->
+                 this module owns the `projects` lineage; `entities` carries it too, for its own. -->
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>

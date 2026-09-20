@@ -26,7 +26,7 @@ have no writer and no referent; they are a frozen snapshot.
 | `V10__backfill_unified.sql` | the backfill — every Epic/Ticket/Feature/Task row copied in, **ids unchanged** | **shipped** |
 | `V11__entity_number.sql` | the numeric id: the column, `uq_entity_project_number`, the backfill and the allocator's counter | **shipped** |
 | `V12__owner_keys_to_entity.sql` | the four outward foreign keys repointed at `entity(id)`, which retires the mirror | **shipped** |
-| `V13__drop_legacy_planning_tables.sql` | the four old tables dropped, and `ck_audit_entity_type` re-stated off the archetype set over an unchanged vocabulary. It deletes the verification door with them — `epics/…/migration/`, `service/…/epics/api/MigrationVerificationController.java` and both its test classes — because a door whose comparison target no longer exists can only answer about nothing. See "The cleanup, as shipped" below | **shipped** |
+| `V13__drop_legacy_planning_tables.sql` | the four old tables dropped, and `ck_audit_entity_type` re-stated off the archetype set over an unchanged vocabulary. It deletes the verification door with them — `entities/…/migration/`, `service/…/entities/api/MigrationVerificationController.java` and both its test classes — because a door whose comparison target no longer exists can only answer about nothing. See "The cleanup, as shipped" below | **shipped** |
 
 The ids are the **same id space**: `entity.id` is `varchar(255)` exactly as `epic.id` is, because
 V10 copies each old row in under the id it already has. Every dossier page, audit entry, branch
@@ -129,7 +129,7 @@ have made `qits-7` ambiguous in exactly the project that scopes it.
 
 ### The allocator: a counter row, bumped in a transaction of its own
 
-`epics/control/EntityNumbers` is the one place a number comes from. Two properties are wanted and
+`entities/control/EntityNumbers` is the one place a number comes from. Two properties are wanted and
 they pull against each other:
 
 - **Two simultaneous creates cannot collide.**
@@ -173,7 +173,7 @@ bump for the block is one round trip instead of N.
 
 `domain`'s `ProjectService` is the platform's other per-project derivation — it is where the project
 slug is allocated, and where the cap of 31 comes from so `<slug>-<slug>` still fits a git-host
-repository id. It is also the wrong module, and **`CLAUDE.md` is emphatic that `epics` depends on
+repository id. It is also the wrong module, and **`CLAUDE.md` is emphatic that `entities` depends on
 neither `domain` nor any auth module and should stay that way**: it is the module most likely to be
 lifted out next, and a lift-out dragging `domain` behind it would move a database rather than tables
 out of somebody else's.
@@ -186,7 +186,7 @@ Here not even a copy was needed, and the reason is stronger than style: **a proj
 allocated against the `project` table in the `projects` database and an entity number against the
 `entity` table in the `epics` database — two separate physical databases.** A shared allocator could
 not have been in one transaction with either write even if the module boundary had permitted it. So
-`EntityNumbers` sits in `epics/control/`, beside the services that create the rows it numbers, and
+`EntityNumbers` sits in `entities/control/`, beside the services that create the rows it numbers, and
 its javadoc carries the rule and its reason rather than a reference across a boundary that does not
 exist.
 
@@ -242,7 +242,7 @@ write this table when a project is created or deleted.
   in the **opposite order** into a second database is numbered identically; the counter is above the
   highest backfilled value in each project; and the constraint refuses a second row on one number in
   one project while permitting it in another.
-- `EpicsTestSupport.wipe()` clears `entity_number_sequence` with the rows it numbered. In production
+- `EntitiesTestSupport.wipe()` clears `entity_number_sequence` with the rows it numbered. In production
   a number is never reused, which is exactly why that line is needed: without it a test's first epic
   is numbered by however many rows the previous test happened to create.
 
@@ -256,21 +256,21 @@ them is in one project and `uq_entity_project_number` now applies.
 `project.slug`. **The two are in two different physical databases, in two modules that do not
 depend on each other**, and everything below follows from that one fact.
 
-### `epics` never sees it, and that is the constraint rather than a preference
+### `entities` never sees it, and that is the constraint rather than a preference
 
-`CLAUDE.md` is emphatic that `epics` depends on neither `domain` nor any auth module. **What
-actually enforces that is `epics/pom.xml`** — the dependency is simply not declared, so a reach into
-`domain` from that module does not compile. `epics`' `ArchRulesTest` is *not* the guard, whatever
+`CLAUDE.md` is emphatic that `entities` depends on neither `domain` nor any auth module. **What
+actually enforces that is `entities/pom.xml`** — the dependency is simply not declared, so a reach into
+`domain` from that module does not compile. `entities`' `ArchRulesTest` is *not* the guard, whatever
 its name suggests: it runs `CausationRowRules` and nothing else, and it would pass a module that had
 just grown the dependency. The project slug lives in
-`domain`'s `project` table, in the `projects` database. `epics` therefore knows the bare `number`
+`domain`'s `project` table, in the `projects` database. `entities` therefore knows the bare `number`
 and the `project_id` and nothing else; **it cannot render the qualified form even if the module
 boundary had permitted the reach**, because there is no join across two physical databases to make.
 
 So the assembly happens one module up, at the DTO boundary, in
 `service/…/projects/api/QualifiedEntityIds` — **modelled directly on `DispatchedWorkspaces`**, which
-is the sanctioned place `epics.api` responses are already decorated with data from another context,
-and which sits in the same package for the same declared reason. The `epics` side carries the datum
+is the sanctioned place `entities.api` responses are already decorated with data from another context,
+and which sits in the same package for the same declared reason. The `entities` side carries the datum
 and a `withQualifiedId` setter; the `service` side carries the rendering.
 
 | where | what it carries |
@@ -280,7 +280,7 @@ and a `withQualifiedId` setter; the `service` side carries the rendering.
 | `EpicDto`/`TicketDto`/`FeatureDto`/`TaskDto` | `number`, `qualifiedId` (null off the mapper), and `projectId` on the two descendants |
 | `TransitionedEntity` | `number`, `qualifiedId` (null out of `of(…)`), plus `withQualifiedId` |
 | `service/…/projects/api/QualifiedEntityIds` | **the only renderer**: `render(slug, number)` |
-| `service/…/projects/epicshost/CommitSubjectEntities` | **the only reader**: the grammar and the lookup |
+| `service/…/projects/entitieshost/CommitSubjectEntities` | **the only reader**: the grammar and the lookup |
 
 The mappers spell `@Mapping(target = "qualifiedId", ignore = true)` **explicitly** rather than
 letting MapStruct's silence produce the null: the null is a statement about the module boundary, and
@@ -328,11 +328,11 @@ with their assertions unchanged.
 
 ## Reading it back: the commit-subject parser
 
-`service/…/projects/epicshost/CommitSubjectEntities` — **one parser, in one place, and it is the
+`service/…/projects/entitieshost/CommitSubjectEntities` — **one parser, in one place, and it is the
 only thing in the estate that knows this grammar.** It lives in `service` because resolution needs
-*both* databases (the slug in `domain`, the `(project_id, number)` pair in `epics`) and `service` is
-the only module that can hold the pair; `projects/epicshost/` is where this repository already
-declares a service-layer bridge into `epics` (`TicketUnattendedGateTickets`).
+*both* databases (the slug in `domain`, the `(project_id, number)` pair in `entities`) and `service` is
+the only module that can hold the pair; `projects/entitieshost/` is where this repository already
+declares a service-layer bridge into `entities` (`TicketUnattendedGateTickets`).
 
     /** the grammar, pure and side-effect free */
     static Optional<QualifiedId> reference(String subject);
@@ -357,7 +357,7 @@ per transaction, which is the rule `EpicMcpTools` already states.
 - **Only the first line is considered.** Everything from the first `\n` on is the body and is
   ignored, *including a body that itself contains something id-shaped* — which is the ordinary case
   of a message quoting an id it is not filed under.
-- The term before `(` may be absent (`(qits-1337): msg`) or contain a slash (`epics/control`). It
+- The term before `(` may be absent (`(qits-1337): msg`) or contain a slash (`entities/control`). It
   may not contain whitespace or a colon, which is what stops `fix: tidy (qits-7): …` from reading
   its parenthesised aside as a scope.
 - An optional breaking-change `!` may sit between `)` and `:`.
@@ -450,7 +450,7 @@ is regenerated with the new shapes.
 
 ## The archetype table
 
-Declared in `epics/control/Archetypes.java`, as data. Nothing else re-decides any of it.
+Declared in `entities/control/Archetypes.java`, as data. Nothing else re-decides any of it.
 
 | archetype | depth | may be a root | requires | permits (beyond required) | legal statuses |
 | --- | --- | --- | --- | --- | --- |
@@ -481,7 +481,7 @@ applies: the status a transition is judged against, the slugs a create mints aro
 listings the board draws, and the `createdAt`/`updatedAt` a write answers with. Nothing above them
 moved by one byte — `EpicDto` and `TicketDto` keep every field, in order, under the same JSON names;
 the five epic and ticket controllers, both mappers, the MCP tools, `DossierService` and
-`EpicChangeHints` are untouched; and every route, status code and error body is what it was.
+`EpicsTopicHints` are untouched; and every route, status code and error body is what it was.
 
 What made that possible at the time was that the two services still **returned** `Epic` and `Ticket`,
 built by `control/WorkEntityProjections` as detached projections of the `entity` row — a fresh object
@@ -501,7 +501,7 @@ shipped" below, which is the record of the second half and of the one consequenc
 `FeatureService` and `TaskService` read and write `entity` + `entity_membership`. They answered
 `Feature` and `Task` as detached `WorkEntityProjections` — the identical device the two roots used,
 for the identical reason — so `FeatureDto`, `TaskDto`, `FeatureController`, `TaskController`,
-`EpicController`, `EpicChangeHints`, `EpicMcpTools` and `EpicDispatchController` were untouched and
+`EpicController`, `EpicsTopicHints`, `EpicMcpTools` and `EpicDispatchController` were untouched and
 every route, status code and error body is what it was. They answer `control/Nested` — the merged row
 beside its parent's id — since the cleanup; the three merged columns are read back under their old
 names at the DTO boundary instead, in `mapper/WorkEntityMapper`, which is where
@@ -719,7 +719,7 @@ which is a green-looking nothing rather than a failure. So the **subject** moved
 row, counted in the table the create actually writes. Every other assertion in the module is
 untouched — the dossier's six suites included, which is what steered the cutover.
 
-`EpicsTestSupport.wipe()` needed no reordering: the dossier pages, the dossier assets and the ticket
+`EntitiesTestSupport.wipe()` needed no reordering: the dossier pages, the dossier assets and the ticket
 comments already went before `workEntityRepository.deleteAll()`, which is what the repointed keys
 now require. Its javadoc says so rather than describing the FK graph it used to have.
 
@@ -784,7 +784,7 @@ still one query and nothing is resolved per row.
 Two test fixtures moved with the storage and no assertion did: `ConnectionLosingEpics` now severs
 `WorkEntityRepository.listByProjectAndArchetype` and `FailingEpicWrites` now fails after
 `WorkEntityRepository.persist`, because those are the read and the write an epic list and an epic
-create actually make now. `EpicsTestSupport.wipe()` clears the two new tables, children first.
+create actually make now. `EntitiesTestSupport.wipe()` clears the two new tables, children first.
 
 **The descendants' cutover moved no fixture and changed no assertion at all.** Both doubles already
 sever the merged table, which is now the read and the write a feature or a task makes too;
@@ -876,7 +876,7 @@ re-archetype that removes it, and by nothing else. `slug` keeps `updatable = fal
 ### Three validation layers, ONE rejection
 
 All three run **before anything is written**, and every finding from all three comes back together in
-one 400 whose message joins them with `"; "` — the same `BadRequestException` → `EpicsExceptionMapper`
+one 400 whose message joins them with `"; "` — the same `BadRequestException` → `EntitiesExceptionMapper`
 path the four services already take.
 
 1. **The row.** Each entry against its **target** archetype through `Archetypes.validate(EntityState)`.
@@ -964,8 +964,8 @@ one.
 ### The event: `EntityTransitioned`, one per batch
 
 `service/…/bus/EntityTransitioned`, published by `EntityTransitionAnnouncer` (`@ApplicationScoped
-@DefaultBean`) over the **optional** `epics/control/TransitionAnnouncer` port, injected as
-`Instance<T>`. That indirection is required rather than stylistic: the `epics` module depends on
+@DefaultBean`) over the **optional** `entities/control/TransitionAnnouncer` port, injected as
+`Instance<T>`. That indirection is required rather than stylistic: the `entities` module depends on
 `domain` nowhere and publishes nothing, and the standing rule is that bus control flow lives in
 `service/…/bus/` and nowhere else. It mirrors `projects/control/RepositoryAnnouncer` exactly.
 
@@ -987,7 +987,7 @@ Four rules ride with it, and each is the platform's rather than this endpoint's:
   describe a sequence of illegal trees that never existed — which is the whole point of the
   operation, said on the wire.
 
-`RecordingTransitionAnnouncer` in the `epics` suite is the recording double; it wins the port's
+`RecordingTransitionAnnouncer` in the `entities` suite is the recording double; it wins the port's
 injection point simply by existing, past the `@DefaultBean`.
 
 ### The answer shape
@@ -1073,7 +1073,7 @@ sequence. `legalStatuses` is a `Set<String>` whose source enum order is **not re
 not read a lifecycle, an ordering or a first phase out of it**: `ABANDONED` leads an epic's list and
 is its last word. The adjacency rules stay on the two lifecycle endpoints and are not served here.
 
-**It is a class of its own, `service/…/epics/api/EntityArchetypesController`, and it takes
+**It is a class of its own, `service/…/entities/api/EntityArchetypesController`, and it takes
 `qits:agent`.** Every read route on this surface takes the agent, and this is a read of four public
 declarations — no row, no project, no identity, the same answer for every caller. It is not a method
 on `EntityTransitionController` because that class is `@RolesAllowed("qits:admin")` at class level
@@ -1166,7 +1166,7 @@ speak one vocabulary: an entry read there is an entry restatable here. Flat rath
 because the membership is a property of the row now — a nested answer would have to pick one shape
 per archetype again.
 
-Behind it is `epics/…/control/EntityCatalogService`: `listByProject` and `byIds`, each a bulk row
+Behind it is `entities/…/control/EntityCatalogService`: `listByProject` and `byIds`, each a bulk row
 read plus a bulk edge read (**two queries, never one per row**) wrapped in `ReadPatience` like every
 other list read in the module. It adds a reading and changes none — the four per-archetype services
 keep every method, shape and caller.
@@ -1193,7 +1193,7 @@ predate it, and *clearing* one is asserted behaviour. An update **mints no row**
 of an existing row what intake demands of a row being born — and a transition that re-archetypes an
 existing row *into* a `TICKET` is an update by exactly that test.
 
-So the predicate is hoisted into `epics/control/ImpetusConcession`, one named and commented place,
+So the predicate is hoisted into `entities/control/ImpetusConcession`, one named and commented place,
 called by `TicketService.update`, `TicketService.transition` and `EntityTransitionService` alike. A
 promotion to `TICKET` with no impetus is therefore **accepted**; one carrying a foreign property, an
 illegal status word, or a missing title, ticket type or status is refused as ever. It is this exact
@@ -1219,7 +1219,7 @@ question this task was handed, and none may be moved to settle the remaining one
 
 ## The nesting rule
 
-`epics/control/Nesting.java` — one place, sitting on the registry, naming no archetype anywhere.
+`entities/control/Nesting.java` — one place, sitting on the registry, naming no archetype anywhere.
 
 > **A membership is legal when the parent's depth is strictly less than the child's.**
 
@@ -1321,7 +1321,7 @@ write and the multi-entity transition — use both, so neither is hidden behind 
 ### 5. `WorkEntity`, not `Entity`
 
 `jakarta.persistence.Entity` owns the word. A class named `Entity` would have to import its own
-annotation under an alias in every file that mentioned it, and `import ...epics.entity.Entity` could
+annotation under an alias in every file that mentioned it, and `import ...entities.entity.Entity` could
 not be read without checking which of the two was meant. The **table** is `entity` — that name is
 right and it is what a reader of the SQL sees — so the class carries `@Table(name = "entity")`.
 
@@ -1464,7 +1464,7 @@ deleted, what took its place, and the three questions that had to be decided rat
 Deleted outright: the entities `Epic`, `Ticket`, `Feature` and `Task`; their repositories
 `EpicRepository`, `TicketRepository`, `FeatureRepository` and `TaskRepository`; their mappers
 `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`; `control/WorkEntityProjections`; and
-the whole verification door — `epics/…/migration/`, `service/…/epics/api/MigrationVerificationController`
+the whole verification door — `entities/…/migration/`, `service/…/entities/api/MigrationVerificationController`
 and both its test classes.
 
 What answers instead:
@@ -1619,14 +1619,59 @@ something the write never saw; keeping a fifth class alive purely to shape a JSO
 half-live artifact this whole merge exists to stop. What the snapshot is for — "what did this row
 look like when somebody changed it" — is answered correctly by both shapes.
 
-### What is deliberately NOT done here
+### The "epics" vocabulary rename, as shipped
 
-**The "epics" vocabulary rename**, and it is the whole of the remaining debt. The maven module is
-still `epics`, the package is still `eu.wohlben.qits.epics`, and `EpicsPrincipal`,
-`EpicsExceptionMapper`, `EpicChangeHints` and `TicketChangeHints` still carry the word — on a module
-whose one table holds four archetypes and whose nouns are no longer epic-shaped. That is a rename
-across a module boundary, a package, a database name (`qits_epics`), a datasource key and a
-deployment resource, and it touches nothing this task is about. It is its own task and it is owed.
+**The word `epic` stops naming the container concept and names only an archetype.** This was the
+last task of the epic and it was deliberately last: a rename touching nearly every import is the
+change most likely to hide a real regression, so it does not share a commit with V13's deletion of
+the four old entities — that shipped on its own, after the verification door ran clean.
+
+**It is a rename and nothing else.** No route, no DTO field, no JSON name, no MCP tool, no table, no
+column, no migration and no deployment variable moved. `docs/openapi.yml` is byte-identical, which
+is the check: a diff there would have meant something was changed that should not have been.
+
+| was | is | why |
+| --- | --- | --- |
+| the `epics/` maven module, `qits-projects-epics` | `entities/`, `qits-projects-entities` | the module holds one `entity` table and four archetypes; `entity`/`entity_membership` is the vocabulary that won |
+| `eu.wohlben.qits.epics.*` (in `entities/` **and** `service/`) | `eu.wohlben.qits.entities.*` | plural, because the module's own JPA sub-package is `…entity` and `entity.entity` would be unreadable |
+| `service/…/projects/epicshost/` | `service/…/projects/entitieshost/` | a `*host` package is named for what it bridges into, so it moves with the module |
+| `EpicsPrincipal`, `EpicsExceptionMapper`, `EpicsException` | `EntitiesPrincipal`, `EntitiesExceptionMapper`, `EntitiesException` | module-named infrastructure — the module's name changed, these follow (the mapper and the exception it maps are one decision) |
+| `EpicsTestSupport`, `EpicsEmbeddedPgConfigSource`, `EpicsAuditIdentityTest` | `Entities…` | same rule, test side. The config source still writes `quarkus.datasource.epics.*`; only the class is module-named |
+| `EpicChangeHints`, `TicketChangeHints` | `EpicsTopicHints`, `TicketsTopicHints` | **named for the SSE topic each fires, not for an entity kind.** `Topic.EPICS`/`Topic.TICKETS` reach the wire lowercased and the SPA subscribes to them, so the topics did not move and the beans now track them. The old singular names read as "hints about an Epic" while `EpicsTopicHints` in fact resolves EPIC, FEATURE and TASK rows of one table |
+| `qits.epics.read-deadline`, `qits.epics.write-deadline` | `qits.entities.*` | the module's own config namespace. Neither is declared in `.config/qits/configuration.yml`, so nothing on the platform injects either and both fall back to their shipped 15S default |
+
+**What was checked and deliberately left, because "not mentioned" and "checked and correct" are
+indistinguishable to a later reader:**
+
+- **Every MCP tool keeps its name and shape** — `list_epics`, `get_epic`, `propose_epic`,
+  `update_epic`, the ticket, feature, task and dossier tools, and the `transition_entities` /
+  `list_entities` pair this epic added. They are called by name from prompts written down outside
+  this repository; renaming them breaks every one of those silently, for no gain here. They are
+  deprecated in their own epic, and leaving them untouched is the shorter path to the same end. The
+  server is still `@McpServer("repository")`, which qits-workspace-daemon addresses by name.
+- **Every REST route, DTO field and JSON name** — `/projects/api/epics/…` and
+  `/projects/api/tickets/…` are the deployed contract and the SPA calls them.
+- **The SSE topics** `epics` and `tickets`. `ProjectEventBroadcaster` lowercases
+  `ProjectChangeHint.Topic`'s enum name straight onto the frame, so the enum constant *is* the wire
+  word. This is the one place in the rename where a name that reads "epic" reaches a client.
+- **The database, and it is not code.** Table and column names, the Flyway location
+  `classpath:db/epics/migration` and its applied lineage, the datasource and persistence unit named
+  `epics`, `QITS_RESOURCE_EPICS_URL`/`_USERNAME`/`_PASSWORD`, the resource `postgresql:epics:qits_epics`
+  in `.config/qits/deployments.yml`, and `CausationStampWarmup.Epics` (which names that persistence
+  unit). Changing any of it is a deployment-breaking change well beyond a rename. **The maven module
+  and the datasource being the same word was a coincidence, and it is not collapsed here**: the
+  module directory moved and the Flyway location did not, so `entities/src/main/resources/db/epics/migration/`
+  is the deliberate result and not an oversight.
+- **`AgentSurface`'s `project.epics`** (`AgentSurfaceDefaults.PROJECT_EPICS`) — a session-surface
+  key shared with qits-projects-daemon and persisted in the agent-configuration document every
+  container is born holding. It names a screen, it is cross-repository, and it cannot be renamed
+  from here.
+
+**Two transitions now mean two different things, and both say so in code.** `transition_ticket` is a
+**lifecycle** move (one ticket, one adjacent step, `entity.status` alone, judged by
+`TicketLifecycle`); `transition_entities`/`EntityTransitionService` is an **archetype** move (what
+kind a row is and whose child it is). They share a word and share nothing else, so each carries a
+javadoc note naming the other — without it every future reader conflates them.
 
 ## The verification door, as shipped — and as deleted
 
@@ -1639,7 +1684,7 @@ against live data is the evidence that authorises V13; nothing else is.
 evidence, and where it is kept" in "The cleanup, as shipped" just above. Everything in this section is
 written in the present tense because it is the record of a door that existed and of what it asserted
 — read it as the specification of the evidence, not as a route you can still press. The whole of
-`epics/…/migration/`, `service/…/epics/api/MigrationVerificationController` and both test classes
+`entities/…/migration/`, `service/…/entities/api/MigrationVerificationController` and both test classes
 went in the same change as V13: its own `package-info` carried the instruction, and a door whose
 comparison target no longer exists can only ever answer about nothing.
 
@@ -1719,7 +1764,7 @@ promised and exactly what a listing draws.
 **No work branch is stored in this database.** `control/WorkBranches` derives it from slugs and
 ancestry, so what the door compares is the derived name on each side — which folds in the ancestry
 as well as the slug and is therefore more than the property check. The stored `refinement.branch` is
-in the **projects** database, which this door holds no connection to (the epics module depends on
+in the **projects** database, which this door holds no connection to (the entities module depends on
 `domain` nowhere); that is named in `scope.notChecked` along with everything else a reader might
 reasonably assume was covered.
 
@@ -1781,7 +1826,7 @@ that cannot occur.
 
 ### What proves it
 
-`epics/src/test/…/migration/MigrationVerificationTest` — plain JUnit over `EmbeddedPg` + Flyway,
+`entities/src/test/…/migration/MigrationVerificationTest` — plain JUnit over `EmbeddedPg` + Flyway,
 `UnifiedBackfillMigrationTest`'s shape and no `@TestProfile`, over **two estates built once and
 compared once**. The clean one is produced by running V10 itself rather than by hand-writing what a
 correct copy looks like: a hand-built fixture would be a second implementation of the backfill, free
@@ -1799,7 +1844,7 @@ claim about one database's current DDL, not about the rows in front of you, and 
 against a database restored from a dump or repaired by hand. The constraint is the mechanism; the
 check is the evidence.
 
-`service/src/test/…/epics/api/MigrationVerificationApiTest` is the other half, a plain `@QuarkusTest`
+`service/src/test/…/entities/api/MigrationVerificationApiTest` is the other half, a plain `@QuarkusTest`
 with no profile: it proves the persistence unit hands out a usable connection outside any caller's
 transaction, that twenty statements of hand-written SQL parse against the schema Flyway actually
 builds, and that the record tree serialises. It asserts CLEAN over a database where the old tables
@@ -1810,25 +1855,25 @@ what a door written with the reverse assertion would report as broken.
 
 | | |
 | --- | --- |
-| migrations | `epics/src/main/resources/db/epics/migration/V9__entity_membership.sql`, `V10__backfill_unified.sql`, `V11__entity_number.sql`, `V12__owner_keys_to_entity.sql`, `V13__drop_legacy_planning_tables.sql` |
-| entities | `epics/…/entity/Archetype.java`, `WorkEntity.java`, `EntityMembership.java` |
-| repositories | `epics/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
-| the registry | `epics/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
-| the five cut-over services | `epics/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java` — answering `WorkEntity` and `control/Nested.java`; `WorkEntityProjections.java` is **deleted** |
-| the lifecycle guards | `epics/…/control/EpicLifecycle.java` — every caller hands it the `entity` row itself |
-| the one mapper | `epics/…/mapper/WorkEntityMapper.java` — `toEpicDto`/`toTicketDto`/`toFeatureDto`/`toTaskDto`, replacing `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`, all four **deleted** |
-| the four old entities and their repositories | **deleted** with their tables (V13): `epics/…/entity/Epic.java`, `Ticket.java`, `Feature.java`, `Task.java`; `epics/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` |
-| the nesting rule | `epics/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
-| the multi-entity transition | `epics/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/epics/api/EntityTransitionController.java` |
-| the registry, served | `epics/…/control/ArchetypeRegistryDocument.java` — derived from `Archetypes` at read time, and the `SERVER_OWNED` / `requiresStatusOnTransition` pair on `EntityTransitionService.java` it reads; `service/…/epics/api/EntityArchetypesController.java` — `GET /projects/api/entities/archetypes`, `qits:admin` + `qits:agent` |
-| the merged read | `epics/…/control/EntityCatalogService.java` — `listByProject`/`byIds`, answering `TransitionedEntity` |
+| migrations | `entities/src/main/resources/db/epics/migration/V9__entity_membership.sql`, `V10__backfill_unified.sql`, `V11__entity_number.sql`, `V12__owner_keys_to_entity.sql`, `V13__drop_legacy_planning_tables.sql` |
+| entities | `entities/…/entity/Archetype.java`, `WorkEntity.java`, `EntityMembership.java` |
+| repositories | `entities/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
+| the registry | `entities/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
+| the five cut-over services | `entities/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java` — answering `WorkEntity` and `control/Nested.java`; `WorkEntityProjections.java` is **deleted** |
+| the lifecycle guards | `entities/…/control/EpicLifecycle.java` — every caller hands it the `entity` row itself |
+| the one mapper | `entities/…/mapper/WorkEntityMapper.java` — `toEpicDto`/`toTicketDto`/`toFeatureDto`/`toTaskDto`, replacing `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`, all four **deleted** |
+| the four old entities and their repositories | **deleted** with their tables (V13): `entities/…/entity/Epic.java`, `Ticket.java`, `Feature.java`, `Task.java`; `entities/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` |
+| the nesting rule | `entities/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
+| the multi-entity transition | `entities/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/entities/api/EntityTransitionController.java` |
+| the registry, served | `entities/…/control/ArchetypeRegistryDocument.java` — derived from `Archetypes` at read time, and the `SERVER_OWNED` / `requiresStatusOnTransition` pair on `EntityTransitionService.java` it reads; `service/…/entities/api/EntityArchetypesController.java` — `GET /projects/api/entities/archetypes`, `qits:admin` + `qits:agent` |
+| the merged read | `entities/…/control/EntityCatalogService.java` — `listByProject`/`byIds`, answering `TransitionedEntity` |
 | the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
 | the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |
-| the commit-subject parser | `service/…/projects/epicshost/CommitSubjectEntities.java` — the only reader of the grammar; `epics/…/persistence/WorkEntityRepository.findByProjectAndNumber` behind it |
-| the verification door — **DELETED WHOLE BY V13** | was `epics/…/migration/` (`package-info.java` carried the deletion instruction; `MigrationVerification.java` the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge) and `service/…/epics/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone. Its one clean run against live data survives it, at `docs/migration-verification-2026-09-20.json` |
-| the impetus concession | `epics/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
+| the commit-subject parser | `service/…/projects/entitieshost/CommitSubjectEntities.java` — the only reader of the grammar; `entities/…/persistence/WorkEntityRepository.findByProjectAndNumber` behind it |
+| the verification door — **DELETED WHOLE BY V13** | was `entities/…/migration/` (`package-info.java` carried the deletion instruction; `MigrationVerification.java` the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge) and `service/…/entities/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone. Its one clean run against live data survives it, at `docs/migration-verification-2026-09-20.json` |
+| the impetus concession | `entities/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
-| tests | `epics/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/entity/AuditEntityTypeTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/EntityNumberMigrationTest.java` (the three that wrote rows into the four old tables — `UnifiedBackfillMigrationTest`, `TicketLifecycleMigrationTest`, `MigrationVerificationTest` — went with those tables, and `service/src/test/…/epics/api/MigrationVerificationApiTest.java` with the door); `service/src/test/…/epics/api/EntityTransitionApiTest.java`, `service/src/test/…/epics/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/epicshost/CommitSubjectEntitiesTest.java` |
+| tests | `entities/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/entity/AuditEntityTypeTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/EntityNumberMigrationTest.java` (the three that wrote rows into the four old tables — `UnifiedBackfillMigrationTest`, `TicketLifecycleMigrationTest`, `MigrationVerificationTest` — went with those tables, and `service/src/test/…/entities/api/MigrationVerificationApiTest.java` with the door); `service/src/test/…/entities/api/EntityTransitionApiTest.java`, `service/src/test/…/entities/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/entitieshost/CommitSubjectEntitiesTest.java` |
 
 The rule tests are plain JUnit and boot no application: a `@TestProfile` is a whole Quarkus app at
 roughly 125 MB of retained metaspace inside a 4 GB CI step, and rules that are pure functions should

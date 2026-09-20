@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.bus;
 
-import eu.wohlben.qits.epics.control.TransitionAnnouncer;
-import eu.wohlben.qits.epics.control.TransitionedEntity;
+import eu.wohlben.qits.entities.control.TransitionAnnouncer;
+import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.eventstream.QitsEventBus;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -14,10 +14,10 @@ import java.util.List;
  * to the bus.
  *
  * <p>It lives in {@code service/…/bus/} because that package is the whole of this service's bus
- * seams, and the {@code epics} module knows nothing of a bus at all — it depends on {@code domain}
+ * seams, and the {@code entities} module knows nothing of a bus at all — it depends on {@code domain}
  * nowhere and publishes nothing, so the seam it implements is {@code
- * epics/control/TransitionAnnouncer} and zero implementations is a supported configuration (which is
- * what the {@code epics} module's own suite runs as). The shape is {@code
+ * entities/control/TransitionAnnouncer} and zero implementations is a supported configuration (which is
+ * what the {@code entities} module's own suite runs as). The shape is {@code
  * RepositoryRenamedAnnouncer}'s, applied again.
  *
  * <p><b>The cause is left to the bus.</b> {@code QitsEventBus.publish(event)} resolves the parent

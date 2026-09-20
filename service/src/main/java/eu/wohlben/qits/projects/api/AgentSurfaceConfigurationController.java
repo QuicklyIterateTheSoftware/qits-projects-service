@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.api.EpicsPrincipal;
+import eu.wohlben.qits.entities.api.EntitiesPrincipal;
 import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.AgentSurfaceDefaults;
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
@@ -150,7 +150,7 @@ public class AgentSurfaceConfigurationController {
                                 List.of()))
                     .toList(),
             request.externalMcpServers());
-    return surfaces.save(surface, wanted, EpicsPrincipal.changedBy(identity));
+    return surfaces.save(surface, wanted, EntitiesPrincipal.changedBy(identity));
   }
 
   /**

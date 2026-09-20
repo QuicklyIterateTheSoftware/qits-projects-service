@@ -12,7 +12,7 @@ import java.util.Map;
  * Maps the projects domain's framework-free {@link DomainException}s (each carrying a status code)
  * to HTTP responses.
  *
- * <p>It lives here, in {@code service}, for the same reason the sibling {@code EpicsExceptionMapper}
+ * <p>It lives here, in {@code service}, for the same reason the sibling {@code EntitiesExceptionMapper}
  * does: the {@code domain} module carries no JAX-RS, which is what lets it stay a plain library jar.
  *
  * <p>Not inherited from anywhere. The monorepo's {@code eu.wohlben.qits.api.DomainExceptionMapper}

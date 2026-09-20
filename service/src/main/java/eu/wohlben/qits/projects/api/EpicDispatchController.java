@@ -1,12 +1,12 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.api.EpicsPrincipal;
-import eu.wohlben.qits.epics.control.EpicService;
-import eu.wohlben.qits.epics.control.FeatureService;
-import eu.wohlben.qits.epics.control.TaskService;
-import eu.wohlben.qits.epics.control.WorkBranches;
-import eu.wohlben.qits.epics.entity.WorkEntity;
-import eu.wohlben.qits.epics.entity.EpicStatus;
+import eu.wohlben.qits.entities.api.EntitiesPrincipal;
+import eu.wohlben.qits.entities.control.EpicService;
+import eu.wohlben.qits.entities.control.FeatureService;
+import eu.wohlben.qits.entities.control.TaskService;
+import eu.wohlben.qits.entities.control.WorkBranches;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.EpicStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -34,7 +34,7 @@ import org.jboss.logging.Logger;
  * <h2>Why it is here and not beside {@code EpicController}</h2>
  *
  * <p>The same reason the ticket door is: this needs {@code domain} — the project, its wrapper
- * repository and the {@link WorkspaceAgentDispatch} port — and the epics jar depends on {@code
+ * repository and the {@link WorkspaceAgentDispatch} port — and the entities jar depends on {@code
  * domain} nowhere and must keep not depending on it. The service layer may cross, and putting the
  * class in {@code projects.api} is that crossing declared in the package name. Two JAX-RS resources
  * sharing {@code @Path("/epics")} is fine so long as no method path collides, which is the shape
@@ -319,6 +319,6 @@ public class EpicDispatchController {
 
   /** The audit's {@code changed_by} for the transition this door makes. */
   private String changedBy() {
-    return EpicsPrincipal.changedBy(identity);
+    return EntitiesPrincipal.changedBy(identity);
   }
 }

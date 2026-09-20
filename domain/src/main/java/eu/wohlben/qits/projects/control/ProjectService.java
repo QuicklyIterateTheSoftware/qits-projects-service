@@ -475,7 +475,7 @@ public class ProjectService {
   /**
    * The project a slug names, or empty. Slugs are unique (V6), so at most one. The reading half of
    * the qualified entity id {@code <project-slug>-<number>}; see {@code
-   * projects/epicshost/CommitSubjectEntities}. <b>Empty is an ordinary answer</b>, not a failure —
+   * projects/entitieshost/CommitSubjectEntities}. <b>Empty is an ordinary answer</b>, not a failure —
    * the slug it was handed came out of a commit subject somebody typed.
    */
   public Optional<Project> findBySlug(String slug) {

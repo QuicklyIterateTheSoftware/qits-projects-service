@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The ticket MCP surface: its per-connection project scoping, the thread an agent reads back, and
  * the refusals arriving as readable tool errors rather than protocol ones. The lifecycle rules
- * themselves are pinned in the epics module; what is tested here is what the agent on the other end
+ * themselves are pinned in the entities module; what is tested here is what the agent on the other end
  * of the socket actually experiences.
  *
  * <p>The twin of {@link EpicMcpToolsTest}, with one deliberate difference asserted outright:

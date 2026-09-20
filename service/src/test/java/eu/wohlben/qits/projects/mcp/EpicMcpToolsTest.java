@@ -4,7 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.epics.api.EpicController;
+import eu.wohlben.qits.entities.api.EpicController;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The epic-refinement MCP surface: its per-connection project scoping, and the freeze coming back
  * as a readable tool error rather than as a protocol error. The lifecycle rules themselves are
- * pinned in the epics module; what is tested here is what the agent on the other end of the socket
+ * pinned in the entities module; what is tested here is what the agent on the other end of the socket
  * actually experiences.
  */
 @QuarkusTest

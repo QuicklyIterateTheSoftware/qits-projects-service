@@ -1,0 +1,96 @@
+package eu.wohlben.qits.entities.api;
+
+import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
+import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.control.ProjectService;
+import eu.wohlben.qits.entities.control.EpicService;
+import eu.wohlben.qits.entities.dto.EpicDto;
+import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
+import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.inject.Inject;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.MediaType;
+import java.util.List;
+
+/**
+ * Epics collection under a project. {@code projectId} is validated against {@code domain} here (the
+ * entities module has no dependency on {@code domain}) so a bad project yields a clean 404.
+ */
+@Path("/projects/{projectId}/epics")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+@jakarta.annotation.security.RolesAllowed("qits:admin")
+public class ProjectEpicsController {
+
+  @Inject EpicService epicService;
+
+  /** One mapper where there were four; this route answers the epic shape. */
+  @Inject WorkEntityMapper workEntityMapper;
+
+  @Inject ProjectService projectService;
+
+  @Inject SecurityIdentity identity;
+
+  @Inject EpicsTopicHints hints;
+
+  /** One lookup for the whole board — see {@link DispatchedWorkspaces}. */
+  @Inject DispatchedWorkspaces dispatchedWorkspaces;
+
+  public record ListEpicsRequest() {
+    public record Response(List<Entry> entries) {
+      public record Entry(EpicDto epic) {}
+    }
+  }
+
+  /**
+   * The project's epics, oldest first, optionally narrowed to one phase. {@code status} is the
+   * status name; a value naming none is a 400, so a typo in the filter does not read as "no epics".
+   */
+  @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  public ListEpicsRequest.Response list(
+      @PathParam("projectId") String projectId, @QueryParam("status") String status) {
+    // 404 if the project does not exist — and the slug the qualified id is rendered from, which
+    // this route already had in hand and used to discard. No second lookup is made here.
+    String slug = projectService.get(projectId).slug;
+    // Mapped first, then decorated in one call: the workspaces lookup is asked once about the whole
+    // board, never once per epic.
+    var entries =
+        dispatchedWorkspaces
+            .decorateEpics(
+                epicService.listByProject(projectId, status).stream()
+                    .map(workEntityMapper::toEpicDto)
+                    .map(epic -> epic.withQualifiedId(QualifiedEntityIds.render(slug, epic.number())))
+                    .toList())
+            .stream()
+            .map(ListEpicsRequest.Response.Entry::new)
+            .toList();
+    return new ListEpicsRequest.Response(entries);
+  }
+
+  public record CreateEpicRequest(@NotBlank String title, String description) {
+    public record Response(EpicDto epic) {}
+  }
+
+  @POST
+  public CreateEpicRequest.Response create(
+      @PathParam("projectId") String projectId, @Valid CreateEpicRequest request) {
+    String slug = projectService.get(projectId).slug; // 404 if the project does not exist
+    var epic =
+        epicService.create(
+            projectId, request.title(), request.description(), EntitiesPrincipal.changedBy(identity));
+    hints.fire(projectId);
+    return new CreateEpicRequest.Response(
+        workEntityMapper
+            .toEpicDto(epic)
+            .withQualifiedId(QualifiedEntityIds.render(slug, epic.number)));
+  }
+}

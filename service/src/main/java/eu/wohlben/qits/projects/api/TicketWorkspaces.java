@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.control.WorkBranches;
-import eu.wohlben.qits.epics.entity.WorkEntity;
+import eu.wohlben.qits.entities.control.WorkBranches;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entity.Project;

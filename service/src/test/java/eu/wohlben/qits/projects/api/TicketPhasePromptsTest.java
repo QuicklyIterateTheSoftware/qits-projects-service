@@ -4,11 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.epics.entity.Archetype;
-import eu.wohlben.qits.epics.entity.EpicStatus;
-import eu.wohlben.qits.epics.entity.TicketStatus;
-import eu.wohlben.qits.epics.entity.TicketType;
-import eu.wohlben.qits.epics.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.TicketType;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 

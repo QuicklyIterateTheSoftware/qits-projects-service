@@ -1,10 +1,10 @@
 package eu.wohlben.qits.projects.mcp;
 
-import eu.wohlben.qits.epics.control.EntityCatalogService;
-import eu.wohlben.qits.epics.control.EntityTransition;
-import eu.wohlben.qits.epics.control.EntityTransitionService;
-import eu.wohlben.qits.epics.control.TransitionedEntity;
-import eu.wohlben.qits.epics.error.NotFoundException;
+import eu.wohlben.qits.entities.control.EntityCatalogService;
+import eu.wohlben.qits.entities.control.EntityTransition;
+import eu.wohlben.qits.entities.control.EntityTransitionService;
+import eu.wohlben.qits.entities.control.TransitionedEntity;
+import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import io.quarkiverse.mcp.server.McpServer;
@@ -81,7 +81,7 @@ public class EntityMcpTools {
   /**
    * Fills {@code qualifiedId} on everything this class answers. One slug lookup per tool call — see
    * {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, which is also where the reason the
-   * {@code epics} module leaves the field null is written down.
+   * {@code entities} module leaves the field null is written down.
    */
   @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
 
@@ -133,6 +133,16 @@ public class EntityMcpTools {
    * refused by a rule that is correct, and the whole is correct. A tool that could only move one
    * entity would reintroduce at the agent surface the exact problem {@code EntityTransitionService}
    * exists to prevent, so there is deliberately no single-entity spelling of this operation.
+   *
+   * <p><b>"Transition" here is an ARCHETYPE move, and it is not {@code transition_ticket}.</b> What
+   * this restates is what KIND a row is ({@code entity.archetype}) and whose child it is ({@code
+   * entity_membership}). {@code transition_ticket} ({@link TicketMcpTools}, over {@code
+   * TicketLifecycle}) is the LIFECYCLE transition: one ticket, one adjacent step along {@code
+   * REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, writing {@code entity.status} alone. The
+   * two share a word and share nothing else — this one never applies a lifecycle's adjacency rule
+   * (a status it carries is judged only against the TARGET archetype's vocabulary), and that one
+   * never moves an archetype or a parent. The word alone will not tell a later reader which one a
+   * call site means; the noun after it will.
    */
   @McpServer("repository")
   @Tool(

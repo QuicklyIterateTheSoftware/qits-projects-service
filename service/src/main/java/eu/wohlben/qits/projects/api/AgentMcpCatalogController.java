@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.api.EpicsPrincipal;
+import eu.wohlben.qits.entities.api.EntitiesPrincipal;
 import eu.wohlben.qits.projects.control.AgentMcpCatalog;
 import eu.wohlben.qits.projects.control.AgentMcpCatalogService;
 import eu.wohlben.qits.projects.dto.AgentMcpCatalogEntryDto;
@@ -136,7 +136,7 @@ public class AgentMcpCatalogController {
         request.headerName(),
         request.credentialKey(),
         request.allowedTools(),
-        EpicsPrincipal.changedBy(identity));
+        EntitiesPrincipal.changedBy(identity));
   }
 
   /** Remove one entry. 400 while a surface still attaches it, naming the surfaces. */

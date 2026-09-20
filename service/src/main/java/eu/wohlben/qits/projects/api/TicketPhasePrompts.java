@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.entity.TicketStatus;
-import eu.wohlben.qits.epics.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.Optional;
 
 /**

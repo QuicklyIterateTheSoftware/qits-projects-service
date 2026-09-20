@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The caller is named with the real {@code X-Qits-*} pair rather than {@code @TestSecurity},
  * because the comment's {@code author} is one of the assertions and the header is what produces it
- * in a deployment ({@code EpicsAuditIdentityTest}'s reasoning, applied to the one comment this door
+ * in a deployment ({@code EntitiesAuditIdentityTest}'s reasoning, applied to the one comment this door
  * writes itself).
  */
 @QuarkusTest
@@ -94,7 +94,7 @@ public class TicketDispatchControllerTest {
         .statusCode(200);
   }
 
-  /** The transition body, spelled here so this suite needs nothing of the epics module's API. */
+  /** The transition body, spelled here so this suite needs nothing of the entities module's API. */
   private record TicketControllerTransition(String target) {}
 
   /**

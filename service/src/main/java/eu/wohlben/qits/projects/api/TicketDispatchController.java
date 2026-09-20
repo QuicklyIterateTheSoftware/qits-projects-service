@@ -1,9 +1,9 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.api.EpicsPrincipal;
-import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.entity.TicketStatus;
-import eu.wohlben.qits.epics.entity.WorkEntity;
+import eu.wohlben.qits.entities.api.EntitiesPrincipal;
+import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -24,9 +24,9 @@ import org.jboss.logging.Logger;
  *
  * <h2>Why it is here and not beside {@code TicketController}</h2>
  *
- * <p>Every other ticket route lives in {@code eu.wohlben.qits.epics.api} because it is the epics
+ * <p>Every other ticket route lives in {@code eu.wohlben.qits.entities.api} because it is the epics
  * module's surface and needs nothing else. This one needs {@code domain} — the project, its wrapper
- * repository and the {@link WorkspaceAgentDispatch} port — and the epics jar depends on {@code
+ * repository and the {@link WorkspaceAgentDispatch} port — and the entities jar depends on {@code
  * domain} nowhere and must keep not depending on it, because it is the module most likely to be
  * lifted out next. The <em>service</em> layer may cross, which is the precedent {@code
  * ProjectTicketsController} already sets by validating a project id against {@code domain}; putting
@@ -141,7 +141,7 @@ public class TicketDispatchController {
                 WorkspaceAgentDispatch.Subject.ticket(ticket.id),
                 started.instruction());
 
-    String changedBy = EpicsPrincipal.changedBy(identity);
+    String changedBy = EntitiesPrincipal.changedBy(identity);
     tickets.addComment(ticket.id, comment(branch, made, started.phase()), changedBy);
     publisher.fire(ticket.projectId, ProjectChangeHint.Topic.TICKETS);
     LOG.infof(

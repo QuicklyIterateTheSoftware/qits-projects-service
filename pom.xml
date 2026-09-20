@@ -7,17 +7,17 @@
     <!-- Standalone parent for the extracted qits-projects repo (docs/epics/qits-projects in the qits
          monorepo). The PROJECT + REPOSITORY + PLANNING context: the Project aggregate and its slug,
          the git-remote-as-entity half of domain.repository (bare origins on disk, clone/pull/push/
-         sync, submodule graph, name aliases, remote-login credentials), and the epics planning
+         sync, submodule graph, name aliases, remote-login credentials), and the entities planning
          module. Everything workspace-shaped — the Workspace entity, containers, file access,
          framework detection, prompt drafts — belongs to qits-workspaces and is deliberately absent,
          as is everything that runs inside a container (qits-workspace-daemon).
 
          DELIBERATELY ITS OWN GAV, the qits-workspaces case rather than the qits-workspace-daemon
-         one. The child directories are `domain`, `service` and `epics`, whose monorepo artifactIds
-         are the bare `domain`/`epics` — installing eu.wohlben:domain:1.0.0-SNAPSHOT from here would
-         clobber the monorepo's jar in the shared ~/.m2 that every workspace container mounts. The
-         directories stay as they are (the filtered history is anchored to them); only the
-         coordinates are namespaced, and the artifactIds are named by layer.
+         one. The child directories are `domain`, `service` and `entities` (`epics` until the
+         unified-entity epic retired that word as a container name), whose monorepo artifactIds were
+         the bare `domain`/`epics` — installing eu.wohlben:domain:1.0.0-SNAPSHOT from here would
+         clobber the monorepo's jar in the shared ~/.m2 that every workspace container mounts. Only
+         the coordinates are namespaced, and the artifactIds are named by layer.
 
          Versions that must stay in step with qits (Quarkus platform, JDK release, MapStruct, Lombok)
          are duplicated here on purpose: a clone of THIS repo alone must build, with no monorepo and
@@ -37,7 +37,7 @@
     <modules>
         <!-- gitmirror has no reactor dependency and is what `domain` builds its git substrate from
              (see its own pom for why it is a separate module); `service` depends on both `domain`
-             and `epics`; `epics` deliberately depends on neither.
+             and `entities`; `entities` deliberately depends on neither.
 
              NO WIRE CONTRACT IS VENDORED HERE ANY MORE, and that took two changes landing days
              apart rather than one. `workspace-daemon-protocol` and `projects-daemon-protocol` were
@@ -57,7 +57,7 @@
              opposite of what the pin claims. -->
         <module>gitmirror</module>
         <module>domain</module>
-        <module>epics</module>
+        <module>entities</module>
         <module>service</module>
     </modules>
 
@@ -324,7 +324,7 @@
             <!-- The reactor's own modules, so children depend on them version-less. -->
             <dependency>
                 <!-- The git substrate: mirrors, wire reads and pushes. Framework-free like the
-                     domain/epics entries beside it, so `domain` gets a library and not a second CDI
+                     domain/entities entries beside it, so `domain` gets a library and not a second CDI
                      graph. -->
                 <groupId>${project.groupId}</groupId>
                 <artifactId>qits-projects-gitmirror</artifactId>
@@ -337,7 +337,7 @@
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
-                <artifactId>qits-projects-epics</artifactId>
+                <artifactId>qits-projects-entities</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

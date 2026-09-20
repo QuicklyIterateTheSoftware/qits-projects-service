@@ -1,7 +1,7 @@
 # Build context trim for `docker build -f docker/Dockerfile .` (root context, whole reactor).
 #
 # docker/Dockerfile deliberately does `COPY . .` rather than listing modules: the reactor builds
-# service's dependencies from source (domain and epics are never published), and a module list would
+# service's dependencies from source (domain and entities are never published), and a module list would
 # have to be edited every time a module is added. This file is what makes that cheap — it drops
 # everything the build does not need, so adding a module stays free and no stale output leaks in.
 
@@ -41,7 +41,7 @@ service/src/main/webui/.angular
 # Docs and the docker/ dir itself: nothing in the build reads them, and keeping them out means
 # editing this Dockerfile or regenerating docs/openapi.yml does not bust the `COPY . .` layer.
 # (docs/openapi.yml is written by OpenApiSchemaExportTest and read by a client generator elsewhere,
-# never by this build.) `epics/` is a MODULE, not prose — it stays.
+# never by this build.) `entities/` is a MODULE, not prose — it stays.
 *.md
 docs
 docker

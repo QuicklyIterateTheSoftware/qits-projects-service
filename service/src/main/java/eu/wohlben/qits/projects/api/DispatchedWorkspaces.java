@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.dto.EpicDto;
-import eu.wohlben.qits.epics.dto.TicketDto;
-import eu.wohlben.qits.epics.dto.WorkspaceReferenceDto;
+import eu.wohlben.qits.entities.dto.EpicDto;
+import eu.wohlben.qits.entities.dto.TicketDto;
+import eu.wohlben.qits.entities.dto.WorkspaceReferenceDto;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -18,7 +18,7 @@ import java.util.Map;
  *
  * <h2>Why it sits in {@code projects.api} and is called from {@code epics.api}</h2>
  *
- * <p>The epics module depends on {@code domain} nowhere and must keep not depending on it, so it
+ * <p>The entities module depends on {@code domain} nowhere and must keep not depending on it, so it
  * cannot reach {@link WorkspaceAgentDispatch} and cannot answer this question for itself. The
  * <em>service</em> layer may cross — {@code ProjectTicketsController} already validates a project id
  * against {@code domain}, and {@link TicketDispatchController} is the whole dispatch door living

@@ -1,0 +1,104 @@
+package eu.wohlben.qits.entities.control;
+
+import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.error.ConflictException;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * The epic lifecycle rules, in one place because all three services obey them: {@link EpicService},
+ * {@link FeatureService} and {@link TaskService} (a task's phase is its feature's epic's phase).
+ *
+ * <p>The freeze is field-aware, not endpoint-aware. A structural change — the epic's title or
+ * description, and any feature/task create, update or delete, dependencies included — needs {@link
+ * EpicStatus#REFINING}. The implemented markers ({@code implementedOn}/{@code implementedAt}) need
+ * {@link EpicStatus#IMPLEMENTATION}. The two guards therefore reject everything in {@link
+ * EpicStatus#IMPLEMENTED}, {@link EpicStatus#SUPERSEDED} and {@link EpicStatus#ABANDONED} without a
+ * rule of their own.
+ *
+ * <p>Deleting an epic stays allowed in every status: it removes the row and its subtree rather than
+ * changing a frozen scope, and the audit log outlives it.
+ *
+ * <p><b>Where the phase is stored has moved and no rule here has.</b> Every caller reads the status
+ * off the merged {@link WorkEntity} row and hands this class that row — {@link EpicService}, {@link
+ * FeatureService}, {@link TaskService} and {@link DossierService} alike — so every legal move, every
+ * refusal and every message naming both ends is exactly what it was. <b>No legacy row is read
+ * anywhere</b>, so the two guards are a function of the merged row's status and of nothing else.
+ *
+ * <p><b>The two guards read {@link WorkEntity#status}, which is a {@code String}</b>, and compare it
+ * against {@link EpicStatus#name()} rather than parsing it. That is deliberate: a guard's job is to
+ * refuse, and a row whose status word is unreadable must be refused rather than blow up with a
+ * different exception on the way to the refusal. The message interpolates the stored word, which is
+ * the enum's own {@code name()} and therefore the sentence these two always produced.
+ *
+ * <p>There is still exactly <b>one signature per guard</b>, which is the point: a second would be
+ * two places the freeze condition is written, and the merged row is what every caller already has in
+ * hand at the moment it asks.
+ */
+final class EpicLifecycle {
+
+  /** What each status may move to. A status absent from the map is terminal. */
+  private static final Map<EpicStatus, Set<EpicStatus>> LEGAL_TARGETS =
+      Map.of(
+          EpicStatus.REFINING,
+          EnumSet.of(EpicStatus.IMPLEMENTATION, EpicStatus.ABANDONED),
+          EpicStatus.IMPLEMENTATION,
+          EnumSet.of(EpicStatus.IMPLEMENTED, EpicStatus.SUPERSEDED, EpicStatus.ABANDONED),
+          EpicStatus.IMPLEMENTED,
+          EnumSet.of(EpicStatus.SUPERSEDED));
+
+  /**
+   * The statuses in which an epic's work is over. Not the same question as "what may this status
+   * move to": {@link EpicStatus#IMPLEMENTED} still has a legal move ({@link EpicStatus#SUPERSEDED}),
+   * and is resolved all the same. This is what an assembling layer asks before tearing down
+   * anything the epic was still holding.
+   */
+  private static final Set<EpicStatus> RESOLVED =
+      EnumSet.of(EpicStatus.IMPLEMENTED, EpicStatus.SUPERSEDED, EpicStatus.ABANDONED);
+
+  private EpicLifecycle() {}
+
+  /** Whether {@code status} says the epic's work is over — see {@link #RESOLVED}. */
+  static boolean resolves(EpicStatus status) {
+    return RESOLVED.contains(status);
+  }
+
+  /** The status named by {@code value}, or empty when it names none. */
+  static Optional<EpicStatus> parse(String value) {
+    for (EpicStatus status : EpicStatus.values()) {
+      if (status.name().equals(value)) {
+        return Optional.of(status);
+      }
+    }
+    return Optional.empty();
+  }
+
+  /** Rejects a move the lifecycle does not allow, naming both ends. */
+  static void requireTransition(EpicStatus from, EpicStatus target) {
+    if (!LEGAL_TARGETS.getOrDefault(from, EnumSet.noneOf(EpicStatus.class)).contains(target)) {
+      throw new ConflictException("An epic cannot move from " + from + " to " + target);
+    }
+  }
+
+  /** Rejects a structural change to an epic whose scope is no longer a draft. */
+  static void requireRefining(WorkEntity epic) {
+    if (!EpicStatus.REFINING.name().equals(epic.status)) {
+      throw new ConflictException(
+          "The scope of epic " + epic.id + " is frozen: it is " + epic.status);
+    }
+  }
+
+  /** Rejects an implemented-marker change to an epic that is not being implemented. */
+  static void requireImplementation(WorkEntity epic) {
+    if (!EpicStatus.IMPLEMENTATION.name().equals(epic.status)) {
+      throw new ConflictException(
+          "Implemented markers need an epic in IMPLEMENTATION: epic "
+              + epic.id
+              + " is "
+              + epic.status);
+    }
+  }
+}

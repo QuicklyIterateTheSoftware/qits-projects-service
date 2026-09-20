@@ -36,7 +36,7 @@ import java.util.Set;
  * <p>There is deliberately NO {@code /content} route serving {@code text/html}: agent-authored HTML
  * served same-origin would be an XSS door, so the SPA renders each design in a sandboxed iframe
  * with scripts off. A <em>copy</em> of a design inlined into a dossier is served from one hardened
- * route in the epics half of this service; these bytes are not.
+ * route in the entities half of this service; these bytes are not.
  */
 @Path("/refinements/{id}/designs")
 @Produces(MediaType.APPLICATION_JSON)
@@ -50,7 +50,7 @@ public class RefinementDesignController {
 
   @Inject RefinementDesigns designs;
 
-  @Inject eu.wohlben.qits.epics.control.DossierAssetService assets;
+  @Inject eu.wohlben.qits.entities.control.DossierAssetService assets;
 
   @Inject SecurityIdentity identity;
 

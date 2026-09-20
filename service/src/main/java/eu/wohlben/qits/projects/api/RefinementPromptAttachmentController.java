@@ -34,7 +34,7 @@ public class RefinementPromptAttachmentController {
 
   @Inject RefinementPromptAttachments attachments;
 
-  @Inject eu.wohlben.qits.epics.control.DossierAssetService assets;
+  @Inject eu.wohlben.qits.entities.control.DossierAssetService assets;
 
   public record NewAttachment(
       String mimeType, @NotBlank String label, @NotBlank String source, @NotBlank String dataBase64) {}

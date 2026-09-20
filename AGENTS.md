@@ -50,7 +50,7 @@ there and that nothing else substitutes for:
 ## Package and module conventions
 
 `eu.wohlben.qits.projects.*` across `domain/` and `service/`, with disjoint sub-packages so there is
-no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
+no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
 
 - `domain/` — `entity`, `persistence`, `dto`, `mapper`, `control`, `error`, `validation`.
   Framework-free in the sense that matters: no JAX-RS, no websockets. Entities are Panache
@@ -90,7 +90,7 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
     far side and an unparseable answer are all one WARN and an empty list. Empty is also the honest
     degraded answer — it is exactly what these screens showed before the field existed. The liveness
     rule is the far side's and is stated there once (an ACTIVE workspace row, whatever its container
-    is doing); nothing here re-decides it, and `api/DispatchedWorkspaces` is the one place the epics
+    is doing); nothing here re-decides it, and `api/DispatchedWorkspaces` is the one place the entities
     module's DTOs are decorated with what it answers.
     <br>**The path is under `agent-dispatches` because the roles are, and that cost a release to
     learn.** It shipped against `/workspaces/api/workspaces/references` (qits-workspaces
@@ -136,11 +136,24 @@ no split package, plus `eu.wohlben.qits.epics.*` in `epics/`:
   advisory: unset, unreachable, refused and 404 are one behaviour — a WARN and `Optional.empty()`,
   which becomes an absent event key a consumer reads as "unknown". A 200 with an empty array is a
   different answer (a leaf, `[]` on the wire) and the two must never be collapsed.
-- `epics/` — untouched by the extraction beyond its `<parent>`: its own package, its own error
-  types, its own datasource, its own physical database (`qits_epics`) and its own Flyway lineage. It
-  depends on neither `domain` nor any auth module, and it should stay that way — it is the module
-  most likely to be lifted out next, and lifting it out now moves a database rather than tables out
-  of somebody else's.
+- `entities/` — its own package, its own error types, its own datasource, its own physical database
+  (`qits_epics`) and its own Flyway lineage. It depends on neither `domain` nor any auth module, and
+  it should stay that way — it is the module most likely to be lifted out next, and lifting it out
+  now moves a database rather than tables out of somebody else's.
+
+  **It was `epics/` until the unified-entity epic's last task, and the split that rename made is a
+  rule.** The module holds one `entity` table discriminated by an archetype, so `epic` names an
+  archetype now and nothing larger: the directory, the artifactId (`qits-projects-entities`), the
+  package (`eu.wohlben.qits.entities.*`, in `service/` too) and `service/…/projects/entitieshost/`
+  all say `entities`. **The datasource, the persistence unit, the Flyway location
+  (`classpath:db/epics/migration`), `QITS_RESOURCE_EPICS_*` and the database `qits_epics` are still
+  spelled `epics`, deliberately** — they are deployment configuration and applied migration history,
+  not code, and the module name and the datasource name having been the same word was a coincidence.
+  So `entities/src/main/resources/db/epics/migration/` is the intended result. Likewise unmoved:
+  every REST route (`/projects/api/epics/…`), every DTO field, every MCP tool name, the SSE topics
+  `epics`/`tickets` (see "The event bus"), and `AgentSurface`'s `project.epics`, which is shared
+  with qits-projects-daemon. `docs/unified-entity-model.md` § "The 'epics' vocabulary rename, as
+  shipped" is the full table and the argument.
 
 `control/` is flat. The monorepo split this code across `domain.project.*`, `domain.repository.*`
 and `domain.seeding.*` to break cycles that do not exist here.
@@ -205,8 +218,8 @@ a rule rather than a detail:
 **The word is SEAMS now, not "the bus", and the narrowing was deliberate (2026-08-10).** The
 eventstream jar also carries the platform's causation *persistence vocabulary* — `CausedRow`,
 `CausationStamp`, `@Uncaused`, three jakarta-persistence-shaped types with no publish, no subscribe
-and no wire in them — and six entities implement it, so the jar sits in `domain`'s and `epics`' poms
-now. That is not a crack in `epics`' "depends on `domain` and on `auth/*` not at all": a lift-out of
+and no wire in them — and six entities implement it, so the jar sits in `domain`'s and `entities`' poms
+now. That is not a crack in `entities`' "depends on `domain` and on `auth/*` not at all": a lift-out of
 that module takes three annotations along in one jar and no CDI graph. What the rule still forbids
 is control flow — no listener, no publisher, no `EventFrame`, no `QitsEventBus` outside
 `service/…/bus/`. What the dependency costs is honest and paid in the suites: the jar's persistence
@@ -456,7 +469,7 @@ spells both roles.
 
 **Two doors, and which one shuts says what is missing.** No user header at all is anonymous and
 answers **401** at the mechanism's challenge; a named caller without the role authenticates and
-answers **403**. `EpicsAuditIdentityTest` pins both.
+answers **403**. `EntitiesAuditIdentityTest` pins both.
 
 **The suite goes through the mechanism, never around it.** `qits-auth-core` ships a `%test` dev user
 granted all four platform roles, so a plain `given()` already is an admin session and the ordinary
@@ -465,7 +478,7 @@ plus `X-Qits-Roles`, as the MCP suites and the two role-pinning tests do — and
 `NoDevUserProfile`, which blanks the dev user to reach the deployed posture, has no identity until it
 sends them.
 
-The identity exists to name `changed_by`; `EpicsAuditIdentityTest` is what pins that, and it uses
+The identity exists to name `changed_by`; `EntitiesAuditIdentityTest` is what pins that, and it uses
 the real header rather than `@TestSecurity` on purpose. The header **is** the contract under test —
 nothing else ever produces a principal in a deployed service — so `@TestSecurity` would install an
 identity without going through the mechanism and prove a path the deployment never takes. That is
@@ -637,7 +650,7 @@ prefixes are what make the three depths coexist.
 The segments are the `slug` columns on `Epic`, `Feature` and `Task` (V2). A slug is minted from the
 title at **create** and never changes — `@Column(updatable = false)`, and no `update` path touches
 it — because a rename must not orphan the branches already cut. `Slugs.slugify` is the derivation, a
-deliberate copy of domain's `ProjectService.slugify` (epics depends on `domain` nowhere, and stays
+deliberate copy of domain's `ProjectService.slugify` (entities depends on `domain` nowhere, and stays
 that way); `Slugs.unique` then adds `-2`, `-3`, … within the scope. The scope is the parent: an
 epic's slug is unique per project, a feature's per epic, a task's per feature — two siblings sharing
 one would name the same branch. `Project.slug` is unique too (V6), with the whole service as its
@@ -654,7 +667,7 @@ other. Renaming the capture prefix is a qits-workspaces-service workstream; do n
 
 Each dispatch tells qits-workspaces which Git refs its agent may push: the `gitRefs` member of the
 dispatch request (contract C4 in the superproject's `principal-bound-git-refs-plan.md`).
-`epics/control/WorkBranches` computes the branch and its refs in one place, so the two cannot drift
+`entities/control/WorkBranches` computes the branch and its refs in one place, so the two cannot drift
 apart. The refs are exact refs (`refs/heads/<branch>`) and never `/*` patterns: qits-workspaces
 removes one ref from an epic's list when a sub-workspace takes that branch, and it cannot do that to
 a pattern.
@@ -929,7 +942,7 @@ it, in one press — the ticket door's shape one planning level higher, so read
 project's **wrapper** with `branchTree` true, on `epic/<epicSlug>`, because an epic spans the estate
 and names no single component (its *tasks* name repositories, one each, and no one of them is what
 the epic is about). It lives in `projects.api` for the ticket door's reason: it needs `domain`, and
-the epics jar depends on `domain` nowhere.
+the entities jar depends on `domain` nowhere.
 
 Four things are rules rather than details:
 
@@ -1000,7 +1013,7 @@ written on the refining route, using the rest of that route — but storing it b
 would cascade it away on a discard, and the plan has to outlive the container: implementation reads
 it months later, when no refinement is open at all.
 
-Being in the epics module is the point, not a filing decision: `DossierService` inherits the
+Being in the entities module is the point, not a filing decision: `DossierService` inherits the
 `REFINING`-only guard `EpicLifecycle` already applies to features and tasks (**reuse it, never
 restate the condition**), an `AuditEntry` per create/update/move/delete under the epic's own id, and
 the `CausationStamp` listener.
@@ -1028,7 +1041,7 @@ the `CausationStamp` listener.
     `ticketId`, both optional, exactly one required; both or neither is refused with a sentence
     saying which. A parallel set of five ticket tools would double the surface a model chooses from
     and write one rule twice. `inline_figure` is the one tool that stays epic-only.
-  - The ticket routes are `epics/api/TicketDossierController` — `GET/POST /tickets/{ticketId}/dossier`,
+  - The ticket routes are `entities/api/TicketDossierController` — `GET/POST /tickets/{ticketId}/dossier`,
     `GET/PUT/DELETE …/{slug}`, `POST …/{slug}/move`, same roles and the same 409-with-current-page as
     the epic ones. A **second root resource** rather than methods on `DossierController`, because
     JAX-RS gives a class one `@Path`; the page segment accepts a slug **or** an id, so the SPA's
@@ -1041,7 +1054,7 @@ the `CausationStamp` listener.
 - **`version` stands where an acceptance step would be.** Nobody accepts a write on this route, so a
   person editing in the SPA while an agent writes from a prompt is the ordinary case: a stale write
   answers **409 carrying the current page**, body included, and never a merge. `StaleWriteException`
-  (one per module: `epics.error` and `projects.error`) is what the two exception mappers put
+  (one per module: `entities.error` and `projects.error`) is what the two exception mappers put
   `current` on the wire for. Both doors carry it — `DossierController` and `DossierMcpTools`
   (`list_dossier_pages`, `get_dossier_page`, `put_dossier_page`, `move_dossier_page`,
   `remove_dossier_page`, `inline_figure`), all six write tools in `ReadOnlyRepositoryToolFilter`.
@@ -1054,15 +1067,15 @@ the `CausationStamp` listener.
   no page names any more — reference counting, not a sweeper, so the dossier is self-contained at
   every instant. The bytes are a **snapshot**: rewriting a design upstream does not change a page
   that already argued from it.
-- **The module boundary is `service`'s to cross, not epics'.** `refinementhost/DossierFigures` reads
-  the source (domain's database) and hands `copyFrom` bytes, mime and label; the epics module still
+- **The module boundary is `service`'s to cross, not entities'.** `refinementhost/DossierFigures` reads
+  the source (domain's database) and hands `copyFrom` bytes, mime and label; the entities module still
   sees nothing of `domain`. It also validates the source against **this** epic's refinement — a
   figure from somebody else's is a 404, which is the boundary that keeps copy-on-reference from
   becoming a cross-epic reference by accident.
 
 ### The one hardened content route
 
-`GET /epics/{epicId}/dossier-assets/{assetId}/content` (`epics/api/DossierAssetController`) is the
+`GET /epics/{epicId}/dossier-assets/{assetId}/content` (`entities/api/DossierAssetController`) is the
 single place this estate serves agent-authored HTML, and it does **not** lift `RefinementDesign`'s
 prohibition — it scopes it. The Design tab still renders from a JSON field; what is served here is a
 *copy*, in the epics database, with
@@ -1086,7 +1099,7 @@ is, with the same slug rule (minted from the title at create, unique within the 
 re-derived) and no join to the epic tree anywhere. A ticket that turns out to need a plan is an epic
 somebody writes, not a foreign key somebody sets.
 
-**Almost everything here is the epics module's idiom applied again** — `TicketService` on
+**Almost everything here is the entities module's idiom applied again** — `TicketService` on
 `ReadPatience`/`WritePatience` with no `@Transactional`, in-service cascade delete so each removed
 comment gets its own audit row, the `value` + `clear*` pairing on the three nullable fields, a
 target naming no status answering 409 while an absent one answers 400. Three things are *different*,
@@ -1122,7 +1135,7 @@ and each one is a decision rather than a simplification:
 - **`created_by` and `author` are columns, and they are STAMPED.** Every other actor in this module
   lives only in the audit log. These two are duplicated onto the live rows because a ticket list
   wants a reporter and a thread wants a writer without a join per row — and they are read from the
-  request identity at the seam (`EpicsPrincipal.changedBy`, or the MCP session's), never from a
+  request identity at the seam (`EntitiesPrincipal.changedBy`, or the MCP session's), never from a
   request body, so nobody can file as somebody else. An edit does not re-stamp either: who wrote it
   and who last changed it are different facts, and the second one is the log's.
 - **The MCP surface HAS the transition.** `EpicMcpTools` deliberately exposes no lifecycle move,
@@ -1149,18 +1162,18 @@ newest-first, and deliberately: a log is scanned from the top, a conversation is
 start.
 
 The SSE topic is its own (`ProjectChangeHint.Topic.TICKETS`, `tickets` on the wire) and every ticket
-and comment mutation fires it, through `TicketChangeHints` — a sibling bean to `EpicChangeHints`
+and comment mutation fires it, through `TicketsTopicHints` — a sibling bean to `EpicsTopicHints`
 rather than four more methods on it, because the two announce different channels. Firing on `EPICS`
 would redraw a board because somebody commented on a bug.
 
-**A ticket can be handed to an agent, and that door is the one ticket route not in `epics.api`.**
+**A ticket can be handed to an agent, and that door is the one ticket route not in `entities.api`.**
 `POST /projects/api/tickets/{id}/dispatch-agent` (`projects/api/TicketDispatchController`) stands an
 aggregate workspace on `ticket/<slug>` at the project's **wrapper** — a ticket names no repository,
 so the whole estate is the answer and `branchTree` is true — and launches a coding agent in it over
 the `control/WorkspaceAgentDispatch` port. It lives in `projects.api` because it needs `domain` (the
-project, the wrapper, the port) and the **epics jar depends on `domain` nowhere and must keep not
+project, the wrapper, the port) and the **entities jar depends on `domain` nowhere and must keep not
 depending on it**; the service layer may cross, which is the crossing `ProjectTicketsController`
-already makes. `EpicsPrincipal` is public for that one caller rather than copied into a second
+already makes. `EntitiesPrincipal` is public for that one caller rather than copied into a second
 package.
 
 Three things travel with it:
@@ -1219,7 +1232,7 @@ Three things travel with it:
 
 **A transition starts the next phase by itself, and the transition is the whole trigger.**
 `projects/api/TicketPhaseAdvance` (application-scoped, `afterTransition(ticket, changedBy)`) is
-called by **both** transition surfaces — `epics/api/TicketController`'s route and
+called by **both** transition surfaces — `entities/api/TicketController`'s route and
 `mcp/TicketMcpTools.transitionTicket` — *after* the move is recorded and outside its transaction,
 exactly where each already fires its hint. It reads `TicketPhasePrompts.startedBy` and **adds no
 second table and no second switch**: the prompt for a status is the work that starts from it, so a
@@ -1227,7 +1240,7 @@ failed verification moving IMPLEMENTED → REFINED gets the *implement* turn and
 gets nothing. Direction is never consulted. It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
 
-- **It is not on `TicketService`** because the epics module has no idea what a workspace is and must
+- **It is not on `TicketService`** because the entities module has no idea what a workspace is and must
   keep not having one, and because recording a fact and calling out to a sibling service must not
   share a transaction. Both call sites wrap the call in the belt `ReleaseRequests` carries: the port
   must not throw, and a throw is a port bug that may not touch a transition that already happened.
@@ -2048,7 +2061,7 @@ is the client's README's list; keep them the same.
 
 `domain/src/main/resources/db/projects/migration/`, hand-written, its own lineage on its own
 datasource. Never touch the monorepo's `db/migration` — that is a different database. Epics has its
-own lineage under `epics/src/main/resources/db/epics/migration/`; the two never mix.
+own lineage under `entities/src/main/resources/db/epics/migration/`; the two never mix.
 
 Entities live in a **named** persistence unit (`projects`), not the default one. An `EntityManager`
 injection therefore needs `@PersistenceUnit("projects")`.
@@ -2094,8 +2107,8 @@ them as a race that never happened. Two rules govern every new wrap — **outsid
 is the proof, and it pins both halves: the read survives a severed connection, and a name that
 resolves to nothing still answers 404 on the first attempt.
 
-**The epics board's list reads are wrapped too, and `epics` routes them through one bean.**
-`control/ReadPatience` holds the deadline (`qits.epics.read-deadline`, 15S) so the five seams —
+**The epics board's list reads are wrapped too, and `entities` routes them through one bean.**
+`control/ReadPatience` holds the deadline (`qits.entities.read-deadline`, 15S) so the five seams —
 `EpicService.listByProject`, `FeatureService.listByEpic`, `TaskService.listByFeature` and
 `AuditService`'s two histories — cannot drift apart, and so a suite can shorten it: a give-up test at
 fifteen seconds is a fifteen-second test. What they are worth: a severed connection would draw a
@@ -2127,9 +2140,9 @@ commit and a real rollback the same way). Only the first is retried. Three rules
   transaction the retry cannot open again, and a caller already in one is a wrap that must not exist.
 - **Flush last.** Hibernate flushes at commit by default, which puts the write on the far side of the
   line `inNewTx` can classify — the whole write would land in the undecidable commit phase and never
-  be retried. `WritePatience` does it for the epics seams; the two domain seams do it by hand.
+  be retried. `WritePatience` does it for the entities seams; the two domain seams do it by hand.
 
-**`epics` routes all ten writes through one bean, `control/WritePatience`** (`qits.epics.write-deadline`,
+**`entities` routes all ten writes through one bean, `control/WritePatience`** (`qits.entities.write-deadline`,
 15S) — `EpicService`'s create/update/transition/delete, `FeatureService`'s and `TaskService`'s
 create/update/delete. Every one is rows and nothing else, and no caller is transactional:
 `EpicMcpTools` is deliberately transaction-free (two persistence units, non-XA) and the controllers
@@ -2183,12 +2196,12 @@ insert-only. Where the decisions land, and why:
 | `AuditEntry` | `CausedRow` | Covers what the live rows cannot. The stamp is insert-only, so an epic row records the cause of its own creation and never of an update; and a deleted row is gone while its DELETE entry stays (audit rows are deliberately not FK'd back). |
 
 The decisions are **enforced, not documented**: `ArchRulesTest` (qits-arch-rules) sits in each entity
-module — `domain` and `epics`, one per module rather than one in `service`, because a module owns its
-entities and `epics` depends on nothing, so a guard downstream of it would neither see its classes
+module — `domain` and `entities`, one per module rather than one in `service`, because a module owns its
+entities and `entities` depends on nothing, so a guard downstream of it would neither see its classes
 nor survive its lift-out. A new `@Entity` that neither implements `CausedRow` nor declares
 `@Uncaused` fails the build naming the class.
 
-**`epics` needed an `archunit.properties` and no longer does.** Every epics entity participates, so
+**`entities` needed an `archunit.properties` and no longer does.** Every entity in it participates, so
 no class there carries `@Uncaused` and the rule set's negative rule ("nothing `@Uncaused` may
 implement `CausedRow`") matched zero classes — which ArchUnit fails by default, and the module went
 red for being in the best state the rules describe. The module-scoped
@@ -2213,7 +2226,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   chosen at run time and cannot be written down. Testcontainers is not on this classpath and must
   not arrive. Every **(module, datasource) pair names its own database** (`qp_domain_projects`,
   `qp_epics_epics`, `qp_svc_projects`, `qp_svc_epics`, and the IT's two) so no two suites can mean
-  one schema. `EmbeddedPg` travels to `service` in `domain`'s test-jar; `epics` keeps a **copy**,
+  one schema. `EmbeddedPg` travels to `service` in `domain`'s test-jar; `entities` keeps a **copy**,
   because that module depends on nothing and a test-scoped edge is still an edge.
 - **The service suite runs on port 0.** 8081 is Quarkus' default test port and also the address the
   platform's own npm registry is published on, so on the machine this is most likely built on the
@@ -2235,7 +2248,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
       ./mvnw -pl service -am test -Dtest=OpenApiSchemaExportTest -Dsurefire.failIfNoSpecifiedTests=false
 
   Both extra flags are load-bearing on a fresh clone, which is the only state this repo promises:
-  `-am` because `domain` and `epics` are 1.0.0-SNAPSHOTs published nowhere, so `-pl service` alone
+  `-am` because `domain` and `entities` are 1.0.0-SNAPSHOTs published nowhere, so `-pl service` alone
   cannot resolve them, and `failIfNoSpecifiedTests=false` because `-am` then walks those two modules,
   which have no test by that name. (A plain `./mvnw verify` regenerates it too — the export is a test.)
   Note also that renaming a class the document names needs a `clean`: a stale nested-record `.class`

@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
  * EntityTransitionApiTest}: what the agent on the other end of the socket actually experiences —
  * the feature split arriving as one call, a plain edit being a map of one, the project boundary, and
  * a refusal reading as an instruction rather than as a protocol error. Every rule behind a refusal
- * is asserted in the epics module, where stating one costs no round trip.
+ * is asserted in the entities module, where stating one costs no round trip.
  */
 @QuarkusTest
 @TestProfile(McpStatelessTestProfile.class)

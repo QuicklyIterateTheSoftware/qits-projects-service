@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.refinementhost;
 
-import eu.wohlben.qits.epics.control.EpicService;
+import eu.wohlben.qits.entities.control.EpicService;
 import eu.wohlben.qits.projects.entity.Refinement;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -12,7 +12,7 @@ import org.jboss.logging.Logger;
  * <b>only</b> way an epic's status should be moved from a door: {@code EpicService.transition}
  * alone leaks whatever the epic was still holding.
  *
- * <p>It lives here, beside the thing it tears down, rather than in the {@code epics} module: that
+ * <p>It lives here, beside the thing it tears down, rather than in the {@code entities} module: that
  * jar depends on {@code domain} nowhere and must keep not depending on it, and the direction is
  * already this way round — {@link RefinementService} depends on {@link EpicService}, not the
  * reverse. The seam a caller uses is one method on this bean, so a door that moves an epic gets the

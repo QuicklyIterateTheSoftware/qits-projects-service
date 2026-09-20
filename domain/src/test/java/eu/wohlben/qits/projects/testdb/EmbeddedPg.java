@@ -17,7 +17,7 @@ import java.sql.Statement;
  *
  * <p><b>This copy travels to {@code service} in the test-jar</b>, which is what {@code domain}'s jar
  * plugin already ships for the port implementations, so the deployable's suite reuses it rather than
- * starting a second kind of postgres. {@code epics} has its OWN copy instead: that module depends on
+ * starting a second kind of postgres. {@code entities} has its OWN copy instead: that module depends on
  * nothing, deliberately, and a test-jar dependency on {@code domain} is the higher price. What is
  * never shared is the database NAME — every (module, datasource) pair names its own, so two suites
  * cannot mean the same schema.

@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
-import eu.wohlben.qits.epics.dto.EpicDto;
-import eu.wohlben.qits.epics.dto.TicketDto;
+import eu.wohlben.qits.entities.dto.EpicDto;
+import eu.wohlben.qits.entities.dto.TicketDto;
 import eu.wohlben.qits.projects.control.ProjectService;
 import java.util.ArrayList;
 import java.util.Collection;

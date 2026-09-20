@@ -1,11 +1,11 @@
 package eu.wohlben.qits.projects.mcp;
 
-import eu.wohlben.qits.epics.control.EpicService;
-import eu.wohlben.qits.epics.control.FeatureService;
-import eu.wohlben.qits.epics.control.TaskService;
-import eu.wohlben.qits.epics.control.Nested;
-import eu.wohlben.qits.epics.entity.WorkEntity;
-import eu.wohlben.qits.epics.error.NotFoundException;
+import eu.wohlben.qits.entities.control.EpicService;
+import eu.wohlben.qits.entities.control.FeatureService;
+import eu.wohlben.qits.entities.control.TaskService;
+import eu.wohlben.qits.entities.control.Nested;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;

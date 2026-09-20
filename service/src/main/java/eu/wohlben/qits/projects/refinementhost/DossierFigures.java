@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.refinementhost;
 
-import eu.wohlben.qits.epics.control.DossierAssetService;
-import eu.wohlben.qits.epics.entity.DossierAsset;
+import eu.wohlben.qits.entities.control.DossierAssetService;
+import eu.wohlben.qits.entities.entity.DossierAsset;
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.entity.RefinementDesign;
 import eu.wohlben.qits.projects.entity.RefinementPromptAttachment;
@@ -17,7 +17,7 @@ import java.nio.charset.StandardCharsets;
  * copy.
  *
  * <p><b>This class is the module seam.</b> The sources live in {@code domain}'s database and the
- * copy lives in {@code epics}', and the epics module cannot see {@code domain} and must not learn
+ * copy lives in {@code entities}', and the entities module cannot see {@code domain} and must not learn
  * to — so the read happens here, in {@code service}, which already sees both, and
  * {@link DossierAssetService#copyFrom} is handed bytes, mime type and label. One seam rather than a
  * port interface implemented across the boundary.

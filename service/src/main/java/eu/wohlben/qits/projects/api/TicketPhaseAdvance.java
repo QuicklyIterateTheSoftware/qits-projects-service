@@ -1,9 +1,9 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.control.TicketService;
-import eu.wohlben.qits.epics.control.WorkBranches;
-import eu.wohlben.qits.epics.entity.TicketStatus;
-import eu.wohlben.qits.epics.entity.WorkEntity;
+import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.WorkBranches;
+import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -94,12 +94,12 @@ import org.jboss.logging.Logger;
  *
  * <h2>Why this is not on {@code TicketService}</h2>
  *
- * <p>Because the epics module has no idea what a workspace is, and must keep not having one. {@code
- * epics/} depends on neither {@code domain} nor anything framework-shaped; it owns its database, its
+ * <p>Because the entities module has no idea what a workspace is, and must keep not having one. {@code
+ * entities/} depends on neither {@code domain} nor anything framework-shaped; it owns its database, its
  * errors and its lineage, and it is the module most likely to be lifted out of this repository next.
  * Putting this on {@code TicketService} would make the lifecycle itself depend on {@code
  * control/WorkspaceAgentTurns}, on the project, on the wrapper repository and thereby on the whole
- * catalog — the epics jar would carry a workspace concept into any service that ever reused it, and
+ * catalog — the entities jar would carry a workspace concept into any service that ever reused it, and
  * the lift-out would stop being a database move.
  *
  * <p>There is a second reason, and it survives even if the modules were one. {@code
@@ -114,11 +114,11 @@ import org.jboss.logging.Logger;
  *
  * <h2>It lives in {@code projects.api} for {@link TicketDispatchController}'s reason</h2>
  *
- * <p>It needs {@code domain} — the project, the wrapper and the port — and the epics jar depends on
+ * <p>It needs {@code domain} — the project, the wrapper and the port — and the entities jar depends on
  * {@code domain} nowhere. The <em>service</em> layer may cross, which is the crossing {@code
  * ProjectTicketsController} already makes, and the package name is where that crossing is declared.
  * It is {@code public} for one narrow reason: both transition surfaces are outside this package
- * ({@code eu.wohlben.qits.epics.api.TicketController} and {@code
+ * ({@code eu.wohlben.qits.entities.api.TicketController} and {@code
  * eu.wohlben.qits.projects.mcp.TicketMcpTools}), and the alternative — a copy per surface — is the
  * drift this class exists to prevent. {@link TicketPhasePrompts} stays package-private and is read
  * from here, which is the whole reason this class is in that package rather than beside either
@@ -199,7 +199,7 @@ public class TicketPhaseAdvance {
    * <p><b>The signature takes {@code changedBy}, where the epic wrote {@code
    * afterTransition(WorkEntity)}.</b> The comment is stamped from the caller's identity exactly as the
    * transition itself is, and the two surfaces do not resolve identity the same way: {@code
-   * EpicsPrincipal.changedBy} answers {@code null} for an unnamed caller, while {@code
+   * EntitiesPrincipal.changedBy} answers {@code null} for an unnamed caller, while {@code
    * TicketMcpTools.changedBy()} answers its own {@code AGENT} fallback, because a tool call arriving
    * without a forwarded user is still an agent doing the work. Injecting {@code SecurityIdentity}
    * here would silently pick the first of those for both surfaces, so the thread would attribute an

@@ -1,10 +1,10 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.epics.control.TransitionedEntity;
-import eu.wohlben.qits.epics.dto.EpicDto;
-import eu.wohlben.qits.epics.dto.FeatureDto;
-import eu.wohlben.qits.epics.dto.TaskDto;
-import eu.wohlben.qits.epics.dto.TicketDto;
+import eu.wohlben.qits.entities.control.TransitionedEntity;
+import eu.wohlben.qits.entities.dto.EpicDto;
+import eu.wohlben.qits.entities.dto.FeatureDto;
+import eu.wohlben.qits.entities.dto.TaskDto;
+import eu.wohlben.qits.entities.dto.TicketDto;
 import eu.wohlben.qits.projects.control.ProjectService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -24,10 +24,10 @@ import java.util.function.Function;
  * <h2>Why it sits in {@code projects.api} and is called from {@code epics.api}</h2>
  *
  * <p>{@link DispatchedWorkspaces} is the precedent and this is the same crossing, made for the same
- * reason. <b>The {@code epics} module depends on {@code domain} nowhere and must keep not depending
+ * reason. <b>The {@code entities} module depends on {@code domain} nowhere and must keep not depending
  * on it</b> — it has its own package, its own error types and its own physical database, and it is
  * the module most likely to be lifted out next. The project slug lives in {@code domain}'s {@code
- * project} table, in a <em>different physical database</em>, so {@code epics} could not resolve it
+ * project} table, in a <em>different physical database</em>, so {@code entities} could not resolve it
  * even if the module boundary had permitted the reach: {@code entity} holds the bare {@code number}
  * and the {@code project_id}, and nothing more. The <em>service</em> layer may cross, so the
  * crossing happens once, here, declared by the package this class is in.
