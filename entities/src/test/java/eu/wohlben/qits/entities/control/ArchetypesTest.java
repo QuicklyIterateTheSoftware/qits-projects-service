@@ -27,15 +27,38 @@ class ArchetypesTest {
   // ---- the declarations themselves -------------------------------------------------------------
 
   @Test
-  void requiredIsASubsetOfPermittedForEveryArchetype() {
+  void requiredIsASubsetOfRequiredAtCreateIsASubsetOfPermittedForEveryArchetype() {
     // The invariant Archetypes asserts at class-initialisation time. Asserted here too, because the
     // class-init check fires only if something loads the class and a rule nobody exercises is a
     // rule nobody notices breaking.
+    //
+    // The middle term is the create axis: a property owed at every moment but not at birth would be
+    // a rule no writer could satisfy, since every row is created before it is updated.
     for (Archetype archetype : Archetype.values()) {
       ArchetypeSpec spec = Archetypes.spec(archetype);
       assertTrue(
-          spec.permitted().containsAll(spec.required()),
-          archetype + " requires properties it does not permit: " + spec.required());
+          spec.requiredAtCreate().containsAll(spec.required()),
+          archetype + " requires after create what it does not require at create: " + spec.required());
+      assertTrue(
+          spec.permitted().containsAll(spec.requiredAtCreate()),
+          archetype + " requires properties it does not permit: " + spec.requiredAtCreate());
+    }
+  }
+
+  @Test
+  void theTicketIsTheONLYKindWhoseTwoRequiredSetsDifferAndTheImpetusIsTheWholeDifference() {
+    // The declaration this settlement is. Intake demands an impetus — a REPORTED ticket consists of
+    // one — and entity.impetus is nullable because clearing one afterwards is a thing a person does
+    // (TicketServiceTest/TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields). Two axes could
+    // say only one of those; the third says both.
+    for (Archetype archetype : Archetype.values()) {
+      ArchetypeSpec spec = Archetypes.spec(archetype);
+      Set<EntityProperty> onlyAtCreate = EnumSet.copyOf(spec.requiredAtCreate());
+      onlyAtCreate.removeAll(spec.required());
+      assertEquals(
+          archetype == Archetype.TICKET ? Set.of(EntityProperty.IMPETUS) : Set.of(),
+          onlyAtCreate,
+          archetype + " requires these at create and not afterwards");
     }
   }
 
@@ -71,39 +94,62 @@ class ArchetypesTest {
   // ---- what a well-formed candidate looks like -------------------------------------------------
 
   @Test
-  void theFourWellFormedCandidatesPass() {
-    assertEquals(List.of(), Archetypes.validate(epic(EpicStatus.REFINING.name())));
-    assertEquals(List.of(), Archetypes.validate(ticket(TicketStatus.REPORTED.name())));
-    assertEquals(
-        List.of(),
-        Archetypes.validate(EntityState.of(Archetype.FEATURE, properties(EntityProperty.TITLE))));
-    assertEquals(
-        List.of(),
-        Archetypes.validate(
-            EntityState.of(
-                Archetype.TASK,
-                properties(EntityProperty.TITLE, EntityProperty.REPOSITORY_ID))));
+  void theFourWellFormedCandidatesPassAtEitherMoment() {
+    for (Demand demand : Demand.values()) {
+      assertEquals(List.of(), Archetypes.validate(epic(EpicStatus.REFINING.name()), demand), demand.name());
+      assertEquals(
+          List.of(), Archetypes.validate(ticket(TicketStatus.REPORTED.name()), demand), demand.name());
+      assertEquals(
+          List.of(),
+          Archetypes.validate(
+              EntityState.of(Archetype.FEATURE, properties(EntityProperty.TITLE)), demand),
+          demand.name());
+      assertEquals(
+          List.of(),
+          Archetypes.validate(
+              EntityState.of(
+                  Archetype.TASK, properties(EntityProperty.TITLE, EntityProperty.REPOSITORY_ID)),
+              demand),
+          demand.name());
+    }
   }
 
   // ---- the refusals ----------------------------------------------------------------------------
 
   @Test
-  void aTicketWithoutAnImpetusIsRefusedAndTheRefusalNamesImpetus() {
+  void aTicketFiledWithoutAnImpetusIsRefusedAndTheRefusalNamesImpetus() {
     // The impetus is the intake field — a REPORTED ticket consists of it and nothing else — so its
-    // absence is the one refusal an intake surface has to be able to point at a box for.
+    // absence is the one refusal an intake surface has to be able to point at a box for. AT_CREATE
+    // is where that demand lives and is the only place it lives.
     EntityState candidate =
         new EntityState(
             Archetype.TICKET,
             TicketStatus.REPORTED.name(),
             properties(EntityProperty.TITLE, EntityProperty.TICKET_TYPE));
 
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.AT_CREATE);
 
     assertEquals(1, violations.size(), () -> violations.toString());
     ArchetypeViolation only = violations.get(0);
     assertEquals(EntityProperty.IMPETUS, only.property());
     assertEquals(ArchetypeViolation.Reason.MISSING_REQUIRED, only.reason());
     assertTrue(only.message().contains("impetus"), only.message());
+  }
+
+  @Test
+  void anExistingTicketWithNoImpetusIsNotRefusedBecauseTheColumnAndThePersonBothAllowIt() {
+    // The other half, and the reason the create axis exists. entity.impetus is nullable: rows that
+    // predate V7 have none and a person may clear one, which TicketServiceTest and TicketApiTest
+    // both assert of the live surface. An update judged by the intake set would refuse a write the
+    // product performs, which is what the registry used to say and what a named concession on every
+    // update path used to undo.
+    EntityState candidate =
+        new EntityState(
+            Archetype.TICKET,
+            TicketStatus.REPORTED.name(),
+            properties(EntityProperty.TITLE, EntityProperty.TICKET_TYPE));
+
+    assertEquals(List.of(), Archetypes.validate(candidate, Demand.ON_UPDATE));
   }
 
   @Test
@@ -117,7 +163,7 @@ class ArchetypesTest {
             EpicStatus.REFINING.name(),
             properties(EntityProperty.TITLE, EntityProperty.REPOSITORY_ID));
 
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.ON_UPDATE);
 
     assertEquals(1, violations.size(), () -> violations.toString());
     assertEquals(EntityProperty.REPOSITORY_ID, violations.get(0).property());
@@ -130,7 +176,7 @@ class ArchetypesTest {
     // check constraint has no way to say "these five when the archetype is EPIC".
     EntityState candidate = epic(TicketStatus.REPORTED.name());
 
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.ON_UPDATE);
 
     assertEquals(1, violations.size(), () -> violations.toString());
     assertEquals(EntityProperty.STATUS, violations.get(0).property());
@@ -146,7 +192,8 @@ class ArchetypesTest {
                 Archetype.TICKET,
                 EpicStatus.REFINING.name(),
                 properties(
-                    EntityProperty.TITLE, EntityProperty.TICKET_TYPE, EntityProperty.IMPETUS)));
+                    EntityProperty.TITLE, EntityProperty.TICKET_TYPE, EntityProperty.IMPETUS)),
+            Demand.AT_CREATE);
 
     assertEquals(1, violations.size(), () -> violations.toString());
     assertEquals(ArchetypeViolation.Reason.ILLEGAL_STATUS, violations.get(0).reason());
@@ -159,7 +206,8 @@ class ArchetypesTest {
     List<ArchetypeViolation> violations =
         Archetypes.validate(
             new EntityState(
-                Archetype.FEATURE, EpicStatus.REFINING.name(), properties(EntityProperty.TITLE)));
+                Archetype.FEATURE, EpicStatus.REFINING.name(), properties(EntityProperty.TITLE)),
+            Demand.AT_CREATE);
 
     assertEquals(1, violations.size(), () -> violations.toString());
     assertEquals(EntityProperty.STATUS, violations.get(0).property());
@@ -177,7 +225,7 @@ class ArchetypesTest {
             TicketStatus.DONE.name(),
             properties(EntityProperty.IMPETUS, EntityProperty.ASSIGNEE));
 
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.AT_CREATE);
 
     assertEquals(5, violations.size(), () -> violations.toString());
     assertEquals(

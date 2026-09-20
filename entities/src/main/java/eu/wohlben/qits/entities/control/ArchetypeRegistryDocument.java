@@ -22,6 +22,15 @@ import java.util.Set;
  * registry in a client's own language — is a copy that drifts silently the day a property is added.
  * Adding an archetype or a property changes this document with no edit to this file.
  *
+ * <p><b>Three required-lists are served and each answers a different moment.</b> {@link
+ * DeclaredArchetype#required} is what a row must carry at every moment of its life and is what an
+ * edit is judged against; {@link DeclaredArchetype#requiredAtCreate} is what intake demands of a row
+ * being born; {@link DeclaredArchetype#requiredOnTransition} is the transition's own addition. A
+ * client picks the one that matches the form it is drawing, and every one of them is exactly what
+ * the server enforces at that moment — which is the property this document exists to have. It had
+ * two lists until the impetus settlement, and the missing one was the reason a client gathering
+ * {@code required} asked for strictly more than the server insisted on.
+ *
  * <p><b>Nothing about a PAIR of archetypes is served, deliberately.</b> Whether a kind may contain
  * another is {@link Nesting#mayContain}, which is {@code parent.depth < child.depth} and nothing
  * else — so a client holding {@link DeclaredArchetype#depth} derives the whole nesting rule with the
@@ -55,7 +64,18 @@ public record ArchetypeRegistryDocument(
    *     child.depth}, exactly as {@link Nesting#mayContain} does, and must do no arithmetic on them
    * @param mayBeRoot whether a row of this kind may stand with no parent. Declared, never derived
    *     from {@link #depth}: the two come apart the moment a kind is declared above the roots
-   * @param required the properties this kind must carry, in vocabulary order
+   * @param required the properties a row of this kind must carry <b>at every moment of its life</b>,
+   *     in vocabulary order. This is what an UPDATE — including a transition entry, on top of
+   *     {@link #requiredOnTransition}'s addition — is judged against, so a client assembling an edit
+   *     may read it as the exact demand the server makes
+   * @param requiredAtCreate what <b>intake</b> demands of a row being born: {@link #required} plus
+   *     whatever a kind needs once and does not owe for ever, in vocabulary order. Today the two
+   *     differ on exactly one entry — a {@code TICKET} requires {@code IMPETUS} at create and not
+   *     afterwards, because a report consists of it and because {@code entity.impetus} is nullable
+   *     so that a person can clear one. <b>A client drawing an intake form reads this list and a
+   *     client drawing an edit reads {@link #required}</b>; before this axis existed there was one
+   *     list, it said what intake demands, and every update path quietly demanded less than the
+   *     document advertised
    * @param requiredOnTransition what a <b>transition entry</b> must carry: {@link #required} plus
    *     {@link EntityProperty#STATUS} where this kind has a lifecycle. <b>This is the transition's
    *     rule and not the registry's</b> — see {@link EntityTransitionService#requiresStatusOnTransition}
@@ -77,6 +97,7 @@ public record ArchetypeRegistryDocument(
       int depth,
       boolean mayBeRoot,
       List<EntityProperty> required,
+      List<EntityProperty> requiredAtCreate,
       List<EntityProperty> requiredOnTransition,
       List<EntityProperty> permitted,
       List<String> legalStatuses) {}
@@ -99,6 +120,7 @@ public record ArchetypeRegistryDocument(
               spec.depth(),
               spec.mayBeRoot(),
               inVocabularyOrder(spec.required()),
+              inVocabularyOrder(spec.requiredAtCreate()),
               inVocabularyOrder(requiredOnTransition(spec)),
               inVocabularyOrder(spec.permitted()),
               spec.legalStatuses().stream().sorted().toList()));

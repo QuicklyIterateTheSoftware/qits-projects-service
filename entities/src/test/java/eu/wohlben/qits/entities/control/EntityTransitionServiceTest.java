@@ -428,8 +428,10 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
 
   /**
    * <b>A promotion to TICKET with no impetus is accepted.</b> A transition re-archetypes a row that
-   * already exists, which makes it an update and not an intake, and {@link ImpetusConcession} is
-   * where that reasoning lives — one predicate, shared with {@code TicketService.update}.
+   * already exists, which makes it an update and not an intake — so every entry is judged {@link
+   * Demand#ON_UPDATE}, and {@code IMPETUS} is declared {@link ArchetypeSpec#requiredAtCreate} rather
+   * than {@link ArchetypeSpec#required}. The acceptance is the registry's own answer; it used to be
+   * a named predicate discarding a violation the registry had raised.
    */
   @Test
   void aPromotionToTicketWithNoImpetusIsAccepted() {

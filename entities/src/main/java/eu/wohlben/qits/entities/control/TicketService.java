@@ -168,7 +168,8 @@ public class TicketService {
           row.createdBy = changedBy;
           row.impetus = impetus;
           row.description = description;
-          requireArchetypeValid(row);
+          // AT_CREATE: the intake set, which is where IMPETUS is demanded and the only place it is.
+          requireArchetypeValid(row, Demand.AT_CREATE);
           entities.persist(row);
           WorkEntity ticket = settled(row);
           auditService.record(
@@ -244,7 +245,7 @@ public class TicketService {
           } else if (assignee != null) {
             row.assignee = blankToNull(assignee);
           }
-          requireArchetypeValid(row, ImpetusConcession::theImpetusTheColumnStillAllowsToBeAbsent);
+          requireArchetypeValid(row, Demand.ON_UPDATE);
           WorkEntity ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
@@ -275,7 +276,7 @@ public class TicketService {
                   .orElseThrow(() -> new ConflictException("Unknown ticket status: " + target));
           TicketLifecycle.requireTransition(TicketStatus.valueOf(row.status), to);
           row.status = to.name();
-          requireArchetypeValid(row, ImpetusConcession::theImpetusTheColumnStillAllowsToBeAbsent);
+          requireArchetypeValid(row, Demand.ON_UPDATE);
           WorkEntity ticket = settled(row);
           auditService.record(
               AuditEntityType.TICKET,
@@ -421,25 +422,21 @@ public class TicketService {
     return row;
   }
 
-  /** Every violation refused — the create's gate, and the shape the update narrows. */
-  private static void requireArchetypeValid(WorkEntity candidate) {
-    requireArchetypeValid(candidate, violation -> false);
-  }
-
   /**
    * <b>The archetype registry on the ordinary write.</b> A row the registry refuses is a 400 naming
    * every violation at once, which is what {@code Archetypes.validate} answers for and why it
-   * returns all of them rather than the first. {@code tolerated} is the one documented narrowing —
-   * see {@link ImpetusConcession}, which is where that narrowing lives now: it is a property of
-   * every UPDATE path rather than of this one, and the multi-entity transition gets it too.
+   * returns all of them rather than the first.
+   *
+   * <p><b>There is no tolerated violation here and there used to be one.</b> {@code IMPETUS} was
+   * declared required of a {@code TICKET} at every moment and both update paths passed a predicate
+   * that ignored exactly that complaint, because the column is nullable and clearing an impetus is
+   * behaviour a person has. It is declared {@link ArchetypeSpec#requiredAtCreate} now, so {@link
+   * Demand#AT_CREATE} demands it and {@link Demand#ON_UPDATE} does not — and every violation either
+   * moment names is refused, with no exception anywhere.
    */
-  private static void requireArchetypeValid(
-      WorkEntity candidate, java.util.function.Predicate<ArchetypeViolation> tolerated) {
+  private static void requireArchetypeValid(WorkEntity candidate, Demand demand) {
     List<String> refused =
-        Archetypes.validate(candidate).stream()
-            .filter(violation -> !tolerated.test(violation))
-            .map(ArchetypeViolation::message)
-            .toList();
+        Archetypes.validate(candidate, demand).stream().map(ArchetypeViolation::message).toList();
     if (!refused.isEmpty()) {
       throw new BadRequestException(refused.stream().collect(Collectors.joining("; ")));
     }

@@ -156,7 +156,7 @@ public class FeatureService {
                   Slugs.slugify(title, row.id, "feature-"), entities.slugsInScope(epicId));
           row.description = description;
           row.dependsOnEntityId = dependsOnFeatureId;
-          requireArchetypeValid(row);
+          requireArchetypeValid(row, Demand.AT_CREATE);
           entities.persist(row);
           attach(epicId, row);
           Nested feature = settled(row, epicId);
@@ -228,7 +228,7 @@ public class FeatureService {
           } else if (implementedOn != null) {
             row.implementedAt = implementedOn;
           }
-          requireArchetypeValid(row);
+          requireArchetypeValid(row, Demand.ON_UPDATE);
           Nested feature = settled(row, epicId);
           auditService.record(
               AuditEntityType.FEATURE, row.id, epicId, AuditOperation.UPDATE, changedBy, row);
@@ -388,9 +388,13 @@ public class FeatureService {
    * <b>The archetype registry on the ordinary write.</b> A candidate the registry refuses is a 400
    * naming every violation at once, which is what {@code Archetypes.validate} answers for and why it
    * returns all of them rather than the first.
+   *
+   * <p>{@code demand} says which moment this is — see {@link Demand}. The two sets are identical for
+   * this archetype today; passing it is what keeps that a fact about the declaration rather than an
+   * assumption in the call site.
    */
-  private static void requireArchetypeValid(WorkEntity candidate) {
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+  private static void requireArchetypeValid(WorkEntity candidate, Demand demand) {
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate, demand);
     if (!violations.isEmpty()) {
       throw new BadRequestException(
           violations.stream().map(ArchetypeViolation::message).collect(Collectors.joining("; ")));

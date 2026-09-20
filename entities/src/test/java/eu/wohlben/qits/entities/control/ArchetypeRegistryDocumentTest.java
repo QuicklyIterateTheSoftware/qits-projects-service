@@ -51,6 +51,10 @@ class ArchetypeRegistryDocumentTest {
       assertEquals(spec.depth(), served.depth(), archetype + " depth");
       assertEquals(spec.mayBeRoot(), served.mayBeRoot(), archetype + " mayBeRoot");
       assertEquals(spec.required(), Set.copyOf(served.required()), archetype + " required");
+      assertEquals(
+          spec.requiredAtCreate(),
+          Set.copyOf(served.requiredAtCreate()),
+          archetype + " requiredAtCreate");
       assertEquals(spec.permitted(), Set.copyOf(served.permitted()), archetype + " permitted");
       assertEquals(
           spec.legalStatuses(), Set.copyOf(served.legalStatuses()), archetype + " legalStatuses");
@@ -66,6 +70,31 @@ class ArchetypeRegistryDocumentTest {
   }
 
   @Test
+  void theServedRequiredListIsWhatAnUPDATEIsJUDGEDAgainstAndTheCreateListIsWiderByTheImpetus() {
+    // The settlement, as the document says it. A client drawing an edit reads `required` and a
+    // client drawing an intake form reads `requiredAtCreate`, and each is exactly what the server
+    // enforces at that moment — which is the property this document exists to have and did not:
+    // with one list saying what intake demands, every update path advertised a demand it did not
+    // make, and undid it with a named concession nobody reading this document could see.
+    assertEquals(
+        List.of(EntityProperty.TITLE, EntityProperty.STATUS, EntityProperty.TICKET_TYPE),
+        declared(Archetype.TICKET).required());
+    assertEquals(
+        List.of(
+            EntityProperty.TITLE,
+            EntityProperty.STATUS,
+            EntityProperty.TICKET_TYPE,
+            EntityProperty.IMPETUS),
+        declared(Archetype.TICKET).requiredAtCreate());
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.FEATURE, Archetype.TASK)) {
+      assertEquals(
+          declared(archetype).required(),
+          declared(archetype).requiredAtCreate(),
+          archetype + " demands the same properties at both moments");
+    }
+  }
+
+  @Test
   void permittedIsASupersetOfRequiredInTheSERVEDDocument() {
     // Archetypes asserts this of the declarations at class-initialisation time. The document is a
     // different artifact built by a different method, and a client that renders a required field
@@ -73,8 +102,15 @@ class ArchetypeRegistryDocumentTest {
     for (Archetype archetype : Archetype.values()) {
       ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
       assertTrue(
-          served.permitted().containsAll(served.required()),
-          archetype + " requires " + served.required() + " and permits only " + served.permitted());
+          served.permitted().containsAll(served.requiredAtCreate()),
+          archetype
+              + " requires "
+              + served.requiredAtCreate()
+              + " and permits only "
+              + served.permitted());
+      assertTrue(
+          served.requiredAtCreate().containsAll(served.required()),
+          archetype + " requires after create what it does not require at create");
     }
   }
 
@@ -109,13 +145,6 @@ class ArchetypeRegistryDocumentTest {
     // The addition is idempotent: a ticket's status is required by the registry outright.
     assertEquals(
         declared(Archetype.TICKET).required(), declared(Archetype.TICKET).requiredOnTransition());
-    assertEquals(
-        List.of(
-            EntityProperty.TITLE,
-            EntityProperty.STATUS,
-            EntityProperty.TICKET_TYPE,
-            EntityProperty.IMPETUS),
-        declared(Archetype.TICKET).required());
   }
 
   @Test
@@ -149,6 +178,7 @@ class ArchetypeRegistryDocumentTest {
     for (Archetype archetype : Archetype.values()) {
       ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
       assertInVocabularyOrder(archetype + " required", served.required());
+      assertInVocabularyOrder(archetype + " requiredAtCreate", served.requiredAtCreate());
       assertInVocabularyOrder(archetype + " requiredOnTransition", served.requiredOnTransition());
       assertInVocabularyOrder(archetype + " permitted", served.permitted());
     }

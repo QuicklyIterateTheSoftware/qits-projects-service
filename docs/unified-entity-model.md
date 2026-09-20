@@ -455,13 +455,18 @@ Declared in `entities/control/Archetypes.java`, as data. Nothing else re-decides
 | archetype | depth | may be a root | requires | permits (beyond required) | legal statuses |
 | --- | --- | --- | --- | --- | --- |
 | `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the five `EpicStatus` words |
-| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `IMPETUS`, `STATUS` | `SLUG`, `DESCRIPTION`, `ASSIGNEE`, `CREATED_BY` | the five `TicketStatus` words |
+| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the five `TicketStatus` words |
 | `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
 | `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
 
-`required` is a subset of `permitted` for every archetype, and a kind permits `STATUS` exactly when
-it declares status words. Both invariants are asserted at **class-initialisation** time, so a bad
-declaration is a refusal to start naming the archetype rather than a rule that can never fire.
+**There are two required sets, not one.** `required` is what a row of a kind must carry at every
+moment of its life; `requiredAtCreate` is what intake demands of a row being born, and it is the
+wider of the two. They differ on exactly one entry in the whole registry — a `TICKET` requires an
+`IMPETUS` at create and not afterwards — and "The `IMPETUS` question, settled" below is the argument
+for why the axis exists at all. `required` ⊆ `requiredAtCreate` ⊆ `permitted` for every archetype,
+and a kind permits `STATUS` exactly when it declares status words. Every one of those invariants is
+asserted at **class-initialisation** time, so a bad declaration is a refusal to start naming the
+archetype rather than a rule that can never fire.
 
 **What a check answers.** `Archetypes.validate(EntityState)` returns **every** violation, never the
 first, in vocabulary order. Three questions, all three always asked: every required property
@@ -761,17 +766,13 @@ applied migration and its numbers are history, not the live rule.
 candidate the registry refuses is a 400 whose message joins every violation — which is what
 `validate` returning all of them rather than the first is for.
 
-**The exception is `IMPETUS` on the ticket update path alone.** The registry declares it *required*
-of a `TICKET`, which is right about intake and is enforced at create; V7 made the column nullable on
-purpose, because rows that predate it have no impetus and because clearing one is asserted behaviour
-(`TicketServiceTest.theClearFlagsAreWhatEmptyTheNullableFields`,
-`TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields`). Enforcing the registry there would turn
-an accepted write into a refusal, which is a contract change and does not belong in a task about
-storage. So `TicketService.theImpetusTheColumnStillAllowsToBeAbsent` tolerates exactly that property
-with exactly the missing-required reason, on exactly that path, as a named and commented predicate
-rather than a silent skip. Everything else — creates, every epic write, a foreign property, a status
-word from the other lifecycle — is refused with no exception. **A later task reconciles the registry
-and the column**, and the predicate goes with it.
+**There is no exception any more, and there used to be exactly one.** Every write names the moment
+it is — `Archetypes.validate(candidate, Demand.AT_CREATE)` on a create, `Demand.ON_UPDATE` on an
+update and on every entry of a multi-entity transition — and **every violation the registry raises at
+that moment is refused**. The one tolerated violation, `IMPETUS` missing on a ticket update, is gone
+because the registry no longer raises it there: the property is declared `requiredAtCreate` and not
+`required`, so intake demands it and an update does not. `ImpetusConcession` is deleted. See "The
+`IMPETUS` question, settled".
 
 ### What did not change
 
@@ -1026,7 +1027,8 @@ of a project's whole plan to.
                   "CREATED_BY","SUPERSEDED_BY","REPOSITORY_ID","IMPLEMENTED_AT","DEPENDS_ON"],
   "serverOwned": ["SLUG","CREATED_BY"],
   "archetypes":  [ { "archetype": "EPIC", "depth": 0, "mayBeRoot": true,
-                     "required": ["TITLE"], "requiredOnTransition": ["TITLE","STATUS"],
+                     "required": ["TITLE"], "requiredAtCreate": ["TITLE"],
+                     "requiredOnTransition": ["TITLE","STATUS"],
                      "permitted": ["TITLE","SLUG","DESCRIPTION","STATUS","SUPERSEDED_BY"],
                      "legalStatuses": ["ABANDONED","IMPLEMENTATION","IMPLEMENTED","REFINING",
                                        "SUPERSEDED"] } ] }
@@ -1082,17 +1084,19 @@ to it, and the exception would be harder to read than the rule. A second root re
 is the shape the segment already has (`EntityTransitionController` is the other; the verification
 door was a third until V13 deleted it).
 
-**One honest wrinkle: `ImpetusConcession`.** The registry declares `IMPETUS` required of a `TICKET`
-and this document says so, but every UPDATE path — including a transition that re-archetypes an
-existing row *into* a `TICKET` — tolerates exactly that property missing with exactly that reason
-(see "The `IMPETUS` question, settled"). So a client gathering `required` faithfully asks for
-slightly **more** than the server insists on: it will demand an impetus for a promotion the server
-would have accepted without one. That is the safe direction — the field is asked for, the write
-succeeds, nothing is refused that would have been allowed — and it is stated here rather than papered
-over, because the alternatives are both worse: serving the concession would put an update-path
-exception into a document about the model, and dropping `IMPETUS` from `required` would stop intake
-being described correctly. It resolves itself when the registry and the column are reconciled, which
-is a contract change and needs a person.
+**Three required-lists, and each is exactly what the server enforces at its own moment.**
+`requiredAtCreate` is intake's demand, `required` is the invariant every edit is judged against, and
+`requiredOnTransition` is `required` plus the transition's own `STATUS`. A client picks the one that
+matches the form it is drawing.
+
+The middle one is what this document was missing, and the gap was visible from here: while there was
+one `required` list saying what *intake* demands, a client gathering it asked for strictly more than
+the server insisted on — it demanded an impetus for a promotion the server accepted without one,
+because every update path tolerated exactly that violation through a named concession no reader of
+this document could see. That was the safe direction of error and it was still a divergence between
+what is advertised and what is enforced. It is closed: the concession is deleted, the axis is
+declared, and every list here is a demand the server actually makes. See "The `IMPETUS` question,
+settled".
 
 ### The agent surface: ONE tool, `transition_entities`
 
@@ -1184,38 +1188,126 @@ where a reader of either will find it.
 
 ## The `IMPETUS` question, settled
 
-`Archetypes` keeps `IMPETUS` **required** of a `TICKET`. It is right about intake — a REPORTED ticket
-is an impetus and nothing else — and `TicketService.create` enforces it before anything is written.
+**A ticket requires an impetus at intake and does not owe one afterwards, and the registry says both
+now.** `Archetypes` declares `IMPETUS` in `TICKET`'s **`requiredAtCreate`** set and not in its
+`required` set; `entities/control/Demand` is which of the two a write is judged against;
+`ImpetusConcession` is deleted. Nothing tolerates a violation anywhere any more.
 
-**What was hiding in `TicketService.theImpetusTheColumnStillAllowsToBeAbsent` is not a property of the
-ticket path. It is a property of every UPDATE path.** V7 made the column nullable for rows that
-predate it, and *clearing* one is asserted behaviour. An update **mints no row**, so it cannot demand
-of an existing row what intake demands of a row being born — and a transition that re-archetypes an
-existing row *into* a `TICKET` is an update by exactly that test.
+### What was actually wrong
 
-So the predicate is hoisted into `entities/control/ImpetusConcession`, one named and commented place,
-called by `TicketService.update`, `TicketService.transition` and `EntityTransitionService` alike. A
-promotion to `TICKET` with no impetus is therefore **accepted**; one carrying a foreign property, an
-illegal status word, or a missing title, ticket type or status is refused as ever. It is this exact
-property with this exact reason and nothing else, on update paths only — every create is refused with
-no exception.
+The registry could say "required" or "permitted" and nothing else, so it had one slot for two facts
+that genuinely differ:
 
-It is a class of its own rather than a static on `Archetypes` because the registry must go on saying
-that a ticket requires an impetus: a concession inside it would read as the registry disagreeing with
-itself, and the next reader could not tell the rule from the exception.
+- **Intake demands an impetus.** A REPORTED ticket *is* an impetus — `TicketService.create` refuses a
+  ticket without one and every intake surface supplies it.
+- **An existing ticket need not carry one.** V7 made the column nullable on purpose: rows that
+  predate it have none, triage may write one onto them, and *clearing* one is behaviour a person has
+  (`TicketServiceTest.theClearFlagsAreWhatEmptyTheNullableFields`,
+  `TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields`).
 
-**What this does NOT settle is the registry against the column**, and that is worth writing down so
-the next reader does not re-derive the dead end. Two answers exist and neither is reachable without
-changing an existing test's assertions:
+Declaring `IMPETUS` required said the first and contradicted the second, so every update path carried
+a named predicate that discarded exactly that complaint after the registry had raised it. **The
+disagreement was never between the registry and the column, and never between the registry and the
+tests. It was between the registry's vocabulary and the model** — a kind can demand a property once
+without demanding it for ever, and there was no way to declare that.
 
-1. **The column should be `not null`** — a migration plus a backfill decision, and it turns a
-   currently-accepted write into a refusal. `TicketServiceTest.theClearFlagsAreWhatEmptyTheNullable
-   Fields` and `TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields` assert that clearing works.
-2. **`IMPETUS` should be merely *permitted*** — one word in `Archetypes`, giving up the intake
-   guarantee. `ArchetypesTest` asserts the required set and the missing-required violation outright.
+**The served document is where it stopped being a private wrinkle.** `GET
+/projects/api/entities/archetypes` publishes `required`, and the SPA gathers a target archetype's
+`required` before drawing a transition form. A client reading it faithfully asked a person for an
+impetus the server would have accepted the absence of.
 
-Both are **contract changes and need a person**. No test's assertions were moved to settle the
-question this task was handed, and none may be moved to settle the remaining one.
+### The axis, and why it is the shape that was already here
+
+The document **already had two axes**: `requiredOnTransition` exists because *when* a property is
+demanded differs from *whether* the kind has a slot for it — `STATUS` is minted by the writer at
+create and must be carried by a transition. Impetus is that observation mirrored, so the settlement
+is the same move in the other direction:
+
+| axis | what it answers | where it comes from |
+| --- | --- | --- |
+| `permitted` | does this kind have a slot for the property at all | declared |
+| `required` | must a row of this kind carry it at **every moment** | declared — the invariant, and what every UPDATE is judged against |
+| `requiredAtCreate` | must **intake** be given it | declared — `required` plus what a kind needs once and does not owe for ever |
+| `requiredOnTransition` | must a transition entry state it | **derived**: `required` + `STATUS` where the kind has status words |
+
+The last is derived because it follows from a kind having a lifecycle at all; the create one follows
+from nothing and is therefore declared. `required` ⊆ `requiredAtCreate` ⊆ `permitted` is checked at
+class-initialisation time beside the two invariants that were already there — a property owed for
+ever but not at birth is a rule no writer could satisfy, since every row is created before it is
+updated.
+
+`Demand` is a **parameter of `Archetypes.validate` at every call site and has no default**. A create
+judged by the update set would silently stop enforcing intake, which is precisely the failure this
+settlement exists to make impossible rather than merely unlikely. Every create path passes
+`AT_CREATE`; `TicketService.update`, `TicketService.transition`, the three other services' updates
+and **every entry of the multi-entity transition** pass `ON_UPDATE` — a transition creates nothing,
+so each entry names a row that already exists and a promotion to `TICKET` with no impetus is accepted
+by the registry itself rather than by an exception filtering the registry's answer.
+
+### The one assertion that moved, stated exactly
+
+`ArchetypesTest.aTicketWithoutAnImpetusIsRefusedAndTheRefusalNamesImpetus` asserted that a candidate
+`TICKET` carrying a title and a type and no impetus produces exactly one `MISSING_REQUIRED`
+violation — **unconditionally, at every moment**. That is the assertion that moved, and it moved in
+one direction only:
+
+- **from** "a ticket with no impetus is refused"
+- **to** `aTicketFiledWithoutAnImpetusIsRefusedAndTheRefusalNamesImpetus` (the identical candidate and
+  the identical one-violation claim, under `Demand.AT_CREATE`) **plus**
+  `anExistingTicketWithNoImpetusIsNotRefusedBecauseTheColumnAndThePersonBothAllowIt` (the same
+  candidate under `Demand.ON_UPDATE`, no violations).
+
+**The old assertion was incorrect rather than inconvenient**, and the proof is that no code ever
+behaved the way it claimed: `TicketService.update`, `TicketService.transition` and
+`EntityTransitionService` all accepted that candidate, every one of them by explicitly discarding the
+violation this test asserted. It described the declaration, the declaration described only intake, and
+the test read it as a rule about all writes. The new pair asserts what the three services do.
+
+Two served lists moved with it, for the same reason and in the same direction —
+`ArchetypeRegistryDocumentTest` and `EntityArchetypesApiTest` asserted `TICKET.required ==
+[TITLE, STATUS, TICKET_TYPE, IMPETUS]`, which is now `requiredAtCreate`, with `required` (and
+`requiredOnTransition`, which is built from it) answering `[TITLE, STATUS, TICKET_TYPE]`. **Nothing
+else moved.** In particular the two `theClearFlagsAreWhatEmptyTheNullableFields` assertions are
+untouched, and that is the test of the settlement rather than a happy accident: they encode a person
+clearing an impetus, which is real product behaviour, and a settlement that had to move them would
+have been the wrong settlement.
+
+### The two answers that were rejected, and what killed each
+
+1. **Demote `IMPETUS` to merely permitted.** One word, and it makes the enforced behaviour and the
+   registry agree — by giving up the thing the registry is for. Intake enforcement would then live
+   only in `TicketService.create`'s `Validations.requireText(impetus, "impetus")` and in whatever each
+   surface happens to check, which is exactly the "the rule has to live somewhere and this is that
+   somewhere" the registry exists to end. The served document would stop describing intake at all, so
+   a client drawing a ticket-intake form from it would render no impetus field and be refused after
+   the press — the failure mode the document was built to remove. And it throws away a true statement
+   to fix a vocabulary that was too narrow.
+2. **Make the column `not null` with a backfill.** This is the one that looks like the tidy answer and
+   is the destructive one. It turns a currently-accepted write into a refusal, which means both
+   `theClearFlagsAreWhatEmptyTheNullableFields` assertions would have to move — and they encode **real
+   product behaviour**: `TicketService.update` offers `clearImpetus` beside `clearDescription` and
+   `clearAssignee`, the SPA renders it, and triage clearing a badly-filed impetus is a thing somebody
+   does. Moving an assertion that encodes a person's ability to do something is the signal that the
+   settlement is wrong, not that the test is. The backfill has no honest value to write either:
+   pre-V7 rows have no impetus and inventing one ("(none recorded)") would put a sentence somebody
+   never wrote into the field whose whole point is being the words originally used. It would also be a
+   fourteenth migration for a constraint the registry can state more precisely than the column can —
+   `not null` cannot say "at create", which is the actual rule.
+3. **Leave `ImpetusConcession` standing.** Not an answer, just the previous state: a named exception
+   is honest about itself but the served document cannot carry it, so the advertised contract stays
+   wrong for every client.
+
+**No migration was written and the column stays nullable**, which is the correct state and always
+was: `entity.impetus` is nullable because an existing ticket may genuinely have no impetus, and that
+is now what the registry says too.
+
+### What the SPA may do with this, and what it need not
+
+**No SPA change is required.** It reads `required` for its transition form, and `required` is now
+exactly what an update is judged against, so the form it draws and the write the server accepts agree
+where before the form asked for one field too many. `requiredAtCreate` is additive and nothing breaks
+by ignoring it. What it *enables*, if somebody wants it later, is drawing the ticket-intake form from
+the document rather than from hand-written knowledge that an impetus is mandatory there.
 
 ## The nesting rule
 
@@ -1871,7 +1963,7 @@ what a door written with the reverse assertion would report as broken.
 | the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |
 | the commit-subject parser | `service/…/projects/entitieshost/CommitSubjectEntities.java` — the only reader of the grammar; `entities/…/persistence/WorkEntityRepository.findByProjectAndNumber` behind it |
 | the verification door — **DELETED WHOLE BY V13** | was `entities/…/migration/` (`package-info.java` carried the deletion instruction; `MigrationVerification.java` the comparison, `VerificationReport`/`VerificationCategory`/`VerificationFinding`/`VerificationScope` the answer, `MigrationVerificationService.java` the CDI bridge) and `service/…/entities/api/MigrationVerificationController.java` — `GET /projects/api/entities/migration-verification`, `qits:admin` alone. Its one clean run against live data survives it, at `docs/migration-verification-2026-09-20.json` |
-| the impetus concession | `entities/…/control/ImpetusConcession.java` — called by `TicketService` and `EntityTransitionService`; see "The `IMPETUS` question, settled" |
+| the create axis | `entities/…/control/Demand.java` — `AT_CREATE`/`ON_UPDATE`, a parameter of `Archetypes.validate` at every call site; `ArchetypeSpec.requiredAtCreate`/`requiredFor`. `ImpetusConcession.java` is **deleted**; see "The `IMPETUS` question, settled" |
 | the transition's event | `service/…/projects/bus/EntityTransitioned.java`, `EntityTransitionAnnouncer.java`, registered (with its nested payload record) in `EventWireReflection.java` |
 | tests | `entities/src/test/…/control/ArchetypesTest.java`, `NestingTest.java`, `UnifiedDescendantsTest.java`, `EntityTransitionServiceTest.java`, `RecordingTransitionAnnouncer.java`, `DossierServiceTest.java`, `DossierTicketOwnerTest.java`, `WorkBranchesTest.java`, `ArchetypeRegistryDocumentTest.java`; `…/persistence/WorkEntityPersistenceTest.java`; `…/entity/AuditEntityTypeTest.java`; `…/migration/EntityMembershipMigrationTest.java`, `…/migration/EntityNumberMigrationTest.java` (the three that wrote rows into the four old tables — `UnifiedBackfillMigrationTest`, `TicketLifecycleMigrationTest`, `MigrationVerificationTest` — went with those tables, and `service/src/test/…/entities/api/MigrationVerificationApiTest.java` with the door); `service/src/test/…/entities/api/EntityTransitionApiTest.java`, `service/src/test/…/entities/api/EntityArchetypesApiTest.java`, `service/src/test/…/projects/mcp/EntityMcpToolsTest.java`, `service/src/test/…/projects/api/QualifiedEntityIdsTest.java`, `service/src/test/…/projects/entitieshost/CommitSubjectEntitiesTest.java` |
 

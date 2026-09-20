@@ -102,11 +102,15 @@ import java.util.Set;
  * different question, "make the shape of the plan be this", and a status it is handed is part of the
  * shape rather than a step.
  *
- * <p><b>The impetus concession applies here in full</b>, and it is the same one {@code
- * TicketService.update} gets — see {@link ImpetusConcession} for why it is a property of every
- * update path rather than of the ticket path. A promotion to {@code TICKET} with no impetus is
- * therefore accepted; one carrying a foreign property, an illegal status or a missing title, ticket
- * type or status is refused as ever.
+ * <p><b>Every entry is judged {@link Demand#ON_UPDATE}</b>, which is the whole of what this
+ * operation says about intake: it creates nothing, so each entry names a row that already exists
+ * and is judged against what a row of the target kind must carry at every moment rather than
+ * against what intake demands of a row being born. A promotion to {@code TICKET} with no impetus is
+ * therefore accepted — {@code IMPETUS} is declared {@link ArchetypeSpec#requiredAtCreate} and not
+ * {@link ArchetypeSpec#required} — while one carrying a foreign property, an illegal status or a
+ * missing title, ticket type or status is refused as ever. <b>There is no exception here and there
+ * used to be one</b>: the acceptance came from a named predicate that discarded exactly that
+ * violation after the registry had raised it, and it is the registry's own answer now.
  *
  * <h2>What the write maintains</h2>
  *
@@ -356,12 +360,15 @@ public class EntityTransitionService {
           });
     }
 
+    // ON_UPDATE, because a transition creates nothing: every id in the request names a row that
+    // already exists, so the entry is judged against what a row of the target kind must carry at
+    // every moment and never against what intake demands of a row being born. That is what makes a
+    // promotion to TICKET with no impetus legal, and it is the registry saying so rather than an
+    // exception filtering the registry's answer — see Demand.
     List<String> refused = new ArrayList<>();
     for (ArchetypeViolation violation :
-        Archetypes.validate(new EntityState(archetype, target.status(), present))) {
-      if (!ImpetusConcession.theImpetusTheColumnStillAllowsToBeAbsent(violation)) {
-        refused.add(violation.message());
-      }
+        Archetypes.validate(new EntityState(archetype, target.status(), present), Demand.ON_UPDATE)) {
+      refused.add(violation.message());
     }
 
     // The transition's own rule — see the class javadoc and requiresStatusOnTransition. Stated in

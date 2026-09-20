@@ -73,16 +73,19 @@ class EntityArchetypesApiTest {
   }
 
   @Test
-  void aTicketAsksForItsTypeAndItsImpetusAndItsStatus() {
-    // The four a TicketService.create refuses a row without, which is exactly the set a form must
-    // gather. In vocabulary order, so the fields read in the order the violations would.
+  void aTicketAsksForItsImpetusAtINTAKEAndForItsTypeAndStatusForEver() {
+    // The three axes, over the wire, on the one archetype whose create list is wider than its
+    // invariant. requiredAtCreate is the four a TicketService.create refuses a row without — what
+    // an intake form must gather — and required is the three an edit or a transition is judged
+    // against, because entity.impetus is nullable and clearing one is behaviour a person has. In
+    // vocabulary order, so the fields read in the order the violations would.
     document()
         .body(
-            at("TICKET") + "required",
+            at("TICKET") + "requiredAtCreate",
             contains("TITLE", "STATUS", "TICKET_TYPE", "IMPETUS"))
+        .body(at("TICKET") + "required", contains("TITLE", "STATUS", "TICKET_TYPE"))
         .body(
-            at("TICKET") + "requiredOnTransition",
-            contains("TITLE", "STATUS", "TICKET_TYPE", "IMPETUS"));
+            at("TICKET") + "requiredOnTransition", contains("TITLE", "STATUS", "TICKET_TYPE"));
   }
 
   @Test
@@ -91,6 +94,7 @@ class EntityArchetypesApiTest {
     // mints the first one, and a transition mints nothing, so an omission would clear one.
     document()
         .body(at("EPIC") + "required", contains("TITLE"))
+        .body(at("EPIC") + "requiredAtCreate", contains("TITLE"))
         .body(at("EPIC") + "requiredOnTransition", contains("TITLE", "STATUS"))
         .body(
             at("EPIC") + "permitted",
@@ -105,6 +109,7 @@ class EntityArchetypesApiTest {
     document()
         .body(at("FEATURE") + "legalStatuses", empty())
         .body(at("FEATURE") + "required", contains("TITLE"))
+        .body(at("FEATURE") + "requiredAtCreate", contains("TITLE"))
         .body(at("FEATURE") + "requiredOnTransition", contains("TITLE"));
   }
 

@@ -192,7 +192,7 @@ public class EpicService {
           Validations.requireText(title, "title");
           row.title = title;
           row.description = description;
-          requireArchetypeValid(row);
+          requireArchetypeValid(row, Demand.ON_UPDATE);
           WorkEntity epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
@@ -234,7 +234,7 @@ public class EpicService {
           if (successor != null) {
             row.supersededByEntityId = successor.id;
           }
-          requireArchetypeValid(row);
+          requireArchetypeValid(row, Demand.ON_UPDATE);
           WorkEntity epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
@@ -369,7 +369,7 @@ public class EpicService {
             Slugs.slugify(title, row.id, "epic-"), entities.slugsInScope(projectId));
     row.description = description;
     row.status = EpicStatus.REFINING.name();
-    requireArchetypeValid(row);
+    requireArchetypeValid(row, Demand.AT_CREATE);
     entities.persist(row);
     return row;
   }
@@ -581,9 +581,13 @@ public class EpicService {
    * row the registry refuses — a property an epic has no slot for, a status word from the other
    * lifecycle — is a 400 naming every violation at once, which is what {@code Archetypes.validate}
    * answers for and why it returns all of them rather than the first.
+   *
+   * <p>{@code demand} says which moment this is — see {@link Demand}. The two sets are identical for
+   * this archetype today; passing it is what keeps that a fact about the declaration rather than an
+   * assumption in the call site.
    */
-  private static void requireArchetypeValid(WorkEntity candidate) {
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+  private static void requireArchetypeValid(WorkEntity candidate, Demand demand) {
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate, demand);
     if (!violations.isEmpty()) {
       throw new BadRequestException(
           violations.stream()

@@ -58,6 +58,27 @@ import java.util.stream.Collectors;
  * rootness from "is the minimum depth" would revoke epic-as-root on the day the campaign lands, with
  * nothing in the diff saying so. So it is a declared flag, and widening it is one word.
  *
+ * <h2>Three axes, because "when" is a different question from "whether"</h2>
+ *
+ * <p>Each kind declares <b>{@code permitted}</b> (the slots it has at all), <b>{@code required}</b>
+ * (what a row of it must carry at every moment of its life) and <b>{@code requiredAtCreate}</b>
+ * (what intake demands of a row being born). {@link Demand} is which of the last two a given write
+ * is judged against, and it is a parameter of {@link #validate(EntityState, Demand)} rather than a
+ * default, so every call site says which moment it is.
+ *
+ * <p><b>The create axis exists because {@code IMPETUS} on a {@code TICKET} needed it.</b> Intake
+ * demands an impetus — a REPORTED ticket consists of one — and {@code entity.impetus} is nullable
+ * because clearing one afterwards is behaviour a person has and two tests assert. With two axes the
+ * registry had to be wrong about one of those and was: it declared {@code IMPETUS} flatly required,
+ * every update path carried a named concession tolerating the violation, and the document served at
+ * {@code GET /projects/api/entities/archetypes} advertised a demand the server did not make. The
+ * third axis is the shape that says both true things at once, and the concession is deleted rather
+ * than moved. <b>{@code requiredOnTransition}</b>, served beside these, is the same observation from
+ * the other end and predates it: {@code STATUS} is minted by the writer at create and must be
+ * carried by a transition, which is this asymmetry mirrored. That one is derived rather than
+ * declared ({@code EntityTransitionService.requiresStatusOnTransition}) because it follows from a
+ * kind having status words at all; the impetus one does not follow from anything and is declared.
+ *
  * <h2>What "required" and "permitted" are read from</h2>
  *
  * <p>The four declarations below are what the four existing services actually enforce today, and
@@ -66,7 +87,9 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@code EpicService.create} requires a project and a title, and nothing else.
  *   <li>{@code TicketService.create} requires a title, an impetus and a type, and the status column
- *       is {@code not null} from the first insert.
+ *       is {@code not null} from the first insert. The impetus is the one of those that {@code
+ *       TicketService.update} does <em>not</em> require, which is what {@code requiredAtCreate} is
+ *       for.
  *   <li>{@code FeatureService.create} requires a title.
  *   <li>{@code TaskService.create} requires a title and a repository id.
  * </ul>
@@ -119,6 +142,7 @@ public final class Archetypes {
             0,
             true,
             EnumSet.of(EntityProperty.TITLE),
+            EnumSet.of(EntityProperty.TITLE),
             EnumSet.of(
                 EntityProperty.TITLE,
                 EntityProperty.SLUG,
@@ -130,12 +154,20 @@ public final class Archetypes {
     // A small-scoped bug or improvement. Root beside the epic, depth 0 — the two are siblings and
     // a ticket under an epic is refused by exactly that equality, which is the nesting rule doing
     // what V4's "nothing joins the two tables and nothing should" says in prose.
+    //
+    // THE ONE KIND WHOSE TWO REQUIRED SETS DIFFER, and IMPETUS is the whole of the difference:
+    // intake demands it (TicketService.create, and every surface that files a ticket), while
+    // entity.impetus is nullable and a person clearing one is asserted behaviour. Declaring it
+    // required at every moment would refuse a write the product allows; declaring it merely
+    // permitted would stop intake being described at all. It is required at create and not after.
     registry.put(
         Archetype.TICKET,
         new ArchetypeSpec(
             Archetype.TICKET,
             0,
             true,
+            EnumSet.of(
+                EntityProperty.TITLE, EntityProperty.TICKET_TYPE, EntityProperty.STATUS),
             EnumSet.of(
                 EntityProperty.TITLE,
                 EntityProperty.TICKET_TYPE,
@@ -162,6 +194,7 @@ public final class Archetypes {
             1,
             false,
             EnumSet.of(EntityProperty.TITLE),
+            EnumSet.of(EntityProperty.TITLE),
             EnumSet.of(
                 EntityProperty.TITLE,
                 EntityProperty.SLUG,
@@ -178,6 +211,7 @@ public final class Archetypes {
             Archetype.TASK,
             2,
             false,
+            EnumSet.of(EntityProperty.TITLE, EntityProperty.REPOSITORY_ID),
             EnumSet.of(EntityProperty.TITLE, EntityProperty.REPOSITORY_ID),
             EnumSet.of(
                 EntityProperty.TITLE,
@@ -207,15 +241,28 @@ public final class Archetypes {
         throw new IllegalStateException(
             "archetype " + archetype + " is not declared in Archetypes — every kind must be");
       }
-      if (!spec.permitted().containsAll(spec.required())) {
-        Set<EntityProperty> stray = EnumSet.copyOf(spec.required());
+      if (!spec.permitted().containsAll(spec.requiredAtCreate())) {
+        Set<EntityProperty> stray = EnumSet.copyOf(spec.requiredAtCreate());
         stray.removeAll(spec.permitted());
         throw new IllegalStateException(
             "archetype "
                 + archetype
                 + " requires properties it does not permit: "
                 + stray
-                + " — required must be a subset of permitted");
+                + " — requiredAtCreate must be a subset of permitted");
+      }
+      // The create set is the wider of the two and the invariant is the narrower: a property owed
+      // for ever but not at birth is a rule no writer could ever satisfy, since every row is
+      // created before it is updated.
+      if (!spec.requiredAtCreate().containsAll(spec.required())) {
+        Set<EntityProperty> stray = EnumSet.copyOf(spec.required());
+        stray.removeAll(spec.requiredAtCreate());
+        throw new IllegalStateException(
+            "archetype "
+                + archetype
+                + " requires properties at every moment that it does not require at create: "
+                + stray
+                + " — required must be a subset of requiredAtCreate");
       }
       boolean declaresStatus = spec.permits(EntityProperty.STATUS);
       if (declaresStatus == spec.legalStatuses().isEmpty()) {
@@ -256,14 +303,19 @@ public final class Archetypes {
    * property there, is every property it carries one this kind has a slot for, and — when it carries
    * a status — is that word in this kind's lifecycle. The third is the one the database cannot ask,
    * because {@code ck_entity_status} is the union of both enums.
+   *
+   * <p>{@code demand} is which required set the first question is asked against — see {@link
+   * Demand}. It is a parameter and has no default on purpose: a create judged by the update set
+   * would stop enforcing intake and nothing would say so.
    */
-  public static List<ArchetypeViolation> validate(EntityState candidate) {
+  public static List<ArchetypeViolation> validate(EntityState candidate, Demand demand) {
     ArchetypeSpec spec = spec(candidate.archetype());
+    Set<EntityProperty> required = spec.requiredFor(demand);
     List<ArchetypeViolation> violations = new ArrayList<>();
 
     for (EntityProperty property : EntityProperty.values()) {
       boolean present = candidate.present().contains(property);
-      if (spec.required().contains(property) && !present) {
+      if (required.contains(property) && !present) {
         violations.add(
             new ArchetypeViolation(
                 candidate.archetype(),
@@ -294,9 +346,9 @@ public final class Archetypes {
     return List.copyOf(violations);
   }
 
-  /** The same check over a row that is already assembled — a backfill's and a repair's question. */
-  public static List<ArchetypeViolation> validate(WorkEntity entity) {
-    return validate(EntityState.of(entity));
+  /** The same check over a row that is already assembled — every service's write path. */
+  public static List<ArchetypeViolation> validate(WorkEntity entity, Demand demand) {
+    return validate(EntityState.of(entity), demand);
   }
 
   private static Set<String> names(Enum<?>[] values) {

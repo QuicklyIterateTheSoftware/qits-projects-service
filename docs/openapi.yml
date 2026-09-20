@@ -629,6 +629,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntityProperty"
+        requiredAtCreate:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
         requiredOnTransition:
           type: array
           items:
@@ -6355,4 +6359,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.920.12314
+  version: 2026.920.32847

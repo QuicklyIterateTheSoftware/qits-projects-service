@@ -134,7 +134,7 @@ public class TaskService {
               Slugs.unique(Slugs.slugify(title, row.id, "task-"), entities.slugsInScope(featureId));
           row.description = description;
           row.dependsOnEntityId = dependsOnTaskId;
-          requireArchetypeValid(row);
+          requireArchetypeValid(row, Demand.AT_CREATE);
           entities.persist(row);
           attach(featureId, row);
           Nested task = settled(row, featureId);
@@ -202,7 +202,7 @@ public class TaskService {
           } else if (implementedAt != null) {
             row.implementedAt = implementedAt;
           }
-          requireArchetypeValid(row);
+          requireArchetypeValid(row, Demand.ON_UPDATE);
           Nested task = settled(row, featureId);
           auditService.record(
               AuditEntityType.TASK, row.id, epicId, AuditOperation.UPDATE, changedBy, row);
@@ -337,8 +337,8 @@ public class TaskService {
   }
 
   /** <b>The archetype registry on the ordinary write</b> — {@link FeatureService}'s rule, unchanged. */
-  private static void requireArchetypeValid(WorkEntity candidate) {
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+  private static void requireArchetypeValid(WorkEntity candidate, Demand demand) {
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate, demand);
     if (!violations.isEmpty()) {
       throw new BadRequestException(
           violations.stream().map(ArchetypeViolation::message).collect(Collectors.joining("; ")));
