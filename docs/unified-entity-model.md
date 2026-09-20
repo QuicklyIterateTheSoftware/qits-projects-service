@@ -1749,7 +1749,7 @@ indistinguishable to a later reader:**
 - **The database, and it is not code.** Table and column names, the Flyway location
   `classpath:db/epics/migration` and its applied lineage, the datasource and persistence unit named
   `epics`, `QITS_RESOURCE_EPICS_URL`/`_USERNAME`/`_PASSWORD`, the resource `postgresql:epics:qits_epics`
-  in `.config/qits/deployments.yml`, and `CausationStampWarmup.Epics` (which names that persistence
+  in `.config/qits/deployments.yml`, and `HibernateBeanContainerWarmup.Epics` (which names that persistence
   unit). Changing any of it is a deployment-breaking change well beyond a rename. **The maven module
   and the datasource being the same word was a coincidence, and it is not collapsed here**: the
   module directory moved and the Flyway location did not, so `entities/src/main/resources/db/epics/migration/`

@@ -251,10 +251,13 @@ either unit, in a different test class each time. Adding an entity to either uni
 `@TestProfile` is this, not a flaky test — do not re-run past it and do not chase the test it
 names.**
 
-`startup/CausationStampWarmup` is the fix and its javadoc carries the full reasoning. It resolves
-the listener once, under its own lock, on each unit's startup thread before that thread builds its
-`SessionFactory`, after which every later lookup is a cache hit and `registeredBeans.add` never runs
-a second time. Four things about it are rules:
+`startup/HibernateBeanContainerWarmup` is the fix and its javadoc carries the full reasoning. It
+resolves every type this application reaches that container for — a **list**,
+`RESOLVED_THROUGH_THE_CONTAINER`, holding `CausationStamp` and nothing else today — once, under its
+own lock, on each unit's startup thread before that thread builds its `SessionFactory`, after which
+every later lookup is a cache hit and `registeredBeans.add` never runs a second time. It is named
+for the container and not for the stamp because **the hazard is the container's**: the stamp is
+merely its only occupant. Six things about it are rules:
 
 - **There is no configuration for this.** `QuarkusManagedBeanRegistryInitiator` never reads its
   settings map, so no property gives a unit its own bean container or serialises the threads; and no
@@ -267,16 +270,55 @@ a second time. Four things about it are rules:
 - **One bean per unit — a repeated `@PersistenceUnitExtension` resolves for NONE of them.** The
   annotation is `@Repeatable` and stacking three on one class is accepted, removes nothing and runs
   nothing. It was measured here, and the suite was **green** while the warm-up never executed once.
-- **So the test asserts the warm-up RAN, not that it is declared.** `CausationStampWarmupTest`
+- **So the test asserts the warm-up RAN, not that it is declared.** `HibernateBeanContainerWarmupTest`
   compares the units that actually reached it against the `quarkus.hibernate-orm.*.datasource` keys,
   so a new persistence unit fails the build until it is warmed.
-- **Adding an entity to a unit needs nothing; adding a unit does.** The listener annotation is
-  unchanged on all 26 entities and stays that way — the shared rule
-  `CausationRowRules.everyCausedRowAttachesTheStamp` requires it declared on each `CausedRow` entity
-  and `@EntityListeners` is not `@Inherited`, which is exactly why the callback could not simply be
-  moved onto a `@MappedSuperclass` (where it would compile to an `EntityCallback` and never touch the
-  bean container at all). That is the better fix and it belongs in the eventstream jar, for the whole
-  estate, together with the rule that pins it.
+- **The entity listener is not the only way into that container, and the second test is what keeps
+  the list complete.** An `AttributeConverter`, a `UserType`, a `CompositeUserType`, an
+  `EmbeddableInstantiator`, a custom `org.hibernate.Interceptor` or a custom `Generator` is resolved
+  through the identical `registeredBeans.add`, and adding one in a commit about something else would
+  silently reopen the race — the audit that said "`CausationStamp` is the only such type here" was a
+  hand audit, true when it was made and ageing from that moment.
+  `HibernateBeanContainerCoverageTest` makes it standing: it reads every one of those shapes out of
+  the bytecode of `domain`, `entities` and the eventstream jar, reads the classes every
+  `@EntityListeners` names, and requires the discovered set to **equal**
+  `RESOLVED_THROUGH_THE_CONTAINER`. Proven by construction — a stub `@Converter` added to `domain`
+  fails it naming the class. It also asserts each shape name still **resolves**, because a
+  type matched by string that no longer exists is a guard that reads enabled and does nothing
+  (qits-arch-rules' own lesson). `StatementInspector` is deliberately not among them: Quarkus
+  resolves it through Arc and not through Hibernate's container, which is the whole reason the
+  warm-up can ride on it without racing itself.
+- **A mapped superclass is NOT the better fix, and the estate change is declined** (re-verified
+  2026-09-20; the previous note here said the opposite). Declaring the callback on a
+  `@MappedSuperclass` compiles to an `EntityCallback` that never touches the container, and the
+  shared rule `CausationRowRules.everyCausedRowAttachesTheStamp` really does refuse it — it reads
+  `@EntityListeners` off the class itself and the annotation is not `@Inherited`, so the rule would
+  have to be widened in qits-arch-rules and released first. All of that is true and none of it is
+  the reason. The reasons are:
+  - **It would not remove the seam.** The defect is one unsynchronised container shared by
+    concurrent startup threads, not the annotation; every shape in the bullet above reaches it and
+    none has a mapped-superclass spelling. The move deletes today's only occupant of a seam that has
+    to stay, be warmed and be guarded anyway.
+  - **This is the only exposed repository on the estate.** The race needs two persistence units
+    resolving at once. Measured across `/workspace/components`: 31 `CausedRow` entities in 5
+    repositories, and qits-projects is the only one with more than one application persistence unit
+    — qits-ci, qits-containers, qits-deployments and qits-workspaces declare exactly one each, and
+    the eventstream jar's unit resolves nothing. Nine entities would move to fix a race four
+    repositories cannot have.
+  - **It is not additive the way it would need to be.** All 31 are `extends PanacheEntityBase
+    implements CausedRow` and there is no `@MappedSuperclass` anywhere on the estate, so a
+    jar-shipped one must itself extend `PanacheEntityBase` — spending every consumer entity's single
+    inheritance on qits-eventstream for ever, and putting another jar's `@MappedSuperclass` into
+    units that claim packages explicitly, which is unverified and costs a release of a jar 10
+    repositories consume to find out.
+  - **The train is real:** arch-rules released (14 consumers) → eventstream released (10) → 31
+    entities in 5 repositories → 6 `ArchRulesTest` gates that fail loudly on any out-of-order step.
+
+  So the listener annotation is unchanged on all 31 estate entities (22 here) and stays that way,
+  the shared rule stays exactly as it is, and **nothing in this repository is waiting on another
+  one.** The full argument is in `HibernateBeanContainerWarmup`'s javadoc under "This is the
+  permanent answer, not a workaround for one" — do not re-open it without new evidence, and the
+  evidence that would change it is a second application persistence unit appearing elsewhere.
 
 - **`ScmBackupTriggerListener` is a `QitsDurableEventListener`, and durable is the point.** It
   replaced `api/GitHostEventController`, a fire-and-forget `POST /projects/api/events/post-receive`

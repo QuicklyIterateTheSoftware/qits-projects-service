@@ -11,8 +11,9 @@ import org.eclipse.microprofile.config.ConfigProvider;
 import org.junit.jupiter.api.Test;
 
 /**
- * The one thing about {@link CausationStampWarmup} that can silently stop being true: a persistence
- * unit whose startup thread never ran the warm-up. Read that class's javadoc for the race — the
+ * The one thing about {@link HibernateBeanContainerWarmup} that can silently stop being true: a
+ * persistence unit whose startup thread never ran the warm-up. Read that class's javadoc for the
+ * race — the
  * short version is that Quarkus starts every unit on its own thread against one shared,
  * unsynchronised Hibernate bean container, so a unit that reaches its {@code SessionFactory} without
  * having gone through the warm-up is free to corrupt that container's list, and the symptom is a
@@ -34,7 +35,7 @@ import org.junit.jupiter.api.Test;
  * <p>No {@code @TestProfile}: this joins the default application, so it costs the suite nothing.
  */
 @QuarkusTest
-class CausationStampWarmupTest {
+class HibernateBeanContainerWarmupTest {
 
   /** {@code quarkus.hibernate-orm.<unit>.datasource} — the key every named unit here declares. */
   private static final Pattern NAMED_UNIT =
@@ -52,9 +53,10 @@ class CausationStampWarmupTest {
 
     assertEquals(
         configured,
-        new TreeSet<>(CausationStampWarmup.warmed()),
-        "every persistence unit this application configures must have run CausationStampWarmup on"
-            + " its own startup thread, so the CausationStamp listener is resolved once under that"
+        new TreeSet<>(HibernateBeanContainerWarmup.warmed()),
+        "every persistence unit this application configures must have run"
+            + " HibernateBeanContainerWarmup on its own startup thread, so the CausationStamp"
+            + " listener is resolved once under that"
             + " class's lock before any SessionFactory is built. A unit missing here reaches the"
             + " shared, unsynchronised Hibernate bean container with nothing ordering it, which"
             + " fails as an ArrayIndexOutOfBoundsException in AbstractCdiBeanContainer.createBean"
