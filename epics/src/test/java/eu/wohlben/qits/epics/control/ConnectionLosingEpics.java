@@ -1,7 +1,8 @@
 package eu.wohlben.qits.epics.control;
 
-import eu.wohlben.qits.epics.entity.Epic;
-import eu.wohlben.qits.epics.persistence.EpicRepository;
+import eu.wohlben.qits.epics.entity.Archetype;
+import eu.wohlben.qits.epics.entity.WorkEntity;
+import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Alternative;
 import java.sql.SQLTransientConnectionException;
@@ -10,8 +11,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.hibernate.exception.JDBCConnectionException;
 
 /**
- * The epic table with a postgres cutover in it: the next {@code listByProject} reads throw what a
- * caller actually sees when its connection dies mid-flight, then the table answers normally again.
+ * The merged planning table with a postgres cutover in it: the next {@code
+ * listByProjectAndArchetype} reads throw what a caller actually sees when its connection dies
+ * mid-flight, then the table answers normally again. That is the read behind {@code
+ * EpicService.listByProject} now — the epics are rows of {@code entity} discriminated by their
+ * archetype, and the old {@code EpicRepository} listing is not in any read path.
  *
  * <p>The failure is the real shape rather than a marker — Hibernate's {@code
  * JDBCConnectionException} wrapping postgres' {@code 57P01} ("terminating connection due to
@@ -22,11 +26,11 @@ import org.hibernate.exception.JDBCConnectionException;
  *
  * <p><b>{@code @Alternative} with no {@code @Priority}</b>: one test profile enables it and it is
  * inert everywhere else in this suite. A globally enabled one would sit in the path of every epic
- * list here — including the one {@code EpicService.insert} makes to mint a slug.
+ * list here.
  */
 @Alternative
 @ApplicationScoped
-public class ConnectionLosingEpics extends EpicRepository {
+public class ConnectionLosingEpics extends WorkEntityRepository {
 
   private final AtomicInteger failuresLeft = new AtomicInteger();
 
@@ -41,13 +45,13 @@ public class ConnectionLosingEpics extends EpicRepository {
   }
 
   @Override
-  public List<Epic> listByProject(String projectId) {
+  public List<WorkEntity> listByProjectAndArchetype(String projectId, Archetype archetype) {
     if (failuresLeft.getAndDecrement() > 0) {
       throw new JDBCConnectionException(
           "Unable to acquire JDBC Connection",
           new SQLTransientConnectionException(
               "terminating connection due to administrator command", "57P01"));
     }
-    return super.listByProject(projectId);
+    return super.listByProjectAndArchetype(projectId, archetype);
   }
 }

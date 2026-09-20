@@ -9,6 +9,7 @@ import eu.wohlben.qits.epics.entity.Task;
 import eu.wohlben.qits.epics.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
+import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -79,13 +80,34 @@ public class EpicMcpTools {
 
   // --- Result shapes --------------------------------------------------------
 
-  /** An epic as it appears in a list: no tree, just enough to choose one and read its phase. */
+  /**
+   * An epic as it appears in a list: no tree, just enough to choose one and read its phase.
+   *
+   * <h2>{@code qualifiedId} only, and never the bare number — this is a decision</h2>
+   *
+   * <p>Every entity-shaped return on this server carries {@code qualifiedId} ({@code qits-1337})
+   * and <b>none of them carries the bare {@code number}</b>. An agent that is shown a bare number
+   * will hand-prefix it, and it will get the qualifier wrong — the wrong project, the epic's slug,
+   * the repository's name. The surface that exists so an id can be written into a commit subject
+   * should only ever hand out the form that belongs in one.
+   *
+   * <p>The REST DTOs carry both, and that is not an inconsistency: the SPA renders the datum (a
+   * sort, a filter, a column) as well as the string, and it is not the thing that types a commit
+   * message. This rule applies to every record in this class and in {@code TicketMcpTools};
+   * {@code DossierMcpTools}' pages are not entities and have neither.
+   */
   public record EpicSummary(
-      String id, String slug, String title, String status, String description) {}
+      String id,
+      String qualifiedId,
+      String slug,
+      String title,
+      String status,
+      String description) {}
 
-  /** A task inside {@link EpicDetail}. */
+  /** A task inside {@link EpicDetail}. {@code qualifiedId} only — see {@link EpicSummary}. */
   public record TaskDetail(
       String id,
+      String qualifiedId,
       String slug,
       String title,
       String description,
@@ -96,6 +118,7 @@ public class EpicMcpTools {
   /** A feature inside {@link EpicDetail}, with its tasks. */
   public record FeatureDetail(
       String id,
+      String qualifiedId,
       String slug,
       String title,
       String description,
@@ -106,6 +129,7 @@ public class EpicMcpTools {
   /** One epic with its whole feature/task tree. */
   public record EpicDetail(
       String id,
+      String qualifiedId,
       String slug,
       String title,
       String status,
@@ -115,11 +139,17 @@ public class EpicMcpTools {
 
   /** A feature on its own, as returned by the feature write tools. */
   public record FeatureSummary(
-      String id, String slug, String title, String description, String dependsOnFeatureId) {}
+      String id,
+      String qualifiedId,
+      String slug,
+      String title,
+      String description,
+      String dependsOnFeatureId) {}
 
   /** A task on its own, as returned by the task write tools. */
   public record TaskSummary(
       String id,
+      String qualifiedId,
       String slug,
       String title,
       String description,
@@ -137,7 +167,12 @@ public class EpicMcpTools {
    * null there would reasonably conclude the task is not implemented when nothing was asked.
    */
   public record TaskImplemented(
-      String id, String slug, String title, String repositoryId, Instant implementedAt) {}
+      String id,
+      String qualifiedId,
+      String slug,
+      String title,
+      String repositoryId,
+      Instant implementedAt) {}
 
   // --- Epics ----------------------------------------------------------------
 
@@ -158,8 +193,9 @@ public class EpicMcpTools {
                   "exact status to filter by: REFINING, IMPLEMENTATION, IMPLEMENTED, SUPERSEDED or"
                       + " ABANDONED. Omit for every epic of the project.")
           String status) {
+    String projectSlug = projectSlug(); // once for the listing, never once per row
     return epicService.listByProject(scope.requireProjectId(), status).stream()
-        .map(EpicMcpTools::summarize)
+        .map(epic -> summarize(epic, projectSlug))
         .toList();
   }
 
@@ -175,12 +211,14 @@ public class EpicMcpTools {
   public EpicDetail getEpic(
       @ToolArg(description = "id of an epic in this project") String id) {
     Epic epic = requireEpicInProject(id);
+    String projectSlug = projectSlug(); // once for the whole tree, never once per node
     List<FeatureDetail> features =
         featureService.listByEpic(epic.id).stream()
             .map(
                 feature ->
                     new FeatureDetail(
                         feature.id,
+                        QualifiedEntityIds.render(projectSlug, feature.number),
                         feature.slug,
                         feature.title,
                         feature.description,
@@ -191,6 +229,7 @@ public class EpicMcpTools {
                                 task ->
                                     new TaskDetail(
                                         task.id,
+                                        QualifiedEntityIds.render(projectSlug, task.number),
                                         task.slug,
                                         task.title,
                                         task.description,
@@ -201,6 +240,7 @@ public class EpicMcpTools {
             .toList();
     return new EpicDetail(
         epic.id,
+        QualifiedEntityIds.render(projectSlug, epic.number),
         epic.slug,
         epic.title,
         epic.status.name(),
@@ -222,7 +262,7 @@ public class EpicMcpTools {
       @ToolArg(required = false, description = "the long-form Markdown spine") String description) {
     Epic epic = epicService.create(scope.requireProjectId(), title, description, changedBy());
     announce();
-    return summarize(epic);
+    return summarize(epic, projectSlug());
   }
 
   @McpServer("repository")
@@ -245,7 +285,7 @@ public class EpicMcpTools {
             description == null ? current.description : description,
             changedBy());
     announce();
-    return summarize(epic);
+    return summarize(epic, projectSlug());
   }
 
   // --- Features -------------------------------------------------------------
@@ -270,7 +310,7 @@ public class EpicMcpTools {
     Feature feature =
         featureService.create(epicId, title, description, dependsOnFeatureId, changedBy());
     announce();
-    return summarize(feature);
+    return summarize(feature, projectSlug());
   }
 
   @McpServer("repository")
@@ -296,7 +336,7 @@ public class EpicMcpTools {
         featureService.update(
             id, title, description, dependsOnFeatureId, false, null, false, changedBy());
     announce();
-    return summarize(feature);
+    return summarize(feature, projectSlug());
   }
 
   @McpServer("repository")
@@ -341,7 +381,7 @@ public class EpicMcpTools {
         taskService.create(
             featureId, repositoryId, title, description, dependsOnTaskId, changedBy());
     announce();
-    return summarize(task);
+    return summarize(task, projectSlug());
   }
 
   @McpServer("repository")
@@ -368,7 +408,7 @@ public class EpicMcpTools {
         taskService.update(
             id, title, description, dependsOnTaskId, false, null, false, changedBy());
     announce();
-    return summarize(task);
+    return summarize(task, projectSlug());
   }
 
   /**
@@ -413,7 +453,12 @@ public class EpicMcpTools {
         taskService.update(id, null, null, null, false, Instant.now(), false, changedBy());
     announce();
     return new TaskImplemented(
-        task.id, task.slug, task.title, task.repositoryId, task.implementedAt);
+        task.id,
+        QualifiedEntityIds.render(projectSlug(), task.number),
+        task.slug,
+        task.title,
+        task.repositoryId,
+        task.implementedAt);
   }
 
   @McpServer("repository")
@@ -469,18 +514,43 @@ public class EpicMcpTools {
     return identity.getPrincipal().getName();
   }
 
-  private static EpicSummary summarize(Epic epic) {
+  /**
+   * The project slug the qualified ids in this call are rendered with, <b>resolved once</b>. Every
+   * row a tool answers is in the session's project, so one lookup covers a whole listing — see
+   * {@link ProjectScopeGuard#scopedProjectSlug()}.
+   */
+  private String projectSlug() {
+    return scopeGuard.scopedProjectSlug();
+  }
+
+  private static EpicSummary summarize(Epic epic, String projectSlug) {
     return new EpicSummary(
-        epic.id, epic.slug, epic.title, epic.status.name(), epic.description);
+        epic.id,
+        QualifiedEntityIds.render(projectSlug, epic.number),
+        epic.slug,
+        epic.title,
+        epic.status.name(),
+        epic.description);
   }
 
-  private static FeatureSummary summarize(Feature feature) {
+  private static FeatureSummary summarize(Feature feature, String projectSlug) {
     return new FeatureSummary(
-        feature.id, feature.slug, feature.title, feature.description, feature.dependsOnFeatureId);
+        feature.id,
+        QualifiedEntityIds.render(projectSlug, feature.number),
+        feature.slug,
+        feature.title,
+        feature.description,
+        feature.dependsOnFeatureId);
   }
 
-  private static TaskSummary summarize(Task task) {
+  private static TaskSummary summarize(Task task, String projectSlug) {
     return new TaskSummary(
-        task.id, task.slug, task.title, task.description, task.repositoryId, task.dependsOnTaskId);
+        task.id,
+        QualifiedEntityIds.render(projectSlug, task.number),
+        task.slug,
+        task.title,
+        task.description,
+        task.repositoryId,
+        task.dependsOnTaskId);
   }
 }

@@ -4,13 +4,17 @@ import eu.wohlben.qits.epics.persistence.AuditRepository;
 import eu.wohlben.qits.epics.persistence.DossierAssetRepository;
 import eu.wohlben.qits.epics.persistence.DossierPageAssetRepository;
 import eu.wohlben.qits.epics.persistence.DossierPageRepository;
+import eu.wohlben.qits.epics.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.epics.persistence.EpicRepository;
 import eu.wohlben.qits.epics.persistence.FeatureRepository;
 import eu.wohlben.qits.epics.persistence.TaskRepository;
 import eu.wohlben.qits.epics.persistence.TicketCommentRepository;
 import eu.wohlben.qits.epics.persistence.TicketRepository;
+import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
+import io.quarkus.hibernate.orm.PersistenceUnit;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
@@ -19,9 +23,15 @@ import org.junit.jupiter.api.BeforeEach;
  * spawns as a child process (see {@code testdb/EmbeddedPg} and
  * src/test/resources/application.properties) — no docker, no auth variant.
  *
- * <p>The order is the FK graph read leaves-first, and the two roots are independent: comments
- * before tickets, tasks before features before epics. A new table wiped in the wrong place fails
- * with a constraint violation rather than a wrong answer, which is the failure worth having.
+ * <p>The order is the FK graph read leaves-first, and since epics V12 that graph hangs off ONE root:
+ * the dossier pages, the dossier assets and the ticket comments are foreign-keyed to {@code entity}
+ * now, not to the legacy {@code epic}/{@code ticket} tables, so all three have to go before {@code
+ * workEntityRepository} — which they already did and still do, so no line moved. The membership
+ * edges go before the merged rows they point at, for the same reason. The four legacy tables are
+ * wiped too and are now unconstrained in both directions: nothing writes them and nothing points at
+ * them, so their position in this list is the only thing about them that is arbitrary. A new table
+ * wiped in the wrong place fails with a constraint violation rather than a wrong answer, which is
+ * the failure worth having.
  */
 public abstract class EpicsTestSupport {
 
@@ -34,6 +44,13 @@ public abstract class EpicsTestSupport {
   @Inject DossierPageRepository dossierPageRepository;
   @Inject DossierAssetRepository dossierAssetRepository;
   @Inject DossierPageAssetRepository dossierPageAssetRepository;
+  @Inject EntityMembershipRepository entityMembershipRepository;
+  @Inject WorkEntityRepository workEntityRepository;
+
+  /** For {@code entity_number_sequence}, which has no entity class and so no repository. */
+  @Inject
+  @PersistenceUnit("epics")
+  EntityManager epicsEntityManager;
 
   @BeforeEach
   void wipe() {
@@ -49,6 +66,16 @@ public abstract class EpicsTestSupport {
               taskRepository.deleteAll();
               featureRepository.deleteAll();
               epicRepository.deleteAll();
+              entityMembershipRepository.deleteAll();
+              workEntityRepository.deleteAll();
+              // The allocator's counters go with the rows they numbered. In production a number is
+              // NEVER reused, which is exactly why this line is needed here: without it the counter
+              // survives the wipe and the next test's first epic is numbered by however many rows
+              // the previous one happened to create. The rule under test is uniqueness within a
+              // project, not the absolute value, but a suite whose numbers depend on execution
+              // order is one nobody can assert against.
+              epicsEntityManager.createNativeQuery("delete from entity_number_sequence")
+                  .executeUpdate();
             });
   }
 

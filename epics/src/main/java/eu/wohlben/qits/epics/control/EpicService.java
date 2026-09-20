@@ -1,51 +1,94 @@
 package eu.wohlben.qits.epics.control;
 
+import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import eu.wohlben.qits.epics.entity.AuditOperation;
+import eu.wohlben.qits.epics.entity.EntityMembership;
 import eu.wohlben.qits.epics.entity.Epic;
 import eu.wohlben.qits.epics.entity.EpicStatus;
-import eu.wohlben.qits.epics.entity.Feature;
-import eu.wohlben.qits.epics.entity.Task;
+import eu.wohlben.qits.epics.entity.WorkEntity;
 import eu.wohlben.qits.epics.error.BadRequestException;
 import eu.wohlben.qits.epics.error.ConflictException;
 import eu.wohlben.qits.epics.error.NotFoundException;
-import eu.wohlben.qits.epics.persistence.EpicRepository;
-import eu.wohlben.qits.epics.persistence.FeatureRepository;
-import eu.wohlben.qits.epics.persistence.TaskRepository;
+import eu.wohlben.qits.epics.persistence.EntityMembershipRepository;
+import eu.wohlben.qits.epics.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * CRUD and lifecycle for {@link Epic}. {@code projectId} is stored verbatim — cross-boundary
- * existence against {@code domain}'s {@code Project} is validated in the {@code service} controller
- * (this module has no dependency on {@code domain}). Every mutation is recorded in the {@link
- * AuditService audit log}, including the feature/task rows removed on a cascade delete (done
- * in-service, not via the DB cascade, so each removal gets its own DELETE audit row).
+ * CRUD and lifecycle for the {@link Archetype#EPIC} rows of the merged {@link WorkEntity} table.
+ * {@code projectId} is stored verbatim — cross-boundary existence against {@code domain}'s {@code
+ * Project} is validated in the {@code service} controller (this module has no dependency on {@code
+ * domain}). Every mutation is recorded in the {@link AuditService audit log}, including the
+ * feature/task rows removed on a cascade delete (done in-service, not via the DB cascade, so each
+ * removal gets its own DELETE audit row).
  *
  * <p>A new epic starts in {@link EpicStatus#REFINING}. From there {@link #transition} is the only
  * way the status moves, and {@link EpicLifecycle} is where both the legal moves and the freeze
  * rules live.
+ *
+ * <h2>The merged table is the source of truth, and there is no mirror left</h2>
+ *
+ * <p><b>Every read and every rule here is answered from {@code entity}.</b> The status a transition
+ * is judged against, the slugs a new one is minted around, the listing the board draws and the
+ * timestamps a caller is handed all come from that row and from nothing else. What a caller gets
+ * back is a {@link WorkEntityProjections detached projection} of it, shaped as an {@link Epic} so
+ * the mappers, the DTO and the five controllers above are untouched.
+ *
+ * <p><b>The legacy {@code epic} row is not written at all any more, and the write-behind mirror that
+ * kept it populated is gone.</b> It existed for two things and both have been answered rather than
+ * dropped. The foreign keys that named the old table — {@code dossier_page.epic_id} and {@code
+ * dossier_asset.epic_id}, under {@code ck_dossier_page_owner} — point at {@code entity(id)} from
+ * epics V12, so the cascade a delete leans on now hangs off the row this class actually removes;
+ * and {@code DossierService}, the one reader, resolves a page's owner and its {@code REFINING} guard
+ * from the merged row.
+ *
+ * <p>Keeping the mirror was the alternative and it was refused on the descendants' own terms. A
+ * table written by nobody's intent, purely to satisfy a constraint, is the half-live state {@code
+ * docs/unified-entity-model.md} already rejected for {@code feature}/{@code task} ("There is NO
+ * feature/task mirror, and that is a decision"): it looks authoritative to anyone who opens it, it
+ * drifts the first time a path forgets to write it, and no reader would notice. With the write gone,
+ * {@code epic} has <b>no writer and no referent</b> — a frozen snapshot of the estate as V10 found
+ * it, which is a cleaner thing for the verification door to compare against than a mirror that was
+ * still moving.
+ *
+ * <h2>The subtree walks go through {@code entity_membership}</h2>
+ *
+ * <p>{@link #stampImplemented}, {@link #supersede} and the cascade in {@link #delete} walk the
+ * memberships and the merged table, not {@code FeatureRepository}/{@code TaskRepository}. They had
+ * to: {@code FeatureService} and {@code TaskService} write only {@code entity} now, so a feature
+ * created after that change has <b>no legacy row at all</b> and a walk over the old tables would
+ * silently find nothing.
+ *
+ * <p>Every one of the three reads <b>a whole level at a time</b> — {@code childrenOfAll} plus {@code
+ * listByIds} — and never one query per node. That is the single performance mistake this model makes
+ * easy, and these three are the deepest reads the module has.
  */
 @ApplicationScoped
 public class EpicService {
 
-  @Inject EpicRepository epicRepository;
+  @Inject WorkEntityRepository entities;
 
-  @Inject FeatureRepository featureRepository;
-
-  @Inject TaskRepository taskRepository;
+  @Inject EntityMembershipRepository memberships;
 
   @Inject AuditService auditService;
 
   @Inject ReadPatience patience;
 
   @Inject WritePatience writes;
+
+  /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
+  @Inject EntityNumbers numbers;
 
   /**
    * The outcome of a {@link #transition}: the epic in its new status, plus the successor draft when
@@ -85,6 +128,9 @@ public class EpicService {
    * Epics of a project, optionally narrowed to one status. {@code status} is the enum name; a value
    * naming no status is a 400 rather than an empty list, so a typo in the filter is visible.
    *
+   * <p>One query, whichever arm runs, and the rows are projected in memory — nothing is resolved per
+   * row, which is the mistake a merged table makes easy.
+   *
    * <p>The read itself is held through a postgres cutover ({@link ReadPatience}): this is the
    * board's top level, and a severed connection would draw a project with no epics in it. The
    * status is parsed before the wrap, so a typo is still a 400 on the first attempt rather than a
@@ -93,19 +139,23 @@ public class EpicService {
    */
   public List<Epic> listByProject(String projectId, String status) {
     if (status == null || status.isBlank()) {
-      return patience.hold("epic list", () -> epicRepository.listByProject(projectId));
+      return patience.hold(
+          "epic list",
+          () -> project(entities.listByProjectAndArchetype(projectId, Archetype.EPIC)));
     }
     EpicStatus filter =
         EpicLifecycle.parse(status)
             .orElseThrow(() -> new BadRequestException("Unknown epic status: " + status));
     return patience.hold(
-        "epic list by status", () -> epicRepository.listByProjectAndStatus(projectId, filter));
+        "epic list by status",
+        () ->
+            project(
+                entities.listByProjectArchetypeAndStatus(
+                    projectId, Archetype.EPIC, filter.name())));
   }
 
   public Epic get(String id) {
-    return epicRepository
-        .findByIdOptional(id)
-        .orElseThrow(() -> new NotFoundException("Epic not found: " + id));
+    return WorkEntityProjections.epic(entity(id));
   }
 
   /**
@@ -120,7 +170,7 @@ public class EpicService {
     return writes.hold(
         "epic create",
         () -> {
-          Epic epic = insert(projectId, title, description);
+          Epic epic = settled(insert(projectId, title, description));
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.CREATE, changedBy, epic);
           return epic;
@@ -132,12 +182,15 @@ public class EpicService {
     return writes.hold(
         "epic update",
         () -> {
-          Epic epic = get(id);
-          // Title and description are scope, so an edit needs a draft.
-          EpicLifecycle.requireRefining(epic);
+          WorkEntity row = entity(id);
+          // Title and description are scope, so an edit needs a draft. The phase is read off the
+          // entity row, projected only so the rule keeps the signature its three other callers use.
+          EpicLifecycle.requireRefining(WorkEntityProjections.epic(row));
           Validations.requireText(title, "title");
-          epic.title = title;
-          epic.description = description;
+          row.title = title;
+          row.description = description;
+          requireArchetypeValid(row);
+          Epic epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
           return epic;
@@ -164,20 +217,22 @@ public class EpicService {
     return writes.hold(
         "epic transition",
         () -> {
-          Epic epic = get(id);
+          WorkEntity row = entity(id);
           EpicStatus to =
               EpicLifecycle.parse(target)
                   .orElseThrow(() -> new ConflictException("Unknown epic status: " + target));
-          EpicLifecycle.requireTransition(epic.status, to);
+          EpicLifecycle.requireTransition(EpicStatus.valueOf(row.status), to);
 
-          Epic successor = (to == EpicStatus.SUPERSEDED) ? supersede(epic, changedBy) : null;
+          Epic successor = (to == EpicStatus.SUPERSEDED) ? supersede(row, changedBy) : null;
           if (to == EpicStatus.IMPLEMENTED) {
-            stampImplemented(epic, changedBy);
+            stampImplemented(row, changedBy);
           }
-          epic.status = to;
+          row.status = to.name();
           if (successor != null) {
-            epic.supersededByEpicId = successor.id;
+            row.supersededByEntityId = successor.id;
           }
+          requireArchetypeValid(row);
+          Epic epic = settled(row);
           auditService.record(
               AuditEntityType.EPIC, epic.id, epic.id, AuditOperation.UPDATE, changedBy, epic);
           return new Transition(epic, successor);
@@ -189,21 +244,37 @@ public class EpicService {
    * unimplemented is stamped now, each with its own audit row. Markers already set keep their
    * timestamps — a feature implemented in June stays implemented in June; the stamp records when
    * the declaration covered the rest, not a rewrite of history.
+   *
+   * <p>It walks the memberships, two levels, four queries whatever the size of the plan: the epic's
+   * children, their rows, those rows' children and <em>their</em> rows. Both levels take {@code
+   * entity.implemented_at} — the one column what were {@code feature.implemented_on} and {@code
+   * task.implemented_at} merged into.
    */
-  private void stampImplemented(Epic epic, String changedBy) {
+  private void stampImplemented(WorkEntity epic, String changedBy) {
     Instant now = Instant.now();
-    for (Feature feature : featureRepository.listByEpic(epic.id)) {
-      for (Task task : taskRepository.listByFeature(feature.id)) {
+    Subtree subtree = subtreeOf(epic.id);
+    for (WorkEntity feature : subtree.features()) {
+      for (WorkEntity task : subtree.tasksOf(feature.id)) {
         if (task.implementedAt == null) {
           task.implementedAt = now;
           auditService.record(
-              AuditEntityType.TASK, task.id, epic.id, AuditOperation.UPDATE, changedBy, task);
+              AuditEntityType.TASK,
+              task.id,
+              epic.id,
+              AuditOperation.UPDATE,
+              changedBy,
+              WorkEntityProjections.task(task, feature.id));
         }
       }
-      if (feature.implementedOn == null) {
-        feature.implementedOn = now;
+      if (feature.implementedAt == null) {
+        feature.implementedAt = now;
         auditService.record(
-            AuditEntityType.FEATURE, feature.id, epic.id, AuditOperation.UPDATE, changedBy, feature);
+            AuditEntityType.FEATURE,
+            feature.id,
+            epic.id,
+            AuditOperation.UPDATE,
+            changedBy,
+            WorkEntityProjections.feature(feature, epic.id));
       }
     }
   }
@@ -213,43 +284,101 @@ public class EpicService {
     writes.run(
         "epic delete",
         () -> {
-          Epic epic = get(id);
+          WorkEntity row = entity(id);
+          Epic epic = WorkEntityProjections.epic(row);
           // Deliberately allowed in every status: this removes the row rather than editing a frozen
           // scope, and the audit log outlives it.
-          // Delete the subtree in-service (not via DB cascade) so every removed feature/task gets
-          // its own DELETE audit row. Feature dependencies are epic-local (validated on write), so
-          // no other epic can reference these rows — no external dependents to clear.
-          for (Feature feature : featureRepository.listByEpic(id)) {
-            for (Task task : taskRepository.listByFeature(feature.id)) {
-              taskRepository.delete(task);
-              auditService.record(
-                  AuditEntityType.TASK, task.id, id, AuditOperation.DELETE, changedBy, task);
-            }
-            featureRepository.delete(feature);
-            auditService.record(
-                AuditEntityType.FEATURE, feature.id, id, AuditOperation.DELETE, changedBy, feature);
-          }
-          epicRepository.delete(epic);
+          deleteSubtree(id, changedBy);
+          entities.delete(row);
           auditService.record(AuditEntityType.EPIC, id, id, AuditOperation.DELETE, changedBy, epic);
         });
   }
 
-  /** A fresh epic row in {@link EpicStatus#REFINING}, unaudited — both callers audit their own. */
-  private Epic insert(String projectId, String title, String description) {
-    Epic epic = new Epic();
-    epic.id = UUID.randomUUID().toString();
-    epic.projectId = projectId;
-    epic.title = title;
+  /**
+   * <b>The cascade, done in-service so every removed feature and task gets its own DELETE audit
+   * row</b> — V1's stated reading of the FK, now driven by the memberships. Feature and task
+   * dependencies are parent-local (validated on write), so nothing outside this subtree can point
+   * into it and there are no external dependents to clear.
+   *
+   * <p>It is <b>one walk</b>, level by level — {@code childrenOfAll} then {@code listByIds} per
+   * level, never one query per node — where there used to be two nested loops over two tables. The
+   * {@code entity_membership} rows go with the FK's {@code on delete cascade} rather than being
+   * removed one at a time; the entity rows are removed here because the audit row has to be written
+   * from each of them anyway. The walk terminates because the nesting rule makes a membership cycle
+   * impossible, and {@code doomed} is a set so a malformed edge could not make it loop either.
+   *
+   * <p><b>No legacy row is touched here, and that is the whole of the old tables' new state.</b>
+   * The legacy {@code epic}, {@code feature} and {@code task} rows V10 left behind stay where they
+   * are: nothing writes them, nothing points at them, and they are the frozen snapshot the
+   * verification door compares against. A delete is therefore recorded rather than mirrored — the
+   * DELETE audit rows written above are what say the row went, which is the direction that door
+   * reads in.
+   */
+  private void deleteSubtree(String rootId, String changedBy) {
+    Collection<String> level = List.of(rootId);
+    Set<String> doomed = new LinkedHashSet<>();
+    Map<String, String> parentOf = new LinkedHashMap<>();
+    while (!level.isEmpty()) {
+      List<String> children = new ArrayList<>();
+      for (EntityMembership edge : memberships.childrenOfAll(level)) {
+        if (doomed.add(edge.childId)) {
+          parentOf.put(edge.childId, edge.parentId);
+          children.add(edge.childId);
+        }
+      }
+      level = children;
+    }
+    for (WorkEntity descendant : entities.listByIds(doomed)) {
+      String parentId = parentOf.get(descendant.id);
+      if (descendant.archetype == Archetype.FEATURE) {
+        auditService.record(
+            AuditEntityType.FEATURE,
+            descendant.id,
+            rootId,
+            AuditOperation.DELETE,
+            changedBy,
+            WorkEntityProjections.feature(descendant, parentId));
+      } else if (descendant.archetype == Archetype.TASK) {
+        auditService.record(
+            AuditEntityType.TASK,
+            descendant.id,
+            rootId,
+            AuditOperation.DELETE,
+            changedBy,
+            WorkEntityProjections.task(descendant, parentId));
+      }
+      entities.delete(descendant);
+    }
+  }
+
+  /**
+   * A fresh {@link Archetype#EPIC} row in {@link EpicStatus#REFINING}, unaudited — both callers
+   * audit their own.
+   *
+   * <p>The slug's scope is the <b>project id</b>, which is what {@code uq_entity_slug_scope_slug}
+   * makes of {@code uq_epic_project_slug}: the same rule, written once. It is now shared with the
+   * project's tickets, the narrowing {@code docs/unified-entity-model.md} states.
+   */
+  private WorkEntity insert(String projectId, String title, String description) {
+    WorkEntity row = new WorkEntity();
+    row.id = UUID.randomUUID().toString();
+    row.archetype = Archetype.EPIC;
+    row.projectId = projectId;
+    // Allocated inside the write's transaction but committed outside it, which is what makes a
+    // create that rolls back leave a gap rather than hand the number back. See EntityNumbers.
+    row.number = numbers.next(projectId);
+    row.title = title;
+    row.slugScope = projectId;
     // Minted once, at create, and never re-derived on update: the slug is a branch path segment,
     // and renaming an epic must not orphan the branches already cut from it.
-    epic.slug =
+    row.slug =
         Slugs.unique(
-            Slugs.slugify(title, epic.id, "epic-"),
-            epicRepository.listByProject(projectId).stream().map(e -> e.slug).toList());
-    epic.description = description;
-    epic.status = EpicStatus.REFINING;
-    epicRepository.persist(epic);
-    return epic;
+            Slugs.slugify(title, row.id, "epic-"), entities.slugsInScope(projectId));
+    row.description = description;
+    row.status = EpicStatus.REFINING.name();
+    requireArchetypeValid(row);
+    entities.persist(row);
+    return row;
   }
 
   /**
@@ -263,54 +392,62 @@ public class EpicService {
    * free one exactly as a hand-created epic would.
    *
    * <p>The implemented markers reset to null (nothing is implemented in a draft) and {@code
-   * dependsOn*} is remapped to the new ids. Remapping needs the second pass: a dependency may point
+   * dependsOn} is remapped to the new ids. Remapping needs the second pass: a dependency may point
    * at a sibling created after it, so the whole id map has to exist before any pointer is set.
+   *
+   * <p><b>The memberships are copied with the rows</b>, and their positions are taken from the
+   * source's order rather than re-derived, so the successor's plan is drawn in the order the
+   * discarded one was. They stay dense and zero-based because the source's were.
    */
-  private Epic supersede(Epic old, String changedBy) {
-    Epic successor = insert(old.projectId, old.title, old.description);
+  private Epic supersede(WorkEntity old, String changedBy) {
+    WorkEntity successorRow = insert(old.projectId, old.title, old.description);
 
-    List<Feature> oldFeatures = featureRepository.listByEpic(old.id);
-    List<Task> oldTasks = new ArrayList<>();
+    Subtree source = subtreeOf(old.id);
+    List<WorkEntity> oldTasks = new ArrayList<>();
     // Keyed by the old row's id, insertion-ordered so the audit rows land in the original order.
-    Map<String, Feature> featureCopies = new LinkedHashMap<>();
-    Map<String, Task> taskCopies = new LinkedHashMap<>();
+    Map<String, WorkEntity> featureCopies = new LinkedHashMap<>();
+    Map<String, WorkEntity> taskCopies = new LinkedHashMap<>();
 
-    for (Feature feature : oldFeatures) {
-      Feature copy = new Feature();
-      copy.id = UUID.randomUUID().toString();
-      copy.epicId = successor.id;
-      copy.title = feature.title;
-      copy.slug = feature.slug;
-      copy.description = feature.description;
-      featureRepository.persist(copy);
+    // The feature copy each task copy was attached to, so the audit snapshot can name its parent
+    // without asking for the edge back.
+    Map<String, String> taskCopyParents = new LinkedHashMap<>();
+
+    // ONE bump for the whole discarded tree rather than one per copied row: the count is known
+    // before anything is written, and a block is what EntityNumbers.allocate exists for. The
+    // successor epic's own number came out of insert() above, so this block is the descendants'.
+    int copies = source.features().size();
+    for (WorkEntity feature : source.features()) {
+      copies += source.tasksOf(feature.id).size();
+    }
+    long nextCopyNumber = (copies == 0) ? 0 : numbers.allocate(old.projectId, copies);
+
+    int featurePosition = 0;
+    for (WorkEntity feature : source.features()) {
+      WorkEntity copy = copyUnder(feature, successorRow.id, featurePosition++, nextCopyNumber++);
       featureCopies.put(feature.id, copy);
 
-      for (Task task : taskRepository.listByFeature(feature.id)) {
-        Task taskCopy = new Task();
-        taskCopy.id = UUID.randomUUID().toString();
-        taskCopy.featureId = copy.id;
-        taskCopy.repositoryId = task.repositoryId;
-        taskCopy.title = task.title;
-        taskCopy.slug = task.slug;
-        taskCopy.description = task.description;
-        taskRepository.persist(taskCopy);
-        oldTasks.add(task);
+      int taskPosition = 0;
+      for (WorkEntity task : source.tasksOf(feature.id)) {
+        WorkEntity taskCopy = copyUnder(task, copy.id, taskPosition++, nextCopyNumber++);
         taskCopies.put(task.id, taskCopy);
+        taskCopyParents.put(taskCopy.id, copy.id);
+        oldTasks.add(task);
       }
     }
 
     // Second pass: every copy exists now, so a pointer can be remapped whichever way it points.
-    for (Feature feature : oldFeatures) {
-      Feature target = featureCopies.get(feature.dependsOnFeatureId);
-      featureCopies.get(feature.id).dependsOnFeatureId = (target == null) ? null : target.id;
+    for (WorkEntity feature : source.features()) {
+      WorkEntity target = featureCopies.get(feature.dependsOnEntityId);
+      featureCopies.get(feature.id).dependsOnEntityId = (target == null) ? null : target.id;
     }
-    for (Task task : oldTasks) {
-      Task target = taskCopies.get(task.dependsOnTaskId);
-      taskCopies.get(task.id).dependsOnTaskId = (target == null) ? null : target.id;
+    for (WorkEntity task : oldTasks) {
+      WorkEntity target = taskCopies.get(task.dependsOnEntityId);
+      taskCopies.get(task.id).dependsOnEntityId = (target == null) ? null : target.id;
     }
 
-    // Audited after the remap so each snapshot is the finished row. The first record() flushes the
-    // whole batch, which is what populates the copies' creation timestamps.
+    // Audited after the remap so each snapshot is the finished row. settled() flushes the whole
+    // batch, which is what populates the copies' creation timestamps.
+    Epic successor = settled(successorRow);
     auditService.record(
         AuditEntityType.EPIC,
         successor.id,
@@ -318,14 +455,156 @@ public class EpicService {
         AuditOperation.CREATE,
         changedBy,
         successor);
-    for (Feature copy : featureCopies.values()) {
+    for (WorkEntity copy : featureCopies.values()) {
       auditService.record(
-          AuditEntityType.FEATURE, copy.id, successor.id, AuditOperation.CREATE, changedBy, copy);
+          AuditEntityType.FEATURE,
+          copy.id,
+          successor.id,
+          AuditOperation.CREATE,
+          changedBy,
+          WorkEntityProjections.feature(copy, successor.id));
     }
-    for (Task copy : taskCopies.values()) {
+    for (WorkEntity copy : taskCopies.values()) {
       auditService.record(
-          AuditEntityType.TASK, copy.id, successor.id, AuditOperation.CREATE, changedBy, copy);
+          AuditEntityType.TASK,
+          copy.id,
+          successor.id,
+          AuditOperation.CREATE,
+          changedBy,
+          WorkEntityProjections.task(copy, taskCopyParents.get(copy.id)));
     }
     return successor;
+  }
+
+  /**
+   * A fresh row carrying {@code source}'s content under {@code parentId} at {@code position}, and
+   * the edge that puts it there.
+   *
+   * <p>The <b>slug is kept</b>: the new parent is a new scope, so the name is free again and the
+   * branch it would have named is the successor's own. The <b>implemented marker resets</b> —
+   * nothing is implemented in a draft — and {@code dependsOn} is left null for the second pass to
+   * fill. The edge's id is the child's, V10's rule.
+   */
+  private WorkEntity copyUnder(WorkEntity source, String parentId, int position, long number) {
+    WorkEntity copy = new WorkEntity();
+    copy.id = UUID.randomUUID().toString();
+    copy.archetype = source.archetype;
+    copy.projectId = source.projectId;
+    // A COPY IS A NEW ENTITY AND TAKES A NEW NUMBER. The source keeps its own: a superseded epic's
+    // tree is the record of what was discarded, and two rows sharing a number would make the
+    // qualified form ambiguous in exactly the project it is scoped by.
+    copy.number = number;
+    copy.title = source.title;
+    copy.slug = source.slug;
+    copy.slugScope = parentId;
+    copy.description = source.description;
+    copy.repositoryId = source.repositoryId;
+    entities.persist(copy);
+
+    EntityMembership edge = new EntityMembership();
+    edge.id = copy.id;
+    edge.parentId = parentId;
+    edge.childId = copy.id;
+    edge.position = position;
+    memberships.persist(edge);
+    return copy;
+  }
+
+  /**
+   * <b>An epic's two levels, read in four queries.</b> The features in membership order, then every
+   * task under any of them, grouped by feature and each group still in its own membership order —
+   * {@code childrenOfAll} sorts by position globally, and filtering by parent preserves that.
+   *
+   * <p>It exists because all three subtree walks want exactly this and would otherwise each invent
+   * their own fan-out, which is where the N+1 would land.
+   */
+  private Subtree subtreeOf(String epicId) {
+    List<EntityMembership> featureEdges = memberships.childrenOf(epicId);
+    Map<String, WorkEntity> featureRows = indexById(entities.listByIds(childIds(featureEdges)));
+    List<WorkEntity> features = new ArrayList<>();
+    for (EntityMembership edge : featureEdges) {
+      WorkEntity row = featureRows.get(edge.childId);
+      if (row != null && row.archetype == Archetype.FEATURE) {
+        features.add(row);
+      }
+    }
+
+    List<String> featureIds = features.stream().map(row -> row.id).toList();
+    List<EntityMembership> taskEdges = memberships.childrenOfAll(featureIds);
+    Map<String, WorkEntity> taskRows = indexById(entities.listByIds(childIds(taskEdges)));
+    Map<String, List<WorkEntity>> tasksByFeature = new LinkedHashMap<>();
+    for (String featureId : featureIds) {
+      tasksByFeature.put(featureId, new ArrayList<>());
+    }
+    for (EntityMembership edge : taskEdges) {
+      WorkEntity row = taskRows.get(edge.childId);
+      if (row != null && row.archetype == Archetype.TASK) {
+        tasksByFeature.get(edge.parentId).add(row);
+      }
+    }
+    return new Subtree(List.copyOf(features), tasksByFeature);
+  }
+
+  /** The two levels below an epic, in the order the plan is drawn — see {@link #subtreeOf}. */
+  private record Subtree(List<WorkEntity> features, Map<String, List<WorkEntity>> tasks) {
+
+    List<WorkEntity> tasksOf(String featureId) {
+      return tasks.getOrDefault(featureId, List.of());
+    }
+  }
+
+  private static List<String> childIds(List<EntityMembership> edges) {
+    return edges.stream().map(edge -> edge.childId).toList();
+  }
+
+  private static Map<String, WorkEntity> indexById(List<WorkEntity> rows) {
+    Map<String, WorkEntity> indexed = new LinkedHashMap<>();
+    for (WorkEntity row : rows) {
+      indexed.put(row.id, row);
+    }
+    return indexed;
+  }
+
+  /**
+   * The row as a caller sees it, taken after an explicit flush so the Hibernate-managed timestamps
+   * are populated — a create is promised a {@code createdAt} and an update an {@code updatedAt} that
+   * is not before it.
+   */
+  private Epic settled(WorkEntity row) {
+    entities.getEntityManager().flush();
+    return WorkEntityProjections.epic(row);
+  }
+
+  private List<Epic> project(List<WorkEntity> rows) {
+    return rows.stream().map(WorkEntityProjections::epic).toList();
+  }
+
+  /**
+   * The row this id names, or a 404 — and a row of another archetype is a 404 too. The four kinds
+   * share one table and one id space now, so "no epic with this id" has to mean "no EPIC row with
+   * this id" rather than "no row at all".
+   */
+  private WorkEntity entity(String id) {
+    WorkEntity row = id == null ? null : entities.findById(id);
+    if (row == null || row.archetype != Archetype.EPIC) {
+      throw new NotFoundException("Epic not found: " + id);
+    }
+    return row;
+  }
+
+  /**
+   * <b>The archetype registry on the ordinary write.</b> A create or an update that would leave a
+   * row the registry refuses — a property an epic has no slot for, a status word from the other
+   * lifecycle — is a 400 naming every violation at once, which is what {@code Archetypes.validate}
+   * answers for and why it returns all of them rather than the first.
+   */
+  private static void requireArchetypeValid(WorkEntity candidate) {
+    List<ArchetypeViolation> violations = Archetypes.validate(candidate);
+    if (!violations.isEmpty()) {
+      throw new BadRequestException(
+          violations.stream()
+              .map(ArchetypeViolation::message)
+              .collect(Collectors.joining("; ")));
+    }
   }
 }

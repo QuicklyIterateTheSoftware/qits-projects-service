@@ -60,6 +60,9 @@ public class EventWireReflectionTest {
   /** And the fourth, which publishes both ends of a project's life. */
   @Inject Instance<ProjectLifecycleAnnouncer> shippedProjectAnnouncer;
 
+  /** And the fifth, the one announcement a whole multi-entity transition makes. */
+  @Inject Instance<EntityTransitionAnnouncer> shippedTransitionAnnouncer;
+
   @Test
   public void theRegisteredTargetsAreExactlyTheTypesThatCrossTheWire() {
     RegisterForReflection registration =
@@ -76,6 +79,8 @@ public class EventWireReflectionTest {
             SCMRelease.class,
             ProjectCreated.class,
             ProjectDeleted.class,
+            EntityTransitioned.class,
+            EntityTransitioned.Entity.class,
             BuildStatusListener.BuildVerdictPayload.class,
             ReleasePipelineRunListener.PipelineRunPayload.class,
             DeploymentActiveListener.DeploymentActivePayload.class,
@@ -83,8 +88,9 @@ public class EventWireReflectionTest {
             EventFrame.class),
         Set.of(registration.targets()),
         "the four SCM records and the three bound consumption payloads in, RepositoryRenamed,"
-            + " ReleaseRequestChanged, SCMRelease and the two project lifecycle events out, the PUT"
-            + " body, the frame — a fifteenth wire type means a line here");
+            + " ReleaseRequestChanged, SCMRelease, the two project lifecycle events and the"
+            + " transition's payload PAIR out, the PUT body, the frame — a seventeenth wire type"
+            + " means a line here, and a nested payload record means two");
   }
 
   /**
@@ -118,6 +124,25 @@ public class EventWireReflectionTest {
     assertTrue(
         targets.contains(ProjectDeleted.class),
         "and its closing half, without which the edge holds names it can never retire");
+    assertTrue(
+        targets.contains(EntityTransitioned.class),
+        "EntityTransitionAnnouncer publishes this — the multi-entity transition's one announcement"
+            + " for the whole batch");
+    assertTrue(
+        targets.contains(EntityTransitioned.Entity.class),
+        "and its NESTED payload record, which is as invisible to the image builder as the outer"
+            + " one: registering only the enclosing record fails in exactly the same place and in"
+            + " exactly the same words as registering neither");
+  }
+
+  /**
+   * The transition announcer, by its OWN type past its {@code @DefaultBean} — the port's injection
+   * point is won by the epics suite's recording double, so asking for the port here would prove
+   * nothing about what ships.
+   */
+  @Test
+  public void theEntityTransitionAnnouncerShipsAsABean() {
+    assertTrue(!shippedTransitionAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
   }
 
   /**

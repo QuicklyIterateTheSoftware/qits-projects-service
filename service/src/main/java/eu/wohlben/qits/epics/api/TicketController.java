@@ -58,6 +58,13 @@ public class TicketController {
   /** Which live workspaces are on this ticket — derived per read; see {@link DispatchedWorkspaces}. */
   @Inject DispatchedWorkspaces dispatchedWorkspaces;
 
+  /**
+   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
+   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
+   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
+   */
+  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
+
   /** The phase a transition starts, delivered into the workspace on the ticket's branch. */
   @Inject TicketPhaseAdvance phaseAdvance;
 
@@ -78,7 +85,8 @@ public class TicketController {
   @Path("/{id}")
   public GetTicketRequest.Response get(@PathParam("id") String id) {
     return new GetTicketRequest.Response(
-        dispatchedWorkspaces.decorate(ticketMapper.toDto(ticketService.get(id))));
+        qualifiedIds.qualify(
+            dispatchedWorkspaces.decorate(ticketMapper.toDto(ticketService.get(id)))));
   }
 
   /**
@@ -121,7 +129,7 @@ public class TicketController {
             request.clearAssignee(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(ticket.projectId);
-    return new UpdateTicketRequest.Response(ticketMapper.toDto(ticket));
+    return new UpdateTicketRequest.Response(qualifiedIds.qualify(ticketMapper.toDto(ticket)));
   }
 
   /**
@@ -152,7 +160,7 @@ public class TicketController {
       // already been recorded and already been answered for.
       LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
     }
-    return new TransitionTicketRequest.Response(ticketMapper.toDto(ticket));
+    return new TransitionTicketRequest.Response(qualifiedIds.qualify(ticketMapper.toDto(ticket)));
   }
 
   public record DeleteTicketRequest() {

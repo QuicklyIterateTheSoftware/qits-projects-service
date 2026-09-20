@@ -232,6 +232,28 @@ components:
           pattern: \S
         note:
           type: string
+    Archetype:
+      type: string
+      enum:
+      - EPIC
+      - TICKET
+      - FEATURE
+      - TASK
+    ArchetypeRegistryDocument:
+      type: object
+      properties:
+        properties:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        serverOwned:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        archetypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeclaredArchetype"
     AttachmentDto:
       type: object
       properties:
@@ -593,6 +615,32 @@ components:
           pattern: \S
         assignee:
           type: string
+    DeclaredArchetype:
+      type: object
+      properties:
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        depth:
+          type: integer
+          format: int32
+        mayBeRoot:
+          type: boolean
+        required:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        requiredOnTransition:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        permitted:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityProperty"
+        legalStatuses:
+          type: array
+          items:
+            type: string
     DeclineReleaseRequest:
       type: object
       required:
@@ -709,6 +757,48 @@ components:
       properties:
         draft:
           $ref: "#/components/schemas/DraftDto"
+    EntityProperty:
+      type: string
+      enum:
+      - TITLE
+      - SLUG
+      - DESCRIPTION
+      - STATUS
+      - TICKET_TYPE
+      - IMPETUS
+      - ASSIGNEE
+      - CREATED_BY
+      - SUPERSEDED_BY
+      - REPOSITORY_ID
+      - IMPLEMENTED_AT
+      - DEPENDS_ON
+    EntityTransition:
+      type: object
+      properties:
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        membership:
+          $ref: "#/components/schemas/Membership"
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        ticketType:
+          $ref: "#/components/schemas/TicketType"
+        impetus:
+          type: string
+        assignee:
+          type: string
+        supersededBy:
+          type: string
+        repositoryId:
+          type: string
+        implementedAt:
+          $ref: "#/components/schemas/Instant"
+        dependsOn:
+          type: string
     Entry:
       type: object
       properties:
@@ -794,6 +884,11 @@ components:
           type: string
         projectId:
           type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
         title:
           type: string
         slug:
@@ -818,6 +913,13 @@ components:
         id:
           type: string
         epicId:
+          type: string
+        projectId:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
           type: string
         title:
           type: string
@@ -978,6 +1080,14 @@ components:
         readOnly:
           type: boolean
           description: Append agentReadOnly=true — the autonomous fence.
+    Membership:
+      type: object
+      properties:
+        parent:
+          type: string
+        position:
+          type: integer
+          format: int32
     MergeConflictDto:
       type: object
       properties:
@@ -1922,6 +2032,13 @@ components:
           type: string
         featureId:
           type: string
+        projectId:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
         repositoryId:
           type: string
         title:
@@ -1992,6 +2109,11 @@ components:
           type: string
         projectId:
           type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
         title:
           type: string
         slug:
@@ -2016,6 +2138,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceReferenceDto"
+    TicketType:
+      type: string
+      enum:
+      - BUG
+      - IMPROVEMENT
     TransitionEpicRequest:
       type: object
       properties:
@@ -2026,6 +2153,55 @@ components:
       properties:
         target:
           type: string
+    TransitionedEntity:
+      type: object
+      properties:
+        id:
+          type: string
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        projectId:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
+        title:
+          type: string
+        slug:
+          type: string
+        slugScope:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        ticketType:
+          $ref: "#/components/schemas/TicketType"
+        impetus:
+          type: string
+        assignee:
+          type: string
+        createdBy:
+          type: string
+        supersededBy:
+          type: string
+        repositoryId:
+          type: string
+        implementedAt:
+          $ref: "#/components/schemas/Instant"
+        dependsOn:
+          type: string
+        parent:
+          type: string
+        position:
+          type: integer
+          format: int32
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
     UpdateDesign:
       type: object
       required:
@@ -2115,6 +2291,85 @@ components:
           type: string
         clearAssignee:
           type: boolean
+    VerificationCategory:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/VerificationKind"
+        question:
+          type: string
+        comparedRows:
+          type: integer
+          format: int64
+        compared:
+          type: string
+        findings:
+          type: integer
+          format: int64
+        truncated:
+          type: boolean
+        sample:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationFinding"
+    VerificationFinding:
+      type: object
+      properties:
+        id:
+          type: string
+        archetype:
+          type: string
+        detail:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+    VerificationKind:
+      type: string
+      enum:
+      - DISCREPANCY
+      - EXPECTED
+      - INFORMATIONAL
+    VerificationReport:
+      type: object
+      properties:
+        generatedAt:
+          $ref: "#/components/schemas/Instant"
+        verdict:
+          type: string
+        discrepancies:
+          type: integer
+          format: int64
+        scope:
+          $ref: "#/components/schemas/VerificationScope"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationCategory"
+    VerificationScope:
+      type: object
+      properties:
+        direction:
+          type: string
+        createdSinceCutover:
+          type: string
+        deCollidedSlugs:
+          type: string
+        changedSinceCutover:
+          type: string
+        deletedSinceCutover:
+          type: string
+        workBranches:
+          type: string
+        truncation:
+          type: string
+        notChecked:
+          type: array
+          items:
+            type: string
     WithdrawReleaseRequest:
       type: object
       properties:
@@ -2433,6 +2688,79 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/entities/archetypes:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchetypeRegistryDocument"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Archetypes
+      tags:
+      - Entity Archetypes Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/entities/migration-verification:
+    get:
+      summary: "Compare the four frozen legacy planning tables against the unified\
+        \ entity model, on this process's own database"
+      responses:
+        "200":
+          description: "The comparison. `verdict` is CLEAN or DISCREPANCIES; `scope`\
+            \ states what was deliberately not checked; every category carries what\
+            \ it compared, even when it found nothing."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationReport"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Migration Verification Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/entities/transition:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/EntityTransition"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/TransitionedEntity"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Transition
+      tags:
+      - Entity Transition Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/epics/{epicId}/dossier:
     get:
       parameters:
@@ -6128,4 +6456,4 @@ paths:
         - qits:admin
 info:
   title: qits-projects API
-  version: 2026.919.103400
+  version: 2026.919.111655

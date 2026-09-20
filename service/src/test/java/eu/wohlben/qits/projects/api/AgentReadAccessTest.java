@@ -26,6 +26,17 @@ import org.junit.jupiter.api.TestFactory;
  * ReleaseRequestAgentBoundsTest}), four of which bind the agent to its own work. A method-level
  * {@code @RolesAllowed} replaces the class list, so the effective list is the method's when it has
  * one.
+ *
+ * <p><b>The list is explicit, so a controller is only checked if it is here — and one is
+ * deliberately absent.</b> {@code epics.api.MigrationVerificationController} is {@code qits:admin}
+ * alone despite being a GET, and it is the only read on this surface an agent does not hold. It is
+ * the operator's gate on a destructive migration (a clean run is what authorises V13's drop of the
+ * four legacy planning tables), it reads whole frozen tables rather than one bounded indexed row,
+ * and no agent workflow has any use for a column-by-column comparison of a copy it never saw. That
+ * class's own javadoc carries the full argument. It is named here because a class silently missing
+ * from this list and a class deliberately kept off it look identical, and the second is the truth.
+ * Nothing about the rule this test asserts moved; the controller goes away with V13 and this
+ * paragraph with it.
  */
 class AgentReadAccessTest {
 
@@ -35,6 +46,7 @@ class AgentReadAccessTest {
       List.of(
           eu.wohlben.qits.epics.api.DossierAssetController.class,
           eu.wohlben.qits.epics.api.DossierController.class,
+          eu.wohlben.qits.epics.api.EntityArchetypesController.class,
           eu.wohlben.qits.epics.api.EpicController.class,
           eu.wohlben.qits.epics.api.FeatureController.class,
           eu.wohlben.qits.epics.api.ProjectEpicsController.class,

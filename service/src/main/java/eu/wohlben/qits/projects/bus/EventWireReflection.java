@@ -75,6 +75,13 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * a listener that BINDS registers its record; one that only walks the payload with {@code readTree}
  * still registers the type it consumes.</b>
  *
+ * <p>{@link EntityTransitioned} is the sixth published one, and it is the first entry here that
+ * needs <b>two</b> lines: its payload carries a list of {@link EntityTransitioned.Entity}, and a
+ * nested record is as invisible to the builder as its enclosing one. A registration that named only
+ * the outer record would fail at exactly the same place and in exactly the same words as no
+ * registration at all — inside {@code CanonicalJson}, on the first publish, with the JVM suite
+ * green.
+ *
  * <p><b>And why a mix-in by name.</b> {@code CanonicalJson$QitsEventMixin} keeps {@code QitsEvent}'s
  * declared methods — {@code eventId} above all — out of a payload, and Jackson finds its {@code
  * @JsonIgnore}s by calling {@code getDeclaredMethods()} on it, which is reflection like any other.
@@ -97,6 +104,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       SCMRelease.class,
       ProjectCreated.class,
       ProjectDeleted.class,
+      EntityTransitioned.class,
+      EntityTransitioned.Entity.class,
       BuildStatusListener.BuildVerdictPayload.class,
       ReleasePipelineRunListener.PipelineRunPayload.class,
       DeploymentActiveListener.DeploymentActivePayload.class,

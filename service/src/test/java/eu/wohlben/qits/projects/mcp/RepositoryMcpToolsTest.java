@@ -375,7 +375,16 @@ public class RepositoryMcpToolsTest {
                       "put_dossier_page",
                       "move_dossier_page",
                       "remove_dossier_page",
-                      "inline_figure"),
+                      "inline_figure",
+                      // EntityMcpTools — the merged model's own surface. ONE transition tool
+                      // taking a map of entity id to full target state, because an agent moving
+                      // entities one at a time would walk the plan through exactly the illegal
+                      // intermediate shapes the operation exists to avoid; and the read that goes
+                      // with it, which is the only tool here that reports archetype and
+                      // membership. Neither is an epic lifecycle move: no status travels along
+                      // any lifecycle here, and freezing a draft is still a human act in the UI.
+                      "transition_entities",
+                      "list_entities"),
                   java.util.Set.copyOf(names),
                   "unexpected tool surface: " + names);
             })

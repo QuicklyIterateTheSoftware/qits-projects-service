@@ -7,6 +7,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
@@ -15,6 +16,15 @@ import org.hibernate.annotations.UpdateTimestamp;
 /**
  * Akin to today's {@code feature-ideas}, owned by an epic. {@code epicId} is a real intra-module FK
  * (cascade-deleted with the epic); {@code dependsOnFeatureId} is a nullable self-reference.
+ *
+ * <p><b>This class is a SHAPE now, and its table is no longer written.</b> {@code FeatureService}
+ * reads and writes the merged {@link WorkEntity} table and hands its callers a detached {@code
+ * WorkEntityProjections.feature} built as one of these — so the mapper, the DTO and every controller
+ * above stay exactly as they are. The legacy {@code feature} table is left standing as the recovery
+ * path and the verification door's comparison target, and it is deliberately <b>not</b> mirrored:
+ * nothing foreign-keys to it and nothing reads it, so a write-behind would have been a table that is
+ * written and never read. See {@code docs/unified-entity-model.md}. The rows the entity manager
+ * still holds are V10's; they go with the tables, in the task that drops them.
  *
  * <p><b>A {@link CausedRow}</b>, for the reason {@link Epic} gives: {@code FeatureService.create}
  * is reached from the SPA and from {@code EpicMcpTools} alike, on the request thread, where the
@@ -66,6 +76,24 @@ public class Feature extends PanacheEntityBase implements CausedRow {
   /** Set when the feature ships; null while unimplemented. */
   @Column(name = "implemented_on")
   public Instant implementedOn;
+
+  /**
+   * <b>The per-project numeric id, carried out of {@code entity.number}.</b> {@code @Transient}: the
+   * legacy table this class is still mapped to has no such column, and this class is a SHAPE the
+   * services answer with rather than a row anybody writes. It is the bare number — the qualified
+   * form {@code <project-slug>-<number>} is assembled in the {@code service} module, because the
+   * slug lives in {@code domain}'s {@code project} table and {@code epics} depends on {@code domain}
+   * nowhere. See {@code projects/api/QualifiedEntityIds}.
+   */
+  @Transient public long number;
+
+  /**
+   * <b>The owning project, carried out of {@code entity.project_id}.</b> {@code @Transient} for
+   * {@link #number}'s reason — the legacy table never had it, because a descendant used to reach its
+   * project by walking up. Every merged row carries one, and it is what {@code
+   * projects/api/QualifiedEntityIds} resolves the project slug from.
+   */
+  @Transient public String projectId;
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)

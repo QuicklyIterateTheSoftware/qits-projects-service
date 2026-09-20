@@ -4,6 +4,7 @@ import eu.wohlben.qits.epics.control.TicketService;
 import eu.wohlben.qits.epics.dto.TicketDto;
 import eu.wohlben.qits.epics.mapper.TicketMapper;
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
+import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.ProjectService;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -59,7 +60,9 @@ public class ProjectTicketsController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public ListTicketsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
-    projectService.get(projectId); // 404 if the project does not exist
+    // 404 if the project does not exist — and the slug the qualified id is rendered from, which
+    // this route already had in hand and used to discard. No second lookup is made here.
+    String slug = projectService.get(projectId).slug;
     // Mapped first, then decorated in one call: the workspaces lookup is asked once about the whole
     // page, never once per row.
     var entries =
@@ -67,6 +70,7 @@ public class ProjectTicketsController {
             .decorateTickets(
                 ticketService.listByProject(projectId, status).stream()
                     .map(ticketMapper::toDto)
+                    .map(t -> t.withQualifiedId(QualifiedEntityIds.render(slug, t.number())))
                     .toList())
             .stream()
             .map(ListTicketsRequest.Response.Entry::new)
@@ -97,7 +101,7 @@ public class ProjectTicketsController {
   @POST
   public CreateTicketRequest.Response create(
       @PathParam("projectId") String projectId, @Valid CreateTicketRequest request) {
-    projectService.get(projectId); // 404 if the project does not exist
+    String slug = projectService.get(projectId).slug; // 404 if the project does not exist
     var ticket =
         ticketService.create(
             projectId,
@@ -108,6 +112,7 @@ public class ProjectTicketsController {
             request.assignee(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(projectId);
-    return new CreateTicketRequest.Response(ticketMapper.toDto(ticket));
+    return new CreateTicketRequest.Response(
+        ticketMapper.toDto(ticket).withQualifiedId(QualifiedEntityIds.render(slug, ticket.number)));
   }
 }

@@ -32,6 +32,13 @@ public class TaskController {
 
   @Inject EpicChangeHints hints;
 
+  /**
+   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
+   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
+   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
+   */
+  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
+
   public record GetTaskRequest() {
     public record Response(TaskDto task) {}
   }
@@ -40,7 +47,7 @@ public class TaskController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetTaskRequest.Response get(@PathParam("id") String id) {
-    return new GetTaskRequest.Response(taskMapper.toDto(taskService.get(id)));
+    return new GetTaskRequest.Response(qualifiedIds.qualify(taskMapper.toDto(taskService.get(id))));
   }
 
   /**
@@ -74,7 +81,7 @@ public class TaskController {
             request.clearImplementedAt(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(hints.projectOfFeature(task.featureId));
-    return new UpdateTaskRequest.Response(taskMapper.toDto(task));
+    return new UpdateTaskRequest.Response(qualifiedIds.qualify(taskMapper.toDto(task)));
   }
 
   public record DeleteTaskRequest() {

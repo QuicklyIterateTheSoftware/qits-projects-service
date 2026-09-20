@@ -57,6 +57,13 @@ public class EpicController {
    */
   @Inject eu.wohlben.qits.projects.api.DispatchedWorkspaces dispatchedWorkspaces;
 
+  /**
+   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
+   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
+   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
+   */
+  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
+
   // --- Epic ---
 
   public record GetEpicRequest() {
@@ -68,7 +75,7 @@ public class EpicController {
   @Path("/{id}")
   public GetEpicRequest.Response get(@PathParam("id") String id) {
     return new GetEpicRequest.Response(
-        dispatchedWorkspaces.decorate(epicMapper.toDto(epicService.get(id))));
+        qualifiedIds.qualify(dispatchedWorkspaces.decorate(epicMapper.toDto(epicService.get(id)))));
   }
 
   public record UpdateEpicRequest(@NotBlank String title, String description) {
@@ -83,7 +90,7 @@ public class EpicController {
         epicService.update(
             id, request.title(), request.description(), EpicsPrincipal.changedBy(identity));
     hints.fire(epic.projectId);
-    return new UpdateEpicRequest.Response(epicMapper.toDto(epic));
+    return new UpdateEpicRequest.Response(qualifiedIds.qualify(epicMapper.toDto(epic)));
   }
 
   /**
@@ -110,8 +117,10 @@ public class EpicController {
     // A supersede spawns a second epic in the same project, so one hint still covers both rows.
     hints.fire(result.epic().projectId);
     return new TransitionEpicRequest.Response(
-        epicMapper.toDto(result.epic()),
-        result.successor() == null ? null : epicMapper.toDto(result.successor()));
+        qualifiedIds.qualify(epicMapper.toDto(result.epic())),
+        result.successor() == null
+            ? null
+            : qualifiedIds.qualify(epicMapper.toDto(result.successor())));
   }
 
   public record DeleteEpicRequest() {
@@ -141,9 +150,13 @@ public class EpicController {
   @Path("/{epicId}/features")
   public ListFeaturesRequest.Response listFeatures(@PathParam("epicId") String epicId) {
     epicService.get(epicId); // 404 if the epic does not exist
+    // Mapped first, then qualified in one call: the project-slug lookup is asked once about the
+    // whole list, never once per feature.
     var entries =
-        featureService.listByEpic(epicId).stream()
-            .map(f -> new ListFeaturesRequest.Response.Entry(featureMapper.toDto(f)))
+        qualifiedIds
+            .qualifyFeatures(featureService.listByEpic(epicId).stream().map(featureMapper::toDto).toList())
+            .stream()
+            .map(ListFeaturesRequest.Response.Entry::new)
             .toList();
     return new ListFeaturesRequest.Response(entries);
   }
@@ -165,7 +178,7 @@ public class EpicController {
             request.dependsOnFeatureId(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(hints.projectOfEpic(epicId));
-    return new CreateFeatureRequest.Response(featureMapper.toDto(feature));
+    return new CreateFeatureRequest.Response(qualifiedIds.qualify(featureMapper.toDto(feature)));
   }
 
   // --- Audit subtree ---

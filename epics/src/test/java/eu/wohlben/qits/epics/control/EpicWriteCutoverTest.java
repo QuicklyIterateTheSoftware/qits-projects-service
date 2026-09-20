@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.epics.entity.Archetype;
 import eu.wohlben.qits.epics.entity.AuditEntityType;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
@@ -33,6 +34,14 @@ import org.junit.jupiter.api.Test;
  * to have committed as a lost connection is, and as certain to fail the same way for fifteen
  * seconds; retrying it would turn one visible failure into a slow one. The proof is the attempt
  * count, not the clock: five failures armed, four still unspent.
+ *
+ * <p><b>The count is read from {@code entity} rather than from the legacy {@code epic} table, and
+ * that is the one assertion the mirror's removal moved.</b> It used to go through {@code
+ * EpicRepository}, which answered because {@code EpicService} wrote a legacy row behind every
+ * create; with the mirror gone that table has no writer at all and the same query answers zero for
+ * every case here — a green-looking nothing rather than a failure, which is why the subject had to
+ * move rather than the number. The claim is unchanged: exactly one epic row, counted in the table
+ * the create actually writes.
  */
 @QuarkusTest
 @TestProfile(EpicWriteCutoverTest.ImpatientWrites.class)
@@ -76,7 +85,7 @@ class EpicWriteCutoverTest extends EpicsTestSupport {
         () -> {
           assertEquals(
               1,
-              epicRepository.listByProject("proj-write-cutover").size(),
+              workEntityRepository.listByProjectAndArchetype("proj-write-cutover", Archetype.EPIC).size(),
               "the retried create left more than one epic behind");
           assertEquals(
               1,
@@ -104,7 +113,7 @@ class EpicWriteCutoverTest extends EpicsTestSupport {
         () ->
             assertEquals(
                 0,
-                epicRepository.listByProject("proj-not-retried").size(),
+                workEntityRepository.listByProjectAndArchetype("proj-not-retried", Archetype.EPIC).size(),
                 "the failed create committed a row"));
   }
 
@@ -128,7 +137,7 @@ class EpicWriteCutoverTest extends EpicsTestSupport {
         () ->
             assertEquals(
                 0,
-                epicRepository.listByProject("proj-write-gone").size(),
+                workEntityRepository.listByProjectAndArchetype("proj-write-gone", Archetype.EPIC).size(),
                 "a create that never succeeded committed a row"));
   }
 }

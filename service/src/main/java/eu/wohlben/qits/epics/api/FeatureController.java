@@ -50,6 +50,13 @@ public class FeatureController {
 
   @Inject EpicChangeHints hints;
 
+  /**
+   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
+   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
+   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
+   */
+  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
+
   // --- Feature ---
 
   public record GetFeatureRequest() {
@@ -60,7 +67,8 @@ public class FeatureController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetFeatureRequest.Response get(@PathParam("id") String id) {
-    return new GetFeatureRequest.Response(featureMapper.toDto(featureService.get(id)));
+    return new GetFeatureRequest.Response(
+        qualifiedIds.qualify(featureMapper.toDto(featureService.get(id))));
   }
 
   /**
@@ -94,7 +102,7 @@ public class FeatureController {
             request.clearImplementedOn(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(hints.projectOfEpic(feature.epicId));
-    return new UpdateFeatureRequest.Response(featureMapper.toDto(feature));
+    return new UpdateFeatureRequest.Response(qualifiedIds.qualify(featureMapper.toDto(feature)));
   }
 
   public record DeleteFeatureRequest() {
@@ -124,9 +132,13 @@ public class FeatureController {
   @Path("/{featureId}/tasks")
   public ListTasksRequest.Response listTasks(@PathParam("featureId") String featureId) {
     featureService.get(featureId); // 404 if the feature does not exist
+    // Mapped first, then qualified in one call: the project-slug lookup is asked once about the
+    // whole list, never once per task.
     var entries =
-        taskService.listByFeature(featureId).stream()
-            .map(t -> new ListTasksRequest.Response.Entry(taskMapper.toDto(t)))
+        qualifiedIds
+            .qualifyTasks(taskService.listByFeature(featureId).stream().map(taskMapper::toDto).toList())
+            .stream()
+            .map(ListTasksRequest.Response.Entry::new)
             .toList();
     return new ListTasksRequest.Response(entries);
   }
@@ -162,6 +174,6 @@ public class FeatureController {
             request.dependsOnTaskId(),
             EpicsPrincipal.changedBy(identity));
     hints.fire(epic.projectId);
-    return new CreateTaskRequest.Response(taskMapper.toDto(task));
+    return new CreateTaskRequest.Response(qualifiedIds.qualify(taskMapper.toDto(task)));
   }
 }

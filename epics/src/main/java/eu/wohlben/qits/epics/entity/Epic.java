@@ -9,6 +9,7 @@ import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
@@ -85,6 +86,16 @@ public class Epic extends PanacheEntityBase implements CausedRow {
 
   /** The long-form Markdown spine. */
   public String description;
+
+  /**
+   * <b>The per-project numeric id, carried out of {@code entity.number}.</b> {@code @Transient}: the
+   * legacy table this class is still mapped to has no such column, and this class is a SHAPE the
+   * services answer with rather than a row anybody writes. It is the bare number — the qualified
+   * form {@code <project-slug>-<number>} is assembled in the {@code service} module, because the
+   * slug lives in {@code domain}'s {@code project} table and {@code epics} depends on {@code domain}
+   * nowhere. See {@code projects/api/QualifiedEntityIds}.
+   */
+  @Transient public long number;
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)

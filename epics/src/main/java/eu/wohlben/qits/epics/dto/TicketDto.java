@@ -4,6 +4,11 @@ import java.time.Instant;
 import java.util.List;
 
 /**
+ * @param number the per-project numeric id — the bare {@code long} as stored; see {@link
+ *     EpicDto#number} for why both it and the rendering travel.
+ * @param qualifiedId {@code <project-slug>-<number>} — {@code qits-1337}. Null until the project
+ *     slug is resolved, which happens in {@code projects/api/QualifiedEntityIds} and nowhere else;
+ *     see {@link EpicDto#qualifiedId}.
  * @param impetus what brought the ticket about, in the reporter's words — see {@code
  *     Ticket.impetus} for the length rule and for why it is never rewritten by a later phase.
  * @param description the refinement's output, absent until the refine phase has written it.
@@ -15,6 +20,8 @@ import java.util.List;
 public record TicketDto(
     String id,
     String projectId,
+    long number,
+    String qualifiedId,
     String title,
     String slug,
     String type,
@@ -32,6 +39,8 @@ public record TicketDto(
     return new TicketDto(
         id,
         projectId,
+        number,
+        qualifiedId,
         title,
         slug,
         type,
@@ -43,5 +52,25 @@ public record TicketDto(
         createdAt,
         updatedAt,
         found == null ? List.of() : found);
+  }
+
+  /** The same ticket, told what it is called in a commit subject. */
+  public TicketDto withQualifiedId(String rendered) {
+    return new TicketDto(
+        id,
+        projectId,
+        number,
+        rendered,
+        title,
+        slug,
+        type,
+        status,
+        assignee,
+        createdBy,
+        impetus,
+        description,
+        createdAt,
+        updatedAt,
+        workspaces);
   }
 }
