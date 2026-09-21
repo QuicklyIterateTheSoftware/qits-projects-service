@@ -32,9 +32,9 @@ import java.util.Map;
  * superproject's <em>remote</em>, never against the gitlink's own directory, so a two-segment
  * directory changes nothing about where the sibling resolves.
  *
- * <p>{@code <directory>} is one segment or two, and which one it is says what the wrapper is
- * declaring — {@code services} is an archetype, {@code components/qits-ci} a component. See {@link
- * WrapperPath}, which is the single reading of a path; this class only ever splices the text.
+ * <p>{@code <directory>} is always the two segments {@code components/<component>}: a path says
+ * which component an entry belongs to, and never what kind of thing it is. See {@link WrapperPath},
+ * which is the single reading of a path; this class only ever splices the text.
  *
  * <p>Pure and static: no CDI, no git, no IO — which is what lets its whole contract be tested
  * against strings.

@@ -58,20 +58,20 @@ public class Repository extends PanacheEntityBase implements CausedRow {
 
   /**
    * The technical component this repository is part of — the second segment of its wrapper path
-   * under the component layout ({@code components/<component>/<repo>}), and null for an entry still
-   * mounted under one of the six archetype directories.
+   * ({@code components/<component>/<repo>}), and null for a row no wrapper entry has been read for
+   * yet.
    *
    * <p>An <b>open set</b>, unlike {@link #archetype}: the wrapper names components and this column
-   * records what it named, so there is no enum and no check constraint (V6). Null is a real state
-   * and stays one for as long as a wrapper has entries the flip has not reached.
+   * records what it named, so there is no enum and no check constraint (V6). Null is a real state —
+   * a row minted outside a reconcile, or one whose wrapper this service has not been able to read.
    */
   public String component;
 
   /**
    * The last committed-configuration problem, or null when there is none. Config ingestion degrades
-   * loudly and never blocks, so a disagreement lands here rather than changing the row: the wrapper
-   * directory is what decides {@link #archetype}, and a {@code repository.yml} that says otherwise
-   * is a message to its author.
+   * loudly and never blocks, so a disagreement lands here rather than changing the row: the
+   * repository's <em>name</em> is what decides {@link #archetype}, and a {@code repository.yml} that
+   * says otherwise is a message to its author.
    */
   @Column(name = "config_warning", length = 4000)
   public String configWarning;

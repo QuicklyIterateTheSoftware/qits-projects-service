@@ -78,12 +78,13 @@ public class ProjectCatalogueIT {
   /** The machine that created every platform bare before any row named one. */
   static final String BOOTSTRAP = "the platform bootstrap";
 
-  /** The component this project's owner adds, and the directory its archetype mounts it under. */
+  /** The component this project's owner adds, and where the wrapper mounts it. */
   static final String COMPONENT_NAME = "checkout-service";
 
   static final String COMPONENT_ARCHETYPE = "SERVICE";
 
-  static final String COMPONENT_PATH = "services/" + COMPONENT_NAME;
+  /** No component is stated on the create, so the repository becomes a component of its own name. */
+  static final String COMPONENT_PATH = "components/" + COMPONENT_NAME + "/" + COMPONENT_NAME;
 
   /** The project this class creates in its first story and grows in the next two. */
   private static String projectId;
@@ -205,7 +206,7 @@ public class ProjectCatalogueIT {
       """
       Adding a component to a project is one statement made twice: a bare repository on the git
       host, seeded from the repository template, and a submodule entry committed into the
-      project's wrapper under the directory its archetype names. The two together are what makes
+      project's wrapper at components/<component>/<name>. The two together are what makes
       the repository part of the project — a row the wrapper does not name is reported UNDECLARED
       and is not a member — so the listing that comes back marks the new component declared and
       the wrapper's own manifest names its path.
@@ -231,7 +232,8 @@ public class ProjectCatalogueIT {
     assertEquals(
         COMPONENT_PATH,
         added.getString("wrapperPath"),
-        "the archetype decides the directory, and the directory is where the wrapper mounts it");
+        "the wrapper mounts every submodule under the component it belongs to, and a create"
+            + " that states no component makes the repository one of its own name");
     story
         .note("a blank component is created on the git host and mounted into the wrapper")
         .as("component-created");

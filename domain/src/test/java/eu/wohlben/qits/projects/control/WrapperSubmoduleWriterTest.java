@@ -66,12 +66,12 @@ public class WrapperSubmoduleWriterTest {
     var child = child(project, "testing-repo.git");
 
     String path =
-        writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, headOf(child));
+        writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, null, headOf(child));
 
-    assertEquals("services/testing-repo", path);
+    assertEquals("components/testing-repo/testing-repo", path);
     String gitmodules = inHost(wrapper.id, "git", "show", "main:.gitmodules");
     assertTrue(gitmodules.contains("[submodule \"testing-repo\"]"), gitmodules);
-    assertTrue(gitmodules.contains("path = services/testing-repo"), gitmodules);
+    assertTrue(gitmodules.contains("path = components/testing-repo/testing-repo"), gitmodules);
     assertTrue(
         gitmodules.contains("url = ../testing-repo.git"),
         "the url is relative, which is what makes one wrapper resolve on both hosts: " + gitmodules);
@@ -79,7 +79,8 @@ public class WrapperSubmoduleWriterTest {
     assertTrue(gitmodules.contains("ignore = all"), gitmodules);
     assertTrue(gitmodules.contains("update = merge"), gitmodules);
 
-    String entry = inHost(wrapper.id, "git", "ls-tree", "main", "services/testing-repo");
+    String entry =
+        inHost(wrapper.id, "git", "ls-tree", "main", "components/testing-repo/testing-repo");
     assertTrue(entry.startsWith("160000 commit " + headOf(child)), "expected a gitlink, got: " + entry);
     // The skeleton is still there — a wrapper commit amends, it does not rewrite.
     assertEquals("AGENTS.md", inHost(wrapper.id, "git", "show", "main:CLAUDE.md"));
@@ -91,9 +92,9 @@ public class WrapperSubmoduleWriterTest {
     var wrapper = wrapperOf(project);
     var child = child(project, "testing-repo.git");
 
-    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, headOf(child));
+    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, null, headOf(child));
     String afterFirst = inHost(wrapper.id, "git", "rev-parse", "main");
-    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, headOf(child));
+    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, null, headOf(child));
 
     assertEquals(
         afterFirst,
@@ -108,12 +109,14 @@ public class WrapperSubmoduleWriterTest {
     var first = child(project, "testing-repo.git");
     var second = child(project, "submodule-shared.git");
 
-    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, headOf(first));
-    writer.addToWrapper(wrapper, "submodule-shared", RepositoryArchetype.LIBRARY, headOf(second));
+    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, null, headOf(first));
+    writer.addToWrapper(
+        wrapper, "submodule-shared", RepositoryArchetype.LIBRARY, null, headOf(second));
 
     String gitmodules = inHost(wrapper.id, "git", "show", "main:.gitmodules");
-    assertTrue(gitmodules.contains("path = services/testing-repo"), gitmodules);
-    assertTrue(gitmodules.contains("path = libs/submodule-shared"), gitmodules);
+    assertTrue(gitmodules.contains("path = components/testing-repo/testing-repo"), gitmodules);
+    assertTrue(
+        gitmodules.contains("path = components/submodule-shared/submodule-shared"), gitmodules);
   }
 
   @Test
@@ -121,13 +124,14 @@ public class WrapperSubmoduleWriterTest {
     var project = projectService.create("Wrapper Remove", "wrem", null);
     var wrapper = wrapperOf(project);
     var child = child(project, "testing-repo.git");
-    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, headOf(child));
+    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, null, headOf(child));
 
     Optional<String> removed = writer.removeFromWrapper(wrapper, "testing-repo");
 
-    assertEquals(Optional.of("services/testing-repo"), removed);
+    assertEquals(Optional.of("components/testing-repo/testing-repo"), removed);
     assertEquals("", inHost(wrapper.id, "git", "show", "main:.gitmodules"));
-    assertEquals("", inHost(wrapper.id, "git", "ls-tree", "main", "services/testing-repo"));
+    assertEquals(
+        "", inHost(wrapper.id, "git", "ls-tree", "main", "components/testing-repo/testing-repo"));
     assertEquals(
         "AGENTS.md",
         inHost(wrapper.id, "git", "show", "main:CLAUDE.md"),
@@ -142,17 +146,60 @@ public class WrapperSubmoduleWriterTest {
     assertEquals(Optional.empty(), writer.removeFromWrapper(wrapper, "never-added"));
   }
 
+  /**
+   * A stated component decides the mount directory, which is the only question the placement still
+   * has: with none stated the repository becomes a component of its own name, as
+   * {@link #addingAComponentCommitsBothTheEntryAndItsGitlink} shows.
+   */
   @Test
-  public void anUnplaceableArchetypeCannotBeAMember() {
-    var project = projectService.create("Wrapper Unplaceable", "wunp", null);
+  public void aStatedComponentIsTheDirectoryTheEntryLandsIn() throws Exception {
+    var project = projectService.create("Wrapper Component", "wcomp", null);
+    var wrapper = wrapperOf(project);
+    var child = child(project, "testing-repo.git");
+
+    String path =
+        writer.addToWrapper(
+            wrapper, "testing-repo", RepositoryArchetype.SERVICE, "payments", headOf(child));
+
+    assertEquals("components/payments/testing-repo", path);
+    assertTrue(
+        inHost(wrapper.id, "git", "show", "main:.gitmodules")
+            .contains("path = components/payments/testing-repo"));
+  }
+
+  /**
+   * Two refusals with two messages, because they are two different mistakes: a kind that is not a
+   * component of a project cannot be declared as one, and no kind at all is a caller that said
+   * nothing where it has to say something. Collapsing them would leave a caller guessing which.
+   */
+  @Test
+  public void anArchetypeThatIsNotAComponentOfItsProjectCannotBeAMember() {
+    var project = projectService.create("Wrapper Non Component", "wnoncomp", null);
     var wrapper = wrapperOf(project);
 
-    assertThrows(
-        BadRequestException.class,
-        () -> writer.addToWrapper(wrapper, "x", RepositoryArchetype.FORK, "0".repeat(40)));
-    assertThrows(
-        BadRequestException.class,
-        () -> writer.addToWrapper(wrapper, "x", RepositoryArchetype.PROJECT, "0".repeat(40)));
+    for (RepositoryArchetype archetype :
+        new RepositoryArchetype[] {
+          RepositoryArchetype.FORK,
+          RepositoryArchetype.PROJECT,
+          RepositoryArchetype.SERVICE_TEMPLATE
+        }) {
+      BadRequestException refusal =
+          assertThrows(
+              BadRequestException.class,
+              () -> writer.addToWrapper(wrapper, "x", archetype, null, "0".repeat(40)));
+      assertTrue(
+          refusal.getMessage().contains("is not a component of a project"),
+          archetype + " must be refused for what it is: " + refusal.getMessage());
+    }
+
+    BadRequestException stated =
+        assertThrows(
+            BadRequestException.class,
+            () -> writer.addToWrapper(wrapper, "x", null, null, "0".repeat(40)));
+    assertTrue(
+        stated.getMessage().contains("must state an archetype"),
+        "a null archetype is the caller saying nothing, which is its own message: "
+            + stated.getMessage());
   }
 
   /**
@@ -193,7 +240,7 @@ public class WrapperSubmoduleWriterTest {
             .trim();
     installOneShotPrePush(wrapper.id, host, interloper);
 
-    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, headOf(child));
+    writer.addToWrapper(wrapper, "testing-repo", RepositoryArchetype.SERVICE, null, headOf(child));
 
     String tip = inHost(wrapper.id, "git", "rev-parse", "main");
     assertNotEquals(interloper, tip, "the wrapper commit did land");
@@ -202,7 +249,7 @@ public class WrapperSubmoduleWriterTest {
         inHost(wrapper.id, "git", "rev-parse", "main^1"),
         "the retry built on the winner's commit rather than re-pushing the stale one");
     assertTrue(
-        inHost(wrapper.id, "git", "show", "main:.gitmodules").contains("services/testing-repo"));
+        inHost(wrapper.id, "git", "show", "main:.gitmodules").contains("components/testing-repo/testing-repo"));
     assertFalse(
         Files.exists(gitMirrors.of(wrapper.id).gitDir().resolve("hooks").resolve("pre-push")),
         "the one-shot hook removed itself, so it cannot leak into another test");
