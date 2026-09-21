@@ -64,9 +64,17 @@ import org.jboss.logging.Logger;
  * <p><b>The workspace is looked up first, and the lookup is the point rather than decoration.</b>
  * {@link ReleaseRequests#request} validates a branch name syntactically and nothing else, so an ask
  * naming a branch the git host no longer has lands a PENDING row whose fold answers UNREACHABLE and
- * which the 30-second sweep then retries for ever, with no path that ever settles it. A live
+ * which the 30-second sweep then retries for ever, with no path that ever settles it. An <b>ACTIVE</b>
  * reference on exactly {@code ticket/<slug>} is the cheapest available evidence that the branch is
- * there, so <b>no reference means no ask</b> — one plain sentence on the thread and nothing else.
+ * there, so <b>no such reference means no ask</b> — one plain sentence on the thread and nothing else.
+ *
+ * <p><b>ACTIVE is doing real work in that sentence.</b> {@link
+ * WorkspaceAgentDispatch#workspacesReferencing} answers every workspace that names the ticket now,
+ * integrated and abandoned ones included, so that a ticket keeps a link to where its work happened
+ * after somebody tidied up. This class is the one reader here that <em>acts</em> on the answer, and
+ * a workspace that has been resolved is precisely the one whose branch is most likely to have been
+ * merged away — so the filter is explicit, in one helper ({@code theLiveOneOn}), with its reason
+ * beside it.
  *
  * <p><b>The call is made in process rather than through {@code ReleaseRequestController}, and
  * bypassing that door is the intent.</b> {@link ReleaseRequests} is role-blind; every check on the
@@ -272,14 +280,12 @@ public class TicketPhaseAdvance {
       LOG.warnf(e, "Could not look up the workspaces of ticket %s: the port threw", ticket.id);
       found = List.of();
     }
-    WorkspaceAgentDispatch.Reference standing =
-        found.stream()
-            .filter(reference -> branch.equals(reference.branch()))
-            .findFirst()
-            .orElse(null);
+    WorkspaceAgentDispatch.Reference standing = theLiveOneOn(branch, found);
     if (standing == null) {
-      // A workspace on some other branch is somebody else's work, and no workspace at all is the
-      // ordinary state of a ticket walked through by hand.
+      // A workspace on some other branch is somebody else's work; a resolved one on this very
+      // branch is work that is over and a branch that may well be gone (see theLiveOneOn); and no
+      // workspace at all is the ordinary state of a ticket walked through by hand. All three are
+      // the same answer, and the sentence below is true of every one of them.
       LOG.debugf("No workspace stands on %s, so ticket %s asks for no release", branch, ticket.id);
       say(
           ticket,
@@ -329,6 +335,36 @@ public class TicketPhaseAdvance {
               + ". The ticket is VERIFIED and nothing is running on it.",
           changedBy);
     }
+  }
+
+  /**
+   * The one workspace that is <b>standing</b> on this ticket's branch: the right branch <em>and</em>
+   * {@link WorkspaceAgentDispatch.Reference#ACTIVE}, or nothing.
+   *
+   * <p><b>The status filter is the load-bearing half and it is not belt.</b> {@link
+   * WorkspaceAgentDispatch#workspacesReferencing} answers every workspace that ever named this
+   * ticket now, integrated and abandoned ones included — it stopped filtering deliberately, so that
+   * a ticket keeps a link to where its work happened. This is the one caller in this service that
+   * <em>acts</em> on the answer rather than drawing it: a reference here is taken as evidence that
+   * the branch is still there and is turned straight into a release request. A resolved workspace is
+   * exactly the case where that evidence is wrong — its branch has very often been merged away or
+   * deleted by the integration that resolved it — and {@link ReleaseRequests#request} validates a
+   * branch name syntactically and nothing else, so the ask would land a PENDING row whose fold
+   * answers UNREACHABLE and which the 30-second sweep then retries for ever, with no path that ever
+   * settles it. That is the failure this method exists to prevent, and it is why the filter is
+   * spelled out here rather than assumed of the port.
+   *
+   * <p>Branch <b>and</b> status, never one of the two: a live workspace on somebody else's branch is
+   * not this ticket's work, and a resolved workspace on this ticket's own branch is not work that is
+   * still happening.
+   */
+  private static WorkspaceAgentDispatch.Reference theLiveOneOn(
+      String branch, List<WorkspaceAgentDispatch.Reference> found) {
+    return found.stream()
+        .filter(reference -> branch.equals(reference.branch()))
+        .filter(reference -> WorkspaceAgentDispatch.Reference.ACTIVE.equals(reference.status()))
+        .findFirst()
+        .orElse(null);
   }
 
   /**

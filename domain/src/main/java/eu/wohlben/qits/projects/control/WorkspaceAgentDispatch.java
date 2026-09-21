@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.error.DomainException;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 
@@ -128,8 +129,13 @@ public interface WorkspaceAgentDispatch {
       String instruction);
 
   /**
-   * A live workspace over there that names one of our rows as its subject — the {@link Subject} read
-   * back.
+   * A workspace over there that names one of our rows as its subject — the {@link Subject} read
+   * back — <b>live or resolved</b>, carrying which it is.
+   *
+   * <p>{@link #status} is the far side's own word and travels as a {@code String} for {@link
+   * Dispatch#agentLaunch}'s reason: it is qits-workspaces' vocabulary, and a value this side has
+   * never heard of must reach a reader rather than fail a lookup that decorates a page. The three it
+   * spells today are {@code ACTIVE}, {@code INTEGRATED} and {@code ABANDONED}.
    *
    * @param workspaceRowId the workspace's row id at qits-workspaces
    * @param repositoryId the repository it belongs to; the pair composes the link, exactly as on
@@ -138,6 +144,10 @@ public interface WorkspaceAgentDispatch {
    * @param branch the branch it owns — {@code ticket/<slug>} or {@code epic/<slug>} for a dispatch
    * @param ticketId the ticket it is for, or {@code null}
    * @param epicId the epic it is for, or {@code null}
+   * @param status the far side's resolution status — {@link #ACTIVE} while the workspace and its
+   *     container still stand, {@code INTEGRATED} or {@code ABANDONED} once it is resolved. Never
+   *     null: an implementation that was told nothing reports {@link #ACTIVE}
+   * @param resolvedAt when the workspace was resolved, or {@code null} while it is live
    */
   record Reference(
       long workspaceRowId,
@@ -145,11 +155,21 @@ public interface WorkspaceAgentDispatch {
       String workspaceId,
       String branch,
       String ticketId,
-      String epicId) {}
+      String epicId,
+      String status,
+      Instant resolvedAt) {
+
+    /**
+     * The one status word that means a container is standing and an agent can be spoken to. Every
+     * reader that needs a <em>live</em> workspace compares against this and says why it is doing so;
+     * see {@link #workspacesReferencing}.
+     */
+    public static final String ACTIVE = "ACTIVE";
+  }
 
   /**
-   * Which live workspaces are working on these tickets and epics — the question "Assign agent" has
-   * to be able to ask before it offers itself a second time.
+   * Which workspaces name these tickets and epics — <b>every</b> one of them, live or resolved, each
+   * carrying its own {@link Reference#status}.
    *
    * <h2>Derived per read, stored nowhere</h2>
    *
@@ -157,10 +177,29 @@ public interface WorkspaceAgentDispatch {
    * workspace is integrated or discarded, and one that is only ever written disables its own button
    * forever and links to a row nobody can open. The workspace is the thing that comes and goes, so
    * the workspace carries the reference and this is a query over those references. Zero, one or
-   * several; the count decides the button and the rows are what the links point at.
+   * several; the rows are what the links point at.
    *
-   * <p>What counts as live is the far side's to define and it defines it in one place — an ACTIVE
-   * workspace row, whatever its container is doing. Nothing here re-decides it.
+   * <h2>The list is not filtered, and every reader decides what to make of it</h2>
+   *
+   * <p>This used to answer <em>live</em> workspaces alone, and the liveness rule was stated as the
+   * far side's to define with nothing here re-deciding it. <b>That is no longer what comes back.</b>
+   * A ticket keeps a link to where its work happened after that workspace is integrated or
+   * abandoned — the transcripts, the diff and the thread are the record of the change, and a
+   * reference that vanished the moment somebody tidied up took the only way back to them with it. So
+   * the far side answers every workspace that names the subject and says which kind each is, and the
+   * decision moves here, once per reader, in the open.
+   *
+   * <p><b>A reader that wants only live workspaces must filter on {@code status ==
+   * Reference.ACTIVE} itself</b>, and must say why in a comment where it does. That is not
+   * ceremony: the readers divide cleanly into two and the difference is what a wrong answer costs.
+   * A <em>read</em> decorating a page wants them all — a resolved workspace is a link worth drawing,
+   * greyed or not. A <em>write</em> — anything that speaks to an agent, delivers a turn, or asks for
+   * the release of the branch a workspace stands on — wants {@link Reference#ACTIVE} and nothing
+   * else, because a resolved workspace has no container to speak to and, quite possibly, no branch
+   * left to release.
+   *
+   * <p>The count therefore no longer decides a button on its own: a ticket whose only workspace is
+   * abandoned has nobody on it, and "Assign agent" is offered again.
    *
    * <h2>The failure contract is the opposite of {@link #dispatchAgent}'s, on purpose</h2>
    *
@@ -176,7 +215,8 @@ public interface WorkspaceAgentDispatch {
    *
    * @param ticketIds the tickets asked about; may be empty
    * @param epicIds the epics asked about; may be empty. Both empty answers empty without a call
-   * @return the live workspaces naming any of them, in no particular order; never null
+   * @return every workspace naming any of them, live or resolved, in no particular order; never
+   *     null, and never filtered by status
    */
   List<Reference> workspacesReferencing(Collection<String> ticketIds, Collection<String> epicIds);
 }

@@ -139,8 +139,26 @@ public class TicketPhaseAdvanceTest {
   /** A live workspace over at qits-workspaces, standing on a branch and naming this ticket. */
   private WorkspaceAgentDispatch.Reference standingOn(
       String repositoryId, String branch, String ticketId) {
-    return new WorkspaceAgentDispatch.Reference(
+    return RecordingWorkspaceAgentDispatch.live(
         7L, repositoryId, "ws-" + branch, branch, ticketId, null);
+  }
+
+  /**
+   * A workspace that <b>was</b> on this branch and has since been integrated or abandoned. The port
+   * answers these now — that is the point of it, so a ticket keeps a link to where its work
+   * happened — and this class is what proves nothing here acts on one.
+   */
+  private WorkspaceAgentDispatch.Reference resolvedOn(
+      String repositoryId, String branch, String ticketId, String status) {
+    return RecordingWorkspaceAgentDispatch.resolved(
+        9L,
+        repositoryId,
+        "ws-" + branch,
+        branch,
+        ticketId,
+        null,
+        status,
+        java.time.Instant.parse("2026-09-20T09:30:00Z"));
   }
 
   /** The repository's release requests, as the release door answers them: the open ones. */
@@ -522,6 +540,78 @@ public class TicketPhaseAdvanceTest {
     assertEquals(
         "No workspace is standing on `ticket/somewhere-else`, so no release was asked for.",
         thread(ticketId).get(thread(ticketId).size() - 1));
+  }
+
+  // --- and a resolved workspace is not one to act on ------------------------------------------
+
+  /**
+   * <b>The regression this pair exists to prevent.</b> {@code workspacesReferencing} answers every
+   * workspace that names the ticket now — integrated and abandoned ones included, so that the ticket
+   * keeps a link to where its work happened — and this flow is the one reader in this service that
+   * <em>acts</em> on the answer. A resolved workspace's branch has very often been merged away by the
+   * integration that resolved it, and {@code ReleaseRequests.request} checks a branch name's syntax
+   * and nothing else, so asking for its release would land a PENDING row the sweep retries for ever.
+   *
+   * <p>Here both a resolved and a live workspace name this ticket's own branch, and the resolved one
+   * comes first in the answer. The ask has to go to the <b>live</b> one — which is measurable because
+   * the release is asked for at the reference's own repository, so passing over the live one would
+   * ask at the resolved one's repository and leave the wrapper with nothing.
+   */
+  @Test
+  public void aResolvedWorkspaceIsPassedOverForTheLiveOneOnTheSameBranch() {
+    String projectId = createProject("Advance Release Resolved And Live");
+    String ticketId = createTicket(projectId, "Twice around");
+    String wrapperId = wrapperIdOf(projectId);
+    workspaces.willReference(
+        resolvedOn("a-repository-that-is-not-the-wrapper", "ticket/twice-around", ticketId,
+            "INTEGRATED"),
+        standingOn(wrapperId, "ticket/twice-around", ticketId));
+
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    java.util.List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), "the live workspace's repository is where the ask went");
+    assertTrue(
+        sourceNamesOf(requests.get(0)).contains("ticket/twice-around"),
+        "the ticket's own branch is on it: " + sourceNamesOf(requests.get(0)));
+    assertTrue(
+        thread(ticketId).get(thread(ticketId).size() - 1).contains((String) requests.get(0).get("id")),
+        "the thread names the request the ticket waits on: " + thread(ticketId));
+  }
+
+  /**
+   * <b>And a ticket whose only workspace is resolved asks for nothing, and does not fail doing it.</b>
+   * The branch is named by a workspace that no longer stands, which is the same answer as no
+   * workspace at all: one plain sentence, no request, and the transition itself untouched.
+   */
+  @Test
+  public void aTicketWhoseOnlyWorkspaceIsResolvedAsksForNothingAndDoesNotError() {
+    String projectId = createProject("Advance Release Resolved Only");
+    String ticketId = createTicket(projectId, "Tidied away");
+    String wrapperId = wrapperIdOf(projectId);
+    workspaces.willReference(
+        resolvedOn(wrapperId, "ticket/tidied-away", ticketId, "ABANDONED"));
+
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED"); // a 200, or this line fails
+
+    assertEquals(
+        1, workspaces.lookups().size(), "the far side was asked, which is the only way to know");
+    assertTrue(
+        releaseRequestsOf(wrapperId).isEmpty(),
+        "an abandoned workspace's branch is not one to ask for the release of");
+    assertEquals(
+        "No workspace is standing on `ticket/tidied-away`, so no release was asked for.",
+        thread(ticketId).get(thread(ticketId).size() - 1));
+    asAdmin("dana")
+        .when()
+        .get("/projects/api/tickets/" + ticketId)
+        .then()
+        .statusCode(200)
+        .body("ticket.status", equalTo("VERIFIED"));
   }
 
   /** A ticket nobody ever dispatched an agent onto: the same answer, reached one step earlier. */

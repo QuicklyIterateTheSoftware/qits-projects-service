@@ -5,6 +5,7 @@ import eu.wohlben.qits.projects.error.DomainException;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Alternative;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -82,9 +83,47 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     return List.copyOf(lookups);
   }
 
-  /** What the next lookup answers, whatever it is asked about. */
+  /**
+   * What the next lookup answers, whatever it is asked about.
+   *
+   * <p><b>A resolved workspace is a legitimate scripted answer and not an error case.</b> The port
+   * answers every workspace naming the subject now, integrated and abandoned ones included, each
+   * carrying its {@link Reference#status} — so a test that means "somebody is on this" has to script
+   * {@link #live}, and one that means "the work happened and was tidied away" scripts {@link
+   * #resolved}. The two factories exist so no test has to spell the status word inline and get it
+   * subtly wrong.
+   */
   public synchronized void willReference(Reference... found) {
     this.references = List.of(found);
+  }
+
+  /** A workspace still standing, with a container an agent can be spoken to in. */
+  public static Reference live(
+      long rowId,
+      String repositoryId,
+      String workspaceId,
+      String branch,
+      String ticketId,
+      String epicId) {
+    return new Reference(
+        rowId, repositoryId, workspaceId, branch, ticketId, epicId, Reference.ACTIVE, null);
+  }
+
+  /**
+   * A workspace that was integrated or abandoned: still named by the row, and no longer anywhere —
+   * no container to speak to, and quite possibly no branch left.
+   */
+  public static Reference resolved(
+      long rowId,
+      String repositoryId,
+      String workspaceId,
+      String branch,
+      String ticketId,
+      String epicId,
+      String status,
+      Instant resolvedAt) {
+    return new Reference(
+        rowId, repositoryId, workspaceId, branch, ticketId, epicId, status, resolvedAt);
   }
 
   public synchronized List<Dispatched> calls() {

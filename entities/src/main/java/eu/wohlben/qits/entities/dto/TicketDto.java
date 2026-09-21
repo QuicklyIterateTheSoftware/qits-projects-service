@@ -12,10 +12,14 @@ import java.util.List;
  * @param impetus what brought the ticket about, in the reporter's words — see {@code
  *     Ticket.impetus} for the length rule and for why it is never rewritten by a later phase.
  * @param description the refinement's output, absent until the refine phase has written it.
- * @param workspaces the live workspaces working on this ticket — see {@link WorkspaceReferenceDto}.
- *     Derived per read and never stored: empty means nobody is on it, and one or more means "Assign
- *     agent" has already been pressed and here is the way in. Empty on every write's answer, which
- *     is honest — a create has no workspace, and an edit is not the read that asks.
+ * @param workspaces the workspaces cut for this ticket, <b>live or resolved</b>, each carrying its
+ *     own {@code status} — see {@link WorkspaceReferenceDto}. Derived per read and never stored:
+ *     empty means no workspace was ever cut, and a resolved one stays on the list so the ticket
+ *     keeps a link to where its work happened after somebody integrated or abandoned it. The count
+ *     therefore says nothing about whether anybody is working — a reader asking that question
+ *     (drawing "Assign agent", say) looks for a workspace whose status is {@code ACTIVE}. Empty on
+ *     every write's answer, which is honest — a create has no workspace, and an edit is not the
+ *     read that asks.
  */
 public record TicketDto(
     String id,

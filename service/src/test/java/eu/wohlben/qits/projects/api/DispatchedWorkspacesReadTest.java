@@ -12,6 +12,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,8 +78,21 @@ public class DispatchedWorkspacesReadTest {
   }
 
   private static WorkspaceAgentDispatch.Reference onTicket(long rowId, String ticketId) {
-    return new WorkspaceAgentDispatch.Reference(
+    return RecordingWorkspaceAgentDispatch.live(
         rowId, "repo-1", "ticket-work", "ticket/work", ticketId, null);
+  }
+
+  /** The same workspace after somebody integrated it: still named, and no longer standing. */
+  private static WorkspaceAgentDispatch.Reference resolvedOnTicket(long rowId, String ticketId) {
+    return RecordingWorkspaceAgentDispatch.resolved(
+        rowId,
+        "repo-1",
+        "ticket-work-done",
+        "ticket/work-done",
+        ticketId,
+        null,
+        "INTEGRATED",
+        Instant.parse("2026-09-20T11:00:00Z"));
   }
 
   @Test
@@ -124,7 +138,10 @@ public class DispatchedWorkspacesReadTest {
         .then()
         .statusCode(200)
         .body("ticket.workspaces", hasSize(1))
-        .body("ticket.workspaces[0].branch", equalTo("ticket/work"));
+        .body("ticket.workspaces[0].branch", equalTo("ticket/work"))
+        // The status travels with every row, live ones included — the browser draws the difference,
+        // so "this one is still running" has to be a word on the wire and not an absence.
+        .body("ticket.workspaces[0].status", equalTo("ACTIVE"));
 
     // An edit answers the row it changed and asks nobody who is working on it.
     int asked = dispatch.lookups().size();
@@ -143,8 +160,7 @@ public class DispatchedWorkspacesReadTest {
     String projectId = createProject("Referenced epics");
     String epicId = createEpic(projectId, "Somebody is implementing this");
     dispatch.willReference(
-        new WorkspaceAgentDispatch.Reference(
-            77L, "repo-1", "epic-work", "epic/work", null, epicId));
+        RecordingWorkspaceAgentDispatch.live(77L, "repo-1", "epic-work", "epic/work", null, epicId));
 
     asAdmin()
         .when()
@@ -166,6 +182,38 @@ public class DispatchedWorkspacesReadTest {
         .then()
         .statusCode(200)
         .body("epic.workspaces", hasSize(1));
+  }
+
+  /**
+   * <b>A resolved workspace reaches the ticket, carrying the word that says so.</b> This is the
+   * whole point of the change: the workspace is where the work happened — the transcripts, the diff,
+   * the session — and dropping the reference the moment somebody integrated or abandoned it took the
+   * only way back to them with it. So it stays on the list and says what it is, and every reader
+   * decides for itself what that means. Nothing in this service filters it out on the read.
+   */
+  @Test
+  public void aResolvedWorkspaceStillReachesTheTicketAndSaysThatItIsResolved() {
+    String projectId = createProject("Referenced after the fact");
+    String ticketId = createTicket(projectId, "The work is done");
+    dispatch.willReference(resolvedOnTicket(58L, ticketId), onTicket(59L, ticketId));
+
+    asAdmin()
+        .when()
+        .get("/projects/api/tickets/" + ticketId)
+        .then()
+        .statusCode(200)
+        // Both of them: one that is over and one that is still running.
+        .body("ticket.workspaces", hasSize(2))
+        .body(
+            "ticket.workspaces.find { it.workspaceRowId == 58 }.status", equalTo("INTEGRATED"))
+        .body(
+            "ticket.workspaces.find { it.workspaceRowId == 58 }.branch",
+            equalTo("ticket/work-done"))
+        .body("ticket.workspaces.find { it.workspaceRowId == 59 }.status", equalTo("ACTIVE"))
+        // resolvedAt is deliberately NOT on the wire: nothing the browser draws needs it, and the
+        // DTO the frontend reads stays the minimum it can be. The port carries it for a reader
+        // that one day does.
+        .body("ticket.workspaces.find { it.workspaceRowId == 58 }.resolvedAt", equalTo(null));
   }
 
   /**

@@ -13,6 +13,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -193,6 +195,10 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    * The read back: {@code GET /workspaces/api/agent-dispatches/references?ticketId=…&epicId=…}, both
    * parameters repeating, answering {@code {"entries":[{"workspace":{…}}]}}.
    *
+   * <p>It answers <b>every</b> workspace naming the subject now, resolved ones included, each with
+   * its own {@code status} and {@code resolvedAt}. Nothing is filtered here — the port's javadoc is
+   * the rule and it puts that decision on each reader, in the open.
+   *
    * <p><b>The path is under {@code agent-dispatches} and that is load-bearing, not tidy.</b> It sat
    * under {@code /workspaces/api/workspaces/references} for one release and answered **403** to
    * every call this class made: that far-side class is {@code @RolesAllowed("qits:admin")}, a
@@ -275,6 +281,19 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    * The entries, read as {@code Map}s like everything else this class exchanges. An entry missing
    * the pair a link is composed from is skipped rather than carried as a half-row: a reference the
    * browser cannot turn into an address is worse than one it never heard about.
+   *
+   * <p><b>{@code status} and {@code resolvedAt} are read leniently, and the {@code ACTIVE} default
+   * is the only protection either side of this hop has against the deploy order slipping.</b> The
+   * far side answers every workspace naming the subject now, live or resolved, and says which each
+   * is — but this service and qits-workspaces are released separately and the ordering is not
+   * guaranteed, so a qits-workspaces that predates the change answers rows with no {@code status}
+   * member at all. Reading that as an empty or null status would make every reference fail a live
+   * reader's {@code ACTIVE} filter, which is the whole of {@link
+   * eu.wohlben.qits.projects.api.TicketPhaseAdvance}'s release ask and would silently stop asking
+   * for anything. An absent or blank word therefore means {@link Reference#ACTIVE} — the only
+   * thing an older far side could ever have been answering, since it returned live workspaces
+   * alone. A {@code resolvedAt} that is absent, null or unparseable is simply {@code null}, which
+   * is what a live workspace carries anyway.
    */
   private static List<Reference> references(String responseBody) throws Exception {
     Map<?, ?> answer = MAPPER.readValue(responseBody, Map.class);
@@ -296,13 +315,43 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
               string(row.get("workspaceId")),
               string(row.get("branch")),
               string(row.get("ticketId")),
-              string(row.get("epicId"))));
+              string(row.get("epicId")),
+              status(row.get("status")),
+              instant(row.get("resolvedAt"))));
     }
     return List.copyOf(references);
   }
 
   private static String string(Object value) {
     return value instanceof String text ? text : null;
+  }
+
+  /**
+   * The far side's own status word, defaulting to {@link Reference#ACTIVE}. See the method above for
+   * why the default is load-bearing rather than tidy. A word this side has never heard of is carried
+   * through untouched — it is qits-workspaces' vocabulary, not this hop's.
+   */
+  private static String status(Object value) {
+    String word = string(value);
+    return word == null || word.isBlank() ? Reference.ACTIVE : word;
+  }
+
+  /**
+   * An ISO instant, or {@code null} — which is what a live workspace carries. Unparseable is null
+   * too: this read may never throw, and a resolution time nobody can read is worth less than the
+   * reference it hangs off.
+   */
+  private static Instant instant(Object value) {
+    String text = string(value);
+    if (text == null || text.isBlank()) {
+      return null;
+    }
+    try {
+      return Instant.parse(text);
+    } catch (DateTimeParseException e) {
+      LOG.debugf("Unreadable resolvedAt on a workspace reference, reporting none: %s", text);
+      return null;
+    }
   }
 
   /**

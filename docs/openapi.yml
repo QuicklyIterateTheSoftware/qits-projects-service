@@ -2312,6 +2312,8 @@ components:
           type: string
         branch:
           type: string
+        status:
+          type: string
     WrapperView:
       type: object
       properties:
@@ -6382,4 +6384,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.920.233715
+  version: 2026.921.160233

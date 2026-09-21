@@ -45,7 +45,10 @@ public class DispatchedWorkspaces {
   /** Optional, like every port here — absent means there are no workspaces to find. */
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
 
-  /** The tickets, each told which live workspaces name it. One lookup for the whole list. */
+  /**
+   * The tickets, each told which workspaces name it — live and resolved alike, each with its status.
+   * One lookup for the whole list.
+   */
   public List<TicketDto> decorateTickets(List<TicketDto> tickets) {
     if (tickets.isEmpty() || dispatch.isUnsatisfied()) {
       return tickets;
@@ -66,7 +69,7 @@ public class DispatchedWorkspaces {
     return decorateTickets(List.of(ticket)).get(0);
   }
 
-  /** The epics, each told which live workspaces name it. */
+  /** The epics, each told which workspaces name it, live and resolved alike. */
   public List<EpicDto> decorateEpics(List<EpicDto> epics) {
     if (epics.isEmpty() || dispatch.isUnsatisfied()) {
       return epics;
@@ -90,6 +93,12 @@ public class DispatchedWorkspaces {
   /**
    * The references grouped by the row they name. A reference whose id is null under the chosen
    * accessor is dropped — it answered the other half of a question this call did not ask.
+   *
+   * <p><b>Nothing is dropped for being resolved.</b> This is a read decorating a page, and the whole
+   * reason the port stopped filtering is that a ticket should keep a link to where its work happened
+   * after the workspace is integrated or abandoned. The status travels with each row so the browser
+   * can draw the difference; deciding what it means is the reader's, per the port's javadoc, and a
+   * reader that needs a <em>live</em> workspace says so itself.
    */
   private static Map<String, List<WorkspaceReferenceDto>> byRow(
       List<WorkspaceAgentDispatch.Reference> references,
@@ -107,7 +116,8 @@ public class DispatchedWorkspaces {
                   reference.workspaceRowId(),
                   reference.repositoryId(),
                   reference.workspaceId(),
-                  reference.branch()));
+                  reference.branch(),
+                  reference.status()));
     }
     grouped.replaceAll((key, value) -> List.copyOf(value));
     return grouped;

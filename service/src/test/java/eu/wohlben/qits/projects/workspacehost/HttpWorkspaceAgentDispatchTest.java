@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.workspacehost;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -228,7 +230,7 @@ class HttpWorkspaceAgentDispatchTest {
     responseBody.set(
         "{\"entries\":[{\"workspace\":{\"workspaceRowId\":41,\"repositoryId\":\"repo-1\","
             + "\"workspaceId\":\"ticket-puce\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\","
-            + "\"epicId\":null}}]}");
+            + "\"epicId\":null,\"status\":\"ACTIVE\",\"resolvedAt\":null}}]}");
 
     List<WorkspaceAgentDispatch.Reference> found =
         against(base).workspacesReferencing(List.of("t-7", "t-8", "t-7"), List.of("e-1"));
@@ -240,6 +242,8 @@ class HttpWorkspaceAgentDispatchTest {
     assertEquals("ticket-puce", reference.workspaceId());
     assertEquals("ticket/puce", reference.branch());
     assertEquals("t-7", reference.ticketId());
+    assertEquals(WorkspaceAgentDispatch.Reference.ACTIVE, reference.status());
+    assertNull(reference.resolvedAt(), "a live workspace has not been resolved");
 
     assertEquals(1, received.size(), "a page of rows is one call, never one call per row");
     Received request = received.get(0);
@@ -291,6 +295,65 @@ class HttpWorkspaceAgentDispatchTest {
         against(base, null, Optional.empty())
             .workspacesReferencing(List.of("t-7"), List.of())
             .isEmpty());
+  }
+
+  /**
+   * <b>A resolved workspace is read back whole, status and resolution time included.</b> The far
+   * side answers every workspace that names the subject now, not the live ones alone, so that a
+   * ticket keeps a link to where its work happened — and the words that say which is which have to
+   * survive the wire, because the readers that must not act on a resolved workspace have nothing
+   * else to go on.
+   */
+  @Test
+  void aResolvedWorkspaceCarriesItsStatusAndTheTimeItWasResolved() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"entries\":[{\"workspace\":{\"workspaceRowId\":41,\"repositoryId\":\"repo-1\","
+            + "\"workspaceId\":\"ticket-puce\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\","
+            + "\"status\":\"INTEGRATED\",\"resolvedAt\":\"2026-09-20T09:30:00Z\"}},"
+            + "{\"workspace\":{\"workspaceRowId\":42,\"repositoryId\":\"repo-1\","
+            + "\"workspaceId\":\"ticket-puce-2\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\","
+            + "\"status\":\"ABANDONED\",\"resolvedAt\":\"not a time at all\"}}]}");
+
+    List<WorkspaceAgentDispatch.Reference> found =
+        against(base).workspacesReferencing(List.of("t-7"), List.of());
+
+    assertEquals(2, found.size(), "nothing is filtered here — the port puts that on each reader");
+    assertEquals("INTEGRATED", found.get(0).status());
+    assertEquals(Instant.parse("2026-09-20T09:30:00Z"), found.get(0).resolvedAt());
+    // An unreadable time costs the time and never the reference: this read may not throw, and the
+    // status is the half a caller actually decides on.
+    assertEquals("ABANDONED", found.get(1).status());
+    assertNull(found.get(1).resolvedAt());
+  }
+
+  /**
+   * <b>An older qits-workspaces defaults to ACTIVE, and that default is the only protection either
+   * side has against the deploy order slipping.</b> This service and qits-workspaces release
+   * separately and nothing orders them, so this service can perfectly well be live first — and a
+   * qits-workspaces that predates the change answers rows with no {@code status} member at all.
+   * Reading that as a blank status would fail every {@code ACTIVE} filter downstream, which would
+   * silently stop {@code TicketPhaseAdvance} asking for any release whatsoever. ACTIVE is also the
+   * honest reading: an older far side answered live workspaces and nothing else.
+   */
+  @Test
+  void aFarSideThatNamesNoStatusIsReadAsActive() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"entries\":[{\"workspace\":{\"workspaceRowId\":41,\"repositoryId\":\"repo-1\","
+            + "\"workspaceId\":\"ticket-puce\",\"branch\":\"ticket/puce\",\"ticketId\":\"t-7\"}},"
+            + "{\"workspace\":{\"workspaceRowId\":42,\"repositoryId\":\"repo-1\","
+            + "\"workspaceId\":\"ticket-mauve\",\"branch\":\"ticket/mauve\",\"ticketId\":\"t-8\","
+            + "\"status\":\"   \",\"resolvedAt\":null}}]}");
+
+    List<WorkspaceAgentDispatch.Reference> found =
+        against(base).workspacesReferencing(List.of("t-7", "t-8"), List.of());
+
+    assertEquals(2, found.size());
+    assertEquals(WorkspaceAgentDispatch.Reference.ACTIVE, found.get(0).status(), "absent is ACTIVE");
+    assertEquals(WorkspaceAgentDispatch.Reference.ACTIVE, found.get(1).status(), "blank is ACTIVE");
+    assertNull(found.get(0).resolvedAt());
+    assertNull(found.get(1).resolvedAt());
   }
 
   /** A row a link cannot be composed from is skipped, rather than carried with a hole in it. */

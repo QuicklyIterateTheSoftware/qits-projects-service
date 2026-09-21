@@ -14,9 +14,13 @@ import java.util.List;
  *     and {@code entities} depends on {@code domain} nowhere. {@code projects/api/QualifiedEntityIds}
  *     is the one place it is filled, at the DTO boundary in the {@code service} module, exactly as
  *     {@code DispatchedWorkspaces} fills {@link #workspaces}.
- * @param workspaces the live workspaces working on this epic — {@link TicketDto#workspaces}' field,
- *     rule for rule, and the read behind "Start implementation" knowing it has already been pressed.
- *     An epic leaves no other trace of a dispatch: its door writes nothing on the row, by design.
+ * @param workspaces the workspaces cut for this epic, <b>live or resolved</b>, each carrying its own
+ *     {@code status} — {@link TicketDto#workspaces}' field, rule for rule. An epic leaves no other
+ *     trace of a dispatch: its door writes nothing on the row, by design, so this is also the only
+ *     way back to an epic's work once its workspace has been integrated or abandoned — which is why
+ *     a resolved one stays on the list rather than dropping off it. A reader asking whether "Start
+ *     implementation" has already been pressed and is still running wants a workspace whose status
+ *     is {@code ACTIVE}; the count alone no longer answers that.
  */
 public record EpicDto(
     String id,
