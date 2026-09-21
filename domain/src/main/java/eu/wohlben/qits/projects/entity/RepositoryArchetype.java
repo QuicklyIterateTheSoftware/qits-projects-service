@@ -1,108 +1,86 @@
 package eu.wohlben.qits.projects.entity;
 
-import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * What kind of part of its project a repository is.
  *
- * <p>The six <b>placeable</b> archetypes ({@link #SERVICE}, {@link #DAEMON}, {@link #LIBRARY},
- * {@link #FRONTEND}, {@link #CLI}, {@link #IMAGE}) each name a directory of the <b>archetype
- * layout</b> — directory <em>is</em> archetype there, in both directions: a directory extracted out
- * of {@code libs/} into a sibling repository becomes a {@code LIBRARY}, and a {@code LIBRARY} is
- * mounted back under {@code libs/}. The mapping lives here rather than being derived from the name,
- * because it doesn't derive mechanically ({@code libs} != {@code LIBRARY}, {@code frontends} !=
- * {@code FRONTEND}).
+ * <p><b>The name says the kind, and nothing else does.</b> A wrapper mounts every submodule at
+ * {@code components/<component>/<name>}, where the path names the <em>component</em> — see {@link
+ * eu.wohlben.qits.projects.control.WrapperPath} — so a directory decides nothing about taxonomy any
+ * more. {@link #fromRepositoryName} is the single derivation of kind, over the role suffix of the
+ * name grammar ({@code <component>[-<modifier>]-<role>[-<tech>]}): {@code qits-ci-service} is a
+ * {@link #SERVICE}, {@code qits-eventstream-javalib} a {@link #LIBRARY}. It answers null for a name
+ * carrying no role suffix, and null is what the reconcile stores rather than a guess, since nothing
+ * in this service can correct a wrong archetype afterwards.
  *
- * <p><b>The project template no longer seeds those six directories</b>, and that is the one thing to
- * know before reading {@link #placeableDirectories} as "the skeleton". A new wrapper is seeded with
- * a single {@code components/} directory, because the component layout is what a project grows into
- * now; the six live on as the reading of wrappers that predate the flip, which is why {@link
- * #fromDirectory} stays and stays complete.
+ * <p>The <b>archetype layout</b> — a mount directory that <em>was</em> the kind, {@code services/},
+ * {@code daemons/}, {@code libs/}, {@code frontends/}, {@code cli/}, {@code images/} — is retired
+ * and its reading is gone with it. What it decided is not: the taxonomy is this enum, unchanged, and
+ * so is the column it is stored in.
  *
- * <p>Directory is authoritative <b>under the archetype layout</b>: the wrapper's {@code .gitmodules}
- * is the project's configuration, so the directory an entry sits under decides the row's archetype —
- * see {@link #fromDirectory}, which is the reconcile's derivation there.
+ * <p><b>{@link #isComponentOfItsProject} is what the rest of the service asks of a value here.</b>
+ * It means exactly what it says — a repository of this kind is a <em>component of its project</em>,
+ * something the project's wrapper is expected to declare as a submodule and which the membership
+ * rules therefore apply to (the write guard, the wrapper removal on delete, the listing's {@code
+ * declared} flag, the reconcile's undeclared report). It is a per-constant fact stated at the
+ * declaration and derived from nothing, because it is a statement about the archetype rather than a
+ * consequence of one.
  *
- * <p><b>Under the component layout it is the name that says the kind</b>, because the first path
- * segment is the literal {@code components} and the second is the component. {@link
- * #fromRepositoryName} is that derivation, over the role suffix of the campaign's name grammar
- * ({@code <component>[-<modifier>]-<role>[-<tech>]}). It answers null for a name carrying no role
- * suffix, which is the state every repository is in until the renames land — and null is what the
- * reconcile stores rather than a guess, since nothing in this service can correct a wrong archetype
- * afterwards.
- *
- * <p>{@link #SERVICE_TEMPLATE} and {@link #FORK} are deliberately unplaceable: neither is a
- * component of <em>this</em> application (one is scaffolding a component is generated from, the
- * other an external downstream fork), so neither has a home in the wrapper's tree nor is a valid
- * extraction target. {@link #PROJECT} is unplaceable for the opposite reason — it <em>is</em> the
- * tree.
+ * <p>Three values answer false, each for its own reason: {@link #PROJECT} because it <em>is</em> the
+ * tree — the wrapper cannot be a submodule of itself; {@link #SERVICE_TEMPLATE} because it is
+ * scaffolding a component is generated <em>from</em> rather than part of the application; and {@link
+ * #FORK} because it is an external downstream fork of somebody else's repository, which this project
+ * carries but is not built out of. The other six are components and answer true.
  *
  * <p>These nine are the whole set. {@code INTEGRATION} and {@code APPLICATION} were carried through
- * release A as deprecated, unplaceable aliases so Hibernate could read rows written before the
- * rework; V4 retired the last of those rows and they are gone.
+ * release A as deprecated aliases so Hibernate could read rows written before the rework; the H2
+ * lineage's V4 retired the last of those rows and they are gone.
  *
- * <p>Adding a value here also requires a Flyway migration: {@code Repository.archetype} carries a
- * DB check constraint over the value set (V44 rebuilt V1's inline one as the named {@code
- * CK_repository_archetype}; V3 widened it for this rework and V4 tightened it to these nine).
+ * <p>Adding a value here also requires a Flyway migration: {@code Repository.archetype} carries a DB
+ * check constraint over the value set, written <b>inline and named</b> in {@code
+ * db/projects/migration/V1__init.sql} as {@code CK_repository_archetype}. Inline is what makes it a
+ * migration rather than an edit — an applied file is checksummed and must never be touched, and a
+ * named constraint cannot be widened in place, so a tenth value needs a new migration that drops
+ * {@code CK_repository_archetype} and adds it back over the wider set.
  */
 public enum RepositoryArchetype {
   /** The project's wrapper repository — the root superproject. At most one per project. */
-  PROJECT(null),
+  PROJECT(false),
   /** A deployable component. */
-  SERVICE("services"),
+  SERVICE(true),
   /** A long-running background agent — deployed rather than served. */
-  DAEMON("daemons"),
+  DAEMON(true),
   /** Shared technical code consumed by the components. */
-  LIBRARY("libs"),
+  LIBRARY(true),
   /** Anything served to a user at a URL. */
-  FRONTEND("frontends"),
+  FRONTEND(true),
   /** A command-line entry point into the application. */
-  CLI("cli"),
+  CLI(true),
   /** A build definition consumed through its published OCI image. */
-  IMAGE("images"),
+  IMAGE(true),
   /** Scaffolding a component is generated <em>from</em>, not part of the application. */
-  SERVICE_TEMPLATE(null),
+  SERVICE_TEMPLATE(false),
   /** A downstream fork — an external repository, never inline. */
-  FORK(null);
+  FORK(false);
 
-  private final String directory;
+  private final boolean componentOfItsProject;
 
-  RepositoryArchetype(String directory) {
-    this.directory = directory;
+  RepositoryArchetype(boolean componentOfItsProject) {
+    this.componentOfItsProject = componentOfItsProject;
   }
 
   /**
-   * The archetype-layout directory a repository of this archetype is mounted under, or {@code null}
-   * when the archetype is unplaceable.
+   * Whether a repository of this kind is a <b>component of its project</b> — part of what the
+   * project is built out of, and therefore something the project's wrapper is expected to declare.
+   *
+   * <p>This is the whole of what membership rests on, and the class doc says which three values
+   * answer false and why. It is stated per constant rather than derived, so that widening the enum
+   * is a decision somebody makes at the declaration instead of a side effect of some other field.
    */
-  public String directory() {
-    return directory;
-  }
-
-  /** Whether repositories of this archetype have a home in the wrapper's tree. */
-  public boolean isPlaceable() {
-    return directory != null;
-  }
-
-  /**
-   * The archetype a wrapper entry under {@code directory} declares, or {@code null} when no
-   * archetype claims that directory — the reconcile's derivation, and the reason an unknown
-   * directory is a skip with a warning rather than a guess.
-   */
-  public static RepositoryArchetype fromDirectory(String directory) {
-    if (directory == null || directory.isBlank()) {
-      return null;
-    }
-    String trimmed = directory.trim();
-    for (RepositoryArchetype archetype : values()) {
-      if (trimmed.equals(archetype.directory)) {
-        return archetype;
-      }
-    }
-    return null;
+  public boolean isComponentOfItsProject() {
+    return componentOfItsProject;
   }
 
   /**
@@ -135,7 +113,7 @@ public enum RepositoryArchetype {
    * The archetype a repository <em>name</em> declares through its role suffix, or null when it
    * declares none.
    *
-   * <p>This is the component layout's derivation: {@code qits-ci-service} is a {@link #SERVICE},
+   * <p>This is the only derivation of kind there is: {@code qits-ci-service} is a {@link #SERVICE},
    * {@code qits-eventstream-javalib} a {@link #LIBRARY}, {@code qits-workspace-oci} an {@link
    * #IMAGE}. A tier modifier sits <em>before</em> the role ({@code
    * qits-deployments-platform-service}), so the suffix still decides.
@@ -155,21 +133,5 @@ public enum RepositoryArchetype {
       }
     }
     return null;
-  }
-
-  /**
-   * Every archetype-layout directory, in declaration order — the exact inverse of {@link
-   * #fromDirectory}, which {@code RepositoryArchetypeTemplateSyncTest} asserts in both directions.
-   *
-   * <p>It was called {@code skeletonDirectories} while the project template seeded these six; the
-   * template seeds {@code components/} alone now, so the name would have been a claim about the
-   * skeleton that is no longer true. What the set is still for is the two error messages that have
-   * to say which directories a legacy wrapper may mount an entry under.
-   */
-  public static Set<String> placeableDirectories() {
-    return Arrays.stream(values())
-        .map(RepositoryArchetype::directory)
-        .filter(d -> d != null)
-        .collect(LinkedHashSet::new, Set::add, Set::addAll);
   }
 }

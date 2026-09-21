@@ -60,8 +60,12 @@ public class ProjectService {
    * <ul>
    *   <li>the six repository categories and the {@code components} marker — segment two of the
    *       repository form, so a slug spelling one would make {@code /services/daemons/x}
-   *       unreadable. The six stay reserved while the wrapper flip is in progress; {@code
-   *       components} joins them because it is what segment two becomes;
+   *       unreadable. <b>The six stay reserved although the wrapper's archetype layout is
+   *       retired</b>, because they never were only a wrapper directory: each is a {@code
+   *       QitsCategory} route segment in seven SPAs' route guards and is the {@code
+   *       <category>.details} navigation slot vocabulary the platform edge validates, so a project
+   *       slugged {@code services} would still be shadowed by a route that resolves today. {@code
+   *       components} is reserved beside them for the wrapper grammar's own first segment;
    *   <li>{@code api}, {@code q} and {@code main-navigation} — served under every host;
    *   <li>every application segment the platform routes.
    * </ul>
@@ -593,7 +597,7 @@ public class ProjectService {
   /**
    * Clones an existing repository under {@code project} and <b>does not touch the wrapper</b> — the
    * primitive, and the right call for a repository that is deliberately not a component of the
-   * project (an unplaceable {@code FORK}, the self-seed's monorepo entry).
+   * project (a {@code FORK}, which no project is built out of, or the self-seed's monorepo entry).
    */
   @Transactional
   public Repository createRepositoryUnderProject(
@@ -630,8 +634,10 @@ public class ProjectService {
    * </ul>
    *
    * <p>Exactly one of the two, because they are different intentions and a request carrying both
-   * says neither. The archetype must be placeable — an unplaceable one has no directory to be
-   * mounted under, and a component that is not in the wrapper is not a component.
+   * says neither. The archetype must be one a repository is a <em>component of its project</em>
+   * with ({@link RepositoryArchetype#isComponentOfItsProject}): the create flow's last step is a
+   * wrapper entry, and a kind that is not part of the project has no business being declared as
+   * one.
    *
    * <p><b>The wrapper commit runs last and outside the row's transaction.</b> It is a push to
    * another service and can fail on its own; when it does, the request fails loudly with the row
@@ -648,14 +654,14 @@ public class ProjectService {
    * The create flow, with the component the caller wants the entry mounted under — see {@link
    * #createRepository(String, String, String, RepositoryArchetype)} for everything else.
    *
-   * <p>{@code component} is optional and the wrapper still has the last word on the placement
-   * ({@link WrapperSubmoduleWriter#addToWrapper}): stating one places under {@code
-   * components/<component>/<name>}, and stating none lets a wrapper that has already flipped place
-   * there anyway. The row's {@code component} is then read back off the path the wrapper commit
-   * actually used, so the row and the file cannot disagree about it.
+   * <p>{@code component} is optional and names the component the entry is mounted under ({@link
+   * WrapperSubmoduleWriter#addToWrapper}): stating one places at {@code
+   * components/<component>/<name>}, and stating none places at {@code components/<name>/<name>}. The
+   * row's {@code component} is then read back off the path the wrapper commit actually used, so the
+   * row and the file cannot disagree about it.
    *
-   * <p><b>{@code archetype} is optional too, and the name is what fills it in.</b> Under the
-   * component layout the name is what says the kind, so {@code payments-daemon} needs no second
+   * <p><b>{@code archetype} is optional too, and the name is what fills it in.</b> The name is what
+   * says the kind, so {@code payments-daemon} needs no second
    * statement of it ({@link RepositoryArchetype#fromRepositoryName}) — and for the attach arm the
    * name derived is the url's basename, which is exactly the name the repository will answer to. A
    * caller that states one is obeyed unchanged, which is what keeps the SPA's create form working.
@@ -694,13 +700,12 @@ public class ProjectService {
           "A repository cannot be created with archetype PROJECT: that archetype is reserved for"
               + " the project's wrapper repository, which is created with the project.");
     }
-    if (!archetype.isPlaceable()) {
+    if (!archetype.isComponentOfItsProject()) {
       throw new BadRequestException(
           "Archetype "
               + archetype
-              + " has no directory in the wrapper, so a repository cannot be created under a project"
-              + " with it. Placeable archetypes: "
-              + RepositoryArchetype.placeableDirectories());
+              + " is not a component of a project, so a repository cannot be created under one with"
+              + " it.");
     }
     Repository wrapper =
         findWrapper(projectId)

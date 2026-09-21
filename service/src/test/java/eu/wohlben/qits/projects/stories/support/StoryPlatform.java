@@ -58,7 +58,7 @@ import java.time.Duration;
  */
 public final class StoryPlatform {
 
-  /** The archetype the fixture's component takes — {@code libs/} in the wrapper. */
+  /** The archetype the fixture's component takes. */
   public static final String COMPONENT_ARCHETYPE = "LIBRARY";
 
   /** The fixture component's addressable name — what {@code ../<name>.git} resolves to. */

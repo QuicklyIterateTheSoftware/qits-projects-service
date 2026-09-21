@@ -16,22 +16,22 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * Keeps the archetype taxonomy and the project template skeleton from drifting apart. What they
- * have to agree about changed with the component layout, and both halves are here:
+ * Keeps the archetype taxonomy and the project template skeleton from drifting apart. There is one
+ * path grammar now, {@code components/<component>/<name>}, and both halves of the agreement it
+ * needs are here:
  *
  * <ul>
- *   <li><b>The template seeds one directory, {@code components/}</b>, and none of the six archetype
- *       directories. Seeding a layout the platform has flipped away from would teach every new
- *       project the wrong grammar on its first clone.
- *   <li><b>The NAME is what says the kind now</b>, so the two-way sync moved with it: every role
+ *   <li><b>The template seeds one directory, {@code components/}</b>. Seeding anything else would
+ *       teach every new project a grammar the platform does not read, on its first clone.
+ *   <li><b>The NAME is what says the kind</b>, and it is the only thing that does: every role
  *       suffix {@link RepositoryArchetype#fromRepositoryName} reads is taught by {@code
  *       components/README.md}, and every suffix that README teaches derives back to an archetype.
  * </ul>
  *
- * <p>{@link RepositoryArchetype#fromDirectory} and {@link RepositoryArchetype#placeableDirectories}
- * are unchanged and still asserted here: legacy wrappers still mount entries under the six
- * directories and the reconcile still has to read them. What is gone is the claim that the template
- * contains them.
+ * <p>The archetype layout — a mount directory that <em>was</em> the kind — is retired, so nothing
+ * here asserts a directory-to-archetype mapping any more; there is none to assert. What replaced it
+ * as the question the rest of the service asks of a value is {@link
+ * RepositoryArchetype#isComponentOfItsProject}, whose membership split is pinned below.
  *
  * <p>A plain JUnit test — no Quarkus — since it only reads the enum and the built resources.
  */
@@ -42,6 +42,15 @@ public class RepositoryArchetypeTemplateSyncTest {
 
   /** The one directory the skeleton seeds; {@code WrapperPath.COMPONENTS_DIRECTORY} is its reader. */
   private static final String COMPONENTS = "components";
+
+  /**
+   * The six directories the retired archetype layout mounted entries under. Spelled out here
+   * because the enum no longer knows them — that is the point of the retirement — and this test is
+   * the last place on the estate that still has to name them, to prove they are gone from what the
+   * template and the starter config teach.
+   */
+  private static final List<String> RETIRED_ARCHETYPE_DIRECTORIES =
+      List.of("services", "daemons", "libs", "frontends", "cli", "images");
 
   private static Set<String> templateDirectories() throws Exception {
     try (Stream<Path> entries = Files.list(TEMPLATE)) {
@@ -60,23 +69,8 @@ public class RepositoryArchetypeTemplateSyncTest {
     assertEquals(
         Set.of(COMPONENTS),
         templateDirectories(),
-        "the wrapper skeleton is the component layout now: one components/ directory, and the six"
-            + " archetype directories deliberately absent");
-  }
-
-  /**
-   * Stated as its own assertion rather than left implicit in the one above, because this is the
-   * regression that would be invisible: a template that seeded {@code services/} again would look
-   * harmless and would teach every new project a layout the platform left behind.
-   */
-  @Test
-  public void noArchetypeDirectoryIsSeededAnyMore() throws Exception {
-    Set<String> seeded = templateDirectories();
-    for (String directory : RepositoryArchetype.placeableDirectories()) {
-      assertFalse(
-          seeded.contains(directory),
-          directory + "/ belongs to the archetype layout and must not be seeded");
-    }
+        "the wrapper skeleton seeds the one directory the one grammar mounts under, and nothing"
+            + " else: a second seeded directory is a second grammar nothing reads");
   }
 
   /**
@@ -92,36 +86,30 @@ public class RepositoryArchetypeTemplateSyncTest {
     }
   }
 
-  @Test
-  public void theUnplaceableArchetypesHaveNoDirectory() {
-    for (RepositoryArchetype archetype :
-        Set.of(
-            RepositoryArchetype.PROJECT,
-            RepositoryArchetype.SERVICE_TEMPLATE,
-            RepositoryArchetype.FORK)) {
-      assertEquals(null, archetype.directory(), archetype + " must not be placeable");
-    }
-  }
-
   /**
-   * Directory → archetype is still the reconcile's derivation for a wrapper that predates the flip,
-   * and it is still the exact inverse. This is what the deleted template directories must NOT take
-   * with them.
+   * The membership split, pinned per constant. Everything that asks whether the wrapper is expected
+   * to declare a row — the write guard, the wrapper removal on delete, the listing's {@code
+   * declared} flag, the reconcile's undeclared report — reads this one predicate, so a value
+   * quietly changing sides changes four behaviours at once. It is stated at the declaration rather
+   * than derived, which is exactly why a test has to say what the declarations are.
    */
   @Test
-  public void everyArchetypeDirectoryStillDerivesBackToItsArchetype() {
-    for (String directory : RepositoryArchetype.placeableDirectories()) {
-      RepositoryArchetype derived = RepositoryArchetype.fromDirectory(directory);
-      assertEquals(
-          directory, derived == null ? null : derived.directory(), directory + " must round-trip");
-    }
+  public void exactlySixArchetypesAreComponentsOfTheirProject() {
     assertEquals(
-        new TreeSet<>(Set.of("services", "daemons", "libs", "frontends", "cli", "images")),
-        new TreeSet<>(RepositoryArchetype.placeableDirectories()),
-        "these six are what a legacy wrapper mounts entries under; the set is closed");
-    assertEquals(null, RepositoryArchetype.fromDirectory("nope"));
-    assertEquals(null, RepositoryArchetype.fromDirectory(COMPONENTS));
-    assertEquals(null, RepositoryArchetype.fromDirectory(null));
+        List.of("SERVICE", "DAEMON", "LIBRARY", "FRONTEND", "CLI", "IMAGE"),
+        Stream.of(RepositoryArchetype.values())
+            .filter(RepositoryArchetype::isComponentOfItsProject)
+            .map(Enum::name)
+            .toList(),
+        "these six are what a project is built out of, so its wrapper is expected to declare them");
+    assertEquals(
+        List.of("PROJECT", "SERVICE_TEMPLATE", "FORK"),
+        Stream.of(RepositoryArchetype.values())
+            .filter(a -> !a.isComponentOfItsProject())
+            .map(Enum::name)
+            .toList(),
+        "the wrapper IS the tree, a template is what a component is generated from, and a fork is"
+            + " somebody else's repository — none of the three is a member of the project");
   }
 
   // --- the name is the kind: the two-way sync that replaced directory <-> archetype ---
@@ -149,10 +137,14 @@ public class RepositoryArchetypeTemplateSyncTest {
   }
 
   @Test
-  public void everySuffixTheTemplateTeachesDerivesAPlaceableArchetype() throws Exception {
+  public void everySuffixTheTemplateTeachesDerivesAComponentOfItsProject() throws Exception {
     for (String suffix : suffixesTheReadmeTeaches()) {
       RepositoryArchetype derived = RepositoryArchetype.fromRepositoryName("payments" + suffix);
-      assertTrue(derived != null && derived.isPlaceable(), suffix + " must name a placeable kind");
+      assertTrue(
+          derived != null && derived.isComponentOfItsProject(),
+          suffix
+              + " is taught as a name a component of a project takes, so it must derive an"
+              + " archetype that is one");
     }
     // A name that is only the suffix declares nothing — there is no component left in it.
     assertEquals(null, RepositoryArchetype.fromRepositoryName("-service"));
@@ -225,10 +217,10 @@ public class RepositoryArchetypeTemplateSyncTest {
   public void theStarterConfigsExamplePathsAreComponentPaths() throws Exception {
     String config = Files.readString(TEMPLATE.resolve("dot-qits-config.yml"));
     assertTrue(config.contains("components/payments/payments-service"));
-    for (String directory : RepositoryArchetype.placeableDirectories()) {
+    for (String directory : RETIRED_ARCHETYPE_DIRECTORIES) {
       assertFalse(
           config.contains(" " + directory + "/"),
-          "the example paths still name the archetype directory " + directory + "/");
+          "the example paths still name " + directory + "/, a retired archetype directory");
     }
   }
 }

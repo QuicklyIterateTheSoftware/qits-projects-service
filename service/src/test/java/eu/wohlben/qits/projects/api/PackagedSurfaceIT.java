@@ -248,7 +248,9 @@ public class PackagedSurfaceIT {
         .then()
         .statusCode(200)
         .body("repository.name", org.hamcrest.Matchers.equalTo("blank-component"))
-        .body("wrapperPath", org.hamcrest.Matchers.equalTo("libs/blank-component"));
+        .body(
+            "wrapperPath",
+            org.hamcrest.Matchers.equalTo("components/blank-component/blank-component"));
   }
 
   /**

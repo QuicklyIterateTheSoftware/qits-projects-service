@@ -411,11 +411,12 @@ public class RepositoryService {
   @Transactional
   public Repository createBlankRepository(
       Project project, String name, RepositoryArchetype archetype) {
-    if (archetype == null || !archetype.isPlaceable()) {
+    if (archetype == null || !archetype.isComponentOfItsProject()) {
       throw new BadRequestException(
-          "A repository created under a project must have a placeable archetype; "
+          "Archetype "
               + archetype
-              + " has no directory in the wrapper.");
+              + " is not a component of a project, so a repository cannot be created under one with"
+              + " it.");
     }
 
     requireCreatableName(project, name);
@@ -2238,7 +2239,8 @@ public class RepositoryService {
   // -----------------------------------------------------------------------------------------
 
   /**
-   * Refuses a write to a placeable repository that the project's wrapper does not declare.
+   * Refuses a write to a repository that is a component of its project and that the project's
+   * wrapper does not declare.
    *
    * <p>The rule the whole feature rests on is that a project <em>is</em> its wrapper repository, so
    * a repository missing from {@code .gitmodules} is not a component of it — and writing to one
@@ -2249,9 +2251,14 @@ public class RepositoryService {
    * <p>Three exemptions, each for its own reason:
    *
    * <ul>
-   *   <li>the wrapper itself and every <b>unplaceable</b> archetype ({@code FORK}, {@code
-   *       SERVICE_TEMPLATE}) — they have no directory to be mounted under, so membership is not a
-   *       question that applies to them;
+   *   <li>the wrapper itself, and every archetype a repository is <b>not a component of its
+   *       project</b> with ({@code FORK}, {@code SERVICE_TEMPLATE}) — they are not part of what the
+   *       project is built out of, so membership is not a question that applies to them. <b>A
+   *       {@code null} archetype is deliberately not exempt</b>: the wrapper is still the manifest
+   *       of a row whose kind nobody has stated, and exempting it would let the one class of row
+   *       this service cannot classify skip the guard entirely. The worst this costs such a row is
+   *       a refused write, which is recoverable; the reconcile's undeclared report is the one site
+   *       that reads null the other way, and says there why;
    *   <li>a project whose wrapper declares <b>no submodules at all</b>. An empty manifest is not a
    *       manifest: a project that has not started declaring members has nothing to be a member of,
    *       and enforcing against it would brick every repository of every project the day this ships.
@@ -2262,7 +2269,7 @@ public class RepositoryService {
    * </ul>
    */
   private void requireWrapperMembership(Repository repo) {
-    if (repo.archetype == null || !repo.archetype.isPlaceable()) {
+    if (repo.archetype != null && !repo.archetype.isComponentOfItsProject()) {
       return;
     }
     Repository wrapper = repositoryRepository.findWrapperByProject(repo.project.id).orElse(null);
@@ -2444,9 +2451,16 @@ public class RepositoryService {
    * Takes {@code repo} out of its project's wrapper, if it is in it. Every name the repository
    * answers to is tried, because the wrapper records one of them and this service does not get to
    * assume which.
+   *
+   * <p>Only an archetype that is <b>not</b> a component of its project ({@code FORK}, {@code
+   * SERVICE_TEMPLATE}) is skipped, because the wrapper was never going to name it. A {@code null}
+   * archetype is looked for like any other: the operation is idempotent — a name the wrapper does
+   * not carry leaves it untouched — so the cost of asking about a row whose kind is unknown is a
+   * file read, and the cost of not asking is a dangling {@code .gitmodules} entry pointing at a
+   * repository this delete is about to destroy.
    */
   private void removeFromWrapper(Repository repo) {
-    if (repo.archetype == null || !repo.archetype.isPlaceable()) {
+    if (repo.archetype != null && !repo.archetype.isComponentOfItsProject()) {
       return;
     }
     Repository wrapper =

@@ -94,7 +94,7 @@ public class SelfSeedHeldReconcileTest {
 
   /** Nor is anything reported: the pass that names rows no wrapper entry declares is the walk. */
   @Test
-  public void aPlaceableRowIsNotReported() {
+  public void aComponentRowIsNotReported() {
     Project project =
         projectService.create(
             "qits", "qits", "pre-existing", fixture(SelfSeedServiceTest.QITS_WRAPPER_FIXTURE));

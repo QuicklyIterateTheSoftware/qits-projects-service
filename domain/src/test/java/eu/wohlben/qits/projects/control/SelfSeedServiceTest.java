@@ -45,8 +45,8 @@ public class SelfSeedServiceTest {
   /**
    * The wrapper slot. Its basename must be exactly {@code qits-qits} or the adopt check rejects it,
    * which is the point: it proves the strict {@code <slug>-<slug>} rule holds for the project it was
-   * built for. It carries a committed {@code .gitmodules} declaring two resolvable components and
-   * one under a directory no archetype claims.
+   * built for. It carries a committed {@code .gitmodules} declaring three resolvable components and
+   * one entry whose path is not {@code components/<component>/<name>} at all.
    */
   static final String QITS_WRAPPER_FIXTURE = "qits-qits.git";
 
@@ -117,15 +117,23 @@ public class SelfSeedServiceTest {
     assertEquals(
         Set.of(
             "qits-qits", // the wrapper itself
-            "submodule-shared", // libs/ in the wrapper's .gitmodules
-            "submodule-grandchild"), // services/ in the wrapper's .gitmodules
+            "submodule-shared",
+            "sample-javalib",
+            "submodule-grandchild"),
         repos.keySet(),
         "the wrapper and one repository per resolvable wrapper entry — and nothing for the entry"
-            + " under a directory no archetype claims");
+            + " whose path is not components/<component>/<name>");
 
-    assertEquals(RepositoryArchetype.LIBRARY, repos.get("submodule-shared").archetype, "libs/");
     assertEquals(
-        RepositoryArchetype.SERVICE, repos.get("submodule-grandchild").archetype, "services/");
+        RepositoryArchetype.LIBRARY,
+        repos.get("sample-javalib").archetype,
+        "the name's role suffix is what says the kind, and it is the only thing that does");
+    assertEquals(
+        null,
+        repos.get("submodule-shared").archetype,
+        "this name declares no role, so the seed stores the null it honestly is rather than a"
+            + " guess nothing here could correct afterwards");
+    assertEquals("shared-things", repos.get("submodule-shared").component, "and its component");
   }
 
   /** The manifest is one line, and the platform list it replaced must not creep back. */
@@ -185,12 +193,13 @@ public class SelfSeedServiceTest {
   }
 
   /**
-   * The whole point of the rework, and its sharpest consequence: a placeable repository the wrapper
-   * does not declare is not part of the project, so the reconcile reports it undeclared. It deletes
-   * nothing — a delete would take the repository off the git host, and a person decides that.
+   * The whole point of the rework, and its sharpest consequence: a repository that is a component
+   * of its project and that the wrapper does not declare is not part of it, so the reconcile
+   * reports it undeclared. It deletes nothing — a delete would take the repository off the git
+   * host, and a person decides that.
    */
   @Test
-  public void aPlaceableRowTheWrapperDoesNotDeclareIsReportedUndeclared() throws Exception {
+  public void aComponentRowTheWrapperDoesNotDeclareIsReportedUndeclared() throws Exception {
     Project project =
         projectService.create("qits", "qits", "pre-existing", fixture(QITS_WRAPPER_FIXTURE));
     Repository stray =
@@ -217,7 +226,7 @@ public class SelfSeedServiceTest {
    * <p>Driven with a synthetic entry rather than through {@code reconcile()}: the shipped manifest
    * is the wrapper alone now, and the wrapper's archetype cannot drift (a row is the wrapper by
    * being {@code PROJECT}). The live case that forced this into existence was {@code qits-backend},
-   * seeded as a placeable {@code SERVICE} before the archetype rework and therefore one reconcile
+   * seeded as a {@code SERVICE} — a component archetype — before the archetype rework and therefore one reconcile
    * away from being reported undeclared for not being a submodule of a wrapper it was never meant
    * to be in. That repository is out of the platform now; the behaviour it bought is not, and it is what
    * the next entry added here will rely on.
@@ -320,9 +329,12 @@ public class SelfSeedServiceTest {
     return target;
   }
 
-  /** An unplaceable row is exempt from the same sweep, which is why the monorepo is a FORK. */
+  /**
+   * A row that is not a component of its project is exempt from the same sweep, which is why the
+   * monorepo was a FORK.
+   */
   @Test
-  public void anUnplaceableRowSurvivesTheReconcile() throws Exception {
+  public void aRowThatIsNotAComponentOfItsProjectSurvivesTheReconcile() throws Exception {
     Project project =
         projectService.create("qits", "qits", "pre-existing", fixture(QITS_WRAPPER_FIXTURE));
     Repository fork =
