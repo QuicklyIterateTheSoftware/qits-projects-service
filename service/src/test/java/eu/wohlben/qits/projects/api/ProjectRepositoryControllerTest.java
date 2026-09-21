@@ -64,8 +64,13 @@ public class ProjectRepositoryControllerTest {
 
   // --- create: blank ---
 
+  /**
+   * With no component stated the repository becomes a component of its own name, which is the one
+   * grammar's answer to "where does a lone repository go" — there is nothing left for the wrapper's
+   * own history to vote on.
+   */
   @Test
-  public void creatingABlankRepositoryMountsItUnderItsArchetypesDirectory() {
+  public void creatingABlankRepositoryMountsItUnderAComponentOfItsOwnName() {
     String projectId = createProject("Blank Create");
 
     postRepository(projectId, null, "checkout", RepositoryArchetype.SERVICE)
@@ -77,11 +82,9 @@ public class ProjectRepositoryControllerTest {
         .body("repository.backupUrl", nullValue())
         .body("repository.mainBranch", equalTo("main"))
         .body("repository.archetype", equalTo("SERVICE"))
-        // An archetype-layout wrapper states no component, so the row carries none — and the field
-        // is on the wire either way, because the chrome reads it per row.
-        .body("repository.component", nullValue())
+        .body("repository.component", equalTo("checkout"))
         .body("projectId", equalTo(projectId))
-        .body("wrapperPath", equalTo("services/checkout"));
+        .body("wrapperPath", equalTo("components/checkout/checkout"));
 
     // And the wrapper block now declares it, which is what the UI reads.
     given()
@@ -91,7 +94,7 @@ public class ProjectRepositoryControllerTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .body("wrapper.branch", equalTo("main"))
         .body("wrapper.entries", hasSize(1))
-        .body("wrapper.entries[0].path", equalTo("services/checkout"))
+        .body("wrapper.entries[0].path", equalTo("components/checkout/checkout"))
         .body("wrapper.entries[0].name", equalTo("checkout"))
         .body("wrapper.entries[0].repositoryId", notNullValue())
         .body("entries.repository.name", hasItem("checkout"));
@@ -116,10 +119,7 @@ public class ProjectRepositoryControllerTest {
         .statusCode(Response.Status.BAD_REQUEST.getStatusCode());
   }
 
-  /**
-   * Stating a component places the entry the component way — which is also how an archetype-layout
-   * wrapper starts its flip, since the wrapper's own layout is what decides for every later create.
-   */
+  /** Stating a component is the only say a caller has over the placement, and it is obeyed. */
   @Test
   public void statingAComponentMountsTheEntryUnderIt() {
     String projectId = createProject("Component Create");
@@ -132,8 +132,8 @@ public class ProjectRepositoryControllerTest {
         .body("repository.component", equalTo("payments"))
         .body("wrapperPath", equalTo("components/payments/checkout"));
 
-    // And the next create needs no component at all: the wrapper has flipped, so a lone repository
-    // becomes a component of its own name rather than landing back under an archetype directory.
+    // And the next create needs no component at all: a lone repository becomes a component of its
+    // own name.
     postRepository(projectId, null, "ledger", RepositoryArchetype.DAEMON)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
@@ -152,8 +152,8 @@ public class ProjectRepositoryControllerTest {
   // --- create: the archetype the name already states ---
 
   /**
-   * The component layout's rule, applied at creation: the NAME says the kind, so a name carrying a
-   * role suffix needs no second statement of it. This is what lets the create form stop asking.
+   * The rule applied at creation: the NAME says the kind, so a name carrying a role suffix needs no
+   * second statement of it. This is what lets the create form stop asking.
    */
   @Test
   public void anAbsentArchetypeIsReadOffTheNamesRoleSuffix() {
@@ -164,7 +164,7 @@ public class ProjectRepositoryControllerTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .body("repository.name", equalTo("payments-daemon"))
         .body("repository.archetype", equalTo("DAEMON"))
-        .body("wrapperPath", equalTo("daemons/payments-daemon"));
+        .body("wrapperPath", equalTo("components/payments-daemon/payments-daemon"));
 
     postRepository(projectId, null, "payments-javalib", null)
         .then()
@@ -205,7 +205,11 @@ public class ProjectRepositoryControllerTest {
         .body("message", containsString("-service"));
   }
 
-  /** An explicit archetype is obeyed unchanged, suffix or no suffix — the SPA still sends one. */
+  /**
+   * An explicit archetype is obeyed unchanged, suffix or no suffix — the SPA still sends one. The
+   * path is not a second opinion about it: it names the component, and the kind stored is what the
+   * caller said even where the name would have said something else.
+   */
   @Test
   public void anExplicitArchetypeOutranksWhatTheNameWouldSay() {
     String projectId = createProject("Explicit Archetype");
@@ -214,7 +218,7 @@ public class ProjectRepositoryControllerTest {
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("repository.archetype", equalTo("SERVICE"))
-        .body("wrapperPath", equalTo("services/reports-frontend"));
+        .body("wrapperPath", equalTo("components/reports-frontend/reports-frontend"));
   }
 
   // --- create: attach ---
@@ -228,7 +232,7 @@ public class ProjectRepositoryControllerTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .body("repository.name", equalTo("testing-repo"))
         .body("repository.backupUrl", equalTo(fixtureUrl))
-        .body("wrapperPath", equalTo("frontends/testing-repo"));
+        .body("wrapperPath", equalTo("components/testing-repo/testing-repo"));
   }
 
   // --- create: the request's own rules ---
@@ -247,17 +251,23 @@ public class ProjectRepositoryControllerTest {
         .body("message", containsString("exactly one"));
   }
 
+  /**
+   * A create's last step is a wrapper entry, so a kind the project is not built out of has no
+   * business being declared as one. The refusal says that rather than naming a directory, because
+   * there are no per-archetype directories left to name.
+   */
   @Test
-  public void anUnplaceableArchetypeIsRejected() {
-    String projectId = createProject("Unplaceable");
+  public void anArchetypeThatIsNotAComponentOfAProjectIsRejected() {
+    String projectId = createProject("Not A Component");
 
     postRepository(projectId, fixtureUrl, null, RepositoryArchetype.FORK)
         .then()
         .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
-        .body("message", containsString("no directory in the wrapper"));
+        .body("message", containsString("is not a component of a project"));
     postRepository(projectId, fixtureUrl, null, RepositoryArchetype.SERVICE_TEMPLATE)
         .then()
-        .statusCode(Response.Status.BAD_REQUEST.getStatusCode());
+        .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
+        .body("message", containsString("is not a component of a project"));
     // An ABSENT archetype is no longer this refusal: it is the derivation, and its own refusal when
     // the name declares nothing either — see aNameWithNoRoleSuffixAndNoArchetypeIsRefused.
   }
@@ -281,7 +291,7 @@ public class ProjectRepositoryControllerTest {
         .body("branch", equalTo("main"))
         .body("wrapperRepositoryId", notNullValue())
         .body("entries", hasSize(1))
-        .body("entries[0].path", equalTo("daemons/worker"))
+        .body("entries[0].path", equalTo("components/worker/worker"))
         .body("entries[0].outcome", equalTo("KEPT"));
   }
 
@@ -379,9 +389,9 @@ public class ProjectRepositoryControllerTest {
 
   /**
    * What the project setup page reads a stray off: {@code declared} is the wrapper's answer about
-   * one row, and it is false for exactly the rows the reconcile reports {@code UNDECLARED}. The
-   * wrapper itself is always declared — membership is not a question that applies to the project
-   * root.
+   * one row, and it is false for exactly the rows the write guard refuses. The wrapper itself is
+   * always declared — membership is not a question that applies to the project root, which is what
+   * {@code RepositoryArchetype.isComponentOfItsProject} says of {@code PROJECT}.
    */
   @Test
   public void theListingSaysWhichRowsTheWrapperDeclares() {

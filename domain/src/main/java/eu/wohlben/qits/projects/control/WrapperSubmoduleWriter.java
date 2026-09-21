@@ -28,9 +28,9 @@ import org.jboss.logging.Logger;
  *
  * <ul>
  *   <li>the amended {@code .gitmodules} blob ({@link WrapperGitmodules}), and
- *   <li>a {@code 160000} gitlink at the entry's path — {@code <directory>/<name>} or {@code
- *       components/<component>/<name>}, see {@link WrapperPath} — pinned to the child's main-branch
- *       head <em>as it is at add time</em>. Nothing here follows the child afterwards; a gitlink
+ *   <li>a {@code 160000} gitlink at the entry's path — {@code components/<component>/<name>}, the
+ *       project's one grammar, see {@link WrapperPath} — pinned to the child's main-branch head
+ *       <em>as it is at add time</em>. Nothing here follows the child afterwards; a gitlink
  *       bump is an ordinary commit somebody makes later.
  * </ul>
  *
@@ -69,34 +69,22 @@ public class WrapperSubmoduleWriter {
   @Inject GitIdentity gitIdentity;
 
   /**
-   * Adds {@code name} to {@code wrapper}'s {@code .gitmodules} under {@code archetype}'s directory —
-   * the archetype-layout form, kept for callers that state no component.
-   */
-  public String addToWrapper(
-      Repository wrapper, String name, RepositoryArchetype archetype, String childMainHeadSha) {
-    return addToWrapper(wrapper, name, archetype, null, childMainHeadSha);
-  }
-
-  /**
    * Adds {@code name} to {@code wrapper}'s {@code .gitmodules}, pinned to {@code childMainHeadSha},
    * and pushes the commit.
    *
-   * <p><b>The wrapper decides where the entry lands, not this service's preference</b> — which is
-   * what lets a project flip layouts without its create button breaking:
+   * <p><b>The entry always lands at {@code components/<component>/<name>}</b>, and the only question
+   * is what the component is:
    *
    * <ul>
-   *   <li>a stated {@code component} always places at {@code components/<component>/<name>}, so
-   *       stating one is also how an archetype-layout wrapper starts its flip;
-   *   <li>with no component stated, a wrapper that already mounts anything under {@code components/}
-   *       places at {@code components/<name>/<name>} — the one-repository component the campaign's
-   *       own map is full of;
-   *   <li>otherwise the archetype's directory, exactly as before.
+   *   <li>a stated {@code component} is taken as it stands;
+   *   <li>with none stated, the repository's own name is the component — {@code
+   *       components/<name>/<name>}, the one-repository component the estate's own map is full of.
    * </ul>
    *
    * <p>Idempotent: an entry that is already exactly this one leaves the wrapper untouched and
    * returns the path, so a retry after a failed request is a no-op rather than a second commit.
    *
-   * @param component the component to mount under, or null to let the wrapper's own layout decide
+   * @param component the component to mount under, or null to mount under the repository's own name
    * @return the path the entry is mounted at
    */
   public String addToWrapper(
@@ -105,15 +93,26 @@ public class WrapperSubmoduleWriter {
       RepositoryArchetype archetype,
       String component,
       String childMainHeadSha) {
-    if (archetype == null || !archetype.isPlaceable()) {
+    // Two refusals in one arm, because this is a create path and both are the caller's bug rather
+    // than a state to handle: an archetype that is not a component of a project cannot be a member
+    // of one, and a null archetype is a caller that said nothing where it has to say something.
+    // Note the placement no longer needs the archetype at all — directoryFor does not read it — so
+    // this guard is about membership and nothing else.
+    if (archetype == null) {
       throw new BadRequestException(
-          "Archetype " + archetype + " has no directory in the wrapper, so it cannot be a member.");
+          "A repository added to the wrapper must state an archetype; this one states none.");
+    }
+    if (!archetype.isComponentOfItsProject()) {
+      throw new BadRequestException(
+          "Archetype "
+              + archetype
+              + " is not a component of a project, so it cannot be a member of one.");
     }
     if (childMainHeadSha == null || childMainHeadSha.isBlank()) {
       throw new InternalServerErrorException(
           "Cannot add '" + name + "' to the wrapper: it has no published head to pin the gitlink to.");
     }
-    String directory = directoryFor(wrapper, name, archetype, component);
+    String directory = directoryFor(name, component);
     String path = directory + "/" + name;
     commit(
         wrapper,
@@ -124,17 +123,21 @@ public class WrapperSubmoduleWriter {
     return path;
   }
 
-  /** See {@link #addToWrapper(Repository, String, RepositoryArchetype, String, String)}. */
-  private String directoryFor(
-      Repository wrapper, String name, RepositoryArchetype archetype, String component) {
+  /**
+   * A stated component, else the repository's own name — see {@link #addToWrapper(Repository,
+   * String, RepositoryArchetype, String, String)}.
+   *
+   * <p>It reads neither the wrapper nor the archetype any more, and both removals are behaviour
+   * changes worth stating. <b>A componentless create no longer depends on what the wrapper already
+   * mounts:</b> it used to land under the archetype's directory unless the wrapper had already
+   * mounted something under {@code components/}, and it now lands at {@code
+   * components/<name>/<name>} every time. That is intended — there is one grammar, so there is
+   * nothing left for the file to vote on, and a placement that varied with the wrapper's history
+   * was only ever the flip's scaffolding.
+   */
+  private String directoryFor(String name, String component) {
     String stated = component == null || component.isBlank() ? null : component.trim();
-    if (stated != null) {
-      return WrapperPath.componentDirectory(stated);
-    }
-    if (WrapperPath.usesComponentLayout(WrapperGitmodules.entries(readGitmodules(wrapper)))) {
-      return WrapperPath.componentDirectory(name);
-    }
-    return archetype.directory();
+    return WrapperPath.componentDirectory(stated != null ? stated : name);
   }
 
   /**

@@ -11,7 +11,7 @@
  * libraries, extracted fixtures), curated together by <b>one maintainer/team</b>. They are
  * <b>not</b> an aggregation of arbitrary third-party repos, and the list of them is not inferred:
  * the project's <b>wrapper repository</b> declares it, one {@code .gitmodules} entry per component,
- * under the directory that names the component's archetype. Repositories are the domain qits exists
+ * mounted at {@code components/<component>/<name>}. Repositories are the domain qits exists
  * to manage. A configured git <b>remote is only a backup</b>: git is distributed, so a periodic
  * {@code push}/{@code pull} to {@code origin} is the cheapest disaster-recovery — the <b>local
  * clones on the qits instance are authoritative</b>, and {@code origin} is pulled from only

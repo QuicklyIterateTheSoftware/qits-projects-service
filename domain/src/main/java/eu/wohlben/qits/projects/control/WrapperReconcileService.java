@@ -22,20 +22,19 @@ import org.jboss.logging.Logger;
  * Brings a project's rows in line with its wrapper's {@code .gitmodules}.
  *
  * <p>The wrapper <b>is</b> the project's configuration, and this is what makes that true of the
- * database too: every entry gets a row, every placeable row without an entry is reported as
- * undeclared, and where an entry sits decides what kind of component it is. Importing a wrapper url
- * and running this is how a whole project is restored.
+ * database too: every entry gets a row, and every row that is a component of the project and has no
+ * entry is reported as undeclared. Importing a wrapper url and running this is how a whole project
+ * is restored.
  *
- * <p><b>Two wrapper layouts, both read here</b> ({@link WrapperPath}), because the flip from one to
- * the other is gradual and a mixed wrapper has to reconcile correctly on the way:
+ * <p><b>One path grammar, {@code components/<component>/<name>}</b> ({@link WrapperPath}), and it
+ * states which component an entry belongs to rather than what kind of thing it is:
  *
  * <ul>
- *   <li>{@code <directory>/<name>} — the directory is the archetype, exactly as before, and the row's
- *       {@code component} stays null.
- *   <li>{@code components/<component>/<name>} — the second segment is the row's {@code component}.
- *       The directory declares no archetype here, so <b>an existing row keeps the archetype it
- *       has</b>: a submodule that only moved must not be re-typed, and must certainly not be nulled.
- *       A row this reconcile <em>mints</em> takes its archetype from the name's role suffix ({@link
+ *   <li>the second segment becomes the row's {@code component}, on every pass;
+ *   <li><b>an existing row keeps the archetype it has.</b> Nothing in the path says a kind, so there
+ *       is nothing to re-derive one from, and re-typing a live platform's rows off a path is exactly
+ *       what this must never do;
+ *   <li>a row this reconcile <em>mints</em> takes its archetype from the name's role suffix ({@link
  *       eu.wohlben.qits.projects.entity.RepositoryArchetype#fromRepositoryName}), and null when the
  *       name declares none — which is the honest answer and the least destructive one, since a null
  *       archetype is never reported undeclared and so is never offered for the delete that would
@@ -50,9 +49,11 @@ import org.jboss.logging.Logger;
  * <p>Per entry, and each one is a decision this class is allowed to make on its own:
  *
  * <ol>
- *   <li>an unknown directory is <b>skipped</b> with a warning — guessing what {@code vendor/} means
- *       would be inventing taxonomy;
- *   <li>a matching row keeps its repository and gains the entry's archetype if they disagree;
+ *   <li>a path that is not {@code components/<component>/<name>} is <b>skipped</b> with a warning —
+ *       guessing what {@code vendor/x} or {@code components/a/b/c} means would be inventing
+ *       taxonomy;
+ *   <li>a matching row keeps its repository, its kind and its history, and takes the entry's
+ *       component;
  *   <li>no row, but the git host already serves a repository under that name — <b>adopted</b>, id
  *       and history intact;
  *   <li>no row and nothing served, but the entry's url resolves to a reachable backend — <b>cloned
@@ -61,8 +62,8 @@ import org.jboss.logging.Logger;
  *   <li>anything else is skipped with a warning that says what was missing.
  * </ol>
  *
- * <p><b>This reconcile deletes nothing (2026-08-26).</b> A placeable row no entry names is
- * reported {@code UNDECLARED} and left exactly as it is. Deleting a repository destroys its history
+ * <p><b>This reconcile deletes nothing (2026-08-26).</b> A row that is a component of the project
+ * and that no entry names is reported {@code UNDECLARED} and left exactly as it is. Deleting a repository destroys its history
  * on the git host now, and an edit to one file is not consent to that — so the answer names the
  * rows, and a person decides in the UI whether to delete one or put its wrapper entry back.
  *
@@ -83,19 +84,20 @@ public class WrapperReconcileService {
     ADOPTED,
     /** A row already matched and already agreed. */
     KEPT,
-    /** A row already matched; the wrapper's directory changed what kind of component it is. */
-    ARCHETYPE_UPDATED,
     /**
-     * A row already matched and kept its kind; the wrapper moved it to a different <b>component</b>
-     * — which is what every row reports the first time a wrapper flips to the component layout.
+     * A row already matched and kept its kind — it always does — and the wrapper moved it to a
+     * different <b>component</b>.
      */
     COMPONENT_UPDATED,
     /**
-     * A row already matched and agreed about its archetype; its <b>backup target</b> was wrong or
-     * missing and now names the forge twin the wrapper implies.
+     * A row already matched and sat in the component the wrapper names; its <b>backup target</b>
+     * was wrong or missing and now names the forge twin the wrapper implies.
      */
     SYNC_TARGET_UPDATED,
-    /** A placeable row no entry matched: nothing was done to it, and somebody has to decide. */
+    /**
+     * A row that is a component of its project and that no entry matched: nothing was done to it,
+     * and somebody has to decide.
+     */
     UNDECLARED,
     /** Nothing could be decided — see the warning. */
     SKIPPED
@@ -119,11 +121,11 @@ public class WrapperReconcileService {
    * @param path the wrapper path this is about, or null when the line is not about an entry
    * @param name the addressable name, which is what {@code ../<name>.git} resolves to
    * @param repositoryId the repository the entry now maps to, or null when there is none
-   * @param archetype the archetype the row now carries — decided by the entry's directory under the
-   *     archetype layout, preserved from the row under the component layout, and the row's own when
+   * @param archetype the archetype the row now carries — preserved from the row for one that
+   *     already existed, read off the name for one this reconcile minted, and the row's own when
    *     the line is about a row the wrapper does not name
-   * @param component the component the entry's path names, or null for an entry still mounted under
-   *     an archetype directory
+   * @param component the component the entry's path names, or null when the line is not about an
+   *     entry
    * @param warning why an outcome is what it is, when the outcome does not say it; else null
    */
   public record EntryOutcome(
@@ -228,6 +230,9 @@ public class WrapperReconcileService {
     String path = entry.path();
     WrapperPath parsed = WrapperPath.parse(path);
     if (parsed == null) {
+      // One arm for every path the grammar refuses — a retired archetype directory, a path with
+      // nothing under the component, a deeper tree, a bare name. There is no second grammar to try
+      // them against any more, so the reason a skip states is the grammar itself.
       return new EntryOutcome(
           path,
           entry.name(),
@@ -235,28 +240,14 @@ public class WrapperReconcileService {
           null,
           null,
           Outcome.SKIPPED,
-          "A component's path must be <directory>/<name> or components/<component>/<name>; '"
+          "'"
               + path
-              + "' is not.");
+              + "' is not '"
+              + WrapperPath.COMPONENTS_DIRECTORY
+              + "/<component>/<name>', so there is no component and no name to read out of it.");
     }
     String name = parsed.name();
     String component = parsed.component();
-    if (!parsed.isComponentLayout() && parsed.directoryArchetype() == null) {
-      return new EntryOutcome(
-          path,
-          name,
-          null,
-          null,
-          null,
-          Outcome.SKIPPED,
-          "'"
-              + parsed.directory()
-              + "' is not one of this project's component directories "
-              + RepositoryArchetype.placeableDirectories()
-              + " and is not '"
-              + WrapperPath.COMPONENTS_DIRECTORY
-              + "/<component>', so there is no archetype to give it.");
-    }
 
     SyncTarget syncTarget = syncTargetFor(project, entry);
     Repository existing = match(project, entry, name);
@@ -266,11 +257,9 @@ public class WrapperReconcileService {
     }
 
     // A row nothing matched is one this reconcile is about to mint, and only for one of those is
-    // the name allowed to decide the kind — see the class doc.
-    RepositoryArchetype archetype =
-        parsed.isComponentLayout()
-            ? RepositoryArchetype.fromRepositoryName(name)
-            : parsed.directoryArchetype();
+    // the name allowed to decide the kind — an existing row keeps what it carries, see the class
+    // doc. Null when the name declares no role, stored as the null it is rather than as a guess.
+    RepositoryArchetype archetype = RepositoryArchetype.fromRepositoryName(name);
 
     // The host already serves it under the entry name as its storage id — a host seeded before this
     // service existed, where the two coordinates happen to coincide (a name is a valid opaque id).
@@ -368,22 +357,21 @@ public class WrapperReconcileService {
 
   /**
    * The row kept, with the wrapper having the last word on where it is backed up to (the entry's
-   * url, folded against the wrapper's own), on which component it belongs to, and — under the
-   * archetype layout only — on what kind of component it is. Its alias is re-asserted so {@code
-   * ../<name>.git} resolves.
+   * url, folded against the wrapper's own) and on which component it belongs to. Its alias is
+   * re-asserted so {@code ../<name>.git} resolves.
    *
-   * <p><b>Under the component layout the archetype is not touched at all.</b> The directory says
-   * nothing about kind there, so re-deriving one would rewrite a fact the wrapper no longer states —
-   * which is exactly what the flip must not do to a live platform's rows.
+   * <p><b>The archetype is not touched at all.</b> A path states a component and never a kind, so
+   * there is nothing here to re-derive one from — and a live platform's rows must not be re-typed by
+   * a reconcile. A repository whose kind is wrong is corrected by renaming it, which is the one
+   * place the kind is re-read ({@code RepositoryService.rename}).
    *
-   * <p>A row can need several corrections at once. All are applied; the outcome reports the biggest
-   * statement about the repository, because a client shows one label per row: an archetype flip
-   * outranks a component move, which outranks a retarget.
+   * <p>A row can need both corrections at once. Both are applied; the outcome reports the bigger
+   * statement about the repository, because a client shows one label per row: a component move
+   * outranks a retarget.
    */
   private EntryOutcome adjustExisting(
       Project project, Repository existing, WrapperPath parsed, SyncTarget syncTarget) {
     String name = parsed.name();
-    RepositoryArchetype before = existing.archetype;
     String beforeComponent = existing.component;
     RepositoryArchetype[] after = new RepositoryArchetype[1];
     boolean[] retargeted = new boolean[1];
@@ -393,10 +381,6 @@ public class WrapperReconcileService {
                 () -> {
                   Repository repo = repositoryService.get(existing.id);
                   repositoryNameRepository.ensureAlias(project, name, repo);
-                  if (!parsed.isComponentLayout()
-                      && repo.archetype != parsed.directoryArchetype()) {
-                    repo.archetype = parsed.directoryArchetype();
-                  }
                   repo.component = parsed.component();
                   if (syncTarget.url() != null && !syncTarget.url().equals(repo.url)) {
                     LOG.infof(
@@ -406,14 +390,12 @@ public class WrapperReconcileService {
                     retargeted[0] = true;
                   }
                   after[0] = repo.archetype;
-                  return recordConfigDisagreement(repo, parsed, repo.archetype);
+                  return recordConfigDisagreement(repo, parsed);
                 });
     Outcome outcome =
-        before != after[0]
-            ? Outcome.ARCHETYPE_UPDATED
-            : !java.util.Objects.equals(beforeComponent, parsed.component())
-                ? Outcome.COMPONENT_UPDATED
-                : retargeted[0] ? Outcome.SYNC_TARGET_UPDATED : Outcome.KEPT;
+        !java.util.Objects.equals(beforeComponent, parsed.component())
+            ? Outcome.COMPONENT_UPDATED
+            : retargeted[0] ? Outcome.SYNC_TARGET_UPDATED : Outcome.KEPT;
     return new EntryOutcome(
         parsed.path(),
         name,
@@ -442,11 +424,15 @@ public class WrapperReconcileService {
    * Best effort: a mirror that is not there yet simply has nothing to read.
    *
    * <p>A row with <b>no</b> archetype has nothing to disagree with, so nothing is recorded and
-   * nothing is cleared — that is a component-layout row whose name declares no role, and the
-   * committed value is the only statement anyone has made about it.
+   * nothing is cleared — that is a row whose name declares no role, and the committed value is the
+   * only statement anyone has made about it.
+   *
+   * <p>The archetype compared against is the row's own, which is also the only one there is: the
+   * path states a component and never a kind, so it is no longer a party to this disagreement and
+   * the third parameter that used to carry it is gone.
    */
-  private String recordConfigDisagreement(
-      Repository repo, WrapperPath parsed, RepositoryArchetype archetype) {
+  private String recordConfigDisagreement(Repository repo, WrapperPath parsed) {
+    RepositoryArchetype archetype = repo.archetype;
     if (archetype == null) {
       return null;
     }
@@ -467,21 +453,14 @@ public class WrapperReconcileService {
       return null;
     }
     String warning =
-        parsed.isComponentLayout()
-            ? "The committed repository config declares archetype "
-                + committed
-                + ", but this repository is registered as "
-                + archetype
-                + " and the wrapper mounts it at '"
-                + parsed.path()
-                + "', which states a component rather than a kind. The row wins; drop the committed"
-                + " value, or rename the repository to carry the role suffix it means."
-            : "The committed repository config declares archetype "
-                + committed
-                + ", but the wrapper mounts this repository under '"
-                + archetype.directory()
-                + "'. The wrapper wins; move the submodule to change the archetype, or drop the"
-                + " committed value.";
+        "The committed repository config declares archetype "
+            + committed
+            + ", but this repository is registered as "
+            + archetype
+            + " and the wrapper mounts it at '"
+            + parsed.path()
+            + "', which states a component rather than a kind. The row wins; drop the committed"
+            + " value, or rename the repository to carry the role suffix it means.";
     repo.configWarning = warning;
     return warning;
   }
@@ -564,19 +543,28 @@ public class WrapperReconcileService {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * Reports every placeable row of the project that no wrapper entry claimed, and <b>changes
-   * nothing</b>. Unplaceable rows ({@code FORK}, {@code SERVICE_TEMPLATE}) and the wrapper itself
-   * are left out — they were never expected in the manifest.
+   * Reports every row of the project that is a component of it and that no wrapper entry claimed,
+   * and <b>changes nothing</b>. A row whose archetype is not a component of its project ({@code
+   * FORK}, {@code SERVICE_TEMPLATE}) and the wrapper itself are left out — they were never expected
+   * in the manifest.
    *
-   * <p>A row with <b>no</b> archetype is left out too, and that is the whole reason the component
-   * layout stores null rather than a guess: an UNDECLARED line is what offers a person the delete
-   * that destroys the repository on the git host, and a row nobody has said the kind of must never
-   * be put in front of that decision on the strength of a guess.
+   * <p>A row with <b>no</b> archetype is left out too, and that is the whole reason a minted row
+   * stores null rather than a guess: an UNDECLARED line is what offers a person the delete that
+   * destroys the repository on the git host, and a row nobody has said the kind of must never be
+   * put in front of that decision on the strength of a guess.
+   *
+   * <p><b>That null exclusion is deliberately the opposite of what the other three membership sites
+   * do</b>, and the asymmetry is the point rather than an oversight. {@code
+   * RepositoryService.requireWrapperMembership}, {@code RepositoryService.removeFromWrapper} and the
+   * listing's {@code declared} flag all treat a null archetype as a member, because the worst thing
+   * each of them can do to such a row is refuse a write, take a gitlink out of a file, or draw a
+   * badge. This one's consequence is a person being offered an irreversible delete, so it is the one
+   * site where "we do not know what this is" has to mean "leave it alone".
    */
   private List<EntryOutcome> reportUndeclared(Project project, Set<String> matchedRepoIds) {
     return repositoryRepository.find("project.id", project.id).list().stream()
         .filter(repo -> !matchedRepoIds.contains(repo.id))
-        .filter(repo -> repo.archetype != null && repo.archetype.isPlaceable())
+        .filter(repo -> repo.archetype != null && repo.archetype.isComponentOfItsProject())
         .map(
             stray ->
                 new EntryOutcome(

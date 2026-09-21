@@ -266,8 +266,11 @@ public class ProjectController {
        * @param declared whether the wrapper's {@code .gitmodules} names this repository — false is
        *     a row that is not part of the project any more, which the reconcile reports {@code
        *     UNDECLARED} and never deletes on its own. True for everything membership does not apply
-       *     to: the wrapper itself, an unplaceable archetype, a project with no wrapper, and a
-       *     manifest that is unreadable or declares nothing.
+       *     to: the wrapper itself, an archetype a repository is not a component of its project
+       *     with ({@code FORK}, {@code SERVICE_TEMPLATE}), a project with no wrapper, and a
+       *     manifest that is unreadable or declares nothing. A row with <b>no</b> archetype is
+       *     judged like any other member, exactly as the write guard judges it — an honest {@code
+       *     declared: false} is what a row nobody has stated the kind of should read as.
        */
       public record Entry(
           RepositoryDto repository,
@@ -289,9 +292,11 @@ public class ProjectController {
       @PathParam("projectId") String projectId) {
     var repos = projectService.getRepositories(projectId);
     var wrapper = wrapperReconcileService.view(projectId);
-    // The same reading of membership the write guard and the reconcile take, off the view already
-    // computed for the response: a manifest with entries decides, and anything else declares
-    // everything. A second spelling of the rule here is how the page and the guard would drift.
+    // The same reading of membership the write guard takes, off the view already computed for the
+    // response: a manifest with entries decides, and anything else declares everything. A second
+    // spelling of the rule here is how the page and the guard would drift — including the null
+    // archetype, which is a member here exactly as it is there. (The reconcile's undeclared report
+    // is the one site that reads null the other way, because its line offers a delete.)
     Set<String> declaredIds =
         wrapper == null
             ? Set.of()
@@ -307,8 +312,7 @@ public class ProjectController {
                     new ListProjectRepositoriesRequest.Response.Entry(
                         repositoryMapper.toDto(r),
                         !manifestDecides
-                            || r.archetype == null
-                            || !r.archetype.isPlaceable()
+                            || (r.archetype != null && !r.archetype.isComponentOfItsProject())
                             || r.id.equals(wrapper.repositoryId())
                             || declaredIds.contains(r.id)))
             .toList();
@@ -426,9 +430,10 @@ public class ProjectController {
   @APIResponse(
       responseCode = "400",
       description =
-          "Neither or both of url/name, an unplaceable archetype, a name that carries no role"
-              + " suffix when no archetype is stated, a name already taken in the project, or a"
-              + " wrapper commit the git host refused")
+          "Neither or both of url/name, an archetype that is not a component of a project"
+              + " (PROJECT, SERVICE_TEMPLATE, FORK), a name that carries no role suffix when no"
+              + " archetype is stated, a name already taken in the project, or a wrapper commit the"
+              + " git host refused")
   public CreateProjectRepositoryRequest.Response createRepository(
       @PathParam("projectId") String projectId, @Valid CreateProjectRepositoryRequest request) {
     var created =
@@ -557,8 +562,9 @@ public class ProjectController {
       description =
           "The wrapper repository is the project's configuration: every submodule entry gets a"
               + " repository (adopted when the git host already serves it, cloned from the entry's"
-              + " backend otherwise), the directory an entry sits under decides its archetype, and"
-              + " a repository no entry names is reported UNDECLARED and left alone. This never"
+              + " backend otherwise), an entry's path (components/<component>/<name>) says which"
+              + " component it belongs to while its name says what kind of thing it is, and a"
+              + " repository no entry names is reported UNDECLARED and left alone. This never"
               + " deletes: a deleted repository loses its history on the git host, so the answer"
               + " names the strays and a person decides. Idempotent, and the way a project imported"
               + " from a wrapper url is materialized.")

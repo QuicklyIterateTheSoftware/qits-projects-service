@@ -1165,7 +1165,6 @@ components:
       - CREATED
       - ADOPTED
       - KEPT
-      - ARCHETYPE_UPDATED
       - COMPONENT_UPDATED
       - SYNC_TARGET_UPDATED
       - UNDECLARED
@@ -3762,9 +3761,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Response36"
         "400":
-          description: "Neither or both of url/name, an unplaceable archetype, a name\
-            \ that carries no role suffix when no archetype is stated, a name already\
-            \ taken in the project, or a wrapper commit the git host refused"
+          description: "Neither or both of url/name, an archetype that is not a component\
+            \ of a project (PROJECT, SERVICE_TEMPLATE, FORK), a name that carries\
+            \ no role suffix when no archetype is stated, a name already taken in\
+            \ the project, or a wrapper commit the git host refused"
         "401":
           description: Not Authorized
         "403":
@@ -3888,11 +3888,12 @@ paths:
       summary: Bring a project's repositories in line with its wrapper's .gitmodules
       description: "The wrapper repository is the project's configuration: every submodule\
         \ entry gets a repository (adopted when the git host already serves it, cloned\
-        \ from the entry's backend otherwise), the directory an entry sits under decides\
-        \ its archetype, and a repository no entry names is reported UNDECLARED and\
-        \ left alone. This never deletes: a deleted repository loses its history on\
-        \ the git host, so the answer names the strays and a person decides. Idempotent,\
-        \ and the way a project imported from a wrapper url is materialized."
+        \ from the entry's backend otherwise), an entry's path (components/<component>/<name>)\
+        \ says which component it belongs to while its name says what kind of thing\
+        \ it is, and a repository no entry names is reported UNDECLARED and left alone.\
+        \ This never deletes: a deleted repository loses its history on the git host,\
+        \ so the answer names the strays and a person decides. Idempotent, and the\
+        \ way a project imported from a wrapper url is materialized."
       parameters:
       - name: projectId
         in: path
