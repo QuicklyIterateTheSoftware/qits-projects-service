@@ -113,10 +113,18 @@ public class TicketController {
     public record Response(TicketDto ticket) {}
   }
 
+  /**
+   * Editing a ticket takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * update_ticket} MCP tool already performs this write for an agent. The project is resolved from
+   * the ticket before the write, so an id naming nothing is the 404 it always was — see {@link
+   * EntitiesAgentAccess}.
+   */
   @PUT
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public UpdateTicketRequest.Response update(
       @PathParam("id") String id, @Valid UpdateTicketRequest request) {
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
     var ticket =
         ticketService.update(
             id,
@@ -145,10 +153,18 @@ public class TicketController {
     public record Response(TicketDto ticket) {}
   }
 
+  /**
+   * Moving a ticket takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * transition_ticket} MCP tool already performs this write for an agent, adjacency rule and all.
+   * Unlike an epic's transition, this one resolves nothing and starts a phase the agent is itself
+   * the subject of. See {@link EntitiesAgentAccess}.
+   */
   @POST
   @Path("/{id}/transition")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public TransitionTicketRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionTicketRequest request) {
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
     String changedBy = EntitiesPrincipal.changedBy(identity);
     var ticket = ticketService.transition(id, request.target(), changedBy);
     hints.fire(ticket.projectId);
@@ -206,13 +222,21 @@ public class TicketController {
     public record Response(TicketCommentDto comment) {}
   }
 
+  /**
+   * Commenting takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * add_ticket_comment} MCP tool already performs this write for an agent. The ticket's project is
+   * resolved before the write and reused for the hint — see {@link EntitiesAgentAccess}.
+   */
   @POST
   @Path("/{ticketId}/comments")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateTicketCommentRequest.Response createComment(
       @PathParam("ticketId") String ticketId, @Valid CreateTicketCommentRequest request) {
+    String projectId = hints.projectOfTicket(ticketId); // 404 if the ticket does not exist
+    EntitiesAgentAccess.requireProject(identity, projectId);
     var comment =
         ticketService.addComment(ticketId, request.body(), EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfTicket(ticketId));
+    hints.fire(projectId);
     return new CreateTicketCommentRequest.Response(commentMapper.toDto(comment));
   }
 }

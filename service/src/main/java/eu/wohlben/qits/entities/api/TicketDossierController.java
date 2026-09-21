@@ -50,6 +50,12 @@ import jakarta.ws.rs.core.MediaType;
  * and a ticket has no refining route. An asset upload against a ticket-owned page is therefore a 404
  * because nothing serves that path, rather than a refusal somebody has to maintain.
  *
+ * <p><b>All four writes take {@code qits:agent}, bound to the agent's own project</b>, for the
+ * reason and by the mechanism {@link DossierController} states: {@code put_dossier_page}, {@code
+ * move_dossier_page} and {@code remove_dossier_page} are owner-agnostic MCP tools and already serve
+ * every one of these writes to an agent. The ticket's project is resolved before each write, which
+ * is also the hint's argument — see {@link EntitiesAgentAccess}.
+ *
  * <p>A page is addressed by <b>its slug or its id</b>, either one. The SPA sends the slug — it is
  * what the URL it links carries — and {@code DossierController}'s epic routes are addressed by id;
  * accepting both here means the two halves answer the same request rather than the client having to
@@ -83,8 +89,10 @@ public class TicketDossierController {
   }
 
   @POST
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierPageDto create(@PathParam("ticketId") String ticketId, @Valid NewPage request) {
-    var ticket = ticketService.get(ticketId);
+    var ticket = ticketService.get(ticketId); // 404 if the ticket does not exist
+    EntitiesAgentAccess.requireProject(identity, ticket.projectId);
     var page =
         dossier.create(
             owner(ticketId),
@@ -109,10 +117,13 @@ public class TicketDossierController {
    */
   @PUT
   @Path("/{slug}")
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierPageDto write(
       @PathParam("ticketId") String ticketId,
       @PathParam("slug") String slug,
       WritePage request) {
+    String projectId = hints.projectOfTicket(ticketId); // 404 if the ticket does not exist
+    EntitiesAgentAccess.requireProject(identity, projectId);
     DossierPage page = requireOfTicket(ticketId, slug);
     var written =
         dossier.update(
@@ -121,28 +132,33 @@ public class TicketDossierController {
             request.body(),
             request.version(),
             EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfTicket(ticketId));
+    hints.fire(projectId);
     return mapper.toDto(written);
   }
 
   @POST
   @Path("/{slug}/move")
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierPageDto move(
       @PathParam("ticketId") String ticketId,
       @PathParam("slug") String slug,
       MovePage request) {
+    String projectId = hints.projectOfTicket(ticketId); // 404 if the ticket does not exist
+    EntitiesAgentAccess.requireProject(identity, projectId);
     DossierPage page = requireOfTicket(ticketId, slug);
     var moved = dossier.move(page.id, request.position(), EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfTicket(ticketId));
+    hints.fire(projectId);
     return mapper.toDto(moved);
   }
 
   @DELETE
   @Path("/{slug}")
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DeletePageResponse delete(
       @PathParam("ticketId") String ticketId, @PathParam("slug") String slug) {
-    DossierPage page = requireOfTicket(ticketId, slug);
     String projectId = hints.projectOfTicket(ticketId);
+    EntitiesAgentAccess.requireProject(identity, projectId);
+    DossierPage page = requireOfTicket(ticketId, slug);
     dossier.delete(page.id, EntitiesPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new DeletePageResponse(true);

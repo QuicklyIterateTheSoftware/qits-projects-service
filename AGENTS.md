@@ -487,6 +487,22 @@ write** (user ruling, 2026-09-12):
   rather than on the change (an OOM-killed native-image step, a sibling service redeployed so
   buildkit cannot resolve its name), and whoever is watching a request should be able to re-ask the
   question. Approve and decline are the sign-off and stay `qits:admin` alone; that is the line.
+- **The entity write doors take it, and the MCP tool surface is the test.** A write route in
+  `entities/api` admits `qits:agent` exactly where the `repository` MCP server already exposes a
+  tool performing that same write — that server serves an agent with **no credential at all**, so
+  refusing at the REST door what is handed over one package away was an inconsistency rather than a
+  boundary. Bound by the token's `project` claim against the project of the row written, resolved
+  **before** the write so an id naming nothing still answers 404; `api/EntitiesAgentAccess` is the
+  one helper and `entities.error.ForbiddenException` the 403. The granted set is epic create and
+  update, feature create/update/delete, task create/update/delete, ticket create, update, transition
+  and comment create, comment update, both dossiers' four writes each, `inline_figure`'s door, and
+  `POST /entities/transition` — which binds **all or nothing** over every id and every parent in the
+  batch, resolved in one `EntityCatalogService.byIds` read, with an unresolvable id falling through
+  to the write's own 400 rather than becoming a 403. **Still `qits:admin` alone:**
+  `EpicController.transition` and `delete` (freezing or resolving a plan is a decision about scope,
+  and `EpicMcpTools` deliberately exposes no lifecycle move), `TicketController.delete` and
+  `TicketCommentController.delete` (deleting is on neither surface: an agent that could delete what
+  it disagrees with could erase the record of its own mistake).
 - **The two control sockets take it, bound to the agent's own container** (a socket is a control
   channel, not a read): `/projects/daemon/{projectId}` wants the token's `project`, and
   `/projects/refinement-daemon/{id}` wants the token's `sub` to be that row's commissioned client.

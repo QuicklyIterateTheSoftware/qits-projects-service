@@ -86,10 +86,18 @@ public class FeatureController {
     public record Response(FeatureDto feature) {}
   }
 
+  /**
+   * Editing a feature takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * update_feature} MCP tool already performs this write for an agent. The project is resolved from
+   * the feature before the write, so an id naming nothing is the 404 it always was — see {@link
+   * EntitiesAgentAccess}.
+   */
   @PUT
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public UpdateFeatureRequest.Response update(
       @PathParam("id") String id, @Valid UpdateFeatureRequest request) {
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfFeature(id));
     var feature =
         featureService.update(
             id,
@@ -109,11 +117,20 @@ public class FeatureController {
     public record Response(boolean success) {}
   }
 
+  /**
+   * Deleting a feature takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * remove_feature} MCP tool already performs this write for an agent. This is the one delete on
+   * this surface a tool serves, which is why it is granted where the epic's, the ticket's and the
+   * comment's are not — see {@link EntitiesAgentAccess}.
+   */
   @DELETE
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public DeleteFeatureRequest.Response delete(@PathParam("id") String id) {
-    // Resolved before the delete — afterwards there is no row to walk up from.
+    // Resolved before the delete — afterwards there is no row to walk up from, and the binding
+    // needs the project while the row still exists.
     String projectId = hints.projectOfFeature(id);
+    EntitiesAgentAccess.requireProject(identity, projectId);
     featureService.delete(id, EntitiesPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new DeleteFeatureRequest.Response(true);
@@ -154,8 +171,16 @@ public class FeatureController {
     public record Response(TaskDto task) {}
   }
 
+  /**
+   * Adding a task takes {@code qits:agent}, bound to the agent's own project: the {@code add_task}
+   * MCP tool already performs this write for an agent. The binding is against the feature's epic's
+   * project, which this route resolves for the repository check anyway — the same value {@code
+   * EpicsTopicHints.projectOfFeature} answers, reached through the lookups already in hand rather
+   * than by asking twice. See {@link EntitiesAgentAccess}.
+   */
   @POST
   @Path("/{featureId}/tasks")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateTaskRequest.Response createTask(
       @PathParam("featureId") String featureId, @Valid CreateTaskRequest request) {
     // Validate the repository exists (404) AND belongs to the feature's epic's project — a task
@@ -163,6 +188,7 @@ public class FeatureController {
     // not bind a repository from an unrelated project.
     var feature = featureService.get(featureId);
     var epic = epicService.get(feature.parentId());
+    EntitiesAgentAccess.requireProject(identity, epic.projectId);
     Repository repo = repositoryService.get(request.repositoryId()); // 404 if absent
     if (repo.project == null || !epic.projectId.equals(repo.project.id)) {
       throw new BadRequestException(

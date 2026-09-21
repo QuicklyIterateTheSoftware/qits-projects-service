@@ -81,10 +81,18 @@ public class EpicController {
     public record Response(EpicDto epic) {}
   }
 
+  /**
+   * Editing an epic's words takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * update_epic} MCP tool already performs this write for an agent. The project is resolved from the
+   * epic before the write, so an id naming nothing is the 404 it always was — see {@link
+   * EntitiesAgentAccess}.
+   */
   @PUT
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public UpdateEpicRequest.Response update(
       @PathParam("id") String id, @Valid UpdateEpicRequest request) {
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfEpic(id));
     var epic =
         epicService.update(
             id, request.title(), request.description(), EntitiesPrincipal.changedBy(identity));
@@ -168,10 +176,18 @@ public class EpicController {
     public record Response(FeatureDto feature) {}
   }
 
+  /**
+   * Adding a feature takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * add_feature} MCP tool already performs this write for an agent. The epic's project is resolved
+   * before the write and reused for the hint — see {@link EntitiesAgentAccess}.
+   */
   @POST
   @Path("/{epicId}/features")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateFeatureRequest.Response createFeature(
       @PathParam("epicId") String epicId, @Valid CreateFeatureRequest request) {
+    String projectId = hints.projectOfEpic(epicId); // 404 if the epic does not exist
+    EntitiesAgentAccess.requireProject(identity, projectId);
     var feature =
         featureService.create(
             epicId,
@@ -179,7 +195,7 @@ public class EpicController {
             request.description(),
             request.dependsOnFeatureId(),
             EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfEpic(epicId));
+    hints.fire(projectId);
     return new CreateFeatureRequest.Response(
         qualifiedIds.qualify(workEntityMapper.toFeatureDto(feature.entity(), feature.parentId())));
   }

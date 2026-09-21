@@ -69,10 +69,18 @@ public class TaskController {
     public record Response(TaskDto task) {}
   }
 
+  /**
+   * Editing a task takes {@code qits:agent}, bound to the agent's own project: {@code update_task}
+   * and {@code mark_task_implemented} both perform this write for an agent over the MCP surface. The
+   * project is resolved from the task before the write, so an id naming nothing is the 404 it always
+   * was — see {@link EntitiesAgentAccess}.
+   */
   @PUT
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public UpdateTaskRequest.Response update(
       @PathParam("id") String id, @Valid UpdateTaskRequest request) {
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfTask(id));
     var task =
         taskService.update(
             id,
@@ -92,11 +100,18 @@ public class TaskController {
     public record Response(boolean success) {}
   }
 
+  /**
+   * Deleting a task takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * remove_task} MCP tool already performs this write for an agent. See {@link EntitiesAgentAccess}.
+   */
   @DELETE
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public DeleteTaskRequest.Response delete(@PathParam("id") String id) {
-    // Resolved before the delete — afterwards there is no row to walk up from.
+    // Resolved before the delete — afterwards there is no row to walk up from, and the binding
+    // needs the project while the row still exists.
     String projectId = hints.projectOfTask(id);
+    EntitiesAgentAccess.requireProject(identity, projectId);
     taskService.delete(id, EntitiesPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new DeleteTaskRequest.Response(true);

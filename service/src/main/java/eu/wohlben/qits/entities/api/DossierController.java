@@ -40,6 +40,13 @@ import java.util.List;
  * decides is {@code DossierService}'s, so the pair cannot drift on a rule; what differs is only what
  * a path parameter names and which SSE topic a write announces on.
  *
+ * <p><b>All four writes here take {@code qits:agent}, bound to the agent's own project.</b> {@code
+ * put_dossier_page}, {@code move_dossier_page} and {@code remove_dossier_page} already perform every
+ * one of them for an agent over the MCP surface — a dossier is largely what a refining agent writes
+ * — so the REST door admits what the tool door hands over anyway. The epic's project is resolved
+ * before each write, which is also the {@code hints.fire} argument, so the binding costs no extra
+ * lookup; see {@link EntitiesAgentAccess} for the rule and for why a forwarded header is refused.
+ *
  * <p><b>A frozen epic is readable and unwritable.</b> Reads succeed in every status — implementation
  * reads this months later — and every mutation is refused by the service's own {@code REFINING}
  * guard, the same one features and tasks obey. The tab renders read-only off that.
@@ -83,14 +90,17 @@ public class DossierController {
   }
 
   @POST
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierPageDto create(@PathParam("epicId") String epicId, @Valid NewPage request) {
+    String projectId = hints.projectOfEpic(epicId); // 404 if the epic does not exist
+    EntitiesAgentAccess.requireProject(identity, projectId);
     var page =
         dossier.create(
             DossierOwner.epic(epicId),
             request.title(),
             request.body(),
             EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfEpic(epicId));
+    hints.fire(projectId);
     return mapper.toDto(page);
   }
 
@@ -107,10 +117,13 @@ public class DossierController {
    */
   @PUT
   @Path("/{pageId}")
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierPageDto write(
       @PathParam("epicId") String epicId,
       @PathParam("pageId") String pageId,
       WritePage request) {
+    String projectId = hints.projectOfEpic(epicId); // 404 if the epic does not exist
+    EntitiesAgentAccess.requireProject(identity, projectId);
     requireOfEpic(epicId, pageId);
     var page =
         dossier.update(
@@ -119,28 +132,33 @@ public class DossierController {
             request.body(),
             request.version(),
             EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfEpic(epicId));
+    hints.fire(projectId);
     return mapper.toDto(page);
   }
 
   @POST
   @Path("/{pageId}/move")
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierPageDto move(
       @PathParam("epicId") String epicId,
       @PathParam("pageId") String pageId,
       MovePage request) {
+    String projectId = hints.projectOfEpic(epicId); // 404 if the epic does not exist
+    EntitiesAgentAccess.requireProject(identity, projectId);
     requireOfEpic(epicId, pageId);
     var page = dossier.move(pageId, request.position(), EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfEpic(epicId));
+    hints.fire(projectId);
     return mapper.toDto(page);
   }
 
   @DELETE
   @Path("/{pageId}")
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DeletePageResponse delete(
       @PathParam("epicId") String epicId, @PathParam("pageId") String pageId) {
-    requireOfEpic(epicId, pageId);
     String projectId = hints.projectOfEpic(epicId);
+    EntitiesAgentAccess.requireProject(identity, projectId);
+    requireOfEpic(epicId, pageId);
     dossier.delete(pageId, EntitiesPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new DeletePageResponse(true);

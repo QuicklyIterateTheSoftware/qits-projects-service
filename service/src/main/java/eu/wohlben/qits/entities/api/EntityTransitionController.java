@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.api;
 
+import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
@@ -36,10 +37,18 @@ import java.util.Set;
  * quarkus.quinoa.ignored-path-prefixes} needs no line: that key already carries the one prefix, and
  * the SPA fallback cannot swallow a path a real route answers.
  *
- * <p><b>{@code qits:admin} at class level and nothing else.</b> A transition is a write, and the
- * user's ruling is that an agent keeps every read and gains no write; the five writes an agent does
- * reach are the release-request ones, each bound to the agent's own work. There is nothing here to
- * bind a re-shaping of a project's whole plan to.
+ * <p><b>{@code qits:admin} at class level; the transition itself also takes {@code qits:agent},
+ * bound to the agent's own project.</b> The test for admitting an agent to a write on this surface
+ * is whether the {@code repository} MCP server already exposes a tool performing it — and it does:
+ * {@code transition_entities} on {@code EntityMcpTools} serves this very write to the very same
+ * agent with no credential at all. Refusing it at the REST door while handing it over one package
+ * away was an inconsistency, not a boundary, and this is the door that had it. What binds it is the
+ * token's {@code project} claim, against every project the batch touches — see {@link
+ * EntitiesAgentAccess} and {@link #transition} for the all-or-nothing resolution.
+ *
+ * <p>The grant changes nothing about what a transition <em>is</em>: it still does not run the epic's
+ * or the ticket's adjacency rules, so it remains the one door a status may move sideways through,
+ * for an admin and an agent alike.
  *
  * <p><b>The change hints are fired here, after the service returns</b>, never inside the write. That
  * write is a {@code WritePatience} body whose content re-runs on a retry, so an SSE hint in it would
@@ -54,6 +63,13 @@ import java.util.Set;
 public class EntityTransitionController {
 
   @Inject EntityTransitionService transitions;
+
+  /**
+   * The read side of the transition, used here for one thing only: resolving the projects of the
+   * entities a request names, before the write, so a bound agent can be refused a batch that reaches
+   * outside its own project. One bulk read, never one per entry.
+   */
+  @Inject EntityCatalogService catalog;
 
   @Inject SecurityIdentity identity;
 
@@ -82,10 +98,21 @@ public class EntityTransitionController {
    * {@link EntitiesExceptionMapper} path. An id that names nothing — in the map or as a parent — is one
    * of those violations and deliberately not a 404: a caller with three wrong ids should be told
    * about three wrong ids once.
+   *
+   * <p><b>A bound agent is judged on the whole batch, before any of it is written.</b> Every key of
+   * the map, and every parent it names, is resolved in ONE {@link EntityCatalogService#byIds} read,
+   * and a project outside the token's claim refuses the request entirely — all or nothing, because a
+   * batch is one post-state and half of one is not a smaller version of it. <b>An id that resolves
+   * to nothing is not a refusal here</b>: it is left to the write, which reports it beside every other
+   * violation in the 400 described above — the documented contract for an id naming nothing, and a
+   * 403 in its place would answer a different question than the one that was asked. The resolution
+   * runs only for a caller the binding applies to, so an admin pays no extra query.
    */
   @POST
   @Path("/transition")
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public Map<String, TransitionedEntity> transition(Map<String, EntityTransition> request) {
+    requireAgentProjects(request);
     Map<String, TransitionedEntity> written =
         transitions.transition(request, EntitiesPrincipal.changedBy(identity));
 
@@ -100,5 +127,27 @@ public class EntityTransitionController {
     // One slug lookup for the whole batch, and the map keeps its keys. The service leaves
     // qualifiedId null because epics cannot see domain; this is where it is filled.
     return qualifiedIds.qualifyEntities(written);
+  }
+
+  /**
+   * Refuses a bound agent the whole batch unless every project it touches is the token's.
+   *
+   * <p>The parents are collected as well as the keys because a membership edge is where a batch
+   * reaches out of itself: an entry may hang a row it does own under a parent in somebody else's
+   * project, which is a write to that project's tree whatever the map's keys say.
+   */
+  private void requireAgentProjects(Map<String, EntityTransition> request) {
+    if (request == null || request.isEmpty() || !EntitiesAgentAccess.bound(identity)) {
+      return;
+    }
+    Set<String> named = new LinkedHashSet<>(request.keySet());
+    for (EntityTransition entry : request.values()) {
+      if (entry != null && entry.parent() != null) {
+        named.add(entry.parent());
+      }
+    }
+    for (TransitionedEntity resolved : catalog.byIds(named).values()) {
+      EntitiesAgentAccess.requireProject(identity, resolved.projectId());
+    }
   }
 }

@@ -1,9 +1,9 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.DossierAssetService;
-import eu.wohlben.qits.entities.control.EpicService;
 import eu.wohlben.qits.entities.entity.DossierAsset;
 import eu.wohlben.qits.projects.refinementhost.DossierFigures;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.NotBlank;
@@ -53,7 +53,14 @@ public class DossierAssetController {
 
   @Inject DossierFigures figures;
 
-  @Inject EpicService epicService;
+  /**
+   * The epic's project, for the agent binding on {@link #inline} — and the epic's existence with it,
+   * since resolving the project is a {@code get}. It replaces the bare {@code EpicService.get} this
+   * route used to make for the 404 alone: one lookup answers both questions.
+   */
+  @Inject EpicsTopicHints hints;
+
+  @Inject SecurityIdentity identity;
 
   /** What a caller asks to inline: a figure of this epic's refinement, and which kind it is. */
   public record InlineFigureRequest(@NotBlank String sourceId, @NotBlank String kind) {}
@@ -63,13 +70,19 @@ public class DossierAssetController {
    *
    * <p>The line is the point of the door: a caller that writes an asset URL by hand will eventually
    * write one that does not exist, or one belonging to another epic.
+   *
+   * <p><b>It takes {@code qits:agent}, bound to the agent's own project</b>: {@code inline_figure}
+   * is an MCP tool already, and the figures being copied are the refining agent's own sketches and
+   * designs. The epic's project is resolved before the copy, so an epic id naming nothing is the 404
+   * it always was — see {@link EntitiesAgentAccess}.
    */
   @POST
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
+  @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierFigures.InlinedFigure inline(
       @PathParam("epicId") String epicId, InlineFigureRequest request) {
-    epicService.get(epicId);
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfEpic(epicId));
     return figures.inline(epicId, request.sourceId(), request.kind());
   }
 

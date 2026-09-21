@@ -99,9 +99,16 @@ public class ProjectTicketsController {
     public record Response(TicketDto ticket) {}
   }
 
+  /**
+   * Filing a ticket takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * create_ticket} MCP tool already performs this write for an agent, and the path names the project
+   * the binding is against. See {@link EntitiesAgentAccess} for the rule.
+   */
   @POST
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateTicketRequest.Response create(
       @PathParam("projectId") String projectId, @Valid CreateTicketRequest request) {
+    EntitiesAgentAccess.requireProject(identity, projectId);
     String slug = projectService.get(projectId).slug; // 404 if the project does not exist
     var ticket =
         ticketService.create(

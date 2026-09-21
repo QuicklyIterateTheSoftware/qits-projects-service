@@ -80,9 +80,16 @@ public class ProjectEpicsController {
     public record Response(EpicDto epic) {}
   }
 
+  /**
+   * Filing an epic takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * propose_epic} MCP tool already performs this write for an agent, and the path names the project
+   * the binding is against. See {@link EntitiesAgentAccess} for the rule.
+   */
   @POST
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateEpicRequest.Response create(
       @PathParam("projectId") String projectId, @Valid CreateEpicRequest request) {
+    EntitiesAgentAccess.requireProject(identity, projectId);
     String slug = projectService.get(projectId).slug; // 404 if the project does not exist
     var epic =
         epicService.create(

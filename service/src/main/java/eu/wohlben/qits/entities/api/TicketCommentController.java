@@ -43,10 +43,17 @@ public class TicketCommentController {
     public record Response(TicketCommentDto comment) {}
   }
 
+  /**
+   * Editing a comment takes {@code qits:agent}, bound to the agent's own project: the {@code
+   * update_ticket_comment} MCP tool already performs this write for an agent. The delete below does
+   * not, and stays {@code qits:admin} — see {@link EntitiesAgentAccess}.
+   */
   @PUT
   @Path("/{id}")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public UpdateTicketCommentRequest.Response update(
       @PathParam("id") String id, @Valid UpdateTicketCommentRequest request) {
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfComment(id));
     var comment =
         ticketService.updateComment(id, request.body(), EntitiesPrincipal.changedBy(identity));
     hints.fire(hints.projectOfTicket(comment.ticketId));

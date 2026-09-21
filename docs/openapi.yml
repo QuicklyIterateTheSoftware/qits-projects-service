@@ -2664,6 +2664,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/dossier:
     get:
       parameters:
@@ -2722,6 +2723,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/dossier-assets:
     post:
       parameters:
@@ -2755,6 +2757,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/dossier-assets/{assetId}/content:
     get:
       parameters:
@@ -2823,6 +2826,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     get:
       parameters:
       - name: epicId
@@ -2882,6 +2886,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/dossier/{pageId}/move:
     post:
       parameters:
@@ -2920,6 +2925,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/features:
     get:
       parameters:
@@ -2978,6 +2984,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/epics/{id}:
     put:
       parameters:
@@ -3011,6 +3018,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     get:
       parameters:
       - name: id
@@ -3202,6 +3210,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/features/{id}:
     put:
       parameters:
@@ -3235,6 +3244,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     get:
       parameters:
       - name: id
@@ -3284,6 +3294,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/pins:
     get:
       summary: The container images a launch by this service would pull right now
@@ -3575,6 +3586,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/events:
     get:
       parameters:
@@ -3968,6 +3980,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/refinements:
     post:
       requestBody:
@@ -5832,6 +5845,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     get:
       parameters:
       - name: id
@@ -5881,6 +5895,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/technical-processes/{id}/events:
     get:
       parameters:
@@ -5942,6 +5957,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     delete:
       parameters:
       - name: id
@@ -5999,6 +6015,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     get:
       parameters:
       - name: id
@@ -6106,6 +6123,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/tickets/{ticketId}/comments:
     get:
       parameters:
@@ -6164,6 +6182,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/tickets/{ticketId}/dossier:
     get:
       parameters:
@@ -6222,6 +6241,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/tickets/{ticketId}/dossier/{slug}:
     put:
       parameters:
@@ -6260,6 +6280,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
     get:
       parameters:
       - name: slug
@@ -6319,6 +6340,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/tickets/{ticketId}/dossier/{slug}/move:
     post:
       parameters:
@@ -6357,6 +6379,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
 info:
   title: qits-projects API
-  version: 2026.920.32847
+  version: 2026.920.233715
