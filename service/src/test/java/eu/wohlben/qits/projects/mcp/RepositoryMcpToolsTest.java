@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.api.ProjectRequests;
@@ -18,6 +20,7 @@ import io.restassured.specification.RequestSpecification;
 import io.restassured.http.ContentType;
 import io.vertx.core.MultiMap;
 import jakarta.ws.rs.core.Response;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -30,6 +33,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 @TestProfile(McpStatelessTestProfile.class)
 public class RepositoryMcpToolsTest {
+
+  private static final ObjectMapper JSON = new ObjectMapper();
 
   private static RequestSpecification authenticated() {
     return given()
@@ -96,6 +101,42 @@ public class RepositoryMcpToolsTest {
         .collect(Collectors.joining("\n"));
   }
 
+  /**
+   * Every element a list-returning tool answered. The server emits one content item per element, so
+   * the joined text is not one JSON document — each item is parsed on its own, and an item that is
+   * itself an array is flattened.
+   */
+  private static List<JsonNode> items(ToolResponse response) {
+    List<JsonNode> parsed = new java.util.ArrayList<>();
+    for (var content : response.content()) {
+      JsonNode node;
+      try {
+        node = JSON.readTree(content.asText().text());
+      } catch (Exception e) {
+        throw new AssertionError("a tool answered something that is not JSON: " + text(response), e);
+      }
+      if (node.isArray()) {
+        node.forEach(parsed::add);
+      } else {
+        parsed.add(node);
+      }
+    }
+    return parsed;
+  }
+
+  /** The ids of the repositories {@code listRepositories} answered, marked-as-own first asked. */
+  private static List<String> repoIds(ToolResponse response) {
+    return items(response).stream().map(item -> item.path("id").asText()).toList();
+  }
+
+  /** The ids of the rows marked as the session's own repository. */
+  private static List<String> sessionRepoIds(ToolResponse response) {
+    return items(response).stream()
+        .filter(item -> item.path("thisSession").asBoolean())
+        .map(item -> item.path("id").asText())
+        .toList();
+  }
+
   /** A streamable client on the repository server, scoped to {@code projectId} (or none). */
   private McpStreamableTestClient client(String projectId) {
     return client(projectId, null);
@@ -128,6 +169,7 @@ public class RepositoryMcpToolsTest {
   public void listsOnlyTheScopedProjectsRepositories() {
     String project = createProject("Scoped");
     String repoId = createRepository(project);
+    String elsewhere = createRepository(createProject("Scoped elsewhere"));
 
     client(project)
         .when()
@@ -138,6 +180,10 @@ public class RepositoryMcpToolsTest {
               assertFalse(response.isError(), "a scoped session should resolve its project");
               String text = text(response);
               assertTrue(text.contains(repoId), "should list the project's repository: " + text);
+              assertFalse(
+                  text.contains(elsewhere), "must not leak another project's repository: " + text);
+              // Nothing is narrowed here, so no row is the session's own.
+              assertEquals(List.of(), sessionRepoIds(response), text);
             })
         .thenAssertResults();
   }
@@ -175,13 +221,17 @@ public class RepositoryMcpToolsTest {
         .thenAssertResults();
   }
 
+  /**
+   * The narrowing says which repository this session is standing on, not which ones its plan may
+   * name: a refinement session on a project's wrapper is still planning work for the whole estate,
+   * so the listing stays the project's and marks the one row that is the session's own.
+   */
   @Test
-  public void narrowsToTheScopedRepositoryWhenRepositoryHeaderIsSet() {
+  public void listsTheWholeProjectAndMarksTheSessionsOwnRepositoryWhenNarrowed() {
     String project = createProject("Narrowed");
     String repoA = createRepository(project);
     String repoB = createBlankRepository(project, "narrowed-sibling");
 
-    // listRepositories returns only the narrowed repo, even though both belong to the project.
     client(project, repoA)
         .when()
         .toolsCall(
@@ -190,8 +240,14 @@ public class RepositoryMcpToolsTest {
             response -> {
               assertFalse(response.isError());
               String text = text(response);
-              assertTrue(text.contains(repoA), "should list the scoped repo: " + text);
-              assertFalse(text.contains(repoB), "must hide the sibling repo: " + text);
+              assertTrue(repoIds(response).contains(repoA), "should list the scoped repo: " + text);
+              assertTrue(
+                  repoIds(response).contains(repoB),
+                  "a narrowed session still plans for its siblings: " + text);
+              assertEquals(
+                  List.of(repoA),
+                  sessionRepoIds(response),
+                  "exactly one row is the session's own: " + text);
             })
         .thenAssertResults();
   }
@@ -202,7 +258,9 @@ public class RepositoryMcpToolsTest {
     String repoA = createRepository(project);
     String repoB = createBlankRepository(project, "guarded-sibling");
 
-    // A session narrowed to repoA may not touch repoB, even though it is in the same project.
+    // A session narrowed to repoA may not READ repoB's git, even though it is in the same project.
+    // The tool has to be a git one: that is the fence the narrowing keeps, while a stored
+    // reference to a repository (add_task's repositoryId) takes project membership alone.
     client(project, repoA)
         .when()
         .toolsCall(

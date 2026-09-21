@@ -38,7 +38,15 @@ import java.util.List;
  * {@code X-QITS-Repository} header). Tools take a {@code repoId} but never a project id, and {@link
  * #requireRepoInProject} rejects any repository that does not belong to the scoped project — or,
  * when the session is narrowed, any repository other than the scoped one — so the model cannot
- * reach across project boundaries or out of its repository.
+ * reach across project boundaries or out of its checkout.
+ *
+ * <p><b>The narrowing fences the git tools, not the whole surface.</b> It says which repository
+ * this session has a checkout of, so {@link #listBranches}, {@link #listCommits}, {@link
+ * #listCommitChanges} and {@link #getCommitFileDiff} answer for that one alone. {@link
+ * #listRepositories} lists the whole project regardless, marking the session's own row, because
+ * the ids it hands out are also what a plan is written against — a task's {@code repositoryId}
+ * ({@code add_task}) is a reference to where work belongs and takes project membership alone. See
+ * {@link ProjectScopeGuard} for the two rules.
  *
  * <p>{@link WrapBusinessError} turns any exception a tool throws — the scoping guards here and the
  * domain {@code NotFoundException}/{@code BadRequestException}s from the services — into a tool
@@ -61,23 +69,39 @@ public class RepositoryMcpTools {
 
   // --- Context (read) -------------------------------------------------------
 
-  /** A repository visible to this session, trimmed to what the model needs to pick one. */
-  public record RepositorySummary(String id, String url, String archetype, String mainBranch) {}
+  /**
+   * A repository visible to this session, trimmed to what the model needs to pick one.
+   *
+   * <p>{@code thisSession} marks the one repository this session is standing on — the narrowing
+   * from {@code X-QITS-Repository} — and is false on every row when the session is not narrowed.
+   * It is the row whose checkout the agent has and the only one the git tools answer for; the rest
+   * are listed because a plan is written for the whole project.
+   */
+  public record RepositorySummary(
+      String id, String url, String archetype, String mainBranch, boolean thisSession) {}
 
   @McpServer("repository")
   @Tool(
       description =
           "List the git repositories belonging to the project this session is scoped to. Start here"
-              + " to obtain a repoId for the other tools.")
+              + " to obtain a repoId for the other tools. Every repository of the project is"
+              + " listed, including when the session is narrowed to one of them: that is the set a"
+              + " task may be filed against (add_task), because a plan spans the project. The row"
+              + " with thisSession=true is the repository this session is standing on, and it is"
+              + " the ONLY one listBranches, listCommits, listCommitChanges and getCommitFileDiff"
+              + " answer for when the session is narrowed — they refuse any other repoId.")
   @Transactional
   public List<RepositorySummary> listRepositories() {
     var scopedRepo = scope.repositoryId();
     return projectService.getRepositories(scope.requireProjectId()).stream()
-        .filter(r -> scopedRepo.isEmpty() || scopedRepo.get().equals(r.id))
         .map(
             r ->
                 new RepositorySummary(
-                    r.id, r.url, r.archetype == null ? null : r.archetype.name(), r.mainBranch))
+                    r.id,
+                    r.url,
+                    r.archetype == null ? null : r.archetype.name(),
+                    r.mainBranch,
+                    scopedRepo.isPresent() && scopedRepo.get().equals(r.id)))
         .toList();
   }
 

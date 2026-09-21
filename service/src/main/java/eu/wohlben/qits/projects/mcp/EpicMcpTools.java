@@ -376,9 +376,12 @@ public class EpicMcpTools {
                   "id of another task IN THE SAME FEATURE that this one depends on; omit for none")
           String dependsOnTaskId) {
     requireFeatureInProject(featureId);
-    // Same cross-check the REST create does, through the guard the repository tools already use:
-    // a task must not bind a repository from another project.
-    scopeGuard.requireRepoInProject(repositoryId);
+    // Project membership, exactly what the REST create checks (FeatureController.createTask): a
+    // task must not bind a repository from another project. Deliberately NOT the session's
+    // repository narrowing — this id is a reference to where the planned work belongs, not a git
+    // target being read, and a refinement session stands on the project's wrapper while planning
+    // work for the whole estate.
+    scopeGuard.requireRepoInProjectUnnarrowed(repositoryId);
     Nested task =
         taskService.create(
             featureId, repositoryId, title, description, dependsOnTaskId, changedBy());

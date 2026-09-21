@@ -74,6 +74,25 @@ public class EpicMcpToolsTest {
         .path("repository.id");
   }
 
+  /**
+   * A second repository needs its own name: a name addresses one repository per project, so cloning
+   * the one fixture twice into a project would collide. A blank repository on the platform's own
+   * host is the cheap way to a distinctly named sibling.
+   */
+  private String createBlankRepository(String projectId, String name) {
+    return authenticated()
+        .contentType(ContentType.JSON)
+        .body(
+            new ProjectController.CreateProjectRepositoryRequest(
+                null, name, RepositoryArchetype.SERVICE, null))
+        .when()
+        .post("/projects/api/projects/" + projectId + "/repositories")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .extract()
+        .path("repository.id");
+  }
+
   /** Freeze an epic's scope the way the UI does — the only thing the agent cannot do itself. */
   private void freeze(String epicId) {
     authenticated()
@@ -96,6 +115,14 @@ public class EpicMcpToolsTest {
 
   /** A streamable client on the repository server, scoped to {@code projectId} (or none). */
   private McpStreamableTestClient client(String projectId) {
+    return client(projectId, null);
+  }
+
+  /**
+   * The same client, narrowed to {@code repositoryId} — the shape a workspace session has, standing
+   * on the one repository it holds a checkout of. Pass null to leave the whole project in scope.
+   */
+  private McpStreamableTestClient client(String projectId, String repositoryId) {
     return McpAssured.newStreamableClient()
         .setStateless()
         .setMcpPath("/projects/mcp")
@@ -104,6 +131,9 @@ public class EpicMcpToolsTest {
               MultiMap headers = MultiMap.caseInsensitiveMultiMap();
               if (projectId != null) {
                 headers.add(ProjectScope.PROJECT_HEADER, projectId);
+              }
+              if (repositoryId != null) {
+                headers.add(ProjectScope.REPOSITORY_HEADER, repositoryId);
               }
               return headers;
             })
@@ -114,6 +144,12 @@ public class EpicMcpToolsTest {
   /** Call one tool and hand its response to {@code check}. */
   private void call(String projectId, String tool, Map<String, Object> args, Check check) {
     client(projectId).when().toolsCall(tool, args, check::accept).thenAssertResults();
+  }
+
+  /** The same, from a session narrowed to one repository of the project. */
+  private void callNarrowed(
+      String projectId, String repositoryId, String tool, Map<String, Object> args, Check check) {
+    client(projectId, repositoryId).when().toolsCall(tool, args, check::accept).thenAssertResults();
   }
 
   /** The single-tool assertion shape, so a call site reads as one statement. */
@@ -333,6 +369,156 @@ public class EpicMcpToolsTest {
           assertTrue(response.isError(), "a task must not bind a foreign repository");
           assertTrue(text(response).contains("not found in this project"), text(response));
         });
+  }
+
+  /**
+   * A refinement session stands on the project's wrapper repository, and the epic it is drafting
+   * spans the estate — so a task's repositoryId, which says where the planned work belongs rather
+   * than naming a git target to read, must be free to name any sibling of the project.
+   */
+  @Test
+  public void filesATaskAgainstASiblingRepositoryWhenNarrowed() {
+    String projectId = createProject("Estate");
+    String wrapper = createRepository(projectId);
+    String sibling = createBlankRepository(projectId, "estate-sibling");
+    String epicId = proposeEpic(projectId, "Across the estate");
+
+    String[] featureId = new String[1];
+    callNarrowed(
+        projectId,
+        wrapper,
+        "add_feature",
+        Map.of("epicId", epicId, "title", "Slice"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          featureId[0] = idIn(text(response));
+        });
+
+    callNarrowed(
+        projectId,
+        wrapper,
+        "add_task",
+        Map.of(
+            "featureId", featureId[0],
+            "repositoryId", sibling,
+            "title", "Work in the sibling"),
+        response -> {
+          assertFalse(response.isError(), "a plan spans the project: " + text(response));
+          assertTrue(
+              text(response).contains(sibling), "the task must carry the sibling: " + text(response));
+        });
+
+    // And it is what was stored, not merely what the tool echoed back.
+    call(
+        projectId,
+        "get_epic",
+        Map.of("id", epicId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(
+              text(response).contains(sibling),
+              "the stored task must carry the sibling's id: " + text(response));
+        });
+  }
+
+  /** The project boundary is the rule that stays — narrowing does not make it stricter or laxer. */
+  @Test
+  public void refusesATaskBoundToAnotherProjectsRepositoryWhenNarrowed() {
+    String projectA = createProject("Narrowed planner");
+    String wrapper = createRepository(projectA);
+    String foreignRepo = createRepository(createProject("Narrowed elsewhere"));
+    String epicId = proposeEpic(projectA, "Cross-check while narrowed");
+
+    String[] featureId = new String[1];
+    callNarrowed(
+        projectA,
+        wrapper,
+        "add_feature",
+        Map.of("epicId", epicId, "title", "Slice"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          featureId[0] = idIn(text(response));
+        });
+
+    callNarrowed(
+        projectA,
+        wrapper,
+        "add_task",
+        Map.of(
+            "featureId", featureId[0],
+            "repositoryId", foreignRepo,
+            "title", "Should not bind"),
+        response -> {
+          assertTrue(response.isError(), "a task must not bind a foreign repository");
+          assertTrue(text(response).contains("not found in this project"), text(response));
+        });
+  }
+
+  /**
+   * <b>Two tools write a TASK's repositoryId and they must agree about which ids are legal.</b>
+   * {@code transition_entities} restates a task's full state — repositoryId included — and consults
+   * no repository guard at all, so any sibling of the project is fine there. {@code add_task} used
+   * to be stricter, refusing every repository but the session's own, which is the defect: the same
+   * plan could be written one way and not the other.
+   *
+   * <p>The pin is over the ids the two can disagree about, which is the project's repositories:
+   * ids naming no repository of this project are not a parity case, because the entities module has
+   * no repository table to look one up in and {@code transition_entities} therefore cannot judge
+   * them. {@code add_task} still refuses those, and {@link
+   * #refusesATaskBoundToAnotherProjectsRepositoryWhenNarrowed} is where that is pinned.
+   */
+  @Test
+  public void addTaskAndTransitionEntitiesAcceptTheSameRepositoryIds() {
+    String projectId = createProject("Parity");
+    String wrapper = createRepository(projectId);
+    String sibling = createBlankRepository(projectId, "parity-sibling");
+    String epicId = proposeEpic(projectId, "Same ids either way");
+
+    String[] featureId = new String[1];
+    callNarrowed(
+        projectId,
+        wrapper,
+        "add_feature",
+        Map.of("epicId", epicId, "title", "Slice"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          featureId[0] = idIn(text(response));
+        });
+
+    for (String repositoryId : java.util.List.of(wrapper, sibling)) {
+      String[] taskId = new String[1];
+      callNarrowed(
+          projectId,
+          wrapper,
+          "add_task",
+          Map.of(
+              "featureId", featureId[0],
+              "repositoryId", repositoryId,
+              "title", "Task for " + repositoryId),
+          response -> {
+            assertFalse(
+                response.isError(), "add_task refused " + repositoryId + ": " + text(response));
+            taskId[0] = idIn(text(response));
+          });
+
+      callNarrowed(
+          projectId,
+          wrapper,
+          "transition_entities",
+          Map.of(
+              "entities",
+              Map.of(
+                  taskId[0],
+                  Map.of(
+                      "archetype", "TASK",
+                      "title", "Task for " + repositoryId,
+                      "repositoryId", repositoryId,
+                      "membership", Map.of("parent", featureId[0])))),
+          response ->
+              assertFalse(
+                  response.isError(),
+                  "transition_entities refused " + repositoryId + ": " + text(response)));
+    }
   }
 
   @Test

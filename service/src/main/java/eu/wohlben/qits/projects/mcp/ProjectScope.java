@@ -59,7 +59,10 @@ public class ProjectScope {
 
   /**
    * The single repository this session is narrowed to within its project, or empty when the whole
-   * project is in scope. When present, tools may only touch this one repository.
+   * project is in scope. When present it names the repository the session is standing on: the git
+   * tools read that one alone, while a stored reference to a repository — a task's {@code
+   * repositoryId} — may still name any sibling of the project. {@link ProjectScopeGuard} carries
+   * the two rules and the reason.
    */
   public Optional<String> repositoryId() {
     String repositoryId = request.getHeader(REPOSITORY_HEADER);
