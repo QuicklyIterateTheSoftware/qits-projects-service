@@ -97,9 +97,9 @@ host: projects
 # `<category>.details.Release Requests:3=release-requests` is the per-repository row, and it opens
 # this SPA's `/<project>/<group>/<repo>/release-requests` — the repository's release requests, which
 # is the asynchronous gated ask that replaced calling the release door blind. It is declared on
-# every one of the six archetype slots because every kind of repository is released: a library, an
-# SPA and an OCI image each go through the same request, so a row that hung under services alone
-# would be missing exactly where a person most often has to ask why nothing landed.
+# every one of the seven archetype slots because every kind of repository is released: a library, an
+# SPA, a standalone app and an OCI image each go through the same request, so a row that hung under
+# services alone would be missing exactly where a person most often has to ask why nothing landed.
 #
 # POSITION 3 IS A RENUMBER, not a free slot. The detail group ran Docs 2, Code 3, CI 4, Artifacts 5,
 # Configuration 6, Workspaces 7; this row goes above Code, so qits-githost, qits-ci, qits-artifacts,
@@ -110,14 +110,14 @@ host: projects
 # say what they mean are worth five one-line commits.
 #
 # The per-repository row and the project one share a LABEL and not a slot, which is exactly what the
-# pair-shaped claim permits: seven entries spell "Release Requests" and no two of them are in one
+# pair-shaped claim permits: eight entries spell "Release Requests" and no two of them are in one
 # slot.
 #
 # The `services.details.Api Docs` entry this file used to carry is still gone and is not coming
 # back: API documentation is a sub-item of Docs now (the docs app renders it from published @apidocs
 # bundles). This application's viewer route (`/<project>/services/<repo>/api-docs`, the live
 # swagger-ui frame) still answers; it is just not a sidebar row.
-navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-configuration, project.detail.Epics:1=epics, project.detail.Tickets:2=tickets, project.detail.Release Requests:5=release-requests, services.details.Release Requests:3=release-requests, daemons.details.Release Requests:3=release-requests, libs.details.Release Requests:3=release-requests, frontends.details.Release Requests:3=release-requests, cli.details.Release Requests:3=release-requests, images.details.Release Requests:3=release-requests
+navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-configuration, project.detail.Epics:1=epics, project.detail.Tickets:2=tickets, project.detail.Release Requests:5=release-requests, services.details.Release Requests:3=release-requests, daemons.details.Release Requests:3=release-requests, libs.details.Release Requests:3=release-requests, apps.details.Release Requests:3=release-requests, frontends.details.Release Requests:3=release-requests, cli.details.Release Requests:3=release-requests, images.details.Release Requests:3=release-requests
 
 # THREE DATABASES, because this application opens three datasources with three Flyway lineages:
 # `projects` (domain/), `epics` (entities/) and `eventstream` (the qits-eventstream jar's outbox and
