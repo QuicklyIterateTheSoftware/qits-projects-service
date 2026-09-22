@@ -30,18 +30,20 @@ import org.junit.jupiter.api.TestFactory;
  *
  * <ul>
  *   <li>every GET and HEAD on every listed controller admits {@code qits:agent};
- *   <li>a write admits it <b>if and only if</b> it is named in one of the two declared groups below
- *       — the release-request writes and the entity writes;
+ *   <li>a write admits it <b>if and only if</b> it is named in one of the three declared groups
+ *       below — the release-request writes, the entity writes and the one catalogue write;
  *   <li>the four writes that must stay {@code qits:admin} alone are named in {@link
  *       #ADMIN_ONLY_WRITES} and asserted <em>not</em> to admit the agent, so a later widening trips
  *       this test rather than sliding past it as one more line in an opt-out set.
  * </ul>
  *
- * <p>Two named groups rather than one list, because they are two different arguments and a single
- * twenty-two-line set stops expressing either. Each group's javadoc carries its own reasoning; what
- * they share is that a role list is only half the door, and the other half — which rows the caller
- * may reach — is asserted in {@code ReleaseRequestAgentBoundsTest} and {@code
- * eu.wohlben.qits.entities.api.EntityAgentBoundsTest}.
+ * <p>Named groups rather than one list, because they are different arguments and a single
+ * twenty-three-line set stops expressing any of them. Each group's javadoc carries its own
+ * reasoning; what the first two share is that a role list is only half the door, and the other half
+ * — which rows the caller may reach — is asserted in {@code ReleaseRequestAgentBoundsTest} and
+ * {@code eu.wohlben.qits.entities.api.EntityAgentBoundsTest}. The third has no second half by
+ * design: a create names no existing row to be bound to, and the project it names is the whole of
+ * what it touches.
  *
  * <p><b>The list of classes is explicit, so a controller is only checked if it is here</b>, and
  * every controller on this surface is. Note that two of them declare no read at all ({@code
@@ -141,8 +143,25 @@ class AgentReadAccessTest {
           "DossierAssetController.inline",
           "EntityTransitionController.transition");
 
+  /**
+   * <b>The catalogue write an agent reaches: adding a component to a project.</b> Its own group
+   * because it belongs to neither argument above — there is no MCP tool behind it and it is not a
+   * release request — and folding it into either would make that group's javadoc false.
+   *
+   * <p>It is granted because creating a repository is <em>additive</em>: it mints a blank on the
+   * platform's git host (or attaches a url) and declares it in the wrapper, writing no existing row
+   * and destroying nothing. The delete that is its opposite, {@code
+   * RepositoryController.delete}, is not here and must not arrive — an agent may add to a project
+   * and may not take anything out of it, which is the same line the four {@link #ADMIN_ONLY_WRITES}
+   * draw. {@code ProjectController.adoptRepository} is not here either, for a different reason: it
+   * is {@code qits:system} alone, because its caller supplies a git-host storage id.
+   */
+  private static final Set<String> CATALOGUE_AGENT_WRITES =
+      Set.of("ProjectController.createRepository");
+
   /** The union, which is what the per-class rule is read against. */
-  private static final Set<String> AGENT_WRITES = union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES);
+  private static final Set<String> AGENT_WRITES =
+      union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES);
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> An epic's

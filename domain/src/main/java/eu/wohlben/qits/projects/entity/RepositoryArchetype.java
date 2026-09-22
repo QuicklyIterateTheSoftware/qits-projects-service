@@ -32,18 +32,22 @@ import java.util.Set;
  * tree — the wrapper cannot be a submodule of itself; {@link #SERVICE_TEMPLATE} because it is
  * scaffolding a component is generated <em>from</em> rather than part of the application; and {@link
  * #FORK} because it is an external downstream fork of somebody else's repository, which this project
- * carries but is not built out of. The other six are components and answer true.
+ * carries but is not built out of. The other seven are components and answer true.
  *
- * <p>These nine are the whole set. {@code INTEGRATION} and {@code APPLICATION} were carried through
+ * <p>These ten are the whole set. {@code INTEGRATION} and {@code APPLICATION} were carried through
  * release A as deprecated aliases so Hibernate could read rows written before the rework; the H2
- * lineage's V4 retired the last of those rows and they are gone.
+ * lineage's V4 retired the last of those rows and they are gone. {@link #APP} is the tenth, added
+ * for a standalone web application — see its own doc for why it is not a {@link #FRONTEND}.
  *
  * <p>Adding a value here also requires a Flyway migration: {@code Repository.archetype} carries a DB
  * check constraint over the value set, written <b>inline and named</b> in {@code
  * db/projects/migration/V1__init.sql} as {@code CK_repository_archetype}. Inline is what makes it a
  * migration rather than an edit — an applied file is checksummed and must never be touched, and a
- * named constraint cannot be widened in place, so a tenth value needs a new migration that drops
- * {@code CK_repository_archetype} and adds it back over the wider set.
+ * named constraint cannot be widened in place, so a new value needs a new migration that drops
+ * {@code CK_repository_archetype} and adds it back over the wider set. {@code
+ * db/projects/migration} is the one lineage there is here — main and test read the same location —
+ * so one migration is the whole of it; {@code V27__repository_archetype_app.sql} is the one that
+ * admitted {@link #APP}.
  */
 public enum RepositoryArchetype {
   /** The project's wrapper repository — the root superproject. At most one per project. */
@@ -54,8 +58,16 @@ public enum RepositoryArchetype {
   DAEMON(true),
   /** Shared technical code consumed by the components. */
   LIBRARY(true),
-  /** Anything served to a user at a URL. */
+  /** A microfrontend a service carries and serves — no deployment of its own. */
   FRONTEND(true),
+  /**
+   * A standalone web application — its own server, its own image, its own deployment.
+   *
+   * <p>The distinction from {@link #FRONTEND} is who runs it, not what it renders: a {@code
+   * -frontend} is a microfrontend a service carries and serves, so it has no deployment of its own,
+   * while an {@code -app} is deployed in its own right and answers on its own address.
+   */
+  APP(true),
   /** A command-line entry point into the application. */
   CLI(true),
   /** A build definition consumed through its published OCI image. */
@@ -93,6 +105,7 @@ public enum RepositoryArchetype {
           "-service", SERVICE,
           "-daemon", DAEMON,
           "-frontend", FRONTEND,
+          "-app", APP,
           "-oci", IMAGE,
           "-cli", CLI,
           "-javalib", LIBRARY,

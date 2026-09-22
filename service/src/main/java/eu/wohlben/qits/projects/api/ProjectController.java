@@ -424,8 +424,30 @@ public class ProjectController {
     public record Response(RepositoryDto repository, String projectId, String wrapperPath) {}
   }
 
+  /**
+   * Adds a component to the project — see {@link CreateProjectRepositoryRequest} for what the body
+   * says and how the kind is read off the name.
+   *
+   * <p><b>{@code qits:admin} and {@code qits:agent}, spelled in full.</b> A method-level {@code
+   * @RolesAllowed} REPLACES the class-level {@code qits:admin} rather than adding to it, so naming
+   * only the agent here would lock every browser out of the one route a person creates a component
+   * through — the defect class this repository has shipped twice and now pins by test.
+   *
+   * <p>The agent is here because an epic that adds a repository to a project is work an agent does,
+   * and the alternative is a person relaying a create the agent already knows every argument to.
+   * What it can do is bounded by what the route itself is: a blank repository on the platform's own
+   * git host, or an attach of a url, plus the wrapper entry that makes it a member — no existing row
+   * is written and nothing is destroyed. Deleting a repository stays {@code qits:admin} alone,
+   * which is the line: an agent may add to a project and may not take anything out of it.
+   *
+   * <p><b>{@code qits:system} is deliberately NOT here.</b> The machine door onto this surface is
+   * {@code POST …/repositories/adopt}, which the bootstrap presses because it alone holds the git
+   * host's storage id; no caller on the estate reaches this route with a machine bearer, and adding
+   * a role for a caller that does not exist widens a door for nothing.
+   */
   @POST
   @Path("/{projectId}/repositories")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @APIResponse(responseCode = "200", description = "The repository exists and the wrapper names it")
   @APIResponse(
       responseCode = "400",

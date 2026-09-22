@@ -87,21 +87,23 @@ public class RepositoryArchetypeTemplateSyncTest {
   }
 
   /**
-   * The membership split, pinned per constant. Everything that asks whether the wrapper is expected
+   * The membership split, pinned per constant — and the reason {@code APP} needed no guard narrowed
+   * when it arrived. Everything that asks whether the wrapper is expected
    * to declare a row — the write guard, the wrapper removal on delete, the listing's {@code
    * declared} flag, the reconcile's undeclared report — reads this one predicate, so a value
    * quietly changing sides changes four behaviours at once. It is stated at the declaration rather
    * than derived, which is exactly why a test has to say what the declarations are.
    */
   @Test
-  public void exactlySixArchetypesAreComponentsOfTheirProject() {
+  public void exactlySevenArchetypesAreComponentsOfTheirProject() {
     assertEquals(
-        List.of("SERVICE", "DAEMON", "LIBRARY", "FRONTEND", "CLI", "IMAGE"),
+        List.of("SERVICE", "DAEMON", "LIBRARY", "FRONTEND", "APP", "CLI", "IMAGE"),
         Stream.of(RepositoryArchetype.values())
             .filter(RepositoryArchetype::isComponentOfItsProject)
             .map(Enum::name)
             .toList(),
-        "these six are what a project is built out of, so its wrapper is expected to declare them");
+        "these seven are what a project is built out of, so its wrapper is expected to declare"
+            + " them");
     assertEquals(
         List.of("PROJECT", "SERVICE_TEMPLATE", "FORK"),
         Stream.of(RepositoryArchetype.values())
@@ -153,13 +155,15 @@ public class RepositoryArchetypeTemplateSyncTest {
   }
 
   /**
-   * The taxonomy is these nine and no more. INTEGRATION and APPLICATION rode through release A as
+   * The taxonomy is these ten and no more. INTEGRATION and APPLICATION rode through release A as
    * deprecated aliases so Hibernate could read pre-rework rows; V4 retired those rows and dropped
    * them, and this is what stops one being reintroduced without a migration to widen the check
-   * constraint for it.
+   * constraint for it. APP is the tenth, admitted by {@code
+   * V27__repository_archetype_app.sql} — which is the whole of it, since {@code
+   * db/projects/migration} is the one lineage this repository has.
    */
   @Test
-  public void theTaxonomyIsExactlyTheNineValuesTheCheckConstraintAllows() {
+  public void theTaxonomyIsExactlyTheTenValuesTheCheckConstraintAllows() {
     assertEquals(
         List.of(
             "PROJECT",
@@ -167,11 +171,37 @@ public class RepositoryArchetypeTemplateSyncTest {
             "DAEMON",
             "LIBRARY",
             "FRONTEND",
+            "APP",
             "CLI",
             "IMAGE",
             "SERVICE_TEMPLATE",
             "FORK"),
         Stream.of(RepositoryArchetype.values()).map(Enum::name).toList());
+  }
+
+  /**
+   * And the migration that widened the check constraint says the same ten, in the same words. The
+   * enum and the column are two halves of one taxonomy: a value Hibernate writes that the
+   * constraint refuses is an insert that fails at runtime, which no compiler and no other test here
+   * can see. Read off the source tree rather than {@code target/classes}, because it is the file
+   * that ships in the jar either way and the source is where the mistake is made.
+   */
+  @Test
+  public void theMigrationWidensTheCheckConstraintToExactlyThoseTenValues() throws Exception {
+    Path migration =
+        Path.of(
+            "src/main/resources/db/projects/migration/V27__repository_archetype_app.sql");
+    String sql = Files.readString(migration);
+    for (RepositoryArchetype archetype : RepositoryArchetype.values()) {
+      assertTrue(
+          sql.contains("'" + archetype.name() + "'"),
+          archetype
+              + " is a value Hibernate can write, so the re-added CK_repository_archetype has to"
+              + " allow it");
+    }
+    assertTrue(
+        sql.contains("drop constraint CK_repository_archetype"),
+        "a named check cannot be widened in place — the migration drops it and adds it back");
   }
 
   /**

@@ -19,8 +19,8 @@ directory holds the service, its frontend and its daemon side by side, so the th
 you change together are neighbours.
 
 The **role** is carried by the repository's name rather than by its parent directory:
-`<component>[-<modifier>]-<role>[-<tech>]`, with `-service`, `-daemon`, `-frontend`, `-cli`, `-oci`
-and `-javalib`/`-jslib` as the roles. qits reads that suffix, so a name is enough to say what kind
+`<component>[-<modifier>]-<role>[-<tech>]`, with `-service`, `-daemon`, `-frontend`, `-app`, `-cli`,
+`-oci` and `-javalib`/`-jslib` as the roles. qits reads that suffix, so a name is enough to say what kind
 of thing a repository is.
 
 `components/README.md` is the whole grammar, and it travels with the project.

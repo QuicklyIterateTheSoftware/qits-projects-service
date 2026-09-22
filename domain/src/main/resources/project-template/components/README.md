@@ -22,7 +22,8 @@ The repository inside a component carries the role in its name:
 |---|---|
 | `-service` | A deployable component — the things that run in production. |
 | `-daemon` | A long-running background agent nobody calls. |
-| `-frontend` | Anything served to a user at a URL. |
+| `-frontend` | A microfrontend a service carries and serves — no deployment of its own. |
+| `-app` | A standalone web application — its own server, its own image, its own deployment. |
 | `-cli` | A command-line entry point. |
 | `-oci` | A build definition consumed through its published OCI image. |
 | `-javalib` / `-jslib` | Shared technical code consumed by the components, never deployed on its own. |

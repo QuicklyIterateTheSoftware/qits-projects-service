@@ -100,6 +100,43 @@ public class ProjectRepositoryControllerTest {
         .body("entries.repository.name", hasItem("checkout"));
   }
 
+  /**
+   * <b>{@code -app}, the tenth archetype, end to end through the door that mints one.</b> Three
+   * things in one call and each is a separate way this could be wrong: the name alone says the kind
+   * (no {@code archetype} in the body at all), {@code APP} survives the round trip through the
+   * column — which it only does because {@code V27__repository_archetype_app.sql} widened {@code
+   * CK_repository_archetype}, so a missing migration fails right here rather than in production —
+   * and the entry mounts at {@code components/<component>/<name>} like every other member.
+   *
+   * <p>That last third is the finding this test exists to pin: {@code APP} is a component of its
+   * project, so the two membership guards it passes — {@code ProjectService.createRepository}'s and
+   * {@code WrapperSubmoduleWriter.addToWrapper}'s, both of which now ask only {@code
+   * isComponentOfItsProject()} — needed no narrowing for it, and there is no {@code apps/}
+   * directory anywhere. There is one grammar and an app lives in it.
+   */
+  @Test
+  public void anAppIsCreatedOffItsNameAloneAndMountsUnderItsComponent() {
+    String projectId = createProject("App Create");
+
+    postRepository(projectId, null, "storefront-app", null, "storefront")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("repository.name", equalTo("storefront-app"))
+        .body("repository.archetype", equalTo("APP"))
+        .body("repository.component", equalTo("storefront"))
+        .body("wrapperPath", equalTo("components/storefront/storefront-app"));
+
+    given()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/repositories")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("wrapper.entries", hasSize(1))
+        .body("wrapper.entries[0].path", equalTo("components/storefront/storefront-app"))
+        // A member like any other: the wrapper declares it, so the setup page shows no stray.
+        .body("entries.find { it.repository.name == 'storefront-app' }.declared", equalTo(true));
+  }
+
   @Test
   public void aBlankRepositoryNameMustBeFreeAndGitSafe() {
     String projectId = createProject("Blank Names");

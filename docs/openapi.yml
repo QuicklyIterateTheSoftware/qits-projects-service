@@ -1454,6 +1454,7 @@ components:
       - DAEMON
       - LIBRARY
       - FRONTEND
+      - APP
       - CLI
       - IMAGE
       - SERVICE_TEMPLATE
@@ -3775,6 +3776,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/repositories/adopt:
     post:
       parameters:
@@ -6385,4 +6387,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.921.164507
+  version: 2026.921.185259

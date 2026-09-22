@@ -503,6 +503,15 @@ write** (user ruling, 2026-09-12):
   and `EpicMcpTools` deliberately exposes no lifecycle move), `TicketController.delete` and
   `TicketCommentController.delete` (deleting is on neither surface: an agent that could delete what
   it disagrees with could erase the record of its own mistake).
+- **A sixth write takes it: `ProjectController.createRepository`** — `POST
+  /projects/{projectId}/repositories`, the route that adds a component to a project. It is granted
+  because it is additive: it mints a blank on the git host (or attaches a url) and declares it in
+  the wrapper, writing no existing row and destroying nothing. `RepositoryController.delete` is the
+  opposite and stays `qits:admin` alone — an agent may add to a project and may not take anything
+  out of it. `qits:system` is deliberately not on the list: the machine door here is
+  `…/repositories/adopt`. `api/ProjectRepositoryCreateDoorTest` drives four callers at the route
+  under `NoDevUserProfile`, and `AgentReadAccessTest.CATALOGUE_AGENT_WRITES` is where the grant is
+  declared.
 - **The two control sockets take it, bound to the agent's own container** (a socket is a control
   channel, not a read): `/projects/daemon/{projectId}` wants the token's `project`, and
   `/projects/refinement-daemon/{id}` wants the token's `sub` to be that row's commissioned client.
@@ -569,8 +578,8 @@ names, with a relative url. Three rules follow, and every one of them is enforce
     set**: no enum, no check constraint). No directory says the kind here, so **an existing row
     keeps the archetype it has** — the flip must not re-type a live platform's rows — and a row the
     reconcile mints takes its archetype from the name's role suffix
-    (`RepositoryArchetype.fromRepositoryName`: `-service`, `-daemon`, `-frontend`, `-oci`, `-cli`,
-    `-javalib`/`-jslib`), or **null** when the name declares none. Null is deliberate and is the
+    (`RepositoryArchetype.fromRepositoryName`: `-service`, `-daemon`, `-frontend`, `-app`, `-oci`,
+    `-cli`, `-javalib`/`-jslib`), or **null** when the name declares none. Null is deliberate and is the
     least destructive answer: a null-archetype row is never reported `UNDECLARED`, so it is never
     put in front of the delete that destroys the repository, while a guessed archetype would be a
     wrong label nothing in this service can correct.
