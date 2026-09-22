@@ -1184,15 +1184,28 @@ and each one is a decision rather than a simplification:
   alternative — refusing writes once closed — only means filing a duplicate whenever a closure
   turns out to be wrong.
 
-  **The lifecycle is five phases (V7, 2026-09-14):** `REPORTED → REFINED → IMPLEMENTED → VERIFIED →
-  DONE`. **A status is what has been ACHIEVED, and the phase that runs while it holds is what
-  happens next** — REPORTED means somebody said what is wrong (refine runs), REFINED means the
-  ticket says what to do (implement runs), IMPLEMENTED means the change is released and deployed
-  (verify runs), VERIFIED means it no longer occurs on the platform (a person closes it), DONE means
-  closed. So no status names work in flight and there must never be an `IN_PROGRESS`. Moves are
-  **adjacent-only in either direction**, asking for the status a ticket already has stays refused,
-  there is no reject verb — a failed verification is the ordinary backward move `IMPLEMENTED →
-  REFINED` — and nothing is terminal: DONE reopens to VERIFIED like any other move.
+  **The lifecycle is five phases (V7, 2026-09-14) and one exit off them:** `REPORTED → REFINED →
+  IMPLEMENTED → VERIFIED → DONE`. **A status is what has been ACHIEVED, and the phase that runs
+  while it holds is what happens next** — REPORTED means somebody said what is wrong (refine runs),
+  REFINED means the ticket says what to do (implement runs), IMPLEMENTED means the change is
+  released and deployed (verify runs), VERIFIED means it no longer occurs on the platform (a person
+  closes it), DONE means closed. So no status names work in flight and there must never be an
+  `IN_PROGRESS`. Moves along that pipeline are **adjacent-only in either direction**, asking for the
+  status a ticket already has stays refused, there is no reject verb — a failed verification is the
+  ordinary backward move `IMPLEMENTED → REFINED` — and nothing is terminal: DONE reopens to VERIFIED
+  like any other move.
+
+  **`DROPPED` is the sixth word and it is not a sixth step.** It says a decision was taken not to do
+  the work: nothing was implemented, nothing was verified, and nothing is expected to be. It exists
+  because without it abandoned work has nowhere to go and sits at REFINED — which is precisely the
+  word `list_tickets` advertises as ready to be picked up — so the next agent asked to take on the
+  outstanding work picks up the one thing that was ruled out. It is reachable from **every status
+  that is not already closed** (REPORTED, REFINED, IMPLEMENTED, VERIFIED) and it reopens to
+  **REPORTED and nothing else**, because reviving abandoned work means asking again what it is for.
+  **DONE is offered no drop**: it is already an exit, and the move would only let a weaker outcome
+  overwrite a real one — a closure that was wrong goes back to VERIFIED the way every move goes
+  back, and the ticket is droppable again from there. The whole rule is written once, in
+  `TicketLifecycle.LEGAL_TARGETS`, and every other javadoc points at it rather than restating it.
 
   **`impetus` is the intake field and `description` is the refinement's output.** A REPORTED ticket
   has an impetus and nothing else. The impetus takes one of two shapes — *"{some error} occurs {in
@@ -1263,8 +1276,10 @@ Three things travel with it:
   `/main-navigation` and no service here holds a key for.
 - **The agent's first turn is `api/TicketPhasePrompts` and the ticket's STATUS picks it.** Three
   templates, one per phase — REPORTED starts refine, REFINED starts implement, IMPLEMENTED starts
-  verify — and VERIFIED and DONE render **nothing**, so the door answers **409** naming the status
-  and stands no workspace up (the refusal runs before the port is asked for anything). The prompt is
+  verify — and VERIFIED, DONE and DROPPED render **nothing**, so the door answers **409** naming the
+  status and stands no workspace up (the refusal runs before the port is asked for anything). The
+  same emptiness is what makes a transition into DROPPED deliver no turn and say nothing on the
+  thread: one switch answers both. The prompt is
   never passed in: pressing "assign agent" on a half-finished ticket **resumes** it at the right
   phase instead of starting it over, and there is exactly one place mapping a status to words.
   Each template's own load-bearing sentences are argued in its javadoc; four rules span all three:
@@ -1283,7 +1298,9 @@ Three things travel with it:
   - **Each ends the same way**: the transition is the agent's claim, it is reversible in both
     directions, and a phase that could not finish says what is missing on the thread and leaves the
     status where it is. That is the cheap correct answer for an unsure agent, and it matters more
-    with five statuses than it did with two.
+    with six statuses than it did with two — and `DROPPED` is **not** that answer: a phase that
+    could not finish leaves the status where it is, because dropping asserts a decision nobody
+    took.
 
   Two seams make all three instructions rather than dead letters, and both are stated in
   `TicketPhasePrompts`' javadoc (they **moved there** from the instruction it replaces):

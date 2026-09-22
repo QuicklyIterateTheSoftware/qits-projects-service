@@ -52,12 +52,13 @@ public class TicketPhasePromptsTest {
   // ---- the mapping ----------------------------------------------------------------------------
 
   /**
-   * The status picks the phase and nothing else does. The two that render <b>nothing</b> are half
+   * The status picks the phase and nothing else does. The three that render <b>nothing</b> are half
    * of this assertion and are what the dispatch door refuses on: VERIFIED and DONE are past the
-   * work, so there is no phase to start and no workspace to stand up for one.
+   * work and DROPPED is work that will not happen, so there is no phase to start and no workspace
+   * to stand up for one.
    */
   @Test
-  public void eachStatusStartsItsOwnPhaseAndTwoStartNone() {
+  public void eachStatusStartsItsOwnPhaseAndThreeStartNone() {
     assertTrue(promptFor(TicketStatus.REPORTED).contains("Refine ticket \""));
     assertTrue(promptFor(TicketStatus.REFINED).contains("Implement ticket \""));
     assertTrue(promptFor(TicketStatus.IMPLEMENTED).contains("Verify ticket \""));
@@ -70,6 +71,11 @@ public class TicketPhasePromptsTest {
         Optional.empty(),
         TicketPhasePrompts.promptFor(ticket(TicketStatus.DONE)),
         "DONE is closed, and reopening it is a person's move too");
+    assertEquals(
+        Optional.empty(),
+        TicketPhasePrompts.promptFor(ticket(TicketStatus.DROPPED)),
+        "DROPPED is work somebody decided against: no phase renders, and dispatching an agent onto"
+            + " it would start the very work the decision was not to do");
   }
 
   /** The word the thread comment uses comes from the same mapping, so the two cannot disagree. */
@@ -87,6 +93,11 @@ public class TicketPhasePromptsTest {
         Optional.empty(),
         TicketPhasePrompts.startedBy(ticket(TicketStatus.VERIFIED)),
         "no phase, so nothing to name either");
+    assertEquals(
+        Optional.empty(),
+        TicketPhasePrompts.startedBy(ticket(TicketStatus.DROPPED)),
+        "and a dropped ticket names no phase either, which is what leaves the dispatch door and the"
+            + " phase hand-off both silent without either growing a rule of its own");
   }
 
   /** Every template sends the agent to the live ticket rather than to what it was handed. */
@@ -349,7 +360,7 @@ public class TicketPhasePromptsTest {
     for (TicketStatus status : TicketStatus.values()) {
       Optional<String> prompt = TicketPhasePrompts.promptFor(ticket(status));
       if (prompt.isEmpty()) {
-        continue; // VERIFIED and DONE start no phase at all, which is asserted above.
+        continue; // VERIFIED, DONE and DROPPED start no phase at all, which is asserted above.
       }
       assertTrue(
           prompt.get().startsWith(pointer + " "),
@@ -362,6 +373,50 @@ public class TicketPhasePromptsTest {
     assertTrue(
         EpicDispatchController.instruction(epic()).startsWith(pointer + " "),
         "and so does the epic door, from the same constant and not a copy of the words");
+  }
+
+  /**
+   * <b>Every phase that runs tells the agent what to do when it cannot finish, and names both
+   * halves of the answer.</b> The status stays where it is — which is the instruction that was
+   * always there and is still the first thing said — and {@code block_ticket} is how the obstacle
+   * becomes visible to anything other than a reader of the thread.
+   *
+   * <p>It sweeps the templates rather than asserting three literals, because the failure worth
+   * catching is a template that was rewritten and lost one half. That is not hypothetical here: the
+   * implement template's clause used to read "If you are blocked, or released only part of it, say
+   * on the thread what is missing and leave the ticket REFINED" — a comment and nothing else, so
+   * "blocked" was a word on a thread no surface reads, the ticket went on advertising itself as
+   * REFINED, and the next agent picked up the one thing already known to be stuck. A fourth phase
+   * added beside these three is caught by the same sweep.
+   */
+  @Test
+  public void everyPhaseThatRunsOffersBothTheStatusAndTheFlagWhenItCannotFinish() {
+    for (TicketStatus status : TicketStatus.values()) {
+      Optional<String> prompt = TicketPhasePrompts.promptFor(ticket(status));
+      if (prompt.isEmpty()) {
+        continue; // VERIFIED, DONE and DROPPED start no phase, so there is no phase to block.
+      }
+      String turn = prompt.get();
+      assertTrue(
+          turn.contains("block_ticket"),
+          status
+              + " starts a phase, so its turn has to name the tool that says the phase cannot"
+              + " proceed — a thread comment alone is invisible to every surface that hands out"
+              + " work: "
+              + turn);
+      assertTrue(
+          turn.contains("leave the ticket " + status.name()),
+          status
+              + " must still be told to leave the status where it is: the status is the phase to"
+              + " resume, and a block is a second fact beside it rather than a replacement for it: "
+              + turn);
+      assertTrue(
+          turn.contains("outside this ticket"),
+          status
+              + " must bound the block by what is outside the ticket — an agent offered a way to"
+              + " stop that costs one call takes it, so \"this is hard\" must not qualify: "
+              + turn);
+    }
   }
 
   private static WorkEntity epic() {

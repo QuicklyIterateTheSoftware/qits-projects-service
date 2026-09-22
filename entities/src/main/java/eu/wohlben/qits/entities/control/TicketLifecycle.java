@@ -26,29 +26,53 @@ import java.util.Set;
  *
  * <p><b>Where the status is stored has moved and nothing here has.</b> {@code TicketService} keeps
  * it on the merged {@code entity} row, as the enum's own {@code name()}, and reads it back into
- * {@link TicketStatus} before asking anything of this class — so the adjacency graph, the refusals
- * and their wording are byte for byte what they were.
+ * {@link TicketStatus} before asking anything of this class — so the graph below, the refusals and
+ * their wording were untouched by the move.
  */
 final class TicketLifecycle {
 
   /**
-   * The adjacency graph: each status names its neighbours in both directions, so a move is legal
-   * exactly when it is one step along REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE or one
-   * step back. Written out per status rather than derived from the ordinal, because the order is a
-   * fact about the lifecycle and not about how the enum happens to be declared.
+   * What each status may move to, and <b>the one place the rule is written</b> — everything else in
+   * this repository that has to describe a ticket's moves points here rather than restating them.
+   *
+   * <p><b>The pipeline is adjacent-only, in both directions.</b> REPORTED → REFINED → IMPLEMENTED →
+   * VERIFIED → DONE is walked one step at a time, forward as each phase finishes and backward when
+   * one has to be redone, and asking for the status the ticket already has stays refused rather
+   * than reading as a no-op.
+   *
+   * <p><b>{@link TicketStatus#DROPPED} is off that line.</b> It is not a sixth step and it has no
+   * neighbours on the chain: it is reachable from every status that is not already closed —
+   * REPORTED, REFINED, IMPLEMENTED and VERIFIED — because a decision not to do the work can be
+   * taken at any point while the work is still open, and it is reached from nowhere else.
+   *
+   * <p><b>DONE is offered no drop</b>, and that absence is the decision rather than an oversight.
+   * DONE is already an exit; the only thing the move could achieve is to let the weaker outcome
+   * overwrite a real one, and a ticket that shipped did not stop having shipped. A closure that was
+   * wrong still goes back the way every move goes back — DONE → VERIFIED — and the ticket is then
+   * open again and droppable like any other.
+   *
+   * <p><b>DROPPED reopens to REPORTED and to nothing else</b>, which is what keeps this a graph
+   * rather than a graph plus a column: resuming at wherever the ticket was abandoned would mean
+   * remembering where that was, and it is the wrong answer regardless — somebody who has changed
+   * their mind about abandoned work is asking what it is for again, which is the refine phase.
+   *
+   * <p>Written out per status rather than derived from the ordinal, because the order is a fact
+   * about the lifecycle and not about how the enum happens to be declared.
    */
   private static final Map<TicketStatus, Set<TicketStatus>> LEGAL_TARGETS =
       Map.of(
           TicketStatus.REPORTED,
-          EnumSet.of(TicketStatus.REFINED),
+          EnumSet.of(TicketStatus.REFINED, TicketStatus.DROPPED),
           TicketStatus.REFINED,
-          EnumSet.of(TicketStatus.REPORTED, TicketStatus.IMPLEMENTED),
+          EnumSet.of(TicketStatus.REPORTED, TicketStatus.IMPLEMENTED, TicketStatus.DROPPED),
           TicketStatus.IMPLEMENTED,
-          EnumSet.of(TicketStatus.REFINED, TicketStatus.VERIFIED),
+          EnumSet.of(TicketStatus.REFINED, TicketStatus.VERIFIED, TicketStatus.DROPPED),
           TicketStatus.VERIFIED,
-          EnumSet.of(TicketStatus.IMPLEMENTED, TicketStatus.DONE),
+          EnumSet.of(TicketStatus.IMPLEMENTED, TicketStatus.DONE, TicketStatus.DROPPED),
           TicketStatus.DONE,
-          EnumSet.of(TicketStatus.VERIFIED));
+          EnumSet.of(TicketStatus.VERIFIED),
+          TicketStatus.DROPPED,
+          EnumSet.of(TicketStatus.REPORTED));
 
   private TicketLifecycle() {}
 
@@ -73,10 +97,9 @@ final class TicketLifecycle {
   }
 
   /**
-   * Rejects a move the lifecycle does not allow, naming both ends. <b>Moves are adjacent-only, in
-   * either direction</b> ({@link #LEGAL_TARGETS}): a ticket walks the five statuses one step at a
-   * time, forward as each phase finishes and backward when one has to be redone, and asking for the
-   * status it already has stays refused rather than reading as a no-op.
+   * Rejects a move the lifecycle does not allow, naming both ends. Which moves those are is {@link
+   * #LEGAL_TARGETS}' to say and is argued there — the adjacent-only pipeline, the off-path exit,
+   * and why DONE is offered no drop — because a rule written twice is a rule that drifts.
    *
    * <p>That is also why there is no reject verb: a verification that fails is the ordinary backward
    * move IMPLEMENTED → REFINED, because what a failed verification establishes is that the ticket

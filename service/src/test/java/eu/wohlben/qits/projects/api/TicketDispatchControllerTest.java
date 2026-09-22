@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -96,6 +97,23 @@ public class TicketDispatchControllerTest {
 
   /** The transition body, spelled here so this suite needs nothing of the entities module's API. */
   private record TicketControllerTransition(String target) {}
+
+  /**
+   * A block, through the door a person or an agent presses. It is the cheapest way to reach a
+   * blocked row from here — the flag has exactly one writer — and what that door itself refuses is
+   * argued where it lives rather than here.
+   */
+  private void block(String ticketId, String reason) {
+    asAdmin("setup")
+        .body(new TicketControllerBlock(true, reason))
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/blocked")
+        .then()
+        .statusCode(200);
+  }
+
+  /** The block body, spelled here for {@link TicketControllerTransition}'s reason. */
+  private record TicketControllerBlock(boolean blocked, String reason) {}
 
   /**
    * The wrapper by a different route than the door takes — {@code findWrapper} reads the archetype
@@ -255,6 +273,66 @@ public class TicketDispatchControllerTest {
         .body("message", containsString("is VERIFIED"));
 
     assertTrue(dispatch.calls().isEmpty(), "nothing is dispatched onto work that is over");
+  }
+
+  /**
+   * DROPPED is the third status that starts nothing, and it is the one that is not past the work at
+   * all: nothing was implemented and nothing was verified, somebody decided against doing it. The
+   * refusal is the same one for the same reason — there is no phase to start — and it names the
+   * status, because "no phase left to start" on its own would read as a ticket that is finished.
+   */
+  @Test
+  public void aDispatchOntoADroppedTicketIsRefusedToo() {
+    String projectId = createProject("Dispatch Dropped");
+    String ticketId =
+        createTicket(projectId, "Not worth doing", "IMPROVEMENT", "We decided not to.");
+    transition(ticketId, "DROPPED");
+
+    asAdmin("mallory")
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("is DROPPED"))
+        .body("message", containsString("no phase left to start"));
+
+    assertTrue(
+        dispatch.calls().isEmpty(),
+        "work that was decided against has no workspace stood up for it");
+  }
+
+  /**
+   * <b>A block refuses a dispatch that the status alone would have allowed</b>, which is the whole
+   * of what the flag adds to this door: REFINED plainly starts the implement phase, so the only
+   * thing standing between this caller and a workspace is somebody having written down what is in
+   * the way. An agent sent in anyway would walk into the same wall the last one did, with the
+   * reason one read away on the thread and nothing telling it to look.
+   *
+   * <p>The refusal must say <em>blocked</em> and must not say there is no phase left to start: the
+   * two sentences send a reader to opposite places — one to the thread to find the obstacle, the
+   * other to the conclusion that the ticket is over — and a blocked ticket answering the second
+   * would be this door lying about which of them is true.
+   */
+  @Test
+  public void aDispatchOntoABlockedTicketIsRefusedNamingTheBlockAndNotTheStatus() {
+    String projectId = createProject("Dispatch Blocked");
+    String ticketId = createTicket(projectId, "Waiting on something", "BUG", "It is refined.");
+    transition(ticketId, "REFINED");
+    block(ticketId, "the sibling service has to release its fix first");
+    dispatch.reset(); // the transition and the block are fixture; what follows is the subject
+
+    asAdmin("mallory")
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("blocked"))
+        .body("message", containsString(ticketId))
+        .body("message", not(containsString("no phase left to start")));
+
+    assertTrue(
+        dispatch.calls().isEmpty(),
+        "the block is decided before the port is asked for anything, so no workspace was stood up");
   }
 
   @Test

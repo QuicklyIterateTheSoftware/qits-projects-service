@@ -14,8 +14,10 @@ import java.util.Optional;
  * <em>achieved</em> and the phase that runs while it holds is what happens <em>next</em> ({@link
  * TicketStatus}). So REPORTED starts the refine phase, REFINED starts implement, IMPLEMENTED starts
  * verify, and VERIFIED and DONE start nothing at all — the work is over and closing is a person's
- * move. {@link #promptFor(WorkEntity)} is that reading, and it is the <b>only</b> place in this service
- * that turns a status into words.
+ * move. {@link TicketStatus#DROPPED} starts nothing either, for the opposite reason: the work was
+ * decided against, so there is no phase left to run and there never will be. {@link
+ * #promptFor(WorkEntity)} is that reading, and it is the <b>only</b> place in this service that
+ * turns a status into words.
  *
  * <p>Two things follow from the prompt being derived rather than passed in, and both are the point
  * rather than a side effect. Pressing "assign agent" on a half-finished ticket <b>resumes</b> it at
@@ -39,8 +41,24 @@ import java.util.Optional;
  * it is reversible in both directions through the same door; where the agent could not finish, it
  * says what is missing on the thread and <b>leaves the status where it is</b>. That is the shape the
  * instruction this class replaces already argued for — an unsure agent needs a cheap correct answer
- * rather than a coin flip — and it matters more with five statuses than it did with two: a wrong
+ * rather than a coin flip — and it matters more with six statuses than it did with two: a wrong
  * forward move now skips a whole phase, and the phase it skips is the one that would have caught it.
+ *
+ * <p><b>All three now name {@code block_ticket} in that same clause, and it is a second sentence
+ * rather than a replacement.</b> "Leave the status where it is" stays correct and stays first: the
+ * status is the phase to resume and moving it would claim work that did not land. What the flag
+ * adds is the half the thread could never carry — a comment saying the work stopped is read by
+ * whoever opens the ticket, while every surface that hands out work reads the status, so a ticket
+ * stuck behind something outside it goes on advertising itself as ready and the next agent walks
+ * into the same wall with the reason one read away. The clause is deliberately <b>bounded by its
+ * examples</b> in every template, for the reason the verify template's fallback arm is: an agent
+ * offered a way to stop that costs one call takes it, so the sentence names obstacles that are
+ * outside the ticket — work owed elsewhere, a decision only a person can take, access it has not
+ * got — and never "this is hard" or "this is half done", which are a phase in progress.
+ *
+ * <p><b>{@code block_ticket} is not in either daemon's bucket</b>, which puts it with {@code
+ * update_ticket} and {@code put_dossier_page} rather than with {@code transition_ticket} — see the
+ * seams section below, which names all three together and states what a move to kimi costs.
  *
  * <h2>Two seams have to hold, or all three of these are dead letters</h2>
  *
@@ -57,15 +75,16 @@ import java.util.Optional;
  * writes from an unattended run. If a dispatch ever starts marking itself read-only, every
  * transition and every comment below goes silent along with it.
  *
- * <p><b>The refine template names two tools that bucket does <em>not</em> list</b>, and that is
- * stated here rather than left to be discovered: {@code update_ticket} and {@code put_dossier_page}
- * are in neither daemon's {@code repository} bucket (the workspace one carries the two comment
- * tools and {@code transition_ticket} and no other write). Every surface ships CLAUDE with {@code
- * SKIP_PERMISSIONS} today, so an unlisted tool is still reachable and the sentence is actionable as
- * it stands — the same reading the epic instruction's dossier sentence carries. A surface moved to
- * <b>kimi</b> needs both added to qits-workspace-daemon's bucket and to {@code
- * AgentSurfaceDefaults}' copy of it on the same day, or the refine phase has been told to write its
- * result into a field it cannot write.
+ * <p><b>These templates name three tools that bucket does <em>not</em> list</b>, and that is stated
+ * here rather than left to be discovered: {@code update_ticket}, {@code put_dossier_page} and
+ * {@code block_ticket} are in neither daemon's {@code repository} bucket (the workspace one carries
+ * the two comment tools and {@code transition_ticket} and no other write). Every surface ships
+ * CLAUDE with {@code SKIP_PERMISSIONS} today, so an unlisted tool is still reachable and the
+ * sentences are actionable as they stand — the same reading the epic instruction's dossier sentence
+ * carries. A surface moved to <b>kimi</b> needs all three added to qits-workspace-daemon's bucket
+ * and to {@code AgentSurfaceDefaults}' copy of it on the same day, or the refine phase has been
+ * told to write its result into a field it cannot write and all three phases have been told to
+ * block with a tool that does not exist for them.
  *
  * <h2>Every dispatched turn opens with a pointer to the project's flow brief</h2>
  *
@@ -144,14 +163,15 @@ final class TicketPhasePrompts {
   private static Optional<Phase> phaseOf(WorkEntity ticket) {
     // The merged row stores the word, so it is read back into the lifecycle's own enum before the
     // mapping is made — the same reading TicketService makes before it asks TicketLifecycle
-    // anything, and what keeps this switch exhaustive over the five statuses rather than open over
-    // ck_entity_status' nine words.
+    // anything, and what keeps this switch exhaustive over the ticket's own statuses rather than
+    // open over ck_entity_status, which spells the union of both lifecycles' words.
     return switch (TicketStatus.valueOf(ticket.status)) {
       case REPORTED -> Optional.of(Phase.REFINE);
       case REFINED -> Optional.of(Phase.IMPLEMENT);
       case IMPLEMENTED -> Optional.of(Phase.VERIFY);
-      // Nothing runs: the work is over and a person closes it.
-      case VERIFIED, DONE -> Optional.empty();
+      // Nothing runs. VERIFIED and DONE are past the work and closing is a person's; DROPPED is the
+      // work decided against, which is the one case where no phase runs because none ever will.
+      case VERIFIED, DONE, DROPPED -> Optional.empty();
     };
   }
 
@@ -225,7 +245,10 @@ final class TicketPhasePrompts {
    * <p><b>The ending.</b> Done means somebody else could implement from the ticket alone; the
    * transition to REFINED is the agent's claim that this is so, and it is reversible. An agent that
    * could not get there says what is missing on the thread and leaves the ticket REPORTED — which
-   * costs one re-press and is the cheap correct answer.
+   * costs one re-press and is the cheap correct answer. Where the obstacle is <em>outside</em> the
+   * ticket it also calls {@code block_ticket}, and the examples given are the whole of what that
+   * means here: this phase's ordinary failure is not knowing enough yet, which is a re-press and
+   * not a block.
    */
   private static String refine(WorkEntity ticket) {
     return "Refine ticket \""
@@ -260,7 +283,11 @@ final class TicketPhasePrompts {
         + " Then transition_ticket to REFINED: the transition is your claim that it is refined, and"
         + " it is reversible in both directions through the same door. If you could not get there,"
         + " say on the thread with add_ticket_comment what is missing and leave the ticket"
-        + " REPORTED.";
+        + " REPORTED."
+        + " And where what stopped you is outside this ticket — a decision only a person can take,"
+        + " access you have not got, an answer owed by somebody else — call block_ticket with that"
+        + " as the reason as well: the ticket stays REPORTED, which is the phase to resume, and the"
+        + " block is what stops it being handed out as ready work until the obstacle is cleared.";
   }
 
   /**
@@ -295,8 +322,19 @@ final class TicketPhasePrompts {
    * it. A quietly dropped prohibition here produces a phase that destroys its successor and nothing
    * anywhere would notice.
    *
-   * <p><b>The ending</b>, the same as the other two: transition to IMPLEMENTED as the claim, and
-   * blocked or part-released means saying so on the thread and leaving the ticket REFINED.
+   * <p><b>The ending</b>, the same as the other two: transition to IMPLEMENTED as the claim, and a
+   * phase that could not finish means saying so on the thread and leaving the ticket REFINED.
+   *
+   * <p><b>This is the template the block clause was extracted from</b>, and the change is worth
+   * naming because the sentence it replaces looked like it already did the job. It read "If you are
+   * blocked, or released only part of it, say on the thread what is missing and leave the ticket
+   * REFINED" — a comment and nothing else, so "blocked" was a word on a thread that no surface
+   * reads: the ticket stayed REFINED, which is exactly what {@code list_tickets} advertises as
+   * ready to be picked up, and the next agent asked to take on the outstanding work picked up the
+   * one thing that was known to be stuck. The flag is what that sentence was always describing, and
+   * the two halves are now separate for that reason — the status says where the work got to, the
+   * flag says whether it can go on, and the word "blocked" is off the first clause so it cannot
+   * read as an alternative to the transition.
    */
   private static String implement(WorkEntity ticket) {
     return "Implement ticket \""
@@ -322,8 +360,15 @@ final class TicketPhasePrompts {
         + " release, and integrating it ends the workspace the next phase needs."
         + " Once the change is released and deployed, transition_ticket to IMPLEMENTED: the"
         + " transition is your claim, and it is reversible in both directions through the same"
-        + " door. If you are blocked, or released only part of it, say on the thread what is"
-        + " missing and leave the ticket REFINED.";
+        + " door. If you could not finish, or released only part of it, say on the thread what is"
+        + " missing and leave the ticket REFINED: the status is the phase to resume, and moving it"
+        + " would claim work that did not land."
+        + " And where what stopped you is outside this ticket — a change owed by another repository"
+        + " that has not released, a decision only a person can take, access you have not got —"
+        + " call block_ticket with that as the reason as well: the thread is read by whoever opens"
+        + " the ticket, while everything that hands out work reads the status, so without the flag"
+        + " this ticket goes on advertising itself as ready and the next agent walks into the same"
+        + " wall. Not for work that is merely hard or half done, which is a phase in progress.";
   }
 
   /**
@@ -355,6 +400,13 @@ final class TicketPhasePrompts {
    * and this is the move that stands in for one ({@code TicketLifecycle}'s own reasoning). That is
    * how implementation starts again.
    *
+   * <p><b>The block arm here is bounded harder than in the other two</b>, because this phase has a
+   * near neighbour that is not a block: a verification that <em>failed</em> is the backward move to
+   * REFINED, and only a verification that could not be <em>attempted</em> — nothing deployed to
+   * look at, an environment that is down, something unreachable — is waiting on an obstacle. The
+   * template says both, in that order, so "it did not work" cannot be reported as a block and
+   * quietly stop the ticket moving at all.
+   *
    * <p><b>Closing is a person's move.</b> VERIFIED is as far as this phase goes — DONE is somebody
    * deciding there is nothing left on the thread, which is a judgement about the ticket rather than
    * a report about the work, and the agent has no standing to make it.
@@ -383,6 +435,12 @@ final class TicketPhasePrompts {
         + " If it still occurs, transition_ticket BACK TO REFINED and say on the thread what"
         + " failed — that is how implementation starts again."
         + " Closing the ticket is a person's move and not yours. If you could not establish either"
-        + " answer, say so on the thread and leave the ticket IMPLEMENTED.";
+        + " answer, say so on the thread and leave the ticket IMPLEMENTED."
+        + " And where you could not because something outside this ticket is in the way — the"
+        + " change is not deployed yet, the environment that would show it is down, you cannot"
+        + " reach what you need to look at — call block_ticket with that as the reason as well: the"
+        + " ticket stays IMPLEMENTED, which is the phase to resume, and the block says the"
+        + " verification is waiting rather than that it failed. A verification that actually failed"
+        + " is the move back to REFINED and not a block.";
   }
 }

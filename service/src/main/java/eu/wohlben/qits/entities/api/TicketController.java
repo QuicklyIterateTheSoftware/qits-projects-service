@@ -69,6 +69,13 @@ public class TicketController {
   /** The phase a transition starts, delivered into the workspace on the ticket's branch. */
   @Inject TicketPhaseAdvance phaseAdvance;
 
+  /**
+   * The block door's whole rule — the refusal, the row and the remark — shared with the two MCP
+   * tools over the same write. It is in {@code projects.api} for {@link TicketPhaseAdvance}'s
+   * reason: what a status means for the work is decided there.
+   */
+  @Inject eu.wohlben.qits.projects.api.TicketBlocks blocks;
+
   // --- Ticket ---
 
   public record GetTicketRequest() {
@@ -143,11 +150,13 @@ public class TicketController {
   }
 
   /**
-   * A lifecycle move. {@code target} is the status name, and the move must be to a NEIGHBOUR of the
-   * ticket's current status along REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE — one step,
-   * forward or back. A move the lifecycle does not allow (including a move to the status the ticket
-   * already has), and a target naming no status, both answer 409 with a message; an absent target
-   * is a 400.
+   * A lifecycle move. {@code target} is the status name; along REPORTED → REFINED → IMPLEMENTED →
+   * VERIFIED → DONE the move must be to a NEIGHBOUR of the ticket's current status — one step,
+   * forward or back — and DROPPED sits off that line, reachable from any status that is not already
+   * closed and reopening only to REPORTED. The rule is argued once, in {@code
+   * TicketLifecycle.LEGAL_TARGETS}. A move the lifecycle does not allow (including a move to the
+   * status the ticket already has), and a target naming no status, both answer 409 with a message;
+   * an absent target is a 400.
    */
   public record TransitionTicketRequest(String target) {
     public record Response(TicketDto ticket) {}
@@ -155,7 +164,7 @@ public class TicketController {
 
   /**
    * Moving a ticket takes {@code qits:agent}, bound to the agent's own project: the {@code
-   * transition_ticket} MCP tool already performs this write for an agent, adjacency rule and all.
+   * transition_ticket} MCP tool already performs this write for an agent, lifecycle rule and all.
    * Unlike an epic's transition, this one resolves nothing and starts a phase the agent is itself
    * the subject of. See {@link EntitiesAgentAccess}.
    */
@@ -179,6 +188,48 @@ public class TicketController {
       LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
     }
     return new TransitionTicketRequest.Response(
+        qualifiedIds.qualify(workEntityMapper.toTicketDto(ticket)));
+  }
+
+  /**
+   * <b>Blocking is not part of {@link #update}, and that separation is the same one the status
+   * has.</b> {@code update} deliberately cannot move the status, because a statement about where
+   * the work stands is a different act from editing the text that describes it; "the phase running
+   * now cannot finish" is exactly such a statement, so it gets a door of its own rather than a
+   * field on the edit form — otherwise a retitle could assert that somebody is stuck.
+   *
+   * <p>{@code reason} is <b>required when blocking</b> (400 if blank) and optional when
+   * unblocking: a block with no stated blocker is one nobody can clear. It is recorded on the
+   * ticket's thread as a comment rather than stored on the row — see {@link
+   * eu.wohlben.qits.projects.api.TicketBlocks}.
+   *
+   * <p>Blocking a ticket whose status starts no phase — VERIFIED, DONE or DROPPED — is a <b>409</b>
+   * saying there is no phase to block.
+   */
+  public record SetTicketBlockedRequest(boolean blocked, String reason) {
+    public record Response(TicketDto ticket) {}
+  }
+
+  /**
+   * Blocking a ticket takes {@code qits:agent}, bound to the agent's own project, for the reason
+   * every other granted write here does: the {@code block_ticket} and {@code unblock_ticket} MCP
+   * tools already perform this write for an agent, and the agent working the phase is the one that
+   * knows it is stuck. See {@link EntitiesAgentAccess}.
+   */
+  @POST
+  @Path("/{id}/blocked")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  public SetTicketBlockedRequest.Response setBlocked(
+      @PathParam("id") String id, @Valid SetTicketBlockedRequest request) {
+    EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
+    var ticket =
+        blocks.apply(
+            ticketService.get(id),
+            request.blocked(),
+            request.reason(),
+            EntitiesPrincipal.changedBy(identity));
+    hints.fire(ticket.projectId);
+    return new SetTicketBlockedRequest.Response(
         qualifiedIds.qualify(workEntityMapper.toTicketDto(ticket)));
   }
 

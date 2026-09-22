@@ -6,6 +6,10 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.TicketType;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -44,6 +48,12 @@ public class TicketPhaseAdvanceTest {
   @Inject RecordingWorkspaceAgentDispatch workspaces;
 
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
+
+  /**
+   * The bean itself, for the one case that cannot be reached through the transition door — see
+   * {@link #aTicketThatWasDroppedDeliversNoTurnAndAsksAboutNoBranch}.
+   */
+  @Inject TicketPhaseAdvance advance;
 
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
@@ -183,8 +193,9 @@ public class TicketPhaseAdvanceTest {
 
   /**
    * <b>The whole rule, once per status.</b> Each move delivers the phase its new status begins, on
-   * the ticket's own branch at the project's wrapper — and the two statuses that start nothing
-   * deliver nothing at all, which is where the one remaining human decision lives.
+   * the ticket's own branch at the project's wrapper — and the statuses that start nothing deliver
+   * nothing at all, which is where the one remaining human decision lives. This walk covers the
+   * two on the pipeline; DROPPED is off it and has a case of its own.
    */
   @Test
   public void eachStatusDeliversThePromptThePhaseItStartsNeeds() {
@@ -218,6 +229,80 @@ public class TicketPhaseAdvanceTest {
         2, turns.calls().size(), "a move into VERIFIED starts no phase, so it delivers no turn");
     transition(ticketId, "DONE");
     assertEquals(2, turns.calls().size(), "and neither does a move into DONE");
+  }
+
+  /**
+   * <b>A ticket that was dropped starts nothing and says nothing.</b> DROPPED is not a phase that
+   * ended, it is the phases stopping, so there is no turn to deliver, no branch to ask about and
+   * nothing worth putting on the thread — a comment there would be a comment about having done
+   * nothing, on a thread somebody has just finished with.
+   *
+   * <p>It hands the bean the ticket rather than pressing the transition door, which every other
+   * case here does, and the reason is the status column's check constraint: a persisted DROPPED row
+   * needs the migration that widens it. What this class owns is the rule that a status starting no
+   * phase delivers no turn, and that rule reads the row it is given.
+   */
+  @Test
+  public void aTicketThatWasDroppedDeliversNoTurnAndAsksAboutNoBranch() {
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    WorkEntity dropped = new WorkEntity();
+    dropped.id = "tkt-dropped";
+    dropped.projectId = "prj-dropped";
+    dropped.archetype = Archetype.TICKET;
+    dropped.title = "Never mind";
+    dropped.slug = "never-mind";
+    dropped.ticketType = TicketType.BUG;
+    dropped.status = TicketStatus.DROPPED.name();
+
+    advance.afterTransition(dropped, "dana");
+
+    assertEquals(
+        List.of(), turns.calls(), "a dropped ticket has no phase to start, so no turn is delivered");
+    assertEquals(
+        List.of(),
+        workspaces.lookups(),
+        "and it is answered before the workspace lookup, so no release is asked for either — the"
+            + " one switch that says a status starts no phase is the whole of the decision");
+  }
+
+  /**
+   * <b>A blocked ticket delivers no turn</b>, and the ticket here is REFINED — a status that
+   * plainly does start a phase — so what is being asserted is the flag and nothing about the
+   * status. A block says the phase the ticket is <em>already standing in</em> cannot finish, so
+   * telling the agent in that workspace to start it is telling it to walk into the obstacle
+   * somebody has just written down on the thread.
+   *
+   * <p>It hands the bean the row directly, the idiom {@link
+   * #aTicketThatWasDroppedDeliversNoTurnAndAsksAboutNoBranch} uses, and here that is not merely the
+   * cheaper route but the <b>only</b> one: {@code TicketService.transition} clears the flag on
+   * every move, so a ticket can never arrive at this bean through the transition door with it set.
+   * A test that pressed the door would be asserting that an unblocked ticket starts its phase,
+   * which is the opposite arm and is covered by every other case in this class.
+   */
+  @Test
+  public void aTicketBlockedInThePhaseItStandsInDeliversNoTurn() {
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    WorkEntity blocked = new WorkEntity();
+    blocked.id = "tkt-blocked";
+    blocked.projectId = "prj-blocked";
+    blocked.archetype = Archetype.TICKET;
+    blocked.title = "Waiting on something";
+    blocked.slug = "waiting-on-something";
+    blocked.ticketType = TicketType.BUG;
+    blocked.status = TicketStatus.REFINED.name();
+    blocked.blocked = true;
+
+    advance.afterTransition(blocked, "dana");
+
+    assertEquals(
+        List.of(),
+        turns.calls(),
+        "REFINED starts the implement phase, so the empty list here is the block and nothing else");
+    assertEquals(
+        List.of(),
+        workspaces.lookups(),
+        "and the block is answered before the workspace lookup, so nothing was even asked about the"
+            + " branch the obstacle is standing on");
   }
 
   /**

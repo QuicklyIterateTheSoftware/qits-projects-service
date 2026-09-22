@@ -114,8 +114,8 @@ class QualifiedEntityIdsTest {
     CountingProjects projects = new CountingProjects().with("p1", "qits");
     TicketDto ticket =
         new TicketDto(
-            "t", "p1", 42L, null, "T", "t", "BUG", "REPORTED", null, null, "i", null, null, null,
-            List.of());
+            "t", "p1", 42L, null, "T", "t", "BUG", "REPORTED", false, null, null, "i", null, null,
+            null, List.of());
     assertEquals("qits-42", over(projects).qualifyTickets(List.of(ticket)).get(0).qualifiedId());
     assertEquals(1, projects.calls.size());
   }

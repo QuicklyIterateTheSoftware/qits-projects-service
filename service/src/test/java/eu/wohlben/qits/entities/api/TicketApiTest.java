@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
@@ -14,7 +15,10 @@ import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
+import io.restassured.response.ValidatableResponse;
 import jakarta.ws.rs.core.Response;
+import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -68,6 +72,33 @@ class TicketApiTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .extract()
         .path("comment.id");
+  }
+
+  /** Walk a ticket along the pipeline, one adjacent move per step, asserting nothing else. */
+  private void walkTo(String ticketId, String... targets) {
+    for (String target : targets) {
+      given()
+          .contentType(ContentType.JSON)
+          .body(new TicketController.TransitionTicketRequest(target))
+          .when()
+          .post("/projects/api/tickets/" + ticketId + "/transition")
+          .then()
+          .statusCode(Response.Status.OK.getStatusCode());
+    }
+  }
+
+  /**
+   * The blocked door with its answer left unasserted, so the one success and all three refusals
+   * below go through a single spelling of the route and the body — the thing a copy per test is
+   * free to drift on.
+   */
+  private ValidatableResponse setBlocked(String ticketId, boolean blocked, String reason) {
+    return given()
+        .contentType(ContentType.JSON)
+        .body(new TicketController.SetTicketBlockedRequest(blocked, reason))
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/blocked")
+        .then();
   }
 
   // --- The whole round trip --------------------------------------------------------------------
@@ -573,5 +604,185 @@ class TicketApiTest {
         .put("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(anyOf(equalTo(Response.Status.BAD_REQUEST.getStatusCode()), equalTo(422)));
+  }
+
+  // --- Blocking ----------------------------------------------------------------------------------
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void blockingARefinedTicketIsAnsweredBlockedAndReadsBackBlocked() {
+    String projectId = createProject();
+    String ticketId = createTicket(projectId, "Stuck on a sibling", "BUG");
+    walkTo(ticketId, "REFINED");
+
+    // Two claims in one walk, because they are two different ways to be wrong. The door answers
+    // the row it just wrote, so a caller never has to re-read to learn what it did; and the flag
+    // is on the row rather than on that answer, so the detail GET — which is how every listing
+    // screen and every agent actually reads a ticket — carries it too.
+    setBlocked(ticketId, true, "qits-eventstream has not released the watchdog this needs")
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("ticket.blocked", equalTo(true))
+        // A block is not a status: the status still names the phase to resume.
+        .body("ticket.status", equalTo("REFINED"));
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId)
+        .then()
+        .statusCode(200)
+        .body("ticket.blocked", equalTo(true))
+        .body("ticket.status", equalTo("REFINED"));
+
+    setBlocked(ticketId, false, "it released this morning")
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("ticket.blocked", equalTo(false));
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId)
+        .then()
+        .statusCode(200)
+        .body("ticket.blocked", equalTo(false));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void blockingATicketWhoseStatusStartsNoPhaseIsRefused() {
+    String projectId = createProject();
+
+    // Three statuses reached three different ways, and one refusal for all of them, because the
+    // rule is "no phase runs while this status holds" rather than a list of three words: VERIFIED
+    // and DONE are the far end of the pipeline, DROPPED is the exit off it and is reached without
+    // touching either. A block there would name a phase that is not running and that nothing will
+    // ever resume, so the ticket would read as waiting on something for good.
+    String verified = createTicket(projectId, "Verified already", "BUG");
+    walkTo(verified, "REFINED", "IMPLEMENTED", "VERIFIED");
+    String done = createTicket(projectId, "Closed", "BUG");
+    walkTo(done, "REFINED", "IMPLEMENTED", "VERIFIED", "DONE");
+    String dropped = createTicket(projectId, "Decided against", "IMPROVEMENT");
+    walkTo(dropped, "DROPPED");
+
+    for (String ticketId : List.of(verified, done, dropped)) {
+      // The message names what is missing rather than the status alone: a 409 on a ticket that
+      // plainly exists otherwise leaves the caller guessing whether the block was refused or the
+      // ticket was.
+      setBlocked(ticketId, true, "waiting on somebody")
+          .statusCode(Response.Status.CONFLICT.getStatusCode())
+          .body("message", containsString("no phase is running and there is nothing to block"));
+    }
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void blockingWithNoStatedBlockerIsRejectedAndLeavesNothingBehind() {
+    String projectId = createProject();
+    String ticketId = createTicket(projectId, "Blocked by nothing in particular", "BUG");
+
+    // Absent and blank are one case: what is asked for is a sentence somebody could act on, and
+    // whitespace is not less of an answer than nothing at all.
+    for (String reason : Arrays.asList(null, "   ")) {
+      setBlocked(ticketId, true, reason)
+          .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
+          .body("message", containsString("stated blocker"));
+    }
+
+    // Both writes are on the far side of that refusal, and asserting it is what makes the ordering
+    // real: a blocked ticket whose thread says nothing is precisely the state this rule exists to
+    // prevent, so a refusal that had already flipped the flag would have created it.
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId)
+        .then()
+        .statusCode(200)
+        .body("ticket.blocked", equalTo(false));
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .then()
+        .statusCode(200)
+        .body("entries", hasSize(0));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void theBlockerAndTheUnblockAreBothSaidOnTheThread() {
+    String projectId = createProject();
+    String ticketId = createTicket(projectId, "Waiting on the registry", "BUG");
+    walkTo(ticketId, "REFINED");
+
+    setBlocked(ticketId, true, "the npm registry refuses the scope, only an operator can add it")
+        .statusCode(Response.Status.OK.getStatusCode());
+    // A blocker is a remark with an author and a time, which is what the thread already is — so it
+    // lands there in the caller's own words, stamped like any other comment, instead of in a column
+    // that would go stale the moment the conversation moved past it.
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .then()
+        .statusCode(200)
+        .body("entries", hasSize(1))
+        .body("entries[0].comment.body", containsString("the npm registry refuses the scope"))
+        .body("entries[0].comment.author", equalTo("dev"));
+
+    // An unblock with nothing to add still says so. A thread that simply goes quiet leaves the next
+    // reader unable to tell a cleared blocker from one nobody mentioned again.
+    setBlocked(ticketId, false, null).statusCode(Response.Status.OK.getStatusCode());
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .then()
+        .statusCode(200)
+        .body("entries", hasSize(2))
+        .body("entries[1].comment.body", equalTo("Unblocked."));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void aTransitionClearsTheBlockTheDoorSet() {
+    String projectId = createProject();
+    String ticketId = createTicket(projectId, "Blocked then moved on", "BUG");
+    walkTo(ticketId, "REFINED");
+    setBlocked(ticketId, true, "the change it depends on is not released")
+        .statusCode(Response.Status.OK.getStatusCode());
+
+    // A block says the phase running NOW cannot finish, so the phase changing is what ends it.
+    // Read through the door rather than off the row, because the flag reaching the wire is what a
+    // board draws from: a transition that cleared the column while the DTO went on reporting the
+    // old value would leave every screen showing work as stuck after it moved.
+    given()
+        .contentType(ContentType.JSON)
+        .body(new TicketController.TransitionTicketRequest("IMPLEMENTED"))
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .then()
+        .statusCode(200)
+        .body("ticket.status", equalTo("IMPLEMENTED"))
+        .body("ticket.blocked", equalTo(false));
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId)
+        .then()
+        .statusCode(200)
+        .body("ticket.blocked", equalTo(false));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void unblockingIsAllowedAtAStatusThatCouldNotHaveBeenBlocked() {
+    String projectId = createProject();
+    String ticketId = createTicket(projectId, "Blocked on the way to verified", "BUG");
+    walkTo(ticketId, "REFINED", "IMPLEMENTED");
+    setBlocked(ticketId, true, "the deployment has not gone out")
+        .statusCode(Response.Status.OK.getStatusCode());
+    walkTo(ticketId, "VERIFIED");
+
+    // Only the blocking direction is refused, and the asymmetry is deliberate rather than an
+    // oversight: block-then-transition is the one path that leads here, this door produced it, and
+    // refusing to unblock at VERIFIED would mean refusing to tidy up a state of its own making.
+    // That it is already false is the point — the ask is for something true, not for a move.
+    // The refusal in the other direction is pinned by
+    // blockingATicketWhoseStatusStartsNoPhaseIsRefused.
+    setBlocked(ticketId, false, "it deployed")
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("ticket.blocked", equalTo(false))
+        .body("ticket.status", equalTo("VERIFIED"));
   }
 }

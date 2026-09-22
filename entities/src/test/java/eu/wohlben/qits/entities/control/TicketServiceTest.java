@@ -289,6 +289,66 @@ class TicketServiceTest extends EntitiesTestSupport {
     assertThrows(NotFoundException.class, () -> ticketService.getComment("nope"));
   }
 
+  // --- Blocked ---------------------------------------------------------------------------------
+
+  @Test
+  void aTicketIsBlockedAndUnblockedThroughItsOwnDoor() {
+    WorkEntity ticket = bug("Waiting on the vendor");
+    assertFalse(ticket.blocked, "every ticket is born unblocked; the column's default says so too");
+
+    assertTrue(ticketService.setBlocked(ticket.id, true, "alice").blocked);
+    // Read back, because the flag is worth nothing unless the row holds it: a caller picking work
+    // up reads the row, not the answer to somebody else's write.
+    inFreshTx(() -> assertTrue(ticketService.get(ticket.id).blocked));
+
+    assertFalse(ticketService.setBlocked(ticket.id, false, "alice").blocked);
+    inFreshTx(() -> assertFalse(ticketService.get(ticket.id).blocked));
+  }
+
+  @Test
+  void everyTransitionClearsTheBlockForwardAndBackward() {
+    // A block is scoped to the phase it blocks. The moment the status moves that phase is over and
+    // the next one has not been tried, so a flag carried across would assert a blocker nobody
+    // re-checked — against work nobody has attempted yet.
+    WorkEntity forward = bug("Blocked while being refined");
+    ticketService.setBlocked(forward.id, true, "alice");
+    assertFalse(ticketService.transition(forward.id, "REFINED", "alice").blocked);
+
+    // The backward arm, which is the one a reader expects to preserve it: sending a ticket back
+    // from IMPLEMENTED to REFINED looks like a return to where it was, block and all. It is not —
+    // it is an ask to implement again, and whether THAT is blocked is a question for whoever
+    // tries. There is no rule here for backward moves; there is one rule, and this pins it.
+    WorkEntity backward = bug("Blocked while being implemented");
+    ticketService.transition(backward.id, "REFINED", "alice");
+    ticketService.transition(backward.id, "IMPLEMENTED", "alice");
+    ticketService.setBlocked(backward.id, true, "alice");
+    assertFalse(ticketService.transition(backward.id, "REFINED", "alice").blocked);
+    inFreshTx(() -> assertFalse(ticketService.get(backward.id).blocked));
+  }
+
+  @Test
+  void anEditDoesNotTouchTheBlock() {
+    // The same separation the status has, for the same reason: a statement about where the work
+    // stands is not the same act as editing the text describing it, so a retitle that could also
+    // unblock would let somebody clear a blocker without ever saying they had.
+    WorkEntity ticket = bug("Stuck and misnamed");
+    ticketService.setBlocked(ticket.id, true, "alice");
+
+    WorkEntity renamed =
+        ticketService.update(
+            ticket.id, "Stuck, correctly named", null, false, null, false, null, null, false, "bob");
+    assertTrue(renamed.blocked);
+    assertEquals(TicketStatus.REPORTED.name(), renamed.status, "nor does it move the status");
+  }
+
+  @Test
+  void blockingATicketThatDoesNotExistIsNotFound() {
+    // Like every other write there, and worth stating because the door is new: an id naming
+    // nothing is a 404 and not a silently created row or a quiet no-op.
+    assertThrows(NotFoundException.class, () -> ticketService.setBlocked("nope", true, "t"));
+    assertThrows(NotFoundException.class, () -> ticketService.setBlocked("nope", false, "t"));
+  }
+
   // --- Comments --------------------------------------------------------------------------------
 
   @Test

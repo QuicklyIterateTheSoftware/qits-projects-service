@@ -79,11 +79,13 @@ create table entity_membership
 create index idx_entity_membership_parent_position on entity_membership (parent_id, position);
 ```
 
-`ck_entity_status` spells nine words: `REFINING, IMPLEMENTATION, IMPLEMENTED, SUPERSEDED,
-ABANDONED, REPORTED, REFINED, VERIFIED, DONE` — the union of `EpicStatus` and `TicketStatus`, which
-overlap on `IMPLEMENTED`. A check constraint has no way to say "these five when the archetype is
-EPIC" without becoming a second place the vocabulary is written down, so **the constraint spells the
-vocabulary and `control/Archetypes` spells the rule**. That split is V1's, applied again.
+`ck_entity_status` spells the union of `EpicStatus` and `TicketStatus`, which overlap on
+`IMPLEMENTED` — nine words as V9 wrote it: `REFINING, IMPLEMENTATION, IMPLEMENTED, SUPERSEDED,
+ABANDONED, REPORTED, REFINED, VERIFIED, DONE`. A check constraint has no way to say "these ones when
+the archetype is EPIC" without becoming a second place the vocabulary is written down, so **the
+constraint spells the vocabulary and `control/Archetypes` spells the rule**. That split is V1's,
+applied again — and it is why a lifecycle that gains a word is two changes rather than one: the
+enum, and a migration that widens this constraint to match it.
 
 ## The per-project numeric id (V11)
 
@@ -455,7 +457,7 @@ Declared in `entities/control/Archetypes.java`, as data. Nothing else re-decides
 | archetype | depth | may be a root | requires | permits (beyond required) | legal statuses |
 | --- | --- | --- | --- | --- | --- |
 | `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the five `EpicStatus` words |
-| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the five `TicketStatus` words |
+| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the six `TicketStatus` words |
 | `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
 | `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
 
@@ -925,8 +927,8 @@ two rules drift invisibly.
   named. No surface asks for the move.
 
 **It is NOT a lifecycle move.** `EpicLifecycle.requireTransition` and `TicketLifecycle.requireTransition`
-are not run here and must not be: the adjacency rules — one step forward or back along five statuses
-— stay owned by the two existing transition endpoints, which is where a caller asking "advance this
+are not run here and must not be: the lifecycle rules — adjacency along the pipeline, plus a
+ticket's off-path exit — stay owned by the two existing transition endpoints, which is where a caller asking "advance this
 ticket" goes. This endpoint answers a different question, *make the shape of the plan be this*, and a
 status it is handed is part of the shape rather than a step along it.
 
@@ -1438,7 +1440,7 @@ slug through unexamined.
 This asymmetry looks like an oversight and is not. An epic's phase is minted by the writer — every
 epic starts `REFINING`, set by `EpicService.create` and never by a caller — so demanding it of a
 candidate would fail every create, exactly as for `SLUG`. A ticket's status is a statement the
-intake surfaces already make and the transition API moves; the five words are the ticket's whole
+intake surfaces already make and the transition API moves; the six words are the ticket's whole
 lifecycle and a ticket without one is not a ticket in any phase.
 
 The column is nullable either way, because features and tasks have no status at all.

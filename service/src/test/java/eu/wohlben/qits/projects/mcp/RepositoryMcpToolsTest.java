@@ -418,6 +418,13 @@ public class RepositoryMcpToolsTest {
                       "create_ticket",
                       "update_ticket",
                       "transition_ticket",
+                      // Two verbs for one flag, and the pair is deliberate: a tool's description
+                      // is where an agent learns WHEN to reach for it, and blocking has to be
+                      // talked out of being the exit for a phase that is merely hard while
+                      // unblocking has to be talked into being used at all. One tool taking a
+                      // boolean would carry both arguments in one paragraph.
+                      "block_ticket",
+                      "unblock_ticket",
                       "add_ticket_comment",
                       "update_ticket_comment",
                       // RefinementDesignMcpTools — the frozen designs of a refinement. No resolve
