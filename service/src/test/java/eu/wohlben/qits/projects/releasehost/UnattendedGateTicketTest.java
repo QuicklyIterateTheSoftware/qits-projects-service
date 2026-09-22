@@ -218,6 +218,53 @@ public class UnattendedGateTicketTest {
   }
 
   /**
+   * Somebody decided the work was not going to be done, and the gate went red again. DROPPED sits
+   * beside DONE here and nowhere else in this service's reading of a status: the two disagree about
+   * everything — one says the fix shipped, the other says nothing was ever built — except the one
+   * fact this probe asks about, which is that a person is finished with the thread. Commenting a
+   * fresh red gate onto either would be arguing with that decision in a place nobody is reading, so
+   * the further failure is a report of its own.
+   *
+   * <p>It walks the ticket through the real transition door rather than writing the word onto the
+   * row, because the persisted DROPPED status is half of what is under test: the check constraint
+   * on the status column refused it until the migration that widened it, which is why this case
+   * could not be written beside its DONE twin at the time.
+   */
+  @Test
+  public void aFailureAfterTheTicketWasDroppedFilesAFreshOne() {
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String first = awaitTicketOn(id);
+
+    // DROPPED is reachable from every open status, so the ticket goes there from the REPORTED it
+    // was filed at — which is also the likeliest way a real one gets there: somebody reads the
+    // report and rules the work out before any of it is refined.
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"target\":\"DROPPED\"}")
+        .post("/projects/api/tickets/" + first + "/transition")
+        .then()
+        .statusCode(200);
+    assertEquals(
+        "DROPPED",
+        given().get("/projects/api/tickets/" + first).then().extract().path("ticket.status"),
+        "the drop has to have been stored, or the probe below is answering about an open ticket");
+
+    headMoved("maintenance/dependencies");
+    awaitState(id, "PENDING");
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    String second = awaitDifferentTicketOn(id, first);
+    assertNotEquals(first, second, "a dropped thread is finished with, so the red gate is new");
+    assertEquals(2, ticketsOnProject().size());
+    assertTrue(
+        commentBodies(first).isEmpty(),
+        "and nothing was said under the dropped ticket: " + commentBodies(first));
+  }
+
+  /**
    * It healed. The thread is told, and the ticket is <b>left where it is</b> — a green build says
    * the fold passes now, not that everything said on the thread is handled.
    */

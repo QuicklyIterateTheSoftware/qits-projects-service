@@ -155,17 +155,43 @@ public class TicketDispatchController {
 
   /**
    * The phase this ticket's status starts, with the turn its agent gets — or the <b>409</b> that
-   * says there is none. {@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} are the two: the
-   * ticket is past the work, and what is left is a person's judgement rather than an agent's run.
+   * says there is none. {@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} are two of the
+   * three: the ticket is past the work, and what is left is a person's judgement rather than an
+   * agent's run. {@link TicketStatus#DROPPED} is the third, and it needs no arm of its own here —
+   * the refusal is {@link TicketPhasePrompts#startedBy} answering empty, so a status that starts no
+   * phase is refused by this door the moment that one switch says so.
    *
    * <p>It is the first thing this door does after resolving the ticket, ahead of the workspaces
    * port, the project and the wrapper, for the reason {@code EpicDispatchController.requireStartable}
    * gives one level up — a refusal that was never going to be avoidable is decided before anything
    * is attempted, so nothing is stood up and nothing is written for a caller about to be refused.
    * The message names the status back, because "409" alone leaves the caller guessing which of the
-   * two it walked into and what would make the ticket dispatchable again.
+   * three it walked into and what would make the ticket dispatchable again.
+   *
+   * <p><b>A blocked ticket is the fourth refusal and it names the block rather than the status</b>,
+   * which is the whole reason it is a separate arm instead of a fourth empty case one switch down.
+   * Its status is one a phase runs under — REPORTED, REFINED or IMPLEMENTED — so answering "this
+   * ticket is REFINED, there is no phase to start" would be false twice over: the phase exists, and
+   * what stands in the way is a thing somebody wrote down on the thread. An agent dispatched onto a
+   * blocked ticket would walk into the same wall the last one did, with the reason one read away
+   * and nothing telling it to look.
+   *
+   * <p><b>It is checked BEFORE the status</b>, because a ticket that is both blocked and past the
+   * work cannot occur — a block is refused at every status that starts no phase ({@code
+   * TicketBlocks.requireBlockable}) and cleared by every transition — so the order costs nothing and
+   * putting the more specific answer first is what keeps the general one honest.
    */
   private static TicketPhasePrompts.Started phaseOrRefuse(WorkEntity ticket) {
+    if (ticket.blocked) {
+      throw new DomainException(
+          409,
+          "Ticket "
+              + ticket.id
+              + " is blocked, so its "
+              + ticket.status
+              + " phase is not started — something is in the way and the ticket's thread says"
+              + " what. Clear the block once that is resolved, then dispatch.");
+    }
     return TicketPhasePrompts.startedBy(ticket)
         .orElseThrow(
             () ->
@@ -176,7 +202,8 @@ public class TicketDispatchController {
                         + " is "
                         + ticket.status
                         + ", so there is no phase left to start — what remains is a person's to"
-                        + " decide, and an agent is not dispatched onto work that is over."));
+                        + " decide, and an agent is not dispatched onto work that is over or that"
+                        + " was decided against."));
   }
 
   /**

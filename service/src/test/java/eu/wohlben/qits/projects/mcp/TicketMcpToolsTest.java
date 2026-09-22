@@ -213,12 +213,22 @@ public class TicketMcpToolsTest {
     String ticketInA = createTicket(projectA, "Owned", "BUG");
     String projectB = createProject("Ticket Stranger");
 
-    // Every write is checked back to the scope too, not just the read.
-    for (String tool : List.of("get_ticket", "update_ticket", "add_ticket_comment")) {
+    // Every write is checked back to the scope too, not just the read. The two blocking tools carry
+    // arguments that would otherwise be accepted — a stated reason, a note — so what is measured
+    // here is the scope and not a refusal the arguments earned on their own.
+    for (String tool :
+        List.of(
+            "get_ticket",
+            "update_ticket",
+            "add_ticket_comment",
+            "block_ticket",
+            "unblock_ticket")) {
       Map<String, Object> args =
           switch (tool) {
             case "add_ticket_comment" -> Map.of("ticketId", ticketInA, "body", "hello");
             case "update_ticket" -> Map.of("id", ticketInA, "title", "Stolen");
+            case "block_ticket" -> Map.of("ticketId", ticketInA, "reason", "waiting on a sibling");
+            case "unblock_ticket" -> Map.of("ticketId", ticketInA, "note", "it cleared");
             default -> Map.of("id", ticketInA);
           };
       call(
@@ -544,6 +554,96 @@ public class TicketMcpToolsTest {
         response -> assertFalse(response.isError(), text(response)));
   }
 
+  // --- Blocking -------------------------------------------------------------
+
+  /**
+   * A tool result with every space taken out, so an assertion about one JSON member cannot be made
+   * to fail by a serializer that pretty-prints. The existing assertions here get away with matching
+   * quoted values; {@code blocked} is a bare boolean and {@code "blocked": true} would slip past a
+   * naive {@code contains}, reading as "the flag is absent" when it is merely spaced.
+   */
+  private static String compact(ToolResponse response) {
+    return text(response).replaceAll("\\s", "");
+  }
+
+  /**
+   * <b>The flag has to be on the summary, because the summary is the whole of what an agent
+   * sees.</b> A model picking up outstanding work reads a listing and a status word; if the block
+   * travelled only on the REST DTO then a ticket somebody stopped would read to every agent
+   * exactly like one that is ready to be taken on — which is the same failure DROPPED exists to
+   * fix, arriving by a different route.
+   */
+  @Test
+  public void theBlockingToolsAnswerTheTicketCarryingTheFlagTheyJustSet() {
+    String projectId = createProject("Ticket Blocked");
+    String ticketId = createTicket(projectId, "Waiting on a sibling release", "BUG");
+
+    call(
+        projectId,
+        "block_ticket",
+        Map.of("ticketId", ticketId, "reason", "qits-eventstream has not released the watchdog"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(
+              compact(response).contains("\"blocked\":true"),
+              "the tool must answer the ticket as it now stands: " + text(response));
+          // Blocked is not a status, so the status is still the phase waiting to be resumed.
+          assertTrue(text(response).contains("\"REPORTED\""), text(response));
+        });
+
+    call(
+        projectId,
+        "unblock_ticket",
+        Map.of("ticketId", ticketId, "note", "it released this morning"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(
+              compact(response).contains("\"blocked\":false"),
+              "an unblock that answered a still-blocked ticket would be read as a failure by the"
+                  + " agent that made it: "
+                  + text(response));
+        });
+  }
+
+  /**
+   * Both refusals reach the model as <b>isError</b> and not as a JSON-RPC protocol error, which is
+   * this surface's standing rule: an agent that blocked wrongly has to be able to read why and
+   * correct itself inside the same turn, where a protocol error ends the call with nothing to act
+   * on. The rules themselves — what blocking with no reason costs, and which statuses start no
+   * phase — are pinned at the REST door in {@code TicketApiTest}; what is asserted here is that
+   * they arrive at all, and legibly.
+   */
+  @Test
+  public void theBlockingRefusalsArriveAsReadableToolErrors() {
+    String projectId = createProject("Ticket Blocked Wrongly");
+    String noReason = createTicket(projectId, "Stuck on nothing stated", "BUG");
+    call(
+        projectId,
+        "block_ticket",
+        Map.of("ticketId", noReason, "reason", "   "),
+        response -> {
+          assertTrue(response.isError(), "a block with no stated blocker must be refused");
+          assertTrue(text(response).contains("stated blocker"), text(response));
+        });
+
+    String dropped = createTicket(projectId, "Decided against", "IMPROVEMENT");
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", dropped, "target", "DROPPED"),
+        response -> assertFalse(response.isError(), text(response)));
+    call(
+        projectId,
+        "block_ticket",
+        Map.of("ticketId", dropped, "reason", "waiting on somebody"),
+        response -> {
+          assertTrue(response.isError(), "a dropped ticket has no phase for a block to be about");
+          assertTrue(
+              text(response).contains("no phase is running and there is nothing to block"),
+              text(response));
+        });
+  }
+
   // --- The surface ----------------------------------------------------------
 
   @Test
@@ -567,7 +667,9 @@ public class TicketMcpToolsTest {
   public void aReadOnlySessionSeesTheReadsAndNoneOfTheWrites() {
     // An unattended read-only run may look at the tickets — that is often what it was launched to
     // work from — and may not file, edit, comment on or resolve one, nor rewrite a remark somebody
-    // else put on the thread.
+    // else put on the thread. Blocking is on that list for the sharper version of the reason:
+    // a run steered by an untrusted commit message could otherwise stop somebody's ticket looking
+    // like work nobody can pick up, and unblocking could erase a live blocker a person stated.
     String projectId = createProject("Ticket ReadOnly");
     readOnlyClient(projectId)
         .when()
@@ -579,6 +681,8 @@ public class TicketMcpToolsTest {
                       "create_ticket",
                       "update_ticket",
                       "transition_ticket",
+                      "block_ticket",
+                      "unblock_ticket",
                       "add_ticket_comment",
                       "update_ticket_comment")) {
                 assertFalse(

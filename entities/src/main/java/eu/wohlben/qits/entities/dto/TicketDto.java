@@ -12,6 +12,12 @@ import java.util.List;
  * @param impetus what brought the ticket about, in the reporter's words — see {@code
  *     Ticket.impetus} for the length rule and for why it is never rewritten by a later phase.
  * @param description the refinement's output, absent until the refine phase has written it.
+ * @param blocked whether the phase this ticket's status starts cannot finish right now — a flag
+ *     beside the status rather than a word in it, because the status is the phase to resume and a
+ *     block must not overwrite it. See {@code WorkEntity.blocked}. It travels on every ticket shape
+ *     for the same reason {@code status} does: a reader choosing what to pick up needs both, and
+ *     a ticket that reads REFINED while somebody is stuck on it is exactly the wrong thing to pick
+ *     up next.
  * @param workspaces the workspaces cut for this ticket, <b>live or resolved</b>, each carrying its
  *     own {@code status} — see {@link WorkspaceReferenceDto}. Derived per read and never stored:
  *     empty means no workspace was ever cut, and a resolved one stays on the list so the ticket
@@ -30,6 +36,7 @@ public record TicketDto(
     String slug,
     String type,
     String status,
+    boolean blocked,
     String assignee,
     String createdBy,
     String impetus,
@@ -49,6 +56,7 @@ public record TicketDto(
         slug,
         type,
         status,
+        blocked,
         assignee,
         createdBy,
         impetus,
@@ -69,6 +77,7 @@ public record TicketDto(
         slug,
         type,
         status,
+        blocked,
         assignee,
         createdBy,
         impetus,

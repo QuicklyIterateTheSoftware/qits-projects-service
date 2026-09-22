@@ -179,6 +179,36 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String status;
 
   /**
+   * <b>The phase this ticket's status starts cannot finish right now.</b> On a {@link
+   * Archetype#TICKET} and on nothing else, and false on every other kind because nothing else has a
+   * phase to block.
+   *
+   * <p><b>It is a flag and not a status, and that is the decision rather than a shortcut.</b>
+   * {@link TicketStatus} forbids a word for what is being <em>done</em> — there is no {@code
+   * IN_PROGRESS} there and there must never be one — and a {@code BLOCKED} word would be worse than
+   * that rule's usual violation: it would <em>overwrite</em> the status, so a ticket blocked while
+   * REFINED would lose the one fact saying implement is the phase to resume. Held beside the status
+   * instead, both facts stay true at once: what has been achieved, and whether what runs next can
+   * proceed.
+   *
+   * <p><b>It is temporary by construction.</b> {@code TicketService.transition} clears it
+   * unconditionally, so a block lives exactly as long as the phase it blocks — carrying one into
+   * the next phase would assert a blocker nobody re-checked. That is what keeps this from becoming
+   * a second lifecycle running alongside the first.
+   *
+   * <p><b>Not an {@code EntityProperty}, deliberately</b>, and the reason is
+   * {@code transition_entities}: that door is full-state PUT semantics over the declared
+   * properties, so an omitted one is cleared. A registry property here would silently unblock a row
+   * on every reshape that did not restate it. {@link #createdAt} and {@link #updatedAt} are the
+   * precedent — real columns the archetype registry is indifferent to.
+   *
+   * <p>A {@code boolean} and not a {@code Boolean}: the column is {@code not null} with a default
+   * (V14), unblocked is the ordinary state, and there is no third answer for a null to mean.
+   */
+  @Column(nullable = false)
+  public boolean blocked;
+
+  /**
    * Bug or improvement ({@link TicketType}), on a ticket and on nothing else. Named {@code
    * ticketType} rather than {@code type}, because {@code type} in a row holding four archetypes
    * reads as the archetype, which is the one thing it is not.

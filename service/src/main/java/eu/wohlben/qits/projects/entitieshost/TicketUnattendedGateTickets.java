@@ -35,10 +35,10 @@ import org.jboss.logging.Logger;
  * <h2>The dedupe, which is the part that would bite</h2>
  *
  * <p>The caller remembers the ticket on the request row and hands it back; this class decides
- * whether that ticket is still a place to put a failure. Anything but DONE → the failure is a
- * <b>comment</b>. DONE, or deleted, or naming nothing → a fresh ticket. That is what keeps a
- * repository that re-gates red twenty times over to one ticket, on exactly the repository somebody
- * is already trying to fix.
+ * whether that ticket is still a place to put a failure. Anything still open → the failure is a
+ * <b>comment</b>. Closed (DONE or DROPPED), or deleted, or naming nothing → a fresh ticket. That is
+ * what keeps a repository that re-gates red twenty times over to one ticket, on exactly the
+ * repository somebody is already trying to fix.
  *
  * <h2>Nothing here throws</h2>
  *
@@ -110,8 +110,8 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     try {
       WorkEntity ticket = reusableTicket(ticketId);
       if (ticket == null) {
-        // DONE already, or gone. Either way somebody has finished with it and a comment on a
-        // closed thread is noise.
+        // Closed already — DONE or DROPPED — or gone. Either way somebody has finished with it and
+        // a comment on a closed thread is noise.
         return;
       }
       tickets.addComment(
@@ -139,9 +139,16 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
 
   /**
    * The ticket to put this failure on, or null where there is none to put it on. The probe is
-   * <b>not DONE</b> rather than any one status, and that is the whole of the rule: DONE is the only
-   * word that says a person has finished with the thread, so it is the only one under which a fresh
+   * <b>not closed</b> rather than any one status, and that is the whole of the rule: a closed
+   * thread is one a person has finished with, and that is the only condition under which a fresh
    * failure deserves a fresh ticket rather than a comment.
+   *
+   * <p><b>There are two words that close a thread and the probe names both.</b> DONE says the
+   * matter was dealt with; DROPPED says a decision was taken not to deal with it. They disagree
+   * about everything except the one fact this method asks about — that a person is finished with
+   * the thread — and commenting a fresh red gate onto either would be arguing with that decision in
+   * a place nobody is reading. A gate that goes red again after the thread was dropped is new
+   * evidence against the decision, which is a report of its own and not a footnote on the old one.
    *
    * <p><b>An IMPLEMENTED gate ticket is still the one to reuse</b>, and it is the case worth
    * stating because it reads like a closed one. IMPLEMENTED says a fix was released and that verify
@@ -166,8 +173,12 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
       LOG.debugf("Gate-failure ticket %s could not be read; treating it as gone", ticketId);
       return null;
     }
-    // The merged row stores the status word, so DONE is compared by name against the column.
-    return TicketStatus.DONE.name().equals(ticket.status) ? null : ticket;
+    // The merged row stores the status word, so the two closing words are compared by name against
+    // the column.
+    return TicketStatus.DONE.name().equals(ticket.status)
+            || TicketStatus.DROPPED.name().equals(ticket.status)
+        ? null
+        : ticket;
   }
 
   static String title(Rejection rejection) {

@@ -67,6 +67,14 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * the thread, so an unattended run holding it could edit what a person wrote and leave a record
    * saying something nobody said.
    *
+   * <p>{@code block_ticket} and {@code unblock_ticket} join the ticket writes on the reading {@code
+   * transition_ticket} already carries, and the second of the pair is the one worth naming. A block
+   * is a statement people act on — a listing surface draws it and the next agent asked to take on
+   * the outstanding work skips the ticket — so an unattended run steered by an untrusted commit
+   * message must not be able to make it. An <em>unblock</em> is the sharper half rather than the
+   * harmless one: it takes away somebody else's stated blocker and puts the ticket back in front of
+   * whoever picks up the work next, with nothing on the thread that a person said had cleared.
+   *
    * <p>{@code transition_entities} is the sharpest of all of them and belongs here on the strongest
    * reading in this list: it restates part of the plan <em>in full</em> in one transaction, so an
    * unattended run steered by an untrusted commit message could re-archetype, re-parent and clear
@@ -100,6 +108,8 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "create_ticket",
           "update_ticket",
           "transition_ticket",
+          "block_ticket",
+          "unblock_ticket",
           "add_ticket_comment",
           "update_ticket_comment",
           "transition_entities");

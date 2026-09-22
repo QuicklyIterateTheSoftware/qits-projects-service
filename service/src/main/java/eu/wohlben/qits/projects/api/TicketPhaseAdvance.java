@@ -47,11 +47,13 @@ import org.jboss.logging.Logger;
  * VERIFIED starts no phase at all. A rule that asked "forward or back?" would need a second table to
  * answer from, and the second table is the thing that goes wrong.
  *
- * <p>{@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} therefore start no phase and
- * deliver no turn, and that is where the one remaining human decision lives: closing a ticket is a
- * person's move. DONE ends the flow at its first line and writes nothing at all. VERIFIED does the
- * one thing that is not a phase — it asks for the release of the branch the work was done on — and
- * the section below is the whole of it.
+ * <p>{@link TicketStatus#VERIFIED}, {@link TicketStatus#DONE} and {@link TicketStatus#DROPPED}
+ * therefore start no phase and deliver no turn, and that is where the one remaining human decision
+ * lives: closing a ticket is a person's move, and so is abandoning one. DONE and DROPPED end the
+ * flow at its first line and write nothing at all — a ticket whose work was decided against has
+ * nothing to ask for and nobody to tell, and a comment saying so would be a comment about having
+ * done nothing. VERIFIED does the one thing that is not a phase — it asks for the release of the
+ * branch the work was done on — and the section below is the whole of it.
  *
  * <h2>VERIFIED asks for a release, and nothing else does</h2>
  *
@@ -228,10 +230,23 @@ public class TicketPhaseAdvance {
       releaseWorkspace(ticket, changedBy);
       return;
     }
+    if (ticket.blocked) {
+      // A blocked ticket's phase is not started, and the ORDER against the clearing rule is the
+      // whole of what this arm means. TicketService.transition clears the flag unconditionally, so
+      // the ticket handed here by either transition surface is never blocked and the phase it just
+      // entered DOES start — which is right: a block is about the phase that was running, and the
+      // one beginning now has not been tried. What this catches is the other caller and the other
+      // state: a ticket blocked in the phase it is already standing in, for which delivering a turn
+      // would tell an agent to start work somebody has already written down the obstacle to.
+      LOG.debugf(
+          "Ticket %s is blocked, so no turn is delivered for the phase its status (%s) starts",
+          ticket.id, ticket.status);
+      return;
+    }
     Optional<TicketPhasePrompts.Started> started = TicketPhasePrompts.startedBy(ticket);
     if (started.isEmpty()) {
-      // DONE, and nothing else now that VERIFIED is answered above: the work is over and closing is
-      // a person's move. Nothing to do, and nothing to say about having done nothing.
+      // DONE and DROPPED, now that VERIFIED is answered above: the work is over, or it was decided
+      // against. Nothing to do either way, and nothing to say about having done nothing.
       return;
     }
     if (turns.isUnsatisfied()) {

@@ -7,6 +7,7 @@ import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.api.TicketBlocks;
 import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
@@ -34,8 +35,16 @@ import org.jboss.logging.Logger;
  * exposes no lifecycle move, because freezing a plan is a human decision about committing to scope.
  * Every ticket status is a statement about what has been achieved — refined, implemented, verified
  * — which is exactly the thing the agent that did the work knows and nobody else does yet; and
- * every move is reversible one step, so a wrong answer costs a call rather than a superseded epic.
- * The last move, to DONE, is still a person's: closing is a judgement about the thread.
+ * every move is reversible, so a wrong answer costs a call rather than a superseded epic. The last
+ * move, to DONE, is still a person's: closing is a judgement about the thread.
+ *
+ * <p><strong>DROPPED is the other way out and it is not the same kind of claim.</strong> Every
+ * other status reports what the work reached; this one reports that the work should not happen. An
+ * agent that finds the ticket describes something that is not a problem, or has been made
+ * meaningless since it was filed, knows that as surely as it knows a fix shipped, so the move is
+ * here. What it must never be is the exit for a phase that went badly — a ticket that is merely
+ * hard or unfinished is left where it stands with the missing piece said on the thread, because
+ * DROPPED would assert a decision nobody took.
  *
  * <p>Scope comes from {@link ProjectScope} (the {@code X-QITS-Project} header), never from a tool
  * argument, and every id a tool is handed is checked back to that project — a ticket or comment in
@@ -83,6 +92,12 @@ public class TicketMcpTools {
    */
   @Inject TicketPhaseAdvance phaseAdvance;
 
+  /**
+   * The block door's whole rule, shared with {@code TicketController}'s route over the same write.
+   * The same crossing into {@code projects.api} the field above declares.
+   */
+  @Inject TicketBlocks blocks;
+
   // --- Result shapes --------------------------------------------------------
 
   /**
@@ -102,6 +117,7 @@ public class TicketMcpTools {
       String title,
       String type,
       String status,
+      boolean blocked,
       String assignee,
       String createdBy,
       String impetus,
@@ -118,6 +134,7 @@ public class TicketMcpTools {
       String title,
       String type,
       String status,
+      boolean blocked,
       String assignee,
       String createdBy,
       String impetus,
@@ -135,15 +152,19 @@ public class TicketMcpTools {
               + " that is not big enough to be an epic. Its status says what has been achieved so"
               + " far: REPORTED (somebody said what is wrong), REFINED (the ticket says what to"
               + " do), IMPLEMENTED (the change is released and deployed), VERIFIED (it no longer"
-              + " occurs on the platform), DONE (closed). Call it with status=\"REFINED\" to find"
-              + " the work that is ready to be picked up, or status=\"REPORTED\" to find what"
-              + " still needs refining.")
+              + " occurs on the platform), DONE (closed), DROPPED (a decision was taken not to do"
+              + " this work, and nothing about it was implemented or verified). Call it with"
+              + " status=\"REFINED\" to find the work that is ready to be picked up, or"
+              + " status=\"REPORTED\" to find what still needs refining. Read `blocked` beside the"
+              + " status: it is a flag and not a status, and a blocked ticket is one somebody"
+              + " already found something in the way of — its thread says what — so it is the wrong"
+              + " one to pick up even where its status says otherwise.")
   public List<TicketSummary> listTickets(
       @ToolArg(
               required = false,
               description =
-                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTED, VERIFIED or DONE."
-                      + " Omit for every ticket.")
+                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
+                      + " DROPPED. Omit for every ticket.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return ticketService.listByProject(scope.requireProjectId(), status).stream()
@@ -171,6 +192,7 @@ public class TicketMcpTools {
         ticket.title,
         ticket.ticketType.name(),
         ticket.status,
+        ticket.blocked,
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,
@@ -230,9 +252,11 @@ public class TicketMcpTools {
               + " transition to REFINED is the claim that it now does. The impetus is editable"
               + " because a report filed in haste is often the wrong words for the right problem —"
               + " but never rewrite it to say what you decided: it is the record of what was"
-              + " originally asked for, and the description is where a decision goes. The status is"
-              + " not editable here — use transition_ticket, which is the only thing that moves"
-              + " it.")
+              + " originally asked for, and the description is where a decision goes. That includes"
+              + " a decision not to do the work at all: say why here or on the thread, then move"
+              + " the ticket to DROPPED — a dropped ticket whose description still reads as a plan"
+              + " tells the next reader nothing about why it stopped. The status is not editable"
+              + " here — use transition_ticket, which is the only thing that moves it.")
   public TicketSummary updateTicket(
       @ToolArg(description = "id of a ticket in this project") String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
@@ -260,9 +284,9 @@ public class TicketMcpTools {
 
   /**
    * <b>"Transition" here is a LIFECYCLE move, and it is not the other transition.</b> This tool
-   * moves one ticket one step along {@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}: it
-   * writes {@code entity.status} and nothing else, and it is judged against {@code TicketLifecycle}
-   * — adjacency, in either direction, over the TICKET archetype's own status words.
+   * moves one ticket along {@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, or off that
+   * line into {@code DROPPED}: it writes {@code entity.status} and nothing else, and which moves
+   * are legal is {@code TicketLifecycle.LEGAL_TARGETS}' to say and argued there.
    *
    * <p>{@code transition_entities} ({@link EntityMcpTools}, over {@code EntityTransitionService})
    * is the ARCHETYPE transition, which the unified-entity epic introduced: it restates what KIND a
@@ -275,17 +299,28 @@ public class TicketMcpTools {
   @Tool(
       name = "transition_ticket",
       description =
-          "Move a ticket one step along its lifecycle. A status is a claim about what has been"
-              + " ACHIEVED, so only move to one you can honestly make: REPORTED — somebody said"
-              + " what is wrong; REFINED — the ticket now says what to do; IMPLEMENTED — the change"
-              + " is released AND deployed, not merely merged; VERIFIED — you checked the platform"
-              + " and it no longer occurs; DONE — closed, which is a person's call. MOVES ARE"
-              + " ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED"
-              + " <-> DONE, one step at a time, and asking for the status the ticket already has is"
-              + " refused. There is no reject verb: a verification that fails is the ordinary move"
-              + " back from IMPLEMENTED to REFINED, because what it establishes is that the ticket"
-              + " needs deciding again. Nothing is terminal — DONE reopens to VERIFIED like any"
-              + " other move — so a wrong answer costs one more call.")
+          "Move a ticket along its lifecycle. A status is a claim about what has been ACHIEVED, so"
+              + " only move to one you can honestly make: REPORTED — somebody said what is wrong;"
+              + " REFINED — the ticket now says what to do; IMPLEMENTED — the change is released"
+              + " AND deployed, not merely merged; VERIFIED — you checked the platform and it no"
+              + " longer occurs; DONE — closed, which is a person's call; DROPPED — a decision was"
+              + " taken not to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY,"
+              + " forward or back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED <-> DONE, one"
+              + " step at a time, and asking for the status the ticket already has is refused."
+              + " DROPPED is off that line: it is reachable from REPORTED, REFINED, IMPLEMENTED and"
+              + " VERIFIED — any status that is not already closed — and it goes back only to"
+              + " REPORTED. DROP A TICKET WHEN THE WORK IT ASKS FOR SHOULD NOT BE DONE: it"
+              + " describes something that turned out not to be a problem, or that the platform"
+              + " has since made meaningless, or that was deliberately decided against — say which"
+              + " on the thread before you move it. Do NOT drop a ticket merely because it is hard,"
+              + " stale or you could not finish it: leaving it where it is and saying what is"
+              + " missing is the honest answer, and DROPPED claims a decision that nobody took."
+              + " Do not drop one that is DONE either; that move does not exist, because a real"
+              + " outcome is not overwritten by a weaker one. There is no reject verb: a"
+              + " verification that fails is the ordinary move back from IMPLEMENTED to REFINED,"
+              + " because what it establishes is that the ticket needs deciding again. Nothing is"
+              + " terminal — DONE reopens to VERIFIED and DROPPED reopens to REPORTED — so a wrong"
+              + " answer costs one more call.")
   public TicketSummary transitionTicket(
       @ToolArg(
               description =
@@ -293,8 +328,10 @@ public class TicketMcpTools {
           String id,
       @ToolArg(
               description =
-                  "the status to move to; must be a neighbour of the ticket's current one:"
-                      + " REPORTED, REFINED, IMPLEMENTED, VERIFIED or DONE")
+                  "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
+                      + " DROPPED. On the pipeline it must be a neighbour of the ticket's current"
+                      + " status; DROPPED is reachable from any status that is not DONE, and"
+                      + " reopens only to REPORTED")
           String target) {
     requireTicketInProject(id);
     String changedBy = changedBy();
@@ -311,6 +348,74 @@ public class TicketMcpTools {
       LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
     }
     return summarize(ticket, projectSlug());
+  }
+
+  /**
+   * <b>Two verbs and not one boolean argument</b>, which is the only shape decision in this pair.
+   * A tool's description is where an agent learns <em>when</em> to reach for it, and the two cases
+   * want opposite sentences: blocking has to be talked out of being the exit for a phase that is
+   * merely hard, and unblocking has to be talked into being used at all rather than left for
+   * somebody else to notice. One tool with {@code blocked=true|false} would carry both arguments in
+   * one paragraph, where each half is advice about the other half's mistake.
+   *
+   * <p>Both land on {@code TicketBlocks}, which is the same write the REST door makes and holds the
+   * whole rule — see that class.
+   */
+  @McpServer("repository")
+  @Tool(
+      name = "block_ticket",
+      description =
+          "Say that the phase running on this ticket cannot finish right now, and why. BLOCKED IS"
+              + " NOT A STATUS: the ticket keeps the status it has, because that status is the"
+              + " phase to resume, and the next transition clears the block. Block a ticket when"
+              + " something outside this ticket is in the way and the work genuinely cannot"
+              + " proceed — a change owed by another repository that has not released, a decision"
+              + " only a person can take, credentials or access you do not have, a dependency that"
+              + " is broken on the platform. Do NOT block a ticket because the work is hard, large"
+              + " or half done: that is a phase in progress, and saying what is left with"
+              + " add_ticket_comment is the honest answer. Do NOT block instead of dropping"
+              + " either — a ticket that should not be done at all is transition_ticket to DROPPED,"
+              + " which is a decision, where a block is a wait. The reason is required: a blocked"
+              + " ticket with no stated blocker is one nobody can clear. It is refused with a 409"
+              + " on a ticket that is VERIFIED, DONE or DROPPED, because no phase is running while"
+              + " those hold and there is nothing to block.")
+  public TicketSummary blockTicket(
+      @ToolArg(description = "id of a ticket in this project") String ticketId,
+      @ToolArg(
+              description =
+                  "what is in the way, and what would clear it — one or two sentences, named"
+                      + " concretely enough that somebody else could act on it. It lands on the"
+                      + " ticket's thread as a comment.")
+          String reason) {
+    WorkEntity ticket = requireTicketInProject(ticketId);
+    WorkEntity blocked = blocks.apply(ticket, true, reason, changedBy());
+    announce();
+    return summarize(blocked, projectSlug());
+  }
+
+  @McpServer("repository")
+  @Tool(
+      name = "unblock_ticket",
+      description =
+          "Say that what was in the way of this ticket is gone and its phase can run again. Call it"
+              + " as soon as you know the blocker cleared, whether or not you are the one who"
+              + " blocked it: a ticket left blocked after the fact reads as work nobody can pick"
+              + " up, and the listing surfaces cannot tell a stale block from a live one. It moves"
+              + " no status — the ticket resumes at the phase it was already in. The note is"
+              + " optional and is worth writing where the answer is not obvious from the thread:"
+              + " say what cleared it, not merely that it did.")
+  public TicketSummary unblockTicket(
+      @ToolArg(description = "id of a ticket in this project") String ticketId,
+      @ToolArg(
+              required = false,
+              description =
+                  "what cleared the blocker; omit if the thread already says. It lands on the"
+                      + " ticket's thread as a comment.")
+          String note) {
+    WorkEntity ticket = requireTicketInProject(ticketId);
+    WorkEntity unblocked = blocks.apply(ticket, false, note, changedBy());
+    announce();
+    return summarize(unblocked, projectSlug());
   }
 
   @McpServer("repository")
@@ -409,6 +514,7 @@ public class TicketMcpTools {
         ticket.title,
         ticket.ticketType.name(),
         ticket.status,
+        ticket.blocked,
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,

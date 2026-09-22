@@ -359,6 +359,68 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     inFreshTx(() -> assertEquals(Archetype.TICKET, entities.findById(ticket.id).archetype));
   }
 
+  /**
+   * <b>A reshape leaves {@code blocked} exactly where it was, and that is what keeps it OUT of the
+   * registry.</b>
+   *
+   * <p>This operation is a full-state PUT over the <em>declared</em> properties: {@link
+   * EntityTransition}'s rule is that an omitted property is cleared, and the test above is that rule
+   * being kept. So a flag declared as an {@link EntityProperty} would be cleared by every reshape
+   * that did not restate it — and no caller restates a property it does not know exists. A tree
+   * being rescoped would silently unblock every blocked ticket it touched: a write nobody asked for,
+   * arriving through a door about something else, reported nowhere. That is the reason {@code
+   * WorkEntity.blocked} is a real column the registry is indifferent to, the way {@code createdAt}
+   * and {@code updatedAt} are, and this test is what makes that indifference a fact rather than an
+   * omission somebody tidies up later.
+   *
+   * <p>The reshape here genuinely goes through the write path, which is the whole of what makes the
+   * assertion mean anything: the title moves and the assignee is dropped, so the PUT's clear is
+   * demonstrably exercised in the same call — a reshape restating the row unchanged would pass while
+   * proving nothing. The failure this prevents is therefore precise: add {@code BLOCKED} to {@link
+   * EntityProperty} and thread it through {@link EntityTransition} and {@link TransitionedEntity},
+   * and the assignee still clears, the title still moves, and the block is gone.
+   */
+  @Test
+  void aReshapeLeavesABlockedTicketBlocked() {
+    WorkEntity ticket =
+        ticketService.create(PROJECT, "The gate times out", "it came up", null, "BUG", "me", WHO);
+    ticketService.setBlocked(ticket.id, true, WHO);
+
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(
+                ticket.id,
+                new EntityTransition(
+                    Archetype.TICKET,
+                    null,
+                    "The gate times out on a cold cache", // restated, and changed
+                    null,
+                    TicketStatus.REPORTED.name(),
+                    TicketType.BUG,
+                    "it came up",
+                    null, // the assignee is not restated, so the PUT clears it
+                    null,
+                    null,
+                    null,
+                    null)),
+            WHO);
+
+    assertEquals("The gate times out on a cold cache", after.get(ticket.id).title());
+    assertNull(
+        after.get(ticket.id).assignee(),
+        "the omitted property really was cleared — the write path ran");
+
+    inFreshTx(
+        () -> {
+          WorkEntity row = entities.findById(ticket.id);
+          assertEquals("The gate times out on a cold cache", row.title);
+          assertNull(row.assignee, "and the clear reached the row, not merely the answer");
+          assertTrue(
+              row.blocked,
+              "a reshape says nothing about whether somebody is stuck, so it may not unblock");
+        });
+  }
+
   /** Both validation layers report together, in one refusal, so a caller fixes everything once. */
   @Test
   void violationsFromBothLayersComeBackTogether() {

@@ -128,6 +128,12 @@ class AgentReadAccessTest {
           "ProjectTicketsController.create",
           "TicketController.update",
           "TicketController.transition",
+          // The block door, granted by the same rule and reached the same way: block_ticket and
+          // unblock_ticket are on the repository MCP server, which serves an agent with no
+          // credential at all, so refusing at the REST door what is handed over one package away
+          // would be the inconsistency this set exists to prevent. It is also the agent working
+          // the phase that knows the phase is stuck.
+          "TicketController.setBlocked",
           "TicketController.createComment",
           "TicketCommentController.update",
           "DossierController.create",

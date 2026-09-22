@@ -260,10 +260,21 @@ public class TicketService {
 
   /**
    * Moves a ticket to {@code target} (the enum name), rejecting a move the lifecycle does not allow
-   * with a 409 — that is anything other than one step forward or one step back along the five
-   * statuses, including a move to the status it already has. A target naming no status is a 409
-   * too, for the reason {@link EpicService#transition} gives; an absent one is a 400, because that
-   * is a malformed request rather than a refused move.
+   * with a 409. Which moves those are is {@link TicketLifecycle}'s to say and is argued there — the
+   * adjacent-only pipeline, the off-path exit that is {@link TicketStatus#DROPPED}, and the move to
+   * the status the ticket already has, which is refused rather than read as a no-op. A target
+   * naming no status is a 409 too, for the reason {@link EpicService#transition} gives; an absent
+   * one is a 400, because that is a malformed request rather than a refused move.
+   *
+   * <p><b>Every move clears {@code blocked}, unconditionally</b>, and that is what makes the flag
+   * temporary rather than a second lifecycle running beside this one. A block says the phase the
+   * ticket's <em>current</em> status starts cannot finish; the moment the status moves, that phase
+   * is over and the next one has not been tried, so carrying the flag across would assert a blocker
+   * nobody re-checked — against a phase nobody has attempted yet. It is cleared on a backward move
+   * for the same reason and not by a different rule: a ticket sent back from IMPLEMENTED to REFINED
+   * is being asked to implement again, and whether that is blocked is a question for whoever tries.
+   * {@link #setBlocked} is the only thing that sets it, so a block is always somebody's statement
+   * about the phase that is running now.
    */
   public WorkEntity transition(String id, String target, String changedBy) {
     Validations.requireText(target, "target");
@@ -276,6 +287,52 @@ public class TicketService {
                   .orElseThrow(() -> new ConflictException("Unknown ticket status: " + target));
           TicketLifecycle.requireTransition(TicketStatus.valueOf(row.status), to);
           row.status = to.name();
+          row.blocked = false;
+          requireArchetypeValid(row, Demand.ON_UPDATE);
+          WorkEntity ticket = settled(row);
+          auditService.record(
+              AuditEntityType.TICKET,
+              ticket.id,
+              ticket.id,
+              AuditOperation.UPDATE,
+              changedBy,
+              ticket);
+          return ticket;
+        });
+  }
+
+  /**
+   * <b>Sets or clears {@code blocked}, and it is a door of its own for the reason {@link
+   * #transition} is.</b> {@link #update} deliberately cannot touch the status, because a statement
+   * about where the work stands is not the same act as editing the text that describes it; the flag
+   * gets that same separation and for the same reason — an edit that could also block would let a
+   * retitle assert that somebody is stuck.
+   *
+   * <p><b>Legal at every status as far as this module is concerned, and that is not an
+   * omission.</b> Blocking is meaningful only where a phase runs — REPORTED, REFINED, IMPLEMENTED —
+   * and asking it of a VERIFIED, DONE or DROPPED ticket is refused with a 409 by the doors, in the
+   * {@code service} module. The rule is not enforceable here and must not be copied here:
+   * <em>phase</em> is the service layer's concept, mapped in {@code projects/api/TicketPhasePrompts}
+   * beside the prompts and the workspaces, and this module has no idea a phase exists — it is the
+   * module most likely to be lifted out next and it depends on {@code domain} nowhere. A second
+   * list of the three phased statuses written here would be the drift {@code
+   * TicketLifecycle.LEGAL_TARGETS} exists to prevent, one concept over.
+   *
+   * <p>The {@code reason} is not stored on the row and this method does not take one: a blocker is
+   * a remark with an author and a time, which is what the thread already is, so the doors record it
+   * as a comment. A column would be a second place the same sentence lives, going stale the moment
+   * the thread moves past it.
+   *
+   * <p>Idempotent: blocking a blocked ticket writes the same value and records the UPDATE, because
+   * the door's comment is the point of the call and a second blocker said on the thread is worth
+   * having.
+   */
+  public WorkEntity setBlocked(String id, boolean blocked, String changedBy) {
+    return writes.hold(
+        "ticket blocked",
+        () -> {
+          WorkEntity row = entity(id);
+          row.blocked = blocked;
           requireArchetypeValid(row, Demand.ON_UPDATE);
           WorkEntity ticket = settled(row);
           auditService.record(
