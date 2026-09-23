@@ -9,7 +9,9 @@ import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -160,6 +162,11 @@ public class WrapperReconcileService {
 
   @Inject GitSubmoduleParser submoduleParser;
 
+  @Inject ProjectConfigParser projectConfigParser;
+
+  /** Absent is a supported configuration — see {@link ProjectAnnouncer}. */
+  @Inject Instance<ProjectAnnouncer> projectAnnouncers;
+
   /**
    * Reconciles {@code projectId} against its wrapper and answers with what it came to.
    *
@@ -180,6 +187,8 @@ public class WrapperReconcileService {
                             + "' has no wrapper repository, so there is no manifest to reconcile"
                             + " against."));
     String branch = wrapper.mainBranch == null || wrapper.mainBranch.isBlank() ? "main" : wrapper.mainBranch;
+
+    reconcileProjectConfig(project, wrapper);
 
     List<WrapperGitmodules.Entry> declared =
         WrapperGitmodules.entries(wrapperWriter.readGitmodules(wrapper));
@@ -219,6 +228,78 @@ public class WrapperReconcileService {
       outcomes.addAll(reportUndeclared(project, matchedRepoIds));
     }
     return new Reconciliation(projectId, wrapper.id, branch, List.copyOf(outcomes));
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // the project's own declaration
+  // -------------------------------------------------------------------------------------------
+
+  /**
+   * Brings {@code Project.supportsEnvironments} in line with the wrapper's {@code
+   * .config/qits/project.yml}, and announces the change when there is one.
+   *
+   * <p><b>Here because this is the pass that reads the wrapper.</b> The wrapper <em>is</em> the
+   * project's configuration, and the reconcile is what makes that true of the database — the
+   * {@code .gitmodules} entries are the repositories, and this one file is what the project says
+   * about itself. There is no second trigger to invent: a commit to {@code project.yml} takes
+   * effect the next time the project is reconciled, exactly as an added submodule does.
+   *
+   * <p><b>An absent file is the default and an unparseable one is left alone.</b> Absence, an
+   * absent key and {@code true} are one answer ({@link ProjectConfig#DEFAULT}); only an explicit
+   * {@code false} changes anything. A file that will not parse throws out of {@link
+   * ProjectConfigParser} — deliberately, so a typo cannot re-route a project — and this catches it,
+   * logs it and keeps the stored flag rather than reverting to a default the file did not ask for.
+   * The rest of the reconcile is unaffected either way: the repositories do not depend on this.
+   *
+   * <p>{@code ProjectChanged} is published <b>only when the stored value actually moves</b>, after
+   * the transaction that moved it, fire-and-forget like every other announcement here. A reconcile
+   * runs on a timer and on demand, so announcing unconditionally would publish a frame per pass
+   * saying nothing happened.
+   */
+  private void reconcileProjectConfig(Project project, Repository wrapper) {
+    ProjectConfig config;
+    try {
+      config = projectConfigParser.parse(wrapperWriter.readFile(wrapper, ProjectConfigParser.CONFIG_PATH));
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "%s in the wrapper of project %s could not be read or does not parse; keeping"
+              + " supports_environments=%s as stored: %s",
+          ProjectConfigParser.CONFIG_PATH, project.id, project.supportsEnvironments, e.getMessage());
+      return;
+    }
+    if (config.supportsEnvironments() == project.supportsEnvironments) {
+      return;
+    }
+    LOG.infof(
+        "Reconcile: project %s declares supports_environments=%s, stored as %s — updating.",
+        project.id, config.supportsEnvironments(), project.supportsEnvironments);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Project row = projectService.get(project.id);
+              row.supportsEnvironments = config.supportsEnvironments();
+            });
+    project.supportsEnvironments = config.supportsEnvironments();
+    announceChanged(project);
+  }
+
+  /** Fire and forget, outside every transaction and never able to fail a reconcile. */
+  private void announceChanged(Project project) {
+    if (!projectAnnouncers.isResolvable()) {
+      return;
+    }
+    try {
+      projectAnnouncers
+          .get()
+          .onProjectChanged(
+              project.id,
+              project.slug,
+              project.name,
+              project.supportsEnvironments,
+              Instant.now());
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not announce the change of project %s", project.id);
+    }
   }
 
   // -------------------------------------------------------------------------------------------

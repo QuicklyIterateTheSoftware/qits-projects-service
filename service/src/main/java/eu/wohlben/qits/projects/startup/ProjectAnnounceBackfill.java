@@ -121,7 +121,10 @@ public class ProjectAnnounceBackfill {
       try {
         // PUBLISH, then STAMP. See the class javadoc: a crash in between re-publishes next boot into
         // an idempotent projection, which is the recoverable half of the only choice available here.
-        announcer.onProjectCreated(id, project.slug, project.name, Instant.now());
+        // The replayed create carries the flag as the row now stands — nothing about this backfill
+        // changed when the flag arrived, because a replayed create is still a create.
+        announcer.onProjectCreated(
+            id, project.slug, project.name, project.supportsEnvironments, Instant.now());
         stamp(id);
         announced++;
       } catch (RuntimeException e) {

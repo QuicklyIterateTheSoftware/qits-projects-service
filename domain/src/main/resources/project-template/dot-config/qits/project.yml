@@ -1,0 +1,14 @@
+# This project's own declaration — about the PROJECT, not about this repository. (What is about this
+# repository is `.config/qits/repository.yml`, and each component carries its own.) It is read from
+# the wrapper's default branch on every reconcile, so changing it is an ordinary commit.
+
+# Whether this project's services are deployed once per environment.
+#
+# Absent, empty and `true` are the same answer: the project has environments, which is what every
+# project on this platform has always had and what a new one gets. Only an explicit `false` changes
+# anything — it says there is exactly one environment, its name locked to what the project already
+# has.
+#
+# It is not a value to guess at: a typo is refused rather than read as `false`, because silently
+# collapsing a project's environments is not something a misspelling should be able to do.
+supports_environments: true

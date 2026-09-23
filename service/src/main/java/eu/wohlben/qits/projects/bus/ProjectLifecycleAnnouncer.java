@@ -17,9 +17,12 @@ import java.time.Instant;
  * implements is {@link ProjectAnnouncer} in {@code projects/control}, and zero implementations is a
  * supported configuration (which is what {@code domain}'s own suite runs as).
  *
- * <p><b>One announcer for two verbs, and deliberately one.</b> They are the two ends of a single
- * lifecycle and a consumer subscribes to both or to neither — the platform edge learns which SANs a
- * project is owed from the first and when they stop being owed from the second.
+ * <p><b>One announcer for three verbs, and deliberately one.</b> Created and deleted are the two
+ * ends of a single lifecycle and a consumer subscribes to both or to neither — the platform edge
+ * learns which SANs a project is owed from the first and when they stop being owed from the second.
+ * {@link ProjectChanged} is the middle: the facts a project can edit about itself, which today is
+ * whether its services are deployed once per environment. It is published from the wrapper reconcile
+ * rather than from {@code ProjectService}, because the wrapper is where the declaration is committed.
  *
  * <p><b>The cause is left to the bus.</b> {@code QitsEventBus.publish(event)} resolves the parent
  * from {@code CausationScope}, which the REST filter has already restored from the request's {@code
@@ -44,8 +47,23 @@ public class ProjectLifecycleAnnouncer implements ProjectAnnouncer {
   @Inject QitsEventBus bus;
 
   @Override
-  public void onProjectCreated(String projectId, String slug, String name, Instant occurredAt) {
-    bus.publish(new ProjectCreated(projectId, slug, name, occurredAt));
+  public void onProjectCreated(
+      String projectId,
+      String slug,
+      String name,
+      boolean supportsEnvironments,
+      Instant occurredAt) {
+    bus.publish(new ProjectCreated(projectId, slug, name, supportsEnvironments, occurredAt));
+  }
+
+  @Override
+  public void onProjectChanged(
+      String projectId,
+      String slug,
+      String name,
+      boolean supportsEnvironments,
+      Instant occurredAt) {
+    bus.publish(new ProjectChanged(projectId, slug, name, supportsEnvironments, occurredAt));
   }
 
   @Override

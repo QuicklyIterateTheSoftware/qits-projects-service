@@ -45,6 +45,9 @@ public class ProjectWrapperTest {
    */
   private static final List<String> SKELETON =
       List.of(
+          // The project's own declaration — see ProjectConfigParser. It is seeded carrying the
+          // default a new project gets, so the file a person edits is already there to edit.
+          ".config/qits/project.yml",
           ".gitignore",
           ".qits-config.yml",
           "AGENTS.md",

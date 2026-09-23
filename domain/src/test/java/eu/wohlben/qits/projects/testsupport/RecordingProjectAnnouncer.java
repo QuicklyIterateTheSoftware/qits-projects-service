@@ -26,19 +26,40 @@ import java.util.Optional;
 public class RecordingProjectAnnouncer implements ProjectAnnouncer {
 
   /** One creation announcement, as the port stated it. */
-  public record Created(String projectId, String slug, String name, Instant occurredAt) {}
+  public record Created(
+      String projectId,
+      String slug,
+      String name,
+      boolean supportsEnvironments,
+      Instant occurredAt) {}
+
+  /** One change announcement, as the port stated it. */
+  public record Changed(
+      String projectId,
+      String slug,
+      String name,
+      boolean supportsEnvironments,
+      Instant occurredAt) {}
 
   /** One deletion announcement, as the port stated it. */
   public record Deleted(String projectId, String slug, Instant occurredAt) {}
 
   private final List<Created> created = new ArrayList<>();
 
+  private final List<Changed> changed = new ArrayList<>();
+
   private final List<Deleted> deleted = new ArrayList<>();
 
   @Override
   public synchronized void onProjectCreated(
-      String projectId, String slug, String name, Instant occurredAt) {
-    created.add(new Created(projectId, slug, name, occurredAt));
+      String projectId, String slug, String name, boolean supportsEnvironments, Instant occurredAt) {
+    created.add(new Created(projectId, slug, name, supportsEnvironments, occurredAt));
+  }
+
+  @Override
+  public synchronized void onProjectChanged(
+      String projectId, String slug, String name, boolean supportsEnvironments, Instant occurredAt) {
+    changed.add(new Changed(projectId, slug, name, supportsEnvironments, occurredAt));
   }
 
   @Override
@@ -49,6 +70,16 @@ public class RecordingProjectAnnouncer implements ProjectAnnouncer {
   /** Every creation announced, in the order they were made. */
   public synchronized List<Created> created() {
     return List.copyOf(created);
+  }
+
+  /** Every change announced, in the order they were made. */
+  public synchronized List<Changed> changed() {
+    return List.copyOf(changed);
+  }
+
+  /** Every change announced about {@code projectId} — a count of zero is the usual assertion. */
+  public synchronized List<Changed> changedOf(String projectId) {
+    return changed.stream().filter(c -> c.projectId().equals(projectId)).toList();
   }
 
   /** Every deletion announced, in the order they were made. */
@@ -73,6 +104,7 @@ public class RecordingProjectAnnouncer implements ProjectAnnouncer {
    */
   public synchronized void clear() {
     created.clear();
+    changed.clear();
     deleted.clear();
   }
 }

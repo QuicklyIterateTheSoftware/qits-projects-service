@@ -1,0 +1,18 @@
+-- WHETHER A PROJECT'S SERVICES ARE DEPLOYED ONCE PER ENVIRONMENT.
+--
+-- The first step of removing the "platform service" concept: a project says for itself whether it
+-- has environments, instead of a tier on a repository deciding it. The flag is declared in the
+-- project's wrapper at `.config/qits/project.yml` (ProjectConfigParser) and re-read on every
+-- wrapper reconcile, the same pass that already brings the project's repositories in line with its
+-- `.gitmodules`.
+--
+-- NOT NULL DEFAULT TRUE, and both halves are the same statement. Every row that exists predates the
+-- file and every one of them is deployed once per environment, so TRUE is what they have always
+-- meant and the default backfills them correctly without a second statement. A nullable column
+-- would introduce a third state — "nobody has said" — that no reader has an answer for, when the
+-- answer is exactly the one the platform has behaved as all along.
+--
+-- THIS SHIPS CHANGING NO ROUTING BEHAVIOUR. Nothing reads the column to decide a host, an
+-- environment or a deployment yet; it exists, it is stored, and it is carried on ProjectCreated /
+-- ProjectChanged so consumers can be written against it before anything depends on it.
+alter table Project add column supports_environments boolean not null default true;

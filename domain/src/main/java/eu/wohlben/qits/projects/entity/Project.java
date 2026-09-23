@@ -108,6 +108,27 @@ public class Project extends PanacheEntityBase implements CausedRow {
   @Column(name = "announced_at")
   public Instant announcedAt;
 
+  /**
+   * Whether this project's services are deployed <b>once per environment</b>.
+   *
+   * <p>Declared by the project itself, in its wrapper's {@code .config/qits/project.yml} ({@code
+   * ProjectConfigParser}), and re-read on every wrapper reconcile — the same pass that brings the
+   * project's repositories in line with its {@code .gitmodules}. It is the first step of removing
+   * the "platform service" concept: the project says whether it has environments, rather than a
+   * tier on a repository deciding it.
+   *
+   * <p><b>{@code true} is the answer to every question nobody has answered.</b> An absent file, an
+   * absent key and an explicit {@code true} are one thing, and only an explicit {@code false}
+   * changes anything — which is why the column is {@code NOT NULL DEFAULT TRUE} (V28) rather than
+   * nullable: every row that predates the file means true, and a third "nobody has said" state has
+   * no reader.
+   *
+   * <p><b>Nothing routes off it yet.</b> It is stored and carried on {@code ProjectCreated} /
+   * {@code ProjectChanged} so consumers can be written against it before anything depends on it.
+   */
+  @Column(name = "supports_environments", nullable = false)
+  public boolean supportsEnvironments = true;
+
   @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
   public List<Repository> repositories;
 

@@ -14,10 +14,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
- * The <b>wire contract</b> of {@link ProjectCreated} and {@link ProjectDeleted}, pinned at the
- * source.
+ * The <b>wire contract</b> of {@link ProjectCreated}, {@link ProjectChanged} and {@link
+ * ProjectDeleted}, pinned at the source.
  *
- * <p>Neither record is published as a jar — this service's standing answer, for the reason each
+ * <p>No record here is published as a jar — this service's standing answer, for the reason each
  * record's javadoc gives — so a consumer decodes them with {@code CanonicalJson.payloadTo} into a
  * local record of its own, transcribed by hand from these field names. That transcription and this
  * test are the two ends of the contract and nothing in either build can see the other: the platform
@@ -34,13 +34,16 @@ public class ProjectLifecycleContractTest {
 
   /** The wire NAME is the simple class name, and a consumer subscribes by it. */
   @Test
-  public void theWireNamesAreProjectCreatedAndProjectDeleted() {
-    assertEquals("ProjectCreated", new ProjectCreated("p", "s", "n", Instant.EPOCH).signature());
+  public void theWireNamesAreProjectCreatedChangedAndProjectDeleted() {
+    assertEquals(
+        "ProjectCreated", new ProjectCreated("p", "s", "n", true, Instant.EPOCH).signature());
+    assertEquals(
+        "ProjectChanged", new ProjectChanged("p", "s", "n", false, Instant.EPOCH).signature());
     assertEquals("ProjectDeleted", new ProjectDeleted("p", "s", Instant.EPOCH).signature());
   }
 
   /**
-   * The creation payload: four keys, exactly these spellings, and {@code eventId} not among them.
+   * The creation payload: five keys, exactly these spellings, and {@code eventId} not among them.
    * Identity travels in the envelope — the canonical mix-in keeps every {@link
    * eu.wohlben.qits.eventstream.QitsEvent} method out of the payload — so an {@code eventId} here
    * would be a contract violation that breaks nothing visible, which is the worse failure mode.
@@ -55,19 +58,94 @@ public class ProjectLifecycleContractTest {
                     "p-1",
                     "qits",
                     "QITS Platform",
+                    false,
                     Instant.parse("2026-09-07T10:15:30Z"))));
 
     assertEquals("p-1", payload.get("projectId").asText());
     assertEquals(
         "qits", payload.get("slug").asText(), "what the edge derives *.<slug>.<domain> from");
     assertEquals("QITS Platform", payload.get("projectName").asText());
+    assertFalse(
+        payload.get("supportsEnvironments").asBoolean(),
+        "whether the project's services are deployed once per environment");
     assertEquals("2026-09-07T10:15:30Z", payload.get("createdAt").asText());
     assertFalse(payload.has("eventId"), "identity travels in the envelope, never in the payload");
     assertFalse(payload.has("occurredAt"), "occurredAt is the envelope's; createdAt is the fact");
     assertEquals(
-        List.of("createdAt", "projectId", "projectName", "slug"),
+        List.of("createdAt", "projectId", "projectName", "slug", "supportsEnvironments"),
         sortedFieldNames(payload),
-        "four keys, and a fifth is a contract change the edge has to be told about");
+        "five keys, and a sixth is a contract change the edge has to be told about");
+  }
+
+  /**
+   * The change payload: the same identity fields, the flag, and a {@code changedAt} of its own.
+   *
+   * <p><b>A change is not a create</b>, and the two records exist separately for that reason —
+   * {@code slug} is {@code updatable = false} so a creation never needs restating, while the flag is
+   * committed in the wrapper's {@code .config/qits/project.yml} and can move at any time. The
+   * identity fields ARE restated here, so a consumer can act on the frame without a lookup.
+   */
+  @Test
+  public void theChangedPayloadIsProjectIdSlugNameTheFlagAndChangedAt() throws Exception {
+    var payload =
+        MAPPER.readTree(
+            CanonicalJson.payload(
+                new ProjectChanged(
+                    UUID.fromString("22222222-3333-4444-5555-666666666666"),
+                    "p-1",
+                    "qits",
+                    "QITS Platform",
+                    false,
+                    Instant.parse("2026-09-07T10:15:30Z"))));
+
+    assertEquals("p-1", payload.get("projectId").asText());
+    assertEquals("qits", payload.get("slug").asText());
+    assertEquals("QITS Platform", payload.get("projectName").asText());
+    assertFalse(payload.get("supportsEnvironments").asBoolean());
+    assertEquals("2026-09-07T10:15:30Z", payload.get("changedAt").asText());
+    assertFalse(payload.has("eventId"), "identity travels in the envelope, never in the payload");
+    assertFalse(payload.has("occurredAt"), "occurredAt is the envelope's; changedAt is the fact");
+    assertEquals(
+        List.of("changedAt", "projectId", "projectName", "slug", "supportsEnvironments"),
+        sortedFieldNames(payload));
+  }
+
+  /**
+   * <b>A frame published before the flag existed reads {@code true}</b>, and this is the guard.
+   *
+   * <p>Every project on the platform predates {@code supports_environments} and every one of them is
+   * deployed once per environment, so that is what an absent key has always meant. The component is
+   * a {@code Boolean} and the canonical constructor normalizes {@code null} to {@code TRUE}
+   * precisely so binding an old payload — Jackson goes through that constructor — answers the
+   * historical behaviour. A primitive {@code boolean} would answer {@code false} and silently claim
+   * the opposite about every project that exists.
+   */
+  @Test
+  public void aFrameWithoutTheFlagReadsTrue() throws Exception {
+    String oldFrame =
+        "{\"projectId\":\"p-1\",\"slug\":\"qits\",\"projectName\":\"QITS Platform\","
+            + "\"createdAt\":\"2026-09-07T10:15:30Z\"}";
+    ProjectCreated read = CanonicalJson.payloadTo(oldFrame, ProjectCreated.class);
+
+    assertTrue(
+        read.supportsEnvironments(),
+        "an older frame carries no such key, and true is the historical behaviour");
+    assertEquals("qits", read.slug());
+
+    // And the normalized value is present on the way out, so a re-published frame is complete.
+    var payload = MAPPER.readTree(CanonicalJson.payload(read));
+    assertTrue(payload.get("supportsEnvironments").asBoolean());
+  }
+
+  /** The same normalization on the new frame, so the two records read alike. */
+  @Test
+  public void anExplicitNullFlagIsTrueOnBothRecords() {
+    assertTrue(
+        new ProjectCreated(null, "p-1", "qits", "QITS", null, Instant.EPOCH)
+            .supportsEnvironments());
+    assertTrue(
+        new ProjectChanged(null, "p-1", "qits", "QITS", null, Instant.EPOCH)
+            .supportsEnvironments());
   }
 
   /**
@@ -84,14 +162,15 @@ public class ProjectLifecycleContractTest {
     var created =
         MAPPER.readTree(
             CanonicalJson.payload(
-                new ProjectCreated("p-1", "qits", "QITS Platform", Instant.EPOCH)));
+                new ProjectCreated("p-1", "qits", "QITS Platform", true, Instant.EPOCH)));
 
     assertFalse(
         created.has("name"),
         "a field called 'name' would be ignored by the mix-in — the display name is projectName");
     // eventId is the one component that MAY spell an envelope word: it is the identity, and being
     // kept out of the payload is what it is there for.
-    for (Class<?> event : List.of(ProjectCreated.class, ProjectDeleted.class)) {
+    for (Class<?> event :
+        List.of(ProjectCreated.class, ProjectChanged.class, ProjectDeleted.class)) {
       for (String envelopeWord : List.of("signature", "name", "occurredAt")) {
         assertFalse(
             componentNames(event).contains(envelopeWord),
@@ -137,8 +216,11 @@ public class ProjectLifecycleContractTest {
   @Test
   public void theRecordComponentsAreThePublishedOnes() {
     assertEquals(
-        List.of("eventId", "projectId", "slug", "projectName", "createdAt"),
+        List.of("eventId", "projectId", "slug", "projectName", "supportsEnvironments", "createdAt"),
         componentNames(ProjectCreated.class));
+    assertEquals(
+        List.of("eventId", "projectId", "slug", "projectName", "supportsEnvironments", "changedAt"),
+        componentNames(ProjectChanged.class));
     assertEquals(
         List.of("eventId", "projectId", "slug", "deletedAt"), componentNames(ProjectDeleted.class));
   }
@@ -147,14 +229,16 @@ public class ProjectLifecycleContractTest {
   @Test
   public void occurredAtIsTheMomentTheChangeCommitted() {
     Instant when = Instant.parse("2026-09-07T10:15:30Z");
-    assertEquals(when, new ProjectCreated("p-1", "qits", "QITS", when).occurredAt());
+    assertEquals(when, new ProjectCreated("p-1", "qits", "QITS", true, when).occurredAt());
+    assertEquals(when, new ProjectChanged("p-1", "qits", "QITS", false, when).occurredAt());
     assertEquals(when, new ProjectDeleted("p-1", "qits", when).occurredAt());
   }
 
   /** An absent {@code eventId} is minted, which is what the idempotent PUT rests on. */
   @Test
   public void anAbsentEventIdIsMinted() {
-    assertTrue(new ProjectCreated("p-1", "qits", "QITS", Instant.EPOCH).eventId() != null);
+    assertTrue(new ProjectCreated("p-1", "qits", "QITS", true, Instant.EPOCH).eventId() != null);
+    assertTrue(new ProjectChanged("p-1", "qits", "QITS", true, Instant.EPOCH).eventId() != null);
     assertTrue(new ProjectDeleted("p-1", "qits", Instant.EPOCH).eventId() != null);
   }
 

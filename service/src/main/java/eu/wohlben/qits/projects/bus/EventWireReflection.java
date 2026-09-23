@@ -60,6 +60,13 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * unregistered payload here is an edge that never learns a project exists, with the create itself
  * succeeding and nothing anywhere saying so.
  *
+ * <p>{@link ProjectChanged} is the middle of that lifecycle and needs its own line for the ordinary
+ * reason: it is a distinct record, invisible to the builder, published by the same announcer. It
+ * carries the one fact about a project that can change after the create — whether its services are
+ * deployed once per environment, declared in the wrapper's {@code .config/qits/project.yml} — and an
+ * absent registration is a reconcile that reads the new declaration, stores it, and never tells
+ * anybody.
+ *
  * <p>{@link DeploymentActiveListener.DeploymentActivePayload} is the second bound consumption and
  * the same shape as the first: qits-deployments' vocabulary jar is not on this classpath (the
  * platform's Maven registry serves nothing under that coordinate), so the wire type this binary has
@@ -103,6 +110,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       ReleaseRequestChanged.class,
       SCMRelease.class,
       ProjectCreated.class,
+      ProjectChanged.class,
       ProjectDeleted.class,
       EntityTransitioned.class,
       EntityTransitioned.Entity.class,

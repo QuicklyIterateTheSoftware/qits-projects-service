@@ -31,11 +31,20 @@ import java.util.UUID;
  * called — the two differ by however long the announcement took to be made, and the one that belongs
  * in an event log is when the thing happened.
  *
+ * <p><b>{@code supportsEnvironments} is a {@code Boolean} and is normalized to {@code TRUE} when
+ * absent</b>, which is the whole of how an older frame stays readable. The field arrived after this
+ * event did, so a frame published before it carries no such key — and Jackson binds a record through
+ * its canonical constructor, so the compact constructor below turns that absence into {@code true},
+ * the historical behaviour every project had before a project could say otherwise. A primitive
+ * {@code boolean} would read the same absence as {@code false} and silently claim every historical
+ * project has exactly one environment. Normalizing on the way in also means the key is <em>always</em>
+ * present on the way out, so the payload never depends on which constructor a publisher used.
+ *
  * <p><b>{@code eventId} is a component, and that is safe.</b> It is generated when absent and final
  * once set, which gives the stability the idempotent {@code PUT} rests on, and the library keeps
  * everything {@link QitsEvent} declares out of the canonical payload — so identity travels in the
- * envelope and the payload is the four fields below: {@code projectId}, {@code slug}, {@code
- * projectName}, {@code createdAt}.
+ * envelope and the payload is the five fields below: {@code projectId}, {@code slug}, {@code
+ * projectName}, {@code supportsEnvironments}, {@code createdAt}.
  *
  * <p><b>It lives here rather than in a published vocabulary module</b>, deliberately, the standing
  * answer this service gives for every event it publishes: a jar this platform's Maven registry does
@@ -51,18 +60,33 @@ import java.util.UUID;
  * publish.
  */
 public record ProjectCreated(
-    UUID eventId, String projectId, String slug, String projectName, Instant createdAt)
+    UUID eventId,
+    String projectId,
+    String slug,
+    String projectName,
+    Boolean supportsEnvironments,
+    Instant createdAt)
     implements QitsEvent {
 
   public ProjectCreated {
     if (eventId == null) {
       eventId = UUID.randomUUID();
     }
+    if (supportsEnvironments == null) {
+      // An older frame carries no such key. True is what every project meant before one could say
+      // otherwise, and it is the only reading that does not re-route history. See the class javadoc.
+      supportsEnvironments = Boolean.TRUE;
+    }
   }
 
   /** The constructor a publisher uses: the facts, with the identity taken care of. */
-  public ProjectCreated(String projectId, String slug, String projectName, Instant createdAt) {
-    this(null, projectId, slug, projectName, createdAt);
+  public ProjectCreated(
+      String projectId,
+      String slug,
+      String projectName,
+      boolean supportsEnvironments,
+      Instant createdAt) {
+    this(null, projectId, slug, projectName, supportsEnvironments, createdAt);
   }
 
   @Override

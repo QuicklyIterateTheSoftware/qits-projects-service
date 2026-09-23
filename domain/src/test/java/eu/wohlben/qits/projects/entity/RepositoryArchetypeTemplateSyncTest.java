@@ -40,8 +40,16 @@ public class RepositoryArchetypeTemplateSyncTest {
   /** The template as the build copied it, which is what actually ships. */
   private static final Path TEMPLATE = Path.of("target/classes/project-template");
 
-  /** The one directory the skeleton seeds; {@code WrapperPath.COMPONENTS_DIRECTORY} is its reader. */
+  /** The one MOUNT directory the skeleton seeds; {@code WrapperPath.COMPONENTS_DIRECTORY} reads it. */
   private static final String COMPONENTS = "components";
+
+  /**
+   * The committed-configuration directory, stored {@code dot-}-prefixed like every dotfile here and
+   * committed as {@code .config/}. It is not a mount directory and no grammar reads it: what lives
+   * under it is {@code qits/project.yml}, the project's own declaration ({@code
+   * ProjectConfigParser}), seeded so the file a person edits is already there to edit.
+   */
+  private static final String CONFIG = "dot-config";
 
   /**
    * The six directories the retired archetype layout mounted entries under. Spelled out here
@@ -67,10 +75,39 @@ public class RepositoryArchetypeTemplateSyncTest {
         Files.isDirectory(TEMPLATE), "the project template is missing from the build output");
 
     assertEquals(
-        Set.of(COMPONENTS),
+        Set.of(COMPONENTS, CONFIG),
         templateDirectories(),
-        "the wrapper skeleton seeds the one directory the one grammar mounts under, and nothing"
-            + " else: a second seeded directory is a second grammar nothing reads");
+        "the wrapper skeleton seeds the one directory the one grammar MOUNTS under, plus the"
+            + " committed-configuration directory — and nothing else: a second mount directory is a"
+            + " second grammar nothing reads");
+  }
+
+  /**
+   * The project's own declaration ships in the skeleton, carrying the default a new project gets.
+   *
+   * <p><b>Both halves are the assertion.</b> The value is {@code true} because that is what a new
+   * project is — deployed once per environment, the behaviour every project on this platform had
+   * before the flag existed — and the comment has to teach that absent, empty and {@code true} are
+   * one answer, because the file is a template a person edits and the only value that changes
+   * anything is {@code false}. {@code .yml} and never {@code .yaml}: every file under {@code
+   * .config/qits/} on this estate is {@code .yml}, and a reader looks for exactly one spelling.
+   */
+  @Test
+  public void theSkeletonCarriesTheProjectDeclarationWithTheDefaultANewProjectGets()
+      throws Exception {
+    Path declaration = TEMPLATE.resolve(CONFIG).resolve("qits").resolve("project.yml");
+    assertTrue(
+        Files.isRegularFile(declaration),
+        "the project template seeds .config/qits/project.yml — the file the reconcile reads");
+
+    String content = Files.readString(declaration);
+    assertTrue(
+        content.contains("supports_environments: true"),
+        "a new project supports environments; false is the value somebody opts into");
+    assertTrue(
+        content.contains("Absent, empty and `true` are the same answer"),
+        "the template has to say that absence, an empty file and true are one answer, because that"
+            + " is the whole of what the parser does with them");
   }
 
   /**
@@ -80,6 +117,11 @@ public class RepositoryArchetypeTemplateSyncTest {
   @Test
   public void everyTemplateDirectoryCarriesAReadme() throws Exception {
     for (String directory : templateDirectories()) {
+      if (CONFIG.equals(directory)) {
+        // Not a mount directory and not a place a person browses: it carries a config file, which
+        // is content enough for git to commit it and the wrong place to teach a convention.
+        continue;
+      }
       assertTrue(
           Files.isRegularFile(TEMPLATE.resolve(directory).resolve("README.md")),
           directory + "/ needs a README.md, or git cannot commit it");

@@ -78,6 +78,7 @@ public class EventWireReflectionTest {
             ReleaseRequestChanged.class,
             SCMRelease.class,
             ProjectCreated.class,
+            ProjectChanged.class,
             ProjectDeleted.class,
             EntityTransitioned.class,
             EntityTransitioned.Entity.class,
@@ -88,8 +89,8 @@ public class EventWireReflectionTest {
             EventFrame.class),
         Set.of(registration.targets()),
         "the four SCM records and the three bound consumption payloads in, RepositoryRenamed,"
-            + " ReleaseRequestChanged, SCMRelease, the two project lifecycle events and the"
-            + " transition's payload PAIR out, the PUT body, the frame — a seventeenth wire type"
+            + " ReleaseRequestChanged, SCMRelease, the three project lifecycle events and the"
+            + " transition's payload PAIR out, the PUT body, the frame — an eighteenth wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -121,6 +122,10 @@ public class EventWireReflectionTest {
         "ProjectLifecycleAnnouncer publishes this, and the platform edge derives a project's TLS"
             + " SANs from the slug it carries — unregistered, the edge never learns a project"
             + " exists and the create itself succeeds");
+    assertTrue(
+        targets.contains(ProjectChanged.class),
+        "and its middle — the wrapper reconcile publishes this when a project's committed"
+            + " supports_environments moves; unregistered, the flag changes and nobody hears");
     assertTrue(
         targets.contains(ProjectDeleted.class),
         "and its closing half, without which the edge holds names it can never retire");

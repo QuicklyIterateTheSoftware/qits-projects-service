@@ -178,6 +178,43 @@ public class WrapperSubmoduleWriter {
     return readGitmodulesAt(mirror, branchOf(wrapper));
   }
 
+  /**
+   * Any committed file of {@code wrapper} at its main branch, as text, or {@code null} when the
+   * branch carries no blob at that path.
+   *
+   * <p>The seam a caller that needs to <em>read</em> a wrapper's configuration goes through —
+   * {@code WrapperReconcileService} and {@code .config/qits/project.yml} today — so the parsing
+   * stays pure and framework-light and only the reading is here. {@code null} for absent is the
+   * whole of the distinction it makes: it is the caller that knows what an absent file means, and
+   * for {@code project.yml} it means the default rather than a failure.
+   *
+   * <p><b>Absent and unreadable are not the same</b>, which is why this throws rather than
+   * answering {@code null} when the mirror cannot be refreshed or git cannot be run. A declaration
+   * that turns into its default because a read failed is a project re-routed by an outage.
+   */
+  public String readFile(Repository wrapper, String path) {
+    RepoMirror mirror = gitMirrors.of(wrapper.id);
+    try {
+      mirror.refresh();
+    } catch (GitMirrorException e) {
+      throw new InternalServerErrorException(
+          "Could not refresh the wrapper's mirror: " + e.getMessage());
+    }
+    String branch = branchOf(wrapper);
+    GitExecutor.ExecResult result;
+    try {
+      result = git.showFile(mirror.gitDir().toFile(), branch, path);
+    } catch (Exception e) {
+      throw new InternalServerErrorException(
+          "Could not read " + path + " from " + mirror.repoId() + "@" + branch + ": " + e.getMessage());
+    }
+    if (result.exitCode() != 0) {
+      return null;
+    }
+    String content = result.output();
+    return content.isEmpty() || content.endsWith("\n") ? content : content + "\n";
+  }
+
   private String readGitmodulesAt(RepoMirror mirror, String branch) {
     try {
       GitExecutor.ExecResult result = git.showFile(mirror.gitDir().toFile(), branch, GITMODULES);

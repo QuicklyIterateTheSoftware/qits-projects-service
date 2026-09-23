@@ -276,7 +276,12 @@ public class ProjectService {
     try {
       projectAnnouncers
           .get()
-          .onProjectCreated(project.id, project.slug, project.name, project.announcedAt);
+          .onProjectCreated(
+              project.id,
+              project.slug,
+              project.name,
+              project.supportsEnvironments,
+              project.announcedAt);
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the creation of project %s", project.id);
     }
