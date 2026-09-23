@@ -38,6 +38,21 @@ the kind when you create it.
 
 Add the tech suffix only where the role alone is ambiguous, which in practice is the library pair.
 
+## The landing convention
+
+A project's landing page lives in the component `<project>-landing`, and any role may serve it —
+this is not a frontend feature. `<project>-landing-app` and `<project>-landing-service` claim the
+door identically: a landing page that wants an SSR runtime reaches for an `-app`, one that is a view
+over the project's own data reaches for a `-service` with a Quinoa client, and both take the door on
+the same terms.
+
+The door itself is a label, not the name. What puts a deployable on the project's own address,
+`<project>.<domain>`, is publishing `host: landing` in its `.config/qits/deployments.yml` — nothing
+in the edge or the deployer asks what kind of repository published it or what it is called.
+**The label is what the platform reads; the component name is only the convention.** Somebody who
+names the component something else and publishes `landing` still takes the door, and somebody who
+names it `<project>-landing` and forgets the label does not.
+
 ## Start inline
 
 Put the code directly under the component (`components/payments/payments-service/`). Nothing has to
