@@ -8,16 +8,19 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Reads {@link ReleaseArtifacts#SLOT_CONFIG} for the one fact {@link ReleaseGates} needs: does the
- * file name an {@code archetype:}.
+ * file declare a QA pipeline — an {@code archetype:} to compose one from, or a {@code
+ * release-request:} slot of the repository's own.
  *
- * <p><b>A presence rule, not a second parser of the archetype schema.</b> qits-ci is the reader of
- * {@code archetype:} that matters — it composes the per-release-request QA pipeline from the named
- * entry of the wrapper's {@code .config/qits/release-archetypes/*.yml}, each of which declares a
- * {@code release-request:} slot (checked by hand across all six shipped archetypes on 2026-09-13;
- * none lacks one). Reading that file too, to confirm the named archetype really carries the slot,
+ * <p><b>A presence rule, not a second parser of the slot schema.</b> qits-ci is the reader that
+ * matters — it composes the per-release-request QA pipeline either from the named entry of the
+ * wrapper's {@code .config/qits/release-archetypes/*.yml}, each of which declares a {@code
+ * release-request:} slot (checked by hand across all six shipped archetypes on 2026-09-13; none
+ * lacks one), or from the repository's <em>own</em> {@code release-request:} slot, which wins
+ * outright when it is there ({@code CiReleaseComposer.choose}: the repository's slot is taken when
+ * present, archetype or not). Reading either document's steps here, to confirm what is composed,
  * would make this service a second owner of a schema qits-ci already owns, and a second place that
- * schema's changes have to be kept in step — for a fact the presence of one key already answers
- * today. This class stops at the key, deliberately, and {@link ReleaseGates} never looks past what
+ * schema's changes have to be kept in step — for a fact the presence of a key already answers
+ * today. This class stops at the keys, deliberately, and {@link ReleaseGates} never looks past what
  * it returns.
  *
  * <p><b>{@link ReleaseGates} is now its ONLY caller, and the audit above is why the other one had to
@@ -42,8 +45,19 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 @ApplicationScoped
 public class ReleaseArchetypeParser {
 
-  /** The one key this reader looks at. Every other key in the file is {@link ReleaseArtifacts}' business. */
+  /**
+   * One of the two keys this reader looks at. Every other key in the file is {@link
+   * ReleaseArtifacts}' business.
+   */
   public static final String ARCHETYPE_KEY = "archetype";
+
+  /**
+   * The other: a repository's own QA slot, qits-ci's key for the pipeline a release request is
+   * gated by. A repository may inline it instead of naming an archetype, and qits-ci takes it
+   * outright when it is there — so it composes a QA pipeline for such a repository exactly as an
+   * archetype does.
+   */
+  public static final String RELEASE_REQUEST_KEY = "release-request";
 
   /** A structural problem in {@link ReleaseArtifacts#SLOT_CONFIG} — named for the caller to log. */
   public static class ReleaseArchetypeException extends RuntimeException {
@@ -57,17 +71,28 @@ public class ReleaseArchetypeParser {
   }
 
   /**
-   * Whether {@code content} names a non-blank {@code archetype:}.
+   * Whether {@code content} declares a QA pipeline: a non-blank {@code archetype:}, or a non-empty
+   * {@code release-request:} of its own. Either one makes qits-ci compose a pipeline for a release
+   * request of this repository, so either one is the gate.
    *
-   * <p>An absent or blank key, an empty document, and a document of comments alone are all {@code
-   * false} — a repository whose {@link ReleaseArtifacts#SLOT_CONFIG} declares only {@code
-   * artifacts:} or {@code userflows:} and no archetype composes nothing at qits-ci, and answering
-   * {@code false} for it is the ordinary case, not a failure to detect anything.
+   * <p><b>The {@code release-request:} half is what the 2026-09-22 defect cost.</b> This asked for
+   * {@code archetype:} alone, on the stated reasoning that a {@link ReleaseArtifacts#SLOT_CONFIG}
+   * declaring only {@code artifacts:} or {@code userflows:} "composes nothing at qits-ci". That is
+   * not true of a file that inlines its own slots: {@code CiReleaseComposer.choose} takes the
+   * repository's slot list outright when it is present, archetype or not, so such a repository does
+   * get a QA run — it simply got no gate, released within a second of the request being created, and
+   * its QA run then died on a {@code release/<id>} branch the release had already deleted. Measured
+   * three times on {@code qits-landing-app}, the one repository of 49 on the estate with slots and
+   * no archetype.
+   *
+   * <p>An absent key, an empty document, and a document of comments alone are all {@code false}, and
+   * so is a key that declares nothing — a blank {@code archetype:}, an empty {@code
+   * release-request:}, {@code []} or <code>{}</code>. A key declaring nothing is not a pipeline.
    *
    * <p>Bad YAML and a document whose root is not a mapping both throw, naming {@link
    * ReleaseArtifacts#SLOT_CONFIG}.
    */
-  public boolean declaresArchetype(String content) {
+  public boolean declaresQaPipeline(String content) {
     if (content == null || content.isBlank()) {
       return false;
     }
@@ -88,10 +113,24 @@ public class ReleaseArchetypeParser {
               + ", got: "
               + root.getClass().getSimpleName());
     }
-    Object archetype = raw.get(ARCHETYPE_KEY);
-    if (archetype == null) {
+    return declaresSomething(raw.get(ARCHETYPE_KEY)) || declaresSomething(raw.get(RELEASE_REQUEST_KEY));
+  }
+
+  /**
+   * Whether a key's value declares anything at all. Presence only: an empty list and an empty
+   * mapping are the YAML spellings of "nothing", exactly as a blank scalar is, and reading any
+   * further into a list of steps would be the second schema reader this class refuses to be.
+   */
+  private static boolean declaresSomething(Object value) {
+    if (value == null) {
       return false;
     }
-    return !String.valueOf(archetype).isBlank();
+    if (value instanceof Map<?, ?> mapping) {
+      return !mapping.isEmpty();
+    }
+    if (value instanceof Iterable<?> items) {
+      return items.iterator().hasNext();
+    }
+    return !String.valueOf(value).isBlank();
   }
 }

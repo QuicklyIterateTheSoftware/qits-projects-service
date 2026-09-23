@@ -63,7 +63,7 @@ public class ReleaseGateResolutionTest {
   }
 
   // -----------------------------------------------------------------------------------------
-  // The release.yml's archetype composes the CI gate
+  // The release.yml's QA declaration composes the CI gate
   // -----------------------------------------------------------------------------------------
 
   /**
@@ -86,7 +86,7 @@ public class ReleaseGateResolutionTest {
   }
 
   @Test
-  void releaseYmlWithNoArchetypeKeyIsNoCiGate() {
+  void releaseYmlDeclaringNeitherAnArchetypeNorASlotIsNoCiGate() {
     // A repository publishing artifacts without a composed pipeline is ReleaseArtifacts' ordinary
     // case, not a failure to detect one here.
     gitHost.tree(
@@ -95,6 +95,54 @@ public class ReleaseGateResolutionTest {
     GateSet set = resolve();
     assertTrue(set.known());
     assertEquals(Set.of(), set.kinds());
+  }
+
+  /**
+   * <b>A repository that inlines its own {@code release-request:} slot instead of naming an
+   * archetype is gated by CI just the same</b> — the 2026-09-22 defect, and the reason this class
+   * asks about a QA pipeline rather than about an archetype.
+   *
+   * <p>qits-ci's {@code CiReleaseComposer.choose} takes a repository's own slot list outright when
+   * it is present, archetype or not, so such a repository <em>is</em> composed a QA run. Reading the
+   * archetype key alone left {@code qits-landing-app} with no CI gate at all: three requests went
+   * {@code READY} within a second of creation, the tag was cut, the backing {@code release/<id>}
+   * branch deleted, and the composed run then died with {@code CLONE_FAILED} on the branch the
+   * release had just removed.
+   */
+  @Test
+  void aRepositoryInliningItsOwnReleaseRequestSlotIsGatedByCiToo() {
+    gitHost.tree(
+        "refs/heads/main",
+        Map.of(
+            ".config/qits/release.yml",
+            "release-request:\n  - name: qa\n    run: npm ci && npm test\n"));
+    GateSet set = resolve();
+    assertTrue(set.known());
+    assertEquals(Set.of(Kind.CI), set.kinds());
+    assertFalse(set.nothingToWaitOn());
+  }
+
+  @Test
+  void anArchetypeWithNoInlinedSlotIsStillTheCiGate() {
+    // The other half of the widening: naming an archetype and nothing else must not regress.
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "archetype: java-service\n"));
+    assertEquals(Set.of(Kind.CI), resolve().kinds());
+  }
+
+  @Test
+  void aReleaseRequestKeyDeclaringNothingIsNoCiGate() {
+    // Presence is the rule, and a key with nothing under it declares no pipeline to be gated by.
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "release-request:\n"));
+    GateSet set = resolve();
+    assertTrue(set.known());
+    assertEquals(Set.of(), set.kinds());
+
+    // Staging a rev replaces its whole tree, so each spelling is read on its own.
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "release-request: \"   \"\n"));
+    assertEquals(Set.of(), resolve().kinds());
+
+    gitHost.tree("refs/heads/main", Map.of(".config/qits/release.yml", "release-request: []\n"));
+    assertEquals(Set.of(), resolve().kinds());
   }
 
   @Test
