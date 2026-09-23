@@ -8,7 +8,9 @@ import eu.wohlben.qits.projects.control.ReleaseArchetypeParser.ReleaseArchetypeE
 import org.junit.jupiter.api.Test;
 
 /**
- * The pure parse of {@link ReleaseArtifacts#SLOT_CONFIG}'s one field this class reads.
+ * The pure parse of the two fields of {@link ReleaseArtifacts#SLOT_CONFIG} this class reads — the
+ * {@code archetype:} a pipeline is composed from, and the {@code release-request:} slot a
+ * repository may inline instead.
  *
  * <p>Shaped after {@link ReleaseRequestSettingsParserTest}: the load-bearing half is the negative,
  * and it points the opposite way from that class's. There, a file that will not parse must throw, so
@@ -23,39 +25,68 @@ class ReleaseArchetypeParserTest {
 
   @Test
   void anArchetypeNamedIsTrue() {
-    assertTrue(parser.declaresArchetype("archetype: spa-frontend\n"));
+    assertTrue(parser.declaresQaPipeline("archetype: spa-frontend\n"));
   }
 
   @Test
   void absentContentAndAnAbsentOrBlankKeyAreAllFalse() {
-    assertFalse(parser.declaresArchetype(null));
-    assertFalse(parser.declaresArchetype(""));
-    assertFalse(parser.declaresArchetype("   \n"));
-    assertFalse(parser.declaresArchetype("# nothing but a comment\n"));
-    assertFalse(parser.declaresArchetype("artifacts: []\n"));
-    assertFalse(parser.declaresArchetype("archetype: \"\"\n"));
-    assertFalse(parser.declaresArchetype("archetype: \n"));
+    assertFalse(parser.declaresQaPipeline(null));
+    assertFalse(parser.declaresQaPipeline(""));
+    assertFalse(parser.declaresQaPipeline("   \n"));
+    assertFalse(parser.declaresQaPipeline("# nothing but a comment\n"));
+    assertFalse(parser.declaresQaPipeline("artifacts: []\n"));
+    assertFalse(parser.declaresQaPipeline("archetype: \"\"\n"));
+    assertFalse(parser.declaresQaPipeline("archetype: \n"));
   }
 
   @Test
   void anUnrelatedKeyIsIgnoredSoDeclaringArtifactsAloneComposesNothing() {
     // ReleaseArtifacts reads this same file for artifacts:/userflows: with no archetype: at all —
     // a repository that publishes without a composed pipeline is the ordinary case, not a failure.
-    assertFalse(parser.declaresArchetype("artifacts:\n  - type: oci\n    name: qits/thing\n"));
+    assertFalse(parser.declaresQaPipeline("artifacts:\n  - type: oci\n    name: qits/thing\n"));
+  }
+
+  @Test
+  void anInlinedReleaseRequestSlotIsTrueWithNoArchetypeAtAll() {
+    // qits-ci's CiReleaseComposer.choose takes a repository's own slot list outright when it is
+    // there, archetype or not — so this file composes a QA pipeline and must be read as one.
+    assertTrue(
+        parser.declaresQaPipeline(
+            "release-request:\n  - name: qa\n    run: npm ci && npm test\n"));
+    assertTrue(parser.declaresQaPipeline("release-request:\n  steps:\n    - run: npm test\n"));
+    assertTrue(parser.declaresQaPipeline("release-request: qa\n"));
+  }
+
+  @Test
+  void aReleaseRequestKeyDeclaringNothingIsFalse() {
+    // A key with nothing under it is not a pipeline.
+    assertFalse(parser.declaresQaPipeline("release-request:\n"));
+    assertFalse(parser.declaresQaPipeline("release-request: \"\"\n"));
+    assertFalse(parser.declaresQaPipeline("release-request: []\n"));
+    assertFalse(parser.declaresQaPipeline("release-request: {}\n"));
+  }
+
+  @Test
+  void eitherKeyAloneIsEnoughAndBothTogetherAreTrueToo() {
+    assertTrue(parser.declaresQaPipeline("archetype: java-service\n"));
+    assertTrue(
+        parser.declaresQaPipeline("archetype: java-service\nrelease-request:\n  - run: mvn verify\n"));
+    // An archetype named beside an empty slot is still an archetype.
+    assertTrue(parser.declaresQaPipeline("archetype: java-service\nrelease-request: []\n"));
   }
 
   @Test
   void aFileThatWillNotParseThrowsNamingTheFile() {
     ReleaseArchetypeException e =
         assertThrows(
-            ReleaseArchetypeException.class, () -> parser.declaresArchetype("archetype: [unclosed\n"));
+            ReleaseArchetypeException.class, () -> parser.declaresQaPipeline("archetype: [unclosed\n"));
     assertTrue(e.getMessage().contains(ReleaseArtifacts.SLOT_CONFIG));
   }
 
   @Test
   void aDocumentThatIsNotAMappingThrowsNamingTheFile() {
     ReleaseArchetypeException e =
-        assertThrows(ReleaseArchetypeException.class, () -> parser.declaresArchetype("- archetype\n"));
+        assertThrows(ReleaseArchetypeException.class, () -> parser.declaresQaPipeline("- archetype\n"));
     assertTrue(e.getMessage().contains(ReleaseArtifacts.SLOT_CONFIG));
   }
 }

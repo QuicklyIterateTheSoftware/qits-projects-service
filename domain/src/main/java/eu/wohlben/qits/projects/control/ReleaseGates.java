@@ -52,7 +52,8 @@ import org.jboss.logging.Logger;
  * every configured gate having passed and the tag reaching {@code main}.
  *
  * <pre>
- *     .config/qits/release.yml naming an archetype:      →  the CI gate
+ *     .config/qits/release.yml declaring a QA pipeline
+ *       (an archetype:, or a release-request: slot)      →  the CI gate
  *     .config/qits/deployments.yml present               →  the deployment gate
  *     .config/qits/release-requests.yml manual-review    →  the approval gate
  *
@@ -70,12 +71,13 @@ import org.jboss.logging.Logger;
  * tag in hand puts the kind into the set with {@link GateSet#with} before reporting.
  *
  * <p><b>The two gates read {@link ReleaseArtifacts#SLOT_CONFIG} differently, and that is a
- * correction rather than an inconsistency</b> (2026-09-16). This class asks whether the file names
- * an archetype, because the composed pipeline it is about is the archetype's {@code
- * release-request:} slot and every archetype declares one. {@code ReleaseFinalization} is about the
- * {@code release:} slot, which {@code spa-frontend} and {@code cli} deliberately declare <b>not</b>
- * — so an archetype's name was the wrong test there, and the publish gate asks qits-ci itself
- * through {@code control/PublishRuns} instead. Neither reading may be copied onto the other.
+ * correction rather than an inconsistency</b> (2026-09-16). This class asks whether the file
+ * declares a QA pipeline — an {@code archetype:}, whose composed {@code release-request:} slot every
+ * archetype declares, or a {@code release-request:} slot of the repository's own. {@code
+ * ReleaseFinalization} is about the {@code release:} slot, which {@code spa-frontend} and {@code
+ * cli} deliberately declare <b>not</b> — so an archetype's name was the wrong test there, and the
+ * publish gate asks qits-ci itself through {@code control/PublishRuns} instead. Neither reading may
+ * be copied onto the other.
  *
  * <p><b>Why that direction is right here and wrong for the other three.</b> The rule "read from
  * main, never from the fold" exists so a change cannot loosen the rules it is judged by — and every
@@ -90,9 +92,10 @@ import org.jboss.logging.Logger;
  * <h2>The CI gate is composed, not local</h2>
  *
  * <p>{@link ReleaseArtifacts#SLOT_CONFIG} is the whole of what turns this gate on. A repository
- * carries no QA pipeline of its own any more; qits-ci composes one from the wrapper's
- * {@code .config/qits/release-archetypes/<archetype>.yml}, and that pipeline reports its verdict
- * exactly as an in-repository recipe used to.
+ * carries no QA <em>recipe</em> of its own any more; qits-ci composes one, either from the wrapper's
+ * {@code .config/qits/release-archetypes/<archetype>.yml} or from the {@code release-request:} slot
+ * the repository declares in that same file, and the composed pipeline reports its verdict exactly
+ * as an in-repository recipe used to.
  *
  * <p><b>Reading the composed source is what closed the 2026-09-13 bug</b>, and reading it is now the
  * only reading there is. This class used to look first for a repository's own
@@ -104,16 +107,29 @@ import org.jboss.logging.Logger;
  * that has since been migrated.
  *
  * <p><b>The rule is presence, not composition.</b> {@link #read} asks {@link ReleaseArchetypeParser}
- * one question — does {@link ReleaseArtifacts#SLOT_CONFIG} name a non-blank {@code archetype:} — and
- * never opens the archetype file itself to confirm it actually carries a {@code release-request:}
- * slot. That is deliberate rather than a shortcut: the archetype schema belongs to qits-ci, which
- * composes it, and a second reader of that schema here is a second place a future archetype change
- * has to be kept in step, for a fact a presence check already answers. Every archetype this platform
- * ships declares a {@code release-request:} slot today (checked by hand across all six on
- * 2026-09-13), so the two readings agree on every repository that exists; if a future archetype ever
- * shipped without one, a repository naming it would still hold its CI gate here (see below) and wait
- * on a verdict that never arrives — recoverable by fixing the archetype or the repository's
- * declaration, and the one outcome this class must never produce instead is releasing ungated.
+ * one question — does {@link ReleaseArtifacts#SLOT_CONFIG} declare a QA pipeline, meaning a non-blank
+ * {@code archetype:} or a non-empty {@code release-request:} — and never opens the archetype file,
+ * nor reads a single step out of either slot. That is deliberate rather than a shortcut: the slot
+ * schema belongs to qits-ci, which composes it, and a second reader of that schema here is a second
+ * place a future change has to be kept in step, for a fact a presence check already answers. Every
+ * archetype this platform ships declares a {@code release-request:} slot today (checked by hand
+ * across all six on 2026-09-13), so the two readings agree on every repository that exists; if a
+ * future archetype ever shipped without one, a repository naming it would still hold its CI gate
+ * here (see below) and wait on a verdict that never arrives — recoverable by fixing the archetype or
+ * the repository's declaration, and the one outcome this class must never produce instead is
+ * releasing ungated.
+ *
+ * <p><b>Naming an archetype is not the only way to be composed, and reading it as though it were
+ * released repositories ungated</b> (fixed 2026-09-22). The predicate asked for {@code archetype:}
+ * alone, on the reasoning that a file declaring only {@code artifacts:} or {@code userflows:}
+ * composes nothing at qits-ci. A repository may instead <em>inline</em> its slots, and qits-ci
+ * honours that ahead of any archetype — {@code CiReleaseComposer.choose} takes the repository's own
+ * slot list outright when it is present, archetype or not — so such a repository is composed a QA
+ * run and simply got no gate for it. Measured on {@code qits-landing-app}, the one repository of 49
+ * on the estate with slots and no archetype: three requests went {@code READY} within a second of
+ * creation, the tag was cut and the backing {@code release/<id>} branch deleted, and the QA run
+ * qits-ci had composed then died with {@code CLONE_FAILED} on the branch that release had just
+ * removed. Its QA steps had never run once.
  *
  * <p><b>Two edge cases both resolve to "the CI gate applies", never to "no gate".</b> A {@link
  * ReleaseArtifacts#SLOT_CONFIG} that will not parse, and one naming an archetype with no {@code
@@ -166,8 +182,8 @@ public class ReleaseGates {
   private static final String DEFAULT_MAIN = "main";
 
   /**
-   * A repository's release declaration. Read for {@code archetype:} — see the class javadoc's "The
-   * CI gate is composed, not local".
+   * A repository's release declaration. Read for {@code archetype:} and {@code release-request:} —
+   * see the class javadoc's "The CI gate is composed, not local".
    */
   static final String RELEASE_CONFIG = ReleaseArtifacts.SLOT_CONFIG;
 
@@ -342,8 +358,9 @@ public class ReleaseGates {
     if (paths.contains(RELEASE_CONFIG)) {
       // One file read on every repository that declares a release at all, and the file is exactly
       // the one ReleaseArtifacts already fetches. The tree listing alone cannot answer this gate:
-      // a release.yml is present for every migrated repository and only the archetype: key inside
-      // it says whether qits-ci composes a QA pipeline to be gated by.
+      // a release.yml is present for every migrated repository and what says whether qits-ci
+      // composes a QA pipeline to be gated by is inside it — an archetype: to compose one from, or
+      // a release-request: slot the repository declares itself.
       ReleaseGitHost.Answer<String> config;
       try {
         config = host.file(repoId, rev, RELEASE_CONFIG);
@@ -360,7 +377,7 @@ public class ReleaseGates {
                 + (config == null ? "the git host could not be asked" : config.detail()));
       }
       try {
-        if (archetypeParser.declaresArchetype(config.value())) {
+        if (archetypeParser.declaresQaPipeline(config.value())) {
           kinds.add(Kind.CI);
         }
       } catch (RuntimeException e) {

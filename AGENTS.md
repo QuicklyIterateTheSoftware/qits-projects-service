@@ -789,7 +789,7 @@ released, while any configured gate is unmet. One file at `main` turns on each g
 
 | file at `main` | gate |
 | --- | --- |
-| `.config/qits/release.yml` naming an `archetype:` | CI — a `BuildSuccessful` for the fold. qits-ci composes the QA pipeline from the wrapper's `release-archetypes/*.yml` and its verdict gates the same way a hand-written recipe's used to (fixed 2026-09-13: this repository used to read only the recipe, so a migrated repository released before its QA run even started; the recipe reading itself went on 2026-09-18 when the last of those files left the estate) |
+| `.config/qits/release.yml` declaring a QA pipeline — an `archetype:`, **or** a non-empty `release-request:` slot of the repository's own | CI — a `BuildSuccessful` for the fold. qits-ci composes the QA pipeline from the wrapper's `release-archetypes/*.yml`, or from the repository's own slot when it declares one, and its verdict gates the same way a hand-written recipe's used to (fixed 2026-09-13: this repository used to read only the recipe, so a migrated repository released before its QA run even started; the recipe reading itself went on 2026-09-18 when the last of those files left the estate; **2026-09-22**: only the `archetype:` key was read, so a repository that inlines its slots got no gate at all — see below) |
 | `.config/qits/deployments.yml` | deployment — the release is not finished until the deployment is live |
 | `.config/qits/release-requests.yml` with `manual-review: true` | approval — a person's yes |
 
@@ -799,6 +799,20 @@ treated as "none"** — every failed read holds the request rather than releasin
 `ReleaseGates`' javadoc for the full rule, including why an unparseable `release.yml` (or one naming
 an archetype whose composed pipeline this service does not itself verify) holds the CI gate rather
 than dropping it.
+
+**Naming an archetype is not the only way to be composed** (2026-09-22). The CI gate's predicate
+asked for `archetype:` alone, on the reasoning that a `release.yml` declaring only `artifacts:` or
+`userflows:` composes nothing at qits-ci. A repository may instead **inline** its slots, and qits-ci
+honours that ahead of any archetype — `CiReleaseComposer.choose` takes the repository's own slot list
+outright when it is present, archetype or not. So such a repository is composed a QA run and had no
+gate for it: measured three times on `qits-landing-app` (the one repository of 49 on the estate with
+slots and no archetype), each request went `READY` within a second of creation, the tag was cut and
+the backing `release/<id>` branch deleted, and the composed run then died with `CLONE_FAILED` on the
+branch the release had just removed — its QA steps never ran once.
+`ReleaseArchetypeParser.declaresQaPipeline` is the predicate now: an `archetype:` **or** a non-empty
+`release-request:`. It is still **presence only** — a `release-request:` that is blank, `[]` or `{}`
+declares nothing and is no gate — because this service must not become a second reader of qits-ci's
+slot schema.
 
 **Release and withdrawal both ask qits-ci to cancel the request's queued or running runs**, best
 effort and never able to fail the release or the withdrawal itself (`ReleaseRequests.cancel`) — so a
