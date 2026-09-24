@@ -32,13 +32,14 @@ import org.jboss.logging.Logger;
  * at all, because a half pair is a refusal and this port would report it as "could not ask", which
  * would be true and useless.
  *
- * <p>{@code qits.projects.release-requests.deployments-url} is <b>unset shipped</b>: a deployment
- * names its tier's qits-deployments ({@code http://dev-qits-deployments:8080}), and unset answers
- * {@code Optional.empty()}. <b>Every failure answers the same</b> — an unset address, an unreachable
- * service, a refusal, any non-200, a body without a {@code deploymentRequests} array, an exception —
- * and <b>none of them is ever an empty list</b>, which is the one answer that would draw a released,
- * deployable repository as though nothing were owed. An empty list reaches the assembler only when
- * qits-deployments really answered one.
+ * <p>{@code qits.projects.release-requests.deployments-url} ships a default derived from {@code
+ * QITS_ENVIRONMENT} ({@code http://${QITS_ENVIRONMENT:dev}-qits-deployments:8080}), qits-deployments
+ * being one of the nine platform services and this process already knowing its own environment; a
+ * deployment may still blank it to switch the hop off explicitly. <b>Every failure answers the
+ * same</b> — a blank or unset address, an unreachable service, a refusal, any non-200, a body without
+ * a {@code deploymentRequests} array, an exception — and <b>none of them is ever an empty list</b>,
+ * which is the one answer that would draw a released, deployable repository as though nothing were
+ * owed. An empty list reaches the assembler only when qits-deployments really answered one.
  *
  * <h2>The credential, which is not {@code HttpPublishRuns}'</h2>
  *
