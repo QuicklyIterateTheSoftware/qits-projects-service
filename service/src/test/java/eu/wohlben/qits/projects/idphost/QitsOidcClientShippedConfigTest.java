@@ -29,7 +29,10 @@ class QitsOidcClientShippedConfigTest {
 
   @Test
   void theQitsClientResolvesItsOwnLiteralDefaults() {
-    assertEquals("http://qits-idp:8080/idp", value("quarkus.oidc-client.qits.auth-server-url"));
+    // Derived from QITS_ENVIRONMENT, unset here and so defaulting to "dev" — qits-platform-idp is
+    // one of the nine platform services and the bare alias resolves to nothing on a real estate.
+    assertEquals(
+        "http://dev-qits-platform-idp:8080/idp", value("quarkus.oidc-client.qits.auth-server-url"));
     assertEquals("qits-projects", value("quarkus.oidc-client.qits.client-id"));
     // Empty, not absent — SmallRye reads a configured-empty String as null, so an empty secret
     // reads as an empty Optional rather than as "" itself.
@@ -64,6 +67,10 @@ class QitsOidcClientShippedConfigTest {
       assertEquals("false", value(prefix + "client-enabled"), name);
       assertEquals("false", value(prefix + "discovery-enabled"), name);
       assertEquals("token", value(prefix + "token-path"), name);
+      // Every one of these clients dials the same idp the named `qits` client does — derived the
+      // same way, so a deployment no longer states QUARKUS_OIDC_CLIENT_<NAME>_AUTH_SERVER_URL for
+      // any of the four to reach it.
+      assertEquals("http://dev-qits-platform-idp:8080/idp", value(prefix + "auth-server-url"), name);
     }
   }
 
