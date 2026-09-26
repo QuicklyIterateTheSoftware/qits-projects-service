@@ -1,8 +1,7 @@
 package eu.wohlben.qits.entities.control;
 
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.EpicStatus;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -97,10 +96,10 @@ import java.util.stream.Collectors;
  * <p><b>The asymmetry on {@code STATUS} is deliberate and is worth naming, because it looks like an
  * oversight.</b> A ticket <em>requires</em> a status and an epic merely permits one. The reason is
  * what each column means at the moment of the check: an epic's phase is minted by the writer (every
- * epic starts {@code REFINING}, set by the service and never by a caller), so demanding it of a
+ * epic starts {@code REPORTED}, set by the service and never by a caller), so demanding it of a
  * candidate would fail every create before the writer had run — the same reason {@link
  * EntityProperty#SLUG} is required of nobody. A ticket's status, by contrast, is a statement the
- * intake surfaces already make and that the transition API moves; the five words are the ticket's
+ * intake surfaces already make and that the transition API moves; the six words are the ticket's
  * whole lifecycle and a ticket without one is not a ticket in any phase.
  *
  * <h2>What a check answers</h2>
@@ -113,11 +112,12 @@ import java.util.stream.Collectors;
  */
 public final class Archetypes {
 
-  /** {@code EpicStatus}' five words, as stored. */
-  private static final Set<String> EPIC_STATUSES = names(EpicStatus.values());
-
-  /** {@code TicketStatus}' five words, as stored. */
-  private static final Set<String> TICKET_STATUSES = names(TicketStatus.values());
+  /**
+   * {@link EntityStatus}' six words, as stored — <b>the one vocabulary</b> of every kind with a
+   * lifecycle. There were two sets here, one per enum, until qits-392 deleted {@code EpicStatus};
+   * an epic and a ticket now declare the same set, and the served registry document carries it.
+   */
+  private static final Set<String> STATUSES = names(EntityStatus.values());
 
   private static final Map<Archetype, ArchetypeSpec> REGISTRY = declare();
 
@@ -133,8 +133,8 @@ public final class Archetypes {
   private static Map<Archetype, ArchetypeSpec> declare() {
     Map<Archetype, ArchetypeSpec> registry = new EnumMap<>(Archetype.class);
 
-    // A plan. Root, depth 0. Its status is the four-phase epic lifecycle; supersededBy is the
-    // successor draft a supersede spawns and exists on no other kind.
+    // A plan. Root, depth 0. Its status is the one entity lifecycle, the ticket's words;
+    // supersededBy is the successor draft a supersede spawns and exists on no other kind.
     registry.put(
         Archetype.EPIC,
         new ArchetypeSpec(
@@ -149,7 +149,7 @@ public final class Archetypes {
                 EntityProperty.DESCRIPTION,
                 EntityProperty.STATUS,
                 EntityProperty.SUPERSEDED_BY),
-            EPIC_STATUSES));
+            STATUSES));
 
     // A small-scoped bug or improvement. Root beside the epic, depth 0 — the two are siblings and
     // a ticket under an epic is refused by exactly that equality, which is the nesting rule doing
@@ -182,10 +182,10 @@ public final class Archetypes {
                 EntityProperty.IMPETUS,
                 EntityProperty.ASSIGNEE,
                 EntityProperty.CREATED_BY),
-            TICKET_STATUSES));
+            STATUSES));
 
     // A piece of a plan. No status of its own — a feature's phase is its epic's, which is why
-    // EpicLifecycle judges a task by the phase of its feature's epic rather than by anything on the
+    // EntityLifecycle judges a task by the phase of its feature's epic rather than by anything on the
     // row. What it carries instead is the implemented marker and a sibling dependency.
     registry.put(
         Archetype.FEATURE,
@@ -301,8 +301,8 @@ public final class Archetypes {
    *
    * <p>Three questions, asked of every candidate and all three always asked: is every required
    * property there, is every property it carries one this kind has a slot for, and — when it carries
-   * a status — is that word in this kind's lifecycle. The third is the one the database cannot ask,
-   * because {@code ck_entity_status} is the union of both enums.
+   * a status — is that word in this kind's lifecycle. The database spells the same six words in
+   * {@code ck_entity_status}, but cannot say that a feature or a task holds none.
    *
    * <p>{@code demand} is which required set the first question is asked against — see {@link
    * Demand}. It is a parameter and has no default on purpose: a create judged by the update set

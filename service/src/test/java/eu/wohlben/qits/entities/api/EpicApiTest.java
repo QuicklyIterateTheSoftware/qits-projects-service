@@ -92,7 +92,7 @@ class EpicApiTest {
             .body("epic.title", equalTo("Planning domain"))
             .body("epic.slug", equalTo("planning-domain"))
             // A new epic is a draft, with no successor — the lifecycle's starting point.
-            .body("epic.status", equalTo("REFINING"))
+            .body("epic.status", equalTo("REPORTED"))
             .body("epic.supersededByEpicId", nullValue())
             .extract()
             .path("epic.id");

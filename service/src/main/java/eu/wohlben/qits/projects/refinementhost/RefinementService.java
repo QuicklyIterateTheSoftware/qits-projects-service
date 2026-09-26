@@ -2,7 +2,7 @@ package eu.wohlben.qits.projects.refinementhost;
 
 import eu.wohlben.qits.entities.control.EpicService;
 import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
@@ -132,11 +132,16 @@ public class RefinementService {
       return existing.get();
     }
     WorkEntity epic = epics.get(epicId);
-    // The merged row stores the status word, so REFINING is compared by name against the column.
-    if (!EpicStatus.REFINING.name().equals(epic.status)) {
+    // The merged row stores the status word, so REPORTED is compared by name against the column.
+    if (!EntityStatus.REPORTED.name().equals(epic.status)) {
       throw new DomainException(
           409,
-          "Epic " + epicId + " is " + epic.status + " — only a REFINING epic can be refined.");
+          "Epic "
+              + epicId
+              + " is "
+              + epic.status
+              + " — only a REPORTED epic can be refined. Move it back to REPORTED to reopen its"
+              + " scope.");
     }
     Project project = projects.get(epic.projectId);
     Repository wrapper = wrapperOf(project);
@@ -270,7 +275,7 @@ public class RefinementService {
 
   /**
    * The end of a refinement: container, volume, credential, branch, row — in that order, so a
-   * failure leaves nothing orphaned ahead of it. The epic's ABANDONED transition is its own call
+   * failure leaves nothing orphaned ahead of it. The epic's DROPPED transition is its own call
    * on the epics surface; this tears down only what this service hosts.
    */
   public void discard(long id) {

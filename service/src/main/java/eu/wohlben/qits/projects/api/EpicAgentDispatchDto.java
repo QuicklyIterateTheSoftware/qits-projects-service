@@ -12,7 +12,7 @@ import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
  *
  * <p>{@code fresh} and {@code agentLaunch} are the far side's report of what it actually did. They
  * matter more here than on a ticket, because "Start implementation" is <b>re-pressable by
- * design</b>: an epic already in IMPLEMENTATION is dispatched onto as it stands, and the far side
+ * design</b>: an epic already REFINED is dispatched onto as it stands, and the far side
  * then adopts the workspace already on {@code epic/<slug>} and answers {@code SKIPPED_RUNNING}
  * rather than starting a second agent. Both fields travel to the browser because both change what
  * it should say.

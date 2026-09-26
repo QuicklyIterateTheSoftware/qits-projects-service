@@ -42,8 +42,8 @@ import org.junit.jupiter.api.TestMethodOrder;
  * <p>This is the half of qits-projects the refinement agents and the epics board live on, and its
  * one rule is worth stating before the stories: <b>the freeze is per field, not per endpoint</b>.
  * A structural change — the epic's title or description, and any feature or task create, update or
- * delete — needs the epic in {@code REFINING}; the implemented markers need it in {@code
- * IMPLEMENTATION}. So the same {@code PUT /tasks/{id}} is refused before the freeze and accepted
+ * delete — needs the epic at {@code REPORTED}; the implemented markers need it at {@code
+ * REFINED}. So the same {@code PUT /tasks/{id}} is refused before the freeze and accepted
  * after it, depending on which field it carries, and the two stories below are exactly those two
  * sides.
  *
@@ -117,8 +117,8 @@ public class EpicPlanningIT {
       A product owner drafts an epic against a project, gives it a feature, and gives that feature
       a task bound to one of the project's repositories — a task must name a repository in its own
       epic's project, so the plan and the catalogue are one graph rather than two. The epic starts
-      REFINING, which is the only status in which any of that is allowed, and the transition door
-      is the only thing that moves it: IMPLEMENTATION is the scope freeze. Afterwards the same
+      REPORTED, which is the only status in which any of that is allowed, and the transition door
+      is the only thing that moves it: REFINED is the scope freeze. Afterwards the same
       person, on the same session, cannot add a second feature — 409, because the scope is no
       longer a draft, and that is a conflict rather than a permission problem.
       """)
@@ -145,7 +145,7 @@ public class EpicPlanningIT {
             .jsonPath();
     epicId = epic.getString("epic.id");
     assertNotNull(epicId);
-    assertEquals("REFINING", epic.getString("epic.status"), "a new epic is a draft, always");
+    assertEquals("REPORTED", epic.getString("epic.status"), "a new epic is a draft, always");
     // startsWith rather than equals: a slug is unique within its project and takes the next free
     // -2, -3, … on a collision, so pinning the exact string would make this story a statement
     // about what else is in the database rather than about how a slug is minted.
@@ -205,18 +205,18 @@ public class EpicPlanningIT {
     JsonPath frozen =
         StoryIdentities.person(given(), OWNER_USER)
             .contentType(ContentType.JSON)
-            .body(Map.of("target", "IMPLEMENTATION"))
+            .body(Map.of("target", "REFINED"))
             .when()
             .post(StoryTarget.epicTransitionPath(epicId))
             .then()
             .statusCode(200)
             .extract()
             .jsonPath();
-    assertEquals("IMPLEMENTATION", frozen.getString("epic.status"));
+    assertEquals("REFINED", frozen.getString("epic.status"));
     assertNull(
         frozen.getMap("successor"),
         "only a supersede spawns a successor draft; a freeze spawns nothing");
-    story.note("the scope is frozen: the epic moves to IMPLEMENTATION").as("scope-frozen");
+    story.note("the scope is frozen: the epic moves to REFINED").as("scope-frozen");
 
     // …and the freeze bites, on the same session that just froze it. A structural write is 409 and
     // not 403: this caller is allowed, and the epic is not.

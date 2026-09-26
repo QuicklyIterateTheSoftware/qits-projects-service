@@ -6,7 +6,7 @@ import eu.wohlben.qits.entities.control.FeatureService;
 import eu.wohlben.qits.entities.control.TaskService;
 import eu.wohlben.qits.entities.control.WorkBranches;
 import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -51,15 +51,15 @@ import org.jboss.logging.Logger;
  *
  * <h2>The order is load-bearing: transition first, dispatch second</h2>
  *
- * <p>The epic is moved to {@link EpicStatus#IMPLEMENTATION} <b>before</b> the dispatch is made, and
+ * <p>The epic is moved to {@link EntityStatus#REFINED} <b>before</b> the dispatch is made, and
  * that is not a stylistic preference. The marker door the dispatched agent is told to use — {@code
- * mark_task_implemented} on {@code EpicMcpTools} — is only open while the owning epic is in
- * IMPLEMENTATION ({@code EpicLifecycle.requireImplementation}). A dispatch that raced the transition
+ * mark_task_implemented} on {@code EpicMcpTools} — is only open while the owning epic is
+ * REFINED ({@code EntityLifecycle.requireRefined}). A dispatch that raced the transition
  * would hand the agent a tool its own epic refuses, and the agent would discover that halfway
  * through the first task with no way to fix it from inside its container.
  *
  * <p>The cost of that order is the failure it leaves behind, and the cost is the acceptable one: if
- * the dispatch then fails, the epic is in IMPLEMENTATION with no agent on it. That is a
+ * the dispatch then fails, the epic is REFINED with no agent on it. That is a
  * <em>legitimate</em> state rather than a broken one — the scope really is frozen, somebody really
  * did decide to start — and the button can simply be pressed again, because the far side adopts the
  * workspace already standing on {@code epic/<slug>} instead of making a second one.
@@ -70,18 +70,23 @@ import org.jboss.logging.Logger;
  * each is a precondition that was never going to hold, and moving an epic's status on the way to one
  * of them would be a status change nothing asked for.
  *
- * <h2>Re-pressing is the retry, so IMPLEMENTATION is not a refusal</h2>
+ * <h2>Re-pressing is the retry, so REFINED is not a refusal</h2>
  *
- * <p>The transition runs only when the epic is {@link EpicStatus#REFINING}. An epic already in
- * IMPLEMENTATION is dispatched onto exactly as it stands — {@code EpicService.planTransition} would
- * 409 on {@code IMPLEMENTATION→IMPLEMENTATION}, and a door whose retry answered 409 would leave a
- * failed dispatch with no way back. Every other status ({@link EpicStatus#IMPLEMENTED}, {@link
- * EpicStatus#SUPERSEDED}, {@link EpicStatus#ABANDONED}) is a 409 from this door naming the status:
- * you do not dispatch an agent onto work that is over.
+ * <p>The transition runs only when the epic is {@link EntityStatus#REPORTED}. An epic already
+ * {@link EntityStatus#REFINED} is dispatched onto exactly as it stands — {@code
+ * EpicService.planTransition} would 409 on {@code REFINED→REFINED}, and a door whose retry answered
+ * 409 would leave a failed dispatch with no way back. Every other status ({@link
+ * EntityStatus#IMPLEMENTED}, {@link EntityStatus#VERIFIED}, {@link EntityStatus#DONE}, {@link
+ * EntityStatus#DROPPED}) is a 409 from this door naming the status: you do not dispatch an agent
+ * onto work that is over.
+ *
+ * <p>This door is interim: the one-status-model change (qits-392) moved it onto the entity words
+ * ({@code REPORTED→REFINED}, which is what {@code REFINING→IMPLEMENTATION} became), and a later task
+ * of the same epic retires it in favour of one phase-shaped dispatch path for every archetype.
  *
  * <p>The move goes through {@link EpicResolutions} and never {@code EpicService.transition} — that
  * class's javadoc makes the rule explicit, and it is the only way an epic's status should be moved
- * from a door. {@code REFINING→IMPLEMENTATION} is not a resolving move, so nothing is discarded
+ * from a door. {@code REPORTED→REFINED} is not a resolving move, so nothing is discarded
  * here: the epic's refinement, if it has one, survives the freeze exactly as it does through the
  * board's own transition. Tearing that refinement down at this moment is a different ticket
  * ({@code 6cab37e4}); this door neither does it nor makes it harder to do.
@@ -153,9 +158,9 @@ public class EpicDispatchController {
     Project project = projects.get(epic.projectId);
     Repository wrapper = wrapperOf(project);
 
-    if (EpicStatus.REFINING.name().equals(epic.status)) {
+    if (EntityStatus.REPORTED.name().equals(epic.status)) {
       // First, and through EpicResolutions — see the class javadoc for both halves of why.
-      epic = resolutions.transition(id, EpicStatus.IMPLEMENTATION.name(), changedBy()).epic();
+      epic = resolutions.transition(id, EntityStatus.REFINED.name(), changedBy()).epic();
       // The status moved, so open boards redraw. A re-press moved nothing and announces nothing.
       publisher.fire(epic.projectId, ProjectChangeHint.Topic.EPICS);
     }
@@ -189,15 +194,15 @@ public class EpicDispatchController {
   // ---- the pieces --------------------------------------------------------------------------
 
   /**
-   * Refuses an epic whose work is over. REFINING is the ordinary press and IMPLEMENTATION is the
-   * re-press; everything else names the status back, because "409" alone would leave the caller
-   * guessing which of three finished statuses it walked into.
+   * Refuses an epic whose work is over. REPORTED is the ordinary press and REFINED is the re-press;
+   * everything else names the status back, because "409" alone would leave the caller guessing
+   * which of four finished statuses it walked into.
    */
   private static void requireStartable(WorkEntity epic) {
     // The merged row stores the status word, so the two startable statuses are compared by name
     // against the column.
-    if (!EpicStatus.REFINING.name().equals(epic.status)
-        && !EpicStatus.IMPLEMENTATION.name().equals(epic.status)) {
+    if (!EntityStatus.REPORTED.name().equals(epic.status)
+        && !EntityStatus.REFINED.name().equals(epic.status)) {
       throw new DomainException(
           409,
           "Epic "
@@ -245,7 +250,7 @@ public class EpicDispatchController {
    *
    * <p>It also says the dossier is <b>read-only from here</b>, which is not a warning but an
    * accurate description: {@code DossierService} guards every write behind the owning epic's {@code
-   * REFINING} phase, and this agent is dispatched onto an epic in {@code IMPLEMENTATION}, so
+   * REPORTED} phase, and this agent is dispatched onto an epic that is {@code REFINED}, so
    * {@code put_dossier_page} answers a refusal. Saying so stops a session from reading its own
    * correction into the plan, and points it at the place a plan is corrected: say what is wrong in
    * the report, where a person can act on it.

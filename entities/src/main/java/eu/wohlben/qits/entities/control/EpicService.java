@@ -4,7 +4,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityMembership;
-import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
@@ -32,9 +32,11 @@ import java.util.stream.Collectors;
  * feature/task rows removed on a cascade delete (done in-service, not via the DB cascade, so each
  * removal gets its own DELETE audit row).
  *
- * <p>A new epic starts in {@link EpicStatus#REFINING}. From there {@link #transition} is the only
- * way the status moves, and {@link EpicLifecycle} is where both the legal moves and the freeze
- * rules live.
+ * <p>A new epic starts in {@link EntityStatus#REPORTED}. From there {@link #transition} is the only
+ * way the status moves, and {@link EntityLifecycle} is where both the legal moves and the freeze
+ * rules live — the same graph a ticket walks, reversible, so an epic can reach {@link
+ * EntityStatus#VERIFIED} and {@link EntityStatus#DONE} and a frozen scope is reopened by moving
+ * back to {@link EntityStatus#REPORTED}.
  *
  * <h2>The merged table is the source of truth, and there is no mirror left</h2>
  *
@@ -56,7 +58,7 @@ import java.util.stream.Collectors;
  * dropped. The foreign keys that named the old table — {@code dossier_page.epic_id} and {@code
  * dossier_asset.epic_id}, under {@code ck_dossier_page_owner} — point at {@code entity(id)} from
  * epics V12, so the cascade a delete leans on now hangs off the row this class actually removes;
- * and {@code DossierService}, the one reader, resolves a page's owner and its {@code REFINING} guard
+ * and {@code DossierService}, the one reader, resolves a page's owner and its {@code REPORTED} guard
  * from the merged row.
  *
  * <p>Keeping the mirror was the alternative and it was refused on the descendants' own terms. A
@@ -98,13 +100,30 @@ public class EpicService {
 
   /**
    * The outcome of a {@link #transition}: the epic in its new status, plus the successor draft when
-   * the move was to {@link EpicStatus#SUPERSEDED} (null otherwise).
+   * the move was a {@linkplain #SUPERSEDE supersede} (null otherwise).
    */
   public record Transition(WorkEntity epic, WorkEntity successor) {}
 
   /**
+   * <b>The supersede operation's name, which is not a status.</b> {@code SUPERSEDED} was an epic
+   * status until qits-392 folded it into {@link EntityStatus#DROPPED}: it said two things at once —
+   * this work will not be done, and here is what replaced it — and only the first is a status. The
+   * second is the {@code superseded_by_entity_id} column. The operation behind the word, the deep
+   * copy of the subtree into a successor draft, survives untouched, so a transition asking for
+   * {@code SUPERSEDED} is still accepted: it is judged as a move to DROPPED, lands the epic DROPPED,
+   * and points it at the successor it spawned. Nothing ever stores the word; {@code
+   * ck_entity_status} would refuse it.
+   *
+   * <p>One refusal is the operation's own rather than the graph's, and it is the one the old
+   * lifecycle made too: <b>a REPORTED epic cannot be superseded</b>. A draft has no frozen scope to
+   * discard — it is edited, or dropped — and a successor copied from a draft would be a second draft
+   * saying the same thing.
+   */
+  public static final String SUPERSEDE = "SUPERSEDED";
+
+  /**
    * What a {@link #transition} to {@code target} would be: the epic as it stands, the status it
-   * would move to, and whether that status {@linkplain EpicLifecycle#resolves resolves} it.
+   * would move to, and whether that status {@linkplain EntityLifecycle#resolves resolves} it.
    *
    * <p>It exists so a caller can act <em>before</em> the move on something the epic is still
    * holding — the refinement container, in the assembling service — and still refuse an illegal
@@ -113,17 +132,39 @@ public class EpicService {
    * answers. The move is then re-checked inside {@link #transition}, which is where it is decided;
    * this is a preview and never a reservation.
    */
-  public record PlannedTransition(WorkEntity epic, EpicStatus target, boolean resolving) {}
+  public record PlannedTransition(WorkEntity epic, EntityStatus target, boolean resolving) {}
 
   /** The preview of a move — see {@link PlannedTransition}. */
   public PlannedTransition planTransition(String id, String target) {
     Validations.requireText(target, "target");
     WorkEntity epic = entity(id);
-    EpicStatus to =
-        EpicLifecycle.parse(target)
-            .orElseThrow(() -> new ConflictException("Unknown epic status: " + target));
-    EpicLifecycle.requireTransition(EpicStatus.valueOf(epic.status), to);
-    return new PlannedTransition(epic, to, EpicLifecycle.resolves(to));
+    EntityStatus to = targetStatus(target);
+    EntityLifecycle.requireTransition(Archetype.EPIC, EntityStatus.valueOf(epic.status), to);
+    requireSupersedable(epic, target);
+    return new PlannedTransition(epic, to, EntityLifecycle.resolves(to));
+  }
+
+  /** The supersede operation's own refusal — see {@link #SUPERSEDE}. */
+  private static void requireSupersedable(WorkEntity epic, String target) {
+    if (SUPERSEDE.equals(target) && EntityStatus.REPORTED.name().equals(epic.status)) {
+      throw new ConflictException(
+          "Epic "
+              + epic.id
+              + " is REPORTED, a draft with no frozen scope to supersede — edit it, or drop it.");
+    }
+  }
+
+  /**
+   * The status a transition {@code target} lands on: the word itself, or {@link
+   * EntityStatus#DROPPED} for the {@linkplain #SUPERSEDE supersede} operation. A word naming
+   * neither is a 409.
+   */
+  private static EntityStatus targetStatus(String target) {
+    if (SUPERSEDE.equals(target)) {
+      return EntityStatus.DROPPED;
+    }
+    return EntityLifecycle.parse(target)
+        .orElseThrow(() -> new ConflictException("Unknown epic status: " + target));
   }
 
   public List<WorkEntity> listByProject(String projectId) {
@@ -148,8 +189,8 @@ public class EpicService {
       return patience.hold(
           "epic list", () -> entities.listByProjectAndArchetype(projectId, Archetype.EPIC));
     }
-    EpicStatus filter =
-        EpicLifecycle.parse(status)
+    EntityStatus filter =
+        EntityLifecycle.parse(status)
             .orElseThrow(() -> new BadRequestException("Unknown epic status: " + status));
     return patience.hold(
         "epic list by status",
@@ -188,7 +229,7 @@ public class EpicService {
         () -> {
           WorkEntity row = entity(id);
           // Title and description are scope, so an edit needs a draft.
-          EpicLifecycle.requireRefining(row);
+          EntityLifecycle.requireReported(row);
           Validations.requireText(title, "title");
           row.title = title;
           row.description = description;
@@ -202,8 +243,9 @@ public class EpicService {
 
   /**
    * Moves an epic to {@code target} (the enum name), rejecting a move the lifecycle does not allow
-   * with a 409. Superseding also spawns the successor draft — see {@link #supersede} — and points
-   * the old row at it. Moving to {@link EpicStatus#IMPLEMENTED} stamps every feature and task still
+   * with a 409. Superseding ({@link #SUPERSEDE}) lands the epic {@link EntityStatus#DROPPED}, spawns
+   * the successor draft — see {@link #supersede} — and points the old row at it. Moving to {@link
+   * EntityStatus#IMPLEMENTED} stamps every feature and task still
    * unimplemented ({@link #stampImplemented}) — declaring the epic done is declaring its scope
    * done, and doing both in one transaction is what keeps the stored status and the derived reading
    * from ever disagreeing.
@@ -221,13 +263,12 @@ public class EpicService {
         "epic transition",
         () -> {
           WorkEntity row = entity(id);
-          EpicStatus to =
-              EpicLifecycle.parse(target)
-                  .orElseThrow(() -> new ConflictException("Unknown epic status: " + target));
-          EpicLifecycle.requireTransition(EpicStatus.valueOf(row.status), to);
+          EntityStatus to = targetStatus(target);
+          EntityLifecycle.requireTransition(Archetype.EPIC, EntityStatus.valueOf(row.status), to);
+          requireSupersedable(row, target);
 
-          WorkEntity successor = (to == EpicStatus.SUPERSEDED) ? supersede(row, changedBy) : null;
-          if (to == EpicStatus.IMPLEMENTED) {
+          WorkEntity successor = SUPERSEDE.equals(target) ? supersede(row, changedBy) : null;
+          if (to == EntityStatus.IMPLEMENTED) {
             stampImplemented(row, changedBy);
           }
           row.status = to.name();
@@ -243,7 +284,7 @@ public class EpicService {
   }
 
   /**
-   * The other half of moving to {@link EpicStatus#IMPLEMENTED}: every feature and task still
+   * The other half of moving to {@link EntityStatus#IMPLEMENTED}: every feature and task still
    * unimplemented is stamped now, each with its own audit row. Markers already set keep their
    * timestamps — a feature implemented in June stays implemented in June; the stamp records when
    * the declaration covered the rest, not a rewrite of history.
@@ -345,7 +386,7 @@ public class EpicService {
   }
 
   /**
-   * A fresh {@link Archetype#EPIC} row in {@link EpicStatus#REFINING}, unaudited — both callers
+   * A fresh {@link Archetype#EPIC} row in {@link EntityStatus#REPORTED}, unaudited — both callers
    * audit their own.
    *
    * <p>The slug's scope is the <b>project id</b>, which is what {@code uq_entity_slug_scope_slug}
@@ -368,14 +409,14 @@ public class EpicService {
         Slugs.unique(
             Slugs.slugify(title, row.id, "epic-"), entities.slugsInScope(projectId));
     row.description = description;
-    row.status = EpicStatus.REFINING.name();
+    row.status = EntityStatus.REPORTED.name();
     requireArchetypeValid(row, Demand.AT_CREATE);
     entities.persist(row);
     return row;
   }
 
   /**
-   * The successor draft of a superseded epic: a new {@link EpicStatus#REFINING} epic carrying the
+   * The successor draft of a superseded epic: a new {@link EntityStatus#REPORTED} epic carrying the
    * old title, description and the whole feature/task tree, so refinement restarts from what was
    * discarded rather than from a blank page.
    *

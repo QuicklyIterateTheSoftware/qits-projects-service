@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.Optional;
 
@@ -12,9 +12,9 @@ import java.util.Optional;
  *
  * <p>{@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, where a status is what has been
  * <em>achieved</em> and the phase that runs while it holds is what happens <em>next</em> ({@link
- * TicketStatus}). So REPORTED starts the refine phase, REFINED starts implement, IMPLEMENTED starts
+ * EntityStatus}). So REPORTED starts the refine phase, REFINED starts implement, IMPLEMENTED starts
  * verify, and VERIFIED and DONE start nothing at all — the work is over and closing is a person's
- * move. {@link TicketStatus#DROPPED} starts nothing either, for the opposite reason: the work was
+ * move. {@link EntityStatus#DROPPED} starts nothing either, for the opposite reason: the work was
  * decided against, so there is no phase left to run and there never will be. {@link
  * #promptFor(WorkEntity)} is that reading, and it is the <b>only</b> place in this service that
  * turns a status into words.
@@ -162,10 +162,10 @@ final class TicketPhasePrompts {
   /** The one mapping: what has been achieved decides what runs next. */
   private static Optional<Phase> phaseOf(WorkEntity ticket) {
     // The merged row stores the word, so it is read back into the lifecycle's own enum before the
-    // mapping is made — the same reading TicketService makes before it asks TicketLifecycle
-    // anything, and what keeps this switch exhaustive over the ticket's own statuses rather than
-    // open over ck_entity_status, which spells the union of both lifecycles' words.
-    return switch (TicketStatus.valueOf(ticket.status)) {
+    // mapping is made — the same reading TicketService makes before it asks EntityLifecycle
+    // anything, and what keeps this switch exhaustive over the lifecycle's six words rather than
+    // open over whatever the String column holds.
+    return switch (EntityStatus.valueOf(ticket.status)) {
       case REPORTED -> Optional.of(Phase.REFINE);
       case REFINED -> Optional.of(Phase.IMPLEMENT);
       case IMPLEMENTED -> Optional.of(Phase.VERIFY);
@@ -203,7 +203,7 @@ final class TicketPhasePrompts {
   // ---- the three templates ------------------------------------------------------------------
 
   /**
-   * <b>REFINE</b>, run while the ticket is {@link TicketStatus#REPORTED}. What it has to produce is
+   * <b>REFINE</b>, run while the ticket is {@link EntityStatus#REPORTED}. What it has to produce is
    * a ticket somebody else could implement from, and what it has to survive is the temptation not to
    * bother.
    *
@@ -291,7 +291,7 @@ final class TicketPhasePrompts {
   }
 
   /**
-   * <b>IMPLEMENT</b>, run while the ticket is {@link TicketStatus#REFINED}. The brief already
+   * <b>IMPLEMENT</b>, run while the ticket is {@link EntityStatus#REFINED}. The brief already
    * exists, so what this template is mostly about is the two ways the phase is got wrong.
    *
    * <p><b>"Comment as the work goes … NOT at the end."</b> This deliberately replaces the previous
@@ -372,7 +372,7 @@ final class TicketPhasePrompts {
   }
 
   /**
-   * <b>VERIFY</b>, run while the ticket is {@link TicketStatus#IMPLEMENTED}. One claim is being
+   * <b>VERIFY</b>, run while the ticket is {@link EntityStatus#IMPLEMENTED}. One claim is being
    * made here — that what was reported no longer occurs — and the template's job is to keep it from
    * being made cheaply.
    *
@@ -397,7 +397,7 @@ final class TicketPhasePrompts {
    * <p><b>The failure arm is a transition BACKWARD, and it is the only one in these three
    * templates.</b> A verification that fails moves the ticket to REFINED, because what it has
    * established is that the ticket needs deciding again; there is no reject verb in this lifecycle
-   * and this is the move that stands in for one ({@code TicketLifecycle}'s own reasoning). That is
+   * and this is the move that stands in for one ({@code EntityLifecycle}'s own reasoning). That is
    * how implementation starts again.
    *
    * <p><b>The block arm here is bounded harder than in the other two</b>, because this phase has a

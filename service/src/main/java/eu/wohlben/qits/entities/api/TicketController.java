@@ -154,7 +154,7 @@ public class TicketController {
    * VERIFIED → DONE the move must be to a NEIGHBOUR of the ticket's current status — one step,
    * forward or back — and DROPPED sits off that line, reachable from any status that is not already
    * closed and reopening only to REPORTED. The rule is argued once, in {@code
-   * TicketLifecycle.LEGAL_TARGETS}. A move the lifecycle does not allow (including a move to the
+   * EntityLifecycle.LEGAL_TARGETS}. A move the lifecycle does not allow (including a move to the
    * status the ticket already has), and a target naming no status, both answer 409 with a message;
    * an absent target is a 400.
    */

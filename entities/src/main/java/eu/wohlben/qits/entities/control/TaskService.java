@@ -33,9 +33,9 @@ import java.util.stream.Collectors;
  * field = leave unchanged) with explicit clear flags for the dependency and completion marker. Every
  * mutation — including dependents cleared when a depended-on task is deleted — is audited.
  *
- * <p>Every write here obeys the phase of the epic above the task's feature ({@link EpicLifecycle}):
- * a task is scope, so creating, deleting or structurally editing one needs a draft, while {@code
- * implementedAt} moves only once that scope is frozen.
+ * <p>Every write here obeys the phase of the epic above the task's feature ({@link EntityLifecycle}):
+ * a task is scope, so creating, deleting or structurally editing one needs a draft (REPORTED), while
+ * {@code implementedAt} moves only once that scope is frozen and being implemented (REFINED).
  *
  * <h2>The epic is TWO membership hops up, and it is resolved once per call</h2>
  *
@@ -114,7 +114,7 @@ public class TaskService {
         () -> {
           WorkEntity featureRow = feature(featureId);
           String epicId = parentOf(featureId);
-          EpicLifecycle.requireRefining(epic(epicId));
+          EntityLifecycle.requireReported(epic(epicId));
           if (dependsOnTaskId != null) {
             requireDependencyUnder(dependsOnTaskId, featureId);
           }
@@ -175,10 +175,10 @@ public class TaskService {
           String epicId = epicIdOf(featureId);
           WorkEntity epic = epic(epicId);
           if (touchesScope) {
-            EpicLifecycle.requireRefining(epic);
+            EntityLifecycle.requireReported(epic);
           }
           if (touchesMarker) {
-            EpicLifecycle.requireImplementation(epic);
+            EntityLifecycle.requireRefined(epic);
           }
           if (title != null) {
             Validations.requireText(title, "title");
@@ -223,7 +223,7 @@ public class TaskService {
           EntityMembership edge = memberships.membershipOf(id).orElse(null);
           String featureId = edge == null ? null : edge.parentId;
           String epicId = epicIdOf(featureId);
-          EpicLifecycle.requireRefining(epic(epicId));
+          EntityLifecycle.requireReported(epic(epicId));
 
           // A dependency is scoped to the feature (validated on write), so every dependent is a
           // sibling and shares this task's epic — the walk is not made again for each of them.

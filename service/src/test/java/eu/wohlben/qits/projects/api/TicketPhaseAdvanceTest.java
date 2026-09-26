@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -252,7 +252,7 @@ public class TicketPhaseAdvanceTest {
     dropped.title = "Never mind";
     dropped.slug = "never-mind";
     dropped.ticketType = TicketType.BUG;
-    dropped.status = TicketStatus.DROPPED.name();
+    dropped.status = EntityStatus.DROPPED.name();
 
     advance.afterTransition(dropped, "dana");
 
@@ -289,7 +289,7 @@ public class TicketPhaseAdvanceTest {
     blocked.title = "Waiting on something";
     blocked.slug = "waiting-on-something";
     blocked.ticketType = TicketType.BUG;
-    blocked.status = TicketStatus.REFINED.name();
+    blocked.status = EntityStatus.REFINED.name();
     blocked.blocked = true;
 
     advance.afterTransition(blocked, "dana");

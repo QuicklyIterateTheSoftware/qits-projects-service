@@ -2,7 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.TicketService;
 import eu.wohlben.qits.entities.control.WorkBranches;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -47,7 +47,7 @@ import org.jboss.logging.Logger;
  * VERIFIED starts no phase at all. A rule that asked "forward or back?" would need a second table to
  * answer from, and the second table is the thing that goes wrong.
  *
- * <p>{@link TicketStatus#VERIFIED}, {@link TicketStatus#DONE} and {@link TicketStatus#DROPPED}
+ * <p>{@link EntityStatus#VERIFIED}, {@link EntityStatus#DONE} and {@link EntityStatus#DROPPED}
  * therefore start no phase and deliver no turn, and that is where the one remaining human decision
  * lives: closing a ticket is a person's move, and so is abandoning one. DONE and DROPPED end the
  * flow at its first line and write nothing at all — a ticket whose work was decided against has
@@ -224,7 +224,7 @@ public class TicketPhaseAdvance {
   public void afterTransition(WorkEntity ticket, String changedBy) {
     // The merged row stores the status word; VERIFIED is compared against it by name, which is what
     // the column holds. See TicketPhasePrompts.phaseOf for the same reading made one call down.
-    if (TicketStatus.VERIFIED.name().equals(ticket.status)) {
+    if (EntityStatus.VERIFIED.name().equals(ticket.status)) {
       // The one move that starts no phase and is still not nothing: the work is good, so the branch
       // it was done on is asked to be released. See the class javadoc.
       releaseWorkspace(ticket, changedBy);
@@ -261,7 +261,7 @@ public class TicketPhaseAdvance {
       return;
     }
     deliver(ticket, started.get(), target.get(), changedBy);
-    if (TicketStatus.IMPLEMENTED.name().equals(ticket.status)) {
+    if (EntityStatus.IMPLEMENTED.name().equals(ticket.status)) {
       noteTheReleaseThatStandsOpen(ticket, target.get(), changedBy);
     }
   }

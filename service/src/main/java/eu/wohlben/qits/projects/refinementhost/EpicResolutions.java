@@ -19,11 +19,11 @@ import org.jboss.logging.Logger;
  * cleanup by construction and not by remembering.
  *
  * <p>Until 2026-09-08 the cleanup was in the browser instead — the refining page discarded before
- * transitioning, and only for {@code ABANDONED}. Every other route to a resolved status (the epics
- * board, the REST API, an agent) left the container, its volume, its commissioned credential and
+ * transitioning, and only for what was then {@code ABANDONED} (now {@code DROPPED}). Every other
+ * route to a resolved status (the epics board, the REST API, an agent) left the container, its volume, its commissioned credential and
  * the {@code refining/<slug>} branch allocated for good, and the stranded row could not even be
  * adopted back: {@link RefinementService#findOrCreate} refuses an epic that is not {@code
- * REFINING}.
+ * REPORTED}.
  *
  * <h2>Order, and why the check comes first</h2>
  *
@@ -38,7 +38,9 @@ import org.jboss.logging.Logger;
  *
  * <p>Reversing steps 2 and 3 would leave a resolved epic owning a workspace nothing can reach. Only
  * a {@linkplain EpicService.PlannedTransition#resolving resolving} move discards: {@code
- * REFINING→IMPLEMENTATION} is the scope freeze, and the epic goes on being refined through it.
+ * REPORTED→REFINED} is the scope freeze, and the epic goes on being refined through it. The
+ * resolving statuses are IMPLEMENTED, VERIFIED, DONE and DROPPED ({@code EntityLifecycle.resolves}),
+ * whichever direction the move comes from.
  */
 @ApplicationScoped
 public class EpicResolutions {

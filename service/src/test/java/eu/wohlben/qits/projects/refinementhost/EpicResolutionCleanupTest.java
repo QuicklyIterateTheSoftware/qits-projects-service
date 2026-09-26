@@ -87,7 +87,7 @@ public class EpicResolutionCleanupTest {
     String epicId = createEpic(projectId, "Abandoned Epic");
     long id = open(epicId);
 
-    transition(epicId, "ABANDONED").then().statusCode(200).body("epic.status", equalTo("ABANDONED"));
+    transition(epicId, "DROPPED").then().statusCode(200).body("epic.status", equalTo("DROPPED"));
 
     assertTrue(runtime.calls().contains("delete:" + id), "the container is torn down");
     given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
@@ -100,7 +100,7 @@ public class EpicResolutionCleanupTest {
     long id = open(epicId);
 
     // The freeze is not a resolution: the epic goes on being refined through it.
-    transition(epicId, "IMPLEMENTATION").then().statusCode(200);
+    transition(epicId, "REFINED").then().statusCode(200);
     given().when().get("/projects/api/refinements/" + id).then().statusCode(200);
     assertFalse(runtime.calls().contains("delete:" + id), "the freeze tears nothing down");
 
@@ -118,13 +118,13 @@ public class EpicResolutionCleanupTest {
     String projectId = createProject("Resolve Supersede");
     String epicId = createEpic(projectId, "Superseded Epic");
     long id = open(epicId);
-    transition(epicId, "IMPLEMENTATION").then().statusCode(200);
+    transition(epicId, "REFINED").then().statusCode(200);
 
     String successorId =
         transition(epicId, "SUPERSEDED")
             .then()
             .statusCode(200)
-            .body("epic.status", equalTo("SUPERSEDED"))
+            .body("epic.status", equalTo("DROPPED"))
             .extract()
             .path("successor.id");
 
@@ -145,7 +145,7 @@ public class EpicResolutionCleanupTest {
     String epicId = createEpic(projectId, "Refused Epic");
     long id = open(epicId);
 
-    // REFINING may only go to IMPLEMENTATION or ABANDONED. The check runs before the teardown, so
+    // REPORTED may only go to REFINED or DROPPED. The check runs before the teardown, so
     // a 409 leaves the refinement exactly where it was.
     transition(epicId, "IMPLEMENTED").then().statusCode(409);
     transition(epicId, "NOT_A_STATUS").then().statusCode(409);
@@ -159,6 +159,6 @@ public class EpicResolutionCleanupTest {
     String projectId = createProject("Resolve Bare");
     String epicId = createEpic(projectId, "Bare Epic");
 
-    transition(epicId, "ABANDONED").then().statusCode(200).body("epic.status", equalTo("ABANDONED"));
+    transition(epicId, "DROPPED").then().statusCode(200).body("epic.status", equalTo("DROPPED"));
   }
 }

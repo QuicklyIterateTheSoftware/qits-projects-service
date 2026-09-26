@@ -101,10 +101,13 @@ public class EpicController {
   }
 
   /**
-   * A lifecycle move. {@code target} is the status name — {@code IMPLEMENTATION} (the scope
-   * freeze), {@code IMPLEMENTED} (shipped: stamps every feature and task still unimplemented),
-   * {@code SUPERSEDED} or {@code ABANDONED}. A move the lifecycle does not allow, and a target
-   * naming no status, both answer 409 with a message.
+   * A lifecycle move. {@code target} is a status name of the one entity lifecycle — {@code
+   * REFINED} (the scope freeze), {@code IMPLEMENTED} (shipped: stamps every feature and task still
+   * unimplemented), {@code VERIFIED}, {@code DONE}, {@code DROPPED}, or back along the walk ({@code
+   * REPORTED} reopens a frozen scope) — or {@code SUPERSEDED}, which is not a status but the
+   * supersede operation: the epic lands {@code DROPPED} pointing at the successor draft it spawned
+   * (see {@code EpicService.SUPERSEDE}). A move the lifecycle does not allow, and a target naming
+   * no status, both answer 409 with a message.
    *
    * <p>It goes through {@link EpicResolutions} rather than straight to {@code EpicService}, because
    * a move that resolves the epic has to tear its refinement down first — see that class for the

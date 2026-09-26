@@ -21,7 +21,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  * <p><b>One kind of write, and nobody accepts it.</b> {@link #put} creates a design when no id is
  * given and rewrites one in place when an id is. There is no proposal, no ACTIVE row and no
  * decision: a design is a document a person and an agent both write, like the epic's description,
- * and the gate on the draft is the epic's own {@code REFINING → IMPLEMENTATION} transition.
+ * and the gate on the draft is the epic's own {@code REPORTED → REFINED} transition.
  *
  * <p><b>{@code version} is what stands in for the decision.</b> Every write bumps it and a write
  * carrying a stale one is refused with the current row attached — never merged, because guessing

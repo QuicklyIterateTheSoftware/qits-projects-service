@@ -97,7 +97,7 @@ public class EpicMcpToolsTest {
   private void freeze(String epicId) {
     authenticated()
         .contentType(ContentType.JSON)
-        .body(new EpicController.TransitionEpicRequest("IMPLEMENTATION"))
+        .body(new EpicController.TransitionEpicRequest("REFINED"))
         .when()
         .post("/projects/api/epics/" + epicId + "/transition")
         .then()
@@ -167,7 +167,7 @@ public class EpicMcpToolsTest {
         response -> {
           assertFalse(response.isError(), text(response));
           String body = text(response);
-          assertTrue(body.contains("\"REFINING\""), "a proposed epic must be a draft: " + body);
+          assertTrue(body.contains("\"REPORTED\""), "a proposed epic must be a draft: " + body);
           id[0] = idIn(body);
         });
     return id[0];
@@ -281,7 +281,7 @@ public class EpicMcpToolsTest {
     call(
         projectId,
         "list_epics",
-        Map.of("status", "REFINING"),
+        Map.of("status", "REPORTED"),
         response -> {
           assertFalse(response.isError(), text(response));
           String body = text(response);
@@ -611,7 +611,7 @@ public class EpicMcpToolsTest {
     String epicId = proposeEpic(projectId, "Not started");
     String taskId = addTask(projectId, epicId, repoId, "Nothing has landed");
 
-    // The refusal is EpicLifecycle.requireImplementation's own — this tool adds no second copy of
+    // The refusal is EntityLifecycle.requireRefined's own — this tool adds no second copy of
     // the rule, it lands on TaskService.update's marker arm and lets the lifecycle answer.
     call(
         projectId,
@@ -620,7 +620,7 @@ public class EpicMcpToolsTest {
         response -> {
           assertTrue(response.isError(), "a draft's task has nothing shipped to record");
           assertTrue(
-              text(response).contains("Implemented markers need an epic in IMPLEMENTATION"),
+              text(response).contains("Implemented markers move only while an epic is REFINED"),
               text(response));
         });
   }

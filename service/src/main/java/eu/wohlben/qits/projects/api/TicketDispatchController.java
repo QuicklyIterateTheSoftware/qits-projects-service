@@ -2,7 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.api.EntitiesPrincipal;
 import eu.wohlben.qits.entities.control.TicketService;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
@@ -57,7 +57,7 @@ import org.jboss.logging.Logger;
  * <p>A status is what has been <em>achieved</em> and the phase that runs while it holds is what
  * happens next, so REPORTED starts refinement, REFINED starts implementation and IMPLEMENTED starts
  * verification — and pressing "assign agent" on a half-finished ticket <b>resumes</b> it there
- * rather than starting it over. {@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} start
+ * rather than starting it over. {@link EntityStatus#VERIFIED} and {@link EntityStatus#DONE} start
  * nothing at all, so the prompt is empty and this door answers <b>409</b> naming the status. That
  * refusal runs <em>before</em> the port is asked for anything: the ticket is past the work, so no
  * workspace is stood up, nothing is launched, and nothing lands on the thread. Closing a ticket is
@@ -155,9 +155,9 @@ public class TicketDispatchController {
 
   /**
    * The phase this ticket's status starts, with the turn its agent gets — or the <b>409</b> that
-   * says there is none. {@link TicketStatus#VERIFIED} and {@link TicketStatus#DONE} are two of the
+   * says there is none. {@link EntityStatus#VERIFIED} and {@link EntityStatus#DONE} are two of the
    * three: the ticket is past the work, and what is left is a person's judgement rather than an
-   * agent's run. {@link TicketStatus#DROPPED} is the third, and it needs no arm of its own here —
+   * agent's run. {@link EntityStatus#DROPPED} is the third, and it needs no arm of its own here —
    * the refusal is {@link TicketPhasePrompts#startedBy} answering empty, so a status that starts no
    * phase is refused by this door the moment that one switch says so.
    *

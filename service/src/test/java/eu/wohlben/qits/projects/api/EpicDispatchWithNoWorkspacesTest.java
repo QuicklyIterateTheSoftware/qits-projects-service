@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The second half of the assertion is what makes this worth its own class rather than a line in
  * the sibling: an assembly with no workspaces context answers <b>503</b>, and the epic is <b>still
- * REFINING</b>. The door transitions before it dispatches, so this is the one place that pins where
+ * REPORTED</b>. The door transitions before it dispatches, so this is the one place that pins where
  * that "before" starts — a configuration that was never going to work is not a dispatch that failed,
  * and it must not freeze somebody's scope on the way to saying so.
  */
@@ -81,6 +81,6 @@ public class EpicDispatchWithNoWorkspacesTest {
         .get("/projects/api/epics/" + epicId)
         .then()
         .statusCode(200)
-        .body("epic.status", equalTo("REFINING"));
+        .body("epic.status", equalTo("REPORTED"));
   }
 }

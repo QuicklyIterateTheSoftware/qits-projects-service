@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.TicketComment;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
@@ -45,7 +45,7 @@ class TicketServiceTest extends EntitiesTestSupport {
     assertNotNull(ticket.id);
     assertEquals("proj-1", ticket.projectId);
     assertEquals(TicketType.BUG, ticket.ticketType);
-    assertEquals(TicketStatus.REPORTED.name(), ticket.status);
+    assertEquals(EntityStatus.REPORTED.name(), ticket.status);
     assertNull(ticket.assignee);
     assertNotNull(ticket.createdAt);
     assertNotNull(ticket.updatedAt);
@@ -205,7 +205,7 @@ class TicketServiceTest extends EntitiesTestSupport {
             "BUG",
             null,
             "alice");
-    assertEquals(TicketStatus.REPORTED.name(), filed.status);
+    assertEquals(EntityStatus.REPORTED.name(), filed.status);
     assertEquals("clicking the login button does nothing on the sign-in page", filed.impetus);
     assertNull(filed.description, "refinement has not run yet");
 
@@ -338,7 +338,7 @@ class TicketServiceTest extends EntitiesTestSupport {
         ticketService.update(
             ticket.id, "Stuck, correctly named", null, false, null, false, null, null, false, "bob");
     assertTrue(renamed.blocked);
-    assertEquals(TicketStatus.REPORTED.name(), renamed.status, "nor does it move the status");
+    assertEquals(EntityStatus.REPORTED.name(), renamed.status, "nor does it move the status");
   }
 
   @Test

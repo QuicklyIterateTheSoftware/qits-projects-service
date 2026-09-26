@@ -21,13 +21,13 @@ public enum Archetype {
 
   /**
    * A plan: a scope that is committed to, frozen, superseded and declared shipped, with work
-   * beneath it. Carries {@link EpicStatus}, and is a root.
+   * beneath it. Carries {@link EntityStatus} — the same lifecycle as a ticket — and is a root.
    */
   EPIC,
 
   /**
    * A small-scoped bug or improvement that a plan would be overhead for. Carries {@link
-   * TicketStatus} and the intake properties an epic has no use for — an impetus, a type, a
+   * EntityStatus} and the intake properties an epic has no use for — an impetus, a type, a
    * reporter — and is a root, beside {@link #EPIC} rather than under it.
    */
   TICKET,

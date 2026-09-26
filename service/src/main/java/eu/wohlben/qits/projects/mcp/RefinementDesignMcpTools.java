@@ -23,8 +23,8 @@ import java.util.List;
  *
  * <p><strong>A design is a document, not a proposal.</strong> There is no acceptance step and no
  * ACTIVE row: the agent and the person write and rewrite the same rows, the way they both write the
- * epic's description, and what freezes the draft is the epic's own {@code REFINING →
- * IMPLEMENTATION} transition. {@code version} carries the whole of the safety — a write composed
+ * epic's description, and what freezes the draft is the epic's own {@code REPORTED →
+ * REFINED} transition. {@code version} carries the whole of the safety — a write composed
  * against an older read is refused rather than merged, and the tool description says so, because an
  * agent that papers over that refusal overwrites somebody's edit.
  *

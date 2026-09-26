@@ -5,8 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.EpicStatus;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -80,13 +79,12 @@ class ArchetypesTest {
   }
 
   @Test
-  void statusVocabulariesAreTheTwoLifecyclesAndNothingElseHasOne() {
+  void epicAndTicketDeclareTheOneLifecycleAndNothingElseHasOne() {
+    var six = EnumSet.allOf(EntityStatus.class).stream().map(Enum::name).collect(Collectors.toSet());
     assertEquals(
-        EnumSet.allOf(EpicStatus.class).stream().map(Enum::name).collect(Collectors.toSet()),
-        Archetypes.legalStatuses(Archetype.EPIC));
-    assertEquals(
-        EnumSet.allOf(TicketStatus.class).stream().map(Enum::name).collect(Collectors.toSet()),
-        Archetypes.legalStatuses(Archetype.TICKET));
+        Set.of("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"), six);
+    assertEquals(six, Archetypes.legalStatuses(Archetype.EPIC));
+    assertEquals(six, Archetypes.legalStatuses(Archetype.TICKET));
     assertTrue(Archetypes.legalStatuses(Archetype.FEATURE).isEmpty());
     assertTrue(Archetypes.legalStatuses(Archetype.TASK).isEmpty());
   }
@@ -96,9 +94,9 @@ class ArchetypesTest {
   @Test
   void theFourWellFormedCandidatesPassAtEitherMoment() {
     for (Demand demand : Demand.values()) {
-      assertEquals(List.of(), Archetypes.validate(epic(EpicStatus.REFINING.name()), demand), demand.name());
+      assertEquals(List.of(), Archetypes.validate(epic(EntityStatus.REPORTED.name()), demand), demand.name());
       assertEquals(
-          List.of(), Archetypes.validate(ticket(TicketStatus.REPORTED.name()), demand), demand.name());
+          List.of(), Archetypes.validate(ticket(EntityStatus.REPORTED.name()), demand), demand.name());
       assertEquals(
           List.of(),
           Archetypes.validate(
@@ -124,7 +122,7 @@ class ArchetypesTest {
     EntityState candidate =
         new EntityState(
             Archetype.TICKET,
-            TicketStatus.REPORTED.name(),
+            EntityStatus.REPORTED.name(),
             properties(EntityProperty.TITLE, EntityProperty.TICKET_TYPE));
 
     List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.AT_CREATE);
@@ -146,7 +144,7 @@ class ArchetypesTest {
     EntityState candidate =
         new EntityState(
             Archetype.TICKET,
-            TicketStatus.REPORTED.name(),
+            EntityStatus.REPORTED.name(),
             properties(EntityProperty.TITLE, EntityProperty.TICKET_TYPE));
 
     assertEquals(List.of(), Archetypes.validate(candidate, Demand.ON_UPDATE));
@@ -160,7 +158,7 @@ class ArchetypesTest {
     EntityState candidate =
         new EntityState(
             Archetype.EPIC,
-            EpicStatus.REFINING.name(),
+            EntityStatus.REPORTED.name(),
             properties(EntityProperty.TITLE, EntityProperty.REPOSITORY_ID));
 
     List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.ON_UPDATE);
@@ -171,32 +169,37 @@ class ArchetypesTest {
   }
 
   @Test
-  void anEpicCarryingATicketStatusIsRefused() {
-    // The check the database cannot make: ck_entity_status is the union of both enums, because a
-    // check constraint has no way to say "these five when the archetype is EPIC".
-    EntityState candidate = epic(TicketStatus.REPORTED.name());
-
-    List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.ON_UPDATE);
-
-    assertEquals(1, violations.size(), () -> violations.toString());
-    assertEquals(EntityProperty.STATUS, violations.get(0).property());
-    assertEquals(ArchetypeViolation.Reason.ILLEGAL_STATUS, violations.get(0).reason());
-    assertEquals(TicketStatus.REPORTED.name(), violations.get(0).detail());
+  void anEpicMayCarryEveryWordOfTheOneLifecycle() {
+    // Until qits-392 an epic carrying REPORTED was refused as a ticket word; there is one
+    // vocabulary now, and VERIFIED and DONE are exactly what an epic could not reach before.
+    for (EntityStatus status : EntityStatus.values()) {
+      assertEquals(
+          List.of(),
+          Archetypes.validate(epic(status.name()), Demand.ON_UPDATE),
+          status.name());
+    }
   }
 
   @Test
-  void aTicketCarryingAnEpicStatusIsRefusedTheSameWay() {
-    List<ArchetypeViolation> violations =
-        Archetypes.validate(
-            new EntityState(
-                Archetype.TICKET,
-                EpicStatus.REFINING.name(),
-                properties(
-                    EntityProperty.TITLE, EntityProperty.TICKET_TYPE, EntityProperty.IMPETUS)),
-            Demand.AT_CREATE);
+  void aRetiredEpicWordIsRefusedOnEveryKindWithALifecycle() {
+    for (String retired : List.of("REFINING", "IMPLEMENTATION", "ABANDONED", "SUPERSEDED")) {
+      List<ArchetypeViolation> onEpic = Archetypes.validate(epic(retired), Demand.ON_UPDATE);
+      assertEquals(1, onEpic.size(), () -> onEpic.toString());
+      assertEquals(EntityProperty.STATUS, onEpic.get(0).property());
+      assertEquals(ArchetypeViolation.Reason.ILLEGAL_STATUS, onEpic.get(0).reason());
+      assertEquals(retired, onEpic.get(0).detail());
 
-    assertEquals(1, violations.size(), () -> violations.toString());
-    assertEquals(ArchetypeViolation.Reason.ILLEGAL_STATUS, violations.get(0).reason());
+      List<ArchetypeViolation> onTicket =
+          Archetypes.validate(
+              new EntityState(
+                  Archetype.TICKET,
+                  retired,
+                  properties(
+                      EntityProperty.TITLE, EntityProperty.TICKET_TYPE, EntityProperty.IMPETUS)),
+              Demand.AT_CREATE);
+      assertEquals(1, onTicket.size(), () -> onTicket.toString());
+      assertEquals(ArchetypeViolation.Reason.ILLEGAL_STATUS, onTicket.get(0).reason());
+    }
   }
 
   @Test
@@ -206,7 +209,7 @@ class ArchetypesTest {
     List<ArchetypeViolation> violations =
         Archetypes.validate(
             new EntityState(
-                Archetype.FEATURE, EpicStatus.REFINING.name(), properties(EntityProperty.TITLE)),
+                Archetype.FEATURE, EntityStatus.REPORTED.name(), properties(EntityProperty.TITLE)),
             Demand.AT_CREATE);
 
     assertEquals(1, violations.size(), () -> violations.toString());
@@ -222,7 +225,7 @@ class ArchetypesTest {
     EntityState candidate =
         new EntityState(
             Archetype.TASK,
-            TicketStatus.DONE.name(),
+            EntityStatus.DONE.name(),
             properties(EntityProperty.IMPETUS, EntityProperty.ASSIGNEE));
 
     List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.AT_CREATE);

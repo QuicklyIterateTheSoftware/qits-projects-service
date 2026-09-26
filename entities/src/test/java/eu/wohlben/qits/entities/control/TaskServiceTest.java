@@ -132,7 +132,7 @@ class TaskServiceTest extends EntitiesTestSupport {
     Nested t = taskService.create(f.entity().id, "repo-1", "A", null, null, "t");
     assertNull(t.entity().implementedAt);
     // The marker only moves once the epic's scope is frozen.
-    epicService.transition(f.parentId(), "IMPLEMENTATION", "t");
+    epicService.transition(f.parentId(), "REFINED", "t");
 
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     Nested done = taskService.update(t.entity().id, null, null, null, false, when, false, "t");

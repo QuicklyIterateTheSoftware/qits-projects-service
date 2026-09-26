@@ -23,8 +23,8 @@ import java.util.Set;
 /**
  * The refinement's HTML designs — the Design tab's surface. A design is one self-contained document
  * with inline styles, written and rewritten in place: there is no proposal, no ACTIVE row and
- * nobody who accepts a write. The gate on the draft is the epic's own {@code REFINING →
- * IMPLEMENTATION} transition.
+ * nobody who accepts a write. The gate on the draft is the epic's own {@code REPORTED →
+ * REFINED} transition.
  *
  * <p>{@code POST} creates and {@code PUT} updates, and the update carries the {@code version} the
  * caller last read. A stale one is a <b>409 carrying the current design</b>, document included, so

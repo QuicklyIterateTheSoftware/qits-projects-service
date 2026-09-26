@@ -29,9 +29,9 @@ import java.util.UUID;
  * rules then read off the owner's kind rather than applying to everything:
  *
  * <ul>
- *   <li><b>{@link EpicLifecycle#requireRefining} runs for an EPIC owner only.</b> A plan freezes and
- *       its dossier freezes with it; a ticket freezes nothing — {@code TicketLifecycle} has no
- *       {@code requireOpen} and must not grow one — so a ticket-owned page is writable while the
+ *   <li><b>{@link EntityLifecycle#requireReported} runs for an EPIC owner only.</b> A plan freezes and
+ *       its dossier freezes with it; a ticket freezes nothing — {@code EntityLifecycle} has no
+ *       ticket {@code requireOpen} and must not grow one — so a ticket-owned page is writable while the
  *       ticket is {@code REPORTED}, {@code IMPLEMENTED} and {@code DONE} alike. The phase that
  *       mostly writes them (refine) is deliberately not the only one allowed to: the implement phase
  *       correcting a page it found wrong is the ordinary case, not a violation.
@@ -70,7 +70,7 @@ import java.util.UUID;
  * rather than "no row at all", and a ticket id offered to an epic route is a 404 rather than a page
  * written under the wrong owner. Both refusals are the sentences they always were.
  *
- * <p>The {@code REFINING} guard reads that same row — {@code EpicLifecycle.requireRefining(row)},
+ * <p>The {@code REPORTED} guard reads that same row — {@code EntityLifecycle.requireReported(row)},
  * exactly as {@code EpicService}, {@code FeatureService} and {@code TaskService} already call it.
  * The guard keeps its one signature: a second would be the freeze condition written in two places,
  * and there is only ever one condition.
@@ -289,7 +289,7 @@ public class DossierService {
       //
       // The phase is read off the entity row through the module's one guard — EpicService.update,
       // FeatureService and TaskService all reach it exactly this way.
-      EpicLifecycle.requireRefining(row);
+      EntityLifecycle.requireReported(row);
     }
   }
 

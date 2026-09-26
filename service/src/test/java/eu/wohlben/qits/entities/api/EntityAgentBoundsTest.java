@@ -361,7 +361,7 @@ class EntityAgentBoundsTest {
         new EntityTransition.Membership(null, null),
         title,
         null,
-        "REFINING",
+        "REPORTED",
         null,
         null,
         null,
@@ -656,7 +656,7 @@ class EntityAgentBoundsTest {
   @Test
   void theLifecycleMoveAndTheDeletesAreRefusedAtTheDoor() {
     asForwardedAgent()
-        .body(Map.of("target", "IMPLEMENTATION"))
+        .body(Map.of("target", "REFINED"))
         .post("/projects/api/epics/no-such-entity/transition")
         .then()
         .statusCode(403);

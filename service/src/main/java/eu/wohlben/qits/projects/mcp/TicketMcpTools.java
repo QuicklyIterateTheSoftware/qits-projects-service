@@ -286,7 +286,7 @@ public class TicketMcpTools {
    * <b>"Transition" here is a LIFECYCLE move, and it is not the other transition.</b> This tool
    * moves one ticket along {@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, or off that
    * line into {@code DROPPED}: it writes {@code entity.status} and nothing else, and which moves
-   * are legal is {@code TicketLifecycle.LEGAL_TARGETS}' to say and argued there.
+   * are legal is {@code EntityLifecycle.LEGAL_TARGETS}' to say and argued there.
    *
    * <p>{@code transition_entities} ({@link EntityMcpTools}, over {@code EntityTransitionService})
    * is the ARCHETYPE transition, which the unified-entity epic introduced: it restates what KIND a

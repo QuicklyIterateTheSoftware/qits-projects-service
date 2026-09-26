@@ -5,8 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.EpicStatus;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.Optional;
@@ -31,7 +30,7 @@ import org.junit.jupiter.api.Test;
  */
 public class TicketPhasePromptsTest {
 
-  private static WorkEntity ticket(TicketStatus status) {
+  private static WorkEntity ticket(EntityStatus status) {
     WorkEntity ticket = new WorkEntity();
     ticket.id = "tkt-123";
     ticket.projectId = "prj-1";
@@ -44,7 +43,7 @@ public class TicketPhasePromptsTest {
     return ticket;
   }
 
-  private static String promptFor(TicketStatus status) {
+  private static String promptFor(EntityStatus status) {
     return TicketPhasePrompts.promptFor(ticket(status))
         .orElseThrow(() -> new AssertionError(status + " rendered no prompt"));
   }
@@ -59,21 +58,21 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void eachStatusStartsItsOwnPhaseAndThreeStartNone() {
-    assertTrue(promptFor(TicketStatus.REPORTED).contains("Refine ticket \""));
-    assertTrue(promptFor(TicketStatus.REFINED).contains("Implement ticket \""));
-    assertTrue(promptFor(TicketStatus.IMPLEMENTED).contains("Verify ticket \""));
+    assertTrue(promptFor(EntityStatus.REPORTED).contains("Refine ticket \""));
+    assertTrue(promptFor(EntityStatus.REFINED).contains("Implement ticket \""));
+    assertTrue(promptFor(EntityStatus.IMPLEMENTED).contains("Verify ticket \""));
 
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.promptFor(ticket(TicketStatus.VERIFIED)),
+        TicketPhasePrompts.promptFor(ticket(EntityStatus.VERIFIED)),
         "VERIFIED has no phase left to run: a person closes it");
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.promptFor(ticket(TicketStatus.DONE)),
+        TicketPhasePrompts.promptFor(ticket(EntityStatus.DONE)),
         "DONE is closed, and reopening it is a person's move too");
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.promptFor(ticket(TicketStatus.DROPPED)),
+        TicketPhasePrompts.promptFor(ticket(EntityStatus.DROPPED)),
         "DROPPED is work somebody decided against: no phase renders, and dispatching an agent onto"
             + " it would start the very work the decision was not to do");
   }
@@ -82,20 +81,20 @@ public class TicketPhasePromptsTest {
   @Test
   public void thePhaseIsNamedFromTheSameMappingThatRendersIt() {
     assertEquals(
-        "refine", TicketPhasePrompts.startedBy(ticket(TicketStatus.REPORTED)).orElseThrow().phase());
+        "refine", TicketPhasePrompts.startedBy(ticket(EntityStatus.REPORTED)).orElseThrow().phase());
     assertEquals(
         "implement",
-        TicketPhasePrompts.startedBy(ticket(TicketStatus.REFINED)).orElseThrow().phase());
+        TicketPhasePrompts.startedBy(ticket(EntityStatus.REFINED)).orElseThrow().phase());
     assertEquals(
         "verify",
-        TicketPhasePrompts.startedBy(ticket(TicketStatus.IMPLEMENTED)).orElseThrow().phase());
+        TicketPhasePrompts.startedBy(ticket(EntityStatus.IMPLEMENTED)).orElseThrow().phase());
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.startedBy(ticket(TicketStatus.VERIFIED)),
+        TicketPhasePrompts.startedBy(ticket(EntityStatus.VERIFIED)),
         "no phase, so nothing to name either");
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.startedBy(ticket(TicketStatus.DROPPED)),
+        TicketPhasePrompts.startedBy(ticket(EntityStatus.DROPPED)),
         "and a dropped ticket names no phase either, which is what leaves the dispatch door and the"
             + " phase hand-off both silent without either growing a rule of its own");
   }
@@ -103,9 +102,9 @@ public class TicketPhasePromptsTest {
   /** Every template sends the agent to the live ticket rather than to what it was handed. */
   @Test
   public void everyTemplateNamesTheTicketAndSendsTheAgentToReadItLive() {
-    for (TicketStatus status :
-        new TicketStatus[] {
-          TicketStatus.REPORTED, TicketStatus.REFINED, TicketStatus.IMPLEMENTED
+    for (EntityStatus status :
+        new EntityStatus[] {
+          EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED
         }) {
       String prompt = promptFor(status);
       assertTrue(prompt.contains("get_ticket (id tkt-123)"), status + ": " + prompt);
@@ -123,7 +122,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void refineRefusesToImplementAndSaysWhy() {
-    String prompt = promptFor(TicketStatus.REPORTED);
+    String prompt = promptFor(EntityStatus.REPORTED);
     assertTrue(
         prompt.contains("DO NOT IMPLEMENT ANYTHING"),
         "the boundary of the refine phase, in the imperative: " + prompt);
@@ -142,7 +141,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void refineWritesItsResultIntoTheDescriptionAndNowhereElse() {
-    String prompt = promptFor(TicketStatus.REPORTED);
+    String prompt = promptFor(EntityStatus.REPORTED);
     assertTrue(
         prompt.contains("INTO THE TICKET'S DESCRIPTION with update_ticket"),
         "the field and the tool that writes it: " + prompt);
@@ -157,7 +156,7 @@ public class TicketPhasePromptsTest {
   /** The impetus is the report, not the investigation, and the template says both halves. */
   @Test
   public void refineReadsTheImpetusAsTheReportAndGoesFurtherThanIt() {
-    String prompt = promptFor(TicketStatus.REPORTED);
+    String prompt = promptFor(EntityStatus.REPORTED);
     assertTrue(prompt.contains("the impetus is what was asked for"), prompt);
     assertTrue(prompt.contains("Explore the code further than the impetus goes"), prompt);
     assertTrue(
@@ -173,7 +172,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void implementSaysReleasedAndDeployedRatherThanMergedOrBuilt() {
-    String prompt = promptFor(TicketStatus.REFINED);
+    String prompt = promptFor(EntityStatus.REFINED);
     assertTrue(prompt.contains("RELEASING IS THE GOAL"), prompt);
     assertTrue(prompt.contains("released and deployed to the platform"), prompt);
     assertTrue(
@@ -189,7 +188,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void implementForbidsIntegratingTheWorkspace() {
-    String prompt = promptFor(TicketStatus.REFINED);
+    String prompt = promptFor(EntityStatus.REFINED);
     assertTrue(
         prompt.contains("DO NOT INTEGRATE THE WORKSPACE"),
         "a phase that integrates destroys the workspace the verify phase needs: " + prompt);
@@ -208,7 +207,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void implementCommentsAsTheWorkGoesRatherThanAtTheEnd() {
-    String prompt = promptFor(TicketStatus.REFINED);
+    String prompt = promptFor(EntityStatus.REFINED);
     assertTrue(prompt.contains("Comment as the work goes with add_ticket_comment"), prompt);
     assertTrue(
         prompt.contains("rather than writing one report at the end"),
@@ -231,7 +230,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void verifyPutsReproductionBeforeCodeReadingAndNamesBoth() {
-    String prompt = promptFor(TicketStatus.IMPLEMENTED);
+    String prompt = promptFor(EntityStatus.IMPLEMENTED);
     int onThePlatform = prompt.indexOf("Verify ON THE PLATFORM");
     int byReading = prompt.indexOf("READING THE RELEVANT CODE CHANGES");
     assertTrue(onThePlatform >= 0, "the live platform is the subject: " + prompt);
@@ -257,7 +256,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void verifyFallsBackToRefinedAndLeavesClosingToAPerson() {
-    String prompt = promptFor(TicketStatus.IMPLEMENTED);
+    String prompt = promptFor(EntityStatus.IMPLEMENTED);
     assertTrue(prompt.contains("transition_ticket BACK TO REFINED"), prompt);
     assertTrue(
         prompt.contains("that is how implementation starts again"),
@@ -279,13 +278,13 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void eachTemplateClaimsItsOwnPhaseAndNoOther() {
-    assertNamesExactlyOneForwardTarget(promptFor(TicketStatus.REPORTED), "REFINED");
-    assertNamesExactlyOneForwardTarget(promptFor(TicketStatus.REFINED), "IMPLEMENTED");
-    assertNamesExactlyOneForwardTarget(promptFor(TicketStatus.IMPLEMENTED), "VERIFIED");
+    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REPORTED), "REFINED");
+    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REFINED), "IMPLEMENTED");
+    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.IMPLEMENTED), "VERIFIED");
   }
 
   private static void assertNamesExactlyOneForwardTarget(String prompt, String target) {
-    for (TicketStatus status : TicketStatus.values()) {
+    for (EntityStatus status : EntityStatus.values()) {
       String claim = "transition_ticket to " + status.name();
       boolean isOwn = status.name().equals(target);
       assertEquals(
@@ -305,9 +304,9 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void everyTemplateEndsWithAReversibleClaimAndAWayToNotMakeIt() {
-    for (TicketStatus status :
-        new TicketStatus[] {
-          TicketStatus.REPORTED, TicketStatus.REFINED, TicketStatus.IMPLEMENTED
+    for (EntityStatus status :
+        new EntityStatus[] {
+          EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED
         }) {
       String prompt = promptFor(status);
       assertTrue(
@@ -326,7 +325,7 @@ public class TicketPhasePromptsTest {
   }
 
   /** The status an unfinished phase leaves behind: the one it was started from. */
-  private static String leftAt(TicketStatus status) {
+  private static String leftAt(EntityStatus status) {
     return status.name();
   }
 
@@ -335,7 +334,7 @@ public class TicketPhasePromptsTest {
   /**
    * <b>No dispatched turn on this platform may open without the flow brief's pointer.</b> That is
    * the claim, and the way it is written is the point of the test: it walks <em>every</em> {@link
-   * TicketStatus} rather than the three phases by name, so a fourth phase added to {@code
+   * EntityStatus} rather than the three phases by name, so a fourth phase added to {@code
    * Phase.render}'s switch — or a fourth status that starts one — is covered on the day it is added
    * and cannot silently ship a turn without the pointer. The epic door is the fourth instruction on
    * the platform and is asserted here beside the three, against the <b>same constant</b>, which is
@@ -357,7 +356,7 @@ public class TicketPhasePromptsTest {
         pointer.contains("If that file is not there"),
         "and a project carrying no brief must not read as a broken instruction: " + pointer);
 
-    for (TicketStatus status : TicketStatus.values()) {
+    for (EntityStatus status : EntityStatus.values()) {
       Optional<String> prompt = TicketPhasePrompts.promptFor(ticket(status));
       if (prompt.isEmpty()) {
         continue; // VERIFIED, DONE and DROPPED start no phase at all, which is asserted above.
@@ -391,7 +390,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void everyPhaseThatRunsOffersBothTheStatusAndTheFlagWhenItCannotFinish() {
-    for (TicketStatus status : TicketStatus.values()) {
+    for (EntityStatus status : EntityStatus.values()) {
       Optional<String> prompt = TicketPhasePrompts.promptFor(ticket(status));
       if (prompt.isEmpty()) {
         continue; // VERIFIED, DONE and DROPPED start no phase, so there is no phase to block.
@@ -426,7 +425,7 @@ public class TicketPhasePromptsTest {
     epic.archetype = Archetype.EPIC;
     epic.title = "Planning domain";
     epic.slug = "planning-domain";
-    epic.status = EpicStatus.IMPLEMENTATION.name();
+    epic.status = EntityStatus.REFINED.name();
     return epic;
   }
 }

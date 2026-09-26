@@ -160,20 +160,17 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String description;
 
   /**
-   * <b>One column for two lifecycles</b>, and {@link #archetype} is what says which. An {@link
-   * Archetype#EPIC} holds one of {@link EpicStatus}' five words, an {@link Archetype#TICKET} one of
-   * {@link TicketStatus}' five, and a feature and a task hold none — which is why this is nullable:
-   * an absent status is the ordinary state of most rows here rather than a gap.
+   * <b>One column for one lifecycle</b>: an {@link Archetype#EPIC} and an {@link Archetype#TICKET}
+   * both hold one of {@link EntityStatus}' six words, and a feature and a task hold none — which is
+   * why this is nullable: an absent status is the ordinary state of most rows here rather than a
+   * gap. (Until qits-392 an epic held words of its own, {@code EpicStatus}; epics V15 backfilled
+   * them.)
    *
-   * <p><b>It is a String and not an enum</b>, deliberately. There is no Java type that is "either
-   * an EpicStatus or a TicketStatus", and inventing one — a nine-word merged enum — would give
-   * {@code IMPLEMENTED} (which both already spell) a single identity across two lifecycles that
-   * mean different things by it, and would leave every existing switch over the two real enums with
-   * a third vocabulary to translate from. The stored word is the enum's own {@code name()}, the
-   * check constraint is the union of the two, and {@code control/Archetypes} is what refuses an
-   * epic word on a ticket — a split the database cannot make, because a check constraint has no way
-   * to say "these five when the archetype is EPIC" without becoming a second place the vocabulary
-   * is written down.
+   * <p><b>It is a String and not an enum</b>, which means a comparison against a word nobody spells
+   * any more compiles and fails silently at runtime — compare against {@link EntityStatus#name()},
+   * never a literal. The stored word is the enum's own {@code name()}, {@code ck_entity_status}
+   * spells exactly the six, and {@code control/Archetypes} is what refuses a status on a kind with
+   * no lifecycle — a split the database cannot make.
    */
   @Column(length = 32)
   public String status;
@@ -184,7 +181,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    * phase to block.
    *
    * <p><b>It is a flag and not a status, and that is the decision rather than a shortcut.</b>
-   * {@link TicketStatus} forbids a word for what is being <em>done</em> — there is no {@code
+   * {@link EntityStatus} forbids a word for what is being <em>done</em> — there is no {@code
    * IN_PROGRESS} there and there must never be one — and a {@code BLOCKED} word would be worse than
    * that rule's usual violation: it would <em>overwrite</em> the status, so a ticket blocked while
    * REFINED would lose the one fact saying implement is the phase to resume. Held beside the status
@@ -219,7 +216,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
 
   /**
    * <b>Why a ticket came about, in the reporter's or the triage agent's own words.</b> It is what a
-   * {@link TicketStatus#REPORTED} ticket consists of — an impetus and nothing else.
+   * {@link EntityStatus#REPORTED} ticket consists of — an impetus and nothing else.
    *
    * <p><b>The length rule, which is the whole of the field's discipline.</b> An impetus takes one of
    * two shapes — <em>"{some error} occurs {in some context}"</em> or <em>"{an existing part} should
