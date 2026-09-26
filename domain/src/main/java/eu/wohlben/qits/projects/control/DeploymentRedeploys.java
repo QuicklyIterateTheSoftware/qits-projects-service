@@ -7,7 +7,7 @@ package eu.wohlben.qits.projects.control;
  * <p><b>It is the same door the release itself goes through, and that is deliberate rather than
  * convenient.</b> qits-deployments has never had a separate redeploy endpoint — there is no such
  * path, there never was one, and nothing is being retired here. Its intake, {@code POST
- * /platform-deployments/api/events/software-released}, names "an operator redeploys a version" as one
+ * /deployments/api/events/software-released}, names "an operator redeploys a version" as one
  * of the two things it exists for, and it is deliberately exempt from the monotonic version collapse
  * that would otherwise swallow a repeat of a version already seen. A re-post is therefore honoured
  * by construction, and inventing a second door for the same ask would be this service teaching the

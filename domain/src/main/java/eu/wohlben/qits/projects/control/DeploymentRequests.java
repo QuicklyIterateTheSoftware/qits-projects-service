@@ -26,7 +26,7 @@ import java.util.Optional;
  * listing is already keyed on.
  *
  * <p>A port in the house shape: the implementation is {@code service/…/deploymenthost} (one HTTP
- * read of {@code GET /platform-deployments/api/deployment-requests?repoId=…&version=…}), resolved
+ * read of {@code GET /deployments/api/deployment-requests?repoId=…&version=…}), resolved
  * through {@code Instance} with absent supported, and <b>it must not throw</b>. It decorates a read,
  * so it carries {@code HttpActiveBuilds}' failure contract and not the dispatch's.
  *

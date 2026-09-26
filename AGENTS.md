@@ -940,7 +940,7 @@ shared no computation would be free to disagree, and a caller finding them disag
 
 **Phase 3 is read live and it is the one phase over the network.** `control/DeploymentRequests` →
 `deploymenthost/HttpDeploymentRequests` asks qits-deployments' existing
-`GET /platform-deployments/api/deployment-requests?repoId=&version=`; **nothing was added over
+`GET /deployments/api/deployment-requests?repoId=&version=`; **nothing was added over
 there**, no table and no event. Four answers must stay apart, and collapsing any two is the defect
 to watch for here:
 

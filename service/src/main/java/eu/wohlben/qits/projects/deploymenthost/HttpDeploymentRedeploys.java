@@ -19,7 +19,7 @@ import org.jboss.logging.Logger;
 
 /**
  * The {@link DeploymentRedeploys} port over qits-deployments' release intake — {@code POST
- * /platform-deployments/api/events/software-released}, answering {@code 202} with no body.
+ * /deployments/api/events/software-released}, answering {@code 202} with no body.
  *
  * <p><b>This is the door a redeploy has always gone through and the only one there has ever been.</b>
  * qits-deployments has no separate redeploy path — it has never had one — and its intake names "an
@@ -91,7 +91,7 @@ public class HttpDeploymentRedeploys implements DeploymentRedeploys {
       HttpRequest.Builder builder =
           HttpRequest.newBuilder(
                   URI.create(
-                      deploymentsUrl.get() + "/platform-deployments/api/events/software-released"))
+                      deploymentsUrl.get() + "/deployments/api/events/software-released"))
               .timeout(Duration.ofSeconds(5))
               .header("Content-Type", "application/json")
               .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
