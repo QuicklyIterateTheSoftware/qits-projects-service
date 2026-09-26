@@ -769,7 +769,7 @@ The idp commissions of this service's own containers state refs too (contract C2
 
 - **An agent container states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
   clones, and qits-coding-agents runs no git.
-- **A refinement container states `"gitRefs": ["refs/heads/refining/<epicSlug>"]`**: its own branch
+- **A refinement container states `"gitRefs": ["refs/heads/refining/<slug>"]`**: its own branch
   and nothing else. Its qits-workspace-daemon auto-pushes each commit there (`OriginSync`,
   `auto-push-enabled` defaults to true). `RefinementCommissions.gitRefsOf` reads the ref off the
   row's `branch`: the branch `RefinementService.findOrCreate` cut, and the value the container gets
@@ -1007,7 +1007,7 @@ reopening only to `REPORTED`). New epics start `REPORTED`. `EpicStatus` and `Epi
 deleted; epics V15 backfilled `REFINING→REPORTED`, `IMPLEMENTATION→REFINED`, `ABANDONED` and
 `SUPERSEDED→DROPPED`, and narrowed `ck_entity_status` to the six. Two doors move an epic's status:
 `POST /epics/{id}/transition` (a person) and the `transition_epic` MCP tool (a dispatched agent's
-claim, qits-394), both through `refinementhost/EpicResolutions` and both followed by
+claim, qits-394), both through `refinementhost/EntityResolutions` and both followed by
 `api/PhaseAdvance`. **An epic can now be VERIFIED and DONE**, which is what the campaigns epic waits
 on.
 
@@ -1082,14 +1082,14 @@ Five things are rules rather than details:
 - **The two old doors are thin delegates, and they go in a later release.** The deployed SPA still
   calls `POST /tickets/{id}/dispatch-agent` (→ FLOW, `TicketAgentDispatchDto`) and
   `POST /epics/{id}/dispatch-agent` (→ PHASE, `EpicAgentDispatchDto`). The epic door keeps one thing
-  of its own: on a REPORTED epic it first freezes it to REFINED through `EpicResolutions`, because the
+  of its own: on a REPORTED epic it first freezes it to REFINED through `EntityResolutions`, because the
   deployed button reads "Start implementation" — delegating straight through would start the refine
   phase behind that label. Both are removed, with their DTOs and tests, once the SPA calls the unified
   door. Nothing may be added to them meanwhile.
 
 **`transition_epic` is on the MCP server since qits-394**, replacing the deliberate absence of an
 epic lifecycle tool: a phase whose claim cannot be made is a phase whose advance never fires. It is
-adjacent-only and reversible like `transition_ticket`, goes through `EpicResolutions`, is followed by
+adjacent-only and reversible like `transition_ticket`, goes through `EntityResolutions`, is followed by
 `PhaseAdvance`, and is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`. It is **not** in either
 daemon's pre-approval bucket — reachable today because every surface ships CLAUDE with
 `SKIP_PERMISSIONS`; a surface moved to kimi needs it (and the epic tree writes and dossier reads the
@@ -1954,7 +1954,8 @@ own agent container. qits-workspaces writes the matching one for a workspace's.
 
 ## Refinement containers
 
-One container per REPORTED epic (the status refinement runs in since qits-392) — the refining route's whole backend, which used to be an ordinary
+One container per REPORTED epic **or ticket** (the status refinement runs in since qits-392; a ticket
+since qits-395) — the refining route's whole backend, which used to be an ordinary
 qits-workspaces workspace on a `refining/*` branch (epic refinement-improvements, part 2). The host
 side is `service/…/refinementhost/`; the container runs the WORKSPACE image and daemon, unchanged —
 `qits-workspace-daemon` dials home to whatever `QITS_WORKSPACE_DAEMON_URL` names, and this service
@@ -1979,8 +1980,13 @@ all three append-only once a container exists (`RefinementPaths`):
 
 Where it differs from the agent harness, each difference is the domain line:
 
-- **Keyed by epic, addressed by row id.** `refinement` (V4) holds one row per epic (unique), with
-  the branch (`refining/<epicSlug>`), the parent (the wrapper's default branch — a refinement always
+- **Keyed by entity, addressed by row id.** `refinement` (V4) holds one row per entity (unique) —
+  an epic or a ticket; the column was `epic_id` until domain **V29** renamed it `entity_id` (ids are
+  one space across archetypes, so no value moved, and `refinement_epic_id_key` became
+  `refinement_entity_id_key`). No archetype is copied onto the row: the open reads the entity live,
+  and a copy would go stale the day `transition_entities` re-archetypes a row. The row holds
+  the branch (`refining/<slug>` — the entity's slug, and a root entity's slug is unique per project
+  across archetypes, so an epic and a ticket never cut the same branch), the parent (the wrapper's default branch — a refinement always
   forks it, which is why there is no parent/child tree and no integrate door), and the commissioned
   credential — ON THE ROW, because `Recreate.ifChanged` hashes the whole spec and a resume must
   reproduce the pair byte for byte.
@@ -1988,8 +1994,9 @@ Where it differs from the agent harness, each difference is the domain line:
   V22.** It held `EpicOutline.render(epic, "Refine")` — title, description and the whole feature/task
   tree — written once at create, never recomputed, and so a copy of the very draft the refinement
   exists to edit. Its one reader was the SPA's prompt-rewrite helper, which passes it to the daemon as
-  that model call's context; `epic_id` is `text not null unique` and *is* the row's key, so the
-  refining page derives one line from the epic it has already resolved, at the moment it asks. The
+  that model call's context; `entity_id` (then `epic_id`) is `text not null unique` and *is* the
+  row's key, so the refining page derives one line from the entity it has already resolved, at the
+  moment it asks. The
   `[preamble]` binding keeps its name down to the prompt panel because `POST /prompt-refinements` is
   where the word comes from — renaming it here while the wire kept the old one would be two names for
   one thing.
@@ -2000,13 +2007,17 @@ Where it differs from the agent harness, each difference is the domain line:
   in that order; the agent harness deliberately has no removal at all. `RefinementCommissions`
   decommissions at the explicit seams; `RefinementCommissionReconcile` reaps `refinement`-kind idp
   clients no row claims (its own CONTEXT_KIND, invisible to the agent reconcile and vice versa).
-- **Resolving the epic is what calls that verb, and it is a rule of the service rather than a
-  browser dance.** `refinementhost/EpicResolutions` is the only thing a door may use to move an
-  epic's status: it previews the move (`EpicService.planTransition`, which throws every refusal the
-  transition would), discards the refinement when the target **resolves** the epic — `IMPLEMENTED`,
-  `VERIFIED`, `DONE`, `DROPPED` (supersede included), never the `REPORTED→REFINED` freeze — and only
-  then transitions. Both lifecycle doors use it: the board's `POST /epics/{id}/transition` and the
-  agent's `transition_epic`.
+- **Resolving the entity is what calls that verb, and it is a rule of the service rather than a
+  browser dance.** `refinementhost/EntityResolutions` (`EpicResolutions` until qits-395) is the only
+  thing a door may use to move an epic's or a ticket's status: it previews the move
+  (`EpicService.planTransition` / `TicketService.planTransition`, which throw every refusal the
+  transition would), discards the refinement when the target **resolves** the entity —
+  `IMPLEMENTED`, `VERIFIED`, `DONE`, `DROPPED` (supersede included), never the `REPORTED→REFINED`
+  freeze — and only then transitions. Four lifecycle doors use it: `POST /epics/{id}/transition`,
+  `transition_epic`, `POST /tickets/{id}/transition` and `transition_ticket`. `POST
+  /entities/transition` / `transition_entities` write statuses through `EntityTransitions` and do
+  **not** come through it — a gap for an epic before qits-395 and for a ticket now, stated rather than
+  fixed here; so is deleting an entity, which leaves its room for a discard.
   The order is the point: a resolved epic must never own a workspace nothing can reach, so a failed
   teardown leaves a still-refining epic with a UI to retry from. Until 2026-09-08 the cleanup was
   `refining-page.ts` discarding before transitioning, and only for `ABANDONED`: the epics board, the
@@ -2064,8 +2075,10 @@ Where it differs from the agent harness, each difference is the domain line:
   (`refinement-maven-repository-url` / `-npm-registry-url` / `-npm-proxy-url`) ship blank like
   qits-workspaces' — unset injects nothing.
 
-The REST surface is under `/projects/api`: `POST /refinements` (find-or-create keyed by epic —
-adopt-existing is the create's ordinary path, not an error dance), `GET/verbs /refinements/{id}`,
+The REST surface is under `/projects/api`: `POST /entities/{id}/refinement` (find-or-create keyed by
+entity — adopt-existing is the create's ordinary path, not an error dance; see "The refine action"
+below), `GET /entities/{id}/refinement` (find only), the deployed SPA's `POST /refinements`
+(`{"epicId"}`, a thin delegate retiring once the SPA moves), `GET/verbs /refinements/{id}`,
 `GET /projects/{projectId}/refinements` (the LIGHT projection — live halves, no git drift, because
 the list redraws on every activity hint), the prompt draft and attachments (content URLs are
 embedded into epic markdown, so attachment ids are never renumbered), the per-row SSE hint channel,
@@ -2118,6 +2131,63 @@ than a tool whose name states a lifecycle that is gone. And `put_design` is stil
 `ReadOnlyRepositoryToolFilter`'s mutating set, on a *stronger* reading than before: a write is live
 in the tab the moment it lands, so an unattended run holding it could overwrite a document somebody
 is working from.
+
+### The refine action, for any archetype (qits-395)
+
+**Opening a refinement room is one action for an epic or a ticket**, beside the dispatch door and
+deliberately not part of it (`projects/api/EntityRefinementController` → `RefinementService
+.findOrCreate`):
+
+    POST /projects/api/entities/{id}/refinement   (qits:admin)
+      → {"refinement": RefinementDto}               find-or-create
+    GET  /projects/api/entities/{id}/refinement   (qits:admin, qits:agent)
+      → {"refinement": RefinementDto | null}        find only; 404 only for an id naming no entity
+
+It shares an address with `/entities/{id}/dispatch` and nothing else. A dispatch is a qits-workspaces
+workspace on `ticket/<slug>` or `epic/<slug>`; a refinement is a `domain` row and a `refinementhost/`
+container (workload `refinement`, its own registry, commissions, proxy and control socket) on
+`refining/<slug>`. The SPA's refining page being a copy of the workspace page does not make them one
+path. `RefinementDto` gains `entityId`; **`epicId` stays, holding the same value** for every
+archetype, because the deployed SPA matches its epic against the project listing by it. `epicId`,
+`POST /refinements {"epicId"}` and `RefinementController.OpenRequest` are removed in a later release
+once the SPA reads `entityId` and calls the entity door — nothing new may read or call them.
+
+The refusals, all on the **create** path, in order: 404 unknown id; **409 for a feature or a task**
+(no lifecycle — refine its epic); **409 unless REPORTED**, for both archetypes, since refinement is
+the REPORTED phase (`requireReported` for an epic's scope; a ticket's fields do not freeze, but its
+room opens only where its refine phase runs); **409 while a dispatch runs on it** (below); 409 for a
+project with no wrapper; 502 when the git host will not cut the branch. **The wrapper is the project
+for a ticket exactly as for an epic** — neither names a repository, both dispatch onto the wrapper —
+so the wrapper resolution needed no archetype arm.
+
+Concurrency, decided:
+
+- **One room per entity.** A second open — from either door — answers the first (unique
+  `entity_id`; a racing insert loses to the constraint and adopts the winner). **An existing room is
+  answered whatever the entity's state now**: refusing to show a room because its status moved on, or
+  because an agent was dispatched after it opened, would strand the only place its prompt, sketches
+  and designs are reached from. Discard, or a resolving transition, is how a room ends.
+- **No new room while a dispatch runs on the entity: 409.** At REPORTED a dispatched agent *is*
+  refining — writing the same description, tree and dossier a person in the room would write — and two
+  authors on one draft unaware of each other overwrite each other. "Running" is an **ACTIVE** workspace
+  naming the entity, read through `WorkspaceAgentDispatch.workspacesReferencing` and matched back to
+  the entity's id (integrated and abandoned ones collide with nothing). That read **never throws and
+  answers empty on failure**, so the check **fails open**: with qits-workspaces unreachable, or no
+  workspaces context assembled, it sees nobody and the room opens. That is the port's degraded answer
+  everywhere, and refusing every open whenever a sibling restarts would cost more than the rare
+  collision it would catch. The reverse — dispatching onto an entity whose room is open — is **not**
+  refused by the dispatch door today.
+
+What a ticket's room is told: **nothing on this side composes the refining prompt** — the SPA's prompt
+draft does, and a ticket's room must be told to refine the ticket (its description and dossier) there.
+The server half is the tool surface: `list_designs` / `get_design` / `put_design` take **`entityId`**
+(the epic's or ticket's id) and still accept `epicId`, exactly one of the two, so a session already
+using `epicId` keeps working until the prompts name `entityId`. `inline_figure` and the REST inline
+door stay **epic-only** — dossier assets are epic-owned by epics V8's decision — so a ticket's room has
+sketches and designs but no inline door. **No surface key moved**: a ticket's room reuses `epic.chat`
+/ `epic.agent`, whose rename is the separate four-repository sequence `AgentSurfaceDefaults` describes.
+The container's `qits.epic` label keeps its key (value: the entity id) because renaming it would change
+the spec hash and replace every standing refinement container at its next wake.
 
 ## The container orchestrator
 

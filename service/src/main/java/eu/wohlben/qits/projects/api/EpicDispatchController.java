@@ -5,7 +5,7 @@ import eu.wohlben.qits.entities.control.EpicService;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.error.DomainException;
-import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
+import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.inject.Instance;
@@ -29,7 +29,7 @@ import jakarta.ws.rs.core.MediaType;
  *
  * <p><b>The one thing it keeps of its own is the freeze the button has always meant.</b> The
  * deployed button is offered on a REPORTED epic and promises implementation, so a REPORTED epic is
- * first moved to REFINED — through {@link EpicResolutions}, the only way a door moves an epic —
+ * first moved to REFINED — through {@link EntityResolutions}, the only way a door moves an epic —
  * and the phase REFINED starts is implement. Delegating a REPORTED epic straight through would start
  * the <em>refine</em> phase behind a button labelled "Start implementation". The move happens only
  * once the preconditions that need no attempt hold (an epic, a workspaces context, a wrapper), and it does not
@@ -45,7 +45,7 @@ public class EpicDispatchController {
 
   @Inject EpicService epics;
 
-  @Inject EpicResolutions resolutions;
+  @Inject EntityResolutions resolutions;
 
   @Inject EntityDispatch dispatch;
 

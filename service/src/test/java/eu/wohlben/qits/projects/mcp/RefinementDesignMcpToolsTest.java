@@ -159,7 +159,8 @@ public class RefinementDesignMcpToolsTest {
         Map.of("epicId", epicId),
         response -> {
           assertTrue(response.isError(), "there is nothing to list");
-          assertTrue(text(response).contains("No refinement is open for epic"), text(response));
+          assertTrue(
+              text(response).contains("No refinement is open for " + epicId), text(response));
         });
   }
 
@@ -177,11 +178,54 @@ public class RefinementDesignMcpToolsTest {
         response -> {
           assertTrue(response.isError(), "cross-project access must be refused");
           // The same message as an epic with no refinement: nothing says what elsewhere holds.
-          assertTrue(text(response).contains("No refinement is open for epic"), text(response));
+          assertTrue(
+              text(response).contains("No refinement is open for " + epicId), text(response));
         });
   }
 
   // --- Reading and proposing ------------------------------------------------
+
+  /**
+   * A ticket's room (qits-395) is named by {@code entityId}, the argument that is staying; naming
+   * both it and the legacy {@code epicId} is refused rather than guessed.
+   */
+  @Test
+  public void aTicketsRoomIsNamedByEntityId() {
+    String projectId = createProject("Design Ticket");
+    String ticketId =
+        authenticated()
+            .contentType(ContentType.JSON)
+            .body(Map.of("title", "Sketchy ticket", "type", "BUG", "impetus", "it looks off"))
+            .when()
+            .post("/projects/api/projects/" + projectId + "/tickets")
+            .then()
+            .statusCode(Response.Status.OK.getStatusCode())
+            .extract()
+            .path("ticket.id");
+    Number refinementId =
+        authenticated()
+            .when()
+            .post("/projects/api/entities/" + ticketId + "/refinement")
+            .then()
+            .statusCode(Response.Status.OK.getStatusCode())
+            .extract()
+            .path("refinement.id");
+    String designId = capture(refinementId.longValue(), "Ticket sketch");
+
+    call(
+        projectId,
+        "list_designs",
+        Map.of("entityId", ticketId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains(designId), text(response));
+        });
+    call(
+        projectId,
+        "list_designs",
+        Map.of("entityId", ticketId, "epicId", ticketId),
+        response -> assertTrue(response.isError(), "two names for one room: " + text(response)));
+  }
 
   @Test
   public void readsADesignInFull() {

@@ -8,7 +8,7 @@ import eu.wohlben.qits.entities.dto.EpicDto;
 import eu.wohlben.qits.entities.dto.FeatureDto;
 import eu.wohlben.qits.entities.mapper.AuditEntryMapper;
 import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
-import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
+import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -33,7 +33,7 @@ public class EpicController {
 
   @Inject EpicService epicService;
 
-  @Inject EpicResolutions epicResolutions;
+  @Inject EntityResolutions resolutions;
 
   @Inject FeatureService featureService;
 
@@ -120,7 +120,7 @@ public class EpicController {
    * (see {@code EpicService.SUPERSEDE}). A move the lifecycle does not allow, and a target naming
    * no status, both answer 409 with a message.
    *
-   * <p>It goes through {@link EpicResolutions} rather than straight to {@code EpicService}, because
+   * <p>It goes through {@link EntityResolutions} rather than straight to {@code EpicService}, because
    * a move that resolves the epic has to tear its refinement down first — see that class for the
    * order and for what the browser-side version of it used to leak.
    */
@@ -134,7 +134,7 @@ public class EpicController {
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
     String changedBy = EntitiesPrincipal.changedBy(identity);
-    var result = epicResolutions.transition(id, request.target(), changedBy);
+    var result = resolutions.transition(id, request.target(), changedBy);
     // A supersede spawns a second epic in the same project, so one hint still covers both rows.
     hints.fire(result.epic().projectId);
     // AFTER the move is recorded and outside its transaction, as the ticket door does it.

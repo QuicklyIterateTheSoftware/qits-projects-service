@@ -47,6 +47,8 @@ public class TicketController {
 
   @Inject TicketService ticketService;
 
+  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
+
   /** One mapper where there were four; this route answers the ticket shape. */
   @Inject WorkEntityMapper workEntityMapper;
 
@@ -165,8 +167,8 @@ public class TicketController {
   /**
    * Moving a ticket takes {@code qits:agent}, bound to the agent's own project: the {@code
    * transition_ticket} MCP tool already performs this write for an agent, lifecycle rule and all.
-   * Unlike an epic's transition, this one resolves nothing and starts a phase the agent is itself
-   * the subject of. See {@link EntitiesAgentAccess}.
+   * It starts a phase the agent is itself the subject of, and — like an epic's — a resolving move
+   * discards the ticket's refinement room first (qits-395). See {@link EntitiesAgentAccess}.
    */
   @POST
   @Path("/{id}/transition")
@@ -175,7 +177,9 @@ public class TicketController {
       @PathParam("id") String id, @Valid TransitionTicketRequest request) {
     EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
     String changedBy = EntitiesPrincipal.changedBy(identity);
-    var ticket = ticketService.transition(id, request.target(), changedBy);
+    // Through EntityResolutions, like an epic's move: a ticket can hold a refinement room since
+    // qits-395, and a resolving move tears it down before the status lands.
+    var ticket = resolutions.transitionTicket(id, request.target(), changedBy);
     hints.fire(ticket.projectId);
     // AFTER the move is recorded and outside its transaction, like the hint above: the next phase
     // is started from the status the ticket now holds, and a transition that rolled back speaks to

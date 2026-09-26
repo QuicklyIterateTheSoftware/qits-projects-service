@@ -81,6 +81,9 @@ public class TicketMcpTools {
 
   @Inject TicketService ticketService;
 
+  /** Every ticket move goes through here, so a resolving one discards the ticket's refinement. */
+  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
+
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
@@ -335,7 +338,8 @@ public class TicketMcpTools {
           String target) {
     requireTicketInProject(id);
     String changedBy = changedBy();
-    WorkEntity ticket = ticketService.transition(id, target, changedBy);
+    // Through EntityResolutions (qits-395): a resolving move discards the ticket's refinement first.
+    WorkEntity ticket = resolutions.transitionTicket(id, target, changedBy);
     announce();
     // The agent's claim IS the trigger for the next phase, and this is where it lands: after the
     // move is recorded, outside its transaction, so a transition that failed speaks to nobody. The

@@ -278,6 +278,30 @@ public class TicketService {
    */
   public WorkEntity transition(String id, String target, String changedBy) {
     Validations.requireText(target, "target");
+    return transitionChecked(id, target, changedBy);
+  }
+
+  /**
+   * What a {@link #transition} to {@code target} would be — {@link EpicService.PlannedTransition}'s
+   * twin, for the same reason (qits-395): a ticket can hold a refinement container now, and the
+   * assembling service has to tear it down <em>before</em> a resolving move while still refusing an
+   * illegal one first. Every rejection is the transition's own; this is a preview, never a
+   * reservation, and the move is re-checked inside {@link #transition}.
+   */
+  public record PlannedTransition(WorkEntity ticket, EntityStatus target, boolean resolving) {}
+
+  /** The preview of a move — see {@link PlannedTransition}. */
+  public PlannedTransition planTransition(String id, String target) {
+    Validations.requireText(target, "target");
+    WorkEntity row = entity(id);
+    EntityStatus to =
+        EntityLifecycle.parse(target)
+            .orElseThrow(() -> new ConflictException("Unknown ticket status: " + target));
+    EntityLifecycle.requireTransition(Archetype.TICKET, EntityStatus.valueOf(row.status), to);
+    return new PlannedTransition(row, to, EntityLifecycle.resolves(to));
+  }
+
+  private WorkEntity transitionChecked(String id, String target, String changedBy) {
     return writes.hold(
         "ticket transition",
         () -> {

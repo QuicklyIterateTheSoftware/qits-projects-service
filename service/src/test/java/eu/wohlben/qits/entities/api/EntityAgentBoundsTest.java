@@ -119,6 +119,7 @@ class EntityAgentBoundsTest {
   @Inject QualifiedEntityIds qualifiedIds;
   @Inject DispatchedWorkspaces dispatchedWorkspaces;
   @Inject PhaseAdvance phaseAdvance;
+  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
 
   @Inject ProjectService projectService;
   @Inject RepositoryService repositoryService;
@@ -250,6 +251,7 @@ class EntityAgentBoundsTest {
     door.dispatchedWorkspaces = dispatchedWorkspaces;
     door.qualifiedIds = qualifiedIds;
     door.phaseAdvance = phaseAdvance;
+    door.resolutions = resolutions;
     return door;
   }
 

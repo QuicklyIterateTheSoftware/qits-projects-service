@@ -825,6 +825,11 @@ components:
       - REPOSITORY_ID
       - IMPLEMENTED_AT
       - DEPENDS_ON
+    EntityRefinementResponse:
+      type: object
+      properties:
+        refinement:
+          $ref: "#/components/schemas/RefinementDto"
     EntityTransition:
       type: object
       properties:
@@ -1259,6 +1264,8 @@ components:
         id:
           type: integer
           format: int64
+        entityId:
+          type: string
         epicId:
           type: string
         projectId:
@@ -2802,6 +2809,56 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+  /projects/api/entities/{id}/refinement:
+    post:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityRefinementResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Open
+      tags:
+      - Entity Refinement Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    get:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityRefinementResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Find
+      tags:
+      - Entity Refinement Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
   /projects/api/epics/{epicId}/dossier:
     get:
       parameters:

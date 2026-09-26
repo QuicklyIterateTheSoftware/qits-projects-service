@@ -66,7 +66,9 @@ public class RefinementPromptAttachmentController {
     var refinement = refinements.get(id);
     var rows = attachments.list(id);
     java.util.Set<String> inUse =
-        assets.inUse(refinement.epicId, rows.stream().map(row -> row.id).toList());
+        // Dossier assets are epic-owned (epics V8), so a ticket's room answers "in use" for nothing:
+        // no asset is ever held under a ticket's id.
+        assets.inUse(refinement.entityId, rows.stream().map(row -> row.id).toList());
     return new ListResponse(
         rows.stream().map(row -> dto(row, true, inUse.contains(row.id))).toList());
   }

@@ -34,7 +34,7 @@ public class RefinementContainerFactoryTest {
   private Refinement refinement() {
     Refinement refinement = new Refinement();
     refinement.id = 7L;
-    refinement.epicId = "epic-1";
+    refinement.entityId = "epic-1";
     refinement.projectId = "project-1";
     refinement.repositoryId = "repo-1";
     refinement.branch = "refining/sharper-onboarding";

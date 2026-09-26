@@ -39,18 +39,18 @@ public class FakeRefinementRuntime implements RefinementRuntime {
 
   @Override
   public synchronized void provision(
-      Refinement refinement, String projectSlug, String epicSlug, String wrapperName) {
+      Refinement refinement, String projectSlug, String slug, String wrapperName) {
     calls.add("provision:" + refinement.id);
     places.put(
-        refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + epicSlug, true));
+        refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
   }
 
   @Override
   public synchronized void wake(
-      Refinement refinement, String projectSlug, String epicSlug, String wrapperName) {
+      Refinement refinement, String projectSlug, String slug, String wrapperName) {
     calls.add("wake:" + refinement.id);
     places.put(
-        refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + epicSlug, true));
+        refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
   }
 
   @Override

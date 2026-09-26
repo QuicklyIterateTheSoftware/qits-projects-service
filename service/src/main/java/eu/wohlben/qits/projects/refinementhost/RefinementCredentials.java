@@ -41,7 +41,7 @@ public interface RefinementCredentials {
    * are not.
    *
    * <p>{@code gitRefs} is what the credential may push (plan contract C2): exact refs, each {@code
-   * refs/heads/…}. For a refinement it is its own branch, {@code refs/heads/refining/<epicSlug>} —
+   * refs/heads/…}. For a refinement it is its own branch, {@code refs/heads/refining/<slug>} —
    * see {@code RefinementCommissions.gitRefsOf}. An empty list means "may push nothing". The list
    * is always stated, never left out, because a commission without it may push anything.
    */

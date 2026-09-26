@@ -10,7 +10,7 @@ import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
+import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -38,7 +38,7 @@ import org.jboss.logging.Logger;
  * an epic through the same refine → implement → verify phases a ticket runs, each ending with the
  * agent's own claim — and a phase whose claim cannot be made is a phase whose advance never fires.
  * So the lifecycle move is on this server exactly as {@code transition_ticket} is, reversible and
- * adjacent-only, through {@code EpicResolutions} like every door that moves an epic, and followed by
+ * adjacent-only, through {@code EntityResolutions} like every door that moves an epic, and followed by
  * {@code PhaseAdvance}. What stays off the server is supersede, which is an operation on a plan
  * rather than a claim about work.
  *
@@ -89,7 +89,7 @@ public class EpicMcpTools {
   @Inject SecurityIdentity identity;
 
   /** The only way a door moves an epic: discards a refinement a resolving move would strand. */
-  @Inject EpicResolutions resolutions;
+  @Inject EntityResolutions resolutions;
 
   /** The next phase after an agent's claim — see {@code PhaseAdvance}. */
   @Inject PhaseAdvance phaseAdvance;
@@ -312,7 +312,7 @@ public class EpicMcpTools {
   /**
    * The epic's LIFECYCLE move, the twin of {@code transition_ticket}: one adjacent step along the
    * one lifecycle ({@code EntityLifecycle.LEGAL_TARGETS}), or off it into DROPPED. Through {@link
-   * EpicResolutions}, never {@code EpicService.transition}, so a resolving move discards the epic's
+   * EntityResolutions}, never {@code EpicService.transition}, so a resolving move discards the epic's
    * refinement first; then {@link PhaseAdvance}, after the move is recorded, which delivers the next
    * phase when the run was dispatched as a flow and asks for the release at VERIFIED. Supersede is
    * not reachable from here: the tool takes a status word, and {@code SUPERSEDED} is not one.
