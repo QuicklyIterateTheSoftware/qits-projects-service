@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.refinementhost;
 
 import eu.wohlben.qits.projects.entity.Refinement;
 import jakarta.enterprise.context.ApplicationScoped;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +71,11 @@ public class FakeRefinementRuntime implements RefinementRuntime {
   public synchronized void delete(long refinementId) {
     calls.add("delete:" + refinementId);
     places.remove(refinementId);
+  }
+
+  @Override
+  public synchronized List<ContainerInfo> listRefinementContainers() {
+    return new ArrayList<>(places.values());
   }
 
   /** Test seam: put a place in a given state without going through a verb. */

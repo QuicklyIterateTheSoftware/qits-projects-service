@@ -3,10 +3,17 @@ package eu.wohlben.qits.projects.refinementhost;
 import eu.wohlben.qits.projects.control.TechnicalProcess;
 import eu.wohlben.qits.workspacedaemon.protocol.Ack;
 import eu.wohlben.qits.workspacedaemon.protocol.AgentActivity;
+import eu.wohlben.qits.workspacedaemon.protocol.BootstrapOutcome;
+import eu.wohlben.qits.workspacedaemon.protocol.BootstrapStep;
+import eu.wohlben.qits.workspacedaemon.protocol.Bootstrapped;
 import eu.wohlben.qits.workspacedaemon.protocol.CommandChunk;
+import eu.wohlben.qits.workspacedaemon.protocol.CommandExit;
+import eu.wohlben.qits.workspacedaemon.protocol.ConfigView;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonLog;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonMessage;
 import eu.wohlben.qits.workspacedaemon.protocol.DaemonProtocol;
+import eu.wohlben.qits.workspacedaemon.protocol.Describe;
+import eu.wohlben.qits.workspacedaemon.protocol.DescribeConfig;
 import eu.wohlben.qits.workspacedaemon.protocol.EditorState;
 import eu.wohlben.qits.workspacedaemon.protocol.GitStatus;
 import eu.wohlben.qits.workspacedaemon.protocol.Heartbeat;
@@ -14,7 +21,14 @@ import eu.wohlben.qits.workspacedaemon.protocol.Hello;
 import eu.wohlben.qits.workspacedaemon.protocol.OpenStream;
 import eu.wohlben.qits.workspacedaemon.protocol.ProvisionFailed;
 import eu.wohlben.qits.workspacedaemon.protocol.Provisioned;
+import eu.wohlben.qits.workspacedaemon.protocol.PullBranch;
+import eu.wohlben.qits.workspacedaemon.protocol.RunBootstrap;
+import eu.wohlben.qits.workspacedaemon.protocol.RunCommand;
+import eu.wohlben.qits.workspacedaemon.protocol.ServiceTransition;
+import eu.wohlben.qits.workspacedaemon.protocol.SignalService;
+import eu.wohlben.qits.workspacedaemon.protocol.StartService;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceChanged;
+import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceInfo;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -42,7 +56,11 @@ import org.jboss.logging.Logger;
  *   <li><b>Git cleanliness</b>, daemon-reported and in-memory: the recreate gate and the status
  *       strip read it; it means nothing for a stopped container and is dropped with the connection.
  *   <li><b>Agent activity</b>, rolled up {@code BUSY > WAITING > IDLE > ENDED} across the
- *       container's live sessions, with {@code ENDED} entries aged out on read.
+ *       container's live sessions, with {@code ENDED} entries aged out on read and every entry aged
+ *       out at a longer horizon.
+ *   <li><b>The quiet clock</b> — {@code lastAgentActivity}, when somebody last <em>used</em> this
+ *       container, stamped for the frames {@link #evidencesUse} admits and no others. Read by the
+ *       stale-image sweep, which stops a container running an outdated image while it is quiet.
  *   <li><b>The provision narration</b> — {@code CommandChunk}s tagged {@code provision} routed into
  *       the ensure's {@link TechnicalProcess}, and the terminal {@code Provisioned}/{@code
  *       ProvisionFailed} settling it. The failure is also recorded beside the connection, because a
@@ -70,6 +88,47 @@ public class RefinementDaemonRegistry {
   @ConfigProperty(name = "qits.projects.refinement.ended-activity-ttl-ms", defaultValue = "1800000")
   long endedActivityTtlMs;
 
+  /**
+   * How long an entry of <b>any</b> state keeps a say in the rollup — the horizon past which a
+   * session stops being evidence that anything is live at all. Four hours.
+   *
+   * <h2>Why an entry that is not {@code ENDED} has to expire too</h2>
+   *
+   * <p>{@link #endedActivityTtlMs} alone ages out only the sessions that <em>announced</em> they
+   * were over, which leaves a {@code BUSY} or {@code WAITING} entry immortal. A session whose agent
+   * died, was killed, or whose container was replaced before its {@code Stop}/{@code SessionEnd}
+   * hook fired leaves a {@code BUSY} nothing ever takes back — and the control socket's reconnect
+   * adoption re-reports the daemon's retained per-command state, so the dead session is re-asserted
+   * every time this service restarts.
+   *
+   * <p>That was survivable while the rollup only coloured a chip in the refinement UI, where a
+   * stuck {@code BUSY} is something a person ignores. It stopped being survivable when the rollup
+   * became a <em>veto</em> on the stale-image sweep: a {@code BUSY} nothing takes back is then a
+   * permanent refusal to act, and it refuses hardest on exactly the long-lived refinement
+   * containers the sweep exists to reach. The agent axis measured that live on 2026-09-18 — three
+   * consecutive passes naming the same container in a WARN and never able to stop it.
+   *
+   * <h2>Why four hours, and why it must be longer than the quiet window</h2>
+   *
+   * <p>It is a bound on <b>how long a single agent turn can plausibly be</b>, not a guess at how
+   * long a session lasts. The daemon's hooks fire at turn boundaries, so a live session refreshes
+   * its entry at every one of them and an agent working all day is a stream of entries rather
+   * than one old one. The only thing this horizon can cut short is a single turn still running
+   * four hours after it began, and what that releases is lossless: the container is stopped, never
+   * removed, and the checkout is on a volume nothing here discards.
+   *
+   * <p><b>It must be strictly longer than {@code qits.projects.refinement-stale-quiet-window}</b>
+   * (PT30M). At equal values this horizon could never veto anything {@link #lastAgentActivity} had
+   * not already vetoed — every entry old enough to survive as evidence would also be a stamp inside
+   * the window — so the second condition would quietly stop meaning anything, with every test still
+   * green. The rollup's whole reason for existing is the case the stamp gets wrong: an agent
+   * thinking silently between two frames.
+   */
+  @ConfigProperty(
+      name = "qits.projects.refinement.stale-activity-ttl-ms",
+      defaultValue = "14400000")
+  long staleActivityTtlMs;
+
   private final ConcurrentHashMap<Long, DaemonConnection> clients = new ConcurrentHashMap<>();
 
   /** Daemon-reported working-tree cleanliness, present only while a daemon is connected. */
@@ -81,6 +140,38 @@ public class RefinementDaemonRegistry {
   /** Per-refinement, per-session agent activity, for the rollup. */
   private final ConcurrentHashMap<Long, ConcurrentHashMap<String, ActivityEntry>> activity =
       new ConcurrentHashMap<>();
+
+  /**
+   * When somebody last <em>used</em> each refinement's container — written for the frames {@link
+   * #evidencesUse} admits, and for no others. Read by the stale-image sweep.
+   *
+   * <h2>This is the only clock here, and it must never become a liveness one</h2>
+   *
+   * <p>The agent harness keeps two stamps — one for "is this daemon alive", fed by everything
+   * including the heartbeat, and one for "is anybody doing something in here". This registry has
+   * <b>one</b>, and it is the second kind. Nothing on the refinement axis asks the liveness
+   * question of a stamp: an open {@link WebSocketConnection} in {@code clients} is the liveness
+   * answer, and
+   * {@link #lookup} already gives it. So there is no second reader to serve and no reason to
+   * widen what writes here.
+   *
+   * <p><b>Widening it is the one change that would destroy it.</b> {@code qits-workspace-daemon}
+   * heartbeats every twenty seconds for as long as its container runs, unconditionally; a
+   * {@link Heartbeat} that stamped this map would make it never more than twenty seconds old on a
+   * container nobody has touched for a month, and every quiet window measured against it would be
+   * permanently unsatisfiable. That is not a hypothetical — it is the defect this field was added
+   * to fix, and it is why {@link Heartbeat} stays where it is in {@link #evidencesUse}. If a
+   * liveness
+   * stamp is ever genuinely wanted here, it is a <em>second</em> map, the way the agent harness has
+   * two; it is never this one with more writers.
+   *
+   * <p>Not cleared on disconnect, deliberately, exactly as the agent harness's is not: a container
+   * whose daemon has dropped is still a container a sweep has to reason about, and forgetting when
+   * it was last useful would make it instantly reapable on nothing but a socket blip. It goes in
+   * {@link #forget}, with the rollup and for the same reason — the container is stopped, and the
+   * next one must start its window afresh.
+   */
+  private final ConcurrentHashMap<Long, Instant> lastAgentActivity = new ConcurrentHashMap<>();
 
   /** The ensure's live narration, routed to from provision frames. Set by the service. */
   private final ConcurrentHashMap<Long, TechnicalProcess> provisionProcesses =
@@ -155,7 +246,37 @@ public class RefinementDaemonRegistry {
     return Optional.ofNullable(gitClean.get(refinementId));
   }
 
-  /** The refinement's rolled-up agent activity, or empty when no session has reported. */
+  /**
+   * When somebody last did something in this refinement's container, or empty when nothing ever
+   * has — the heartbeat-free stamp the stale-image sweep reads. See {@link #lastAgentActivity} for
+   * why it is the only clock here and what it must not become.
+   *
+   * <p>Empty is a real and useful answer rather than a missing one: a container nothing has ever
+   * happened in is the quietest a container gets, and a sweep reads it that way.
+   */
+  public Optional<Instant> lastAgentActivityAt(Long refinementId) {
+    return Optional.ofNullable(lastAgentActivity.get(refinementId));
+  }
+
+  /**
+   * Record that something happened in this refinement's container at {@code at} — the stamp's only
+   * writer besides {@link #onMessage}, and here so a sweep test can drive a fake clock instead of
+   * waiting out a quiet window. The agent harness's {@code touchAgentActivity} is the same seam for
+   * the same reason.
+   */
+  void touchAgentActivity(Long refinementId, Instant at) {
+    lastAgentActivity.put(refinementId, at);
+  }
+
+  /**
+   * The refinement's rolled-up agent activity, or empty when no session has reported.
+   *
+   * <p><b>Two horizons, and an entry goes when it passes either.</b> An {@code ENDED} session is
+   * over and expires at the short {@link #endedActivityTtlMs}; every entry, whatever it says,
+   * expires at the long {@link #staleActivityTtlMs}, because a session can stop reporting without
+   * ever saying it ended and a {@code BUSY} that outlives its agent is otherwise a permanent claim
+   * that something is running. The second horizon carries the argument — see the field.
+   */
   public Optional<String> agentActivity(Long refinementId) {
     Map<String, ActivityEntry> sessions = activity.get(refinementId);
     if (sessions == null || sessions.isEmpty()) {
@@ -165,9 +286,12 @@ public class RefinementDaemonRegistry {
     sessions
         .entrySet()
         .removeIf(
-            entry ->
-                DaemonProtocol.AgentState.ENDED.equals(entry.getValue().state())
-                    && now - entry.getValue().atMillis() > endedActivityTtlMs);
+            entry -> {
+              long age = now - entry.getValue().atMillis();
+              return (DaemonProtocol.AgentState.ENDED.equals(entry.getValue().state())
+                      && age > endedActivityTtlMs)
+                  || age > staleActivityTtlMs;
+            });
     return sessions.values().stream()
         .map(ActivityEntry::state)
         .max(Comparator.comparingInt(RefinementDaemonRegistry::activityRank));
@@ -193,11 +317,21 @@ public class RefinementDaemonRegistry {
     provisionProcesses.put(refinementId, process);
   }
 
-  /** Forget everything about a refinement whose container is stopped or discarded. */
+  /**
+   * Forget everything about a refinement whose container is stopped or discarded.
+   *
+   * <p>{@link #lastAgentActivity} goes here and <b>only</b> here — not in {@link #unregister},
+   * which drops {@link #gitClean} alone. The two are evicted on different events because they mean
+   * different things: cleanliness is a claim about a daemon that is currently connected and is
+   * meaningless the moment one is not, while the use stamp describes the <em>container</em> and has
+   * to survive a socket blip, a daemon restart and a redeploy of this service. It is cleared with
+   * the rollup, on the one event that really does end the thing it described.
+   */
   public void forget(Long refinementId) {
     gitClean.remove(refinementId);
     provisionFailures.remove(refinementId);
     activity.remove(refinementId);
+    lastAgentActivity.remove(refinementId);
     provisionProcesses.remove(refinementId);
   }
 
@@ -222,8 +356,140 @@ public class RefinementDaemonRegistry {
                     "could not ask refinement %s for a stream: %s", refinementId, failure));
   }
 
+  /**
+   * Whether this frame is evidence that a <b>person or an agent is doing something</b> in the
+   * refinement's container — the one question {@link #lastAgentActivity} stores the answer to, and
+   * the only thing that may stamp it.
+   *
+   * <h2>Why an allowlist, and never a denylist</h2>
+   *
+   * <p><b>The protocol grows.</b> Under a denylist a frame nobody has considered yet defaults to
+   * "somebody is using this container", so every future addition to {@link DaemonMessage} is a
+   * chance to silently reinstate the defect this stamp exists to prevent, with every test still
+   * green. Under an allowlist it defaults to not-use, and a frame that really is evidence is a
+   * one-line addition somebody makes deliberately.
+   *
+   * <p><b>The two costs are not symmetric, which is what settles the direction.</b> A wrong "not in
+   * use" is bounded: the container is stopped, never removed, the checkout is on a volume nothing
+   * here discards, and the next ensure starts it again. A wrong "in use" is unbounded: the
+   * container is stale for ever and no sweep can reach it. Default to the bounded mistake.
+   *
+   * <p>This is an <b>exhaustive {@code switch} with no {@code default} arm</b>, unlike {@link
+   * #onMessage} one method down, and the difference is the whole point. {@code onMessage} has a
+   * catch-all because a daemon must not be able to break its own control socket by saying something
+   * this host has no view for — dropping an unknown frame there is correct. Here a catch-all would
+   * be a decision made by omission, so adding a frame to the protocol <b>fails this compilation</b>
+   * instead.
+   *
+   * <h2>What stamps</h2>
+   *
+   * <ul>
+   *   <li>{@link AgentActivity} — an agent's own turn boundary, reported by its hooks. The frame
+   *       exists for no other reason.
+   *   <li>{@link CommandChunk} — a command producing output. Refinement containers are driven
+   *       through {@code RefinementProxyRoute}, so a chunk is somebody's terminal or somebody's
+   *       agent. The <em>provision</em> narration rides this same frame under {@link
+   *       DaemonProtocol#PROVISION_CORRELATION_ID} and is this service's own doing, and it is
+   *       deliberately not filtered out: a provision is a burst that ends, so counting it costs at
+   *       worst one quiet window after a freshly provisioned container, where a periodic frame
+   *       would have cost immunity for ever. The correlation filter in {@link #onCommandChunk} is
+   *       about which narration to append to, not about who is in the container.
+   *   <li>{@link CommandExit} — a command finishing, for the same reason.
+   *   <li>{@link WorkspaceChanged} — the daemon's change nudge. Its only emitter is {@code
+   *       ControlSocket.nudge}, called from {@code CommandLifecycleService} and the agent launch
+   *       path alone, so it means a command started or ended rather than "something changed
+   *       somewhere".
+   * </ul>
+   *
+   * <h2>What does not, and why each one</h2>
+   *
+   * <ul>
+   *   <li>{@link Heartbeat} — liveness, unconditional and every twenty seconds for as long as the
+   *       container runs. <b>This is the entire defect being fixed</b>; see {@link
+   *       #lastAgentActivity}.
+   *   <li>{@link Hello} — <b>a reconnect is not use.</b> Every daemon on the estate redials when
+   *       this service restarts, so counting it would make every quiet window start again after
+   *       every redeploy — on an estate that redeploys hourly, most of the time a sweep could have
+   *       been acting.
+   *   <li>{@link DaemonLog} — <b>the daemon talking about itself</b>, a supervised subprocess's
+   *       stderr included, and the one caught live. On 2026-09-18 a project agent container relayed
+   *       {@code checkout-daemon: Cannot reach …; reconnecting in 30 s} as a {@code DaemonLog}
+   *       every thirty seconds, for ever; under a denylist that stamped the clock twice a minute
+   *       and the container became permanently unsweepable — the heartbeat's defect one frame class
+   *       over. Daemon self-talk is unbounded by construction and must never mean "in use".
+   *   <li>{@link GitStatus} — <b>the one worth arguing.</b> It is emitted by an inotify watcher on
+   *       {@code /workspace}, so the tempting reading is that a tree which changed is somebody at
+   *       work. It is refused, because <em>the same frame class</em> carries three different things
+   *       and this host cannot tell them apart: the watcher's boot report at {@code start()}, the
+   *       re-report the daemon makes on reconnect adoption, and a real marker move. The first two
+   *       arrive on every daemon restart and every reconnect, which is the {@link Hello} objection
+   *       verbatim; and a marker move is also what the provision's own self-clone produces, so a
+   *       freshly provisioned container would stamp itself. The loss is small and bounded: an agent
+   *       that edits files reports {@link AgentActivity} as well, a person editing through a
+   *       terminal produces {@link CommandChunk}, and there is no editor surface on this axis at
+   *       all. A file changing is evidence something wrote it; it is not evidence that the writer
+   *       was a person.
+   *   <li>{@link Provisioned}, {@link ProvisionFailed} — the result of a provision <em>this service
+   *       asked for</em>. Counting them would make every freshly provisioned container immune for a
+   *       whole quiet window on nothing but its own creation.
+   *   <li>{@link BootstrapStep}, {@link BootstrapOutcome}, {@link Bootstrapped} — the same
+   *       automated lifecycle one stage further on. Autorun is off for refinements, so only the
+   *       benign {@code Bootstrapped} is expected at all, and an automated bootstrap is not
+   *       somebody using the container either way.
+   *   <li>{@link ServiceTransition} — a supervised process's lifecycle, daemon-driven; autostart is
+   *       off here. A service coming up says nothing about who, if anyone, is present.
+   *   <li>{@link EditorState} — the supervised web editor's lifecycle, and a refinement host has no
+   *       editor surface for it to answer. It arrives only because the same image serves
+   *       qits-workspaces.
+   *   <li>{@link WorkspaceInfo}, {@link ConfigView} — replies to a {@link Describe} / {@link
+   *       DescribeConfig} <b>this host sent</b>. A reply to our own question is this service
+   *       talking to itself.
+   *   <li>{@link Ack}, {@link RunCommand}, {@link Describe}, {@link DescribeConfig}, {@link
+   *       RunBootstrap}, {@link StartService}, {@link SignalService}, {@link PullBranch}, {@link
+   *       OpenStream} — <b>host→daemon frames, which never arrive here at all.</b> They are the
+   *       outbound half of the protocol (the daemon only ever handles them; it constructs none of
+   *       them), so they are listed purely to keep this {@code switch} exhaustive. Were an echo of
+   *       one to turn up, it would be this host's own request coming back and still not use.
+   * </ul>
+   */
+  private static boolean evidencesUse(DaemonMessage message) {
+    return switch (message) {
+      case AgentActivity ignored -> true;
+      case CommandChunk ignored -> true;
+      case CommandExit ignored -> true;
+      case WorkspaceChanged ignored -> true;
+      case Hello ignored -> false;
+      case Heartbeat ignored -> false;
+      case DaemonLog ignored -> false;
+      case GitStatus ignored -> false;
+      case Provisioned ignored -> false;
+      case ProvisionFailed ignored -> false;
+      case BootstrapStep ignored -> false;
+      case BootstrapOutcome ignored -> false;
+      case Bootstrapped ignored -> false;
+      case ServiceTransition ignored -> false;
+      case EditorState ignored -> false;
+      case WorkspaceInfo ignored -> false;
+      case ConfigView ignored -> false;
+      case Ack ignored -> false;
+      case RunCommand ignored -> false;
+      case Describe ignored -> false;
+      case DescribeConfig ignored -> false;
+      case RunBootstrap ignored -> false;
+      case StartService ignored -> false;
+      case SignalService ignored -> false;
+      case PullBranch ignored -> false;
+      case OpenStream ignored -> false;
+    };
+  }
+
   /** Handle a decoded workspace-daemon frame for {@code refinementId}. */
   public void onMessage(Long refinementId, WebSocketConnection connection, DaemonMessage message) {
+    // The quiet clock, written only for the frames that are evidence somebody is using this
+    // container. The rule is an allowlist and the argument for that is in evidencesUse.
+    if (evidencesUse(message)) {
+      lastAgentActivity.put(refinementId, Instant.now());
+    }
     DaemonConnection client = clients.get(refinementId);
     switch (message) {
       case Hello hello -> {

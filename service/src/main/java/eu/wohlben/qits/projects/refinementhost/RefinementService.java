@@ -78,6 +78,14 @@ public class RefinementService {
   @Inject RefinementDrift drift;
 
   /**
+   * Read for one thing only: {@link RefinementContainerFactory#imageVersion()}, the image pin the
+   * projection reports beside the connected daemon's own version. The factory is asked rather than
+   * the key being read a second time here, for the reason that method's javadoc gives — {@code GET
+   * /projects/api/pins}, every container start and this projection have to give one answer.
+   */
+  @Inject RefinementContainerFactory factory;
+
+  /**
    * One permit per refinement, so the ladder is serialized without serializing the service. A
    * {@link Semaphore} and deliberately not a lock: the permit is taken on the request thread and
    * released on the executor thread that finishes the work, and a lock's owner check would refuse
@@ -220,7 +228,9 @@ public class RefinementService {
         registry.agentActivity(id).orElse(null),
         daemon == null ? null : daemon.connectedAt(),
         daemon == null ? null : daemon.daemonVersion(),
-        registry.daemonOutdated(id));
+        registry.daemonOutdated(id),
+        factory.imageVersion(),
+        staleAgainstPin(daemon, factory.imageVersion()));
   }
 
   // ---- lifecycle ---------------------------------------------------------------------------
@@ -425,10 +435,43 @@ public class RefinementService {
         registry.agentActivity(id).orElse(null),
         daemon == null ? null : daemon.connectedAt(),
         daemon == null ? null : daemon.daemonVersion(),
-        registry.daemonOutdated(id));
+        registry.daemonOutdated(id),
+        factory.imageVersion(),
+        staleAgainstPin(daemon, factory.imageVersion()));
   }
 
-  /** Everything the DTO is assembled from — the row plus the live halves. */
+  /**
+   * Whether the connected daemon is running something other than the image this service pins —
+   * {@code agenthost/AgentContainerState.against} applied on the refinement axis, and deliberately
+   * the same three rules.
+   *
+   * <p><b>It is gated on a daemon being connected, so it is never a guess.</b> With no daemon there
+   * is nothing to compare and the answer is {@code false}: "not stale" is the absence of a claim
+   * here, exactly as it is in the sweep that stops a container on one. A connected daemon that
+   * reported no version, or a blank one, counts as behind — an image built without build-time
+   * filtering cannot vouch that it is the pinned one, and the pin is the thing being asserted.
+   *
+   * <p><b>This is not {@code daemonOutdated} and the two must not be collapsed.</b> That one is
+   * relative to the newest daemon connected to <em>this host</em> — right for "somebody else has a
+   * newer one", and {@code null} whenever this is the only refinement daemon connected, which is
+   * the ordinary case. This one is relative to the pom pin — right for "this is not the image we
+   * deploy" — and it answers on a host with exactly one container.
+   */
+  static boolean staleAgainstPin(RefinementDaemonRegistry.DaemonInfo daemon, String pinnedVersion) {
+    return daemon != null
+        && (daemon.daemonVersion() == null
+            || daemon.daemonVersion().isBlank()
+            || !daemon.daemonVersion().equals(pinnedVersion));
+  }
+
+  /**
+   * Everything the DTO is assembled from — the row plus the live halves.
+   *
+   * <p>{@code pinnedDaemonVersion} is a property of this service and not of the container, so it is
+   * answered whether or not a daemon is connected; {@code daemonVersionStale} is the comparison
+   * against it, and {@link #staleAgainstPin} carries the whole rule and the distinction from {@code
+   * daemonOutdated}.
+   */
   public record RefinementView(
       Refinement refinement,
       String runtimeStatus,
@@ -440,7 +483,9 @@ public class RefinementService {
       String agentActivity,
       Instant daemonConnectedAt,
       String daemonVersion,
-      Boolean daemonOutdated) {}
+      Boolean daemonOutdated,
+      String pinnedDaemonVersion,
+      boolean daemonVersionStale) {}
 
   // ---- the pieces --------------------------------------------------------------------------
 
@@ -512,7 +557,15 @@ public class RefinementService {
     }
   }
 
-  private String epicSlugOf(Refinement refinement) {
+  /**
+   * The epic slug a refinement's container name is built from, read off the branch it cut.
+   *
+   * <p>Package-private and static rather than private, so {@link RefinementStaleImageSweep} can
+   * resolve a container name back to a row without a second reading of the {@code refining/<slug>}
+   * grammar. Two readings of one convention is exactly how a sweep comes to match nothing on the
+   * day the branch prefix changes, with everything still compiling and every test still green.
+   */
+  static String epicSlugOf(Refinement refinement) {
     return refinement.branch.startsWith("refining/")
         ? refinement.branch.substring("refining/".length())
         : refinement.label;

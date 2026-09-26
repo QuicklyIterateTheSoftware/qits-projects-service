@@ -1244,6 +1244,10 @@ components:
           type: string
         daemonOutdated:
           type: boolean
+        pinnedDaemonVersion:
+          type: string
+        daemonVersionStale:
+          type: boolean
         createdAt:
           $ref: "#/components/schemas/Instant"
     RefinementResponse:
@@ -6435,4 +6439,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.923.74447
+  version: 2026.926.172757

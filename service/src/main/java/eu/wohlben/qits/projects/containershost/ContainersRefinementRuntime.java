@@ -17,6 +17,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -131,6 +132,22 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
       throw new InternalServerErrorException(
           "Could not remove the volume of refinement " + refinementId + ": " + volume.detail());
     }
+  }
+
+  @Override
+  public List<ContainerInfo> listRefinementContainers() {
+    ContainersAnswer<List<Envelope>> answer = containers.list(owner, WORKLOAD);
+    if (!answer.succeeded()) {
+      // An empty listing is a statement about no particular container, so the sweep does nothing
+      // this pass rather than acting on an answer nobody gave.
+      LOG.warnf("Could not list this owner's refinement containers: %s", answer.detail());
+      return List.of();
+    }
+    List<ContainerInfo> infos = new ArrayList<>();
+    for (Envelope envelope : answer.value() == null ? List.<Envelope>of() : answer.value()) {
+      infos.add(infoOf(envelope));
+    }
+    return infos;
   }
 
   /** A 404 is the state a teardown asks for, not a failure of it. */
