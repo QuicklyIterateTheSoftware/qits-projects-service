@@ -38,6 +38,14 @@ the kind when you create it.
 
 Add the tech suffix only where the role alone is ambiguous, which in practice is the library pair.
 
+**The modifier slot is optional and currently has no instance, which is deliberate.** It held exactly
+one word — `platform`, on a service that ran once for the whole estate rather than once per
+environment — and that distinction was deleted along with the plane it named, so seventeen
+repositories were renamed to drop it (`qits-idp-platform-service` became `qits-idp-service`). The
+slot stays in the grammar because a project may find a genuine modifier of its own; it is not a
+place to re-encode where something is deployed. Where a thing runs is deployment configuration, and
+a name that carries it has to be changed whenever that answer does.
+
 ## The landing convention
 
 A project's landing page lives in the component `<project>-landing`, and any role may serve it —
