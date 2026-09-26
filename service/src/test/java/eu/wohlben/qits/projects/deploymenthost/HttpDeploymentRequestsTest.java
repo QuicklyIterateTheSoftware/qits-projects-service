@@ -98,7 +98,7 @@ class HttpDeploymentRequestsTest {
 
     Received asked = received.get(0);
     assertEquals("GET", asked.method());
-    assertEquals("/platform-deployments/api/deployment-requests", asked.path());
+    assertEquals("/deployments/api/deployment-requests", asked.path());
     assertTrue(asked.query().contains("repoId=repo-1"), asked.query());
     assertTrue(asked.query().contains("version=2026.916.1"), asked.query());
   }

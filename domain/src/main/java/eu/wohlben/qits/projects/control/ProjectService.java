@@ -101,7 +101,16 @@ public class ProjectService {
           "git",
           "v2",
           "events",
+          // BOTH SPELLINGS, and the second is the legacy one now. qits-380 has moved
+          // qits-deployments' route from /platform-deployments to /deployments, and the old rule
+          // was right about the timing: a segment belongs here on the day it is ROUTED rather than
+          // the day the old one stops being, which is why the new spelling was reserved before the
+          // route landed. The old one stays for the same reason — that service still answers it
+          // through an in-service reroute onto the new prefix (one WARN per hit naming the caller),
+          // so a project slugged `platform-deployments` would still be shadowed. It comes off this
+          // list when the reroute does.
           "platform-deployments",
+          "deployments",
           "maintenance",
           "mirror",
           "orchestrator",

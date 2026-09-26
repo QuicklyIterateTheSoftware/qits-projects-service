@@ -21,7 +21,7 @@ import org.jboss.logging.Logger;
 
 /**
  * The {@link DeploymentRequests} port over qits-deployments' own listing — {@code GET
- * /platform-deployments/api/deployment-requests?repoId=…&version=…}, answering {@code
+ * /deployments/api/deployment-requests?repoId=…&version=…}, answering {@code
  * {"deploymentRequests": [...]}}, newest first. A hand-rolled {@code java.net.http} client on
  * {@code releasehost/HttpPublishRuns}' shape, because the seam is one GET.
  *
@@ -90,7 +90,7 @@ public class HttpDeploymentRequests implements DeploymentRequests {
       URI uri =
           URI.create(
               deploymentsUrl.get()
-                  + "/platform-deployments/api/deployment-requests?repoId="
+                  + "/deployments/api/deployment-requests?repoId="
                   + URLEncoder.encode(repoId, StandardCharsets.UTF_8)
                   + "&version="
                   + URLEncoder.encode(version, StandardCharsets.UTF_8));
