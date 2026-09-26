@@ -179,7 +179,9 @@ public class RefinementContainerFactory {
   @ConfigProperty(name = "qits.projects.refinement-oom-score-adj", defaultValue = "800")
   Integer oomScoreAdj;
 
-  @ConfigProperty(name = "qits.projects.own-host", defaultValue = "qits-projects")
+  @ConfigProperty(
+      name = "qits.projects.own-host",
+      defaultValue = "${QITS_ENVIRONMENT:dev}-qits-projects")
   String ownHost;
 
   @ConfigProperty(name = "qits.projects.own-port", defaultValue = "8080")

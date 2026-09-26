@@ -249,7 +249,9 @@ public class AgentContainerFactory {
    * QITS_PROJECTS_DAEMON_URL}. Composed here because the daemon runs in-container and cannot
    * resolve it: it dials the url it was handed, verbatim, and parses no path out of it.
    */
-  @ConfigProperty(name = "qits.projects.own-host", defaultValue = "qits-projects")
+  @ConfigProperty(
+      name = "qits.projects.own-host",
+      defaultValue = "${QITS_ENVIRONMENT:dev}-qits-projects")
   String ownHost;
 
   @ConfigProperty(name = "qits.projects.own-port", defaultValue = "8080")
