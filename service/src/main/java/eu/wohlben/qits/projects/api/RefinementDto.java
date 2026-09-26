@@ -13,6 +13,23 @@ import java.time.Instant;
  * published strings the strip switches on. {@code clean} is three-valued: {@code null} is "the
  * daemon has not vouched", which blocks a recreate. {@code daemonOutdated} is {@code TRUE} or
  * {@code null}, never {@code false} — "outdated" is a claim, its absence is not one.
+ *
+ * <p><b>Two version questions are answered here and they are different questions.</b> {@code
+ * daemonOutdated} compares this daemon against the newest daemon connected to <em>this host</em> —
+ * right for "somebody else has a newer one", and {@code null} whenever this is the only refinement
+ * daemon connected, which is the common case, so a container running a months-old image can answer
+ * nothing at all. {@code daemonVersionStale} compares the connected daemon against {@code
+ * pinnedDaemonVersion}, the image this service actually deploys — right for "this is not the image
+ * we deploy". A reader who confuses them builds the wrong thing. Neither replaces the other and
+ * both stay.
+ *
+ * <p>{@code pinnedDaemonVersion} is a property of this service rather than of the container, so it
+ * is present even with no daemon connected. {@code daemonVersionStale} is a plain {@code boolean}
+ * and not a third three-valued field: unlike {@code daemonOutdated}, whose {@code null} hides
+ * whether a peer comparison was possible, the only thing that could make this one unanswerable is
+ * no daemon being connected — which this row already says twice, in {@code daemonConnectedAt} and
+ * {@code daemonVersion}. So {@code false} is "no claim" and never a guess, exactly as it is on
+ * {@code agenthost/AgentContainerState}, whose shape this pair copies.
  */
 public record RefinementDto(
     Long id,
@@ -32,6 +49,8 @@ public record RefinementDto(
     Instant daemonConnectedAt,
     String daemonVersion,
     Boolean daemonOutdated,
+    String pinnedDaemonVersion,
+    boolean daemonVersionStale,
     Instant createdAt) {
 
   public static RefinementDto of(RefinementService.RefinementView view) {
@@ -53,6 +72,8 @@ public record RefinementDto(
         view.daemonConnectedAt(),
         view.daemonVersion(),
         view.daemonOutdated(),
+        view.pinnedDaemonVersion(),
+        view.daemonVersionStale(),
         view.refinement().createdAt);
   }
 }

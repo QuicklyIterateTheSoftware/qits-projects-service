@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.refinementhost;
 
 import eu.wohlben.qits.projects.entity.Refinement;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -43,4 +44,17 @@ public interface RefinementRuntime {
 
   /** Remove the container (never its volumes with it), then the volume. Idempotent. */
   void delete(long refinementId);
+
+  /**
+   * Every refinement place this service owns, running or not — the refinement twin of
+   * {@code agenthost/ContainerRuntime#listAgentContainers}.
+   *
+   * <p><b>From the orchestrator's rows, never from a label listing</b>, and scoped to this owner and
+   * this workload, so two environments sharing one docker daemon cannot see each other's refinement
+   * containers.
+   *
+   * <p><b>A listing the orchestrator would not answer comes back empty rather than throwing</b>, so a
+   * caller sweeping on it does nothing this pass rather than acting on an answer nobody gave.
+   */
+  List<ContainerInfo> listRefinementContainers();
 }
