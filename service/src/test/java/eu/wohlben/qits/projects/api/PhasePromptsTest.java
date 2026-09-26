@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  * ticket's fields, so a boot here would buy nothing and cost a minute. {@code
  * TicketDispatchControllerTest} is where the door's use of it is pinned end to end.
  */
-public class TicketPhasePromptsTest {
+public class PhasePromptsTest {
 
   private static WorkEntity ticket(EntityStatus status) {
     WorkEntity ticket = new WorkEntity();
@@ -44,7 +44,7 @@ public class TicketPhasePromptsTest {
   }
 
   private static String promptFor(EntityStatus status) {
-    return TicketPhasePrompts.promptFor(ticket(status))
+    return PhasePrompts.promptFor(ticket(status))
         .orElseThrow(() -> new AssertionError(status + " rendered no prompt"));
   }
 
@@ -64,15 +64,15 @@ public class TicketPhasePromptsTest {
 
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.promptFor(ticket(EntityStatus.VERIFIED)),
+        PhasePrompts.promptFor(ticket(EntityStatus.VERIFIED)),
         "VERIFIED has no phase left to run: a person closes it");
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.promptFor(ticket(EntityStatus.DONE)),
+        PhasePrompts.promptFor(ticket(EntityStatus.DONE)),
         "DONE is closed, and reopening it is a person's move too");
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.promptFor(ticket(EntityStatus.DROPPED)),
+        PhasePrompts.promptFor(ticket(EntityStatus.DROPPED)),
         "DROPPED is work somebody decided against: no phase renders, and dispatching an agent onto"
             + " it would start the very work the decision was not to do");
   }
@@ -81,20 +81,20 @@ public class TicketPhasePromptsTest {
   @Test
   public void thePhaseIsNamedFromTheSameMappingThatRendersIt() {
     assertEquals(
-        "refine", TicketPhasePrompts.startedBy(ticket(EntityStatus.REPORTED)).orElseThrow().phase());
+        "refine", PhasePrompts.startedBy(ticket(EntityStatus.REPORTED)).orElseThrow().phase());
     assertEquals(
         "implement",
-        TicketPhasePrompts.startedBy(ticket(EntityStatus.REFINED)).orElseThrow().phase());
+        PhasePrompts.startedBy(ticket(EntityStatus.REFINED)).orElseThrow().phase());
     assertEquals(
         "verify",
-        TicketPhasePrompts.startedBy(ticket(EntityStatus.IMPLEMENTED)).orElseThrow().phase());
+        PhasePrompts.startedBy(ticket(EntityStatus.IMPLEMENTED)).orElseThrow().phase());
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.startedBy(ticket(EntityStatus.VERIFIED)),
+        PhasePrompts.startedBy(ticket(EntityStatus.VERIFIED)),
         "no phase, so nothing to name either");
     assertEquals(
         Optional.empty(),
-        TicketPhasePrompts.startedBy(ticket(EntityStatus.DROPPED)),
+        PhasePrompts.startedBy(ticket(EntityStatus.DROPPED)),
         "and a dropped ticket names no phase either, which is what leaves the dispatch door and the"
             + " phase hand-off both silent without either growing a rule of its own");
   }
@@ -347,7 +347,7 @@ public class TicketPhasePromptsTest {
    */
   @Test
   public void everyDispatchedInstructionOpensWithTheOneFlowBriefPointer() {
-    String pointer = TicketPhasePrompts.FLOW_BRIEF_POINTER;
+    String pointer = PhasePrompts.FLOW_BRIEF_POINTER;
     assertTrue(
         pointer.contains("/workspace/docs/development-flow.md"),
         "the path is absolute, because a container's working directory is not guaranteed: "
@@ -357,7 +357,7 @@ public class TicketPhasePromptsTest {
         "and a project carrying no brief must not read as a broken instruction: " + pointer);
 
     for (EntityStatus status : EntityStatus.values()) {
-      Optional<String> prompt = TicketPhasePrompts.promptFor(ticket(status));
+      Optional<String> prompt = PhasePrompts.promptFor(ticket(status));
       if (prompt.isEmpty()) {
         continue; // VERIFIED, DONE and DROPPED start no phase at all, which is asserted above.
       }
@@ -369,9 +369,15 @@ public class TicketPhasePromptsTest {
               + prompt.get());
     }
 
-    assertTrue(
-        EpicDispatchController.instruction(epic()).startsWith(pointer + " "),
-        "and so does the epic door, from the same constant and not a copy of the words");
+    for (EntityStatus status : EntityStatus.values()) {
+      Optional<String> prompt = PhasePrompts.promptFor(epic(status));
+      prompt.ifPresent(
+          turn ->
+              assertTrue(
+                  turn.startsWith(pointer + " "),
+                  "and so does every epic phase, from the same seam and the same constant: "
+                      + turn));
+    }
   }
 
   /**
@@ -391,7 +397,7 @@ public class TicketPhasePromptsTest {
   @Test
   public void everyPhaseThatRunsOffersBothTheStatusAndTheFlagWhenItCannotFinish() {
     for (EntityStatus status : EntityStatus.values()) {
-      Optional<String> prompt = TicketPhasePrompts.promptFor(ticket(status));
+      Optional<String> prompt = PhasePrompts.promptFor(ticket(status));
       if (prompt.isEmpty()) {
         continue; // VERIFIED, DONE and DROPPED start no phase, so there is no phase to block.
       }
@@ -418,14 +424,119 @@ public class TicketPhasePromptsTest {
     }
   }
 
-  private static WorkEntity epic() {
+  private static WorkEntity epic(EntityStatus status) {
     WorkEntity epic = new WorkEntity();
     epic.id = "epc-9";
     epic.projectId = "prj-1";
     epic.archetype = Archetype.EPIC;
     epic.title = "Planning domain";
     epic.slug = "planning-domain";
-    epic.status = EntityStatus.REFINED.name();
+    epic.status = status.name();
     return epic;
+  }
+
+  private static String epicPromptFor(EntityStatus status) {
+    return PhasePrompts.promptFor(epic(status))
+        .orElseThrow(() -> new AssertionError("epic at " + status + " rendered no prompt"));
+  }
+
+  // ---- qits-394: one phase rule, words per archetype -------------------------------------------
+
+  /**
+   * <b>An epic and a ticket at the same status take the same path and get different words.</b> The
+   * phase is the status's alone — the mapping never looks at the archetype — while the template is
+   * the archetype's: a ticket's refine phase writes a description, an epic's writes a plan.
+   */
+  @Test
+  public void anEpicAndATicketAtTheSameStatusStartTheSamePhaseWithDifferentWords() {
+    for (EntityStatus status :
+        new EntityStatus[] {EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED}) {
+      PhasePrompts.Started ticketRun = PhasePrompts.startedBy(ticket(status)).orElseThrow();
+      PhasePrompts.Started epicRun = PhasePrompts.startedBy(epic(status)).orElseThrow();
+      assertEquals(ticketRun.phase(), epicRun.phase(), status + " starts one phase for both");
+      assertEquals(
+          PhasePrompts.nextPhase(ticket(status)),
+          PhasePrompts.nextPhase(epic(status)),
+          "and the SPA is served the same word for both");
+      assertFalse(
+          ticketRun.instruction().equals(epicRun.instruction()),
+          "but the words are the archetype's own at " + status);
+      assertTrue(epicRun.instruction().contains("get_epic"), epicRun.instruction());
+      assertFalse(epicRun.instruction().contains("get_ticket"), epicRun.instruction());
+      assertFalse(ticketRun.instruction().contains("transition_epic"), ticketRun.instruction());
+    }
+  }
+
+  /** The three that start nothing start nothing for an epic too, and a feature has no phase at all. */
+  @Test
+  public void anEpicPastTheWorkAndAFeatureStartNoPhase() {
+    for (EntityStatus status :
+        new EntityStatus[] {EntityStatus.VERIFIED, EntityStatus.DONE, EntityStatus.DROPPED}) {
+      assertEquals(Optional.empty(), PhasePrompts.promptFor(epic(status)), status.name());
+      assertEquals(Optional.empty(), PhasePrompts.nextPhase(epic(status)), status.name());
+    }
+    WorkEntity feature = epic(EntityStatus.REPORTED);
+    feature.archetype = Archetype.FEATURE;
+    feature.status = null;
+    assertEquals(Optional.empty(), PhasePrompts.nextPhase(feature), "a feature has no lifecycle");
+  }
+
+  /**
+   * The epic refine turn: the plan is three things — description, tree, dossier — written INTO the
+   * epic, nothing implemented, and the freeze is the agent's claim.
+   */
+  @Test
+  public void theEpicRefineTurnWritesThePlanIntoTheEpicAndFreezesIt() {
+    String turn = epicPromptFor(EntityStatus.REPORTED);
+    assertTrue(turn.contains("Refine epic \"Planning domain\""), turn);
+    for (String tool :
+        new String[] {"update_epic", "add_feature", "add_task", "put_dossier_page (epicId epc-9)"}) {
+      assertTrue(turn.contains(tool), "the refine phase is told to write with " + tool + ": " + turn);
+    }
+    assertTrue(turn.contains("dependsOn"), turn);
+    assertTrue(turn.contains("INTO THE EPIC"), turn);
+    assertTrue(turn.contains("DO NOT IMPLEMENT ANYTHING"), turn);
+    assertTrue(turn.contains("transition_epic to REFINED"), turn);
+    assertTrue(turn.contains("freezes the scope"), turn);
+    assertTrue(turn.contains("leave the epic REPORTED"), turn);
+  }
+
+  /**
+   * The epic implement turn: what the retired single-shot instruction said (dependsOn order,
+   * mark_task_implemented as each lands, released is done, the dossier read-only), plus release
+   * every touched repository, do not integrate, and the claim to IMPLEMENTED — conditional, because
+   * it stamps every unmarked task.
+   */
+  @Test
+  public void theEpicImplementTurnMarksReleasesAndClaimsImplemented() {
+    String turn = epicPromptFor(EntityStatus.REFINED);
+    assertTrue(turn.contains("Implement epic \"Planning domain\""), turn);
+    assertTrue(turn.contains("get_epic (id epc-9)"), turn);
+    assertTrue(turn.contains("get_dossier_page"), turn);
+    assertTrue(turn.contains("read-only while the epic is REFINED"), turn);
+    assertTrue(turn.contains("respecting the dependsOn links"), turn);
+    assertTrue(turn.contains("mark_task_implemented as it lands"), turn);
+    assertTrue(turn.contains("Release every repository you touched"), turn);
+    assertTrue(turn.contains("DO NOT INTEGRATE THE WORKSPACE"), turn);
+    assertFalse(
+        turn.contains("integrate the workspace and see the release through"),
+        "the retired sentence would destroy the verify phase's ground: " + turn);
+    assertTrue(turn.contains("transition_epic to IMPLEMENTED"), turn);
+    assertTrue(turn.contains("never make it with a task outstanding"), turn);
+    assertTrue(turn.contains("leave the epic REFINED"), turn);
+  }
+
+  /** The epic verify turn: the live platform, the code-reading fallback second, VERIFIED or back. */
+  @Test
+  public void theEpicVerifyTurnConfirmsLiveAndClaimsVerifiedOrFailsBack() {
+    String turn = epicPromptFor(EntityStatus.IMPLEMENTED);
+    assertTrue(turn.contains("Verify epic \"Planning domain\""), turn);
+    assertTrue(turn.contains("ON THE PLATFORM"), turn);
+    assertTrue(
+        turn.indexOf("ON THE PLATFORM") < turn.indexOf("READING THE RELEVANT CODE CHANGES"),
+        "reproducing comes first and the fallback second: " + turn);
+    assertTrue(turn.contains("transition_epic to VERIFIED"), turn);
+    assertTrue(turn.contains("transition_epic BACK TO REFINED"), turn);
+    assertTrue(turn.contains("Closing the epic is a person's move"), turn);
   }
 }

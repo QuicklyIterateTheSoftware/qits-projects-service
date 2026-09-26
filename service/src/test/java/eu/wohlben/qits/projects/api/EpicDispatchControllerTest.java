@@ -32,6 +32,11 @@ import org.junit.jupiter.api.Test;
  * <p>{@link TicketDispatchControllerTest} is the sibling and the shape is deliberately its; the
  * assertion that has no counterpart there is the one about the epic being left alone — an epic has
  * no thread to write on and this door must not edit the plan instead.
+ *
+ * <p><b>Since qits-394 the door is a delegate onto {@code EntityDispatch} in PHASE mode</b>, keeping
+ * only the freeze its deployed button has always meant. These cases are what prove the delegation
+ * kept the route's contract — its shape, its refusals, its retry — until the SPA stops calling it
+ * and the class, its DTO and this suite are removed together.
  */
 @QuarkusTest
 public class EpicDispatchControllerTest {
@@ -184,25 +189,35 @@ public class EpicDispatchControllerTest {
         "the agent is sent to the dossier for the detail the epic leaves out: "
             + asked.instruction());
     assertTrue(
-        asked.instruction().contains("read-only while the epic is in implementation"),
+        asked.instruction().contains("read-only while the epic is REFINED"),
         "and told it cannot correct the dossier from here, which is what the REPORTED guard does");
     assertTrue(
         asked.instruction().contains("mark_task_implemented"),
         "and told to record each task as it lands");
     assertTrue(asked.instruction().contains("dependsOn"), "and to respect the ordering links");
     assertTrue(
-        asked.instruction().contains("fully released"),
-        "and that the work is not done until it is released");
+        asked.instruction().contains("Release every repository you touched"),
+        "and that the work is not done until every touched repository is released");
     assertTrue(
-        asked.instruction().contains("leave the epic in implementation"),
+        asked.instruction().contains("leave the epic REFINED"),
         "the other arm: an unfinished run says what is missing rather than claiming the epic");
 
     // The flow brief comes FIRST and is the ticket doors' own constant, never a second literal —
-    // TicketPhasePromptsTest.everyDispatchedInstructionOpensWithTheOneFlowBriefPointer is where
+    // PhasePromptsTest.everyDispatchedInstructionOpensWithTheOneFlowBriefPointer is where
     // all four instructions are held to it together. What this half adds is that the sentence
     // survives the real door, end to end, and is not merely a property of the renderer.
+    // The old door is a delegate onto the one path in PHASE mode: the run it starts stops after
+    // this phase, which the unified read reports.
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/entities/" + epicId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.mode", equalTo("PHASE"))
+        .body("state.nextPhase", equalTo("implement"));
+
     assertTrue(
-        asked.instruction().startsWith(TicketPhasePrompts.FLOW_BRIEF_POINTER + " "),
+        asked.instruction().startsWith(PhasePrompts.FLOW_BRIEF_POINTER + " "),
         "an epic's agent is pointed at the project's flow brief before anything else: "
             + asked.instruction());
   }
@@ -240,6 +255,7 @@ public class EpicDispatchControllerTest {
     String shipped = createEpic(projectId, "Already shipped", "Done.");
     transition(shipped, "REFINED");
     transition(shipped, "IMPLEMENTED");
+    transition(shipped, "VERIFIED");
     String abandoned = createEpic(projectId, "Never happening", "Dropped.");
     transition(abandoned, "DROPPED");
 
@@ -248,7 +264,7 @@ public class EpicDispatchControllerTest {
         .post("/projects/api/epics/" + shipped + "/dispatch-agent")
         .then()
         .statusCode(409)
-        .body("message", containsString("IMPLEMENTED"));
+        .body("message", containsString("is VERIFIED"));
 
     asAdmin("mallory")
         .when()

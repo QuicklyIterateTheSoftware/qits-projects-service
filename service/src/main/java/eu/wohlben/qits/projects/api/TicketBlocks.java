@@ -27,21 +27,21 @@ import jakarta.inject.Inject;
  * <h2>Why it is in {@code projects.api} and not in the entities module</h2>
  *
  * <p>Because the refusal is about a <b>phase</b>, and a phase is this layer's concept. {@link
- * TicketPhasePrompts} is the one place in this service that reads a status as the work that starts
+ * PhasePrompts} is the one place in this service that reads a status as the work that starts
  * from it, and {@link #requireBlockable} asks exactly that question rather than re-listing the
  * three statuses a phase runs under — so a fourth phase, or a status moving off the line, changes
  * one switch and this refusal follows it. The entities module cannot hold the rule at all: it has
  * no idea a phase exists and depends on {@code domain} nowhere, which is what keeps it liftable.
  * {@code TicketService.setBlocked} therefore writes the row and judges nothing, and says so.
  *
- * <p>That places this beside {@link TicketPhaseAdvance} and {@link TicketWorkspaces}, which are
+ * <p>That places this beside {@link PhaseAdvance} and {@link EntityWorkspaces}, which are
  * here for the same reason and are the precedent: what a ticket's status <em>means for the work</em>
  * is decided in this package, and the row is written one module down.
  *
  * <h2>The reason is a comment and not a column</h2>
  *
  * <p>A blocker is a remark with an author and a time — which is what the thread already is — so it
- * lands through {@code TicketService.addComment} the way {@code TicketPhaseAdvance.say} lands what
+ * lands through {@code TicketService.addComment} the way {@code PhaseAdvance.say} lands what
  * became of a phase. A column would be a second place the same sentence lives, and it would go
  * stale the moment the thread moved past it. It is <b>required when blocking</b> because a block
  * with no stated blocker is one nobody can clear: the next reader is told the work stopped and not
@@ -69,7 +69,7 @@ public class TicketBlocks {
    * @param blocked what the flag should become
    * @param reason why; required when {@code blocked} is true, optional otherwise
    * @param changedBy the caller, resolved by the surface that took the call — passed in for the
-   *     reason {@link TicketPhaseAdvance#afterTransition} takes it, since the two surfaces answer
+   *     reason {@link PhaseAdvance#afterTransition} takes it, since the two surfaces answer
    *     an unnamed caller differently
    */
   public WorkEntity apply(WorkEntity ticket, boolean blocked, String reason, String changedBy) {
@@ -88,7 +88,7 @@ public class TicketBlocks {
 
   /**
    * <b>409 unless a phase runs while this ticket's status holds.</b> {@link
-   * TicketPhasePrompts#startedBy} is the whole test and the whole vocabulary: a status it answers
+   * PhasePrompts#startedBy} is the whole test and the whole vocabulary: a status it answers
    * empty for starts no phase, so there is nothing for a block to be about. That is VERIFIED and
    * DONE — the work is over and what is left is a person's judgement — and DROPPED, where the work
    * was decided against and no phase will ever run again.
@@ -105,7 +105,7 @@ public class TicketBlocks {
    * door can produce.
    */
   static void requireBlockable(WorkEntity ticket) {
-    if (TicketPhasePrompts.startedBy(ticket).isEmpty()) {
+    if (PhasePrompts.startedBy(ticket).isEmpty()) {
       throw new ConflictException(
           "Ticket "
               + ticket.id

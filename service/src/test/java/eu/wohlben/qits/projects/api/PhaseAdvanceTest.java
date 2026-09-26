@@ -33,14 +33,14 @@ import org.junit.jupiter.api.Test;
  *
  * <p>What is pinned here is what this service owns — <b>which</b> prompt is delivered, <b>where</b>,
  * <b>when</b>, and what the ticket is left saying. The delivery itself is qits-workspaces' and is not
- * simulated; the three templates' own sentences are {@link TicketPhasePromptsTest}'s.
+ * simulated; the three templates' own sentences are {@link PhasePromptsTest}'s.
  *
  * <p>The caller is named with the real {@code X-Qits-*} pair rather than {@code @TestSecurity}, for
  * {@link TicketDispatchControllerTest}'s reason: the comment's {@code author} is one of the
  * assertions and the header is what produces it in a deployment.
  */
 @QuarkusTest
-public class TicketPhaseAdvanceTest {
+public class PhaseAdvanceTest {
 
   @Inject RecordingWorkspaceAgentTurns turns;
 
@@ -53,7 +53,7 @@ public class TicketPhaseAdvanceTest {
    * The bean itself, for the one case that cannot be reached through the transition door — see
    * {@link #aTicketThatWasDroppedDeliversNoTurnAndAsksAboutNoBranch}.
    */
-  @Inject TicketPhaseAdvance advance;
+  @Inject PhaseAdvance advance;
 
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
@@ -513,7 +513,7 @@ public class TicketPhaseAdvanceTest {
 
   /**
    * The dispatch door and this flow have to arrive at the <b>same</b> address, or the hand-off talks
-   * to a branch nobody made. Both resolve through {@code TicketWorkspaces}; this asserts the answer
+   * to a branch nobody made. Both resolve through {@code EntityWorkspaces}; this asserts the answer
    * rather than the sharing, because the answer is what the far side sees.
    */
   @Test

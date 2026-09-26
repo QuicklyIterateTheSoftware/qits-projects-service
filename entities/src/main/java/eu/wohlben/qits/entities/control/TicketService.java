@@ -313,7 +313,7 @@ public class TicketService {
    * omission.</b> Blocking is meaningful only where a phase runs — REPORTED, REFINED, IMPLEMENTED —
    * and asking it of a VERIFIED, DONE or DROPPED ticket is refused with a 409 by the doors, in the
    * {@code service} module. The rule is not enforceable here and must not be copied here:
-   * <em>phase</em> is the service layer's concept, mapped in {@code projects/api/TicketPhasePrompts}
+   * <em>phase</em> is the service layer's concept, mapped in {@code projects/api/PhasePrompts}
    * beside the prompts and the workspaces, and this module has no idea a phase exists — it is the
    * module most likely to be lifted out next and it depends on {@code domain} nowhere. A second
    * list of the three phased statuses written here would be the drift {@code

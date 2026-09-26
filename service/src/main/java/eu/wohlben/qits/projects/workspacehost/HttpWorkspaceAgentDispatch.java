@@ -289,7 +289,7 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
    * guaranteed, so a qits-workspaces that predates the change answers rows with no {@code status}
    * member at all. Reading that as an empty or null status would make every reference fail a live
    * reader's {@code ACTIVE} filter, which is the whole of {@link
-   * eu.wohlben.qits.projects.api.TicketPhaseAdvance}'s release ask and would silently stop asking
+   * eu.wohlben.qits.projects.api.PhaseAdvance}'s release ask and would silently stop asking
    * for anything. An absent or blank word therefore means {@link Reference#ACTIVE} — the only
    * thing an older far side could ever have been answering, since it returned live workspaces
    * alone. A {@code resolvedAt} that is absent, null or unparseable is simply {@code null}, which

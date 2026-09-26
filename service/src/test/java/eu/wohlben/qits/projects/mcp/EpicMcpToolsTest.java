@@ -93,7 +93,7 @@ public class EpicMcpToolsTest {
         .path("repository.id");
   }
 
-  /** Freeze an epic's scope the way the UI does — the only thing the agent cannot do itself. */
+  /** Freeze an epic's scope the way the UI does, so the fixture never depends on the tool under test. */
   private void freeze(String epicId) {
     authenticated()
         .contentType(ContentType.JSON)
@@ -627,21 +627,61 @@ public class EpicMcpToolsTest {
 
   // --- The surface ----------------------------------------------------------
 
+  /**
+   * <b>The lifecycle move is on the server since qits-394</b>, because the one dispatch path runs an
+   * epic through phases each ending in the agent's own claim. Supersede stays off it: an operation on
+   * a plan is not a claim about work.
+   */
   @Test
-  public void exposesNoTransitionTool() {
-    // Freezing a draft is a human act in the UI. Nothing on this server may move a status — and
-    // that is unchanged by mark_task_implemented, which reports work rather than moving a phase.
-    String projectId = createProject("NoFreeze");
+  public void exposesTheLifecycleTransitionButNoSupersede() {
+    String projectId = createProject("EpicTransitionSurface");
     client(projectId)
         .when()
         .toolsList(
             page -> {
               var names = page.tools().stream().map(t -> t.name()).toList();
-              assertFalse(names.contains("transition_epic"), names.toString());
+              assertTrue(names.contains("transition_epic"), names.toString());
               assertFalse(names.contains("supersede_epic"), names.toString());
               assertFalse(names.contains("mark_epic_implemented"), names.toString());
               assertTrue(names.contains("mark_task_implemented"), names.toString());
             })
         .thenAssertResults();
+  }
+
+  @Test
+  public void transitionEpicMovesAlongTheLifecycleAndRefusesSupersede() {
+    String projectId = createProject("EpicTransitionTool");
+    String epicId = proposeEpic(projectId, "Claimed by its agent");
+
+    call(
+        projectId,
+        "transition_epic",
+        Map.of("id", epicId, "target", "SUPERSEDED"),
+        response -> {
+          assertTrue(response.isError(), "supersede is not a claim an agent makes");
+          assertTrue(text(response).contains("operation on a plan"), text(response));
+        });
+
+    call(
+        projectId,
+        "transition_epic",
+        Map.of("id", epicId, "target", "REFINED"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("REFINED"), text(response));
+        });
+
+    authenticated()
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("epic.status", org.hamcrest.Matchers.equalTo("REFINED"));
+
+    call(
+        projectId,
+        "transition_epic",
+        Map.of("id", epicId, "target", "VERIFIED"),
+        response -> assertTrue(response.isError(), "moves are adjacent only"));
   }
 }

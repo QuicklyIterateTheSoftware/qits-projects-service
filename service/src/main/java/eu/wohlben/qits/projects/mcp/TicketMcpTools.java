@@ -8,7 +8,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.api.TicketBlocks;
-import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
+import eu.wohlben.qits.projects.api.PhaseAdvance;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -90,7 +90,7 @@ public class TicketMcpTools {
    * crossing {@code TicketDispatchController} declares: a workspace is {@code domain}'s, and this
    * module assembles both.
    */
-  @Inject TicketPhaseAdvance phaseAdvance;
+  @Inject PhaseAdvance phaseAdvance;
 
   /**
    * The block door's whole rule, shared with {@code TicketController}'s route over the same write.

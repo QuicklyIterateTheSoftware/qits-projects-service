@@ -1,12 +1,17 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.control.Archetypes;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.Optional;
 
 /**
- * The first turn a dispatched agent is given on a ticket — one template per phase, chosen by the
- * ticket's <b>status</b> and never by anything the caller said.
+ * The first turn a dispatched agent is given — one template per <b>phase</b> and per
+ * <b>archetype</b>, the phase chosen by the entity's status and never by anything the caller said.
+ * Until qits-394 this was {@code TicketPhasePrompts} and knew only tickets; the epic's one
+ * implementation turn lived in {@code EpicDispatchController}. Both are here now, because the
+ * status→phase rule is one rule for every archetype with a lifecycle.
  *
  * <h2>The status picks the phase, and that is the whole design</h2>
  *
@@ -15,157 +20,125 @@ import java.util.Optional;
  * EntityStatus}). So REPORTED starts the refine phase, REFINED starts implement, IMPLEMENTED starts
  * verify, and VERIFIED and DONE start nothing at all — the work is over and closing is a person's
  * move. {@link EntityStatus#DROPPED} starts nothing either, for the opposite reason: the work was
- * decided against, so there is no phase left to run and there never will be. {@link
- * #promptFor(WorkEntity)} is that reading, and it is the <b>only</b> place in this service that
- * turns a status into words.
+ * decided against, so there is no phase left to run and there never will be. {@link #phaseOf} is
+ * that reading, the <b>only</b> place in this service that turns a status into a phase, and it does
+ * not look at the archetype: an epic and a ticket at the same status run the same phase.
  *
  * <p>Two things follow from the prompt being derived rather than passed in, and both are the point
- * rather than a side effect. Pressing "assign agent" on a half-finished ticket <b>resumes</b> it at
- * the phase it actually stands in instead of starting it over — a ticket that was refined last week
- * gets the implement turn, not a second refinement of a description that is already written. And
- * there is exactly one mapping to keep true: a phase whose words move, moves here, and no door
- * holds a second copy of the vocabulary that could disagree with this one.
+ * rather than a side effect. Pressing dispatch on a half-finished entity <b>resumes</b> it at the
+ * phase it actually stands in instead of starting it over. And there is exactly one mapping to keep
+ * true: the SPA learns the phase a press would start from {@link #nextPhase} (served by {@code
+ * GET /entities/{id}/dispatch}) and never re-derives it.
+ *
+ * <h2>The words are per archetype, on purpose</h2>
+ *
+ * <p>An epic's refine phase and a ticket's want different words: a ticket is refined into its
+ * {@code description} and a dossier page at most, an epic into a feature/task tree and a dossier; a
+ * ticket's implement phase comments on a thread, an epic's marks tasks with {@code
+ * mark_task_implemented} and has no thread; a ticket verifies that what was reported no longer
+ * occurs, an epic that what it promised now holds. {@link #render} takes the archetype and picks
+ * the template, so no template has to read sensibly for both — and a kind with no templates is an
+ * {@link IllegalStateException} there rather than a ticket's words handed to something else.
  *
  * <h2>Three phases, one workspace, separated by a context reset</h2>
  *
- * <p>All three templates run in the <em>same</em> workspace on the same {@code ticket/<slug>}
- * branch — the dispatch door stands one up and the far side adopts the one already there — so what
- * separates the phases is a fresh session rather than a fresh checkout. That is why the implement
- * template forbids integrating the workspace in the imperative: integrating it is the one act that
- * would destroy the thing its successor needs, and it is also what the <em>previous</em>
- * instruction on this door told every agent to do.
+ * <p>All three templates run in the <em>same</em> workspace on the same branch — {@code
+ * ticket/<slug>} or {@code epic/<slug>} — so what separates the phases is a fresh session rather
+ * than a fresh checkout. That is why both implement templates forbid integrating the workspace in
+ * the imperative: integrating it is the one act that would destroy the ground the verify phase
+ * needs. (The epic's old single-shot instruction said the opposite, "integrate the workspace and see
+ * the release through"; it is retired with that door's own implementation.)
  *
  * <h2>Each template ends the same way, and that ending is load-bearing</h2>
  *
- * <p>The transition is the <b>agent's claim</b>, made explicitly with {@code transition_ticket}, and
- * it is reversible in both directions through the same door; where the agent could not finish, it
- * says what is missing on the thread and <b>leaves the status where it is</b>. That is the shape the
- * instruction this class replaces already argued for — an unsure agent needs a cheap correct answer
- * rather than a coin flip — and it matters more with six statuses than it did with two: a wrong
- * forward move now skips a whole phase, and the phase it skips is the one that would have caught it.
+ * <p>The transition is the <b>agent's claim</b>, made explicitly with {@code transition_ticket} or
+ * {@code transition_epic}, and it is reversible in both directions through the same door; where the
+ * agent could not finish, it says what is missing and <b>leaves the status where it is</b>. An
+ * unsure agent needs a cheap correct answer rather than a coin flip, and a wrong forward move skips a
+ * whole phase — the one that would have caught it. Whether the <em>next</em> phase then starts by
+ * itself is not these templates' business: that is the continue-or-stop bit the press recorded
+ * ({@code WorkEntity.dispatchContinues}), read by {@link PhaseAdvance}.
  *
- * <p><b>All three now name {@code block_ticket} in that same clause, and it is a second sentence
- * rather than a replacement.</b> "Leave the status where it is" stays correct and stays first: the
- * status is the phase to resume and moving it would claim work that did not land. What the flag
- * adds is the half the thread could never carry — a comment saying the work stopped is read by
- * whoever opens the ticket, while every surface that hands out work reads the status, so a ticket
- * stuck behind something outside it goes on advertising itself as ready and the next agent walks
- * into the same wall with the reason one read away. The clause is deliberately <b>bounded by its
- * examples</b> in every template, for the reason the verify template's fallback arm is: an agent
- * offered a way to stop that costs one call takes it, so the sentence names obstacles that are
- * outside the ticket — work owed elsewhere, a decision only a person can take, access it has not
- * got — and never "this is hard" or "this is half done", which are a phase in progress.
+ * <p><b>The ticket templates name {@code block_ticket} in that same clause, and the epic templates
+ * do not</b>: an epic has no block flag and no thread, so its "could not finish" arm says what is
+ * missing in the agent's report and leaves the status alone.
  *
  * <p><b>{@code block_ticket} is not in either daemon's bucket</b>, which puts it with {@code
  * update_ticket} and {@code put_dossier_page} rather than with {@code transition_ticket} — see the
  * seams section below, which names all three together and states what a move to kimi costs.
  *
- * <h2>Two seams have to hold, or all three of these are dead letters</h2>
- *
- * <p>This paragraph moved here from {@code TicketDispatchController.instruction(...)} along with the
- * words it is about, because it is about the words and not about the door. Both halves are checked
- * rather than assumed.
+ * <h2>Two seams have to hold, or all of these are dead letters</h2>
  *
  * <p>qits-workspace-daemon's {@code AgentLaunchService} lists {@code transition_ticket} in its
  * {@code TICKET_RESOLUTION_TOOLS} bucket, so the tool exists for a kimi session too — there {@code
  * enabledTools} is the whole tool surface rather than a pre-approval, and a tool that is not listed
  * does not exist for that session. And a dispatch keeps connecting <em>without</em> the {@code
  * agentReadOnly=true} marker — it goes through the daemon's {@code launchChat}, which never sets it
- * — so {@link eu.wohlben.qits.projects.mcp.ReadOnlyRepositoryToolFilter} does not hide the ticket
+ * — so {@link eu.wohlben.qits.projects.mcp.ReadOnlyRepositoryToolFilter} does not hide the entity
  * writes from an unattended run. If a dispatch ever starts marking itself read-only, every
  * transition and every comment below goes silent along with it.
  *
- * <p><b>These templates name three tools that bucket does <em>not</em> list</b>, and that is stated
- * here rather than left to be discovered: {@code update_ticket}, {@code put_dossier_page} and
- * {@code block_ticket} are in neither daemon's {@code repository} bucket (the workspace one carries
- * the two comment tools and {@code transition_ticket} and no other write). Every surface ships
- * CLAUDE with {@code SKIP_PERMISSIONS} today, so an unlisted tool is still reachable and the
- * sentences are actionable as they stand — the same reading the epic instruction's dossier sentence
- * carries. A surface moved to <b>kimi</b> needs all three added to qits-workspace-daemon's bucket
- * and to {@code AgentSurfaceDefaults}' copy of it on the same day, or the refine phase has been
- * told to write its result into a field it cannot write and all three phases have been told to
- * block with a tool that does not exist for them.
+ * <p><b>These templates name tools that bucket does <em>not</em> list</b>, and that is stated here
+ * rather than left to be discovered: {@code update_ticket}, {@code put_dossier_page}, {@code
+ * block_ticket}, {@code transition_epic} (new with qits-394), the epic tree writes the epic refine
+ * template names, and the two dossier reads. Every surface ships CLAUDE with {@code
+ * SKIP_PERMISSIONS} today, so an unlisted tool is still reachable and the sentences are actionable
+ * as they stand. A surface moved to <b>kimi</b> needs them added to qits-workspace-daemon's bucket
+ * and to {@code AgentSurfaceDefaults}' copy of it on the same day, or the phases have been told to
+ * write with tools that do not exist for them. {@code mark_task_implemented}, {@code get_epic} and
+ * {@code list_epics} are already listed.
  *
  * <h2>Every dispatched turn opens with a pointer to the project's flow brief</h2>
  *
- * <p>{@link #FLOW_BRIEF_POINTER} is prepended at the {@code Phase.render(WorkEntity)} seam —
- * <b>once, for all three templates</b> — and never inside {@link #refine}, {@link #implement} or
- * {@link #verify}. That placement is the same argument this class opens with: there is one mapping
- * and no second copy of the vocabulary, so a fourth template added beside those three inherits the
- * pointer instead of being a template somebody forgot to prepend it to. {@link
- * EpicDispatchController} reads the same constant rather than holding a second literal, which is
- * what makes the two doors' pointer text byte-identical by construction rather than by review.
+ * <p>{@link #FLOW_BRIEF_POINTER} is prepended at the {@link #render} seam — <b>once, for every
+ * template of every archetype</b> — and never inside a template. There is one mapping and no second
+ * copy of the vocabulary, so a template added beside these inherits the pointer instead of being a
+ * template somebody forgot to prepend it to.
  *
- * <p><b>It goes first</b> because the brief it points at is context for everything that follows:
- * the phase's own instructions are read against how work moves through this platform, not before
- * it.
- *
- * <p><b>The path is absolute</b> because that is the one form knowable from here. A workspace
- * container clones the project's repository at {@code /workspace} exactly ({@code
- * Provisioner.WORKSPACE_DIR} in qits-workspace-daemon), while the agent's working directory is not
- * guaranteed — so a relative path would be a guess made on this side about a shell on the other.
- *
- * <p><b>The absence clause is not padding.</b> These prompts are platform-wide rather than
- * qits-only: every project's dispatch carries this sentence, and only a project whose repository
- * carries the file has a brief to read. Without "if that file is not there", the first thing an
- * agent on every other project does is fail to follow an instruction, which is exactly the tone
- * this turn must not open in. Do not drop it.
+ * <p><b>It goes first</b> because the brief it points at is context for everything that follows.
+ * <b>The path is absolute</b> because a workspace container clones the project's repository at
+ * {@code /workspace} exactly ({@code Provisioner.WORKSPACE_DIR} in qits-workspace-daemon), while the
+ * agent's working directory is not guaranteed. <b>The absence clause is not padding</b>: these
+ * prompts are platform-wide, and only a project whose repository carries the file has a brief to
+ * read — without "if that file is not there", the first thing an agent on every other project does
+ * is fail to follow an instruction. Do not drop it.
  */
-final class TicketPhasePrompts {
+final class PhasePrompts {
 
-  private TicketPhasePrompts() {}
+  private PhasePrompts() {}
 
-  /**
-   * The pointer every dispatched agent's first turn opens with, on a ticket phase and on an epic
-   * alike. Package-private so {@link EpicDispatchController} — in this same package — reads the one
-   * constant rather than repeating the words; see the class javadoc for why it is worded and placed
-   * as it is.
-   */
+  /** The pointer every dispatched agent's first turn opens with; see the class javadoc. */
   static final String FLOW_BRIEF_POINTER =
       "Read /workspace/docs/development-flow.md first: a short brief on how work moves through this"
           + " platform — branch per slug, release request per repository, the quality gates, the"
           + " transitions, and when the workspace is resolved. If that file is not there, this"
           + " project carries no brief; proceed without it.";
 
-  /**
-   * The phase a status starts, or empty where it starts none. Private, and the single {@code
-   * switch} the rest of this class and the door both read through — {@link #promptFor} renders it
-   * and {@link #phaseNameFor} names it, so the words and the naming cannot come apart.
-   */
-  private enum Phase {
+  /** A phase a status starts. Its {@link #word} is what a comment, a log line and the SPA read. */
+  enum Phase {
     REFINE("refine"),
     IMPLEMENT("implement"),
     VERIFY("verify");
 
-    private final String word;
+    final String word;
 
     Phase(String word) {
       this.word = word;
     }
-
-    /**
-     * The single seam every phase's words come through, which is why the flow-brief pointer is
-     * prepended <b>here</b> rather than in the three templates — see the class javadoc. A fourth
-     * phase added to this switch carries the pointer without anybody remembering to add it.
-     */
-    private String render(WorkEntity ticket) {
-      String phaseTurn =
-          switch (this) {
-            case REFINE -> refine(ticket);
-            case IMPLEMENT -> implement(ticket);
-            case VERIFY -> verify(ticket);
-          };
-      return FLOW_BRIEF_POINTER + " " + phaseTurn;
-    }
   }
 
-  /** The one mapping: what has been achieved decides what runs next. */
-  private static Optional<Phase> phaseOf(WorkEntity ticket) {
+  /**
+   * The one mapping: what has been achieved decides what runs next — or empty where nothing does,
+   * including every row of a kind with no lifecycle (a feature, a task), whose status is null.
+   */
+  static Optional<Phase> phaseOf(WorkEntity entity) {
+    if (entity.status == null || Archetypes.legalStatuses(entity.archetype).isEmpty()) {
+      return Optional.empty();
+    }
     // The merged row stores the word, so it is read back into the lifecycle's own enum before the
-    // mapping is made — the same reading TicketService makes before it asks EntityLifecycle
-    // anything, and what keeps this switch exhaustive over the lifecycle's six words rather than
-    // open over whatever the String column holds.
-    return switch (EntityStatus.valueOf(ticket.status)) {
+    // mapping is made — what keeps this switch exhaustive over the six words rather than open over
+    // whatever the String column holds.
+    return switch (EntityStatus.valueOf(entity.status)) {
       case REPORTED -> Optional.of(Phase.REFINE);
       case REFINED -> Optional.of(Phase.IMPLEMENT);
       case IMPLEMENTED -> Optional.of(Phase.VERIFY);
@@ -175,32 +148,60 @@ final class TicketPhasePrompts {
     };
   }
 
+  /** The word of the phase a dispatch press would start now, or empty — what the SPA is served. */
+  static Optional<String> nextPhase(WorkEntity entity) {
+    return phaseOf(entity).map(phase -> phase.word);
+  }
+
   /**
-   * A phase that runs: its own word, for the comment the door stamps on the thread, beside the turn
-   * its agent is started with. One value rather than two lookups, so the door cannot name one phase
-   * and start another.
+   * A phase that runs: its own word, for the comment and the log line, beside the turn its agent is
+   * started with. One value rather than two lookups, so a caller cannot name one phase and start
+   * another.
    */
   record Started(String phase, String instruction) {}
 
   /**
-   * The phase this ticket's status starts, or <b>empty</b> when it starts none. Empty is an answer
-   * and not a failure — it is what the dispatch door refuses on, because a ticket past the work has
-   * no phase to begin and standing a workspace up for it would put a container on a branch nobody is
-   * going to push.
+   * The phase this entity's status starts with its archetype's turn, or <b>empty</b> when it starts
+   * none. Empty is an answer and not a failure — the dispatch path refuses on it, and the advance
+   * delivers nothing on it.
    */
-  static Optional<Started> startedBy(WorkEntity ticket) {
-    return phaseOf(ticket).map(phase -> new Started(phase.word, phase.render(ticket)));
+  static Optional<Started> startedBy(WorkEntity entity) {
+    return phaseOf(entity)
+        .map(phase -> new Started(phase.word, render(entity.archetype, phase, entity)));
+  }
+
+  /** The agent's first turn alone, which is what every assertion about the words reads. */
+  static Optional<String> promptFor(WorkEntity entity) {
+    return startedBy(entity).map(Started::instruction);
   }
 
   /**
-   * The agent's first turn alone, which is what every assertion about the words reads. Same mapping
-   * as {@link #startedBy}, and deliberately expressed through it rather than beside it.
+   * <b>The archetype-aware lookup</b>, and the single seam every template comes through — which is
+   * why the flow-brief pointer is prepended here and nowhere else.
    */
-  static Optional<String> promptFor(WorkEntity ticket) {
-    return startedBy(ticket).map(Started::instruction);
+  static String render(Archetype archetype, Phase phase, WorkEntity entity) {
+    String phaseTurn =
+        switch (archetype) {
+          case TICKET ->
+              switch (phase) {
+                case REFINE -> refineTicket(entity);
+                case IMPLEMENT -> implementTicket(entity);
+                case VERIFY -> verifyTicket(entity);
+              };
+          case EPIC ->
+              switch (phase) {
+                case REFINE -> refineEpic(entity);
+                case IMPLEMENT -> implementEpic(entity);
+                case VERIFY -> verifyEpic(entity);
+              };
+          case FEATURE, TASK ->
+              throw new IllegalStateException(
+                  "A " + archetype + " has no lifecycle, so it has no phase prompts");
+        };
+    return FLOW_BRIEF_POINTER + " " + phaseTurn;
   }
 
-  // ---- the three templates ------------------------------------------------------------------
+  // ---- the three ticket templates -----------------------------------------------------------
 
   /**
    * <b>REFINE</b>, run while the ticket is {@link EntityStatus#REPORTED}. What it has to produce is
@@ -250,7 +251,7 @@ final class TicketPhasePrompts {
    * means here: this phase's ordinary failure is not knowing enough yet, which is a re-press and
    * not a block.
    */
-  private static String refine(WorkEntity ticket) {
+  private static String refineTicket(WorkEntity ticket) {
     return "Refine ticket \""
         + ticket.title
         + "\" ("
@@ -336,7 +337,7 @@ final class TicketPhasePrompts {
    * flag says whether it can go on, and the word "blocked" is off the first clause so it cannot
    * read as an alternative to the transition.
    */
-  private static String implement(WorkEntity ticket) {
+  private static String implementTicket(WorkEntity ticket) {
     return "Implement ticket \""
         + ticket.title
         + "\" ("
@@ -411,7 +412,7 @@ final class TicketPhasePrompts {
    * deciding there is nothing left on the thread, which is a judgement about the ticket rather than
    * a report about the work, and the agent has no standing to make it.
    */
-  private static String verify(WorkEntity ticket) {
+  private static String verifyTicket(WorkEntity ticket) {
     return "Verify ticket \""
         + ticket.title
         + "\" ("
@@ -442,5 +443,145 @@ final class TicketPhasePrompts {
         + " ticket stays IMPLEMENTED, which is the phase to resume, and the block says the"
         + " verification is waiting rather than that it failed. A verification that actually failed"
         + " is the move back to REFINED and not a block.";
+  }
+
+  // ---- the three epic templates -------------------------------------------------------------
+
+  /**
+   * <b>REFINE</b> for an epic, run while it is {@link EntityStatus#REPORTED}. What it has to
+   * produce is a plan somebody else could implement from — which for an epic is three things, not
+   * one: a description that argues the change, a feature/task tree that breaks it down, and a
+   * dossier that holds the detail. This is what the {@code Refinement} room's agent has always been
+   * asked for, said to an agent in a workspace.
+   *
+   * <p><b>"INTO THE EPIC".</b> The ticket template's negative list, for the same reason: the
+   * implement phase reads {@code get_epic} and the dossier and nothing else, so a plan written as a
+   * file in the tree or a document elsewhere leaves a REFINED epic with nothing to build from.
+   *
+   * <p><b>The dossier is the default here, where for a ticket it is the exception.</b> An epic's
+   * description is the pitch and deliberately short; the paths, names and exact values belong in
+   * the dossier, and the implement template sends its agent there — so this one has to put them
+   * there.
+   *
+   * <p><b>The transition freezes the scope</b> ({@code EntityLifecycle.requireReported}): from
+   * REFINED the description, the tree and the dossier stop being editable. The sentence says so,
+   * because the claim is bigger than a ticket's — and says it is reversible, because moving back to
+   * REPORTED is how an epic's scope is reopened.
+   */
+  private static String refineEpic(WorkEntity epic) {
+    return "Refine epic \""
+        + epic.title
+        + "\" (slug "
+        + epic.slug
+        + "). It is REPORTED, so the phase that runs now is refinement. Read it first with get_epic"
+        + " (id "
+        + epic.id
+        + ") — the description is the pitch and the feature/task tree is the plan so far — and"
+        + " read its dossier with list_dossier_pages and get_dossier_page."
+        + " Explore the code the epic touches further than the description goes."
+        + " Make the description argue the change — what is wrong today and what the epic decides"
+        + " — with update_epic. Break the work into features with add_feature and update_feature,"
+        + " and each feature into tasks with add_task and update_task, each task naming the one"
+        + " repository its change lands in, with dependsOn links wherever one must land before"
+        + " another."
+        + " Write the detail the description leaves out — paths, names, exact values, examples,"
+        + " sequences — into the epic's DOSSIER with put_dossier_page (epicId "
+        + epic.id
+        + "): the dossier is what the implement phase builds from."
+        + " Everything goes INTO THE EPIC — its description, its tree and its dossier — not a file"
+        + " in the repository, not a document anywhere else: that is where the next phase reads"
+        + " its brief."
+        + " DO NOT IMPLEMENT ANYTHING in this phase: no fix, no refactor, no commit. The implement"
+        + " phase is a separate session that starts from what you leave behind."
+        + " You are done when somebody else could implement every task from the epic and its"
+        + " dossier alone. Then transition_epic to REFINED: it freezes the scope — the description,"
+        + " the tree and the dossier stop being editable — and it is your claim that the plan is"
+        + " complete; it is reversible through the same door. If you could not get there, say in"
+        + " your report what is missing and leave the epic REPORTED.";
+  }
+
+  /**
+   * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#REFINED}. The words the old
+   * single-shot epic dispatch sent (qits-394 retired its implementation), with three changes that
+   * follow from the epic now having phases after this one.
+   *
+   * <p>What is kept, each for the reason it always had: read the epic live with {@code get_epic};
+   * read the DOSSIER for the detail the epic leaves out, and know it is read-only from here (the
+   * REPORTED guard); work the features and tasks in {@code dependsOn} order; mark each task with
+   * {@code mark_task_implemented} <em>as it lands</em>, so a run that dies halfway leaves a true
+   * record; and released is the definition of done.
+   *
+   * <p>What changed. <b>Release every touched repository</b> is spelled out, because an epic's
+   * tasks land in several repositories and each has its own release request. <b>DO NOT INTEGRATE
+   * THE WORKSPACE</b> replaces "integrate the workspace": verification now happens in this same
+   * workspace. And <b>the closing move is the agent's transition to IMPLEMENTED</b> where it used to
+   * stop short of it: the verify phase starts from that claim. The reason it was withheld is still
+   * true — moving an epic to IMPLEMENTED stamps every task still unmarked — so the sentence makes it
+   * conditional on every task being marked, and says why.
+   */
+  private static String implementEpic(WorkEntity epic) {
+    return "Implement epic \""
+        + epic.title
+        + "\" (slug "
+        + epic.slug
+        + "). It is REFINED, so the phase that runs now is implementation. Read it first with"
+        + " get_epic (id "
+        + epic.id
+        + ") — the description and its feature/task tree are the brief."
+        + " The epic is the pitch; its DOSSIER is what changes and how it works — the paths, names,"
+        + " exact values, examples and figures the description leaves out. List it with"
+        + " list_dossier_pages and read a page with get_dossier_page whenever a task's detail is"
+        + " unclear, before deciding it yourself. The scope and the dossier are read-only while the"
+        + " epic is REFINED, so if the plan is wrong or silent on something you had to decide, say"
+        + " that in your report rather than trying to correct it."
+        + " Work the features and their tasks in order, respecting the dependsOn links between"
+        + " them."
+        + " Mark each task implemented with mark_task_implemented as it lands, rather than in a"
+        + " batch at the end."
+        + " RELEASING IS THE GOAL: a task has landed when its change is released and deployed — not"
+        + " when it is merged, and not when the build is green. Release every repository you"
+        + " touched through its own release request, and see each release through."
+        + " DO NOT INTEGRATE THE WORKSPACE. Verification happens here, in this workspace, after the"
+        + " releases, and integrating it ends the workspace the next phase needs."
+        + " Once every task is marked and every touched repository is released and deployed,"
+        + " transition_epic to IMPLEMENTED: the transition is your claim, it is reversible, and it"
+        + " stamps every task still unmarked as implemented — so never make it with a task"
+        + " outstanding. If you could not finish — blocked, refused, or released only in part — say"
+        + " in your report what is missing and leave the epic REFINED.";
+  }
+
+  /**
+   * <b>VERIFY</b> for an epic, run while it is {@link EntityStatus#IMPLEMENTED}. The ticket
+   * template's shape — the live platform is the subject, reproduce before reading code, say which,
+   * fail backwards to REFINED — applied to what an epic claims: not that a reported fault is gone,
+   * but that what the description promised now holds, feature by feature.
+   *
+   * <p>No thread, so "say which" goes in the agent's report. Closing (DONE) stays a person's move,
+   * exactly as for a ticket; VERIFIED is as far as this phase goes, and reaching it asks for the
+   * release of {@code epic/<slug>} ({@link PhaseAdvance}).
+   */
+  private static String verifyEpic(WorkEntity epic) {
+    return "Verify epic \""
+        + epic.title
+        + "\" (slug "
+        + epic.slug
+        + "). It is IMPLEMENTED, so its changes are released and deployed and the phase that runs"
+        + " now is verification. Read it first with get_epic (id "
+        + epic.id
+        + ") — the description is what was decided, the tree is what was built, and the dossier"
+        + " (list_dossier_pages, get_dossier_page) says how it should behave."
+        + " Verify ON THE PLATFORM that what the epic promised now holds, feature by feature: the"
+        + " live platform is the subject here, and a passing test suite is not the claim being made."
+        + " Where a behaviour is conceptually unreproducible on demand — a race that needed a"
+        + " particular night, a scheduler window that has passed — verify it instead by READING THE"
+        + " RELEVANT CODE CHANGES and stating why they make it hold."
+        + " Say in your report which features you confirmed live and which by reading code, and"
+        + " why."
+        + " Then transition_epic to VERIFIED: the transition is your claim, and it is reversible in"
+        + " both directions through the same door."
+        + " If something does not hold, transition_epic BACK TO REFINED and say in your report what"
+        + " failed — that is how implementation starts again."
+        + " Closing the epic is a person's move and not yours. If you could not establish either"
+        + " answer, say so and leave the epic IMPLEMENTED.";
   }
 }

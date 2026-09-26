@@ -6,9 +6,11 @@ import eu.wohlben.qits.entities.control.TaskService;
 import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.NotFoundException;
+import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -18,6 +20,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
+import org.jboss.logging.Logger;
 
 /**
  * The epic-refinement half of the "repository" MCP server — the surface a per-project refinement
@@ -27,9 +30,17 @@ import java.util.List;
  * anyway (it reads the repositories it is planning work in).
  *
  * <p><strong>Use case: drafting and refining a plan.</strong> The agent lists the project's epics,
- * proposes a new one or extends a draft, and fills in its feature/task tree. Freezing a draft is
- * deliberately <em>not</em> here — moving an epic from REPORTED to REFINED is a human act in the UI, so
- * there is no transition tool for the model to reach for.
+ * proposes a new one or extends a draft, and fills in its feature/task tree.
+ *
+ * <p><strong>{@code transition_epic} is here since qits-394, and it replaces a deliberate
+ * absence.</strong> Freezing a draft used to be a human act in the UI alone, because nothing
+ * dispatched an agent that could honestly claim a plan was complete. The one dispatch path now runs
+ * an epic through the same refine → implement → verify phases a ticket runs, each ending with the
+ * agent's own claim — and a phase whose claim cannot be made is a phase whose advance never fires.
+ * So the lifecycle move is on this server exactly as {@code transition_ticket} is, reversible and
+ * adjacent-only, through {@code EpicResolutions} like every door that moves an epic, and followed by
+ * {@code PhaseAdvance}. What stays off the server is supersede, which is an operation on a plan
+ * rather than a claim about work.
  *
  * <p>Scope comes from {@link ProjectScope} (the {@code X-QITS-Project} header), never from a tool
  * argument, and every id a tool is handed is checked back to that project — an epic, feature or
@@ -76,6 +87,14 @@ public class EpicMcpTools {
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
+
+  /** The only way a door moves an epic: discards a refinement a resolving move would strand. */
+  @Inject EpicResolutions resolutions;
+
+  /** The next phase after an agent's claim — see {@code PhaseAdvance}. */
+  @Inject PhaseAdvance phaseAdvance;
+
+  private static final Logger LOG = Logger.getLogger(EpicMcpTools.class);
 
   // --- Result shapes --------------------------------------------------------
 
@@ -256,8 +275,9 @@ public class EpicMcpTools {
       description =
           "Propose a new epic for this project. It is created as a REPORTED draft — nothing is"
               + " committed to and no branches are cut — so this is the right move whenever the"
-              + " work does not belong under an existing draft. Freezing the draft into"
-              + " implementation is a human decision made in the UI; you cannot do it.")
+              + " work does not belong under an existing draft. Freezing it (transition_epic to"
+              + " REFINED) is the claim that its plan is complete — make it only if you were"
+              + " dispatched to refine this epic.")
   public EpicSummary proposeEpic(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(required = false, description = "the long-form Markdown spine") String description) {
@@ -286,6 +306,58 @@ public class EpicMcpTools {
             description == null ? current.description : description,
             changedBy());
     announce();
+    return summarizeEpic(epic, projectSlug());
+  }
+
+  /**
+   * The epic's LIFECYCLE move, the twin of {@code transition_ticket}: one adjacent step along the
+   * one lifecycle ({@code EntityLifecycle.LEGAL_TARGETS}), or off it into DROPPED. Through {@link
+   * EpicResolutions}, never {@code EpicService.transition}, so a resolving move discards the epic's
+   * refinement first; then {@link PhaseAdvance}, after the move is recorded, which delivers the next
+   * phase when the run was dispatched as a flow and asks for the release at VERIFIED. Supersede is
+   * not reachable from here: the tool takes a status word, and {@code SUPERSEDED} is not one.
+   */
+  @McpServer("repository")
+  @Tool(
+      name = "transition_epic",
+      description =
+          "Move an epic along its lifecycle. A status is a claim about what has been ACHIEVED, so"
+              + " only move to one you can honestly make: REPORTED — the work is raised and its plan"
+              + " is being written; REFINED — the plan is complete: description, feature/task tree"
+              + " and dossier, and moving here FREEZES that scope; IMPLEMENTED — every task is"
+              + " marked with mark_task_implemented and every touched repository is released AND"
+              + " deployed (moving here stamps any task still unmarked, so never make it with work"
+              + " outstanding); VERIFIED — you confirmed on the platform that what the epic promised"
+              + " holds; DONE — closed, which is a person's call; DROPPED — a decision was taken not"
+              + " to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or"
+              + " back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED <-> DONE, one step at a"
+              + " time. A verification that fails is the move back from IMPLEMENTED to REFINED;"
+              + " reopening a frozen scope is the move back from REFINED to REPORTED. Do NOT drop an"
+              + " epic merely because it is hard or you could not finish it: leave it where it is"
+              + " and say what is missing.")
+  public EpicSummary transitionEpic(
+      @ToolArg(description = "id of an epic in this project") String id,
+      @ToolArg(
+              description =
+                  "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
+                      + " DROPPED. On the pipeline it must be a neighbour of the epic's current"
+                      + " status")
+          String target) {
+    requireEpicInProject(id);
+    if (target != null && eu.wohlben.qits.entities.control.EpicService.SUPERSEDE.equals(target)) {
+      throw new eu.wohlben.qits.entities.error.ConflictException(
+          "SUPERSEDED is an operation on a plan, not a status an agent claims — a person"
+              + " supersedes an epic from the board.");
+    }
+    String changedBy = changedBy();
+    WorkEntity epic = resolutions.transition(id, target, changedBy).epic();
+    announce();
+    // The agent's claim IS the trigger for the next phase: after the move, outside its transaction.
+    try {
+      phaseAdvance.afterTransition(epic, changedBy);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not start the phase epic %s just moved into", epic.id);
+    }
     return summarizeEpic(epic, projectSlug());
   }
 
@@ -423,7 +495,7 @@ public class EpicMcpTools {
    * by people as work ships", and it stays exactly as true as it was. It is a stance about the
    * <em>refining</em> agent: one that is drafting a plan must not also be able to declare parts of
    * that plan shipped, or the scope and the progress have the same author. The agent this tool is
-   * for is a different one on a different branch — dispatched by {@code EpicDispatchController} onto
+   * for is a different one on a different branch — dispatched by {@code EntityDispatch} onto
    * an epic that is already frozen — and it reports on work it actually did. Two agents, two
    * stances, two tools; the refusal in {@code update_task} is not softened, it is pointed at its
    * neighbour.

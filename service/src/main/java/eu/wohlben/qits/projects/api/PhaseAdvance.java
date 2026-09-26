@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.TicketService;
-import eu.wohlben.qits.entities.control.WorkBranches;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
@@ -17,8 +17,31 @@ import java.util.Optional;
 import org.jboss.logging.Logger;
 
 /**
- * The next phase starts itself: a ticket that just moved has the turn its <b>new</b> status begins
- * delivered into the workspace already standing on its branch, and the thread is told what happened.
+ * The next phase starts itself: an entity that just moved has the turn its <b>new</b> status begins
+ * delivered into the workspace already standing on its branch — <b>when the press that started the
+ * run asked for the whole flow</b> — and a ticket's thread is told what happened. It was {@code
+ * TicketPhaseAdvance} until qits-394; everything below that says "ticket" holds for an epic too,
+ * with the three differences the next section names.
+ *
+ * <h2>What qits-394 changed: epics, and the continue-or-stop bit</h2>
+ *
+ * <p><b>The bit.</b> {@link WorkEntity#dispatchContinues} is written by every dispatch press
+ * ({@link EntityDispatch}): {@code true} for <em>Dispatch</em> (the whole flow), {@code false} for
+ * <em>Run the next phase</em>. This class reads it at exactly one place — before the turn is
+ * delivered — and a stopped run delivers nothing, says nothing, and waits for the next press. It
+ * reads it off the row it was handed, i.e. as the transition left it, because the press and the
+ * transition are different requests hours apart. <b>The release at VERIFIED does not read it</b>:
+ * the branch is finished whoever pressed what, so a one-phase run that reaches VERIFIED asks for its
+ * release exactly as a flow does. So does the IMPLEMENTED note about a release still standing open,
+ * which is context about a release and not a phase started.
+ *
+ * <p><b>Epics.</b> Both lifecycle archetypes come through here: {@code TicketController} and {@code
+ * transition_ticket} for a ticket, {@code EpicController.transition} and {@code transition_epic} for
+ * an epic. The phase and its words come from {@link PhasePrompts}, which is archetype-aware; the
+ * address from {@link EntityWorkspaces}, which knows both branch shapes. What differs for an epic:
+ * <b>it has no comment thread</b>, so every sentence this class would write on one is a log line
+ * instead (and no {@code TICKETS} hint is fired); it is looked up at the workspaces port by epic id;
+ * and its release request is titled "Epic &lt;slug&gt;: …". An epic is never blocked.
  *
  * <h2>The transition is the whole trigger</h2>
  *
@@ -34,10 +57,10 @@ import org.jboss.logging.Logger;
  * off a release — those say something about a ticket without saying that a phase ended, and a phase
  * started from any of them would be started from a claim nobody made.
  *
- * <h2>One rule, and it is {@link TicketPhasePrompts} unchanged</h2>
+ * <h2>One rule, and it is {@link PhasePrompts} unchanged</h2>
  *
  * <p><b>The prompt for a status is the work that starts from it</b>, which is exactly what {@link
- * TicketPhasePrompts#startedBy(WorkEntity)} already computes for the dispatch door. This class adds no
+ * PhasePrompts#startedBy(WorkEntity)} already computes for the dispatch door. This class adds no
  * second table and no second switch: it reads that one, and everything else follows from it.
  *
  * <p><b>Direction is deliberately not consulted.</b> The ticket's new status is the entire input, so
@@ -122,15 +145,15 @@ import org.jboss.logging.Logger;
  * structural property instead of a promise. Both call sites are non-transactional and call this
  * <em>after</em> the service returns, exactly as they already fire their change hints.
  *
- * <h2>It lives in {@code projects.api} for {@link TicketDispatchController}'s reason</h2>
+ * <h2>It lives in {@code projects.api} for {@link EntityDispatch}'s reason</h2>
  *
  * <p>It needs {@code domain} — the project, the wrapper and the port — and the entities jar depends on
  * {@code domain} nowhere. The <em>service</em> layer may cross, which is the crossing {@code
  * ProjectTicketsController} already makes, and the package name is where that crossing is declared.
  * It is {@code public} for one narrow reason: both transition surfaces are outside this package
  * ({@code eu.wohlben.qits.entities.api.TicketController} and {@code
- * eu.wohlben.qits.projects.mcp.TicketMcpTools}), and the alternative — a copy per surface — is the
- * drift this class exists to prevent. {@link TicketPhasePrompts} stays package-private and is read
+ * eu.wohlben.qits.projects.mcp.TicketMcpTools}, and their epic twins), and the alternative — a copy
+ * per surface — is the drift this class exists to prevent. {@link PhasePrompts} stays package-private and is read
  * from here, which is the whole reason this class is in that package rather than beside either
  * caller.
  *
@@ -138,7 +161,7 @@ import org.jboss.logging.Logger;
  *
  * <p>Every failure is a WARN and a sentence on the thread, because <b>that comment is the only place
  * a reader learns whether an agent is now working</b>. The sentence names the phase that was started
- * — from {@link TicketPhasePrompts#startedBy}, so the words and the naming come from one switch —
+ * — from {@link PhasePrompts#startedBy}, so the words and the naming come from one switch —
  * and where nothing was delivered it says so with the reason and <b>claims nothing about an
  * agent</b>: a thread saying work resumed when it did not is worse than a thread saying nothing.
  *
@@ -147,7 +170,7 @@ import org.jboss.logging.Logger;
  * workspace, so it is the ordinary answer for a ticket nobody has dispatched an agent onto — and a
  * person walking a ticket through the statuses by hand would otherwise have their thread filled with
  * "there was nobody to tell", once per move. The same silence covers a project with no wrapper
- * repository ({@link TicketWorkspaces#find}) and an assembly with no {@link WorkspaceAgentTurns}
+ * repository ({@link EntityWorkspaces#find}) and an assembly with no {@link WorkspaceAgentTurns}
  * implementation at all: in all three there is no workspace to speak to, nothing was asked of
  * anybody, and nothing is said.
  *
@@ -157,13 +180,13 @@ import org.jboss.logging.Logger;
  * browser has seen the status move regardless.
  */
 @ApplicationScoped
-public class TicketPhaseAdvance {
+public class PhaseAdvance {
 
-  private static final Logger LOG = Logger.getLogger(TicketPhaseAdvance.class);
+  private static final Logger LOG = Logger.getLogger(PhaseAdvance.class);
 
   @Inject TicketService tickets;
 
-  @Inject TicketWorkspaces workspaces;
+  @Inject EntityWorkspaces workspaces;
 
   @Inject ProjectChangePublisher publisher;
 
@@ -217,13 +240,13 @@ public class TicketPhaseAdvance {
    * string the transition's audit row carries, whichever door it came through, and it keeps this bean
    * out of the request context entirely.
    *
-   * @param ticket the ticket <b>as it is after the move</b> — the new status is the only input to
-   *     which phase starts
+   * @param ticket the ticket or epic <b>as it is after the move</b> — the new status is the only
+   *     input to which phase starts, and its {@code dispatchContinues} is whether it starts at all
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
   public void afterTransition(WorkEntity ticket, String changedBy) {
     // The merged row stores the status word; VERIFIED is compared against it by name, which is what
-    // the column holds. See TicketPhasePrompts.phaseOf for the same reading made one call down.
+    // the column holds. See PhasePrompts.phaseOf for the same reading made one call down.
     if (EntityStatus.VERIFIED.name().equals(ticket.status)) {
       // The one move that starts no phase and is still not nothing: the work is good, so the branch
       // it was done on is asked to be released. See the class javadoc.
@@ -243,7 +266,7 @@ public class TicketPhaseAdvance {
           ticket.id, ticket.status);
       return;
     }
-    Optional<TicketPhasePrompts.Started> started = TicketPhasePrompts.startedBy(ticket);
+    Optional<PhasePrompts.Started> started = PhasePrompts.startedBy(ticket);
     if (started.isEmpty()) {
       // DONE and DROPPED, now that VERIFIED is answered above: the work is over, or it was decided
       // against. Nothing to do either way, and nothing to say about having done nothing.
@@ -252,7 +275,7 @@ public class TicketPhaseAdvance {
     if (turns.isUnsatisfied()) {
       return;
     }
-    Optional<TicketWorkspaces.Target> target = workspaces.find(ticket);
+    Optional<EntityWorkspaces.Target> target = workspaces.find(ticket);
     if (target.isEmpty()) {
       LOG.warnf(
           "Ticket %s moved to %s but its project (%s) has no wrapper repository, so there is no"
@@ -260,7 +283,18 @@ public class TicketPhaseAdvance {
           ticket.id, ticket.status, ticket.projectId, started.get().phase());
       return;
     }
-    deliver(ticket, started.get(), target.get(), changedBy);
+    if (ticket.dispatchContinues) {
+      deliver(ticket, started.get(), target.get(), changedBy);
+    } else {
+      // The continue-or-stop bit, read at its one place: the press that started this run asked for
+      // one phase, so the next one waits for somebody to press again. Nothing is said on a thread —
+      // whether a workspace even stands on the branch is not known without asking, and a person
+      // stepping an entity by hand must not collect a sentence per move.
+      LOG.infof(
+          "%s %s moved to %s; its run was dispatched for one phase, so the %s phase is not started"
+              + " until somebody presses again",
+          ticket.archetype, ticket.id, ticket.status, started.get().phase());
+    }
     if (EntityStatus.IMPLEMENTED.name().equals(ticket.status)) {
       noteTheReleaseThatStandsOpen(ticket, target.get(), changedBy);
     }
@@ -284,10 +318,16 @@ public class TicketPhaseAdvance {
           ticket.id);
       return;
     }
-    String branch = WorkBranches.ticket(ticket).branch();
+    String branch = EntityWorkspaces.branchOf(ticket);
+    boolean isTicket = ticket.archetype == Archetype.TICKET;
     List<WorkspaceAgentDispatch.Reference> found;
     try {
-      found = dispatchedWorkspaces.get().workspacesReferencing(List.of(ticket.id), List.of());
+      found =
+          dispatchedWorkspaces
+              .get()
+              .workspacesReferencing(
+                  isTicket ? List.of(ticket.id) : List.of(),
+                  isTicket ? List.of() : List.of(ticket.id));
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not touch a transition that
       // has already been recorded. Nothing is known about the branch, which is the "no workspace"
@@ -315,7 +355,7 @@ public class TicketPhaseAdvance {
           releaseRequests.request(
               standing.repositoryId(),
               branch,
-              "Ticket " + ticket.slug + ": " + ticket.title,
+              (isTicket ? "Ticket " : "Epic ") + ticket.slug + ": " + ticket.title,
               requester,
               // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
               // nothing to state — the ticket carries no urgency a release could read.
@@ -397,7 +437,7 @@ public class TicketPhaseAdvance {
    * withdraw, so the tail is dropped again on the way past.
    */
   private void noteTheReleaseThatStandsOpen(
-      WorkEntity ticket, TicketWorkspaces.Target target, String changedBy) {
+      WorkEntity ticket, EntityWorkspaces.Target target, String changedBy) {
     String branch = target.branch();
     ReleaseRequestDto open;
     try {
@@ -447,8 +487,8 @@ public class TicketPhaseAdvance {
    */
   private void deliver(
       WorkEntity ticket,
-      TicketPhasePrompts.Started started,
-      TicketWorkspaces.Target target,
+      PhasePrompts.Started started,
+      EntityWorkspaces.Target target,
       String changedBy) {
     String branch = target.branch();
     WorkspaceAgentTurns.Turn turn;
@@ -537,6 +577,12 @@ public class TicketPhaseAdvance {
    * here, which is what makes "a hint only where something was written" true by construction.
    */
   private void say(WorkEntity ticket, String body, String changedBy) {
+    if (ticket.archetype != Archetype.TICKET) {
+      // An epic has no thread, and its description is the plan rather than a log — the sentence a
+      // ticket would carry is said where a person debugging a hand-off will look, and nowhere else.
+      LOG.infof("%s %s: %s", ticket.archetype, ticket.id, body);
+      return;
+    }
     try {
       tickets.addComment(ticket.id, body, changedBy);
       publisher.fire(ticket.projectId, ProjectChangeHint.Topic.TICKETS);

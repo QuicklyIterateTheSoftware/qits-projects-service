@@ -699,7 +699,7 @@ public class TicketMcpToolsTest {
    * <b>The agent's own claim starts the next phase.</b> {@code transition_ticket} is the whole
    * trigger, so the MCP surface has to reach the hand-off exactly as the REST route does — this is
    * the surface that matters most for it, since it is the door an agent finishing a phase comes
-   * through. What the hand-off <em>does</em> with the answer is {@code TicketPhaseAdvanceTest}'s;
+   * through. What the hand-off <em>does</em> with the answer is {@code PhaseAdvanceTest}'s;
    * what is pinned here is that the two surfaces are one flow and not two, and that the comment is
    * stamped by whoever the session named (this surface's own {@code mcp-agent} fallback only
    * applies where nothing named it, which under the shipped {@code %test} dev user is never here).

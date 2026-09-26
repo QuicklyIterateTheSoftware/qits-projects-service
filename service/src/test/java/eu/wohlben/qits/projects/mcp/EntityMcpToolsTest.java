@@ -484,8 +484,9 @@ public class EntityMcpToolsTest {
               assertTrue(names.contains("list_entities"), names.toString());
               assertFalse(names.contains("transition_entity"), names.toString());
               assertFalse(names.contains("move_entity"), names.toString());
-              // Still no epic lifecycle move, which the archetype transition does not become.
-              assertFalse(names.contains("transition_epic"), names.toString());
+              // The epic's lifecycle move is its own tool (transition_epic, qits-394); the
+              // archetype transition does not become it, and the two stay two names.
+              assertTrue(names.contains("transition_epic"), names.toString());
 
               var transition =
                   tools.stream().filter(t -> t.name().equals("transition_entities")).findFirst();

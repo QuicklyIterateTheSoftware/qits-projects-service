@@ -62,6 +62,17 @@ public class EpicController {
    */
   @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
 
+  /**
+   * The next phase after a move, for an epic exactly as for a ticket (qits-394): the turn the new
+   * status starts, delivered into the workspace on {@code epic/<slug>} when the run that stands there
+   * was dispatched as a flow, and the release asked for at VERIFIED either way. See {@code
+   * PhaseAdvance}.
+   */
+  @Inject eu.wohlben.qits.projects.api.PhaseAdvance phaseAdvance;
+
+  private static final org.jboss.logging.Logger LOG =
+      org.jboss.logging.Logger.getLogger(EpicController.class);
+
   // --- Epic ---
 
   public record GetEpicRequest() {
@@ -122,10 +133,17 @@ public class EpicController {
   @Path("/{id}/transition")
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
-    var result =
-        epicResolutions.transition(id, request.target(), EntitiesPrincipal.changedBy(identity));
+    String changedBy = EntitiesPrincipal.changedBy(identity);
+    var result = epicResolutions.transition(id, request.target(), changedBy);
     // A supersede spawns a second epic in the same project, so one hint still covers both rows.
     hints.fire(result.epic().projectId);
+    // AFTER the move is recorded and outside its transaction, as the ticket door does it.
+    try {
+      phaseAdvance.afterTransition(result.epic(), changedBy);
+    } catch (RuntimeException e) {
+      // It says it must not throw; a throw is a bug in it and must not touch a recorded move.
+      LOG.warnf(e, "Could not start the phase epic %s just moved into", result.epic().id);
+    }
     return new TransitionEpicRequest.Response(
         qualifiedIds.qualify(workEntityMapper.toEpicDto(result.epic())),
         result.successor() == null

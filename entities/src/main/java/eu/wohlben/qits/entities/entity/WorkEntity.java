@@ -206,6 +206,28 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public boolean blocked;
 
   /**
+   * <b>Whether the phase advance carries this entity's run on by itself</b> — the continue-or-stop
+   * bit of the one dispatch path (qits-394). {@code true} is <em>Dispatch</em>: every transition
+   * the agent claims delivers the next phase's prompt into the workspace standing on the branch.
+   * {@code false} is <em>Run the next phase</em>: one phase runs and the next transition delivers
+   * nothing, so a person steps the entity on by pressing again.
+   *
+   * <p><b>It lives on the entity because the entity is the one row this service holds for a run of
+   * work.</b> The press that records it and the transition that reads it are different requests,
+   * minutes or hours apart, and the workspace the run stands in is qits-workspaces' row, not ours.
+   * Written by every dispatch press ({@code EntityDispatchService.setDispatchContinues}) and by
+   * nothing else — a transition leaves it alone, which is exactly what lets it survive the round
+   * trip through the agent's own claim.
+   *
+   * <p>The release a move into VERIFIED asks for is <b>not</b> governed by it: that branch is
+   * finished whoever pressed what. Not an {@code EntityProperty}, for {@link #blocked}'s reason.
+   * The Java default matches the column's ({@code not null default true}, epics V16), so a row
+   * created here without saying is a row that continues, as a ticket always did.
+   */
+  @Column(name = "dispatch_continues", nullable = false)
+  public boolean dispatchContinues = true;
+
+  /**
    * Bug or improvement ({@link TicketType}), on a ticket and on nothing else. Named {@code
    * ticketType} rather than {@code type}, because {@code type} in a row holding four archetypes
    * reads as the archetype, which is the one thing it is not.

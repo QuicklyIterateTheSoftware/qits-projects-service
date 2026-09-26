@@ -74,6 +74,7 @@ class AgentReadAccessTest {
           AgentContainerController.class,
           AgentMcpCatalogController.class,
           AgentSurfaceConfigurationController.class,
+          EntityDispatchController.class,
           PinsController.class,
           ProjectController.class,
           ProjectEventsController.class,
