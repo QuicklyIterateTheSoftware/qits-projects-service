@@ -50,7 +50,7 @@ public class RefinementContainerFactoryTest {
         factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo");
     Map<String, String> env = request.spec().env();
 
-    assertEquals("ws://qits-projects:8080/projects/refinement-daemon/7", env.get("QITS_WORKSPACE_DAEMON_URL"));
+    assertEquals("ws://dev-qits-projects:8080/projects/refinement-daemon/7", env.get("QITS_WORKSPACE_DAEMON_URL"));
     assertEquals("/projects/refinement-container/7/", env.get("QITS_WORKSPACE_DAEMON_API_BASE_PATH"));
     assertEquals("refining-sharper-onboarding", env.get("QITS_WORKSPACE_DAEMON_WORKSPACE_ID"));
     assertEquals("repo-1", env.get("QITS_WORKSPACE_DAEMON_REPOSITORY_ID"));
@@ -66,7 +66,7 @@ public class RefinementContainerFactoryTest {
     assertFalse(env.containsKey("QITS_WORKSPACE_DAEMON_SERVICE_PROXY_BASE"));
     assertFalse(env.get("QITS_WORKSPACE_DAEMON_API_TOKEN").isBlank());
     // Two MCP servers, and no actions server — there is no actions surface on this route.
-    assertEquals("http://qits-projects:8080/projects/mcp", env.get("QITS_REPOSITORY_MCP_URL"));
+    assertEquals("http://dev-qits-projects:8080/projects/mcp", env.get("QITS_REPOSITORY_MCP_URL"));
     assertTrue(env.get("QITS_OBSERVABILITY_MCP_URL").endsWith("/observability/mcp"));
     assertFalse(env.containsKey("QITS_ACTIONS_MCP_URL"));
     // The shared credential home, under the daemon's own qits.workspace.-prefixed key.

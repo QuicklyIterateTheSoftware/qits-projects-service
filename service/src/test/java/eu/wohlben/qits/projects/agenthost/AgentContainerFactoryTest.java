@@ -173,8 +173,13 @@ class AgentContainerFactoryTest {
   void injectsTheDaemonEnvironmentContract() {
     Map<String, String> env = spec().env();
 
+    // THE AUTHORITY CARRIES THE TIER, and that is the half worth asserting rather than the path.
+    // It read `qits-projects` — the deleted platform plane's bare alias — until 2026-09-26, and the
+    // daemon dials this verbatim from an environment frozen at container creation. So a bare
+    // authority here is a container that reconnect-loops for its whole life against a name that
+    // resolves nowhere, in a log nobody reads. See OwnHostConfigTest for the rest of that argument.
     assertEquals(
-        "ws://qits-projects:8080/projects/daemon/" + PROJECT_ID,
+        "ws://dev-qits-projects:8080/projects/daemon/" + PROJECT_ID,
         env.get("QITS_PROJECTS_DAEMON_URL"),
         "an append-only cross-repo path; the daemon dials it verbatim and parses nothing out of it");
     assertEquals(
@@ -310,7 +315,7 @@ class AgentContainerFactoryTest {
     // Same host and port as the control socket above, and this service's own MCP root path — the
     // server carrying the epic tools a refinement session drafts through. Stated, so the daemon does
     // not have to derive it from the socket's authority.
-    assertEquals("http://qits-projects:8080/projects/mcp", env.get("QITS_REPOSITORY_MCP_URL"));
+    assertEquals("http://dev-qits-projects:8080/projects/mcp", env.get("QITS_REPOSITORY_MCP_URL"));
     assertEquals(
         ConfigProvider.getConfig()
             .getValue("quarkus.mcp.server.repository.http.root-path", String.class),
