@@ -101,7 +101,12 @@ public class ProjectService {
           "git",
           "v2",
           "events",
+          // BOTH SPELLINGS, for one release. qits-380 moves this service's route from
+          // /platform-deployments to /deployments, and a segment belongs here on the day it is
+          // ROUTED rather than the day the old one stops being — so the new one is reserved before
+          // the route lands, and the old one stays while it is still served.
           "platform-deployments",
+          "deployments",
           "maintenance",
           "mirror",
           "orchestrator",
