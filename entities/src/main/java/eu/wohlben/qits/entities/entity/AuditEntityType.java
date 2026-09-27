@@ -39,6 +39,13 @@ public enum AuditEntityType {
   TICKET,
 
   /**
+   * An {@link Archetype#CAMPAIGN} row of {@link WorkEntity}, a root like an epic: its rows carry
+   * the campaign's own id in {@link AuditEntry#epicId}. Permitted by {@code ck_audit_entity_type}
+   * from V17, the migration that admitted the archetype itself.
+   */
+  CAMPAIGN,
+
+  /**
    * A {@link TicketComment}. Its rows carry the owning ticket's id as the subtree key.
    *
    * <p><b>Not an archetype</b>, and it must not become one: a comment is a remark on a row rather

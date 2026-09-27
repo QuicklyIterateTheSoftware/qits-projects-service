@@ -79,6 +79,39 @@ class WorkEntityPersistenceTest {
             });
   }
 
+  /**
+   * A CAMPAIGN row round-trips through V17 (qits-411): the enum name is stored behind the widened
+   * {@code ck_entity_archetype} and reads back as the constant, with its status, and the listing
+   * narrows to it like any other root.
+   */
+  @Test
+  void aCampaignRowRoundTripsThroughV17() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              WorkEntity campaign = root("c-1", Archetype.CAMPAIGN, "spring");
+              campaign.status = EntityStatus.REPORTED.name();
+              campaign.description = "the order";
+              entities.persist(campaign);
+              entities.persist(root("e-1", Archetype.EPIC, "plan"));
+            });
+
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              WorkEntity stored = entities.findById("c-1");
+              assertEquals(Archetype.CAMPAIGN, stored.archetype);
+              assertEquals(EntityStatus.REPORTED.name(), stored.status);
+              assertEquals("the order", stored.description);
+              assertEquals("proj-1", stored.slugScope);
+              assertEquals(
+                  List.of("c-1"),
+                  entities.listByProjectAndArchetype("proj-1", Archetype.CAMPAIGN).stream()
+                      .map(entity -> entity.id)
+                      .toList());
+            });
+  }
+
   @Test
   void theListingsNarrowByArchetypeAndByStatus() {
     QuarkusTransaction.requiringNew()

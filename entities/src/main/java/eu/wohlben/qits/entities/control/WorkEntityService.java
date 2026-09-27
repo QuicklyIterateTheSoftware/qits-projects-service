@@ -209,6 +209,10 @@ public class WorkEntityService {
     Map<Archetype, Kind> kinds = new EnumMap<>(Archetype.class);
     kinds.put(Archetype.EPIC, new Kind(Archetype.EPIC, "Epic", null, Archetype.EPIC, null, false));
     kinds.put(Archetype.TICKET, new Kind(Archetype.TICKET, "Ticket", null, null, null, true));
+    // A root with no freeze owner — its title and description stay editable at every status, as a
+    // ticket's do — no sibling dependency and no thread. It is the fifth kind (qits-411).
+    kinds.put(
+        Archetype.CAMPAIGN, new Kind(Archetype.CAMPAIGN, "Campaign", null, null, null, false));
     kinds.put(
         Archetype.FEATURE,
         new Kind(
@@ -367,6 +371,25 @@ public class WorkEntityService {
           audit(created, rootId == null ? created.id : rootId, AuditOperation.CREATE, changedBy);
           return new Nested(created, kind.isRoot() ? null : under);
         });
+  }
+
+  /**
+   * <b>A new campaign in {@code projectId}</b> — the create behind {@code POST
+   * /projects/{projectId}/campaigns}, and the one door a campaign is born through (the MIMO door
+   * refuses to make one; see {@link EntityTransitionService}).
+   *
+   * <p>It is {@link #create} at {@link Archetype#CAMPAIGN} and nothing else, so it inherits every
+   * rule an epic's create has: the slug minted once from the title by {@link Slugs#slugify} in the
+   * project's root slug scope (shared with epics and tickets), the number from {@code
+   * entity_number_sequence}, the status minted {@link EntityStatus#REPORTED} by the writer, the
+   * registry judged at {@link Demand#AT_CREATE}, and one audit row. Named rather than left to a
+   * caller's {@code create(CAMPAIGN, …)} so the surfaces that make one say what they make.
+   */
+  public WorkEntity createCampaign(
+      String projectId, String title, String description, String changedBy) {
+    return create(
+            Archetype.CAMPAIGN, projectId, EntityWrite.campaign(title, description), changedBy)
+        .entity();
   }
 
   /**

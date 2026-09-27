@@ -91,11 +91,15 @@ public record ArchetypeRegistryDocument(
    *     order is not recoverable from it, so a client must not read a lifecycle, an ordering or a
    *     first phase out of this list. The adjacency rules live on the two lifecycle endpoints and
    *     are not served here at all
+   * @param gathers whether this kind's children are <b>campaign memberships, never structural</b>
+   *     — true for {@code CAMPAIGN} alone. A client must not draw a gathering row's children as
+   *     its subtree: they hang somewhere else as well, and this row only orders them
    */
   public record DeclaredArchetype(
       Archetype archetype,
       int depth,
       boolean mayBeRoot,
+      boolean gathers,
       List<EntityProperty> required,
       List<EntityProperty> requiredAtCreate,
       List<EntityProperty> requiredOnTransition,
@@ -119,6 +123,7 @@ public record ArchetypeRegistryDocument(
               archetype,
               spec.depth(),
               spec.mayBeRoot(),
+              spec.gathers(),
               inVocabularyOrder(spec.required()),
               inVocabularyOrder(spec.requiredAtCreate()),
               inVocabularyOrder(requiredOnTransition(spec)),

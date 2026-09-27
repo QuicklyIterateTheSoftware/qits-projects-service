@@ -48,6 +48,8 @@ public class EntityDispatchControllerTest {
 
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
 
+  @Inject eu.wohlben.qits.entities.control.WorkEntityService workEntities;
+
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
 
@@ -63,6 +65,31 @@ public class EntityDispatchControllerTest {
     QuarkusTransaction.requiringNew()
         .run(() -> projectIds.forEach(id -> ReleaseRequest.delete("projectId = ?1", id)));
     projectIds.clear();
+  }
+
+  // ---- a campaign is never dispatched (qits-411) ---------------------------------------------
+
+  @Test
+  void aCampaignIsNeitherDispatchedNorAnsweredAPhaseAndBothRefusalsNameIt() {
+    String projectId = createProject("Dispatch Campaign");
+    String campaignId = workEntities.createCampaign(projectId, "Spring", null, "setup").id;
+
+    asAdmin("dana")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/entities/" + campaignId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("Campaign " + campaignId))
+        .body("message", containsString("a campaign starts through its executor"));
+    asAdmin("dana")
+        .when()
+        .get("/projects/api/entities/" + campaignId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("Campaign " + campaignId));
+
+    assertEquals(List.of(), dispatch.calls(), "no agent was dispatched onto a campaign");
   }
 
   // ---- fixtures ------------------------------------------------------------------------------

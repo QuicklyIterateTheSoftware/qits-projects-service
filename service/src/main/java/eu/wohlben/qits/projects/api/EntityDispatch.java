@@ -131,6 +131,7 @@ public class EntityDispatch {
    * in another transaction would be handed its stale first read back by its own session.
    */
   public Outcome dispatch(WorkEntity entity, DispatchMode mode, String changedBy) {
+    refuseCampaign(entity);
     String id = entity.id;
     PhasePrompts.Started started = phaseOrRefuse(entity);
     if (dispatch.isUnsatisfied()) {
@@ -179,6 +180,7 @@ public class EntityDispatch {
   /** What a press would do now — the read behind {@code GET /entities/{id}/dispatch}. */
   public EntityDispatchStateDto state(String id) {
     WorkEntity entity = entities.get(id);
+    refuseCampaign(entity);
     String nextPhase = PhasePrompts.nextPhase(entity).orElse(null);
     boolean lifecycle = entity.status != null && nextPhaseAware(entity);
     return new EntityDispatchStateDto(
@@ -192,6 +194,22 @@ public class EntityDispatch {
   }
 
   // ---- the pieces --------------------------------------------------------------------------
+
+  /**
+   * <b>A campaign is never dispatched</b> (qits-411): it has no branch, no workspace and no phase
+   * prompts — it orders work that is dispatched, and it starts through its executor. A 409 naming
+   * the campaign, for the press and for the read alike, so neither answers a phase a campaign does
+   * not have. (A later task of the campaigns epic replaces this with a branch in the controller.)
+   */
+  private static void refuseCampaign(WorkEntity entity) {
+    if (entity.archetype == Archetype.CAMPAIGN) {
+      throw new DomainException(
+          409,
+          "Campaign "
+              + entity.id
+              + " is not dispatched onto a workspace — a campaign starts through its executor.");
+    }
+  }
 
   private static boolean nextPhaseAware(WorkEntity entity) {
     return entity.archetype == Archetype.TICKET || entity.archetype == Archetype.EPIC;

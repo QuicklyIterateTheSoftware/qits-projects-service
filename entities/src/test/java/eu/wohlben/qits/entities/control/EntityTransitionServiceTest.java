@@ -15,6 +15,7 @@ import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
+import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import io.quarkus.test.junit.QuarkusTest;
@@ -813,6 +814,105 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     assertNotNull(ticketLog.get(0).snapshot);
   }
 
+  // --- a campaign's lifecycle is not this door's (qits-411) ----------------
+
+  private static final String CAMPAIGN_DOORS =
+      "move a campaign through /campaigns/{id}/transition; create one through"
+          + " /projects/{projectId}/campaigns";
+
+  @Test
+  void aCampaignsStatusIsNotMovedThroughThisDoor() {
+    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Spring", null, WHO);
+
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () ->
+                transitions.transition(
+                    stated(campaign.id, campaignEntry("Spring", null, EntityStatus.REFINED)), WHO));
+    assertEquals(409, refusal.statusCode());
+    assertTrue(refusal.getMessage().contains("campaign " + campaign.id), refusal.getMessage());
+    assertTrue(refusal.getMessage().contains(CAMPAIGN_DOORS), refusal.getMessage());
+
+    inFreshTx(
+        () ->
+            assertEquals(EntityStatus.REPORTED.name(), entities.findById(campaign.id).status));
+    assertTrue(announcer.batches().isEmpty(), "a refused transition announces nothing");
+  }
+
+  @Test
+  void nothingBecomesACampaignAndACampaignBecomesNothingElseThroughThisDoor() {
+    WorkEntity epic =
+        workEntities
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("To be gathered", null), WHO)
+            .entity();
+    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Summer", null, WHO);
+
+    ConflictException intoCampaign =
+        assertThrows(
+            ConflictException.class,
+            () ->
+                transitions.transition(
+                    stated(epic.id, campaignEntry("To be gathered", null, EntityStatus.REPORTED)),
+                    WHO));
+    assertTrue(
+        intoCampaign.getMessage().contains(epic.id + " is a EPIC and would become a campaign"),
+        intoCampaign.getMessage());
+
+    ConflictException outOfCampaign =
+        assertThrows(
+            ConflictException.class,
+            () ->
+                transitions.transition(
+                    stated(campaign.id, epicEntry("Summer", null, null, EntityStatus.REPORTED)),
+                    WHO));
+    assertTrue(
+        outOfCampaign.getMessage().contains(campaign.id + " is a campaign and would become a EPIC"),
+        outOfCampaign.getMessage());
+    assertTrue(outOfCampaign.getMessage().contains(CAMPAIGN_DOORS), outOfCampaign.getMessage());
+
+    inFreshTx(
+        () -> {
+          assertEquals(Archetype.EPIC, entities.findById(epic.id).archetype);
+          assertEquals(Archetype.CAMPAIGN, entities.findById(campaign.id).archetype);
+        });
+  }
+
+  @Test
+  void aCampaignIsNotCreatedThroughThisDoor() {
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () ->
+                transitions.transition(
+                    stated("new-campaign", campaignEntry("Autumn", null, EntityStatus.REPORTED)),
+                    WHO));
+    assertTrue(refusal.getMessage().contains("new-campaign states a new campaign"), refusal.getMessage());
+    assertTrue(refusal.getMessage().contains(CAMPAIGN_DOORS), refusal.getMessage());
+    inFreshTx(() -> assertNull(entities.findById("new-campaign")));
+  }
+
+  @Test
+  void aCampaignsTitleAndDescriptionMayBeEditedHereWithItsStatusRestated() {
+    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Winter", null, WHO);
+
+    Map<String, TransitionedEntity> written =
+        transitions.transition(
+            stated(
+                campaign.id, campaignEntry("Winter, renamed", "the order", EntityStatus.REPORTED)),
+            WHO);
+
+    assertEquals("Winter, renamed", written.get(campaign.id).title());
+    inFreshTx(
+        () -> {
+          WorkEntity stored = entities.findById(campaign.id);
+          assertEquals("Winter, renamed", stored.title);
+          assertEquals("the order", stored.description);
+          assertEquals(EntityStatus.REPORTED.name(), stored.status);
+          assertEquals(Archetype.CAMPAIGN, stored.archetype);
+        });
+  }
+
   // --- fixtures -------------------------------------------------------------
 
   private static Map<String, EntityTransition> stated(Object... idsAndEntries) {
@@ -828,6 +928,23 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     return new EntityTransition(
         Archetype.EPIC,
         new EntityTransition.Membership(parent, null),
+        title,
+        description,
+        status == null ? null : status.name(),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
+  }
+
+  private static EntityTransition campaignEntry(
+      String title, String description, EntityStatus status) {
+    return new EntityTransition(
+        Archetype.CAMPAIGN,
+        null,
         title,
         description,
         status == null ? null : status.name(),

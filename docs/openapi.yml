@@ -239,6 +239,7 @@ components:
       - TICKET
       - FEATURE
       - TASK
+      - CAMPAIGN
     ArchetypeRegistryDocument:
       type: object
       properties:
@@ -278,6 +279,7 @@ components:
       - FEATURE
       - TASK
       - TICKET
+      - CAMPAIGN
       - TICKET_COMMENT
       - DOSSIER_PAGE
     AuditEntryDto:
@@ -624,6 +626,8 @@ components:
           type: integer
           format: int32
         mayBeRoot:
+          type: boolean
+        gathers:
           type: boolean
         required:
           type: array

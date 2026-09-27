@@ -46,6 +46,11 @@ public record EntityWrite(
         title, description, false, null, false, null, null, false, null, null, false, null, false);
   }
 
+  /** A campaign: a title and a description, the same two words an epic is written in. */
+  public static EntityWrite campaign(String title, String description) {
+    return epic(title, description);
+  }
+
   /** A ticket's intake: the impetus and the type are what a report consists of. */
   public static EntityWrite ticket(
       String title, String impetus, String description, String type, String assignee) {

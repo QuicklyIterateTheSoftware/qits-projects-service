@@ -245,6 +245,11 @@ public class PhaseAdvance {
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
   public void afterTransition(WorkEntity ticket, String changedBy) {
+    if (ticket.archetype == Archetype.CAMPAIGN) {
+      // A campaign stands in no workspace: its moves deliver no turn and release no branch. What a
+      // campaign's move does do — pause or resume its executor — belongs to its own door (qits-411).
+      return;
+    }
     // The merged row stores the status word; VERIFIED is compared against it by name, which is what
     // the column holds. See PhasePrompts.phaseOf for the same reading made one call down.
     if (EntityStatus.VERIFIED.name().equals(ticket.status)) {

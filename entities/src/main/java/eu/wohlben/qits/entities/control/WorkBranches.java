@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.control;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -62,6 +63,7 @@ public final class WorkBranches {
    * @param ticket a {@code TICKET} row — a root, so there is no parent to state
    */
   public static Scope ticket(WorkEntity ticket) {
+    refuseCampaign(ticket);
     return own("ticket/" + ticket.slug);
   }
 
@@ -73,6 +75,8 @@ public final class WorkBranches {
    * @param task the task, with the feature its membership edge names
    */
   public static Scope task(WorkEntity epic, Nested feature, Nested task) {
+    refuseCampaign(epic);
+    refuseCampaign(task.entity());
     return own(taskBranch(epic, feature, task));
   }
 
@@ -90,6 +94,7 @@ public final class WorkBranches {
    */
   public static Scope epic(
       WorkEntity epic, List<Nested> features, Function<Nested, List<Nested>> tasksOf) {
+    refuseCampaign(epic);
     String branch = epicBranch(epic);
     Set<String> refs = new LinkedHashSet<>();
     refs.add(ref(branch));
@@ -105,6 +110,19 @@ public final class WorkBranches {
   /** The ref of a branch: {@code refs/heads/<branch>}. */
   public static String ref(String branch) {
     return HEADS + branch;
+  }
+
+  /**
+   * <b>A campaign has no branch</b> (qits-411). It orders work that stands on branches of its own and
+   * is started through its executor, never dispatched into a workspace — so a campaign handed here
+   * is a caller that has taken it for the work it gathers, and naming a {@code ticket/…} or {@code
+   * epic/…} branch after it would point an agent at a branch nobody will ever merge.
+   */
+  private static void refuseCampaign(WorkEntity row) {
+    if (row.archetype == Archetype.CAMPAIGN) {
+      throw new IllegalArgumentException(
+          "campaign " + row.id + " has no branch — a campaign orders work, it is not worked on");
+    }
   }
 
   private static Scope own(String branch) {

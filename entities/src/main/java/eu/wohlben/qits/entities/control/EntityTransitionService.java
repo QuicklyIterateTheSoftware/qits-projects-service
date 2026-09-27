@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
+import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -228,6 +229,7 @@ public class EntityTransitionService {
       Map<String, EntityTransition> stated, String changedBy) {
 
     Map<String, WorkEntity> rows = index(entities.listByIds(stated.keySet()));
+    refuseCampaignLifecycle(stated, rows);
     Map<String, WorkEntity> statedParents = parentRows(stated, rows);
 
     List<String> violations = validate(stated, rows, statedParents);
@@ -281,6 +283,56 @@ public class EntityTransitionService {
   }
 
   // --- validation -----------------------------------------------------------
+
+  /**
+   * <b>This door does not move a campaign through its lifecycle, change what is or is not a
+   * campaign, or make one</b> — a 409 naming every such entry, before any other layer is asked.
+   *
+   * <p>Three shapes are refused: an entry that changes the status of a {@link Archetype#CAMPAIGN}
+   * row, an entry that turns any row into a campaign or a campaign into anything else, and an entry
+   * stating a campaign for an id that names no row (the door creates nothing anyway, but a campaign
+   * is told where it IS created rather than merely that it is not). A campaign's title and
+   * description may still be edited here, with its status restated unchanged.
+   *
+   * <p>The reason is the pause hook. A campaign's own transition door ({@code
+   * /campaigns/{id}/transition}) stops its executor in the same transaction as the campaign leaving
+   * REFINED; this door sets {@code row.status} directly, with no adjacency rule and no hook, so a
+   * move made here would leave the executor running a campaign that is no longer started. A 409 and
+   * not a 400: the entry is well-formed, it has merely come to the wrong door.
+   */
+  private static void refuseCampaignLifecycle(
+      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
+    List<String> refused = new ArrayList<>();
+    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
+      String id = entry.getKey();
+      EntityTransition target = entry.getValue();
+      WorkEntity row = rows.get(id);
+      boolean toCampaign = target.archetype() == Archetype.CAMPAIGN;
+      if (row == null) {
+        if (toCampaign) {
+          refused.add(id + " states a new campaign, and this door creates no campaign");
+        }
+        continue;
+      }
+      boolean isCampaign = row.archetype == Archetype.CAMPAIGN;
+      if (isCampaign != toCampaign) {
+        refused.add(
+            id
+                + (isCampaign
+                    ? " is a campaign and would become a " + target.archetype()
+                    : " is a " + row.archetype + " and would become a campaign"));
+      } else if (isCampaign && !Objects.equals(row.status, target.status())) {
+        refused.add(
+            "campaign " + id + " would move from " + row.status + " to " + target.status());
+      }
+    }
+    if (!refused.isEmpty()) {
+      throw new ConflictException(
+          String.join("; ", refused)
+              + " — move a campaign through /campaigns/{id}/transition; create one through"
+              + " /projects/{projectId}/campaigns");
+    }
+  }
 
   /**
    * Every complaint about the post-state, from all three layers, in a stable order: the ids that

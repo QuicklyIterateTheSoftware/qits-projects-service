@@ -36,6 +36,8 @@ public class EntityRefinementControllerTest {
 
   @Inject FakeRefinementRuntime runtime;
 
+  @Inject eu.wohlben.qits.entities.control.WorkEntityService campaigns;
+
   @Inject FakeRefinementCredentials credentials;
 
   @BeforeEach
@@ -185,6 +187,24 @@ public class EntityRefinementControllerTest {
         .then()
         .statusCode(409)
         .body("message", containsString("feature has no lifecycle"));
+    asAdmin()
+        .when()
+        .get("/projects/api/projects/" + projectId + "/refinements")
+        .then()
+        .body("refinements.size()", equalTo(0));
+  }
+
+  /** A campaign has no branch and no workspace, so it opens no refinement room (qits-411). */
+  @Test
+  public void aCampaignIsRefusedAndTheRefusalNamesIt() {
+    String projectId = createProject("Refine Campaign");
+    String campaignId =
+        campaigns.createCampaign(projectId, "Spring cleaning", null, "dana").id;
+
+    open(campaignId)
+        .then()
+        .statusCode(409)
+        .body("message", containsString("Campaign " + campaignId + " does not open a refinement"));
     asAdmin()
         .when()
         .get("/projects/api/projects/" + projectId + "/refinements")

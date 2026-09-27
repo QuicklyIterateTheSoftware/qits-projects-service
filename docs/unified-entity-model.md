@@ -28,6 +28,7 @@ have no writer and no referent; they are a frozen snapshot.
 | `V12__owner_keys_to_entity.sql` | the four outward foreign keys repointed at `entity(id)`, which retires the mirror | **shipped** |
 | `V13__drop_legacy_planning_tables.sql` | the four old tables dropped, and `ck_audit_entity_type` re-stated off the archetype set over an unchanged vocabulary. It deletes the verification door with them — `entities/…/migration/`, `service/…/entities/api/MigrationVerificationController.java` and both its test classes — because a door whose comparison target no longer exists can only answer about nothing. See "The cleanup, as shipped" below | **shipped** |
 | `V15__one_entity_lifecycle.sql` | one lifecycle for every archetype: every epic row backfilled onto `EntityStatus`' words, then `ck_entity_status` narrowed from the ten-word union to those six. See "One lifecycle for every archetype" below | **shipped** |
+| `V17__campaign_archetype.sql` | `CAMPAIGN` joins the vocabulary (qits-411, epic f6c67e74): `ck_entity_archetype` re-added over five words and `ck_audit_entity_type` over seven, no row rewritten. The archetype is declared in `control/Archetypes` at depth -1, a root, `gathers = true` | on the campaigns epic branch |
 
 The ids are the **same id space**: `entity.id` is `varchar(255)` exactly as `epic.id` is, because
 V10 copies each old row in under the id it already has. Every dossier page, audit entry, branch

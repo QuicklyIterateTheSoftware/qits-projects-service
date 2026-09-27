@@ -33,6 +33,11 @@ import java.util.Set;
  *     six for an epic and for a ticket alike, none at all for a feature or a task. Empty means the kind has no status, which is why {@link EntityProperty#STATUS} is
  *     outside its {@link #permitted} set as well; the two say the same thing from two directions and
  *     {@link Archetypes} checks that they agree
+ * @param gathers whether this kind's children are <b>campaign memberships, never structural</b> —
+ *     true for {@link Archetype#CAMPAIGN} alone. A structural child hangs in the tree (epic &gt;
+ *     feature &gt; task) and has one parent; a gathered one already hangs somewhere else and is
+ *     merely ordered by this row. Declared, like {@link #mayBeRoot}, because nothing else says it:
+ *     depth decides what may sit beneath what, not which kind of edge joins them
  */
 public record ArchetypeSpec(
     Archetype archetype,
@@ -41,7 +46,8 @@ public record ArchetypeSpec(
     Set<EntityProperty> required,
     Set<EntityProperty> requiredAtCreate,
     Set<EntityProperty> permitted,
-    Set<String> legalStatuses) {
+    Set<String> legalStatuses,
+    boolean gathers) {
 
   public ArchetypeSpec {
     required = Set.copyOf(required);

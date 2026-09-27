@@ -44,6 +44,25 @@ class WorkBranchesTest {
     return new Nested(row(id, Archetype.TASK, slug), feature.entity().id);
   }
 
+  /** A campaign has no branch (qits-411): whichever derivation it is handed to refuses it. */
+  @Test
+  void aCampaignHasNoBranchWhicheverDerivationItIsHandedTo() {
+    WorkEntity campaign = row("c-1", Archetype.CAMPAIGN, "spring-cleaning");
+    Nested feature = new Nested(row("f-1", Archetype.FEATURE, "slugs"), campaign.id);
+
+    IllegalArgumentException asTicket =
+        assertThrows(IllegalArgumentException.class, () -> WorkBranches.ticket(campaign));
+    assertEquals(
+        "campaign c-1 has no branch — a campaign orders work, it is not worked on",
+        asTicket.getMessage());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> WorkBranches.epic(campaign, List.of(), f -> List.of()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> WorkBranches.task(campaign, feature, task("k-1", feature, "mint")));
+  }
+
   @Test
   void aTicketMayPushItsOwnBranchOnly() {
     WorkBranches.Scope scope = WorkBranches.ticket(ticket("puce-button"));

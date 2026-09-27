@@ -8,6 +8,7 @@
       "archetype" : "EPIC",
       "depth" : 0,
       "mayBeRoot" : true,
+      "gathers" : false,
       "required" : [ "TITLE" ],
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE", "STATUS" ],
@@ -17,6 +18,7 @@
       "archetype" : "TICKET",
       "depth" : 0,
       "mayBeRoot" : true,
+      "gathers" : false,
       "required" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
       "requiredAtCreate" : [ "TITLE", "STATUS", "TICKET_TYPE", "IMPETUS" ],
       "requiredOnTransition" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
@@ -26,6 +28,7 @@
       "archetype" : "FEATURE",
       "depth" : 1,
       "mayBeRoot" : false,
+      "gathers" : false,
       "required" : [ "TITLE" ],
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE" ],
@@ -35,11 +38,22 @@
       "archetype" : "TASK",
       "depth" : 2,
       "mayBeRoot" : false,
+      "gathers" : false,
       "required" : [ "TITLE", "REPOSITORY_ID" ],
       "requiredAtCreate" : [ "TITLE", "REPOSITORY_ID" ],
       "requiredOnTransition" : [ "TITLE", "REPOSITORY_ID" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "REPOSITORY_ID", "IMPLEMENTED_AT", "DEPENDS_ON" ],
       "legalStatuses" : [ ]
+    }, {
+      "archetype" : "CAMPAIGN",
+      "depth" : -1,
+      "mayBeRoot" : true,
+      "gathers" : true,
+      "required" : [ "TITLE" ],
+      "requiredAtCreate" : [ "TITLE" ],
+      "requiredOnTransition" : [ "TITLE", "STATUS" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ]
     } ]
   }
 } ]

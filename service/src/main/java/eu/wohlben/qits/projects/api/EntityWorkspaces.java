@@ -117,7 +117,7 @@ class EntityWorkspaces {
       case TICKET -> WorkBranches.ticket(entity).branch();
       case EPIC -> WorkBranches.epic(entity, List.of(), feature -> List.of())
           .branch();
-      case FEATURE, TASK ->
+      case FEATURE, TASK, CAMPAIGN ->
           throw new IllegalStateException("A " + entity.archetype + " is never dispatched");
     };
   }
@@ -127,7 +127,7 @@ class EntityWorkspaces {
     return switch (entity.archetype) {
       case TICKET -> WorkspaceAgentDispatch.Subject.ticket(entity.id);
       case EPIC -> WorkspaceAgentDispatch.Subject.epic(entity.id);
-      case FEATURE, TASK ->
+      case FEATURE, TASK, CAMPAIGN ->
           throw new IllegalStateException("A " + entity.archetype + " is never dispatched");
     };
   }
@@ -140,7 +140,7 @@ class EntityWorkspaces {
               entity,
               entities.listChildren(Archetype.FEATURE, entity.id),
               feature -> entities.listChildren(Archetype.TASK, feature.entity().id));
-      case FEATURE, TASK ->
+      case FEATURE, TASK, CAMPAIGN ->
           throw new IllegalStateException("A " + entity.archetype + " is never dispatched");
     };
   }

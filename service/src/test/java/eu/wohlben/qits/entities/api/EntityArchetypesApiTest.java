@@ -47,7 +47,7 @@ class EntityArchetypesApiTest {
         // Three named members and no collection envelope: this answers the model itself, which is
         // one thing with named parts, rather than rows that happen to be there.
         .body("entries", nullValue())
-        .body("archetypes.size()", equalTo(4))
+        .body("archetypes.size()", equalTo(5))
         .body("serverOwned.size()", equalTo(2))
         // The vocabulary travels whole, in declaration order, because a client derives a
         // violation's spelling from it rather than keeping its own table of field names.
@@ -59,7 +59,7 @@ class EntityArchetypesApiTest {
   @Test
   void everyArchetypeAppearsWithItsDepthAndItsRootness() {
     document()
-        .body("archetypes.archetype", contains("EPIC", "TICKET", "FEATURE", "TASK"))
+        .body("archetypes.archetype", contains("EPIC", "TICKET", "FEATURE", "TASK", "CAMPAIGN"))
         // The two roots share a depth — which is what makes ticket-under-epic refusable by the
         // ordinary parent.depth < child.depth rule a client applies for itself.
         .body(at("EPIC") + "depth", equalTo(0))
@@ -69,7 +69,25 @@ class EntityArchetypesApiTest {
         .body(at("FEATURE") + "depth", equalTo(1))
         .body(at("FEATURE") + "mayBeRoot", equalTo(false))
         .body(at("TASK") + "depth", equalTo(2))
-        .body(at("TASK") + "mayBeRoot", equalTo(false));
+        .body(at("TASK") + "mayBeRoot", equalTo(false))
+        // Above the epic and a root too (qits-411): -1 moves no other depth, and rootness is the
+        // declared flag, so the epic and the ticket stay roots beside it.
+        .body(at("CAMPAIGN") + "depth", equalTo(-1))
+        .body(at("CAMPAIGN") + "mayBeRoot", equalTo(true));
+  }
+
+  @Test
+  void onlyTheCampaignGathers() {
+    // Its children are campaign memberships, never structural — a client must not draw them as
+    // the campaign's subtree.
+    document()
+        .body(at("CAMPAIGN") + "gathers", equalTo(true))
+        .body(at("EPIC") + "gathers", equalTo(false))
+        .body(at("TICKET") + "gathers", equalTo(false))
+        .body(at("FEATURE") + "gathers", equalTo(false))
+        .body(at("TASK") + "gathers", equalTo(false))
+        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(6))
+        .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
   }
 
   @Test

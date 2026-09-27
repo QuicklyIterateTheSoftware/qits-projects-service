@@ -61,6 +61,47 @@ class NestingTest {
     assertAccepted(Archetype.TICKET, Archetype.FEATURE);
   }
 
+  // ---- the campaign, by depth alone (qits-411) ------------------------------------------------
+
+  @Test
+  void aCampaignMayHoldAnEpicATicketAndATaskByDepth() {
+    // Nothing here names the campaign: -1 is less than 0 and less than 2, so the ordinary rule
+    // admits all three. Which KIND of edge joins them (a campaign membership, never structural) is
+    // ArchetypeSpec.gathers' question, not this one.
+    assertAccepted(Archetype.CAMPAIGN, Archetype.EPIC);
+    assertAccepted(Archetype.CAMPAIGN, Archetype.TICKET);
+    assertAccepted(Archetype.CAMPAIGN, Archetype.TASK);
+    assertTrue(Nesting.mayContain(Archetype.CAMPAIGN, Archetype.EPIC));
+    assertTrue(Nesting.mayContain(Archetype.CAMPAIGN, Archetype.TICKET));
+    assertTrue(Nesting.mayContain(Archetype.CAMPAIGN, Archetype.TASK));
+  }
+
+  @Test
+  void aCampaignCannotBePartOfACampaign() {
+    // The free rule, asserted: equal depths refuse, exactly as epic-under-epic does. A campaign of
+    // campaigns would need a declaration, not an exception.
+    assertRefused(Archetype.CAMPAIGN, Archetype.CAMPAIGN, NestingViolation.Reason.NOT_NESTABLE);
+  }
+
+  @Test
+  void nothingMayHoldACampaign() {
+    for (Archetype parent : Archetype.values()) {
+      assertFalse(
+          Nesting.mayContain(parent, Archetype.CAMPAIGN), parent + " may not hold a campaign");
+    }
+  }
+
+  @Test
+  void aCampaignStandsOnItsOwnBesideTheTwoRoots() {
+    assertEquals(
+        List.of(),
+        Nesting.check(
+            List.of(
+                EntityFact.root("c", Archetype.CAMPAIGN),
+                EntityFact.root("e", Archetype.EPIC),
+                EntityFact.root("t", Archetype.TICKET))));
+  }
+
   // ---- roots -----------------------------------------------------------------------------------
 
   @Test

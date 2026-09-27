@@ -50,6 +50,7 @@ class ArchetypeRegistryDocumentTest {
       ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
       assertEquals(spec.depth(), served.depth(), archetype + " depth");
       assertEquals(spec.mayBeRoot(), served.mayBeRoot(), archetype + " mayBeRoot");
+      assertEquals(spec.gathers(), served.gathers(), archetype + " gathers");
       assertEquals(spec.required(), Set.copyOf(served.required()), archetype + " required");
       assertEquals(
           spec.requiredAtCreate(),
@@ -58,6 +59,32 @@ class ArchetypeRegistryDocumentTest {
       assertEquals(spec.permitted(), Set.copyOf(served.permitted()), archetype + " permitted");
       assertEquals(
           spec.legalStatuses(), Set.copyOf(served.legalStatuses()), archetype + " legalStatuses");
+    }
+  }
+
+  @Test
+  void theCampaignIsServedAsAGatheringRootAboveTheEpic() {
+    ArchetypeRegistryDocument.DeclaredArchetype campaign = declared(Archetype.CAMPAIGN);
+    assertEquals(-1, campaign.depth());
+    assertEquals(true, campaign.mayBeRoot());
+    assertEquals(true, campaign.gathers());
+    assertEquals(List.of(EntityProperty.TITLE), campaign.required());
+    assertEquals(List.of(EntityProperty.TITLE), campaign.requiredAtCreate());
+    // A lifecycle kind, so the transition asks for its status as it does an epic's.
+    assertEquals(
+        List.of(EntityProperty.TITLE, EntityProperty.STATUS), campaign.requiredOnTransition());
+    assertEquals(
+        List.of(
+            EntityProperty.TITLE,
+            EntityProperty.SLUG,
+            EntityProperty.DESCRIPTION,
+            EntityProperty.STATUS),
+        campaign.permitted());
+    assertEquals(
+        List.of("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"),
+        campaign.legalStatuses());
+    for (Archetype other : List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
+      assertEquals(false, declared(other).gathers(), other + " gathers");
     }
   }
 

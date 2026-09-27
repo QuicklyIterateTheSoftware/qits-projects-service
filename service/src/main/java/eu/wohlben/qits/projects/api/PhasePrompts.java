@@ -197,6 +197,9 @@ final class PhasePrompts {
           case FEATURE, TASK ->
               throw new IllegalStateException(
                   "A " + archetype + " has no lifecycle, so it has no phase prompts");
+          case CAMPAIGN ->
+              throw new IllegalStateException(
+                  "A CAMPAIGN starts through its executor, so it has no phase prompts");
         };
     return FLOW_BRIEF_POINTER + " " + phaseTurn;
   }

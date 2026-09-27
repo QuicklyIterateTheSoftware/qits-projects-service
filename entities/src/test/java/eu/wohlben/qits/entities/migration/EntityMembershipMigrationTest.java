@@ -150,9 +150,10 @@ class EntityMembershipMigrationTest {
       for (String archetype : new String[] {"EPIC", "TICKET", "FEATURE", "TASK"}) {
         insertEntity(db, "x-" + archetype, archetype, archetype.toLowerCase(), "proj-1", null);
       }
-      // The kind this model is being merged in order to allow is not declared yet, and the
-      // constraint is what makes adding it a visible migration rather than a silent new row.
-      assertRefused(() -> insertEntity(db, "x-c", "CAMPAIGN", "campaign", "proj-1", null));
+      // A word nobody declared is refused, and the constraint is what makes adding a kind a
+      // visible migration rather than a silent new row. (This asserted CAMPAIGN until V17 declared
+      // it — qits-411; CampaignArchetypeMigrationTest now owns that word's before and after.)
+      assertRefused(() -> insertEntity(db, "x-p", "PROGRAMME", "programme", "proj-1", null));
     }
   }
 

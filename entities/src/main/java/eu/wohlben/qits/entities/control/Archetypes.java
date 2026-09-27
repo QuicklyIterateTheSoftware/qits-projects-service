@@ -92,6 +92,9 @@ import java.util.stream.Collectors;
  *       <em>not</em> require, which is what {@code requiredAtCreate} is for.
  *   <li>A feature's create requires a title.
  *   <li>A task's create requires a title and a repository id.
+ *   <li>A campaign's create (qits-411, the fifth kind and the first declared after the fold)
+ *       requires a project and a title, exactly as an epic's does, and its status is minted the
+ *       same way.
  * </ul>
  *
  * <p><b>The asymmetry on {@code STATUS} is deliberate and is worth naming, because it looks like an
@@ -125,7 +128,7 @@ public final class Archetypes {
   private Archetypes() {}
 
   /**
-   * The four declarations, and the only place any of this is written down.
+   * The five declarations, and the only place any of this is written down.
    *
    * <p>{@link EntityProperty#TITLE} and {@link EntityProperty#SLUG} are on every kind — a row
    * without a title cannot be listed, and every row names a branch — with only the title required,
@@ -150,7 +153,8 @@ public final class Archetypes {
                 EntityProperty.DESCRIPTION,
                 EntityProperty.STATUS,
                 EntityProperty.SUPERSEDED_BY),
-            STATUSES));
+            STATUSES,
+            false));
 
     // A small-scoped bug or improvement. Root beside the epic, depth 0 — the two are siblings and
     // a ticket under an epic is refused by exactly that equality, which is the nesting rule doing
@@ -183,7 +187,8 @@ public final class Archetypes {
                 EntityProperty.IMPETUS,
                 EntityProperty.ASSIGNEE,
                 EntityProperty.CREATED_BY),
-            STATUSES));
+            STATUSES,
+            false));
 
     // A piece of a plan. No status of its own — a feature's phase is its epic's, which is why
     // EntityLifecycle judges a task by the phase of its feature's epic rather than by anything on the
@@ -202,7 +207,8 @@ public final class Archetypes {
                 EntityProperty.DESCRIPTION,
                 EntityProperty.DEPENDS_ON,
                 EntityProperty.IMPLEMENTED_AT),
-            Set.of()));
+            Set.of(),
+            false));
 
     // Work in one concrete repository — the only kind that names one, and the reason it is required
     // rather than permitted: a task without a repository is a feature with extra steps.
@@ -221,7 +227,33 @@ public final class Archetypes {
                 EntityProperty.REPOSITORY_ID,
                 EntityProperty.DEPENDS_ON,
                 EntityProperty.IMPLEMENTED_AT),
-            Set.of()));
+            Set.of(),
+            false));
+
+    // An ordering of existing work (epic f6c67e74). Root, and ABOVE the epic at -1 so that a
+    // campaign may hold an epic, a ticket or a task by the ordinary depth rule while the three
+    // existing numbers stay exactly where they are — see "Depth" above. Rootness is the declared
+    // flag rather than "is shallowest", which is why the epic and the ticket stay roots today.
+    //
+    // Its status is the one lifecycle and, as an epic's, is minted by the writer at REPORTED
+    // (WorkEntityService.createCampaign): permitted, not required of a candidate. It carries no
+    // supersede, no ticket intake and no repository. It is the one kind that GATHERS: its children
+    // are campaign memberships, never structural edges.
+    registry.put(
+        Archetype.CAMPAIGN,
+        new ArchetypeSpec(
+            Archetype.CAMPAIGN,
+            -1,
+            true,
+            EnumSet.of(EntityProperty.TITLE),
+            EnumSet.of(EntityProperty.TITLE),
+            EnumSet.of(
+                EntityProperty.TITLE,
+                EntityProperty.SLUG,
+                EntityProperty.DESCRIPTION,
+                EntityProperty.STATUS),
+            STATUSES,
+            true));
 
     verify(registry);
     return Map.copyOf(registry);
@@ -290,6 +322,14 @@ public final class Archetypes {
   /** Whether a row of this kind may stand with no parent. Declared, never derived from {@link #depth}. */
   public static boolean mayBeRoot(Archetype archetype) {
     return spec(archetype).mayBeRoot();
+  }
+
+  /**
+   * Whether this kind's children are campaign memberships rather than structural edges — {@link
+   * Archetype#CAMPAIGN} alone. See {@link ArchetypeSpec#gathers}.
+   */
+  public static boolean gathers(Archetype archetype) {
+    return spec(archetype).gathers();
   }
 
   /** The status words legal on this kind, as stored; empty for a kind with no lifecycle. */

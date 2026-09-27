@@ -55,15 +55,19 @@ class AuditEntityTypeTest {
   }
 
   /**
-   * The database's half of the same vocabulary. {@code ck_audit_entity_type} (V13, restating V5's
-   * set unchanged) permits exactly these six words, so a constant added here without the migration
-   * would be a row the column refuses.
+   * The database's half of the same vocabulary. {@code ck_audit_entity_type} (V17, V13's six words
+   * plus {@code CAMPAIGN}) permits exactly these seven words, so a constant added here without the
+   * migration would be a row the column refuses.
    */
   @Test
   void theEnumIsExactlyWhatTheCheckConstraintPermits() {
     assertEquals(
-        Set.of("EPIC", "FEATURE", "TASK", "TICKET", "TICKET_COMMENT", "DOSSIER_PAGE"),
+        Set.of(
+            "CAMPAIGN", "EPIC", "FEATURE", "TASK", "TICKET", "TICKET_COMMENT", "DOSSIER_PAGE"),
         Arrays.stream(AuditEntityType.values()).map(Enum::name).collect(Collectors.toSet()));
-    assertTrue(Archetype.values().length == 4, "a fifth archetype needs V14 as well as a constant");
+    assertTrue(
+        Archetype.values().length == 5,
+        "a sixth archetype needs a migration widening ck_entity_archetype and ck_audit_entity_type"
+            + " as well as a constant");
   }
 }

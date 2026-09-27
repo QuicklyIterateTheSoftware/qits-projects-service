@@ -173,6 +173,17 @@ public class RefinementService {
     }
     WorkEntity entity = entities.get(entityId); // 404, of any archetype
     String noun = nounOf(entity);
+    if (entity.archetype == Archetype.CAMPAIGN) {
+      // Before the generic refusal, whose words ("has no lifecycle … refine the epic it belongs
+      // to") are false of a campaign: it has a lifecycle and belongs to nothing. A refinement room
+      // is a workspace on a refining/ branch, and a campaign has neither (qits-411).
+      throw new DomainException(
+          409,
+          "Campaign "
+              + entityId
+              + " does not open a refinement — a campaign has no branch and no workspace; edit"
+              + " its title and description directly, and refine the work it gathers.");
+    }
     if (entity.archetype != Archetype.EPIC && entity.archetype != Archetype.TICKET) {
       throw new DomainException(
           409,

@@ -39,5 +39,19 @@ public enum Archetype {
    * Work in one concrete repository. The only archetype that names a repository, and the deepest
    * of the four.
    */
-  TASK
+  TASK,
+
+  /**
+   * An ordering of work that already exists (epic f6c67e74): a campaign gathers epics, tickets and
+   * tasks that hang somewhere else and says in what order, and on what conditions, they are
+   * started. Carries {@link EntityStatus} and is a root, declared <b>above</b> the epic (depth -1)
+   * without moving any other kind's depth.
+   *
+   * <p><b>Its children are campaign memberships, never structural ones</b> — {@code
+   * ArchetypeSpec.gathers}. It has no branch, no workspace and no phase prompts: it is started
+   * through its own executor, never dispatched, and its lifecycle moves only through its own
+   * transition door. Appended last because order here means nothing (see above): inserting it
+   * before {@link #EPIC} would reorder the served registry for no reason.
+   */
+  CAMPAIGN
 }
