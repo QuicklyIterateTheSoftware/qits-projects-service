@@ -83,7 +83,7 @@ import java.util.Set;
  * <ul>
  *   <li><b>An entry whose target archetype declares status words must state a status.</b> {@code
  *       Archetypes} declares {@code STATUS} merely <em>permitted</em> on an {@code EPIC} because an
- *       epic's first status is minted by {@code EpicService.create} and requiring it would fail every
+ *       epic's first status is minted by {@code WorkEntityService.create} and requiring it would fail every
  *       create. A transition mints nothing, so under the PUT rule an omitted status would
  *       <em>clear</em> one and leave a status-less epic {@code EntityLifecycle.parse} cannot read.
  *       Requiring it of the caller is the only answer that neither invents a value nor ships a
@@ -393,7 +393,7 @@ public class EntityTransitionService {
    * <p><b>It is the transition's rule and not the registry's</b>, which is why it is a method here
    * rather than a field on {@link ArchetypeSpec}. {@code Archetypes} declares {@code STATUS} merely
    * <em>permitted</em> on an {@code EPIC} because an epic's first status is minted by {@code
-   * EpicService.create} and requiring it would fail every create before the writer had run. A
+   * WorkEntityService.create} and requiring it would fail every create before the writer had run. A
    * transition mints nothing, so under the PUT rule an omitted status would <em>clear</em> one and
    * leave a status-less epic {@code EntityLifecycle.parse} cannot read.
    *

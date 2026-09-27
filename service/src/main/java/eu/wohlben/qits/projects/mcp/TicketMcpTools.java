@@ -1,6 +1,9 @@
 package eu.wohlben.qits.projects.mcp;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.TicketComment;
 import eu.wohlben.qits.entities.error.NotFoundException;
@@ -79,7 +82,9 @@ public class TicketMcpTools {
   /** The session's project slug, which is the qualifier in {@code <project-slug>-<number>}. */
   @Inject ProjectScopeGuard scopeGuard;
 
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService entities;
+
+  @Inject TicketCommentService thread;
 
   /** Every ticket move goes through here, so a resolving one discards the ticket's refinement. */
   @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
@@ -90,7 +95,7 @@ public class TicketMcpTools {
 
   /**
    * The phase a transition starts. Crossing into {@code projects.api} from here is the same
-   * crossing {@code TicketDispatchController} declares: a workspace is {@code domain}'s, and this
+   * crossing {@code EntityDispatchController} declares: a workspace is {@code domain}'s, and this
    * module assembles both.
    */
   @Inject PhaseAdvance phaseAdvance;
@@ -170,7 +175,7 @@ public class TicketMcpTools {
                       + " DROPPED. Omit for every ticket.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
-    return ticketService.listByProject(scope.requireProjectId(), status).stream()
+    return entities.listByProject(Archetype.TICKET, scope.requireProjectId(), status).stream()
         .map(ticket -> summarize(ticket, projectSlug))
         .toList();
   }
@@ -185,7 +190,7 @@ public class TicketMcpTools {
   public TicketDetail getTicket(@ToolArg(description = "id of a ticket in this project") String id) {
     WorkEntity ticket = requireTicketInProject(id);
     List<CommentDetail> comments =
-        ticketService.listComments(ticket.id).stream()
+        thread.listComments(ticket.id).stream()
             .map(c -> new CommentDetail(c.id, c.author, c.body, c.createdAt))
             .toList();
     return new TicketDetail(
@@ -239,8 +244,13 @@ public class TicketMcpTools {
       @ToolArg(required = false, description = "who is looking at it; omit for nobody")
           String assignee) {
     WorkEntity ticket =
-        ticketService.create(
-            scope.requireProjectId(), title, impetus, description, type, assignee, changedBy());
+        entities
+            .create(
+                Archetype.TICKET,
+                scope.requireProjectId(),
+                EntityWrite.ticket(title, impetus, description, type, assignee),
+                changedBy())
+            .entity();
     announce();
     return summarize(ticket, projectSlug());
   }
@@ -279,8 +289,14 @@ public class TicketMcpTools {
     // deliberate act in a form, and a model that meant "no value" would reach for a null it cannot
     // express here anyway.
     WorkEntity ticket =
-        ticketService.update(
-            id, title, impetus, false, description, false, type, assignee, false, changedBy());
+        entities
+            .update(
+                Archetype.TICKET,
+                id,
+                EntityWrite.ticketEdit(
+                    title, impetus, false, description, false, type, assignee, false),
+                changedBy())
+            .entity();
     announce();
     return summarize(ticket, projectSlug());
   }
@@ -339,7 +355,7 @@ public class TicketMcpTools {
     requireTicketInProject(id);
     String changedBy = changedBy();
     // Through EntityResolutions (qits-395): a resolving move discards the ticket's refinement first.
-    WorkEntity ticket = resolutions.transitionTicket(id, target, changedBy);
+    WorkEntity ticket = resolutions.transition(Archetype.TICKET, id, target, changedBy).entity();
     announce();
     // The agent's claim IS the trigger for the next phase, and this is where it lands: after the
     // move is recorded, outside its transaction, so a transition that failed speaks to nobody. The
@@ -433,7 +449,7 @@ public class TicketMcpTools {
       @ToolArg(description = "id of a ticket in this project") String ticketId,
       @ToolArg(description = "the remark, Markdown") String body) {
     requireTicketInProject(ticketId);
-    TicketComment comment = ticketService.addComment(ticketId, body, changedBy());
+    TicketComment comment = thread.addComment(ticketId, body, changedBy());
     announce();
     return new CommentDetail(comment.id, comment.author, comment.body, comment.createdAt);
   }
@@ -454,7 +470,7 @@ public class TicketMcpTools {
       @ToolArg(description = "the remark as it should now read, Markdown; it replaces the old body")
           String body) {
     requireCommentInProject(id);
-    TicketComment comment = ticketService.updateComment(id, body, changedBy());
+    TicketComment comment = thread.updateComment(id, body, changedBy());
     announce();
     return new CommentDetail(comment.id, comment.author, comment.body, comment.createdAt);
   }
@@ -466,7 +482,7 @@ public class TicketMcpTools {
    * found rather than as forbidden — the model is told nothing about what other projects hold.
    */
   private WorkEntity requireTicketInProject(String ticketId) {
-    WorkEntity ticket = ticketService.get(ticketId);
+    WorkEntity ticket = entities.get(Archetype.TICKET, ticketId);
     if (!scope.requireProjectId().equals(ticket.projectId)) {
       throw new NotFoundException("Ticket not found in this project: " + ticketId);
     }
@@ -480,8 +496,8 @@ public class TicketMcpTools {
    * about.
    */
   private TicketComment requireCommentInProject(String commentId) {
-    TicketComment comment = ticketService.getComment(commentId);
-    if (!scope.requireProjectId().equals(ticketService.get(comment.ticketId).projectId)) {
+    TicketComment comment = thread.getComment(commentId);
+    if (!scope.requireProjectId().equals(entities.get(Archetype.TICKET, comment.ticketId).projectId)) {
       throw new NotFoundException("Ticket comment not found in this project: " + commentId);
     }
     return comment;

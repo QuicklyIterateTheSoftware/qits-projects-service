@@ -67,9 +67,9 @@ public class RefinementLifecycleTest {
   private io.restassured.response.Response open(String epicId) {
     return given()
         .contentType(ContentType.JSON)
-        .body(java.util.Map.of("epicId", epicId))
+        .body(java.util.Map.of())
         .when()
-        .post("/projects/api/refinements");
+        .post("/projects/api/entities/" + epicId + "/refinement");
   }
 
   private void awaitStatus(long id, String expected) {

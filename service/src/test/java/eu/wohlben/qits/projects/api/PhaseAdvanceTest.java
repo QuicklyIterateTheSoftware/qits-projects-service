@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
  * simulated; the three templates' own sentences are {@link PhasePromptsTest}'s.
  *
  * <p>The caller is named with the real {@code X-Qits-*} pair rather than {@code @TestSecurity}, for
- * {@link TicketDispatchControllerTest}'s reason: the comment's {@code author} is one of the
+ * {@link TicketFlowDispatchTest}'s reason: the comment's {@code author} is one of the
  * assertions and the header is what produces it in a deployment.
  */
 @QuarkusTest
@@ -274,7 +274,7 @@ public class PhaseAdvanceTest {
    *
    * <p>It hands the bean the row directly, the idiom {@link
    * #aTicketThatWasDroppedDeliversNoTurnAndAsksAboutNoBranch} uses, and here that is not merely the
-   * cheaper route but the <b>only</b> one: {@code TicketService.transition} clears the flag on
+   * cheaper route but the <b>only</b> one: {@code WorkEntityService.transition} clears the flag on
    * every move, so a ticket can never arrive at this bean through the transition door with it set.
    * A test that pressed the door would be asserting that an unblocked ticket starts its phase,
    * which is the opposite arm and is covered by every other case in this class.

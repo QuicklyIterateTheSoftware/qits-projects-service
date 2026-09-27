@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -36,10 +37,7 @@ import org.junit.jupiter.api.Test;
 class EntityNumbersTest extends EntitiesTestSupport {
 
   @Inject EntityNumbers numbers;
-  @Inject EpicService epicService;
-  @Inject FeatureService featureService;
-  @Inject TaskService taskService;
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService workEntities;
   @Inject WorkEntityRepository entities;
 
   // ---- the two claims that need more than one thread or more than one outcome ------------------
@@ -95,7 +93,16 @@ class EntityNumbersTest extends EntitiesTestSupport {
     List<String> ids =
         concurrently(
             threads,
-            () -> List.of(epicService.create("proj-1", "Epic " + Thread.currentThread().threadId(), null, "t").id));
+            () ->
+                List.of(
+                    workEntities
+                        .create(
+                            Archetype.EPIC,
+                            "proj-1",
+                            EntityWrite.epic("Epic " + Thread.currentThread().threadId(), null),
+                            "t")
+                        .entity()
+                        .id));
 
     assertEquals(threads, ids.size());
     List<Long> allocated = new ArrayList<>();
@@ -142,11 +149,27 @@ class EntityNumbersTest extends EntitiesTestSupport {
    */
   @Test
   void everyArchetypeInAProjectDrawsFromOneRunOfIntegers() {
-    WorkEntity epic = epicService.create("proj-1", "The epic", null, "t");
-    Nested feature = featureService.create(epic.id, "The feature", null, null, "t");
-    Nested task = taskService.create(feature.entity().id, "repo-1", "The task", null, null, "t");
+    WorkEntity epic =
+        workEntities
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("The epic", null), "t")
+            .entity();
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("The feature", null, null), "t");
+    Nested task =
+        workEntities.create(
+            Archetype.TASK,
+            feature.entity().id,
+            EntityWrite.task("repo-1", "The task", null, null),
+            "t");
     WorkEntity ticket =
-        ticketService.create("proj-1", "The ticket", "it occurs", null, "BUG", null, "t");
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket("The ticket", "it occurs", null, "BUG", null),
+                "t")
+            .entity();
 
     assertEquals(1L, numberOf(epic.id));
     assertEquals(2L, numberOf(feature.entity().id));
@@ -157,9 +180,16 @@ class EntityNumbersTest extends EntitiesTestSupport {
   /** Per project, so the numbers stay small and the qualified form carries its own scope. */
   @Test
   void eachProjectHasItsOwnRunAndBothStartAtOne() {
-    WorkEntity here = epicService.create("proj-1", "Here", null, "t");
-    WorkEntity there = epicService.create("proj-2", "There", null, "t");
-    WorkEntity alsoHere = epicService.create("proj-1", "Also here", null, "t");
+    WorkEntity here =
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Here", null), "t").entity();
+    WorkEntity there =
+        workEntities
+            .create(Archetype.EPIC, "proj-2", EntityWrite.epic("There", null), "t")
+            .entity();
+    WorkEntity alsoHere =
+        workEntities
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Also here", null), "t")
+            .entity();
 
     assertEquals(1L, numberOf(here.id));
     assertEquals(1L, numberOf(there.id));
@@ -174,12 +204,16 @@ class EntityNumbersTest extends EntitiesTestSupport {
    */
   @Test
   void supersedingNumbersTheWholeCopiedTreeAfresh() {
-    WorkEntity epic = epicService.create("proj-1", "Plan", null, "t");
-    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
-    taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
-    epicService.transition(epic.id, "REFINED", "t");
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null), "t").entity();
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    workEntities.create(
+        Archetype.TASK, feature.entity().id, EntityWrite.task("repo-1", "Task", null, null), "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
 
-    epicService.transition(epic.id, "SUPERSEDED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "SUPERSEDED", "t");
 
     inFreshTx(
         () -> {
@@ -197,8 +231,11 @@ class EntityNumbersTest extends EntitiesTestSupport {
   /** A re-archetype creates nothing, so it allocates nothing and the row keeps its number. */
   @Test
   void aTransitionAllocatesNothing() {
-    WorkEntity epic = epicService.create("proj-1", "Plan", null, "t");
-    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null), "t").entity();
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
     long before = numberOf(feature.entity().id);
 
     long after = numbers.next("proj-1");

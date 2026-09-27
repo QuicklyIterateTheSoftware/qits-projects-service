@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>A plain unit test rather than a {@code @QuarkusTest}: the renderer is a pure function of a
  * ticket's fields, so a boot here would buy nothing and cost a minute. {@code
- * TicketDispatchControllerTest} is where the door's use of it is pinned end to end.
+ * TicketFlowDispatchTest} is where the door's use of it is pinned end to end.
  */
 public class PhasePromptsTest {
 

@@ -18,10 +18,10 @@ import java.util.Optional;
  * and belongs in the service that ends up owning a reorder here.
  *
  * <p><b>This table is the parent/child relation of the whole planning tree now.</b> {@code
- * FeatureService} and {@code TaskService} write an edge per create and remove one per delete —
+ * WorkEntityService} writes an edge per node create and removes one per node delete —
  * {@link #maxPosition} to append, {@link #closeGapAfter} to keep the survivors dense — {@link
  * #membershipOf} is how either of them answers "what is this part of", {@link #childrenOf} is the
- * order a listing is drawn in, and {@code EpicService}'s three subtree walks fan out with {@link
+ * order a listing is drawn in, and {@code WorkEntityService}'s three subtree walks fan out with {@link
  * #childrenOfAll} a level at a time. Every read here is bulk by shape for that last reason: a merged
  * tree walked one node per query is the one performance mistake this model makes easy.
  */

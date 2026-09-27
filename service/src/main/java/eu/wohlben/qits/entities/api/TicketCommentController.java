@@ -1,6 +1,6 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.TicketCommentService;
 import eu.wohlben.qits.entities.dto.TicketCommentDto;
 import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -27,7 +27,7 @@ import jakarta.ws.rs.core.MediaType;
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class TicketCommentController {
 
-  @Inject TicketService ticketService;
+  @Inject TicketCommentService comments;
 
   @Inject TicketCommentMapper commentMapper;
 
@@ -55,7 +55,7 @@ public class TicketCommentController {
       @PathParam("id") String id, @Valid UpdateTicketCommentRequest request) {
     EntitiesAgentAccess.requireProject(identity, hints.projectOfComment(id));
     var comment =
-        ticketService.updateComment(id, request.body(), EntitiesPrincipal.changedBy(identity));
+        comments.updateComment(id, request.body(), EntitiesPrincipal.changedBy(identity));
     hints.fire(hints.projectOfTicket(comment.ticketId));
     return new UpdateTicketCommentRequest.Response(commentMapper.toDto(comment));
   }
@@ -69,7 +69,7 @@ public class TicketCommentController {
   public DeleteTicketCommentRequest.Response delete(@PathParam("id") String id) {
     // Resolved before the delete — afterwards there is no row to walk up from.
     String projectId = hints.projectOfComment(id);
-    ticketService.deleteComment(id, EntitiesPrincipal.changedBy(identity));
+    comments.deleteComment(id, EntitiesPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new DeleteTicketCommentRequest.Response(true);
   }

@@ -1,0 +1,45 @@
+[ {
+  "request" : "GET /projects/api/entities/archetypes",
+  "status" : 200,
+  "response" : {
+    "properties" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY", "SUPERSEDED_BY", "REPOSITORY_ID", "IMPLEMENTED_AT", "DEPENDS_ON" ],
+    "serverOwned" : [ "SLUG", "CREATED_BY" ],
+    "archetypes" : [ {
+      "archetype" : "EPIC",
+      "depth" : 0,
+      "mayBeRoot" : true,
+      "required" : [ "TITLE" ],
+      "requiredAtCreate" : [ "TITLE" ],
+      "requiredOnTransition" : [ "TITLE", "STATUS" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ]
+    }, {
+      "archetype" : "TICKET",
+      "depth" : 0,
+      "mayBeRoot" : true,
+      "required" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
+      "requiredAtCreate" : [ "TITLE", "STATUS", "TICKET_TYPE", "IMPETUS" ],
+      "requiredOnTransition" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ]
+    }, {
+      "archetype" : "FEATURE",
+      "depth" : 1,
+      "mayBeRoot" : false,
+      "required" : [ "TITLE" ],
+      "requiredAtCreate" : [ "TITLE" ],
+      "requiredOnTransition" : [ "TITLE" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "IMPLEMENTED_AT", "DEPENDS_ON" ],
+      "legalStatuses" : [ ]
+    }, {
+      "archetype" : "TASK",
+      "depth" : 2,
+      "mayBeRoot" : false,
+      "required" : [ "TITLE", "REPOSITORY_ID" ],
+      "requiredAtCreate" : [ "TITLE", "REPOSITORY_ID" ],
+      "requiredOnTransition" : [ "TITLE", "REPOSITORY_ID" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "REPOSITORY_ID", "IMPLEMENTED_AT", "DEPENDS_ON" ],
+      "legalStatuses" : [ ]
+    } ]
+  }
+} ]

@@ -1,0 +1,1035 @@
+[ {
+  "request" : "POST /projects/api/projects/<id:1>/tickets",
+  "body" : {
+    "title" : "Login button does nothing",
+    "impetus" : "clicking the login button does nothing on the sign-in page",
+    "description" : "It just sits there",
+    "type" : "BUG",
+    "assignee" : "alice"
+  },
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button does nothing",
+      "slug" : "login-button-does-nothing",
+      "type" : "BUG",
+      "status" : "REPORTED",
+      "blocked" : false,
+      "assignee" : "alice",
+      "createdBy" : "dev",
+      "impetus" : "clicking the login button does nothing on the sign-in page",
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/projects/<id:1>/tickets",
+  "body" : {
+    "title" : "Faster board",
+    "impetus" : "the board should load faster",
+    "type" : "IMPROVEMENT"
+  },
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:3>",
+      "projectId" : "<id:1>",
+      "number" : 2,
+      "qualifiedId" : "<project>-2",
+      "title" : "Faster board",
+      "slug" : "faster-board",
+      "type" : "IMPROVEMENT",
+      "status" : "REPORTED",
+      "blocked" : false,
+      "assignee" : null,
+      "createdBy" : "dev",
+      "impetus" : "the board should load faster",
+      "description" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/projects/<id:1>/tickets",
+  "body" : {
+    "title" : "No impetus",
+    "type" : "BUG"
+  },
+  "status" : 400,
+  "response" : {
+    "title" : "Constraint Violation",
+    "status" : 400,
+    "violations" : [ {
+      "field" : "create.request.impetus",
+      "message" : "must not be blank"
+    } ]
+  }
+}, {
+  "request" : "POST /projects/api/projects/<id:1>/tickets",
+  "body" : {
+    "title" : "Bad type",
+    "impetus" : "x",
+    "type" : "NOPE"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "Unknown ticket type: NOPE"
+  }
+}, {
+  "request" : "POST /projects/api/projects/no-such-project/tickets",
+  "body" : {
+    "title" : "Login button does nothing",
+    "impetus" : "clicking the login button does nothing on the sign-in page",
+    "description" : "It just sits there",
+    "type" : "BUG",
+    "assignee" : "alice"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Project not found: no-such-project"
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/tickets",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "ticket" : {
+        "id" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 1,
+        "qualifiedId" : "<project>-1",
+        "title" : "Login button does nothing",
+        "slug" : "login-button-does-nothing",
+        "type" : "BUG",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "assignee" : "alice",
+        "createdBy" : "dev",
+        "impetus" : "clicking the login button does nothing on the sign-in page",
+        "description" : "It just sits there",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    }, {
+      "ticket" : {
+        "id" : "<id:3>",
+        "projectId" : "<id:1>",
+        "number" : 2,
+        "qualifiedId" : "<project>-2",
+        "title" : "Faster board",
+        "slug" : "faster-board",
+        "type" : "IMPROVEMENT",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "assignee" : null,
+        "createdBy" : "dev",
+        "impetus" : "the board should load faster",
+        "description" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/tickets?status=REPORTED",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "ticket" : {
+        "id" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 1,
+        "qualifiedId" : "<project>-1",
+        "title" : "Login button does nothing",
+        "slug" : "login-button-does-nothing",
+        "type" : "BUG",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "assignee" : "alice",
+        "createdBy" : "dev",
+        "impetus" : "clicking the login button does nothing on the sign-in page",
+        "description" : "It just sits there",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    }, {
+      "ticket" : {
+        "id" : "<id:3>",
+        "projectId" : "<id:1>",
+        "number" : 2,
+        "qualifiedId" : "<project>-2",
+        "title" : "Faster board",
+        "slug" : "faster-board",
+        "type" : "IMPROVEMENT",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "assignee" : null,
+        "createdBy" : "dev",
+        "impetus" : "the board should load faster",
+        "description" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/tickets?status=DONE",
+  "status" : 200,
+  "response" : {
+    "entries" : [ ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/tickets?status=NOPE",
+  "status" : 400,
+  "response" : {
+    "message" : "Unknown ticket status: NOPE"
+  }
+}, {
+  "request" : "GET /projects/api/tickets/<id:2>",
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button does nothing",
+      "slug" : "login-button-does-nothing",
+      "type" : "BUG",
+      "status" : "REPORTED",
+      "blocked" : false,
+      "assignee" : "alice",
+      "createdBy" : "dev",
+      "impetus" : "clicking the login button does nothing on the sign-in page",
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "GET /projects/api/tickets/no-such-ticket",
+  "status" : 404,
+  "response" : {
+    "message" : "Ticket not found: no-such-ticket"
+  }
+}, {
+  "request" : "POST /projects/api/entities/transition",
+  "body" : {
+    "<id:2>" : {
+      "archetype" : "TICKET",
+      "title" : "Login button is inert",
+      "description" : "It just sits there",
+      "status" : "REPORTED",
+      "ticketType" : "IMPROVEMENT",
+      "assignee" : "bob",
+      "membership" : {
+        "parent" : null
+      }
+    }
+  },
+  "status" : 200,
+  "response" : {
+    "<id:2>" : {
+      "id" : "<id:2>",
+      "archetype" : "TICKET",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button is inert",
+      "slug" : "login-button-does-nothing",
+      "slugScope" : "<id:1>",
+      "description" : "It just sits there",
+      "status" : "REPORTED",
+      "ticketType" : "IMPROVEMENT",
+      "impetus" : null,
+      "assignee" : "bob",
+      "createdBy" : "dev",
+      "supersededBy" : null,
+      "repositoryId" : null,
+      "implementedAt" : null,
+      "dependsOn" : null,
+      "parent" : null,
+      "position" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "GET /projects/api/tickets/<id:2>",
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button is inert",
+      "slug" : "login-button-does-nothing",
+      "type" : "IMPROVEMENT",
+      "status" : "REPORTED",
+      "blocked" : false,
+      "assignee" : "bob",
+      "createdBy" : "dev",
+      "impetus" : null,
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/transition",
+  "body" : {
+    "target" : "NOPE"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "Unknown ticket status: NOPE"
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/transition",
+  "body" : {
+    "target" : null
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "target is required"
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/transition",
+  "body" : {
+    "target" : "DONE"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "A ticket cannot move from REPORTED to DONE"
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/transition",
+  "body" : {
+    "target" : "REFINED"
+  },
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button is inert",
+      "slug" : "login-button-does-nothing",
+      "type" : "IMPROVEMENT",
+      "status" : "REFINED",
+      "blocked" : false,
+      "assignee" : "bob",
+      "createdBy" : "dev",
+      "impetus" : null,
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/tickets/no-such-ticket/transition",
+  "body" : {
+    "target" : "REFINED"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Ticket not found: no-such-ticket"
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/blocked",
+  "body" : {
+    "blocked" : true
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "A blocked ticket needs a stated blocker: say what is in the way, so somebody can clear it."
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/blocked",
+  "body" : {
+    "blocked" : true,
+    "reason" : "waiting on the idp"
+  },
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button is inert",
+      "slug" : "login-button-does-nothing",
+      "type" : "IMPROVEMENT",
+      "status" : "REFINED",
+      "blocked" : true,
+      "assignee" : "bob",
+      "createdBy" : "dev",
+      "impetus" : null,
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "GET /projects/api/tickets/<id:2>",
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button is inert",
+      "slug" : "login-button-does-nothing",
+      "type" : "IMPROVEMENT",
+      "status" : "REFINED",
+      "blocked" : true,
+      "assignee" : "bob",
+      "createdBy" : "dev",
+      "impetus" : null,
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/blocked",
+  "body" : {
+    "blocked" : false
+  },
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button is inert",
+      "slug" : "login-button-does-nothing",
+      "type" : "IMPROVEMENT",
+      "status" : "REFINED",
+      "blocked" : false,
+      "assignee" : "bob",
+      "createdBy" : "dev",
+      "impetus" : null,
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:3>/transition",
+  "body" : {
+    "target" : "DROPPED"
+  },
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:3>",
+      "projectId" : "<id:1>",
+      "number" : 2,
+      "qualifiedId" : "<project>-2",
+      "title" : "Faster board",
+      "slug" : "faster-board",
+      "type" : "IMPROVEMENT",
+      "status" : "DROPPED",
+      "blocked" : false,
+      "assignee" : null,
+      "createdBy" : "dev",
+      "impetus" : "the board should load faster",
+      "description" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:3>/blocked",
+  "body" : {
+    "blocked" : true,
+    "reason" : "nothing to block"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "Ticket <id:3> is DROPPED, so no phase is running and there is nothing to block — a block says the work that runs now cannot finish, and no work runs while this status holds."
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/comments",
+  "body" : {
+    "body" : "I can reproduce it"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:4>",
+      "ticketId" : "<id:2>",
+      "author" : "dev",
+      "body" : "I can reproduce it",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/tickets/<id:2>/comments",
+  "body" : {
+    "body" : " "
+  },
+  "status" : 400,
+  "response" : {
+    "title" : "Constraint Violation",
+    "status" : 400,
+    "violations" : [ {
+      "field" : "createComment.request.body",
+      "message" : "must not be blank"
+    } ]
+  }
+}, {
+  "request" : "POST /projects/api/tickets/no-such-ticket/comments",
+  "body" : {
+    "body" : "x"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Ticket not found: no-such-ticket"
+  }
+}, {
+  "request" : "PUT /projects/api/ticket-comments/<id:4>",
+  "body" : {
+    "body" : "I can reproduce it, in dev"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:4>",
+      "ticketId" : "<id:2>",
+      "author" : "dev",
+      "body" : "I can reproduce it, in dev",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "GET /projects/api/tickets/<id:2>/comments",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "comment" : {
+        "id" : "<id:5>",
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Blocked: waiting on the idp",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "comment" : {
+        "id" : "<id:6>",
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Unblocked.",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "comment" : {
+        "id" : "<id:4>",
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "I can reproduce it, in dev",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/tickets/no-such-ticket/comments",
+  "status" : 404,
+  "response" : {
+    "message" : "Ticket not found: no-such-ticket"
+  }
+}, {
+  "request" : "DELETE /projects/api/ticket-comments/<id:4>",
+  "status" : 200,
+  "response" : {
+    "success" : true
+  }
+}, {
+  "request" : "DELETE /projects/api/ticket-comments/no-such-comment",
+  "status" : 404,
+  "response" : {
+    "message" : "Ticket comment not found: no-such-comment"
+  }
+}, {
+  "request" : "GET /projects/api/tickets/<id:2>/comments",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "comment" : {
+        "id" : "<id:5>",
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Blocked: waiting on the idp",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "comment" : {
+        "id" : "<id:6>",
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Unblocked.",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "DELETE /projects/api/tickets/<id:2>",
+  "status" : 200,
+  "response" : {
+    "success" : true
+  }
+}, {
+  "request" : "DELETE /projects/api/tickets/no-such-ticket",
+  "status" : 404,
+  "response" : {
+    "message" : "Ticket not found: no-such-ticket"
+  }
+}, {
+  "request" : "GET /projects/api/tickets/<id:2>",
+  "status" : 404,
+  "response" : {
+    "message" : "Ticket not found: <id:2>"
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/tickets",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "ticket" : {
+        "id" : "<id:3>",
+        "projectId" : "<id:1>",
+        "number" : 2,
+        "qualifiedId" : "<project>-2",
+        "title" : "Faster board",
+        "slug" : "faster-board",
+        "type" : "IMPROVEMENT",
+        "status" : "DROPPED",
+        "blocked" : false,
+        "assignee" : null,
+        "createdBy" : "dev",
+        "impetus" : "the board should load faster",
+        "description" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:2>/audit",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button does nothing",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "BUG",
+        "impetus" : "clicking the login button does nothing on the sign-in page",
+        "assignee" : "alice",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button is inert",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REFINED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : null,
+        "assignee" : "bob",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button is inert",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REFINED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : null,
+        "assignee" : "bob",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button is inert",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REFINED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : null,
+        "assignee" : "bob",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button is inert",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REFINED",
+        "blocked" : true,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : null,
+        "assignee" : "bob",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button is inert",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : null,
+        "assignee" : "bob",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET_COMMENT",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "I can reproduce it",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET_COMMENT",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "I can reproduce it, in dev",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET_COMMENT",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "I can reproduce it, in dev",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET_COMMENT",
+      "entityId" : "<id:5>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:5>",
+        "causationId" : null,
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Blocked: waiting on the idp",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET_COMMENT",
+      "entityId" : "<id:5>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:5>",
+        "causationId" : null,
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Blocked: waiting on the idp",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET_COMMENT",
+      "entityId" : "<id:6>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:6>",
+        "causationId" : null,
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Unblocked.",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET_COMMENT",
+      "entityId" : "<id:6>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:6>",
+        "causationId" : null,
+        "ticketId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Unblocked.",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:3>/audit",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:3>",
+      "epicId" : "<id:3>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:3>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 2,
+        "title" : "Faster board",
+        "slug" : "faster-board",
+        "slugScope" : "<id:1>",
+        "description" : null,
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : "the board should load faster",
+        "assignee" : null,
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:3>",
+      "epicId" : "<id:3>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:3>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 2,
+        "title" : "Faster board",
+        "slug" : "faster-board",
+        "slugScope" : "<id:1>",
+        "description" : null,
+        "status" : "DROPPED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : "the board should load faster",
+        "assignee" : null,
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+} ]

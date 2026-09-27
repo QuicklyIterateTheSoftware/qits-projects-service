@@ -62,7 +62,7 @@ import jakarta.persistence.EntityManager;
  * people planning in one project do not serialise on each other's slug reads and audit writes.
  *
  * <p>{@link #allocate(String, int)} is the batch form, for a write that mints several rows at once
- * ({@code EpicService.supersede} copies a whole feature/task tree) — one bump for the block instead
+ * ({@code WorkEntityService.supersede} copies a whole feature/task tree) — one bump for the block instead
  * of one per row.
  *
  * <h2>Where the first number comes from</h2>

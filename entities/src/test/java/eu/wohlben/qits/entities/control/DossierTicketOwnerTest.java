@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.DossierAsset;
 import eu.wohlben.qits.entities.entity.DossierOwner;
@@ -37,18 +38,25 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class DossierTicketOwnerTest extends EntitiesTestSupport {
 
-  @Inject EpicService epicService;
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService workEntities;
   @Inject DossierService dossier;
   @Inject DossierAssetService assets;
   @Inject AuditService auditService;
 
   private WorkEntity epic() {
-    return epicService.create("proj-1", "Epic", null, "t");
+    return workEntities
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t")
+        .entity();
   }
 
   private WorkEntity ticket() {
-    return ticketService.create("proj-1", "The button is wrong", "It is wrong.", null, "BUG", null, "t");
+    return workEntities
+        .create(
+            Archetype.TICKET,
+            "proj-1",
+            EntityWrite.ticket("The button is wrong", "It is wrong.", null, "BUG", null),
+            "t")
+        .entity();
   }
 
   // --- the constraint -------------------------------------------------------
@@ -105,16 +113,16 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
 
     // REPORTED: the refine phase's own write.
     DossierPage page = dossier.create(owner, "The root cause", "four services deep", "t");
-    assertEquals(EntityStatus.REPORTED.name(), ticketService.get(t.id).status);
+    assertEquals(EntityStatus.REPORTED.name(), workEntities.get(Archetype.TICKET, t.id).status);
 
-    ticketService.transition(t.id, EntityStatus.REFINED.name(), "t");
-    ticketService.transition(t.id, EntityStatus.IMPLEMENTED.name(), "t");
+    workEntities.transition(Archetype.TICKET, t.id, EntityStatus.REFINED.name(), "t").entity();
+    workEntities.transition(Archetype.TICKET, t.id, EntityStatus.IMPLEMENTED.name(), "t").entity();
     // IMPLEMENTED: the implement phase correcting what it found wrong is the ordinary case.
     DossierPage rewritten = dossier.update(page.id, null, "five, as it turns out", 0L, "t");
     assertEquals("five, as it turns out", rewritten.body);
 
-    ticketService.transition(t.id, EntityStatus.VERIFIED.name(), "t");
-    ticketService.transition(t.id, EntityStatus.DONE.name(), "t");
+    workEntities.transition(Archetype.TICKET, t.id, EntityStatus.VERIFIED.name(), "t").entity();
+    workEntities.transition(Archetype.TICKET, t.id, EntityStatus.DONE.name(), "t").entity();
     // DONE: a closed ticket stays editable, exactly as its description and its thread do.
     DossierPage second = dossier.create(owner, "What verifying looked like", "", "t");
     dossier.move(second.id, 0, "t");
@@ -128,7 +136,7 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
     WorkEntity e = epic();
     DossierOwner owner = DossierOwner.epic(e.id);
     DossierPage page = dossier.create(owner, "The claim loop", "the body", "t");
-    epicService.transition(e.id, "REFINED", "t");
+    workEntities.transition(Archetype.EPIC, e.id, "REFINED", "t");
 
     assertThrows(ConflictException.class, () -> dossier.create(owner, "Another", "", "t"));
     assertThrows(ConflictException.class, () -> dossier.update(page.id, "New", null, 0L, "t"));
@@ -156,7 +164,7 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
     WorkEntity t = ticket();
     DossierPage page = dossier.create(DossierOwner.ticket(t.id), "The root cause", "", "t");
 
-    ticketService.delete(t.id, "t");
+    workEntities.delete(Archetype.TICKET, t.id, "t");
 
     inFreshTx(
         () -> {

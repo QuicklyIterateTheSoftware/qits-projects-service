@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.DossierOwner;
@@ -30,12 +31,14 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class DossierServiceTest extends EntitiesTestSupport {
 
-  @Inject EpicService epicService;
+  @Inject WorkEntityService workEntities;
   @Inject DossierService dossier;
   @Inject AuditService auditService;
 
   private WorkEntity epic() {
-    return epicService.create("proj-1", "Epic", null, "t");
+    return workEntities
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t")
+        .entity();
   }
 
   @Test
@@ -110,7 +113,7 @@ class DossierServiceTest extends EntitiesTestSupport {
   void aFrozenEpicIsReadableAndUnwritable() {
     WorkEntity e = epic();
     DossierPage page = dossier.create(DossierOwner.epic(e.id), "The claim loop", "the body", "t");
-    epicService.transition(e.id, EntityStatus.REFINED.name(), "t");
+    workEntities.transition(Archetype.EPIC, e.id, EntityStatus.REFINED.name(), "t");
 
     // The read is what implementation is for.
     assertEquals("the body", dossier.listByOwner(DossierOwner.epic(e.id)).get(0).body);

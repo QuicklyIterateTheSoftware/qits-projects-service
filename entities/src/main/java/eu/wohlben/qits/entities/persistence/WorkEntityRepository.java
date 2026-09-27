@@ -13,8 +13,7 @@ import java.util.Optional;
  * The merged planning rows, plain CRUD; the caller owns the transaction, exactly as {@link
  * DossierPageRepository} leaves it.
  *
- * <p><b>{@code EpicService} and {@code TicketService} read every epic and every ticket through
- * this.</b> {@link #listByProjectAndArchetype} and {@link #listByProjectArchetypeAndStatus} are the
+ * <p><b>{@code WorkEntityService} reads every epic and every ticket through this.</b> {@link #listByProjectAndArchetype} and {@link #listByProjectArchetypeAndStatus} are the
  * two listings the board draws, one query each; {@link #slugsInScope} is what a create mints its
  * slug against. The reads the rest of the merge still needs are carried here too, and were carried
  * <em>before</em> they had a caller so that each task inherits a shape rather than inventing one —

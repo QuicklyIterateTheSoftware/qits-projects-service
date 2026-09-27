@@ -612,7 +612,7 @@ public class EpicMcpToolsTest {
     String taskId = addTask(projectId, epicId, repoId, "Nothing has landed");
 
     // The refusal is EntityLifecycle.requireRefined's own — this tool adds no second copy of
-    // the rule, it lands on TaskService.update's marker arm and lets the lifecycle answer.
+    // the rule, it lands on WorkEntityService.update's marker arm and lets the lifecycle answer.
     call(
         projectId,
         "mark_task_implemented",

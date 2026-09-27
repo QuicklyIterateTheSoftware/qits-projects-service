@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityStatus;
@@ -27,14 +28,16 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class EpicServiceTest extends EntitiesTestSupport {
 
-  @Inject EpicService epicService;
-  @Inject FeatureService featureService;
-  @Inject TaskService taskService;
+  @Inject WorkEntityService workEntities;
   @Inject AuditService auditService;
 
   @Test
   void createReadUpdateDelete() {
-    WorkEntity epic = epicService.create("proj-1", "Planning domain", "The spine", "alice");
+    WorkEntity epic =
+        workEntities
+            .create(
+                Archetype.EPIC, "proj-1", EntityWrite.epic("Planning domain", "The spine"), "alice")
+            .entity();
     assertNotNull(epic.id);
     assertEquals("proj-1", epic.projectId);
     assertEquals(EntityStatus.REPORTED.name(), epic.status);
@@ -42,84 +45,136 @@ class EpicServiceTest extends EntitiesTestSupport {
     assertNotNull(epic.createdAt);
     assertNotNull(epic.updatedAt);
 
-    WorkEntity fetched = epicService.get(epic.id);
+    WorkEntity fetched = workEntities.get(Archetype.EPIC, epic.id);
     assertEquals("Planning domain", fetched.title);
 
-    WorkEntity updated = epicService.update(epic.id, "Planning domain v2", "Longer spine", "bob");
+    WorkEntity updated =
+        workEntities
+            .update(
+                Archetype.EPIC,
+                epic.id,
+                EntityWrite.epic("Planning domain v2", "Longer spine"),
+                "bob")
+            .entity();
     assertEquals("Planning domain v2", updated.title);
     // created_at is immutable; update bumps updated_at only.
     assertEquals(epic.createdAt, updated.createdAt);
     assertFalse(updated.updatedAt.isBefore(updated.createdAt));
 
-    epicService.delete(epic.id, "bob");
-    inFreshTx(() -> assertThrows(NotFoundException.class, () -> epicService.get(epic.id)));
+    workEntities.delete(Archetype.EPIC, epic.id, "bob");
+    inFreshTx(
+        () ->
+            assertThrows(NotFoundException.class, () -> workEntities.get(Archetype.EPIC, epic.id)));
   }
 
   @Test
   void listByProjectScopesToTheProject() {
-    epicService.create("proj-a", "A1", null, "t");
-    epicService.create("proj-a", "A2", null, "t");
-    epicService.create("proj-b", "B1", null, "t");
+    workEntities.create(Archetype.EPIC, "proj-a", EntityWrite.epic("A1", null), "t").entity();
+    workEntities.create(Archetype.EPIC, "proj-a", EntityWrite.epic("A2", null), "t").entity();
+    workEntities.create(Archetype.EPIC, "proj-b", EntityWrite.epic("B1", null), "t").entity();
 
-    assertEquals(2, epicService.listByProject("proj-a").size());
-    assertEquals(1, epicService.listByProject("proj-b").size());
-    assertTrue(epicService.listByProject("proj-none").isEmpty());
+    assertEquals(2, workEntities.listByProject(Archetype.EPIC, "proj-a").size());
+    assertEquals(1, workEntities.listByProject(Archetype.EPIC, "proj-b").size());
+    assertTrue(workEntities.listByProject(Archetype.EPIC, "proj-none").isEmpty());
   }
 
   @Test
   void slugIsDerivedFromTheTitleAndUniqueWithinTheProject() {
-    WorkEntity first = epicService.create("proj-1", "Planning domain", null, "t");
+    WorkEntity first =
+        workEntities
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Planning domain", null), "t")
+            .entity();
     assertEquals("planning-domain", first.slug);
 
     // Same slug in the same project → the next free suffix, oldest keeps the clean one.
-    WorkEntity second = epicService.create("proj-1", "Planning   DOMAIN!", null, "t");
+    WorkEntity second =
+        workEntities
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Planning   DOMAIN!", null), "t")
+            .entity();
     assertEquals("planning-domain-2", second.slug);
 
     // Another project is another scope, so the clean slug is free again.
-    assertEquals("planning-domain", epicService.create("proj-2", "Planning domain", null, "t").slug);
+    assertEquals(
+        "planning-domain",
+        workEntities
+            .create(Archetype.EPIC, "proj-2", EntityWrite.epic("Planning domain", null), "t")
+            .entity()
+            .slug);
   }
 
   @Test
   void updateLeavesTheSlugAlone() {
-    WorkEntity epic = epicService.create("proj-1", "Planning domain", null, "t");
-    WorkEntity renamed = epicService.update(epic.id, "Something else entirely", null, "t");
+    WorkEntity epic =
+        workEntities
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Planning domain", null), "t")
+            .entity();
+    WorkEntity renamed =
+        workEntities
+            .update(Archetype.EPIC, epic.id, EntityWrite.epic("Something else entirely", null), "t")
+            .entity();
     // The slug names a branch; a rename must not orphan the branches already cut from it.
     assertEquals("planning-domain", renamed.slug);
   }
 
   @Test
   void blankTitleIsRejected() {
-    assertThrows(BadRequestException.class, () -> epicService.create("proj-1", "  ", null, "t"));
+    assertThrows(
+        BadRequestException.class,
+        () ->
+            workEntities
+                .create(Archetype.EPIC, "proj-1", EntityWrite.epic("  ", null), "t")
+                .entity());
   }
 
   @Test
   void getUnknownEpicThrowsNotFound() {
-    assertThrows(NotFoundException.class, () -> epicService.get("nope"));
+    assertThrows(NotFoundException.class, () -> workEntities.get(Archetype.EPIC, "nope"));
   }
 
   @Test
   void deleteCascadesToFeaturesAndTasks() {
-    WorkEntity epic = epicService.create("proj-1", "Epic", null, "t");
-    var feature = featureService.create(epic.id, "Feature", null, null, "t");
-    var task = taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t").entity();
+    var feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    var task =
+        workEntities.create(
+            Archetype.TASK,
+            feature.entity().id,
+            EntityWrite.task("repo-1", "Task", null, null),
+            "t");
 
-    epicService.delete(epic.id, "t");
+    workEntities.delete(Archetype.EPIC, epic.id, "t");
 
     // The in-service cascade removed the whole subtree.
     inFreshTx(
         () -> {
-          assertThrows(NotFoundException.class, () -> featureService.get(feature.entity().id));
-          assertThrows(NotFoundException.class, () -> taskService.get(task.entity().id));
+          assertThrows(
+              NotFoundException.class,
+              () -> workEntities.nested(Archetype.FEATURE, feature.entity().id));
+          assertThrows(
+              NotFoundException.class, () -> workEntities.nested(Archetype.TASK, task.entity().id));
         });
   }
 
   @Test
   void deleteRecordsAuditForWholeSubtreeAndSurvivesDeletion() {
-    WorkEntity epic = epicService.create("proj-1", "Epic", null, "carol");
-    var feature = featureService.create(epic.id, "Feature", null, null, "carol");
-    var task = taskService.create(feature.entity().id, "repo-1", "Task", null, null, "carol");
+    WorkEntity epic =
+        workEntities
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "carol")
+            .entity();
+    var feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "carol");
+    var task =
+        workEntities.create(
+            Archetype.TASK,
+            feature.entity().id,
+            EntityWrite.task("repo-1", "Task", null, null),
+            "carol");
 
-    epicService.delete(epic.id, "carol");
+    workEntities.delete(Archetype.EPIC, epic.id, "carol");
 
     // The audit log is queryable by epicId even though the live rows are gone (git replacement).
     var history = auditService.listForEpic(epic.id);
@@ -147,9 +202,12 @@ class EpicServiceTest extends EntitiesTestSupport {
 
   @Test
   void mutationsAreAudited() {
-    WorkEntity epic = epicService.create("proj-1", "Epic", null, "alice");
-    epicService.update(epic.id, "Epic v2", null, "bob");
-    epicService.delete(epic.id, "carol");
+    WorkEntity epic =
+        workEntities
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "alice")
+            .entity();
+    workEntities.update(Archetype.EPIC, epic.id, EntityWrite.epic("Epic v2", null), "bob").entity();
+    workEntities.delete(Archetype.EPIC, epic.id, "carol");
 
     List<AuditOperation> ops =
         auditService.listForEntity(AuditEntityType.EPIC, epic.id).stream()

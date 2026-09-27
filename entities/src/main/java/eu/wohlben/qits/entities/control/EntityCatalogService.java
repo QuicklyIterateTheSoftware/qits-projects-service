@@ -28,8 +28,7 @@ import java.util.Map;
  * at both halves of what it is about to restate.
  *
  * <p>So this is the read side of the transition and nothing else. It <b>adds</b> a reading rather
- * than changing one: {@code EpicService}, {@code TicketService}, {@code FeatureService} and {@code
- * TaskService} keep every method, every shape and every caller.
+ * than changing one: {@code WorkEntityService} keeps every method, every shape and every caller.
  *
  * <p><b>It answers {@link TransitionedEntity}</b>, which is the transition's own answer shape, for
  * the reason that record exists: it carries every property the merged table has, null where the
@@ -38,7 +37,7 @@ import java.util.Map;
  *
  * <h2>Two queries, never one per row</h2>
  *
- * <p>Both reads are a bulk row read plus a bulk edge read, the rule {@code FeatureService}'s listing
+ * <p>Both reads are a bulk row read plus a bulk edge read, the rule {@code WorkEntityService.listChildren}
  * already states: the N+1 is the single performance mistake this model makes easy and a whole-tree
  * read is where it would land first.
  *

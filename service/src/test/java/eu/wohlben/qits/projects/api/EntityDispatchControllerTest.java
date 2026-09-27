@@ -33,8 +33,8 @@ import org.junit.jupiter.api.Test;
  * work; <b>an epic and a ticket at the same status take the same path</b> with their own words;
  * <b>FLOW pushes the next prompt</b> on the agent's transition and <b>PHASE does not</b>, because the
  * bit rides on the entity row across the two requests; a second PHASE press continues from the new
- * status; and <b>both modes ask for the release at VERIFIED</b>. The two old doors' delegation is
- * {@link TicketDispatchControllerTest}'s and {@link EpicDispatchControllerTest}'s.
+ * status; and <b>both modes ask for the release at VERIFIED</b>. The ticket door this one replaced
+ * left its refusal cases behind in {@link TicketFlowDispatchTest}, pointed at this door.
  *
  * <p>No profile of its own: the default {@code @QuarkusTest} application, the one every door suite
  * shares, so this class costs no boot (the test-profile budget rule).

@@ -146,9 +146,9 @@ public class DispatchedWorkspacesReadTest {
     // An edit answers the row it changed and asks nobody who is working on it.
     int asked = dispatch.lookups().size();
     asAdmin()
-        .body(Map.of("title", "Read me twice"))
+        .body(Map.of("blocked", true, "reason", "waiting on a sibling"))
         .when()
-        .put("/projects/api/tickets/" + ticketId)
+        .post("/projects/api/tickets/" + ticketId + "/blocked")
         .then()
         .statusCode(200)
         .body("ticket.workspaces", hasSize(0));

@@ -1,19 +1,14 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.projects.control.RepositoryService;
-import eu.wohlben.qits.projects.entity.Repository;
-import eu.wohlben.qits.entities.control.EpicService;
-import eu.wohlben.qits.entities.control.FeatureService;
-import eu.wohlben.qits.entities.control.TaskService;
+import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.dto.FeatureDto;
 import eu.wohlben.qits.entities.dto.TaskDto;
-import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -26,34 +21,19 @@ import jakarta.ws.rs.core.MediaType;
 import java.time.Instant;
 import java.util.List;
 
-/** A single feature and its task collection. */
+/**
+ * A single feature and its task collection — a thin resource over {@link EntityRoutes}, the one
+ * implementation behind every per-archetype route (qits-399).
+ */
 @Path("/features")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class FeatureController {
 
-  @Inject FeatureService featureService;
-
-  @Inject TaskService taskService;
-
-  @Inject EpicService epicService;
-
-  /** One mapper where there were four — this route answers a feature shape and a task shape. */
-  @Inject WorkEntityMapper workEntityMapper;
-
-  @Inject RepositoryService repositoryService;
+  @Inject EntityRoutes routes;
 
   @Inject SecurityIdentity identity;
-
-  @Inject EpicsTopicHints hints;
-
-  /**
-   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
-   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
-   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
-   */
-  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
 
   // --- Feature ---
 
@@ -65,9 +45,7 @@ public class FeatureController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetFeatureRequest.Response get(@PathParam("id") String id) {
-    var feature = featureService.get(id);
-    return new GetFeatureRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toFeatureDto(feature.entity(), feature.parentId())));
+    return new GetFeatureRequest.Response(routes.get(routes.features(), id));
   }
 
   /**
@@ -97,20 +75,18 @@ public class FeatureController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public UpdateFeatureRequest.Response update(
       @PathParam("id") String id, @Valid UpdateFeatureRequest request) {
-    EntitiesAgentAccess.requireProject(identity, hints.projectOfFeature(id));
-    var feature =
-        featureService.update(
-            id,
-            request.title(),
-            request.description(),
-            request.dependsOnFeatureId(),
-            request.clearDependsOn(),
-            request.implementedOn(),
-            request.clearImplementedOn(),
-            EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfEpic(feature.parentId()));
     return new UpdateFeatureRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toFeatureDto(feature.entity(), feature.parentId())));
+        routes.update(
+            routes.features(),
+            id,
+            EntityWrite.nodeEdit(
+                request.title(),
+                request.description(),
+                request.dependsOnFeatureId(),
+                request.clearDependsOn(),
+                request.implementedOn(),
+                request.clearImplementedOn()),
+            identity));
   }
 
   public record DeleteFeatureRequest() {
@@ -129,10 +105,7 @@ public class FeatureController {
   public DeleteFeatureRequest.Response delete(@PathParam("id") String id) {
     // Resolved before the delete — afterwards there is no row to walk up from, and the binding
     // needs the project while the row still exists.
-    String projectId = hints.projectOfFeature(id);
-    EntitiesAgentAccess.requireProject(identity, projectId);
-    featureService.delete(id, EntitiesPrincipal.changedBy(identity));
-    hints.fire(projectId);
+    routes.delete(routes.features(), id, true, identity);
     return new DeleteFeatureRequest.Response(true);
   }
 
@@ -148,19 +121,10 @@ public class FeatureController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{featureId}/tasks")
   public ListTasksRequest.Response listTasks(@PathParam("featureId") String featureId) {
-    featureService.get(featureId); // 404 if the feature does not exist
-    // Mapped first, then qualified in one call: the project-slug lookup is asked once about the
-    // whole list, never once per task.
-    var entries =
-        qualifiedIds
-            .qualifyTasks(
-                taskService.listByFeature(featureId).stream()
-                    .map(t -> workEntityMapper.toTaskDto(t.entity(), t.parentId()))
-                    .toList())
-            .stream()
+    return new ListTasksRequest.Response(
+        routes.listChildren(routes.tasks(), Archetype.FEATURE, featureId).stream()
             .map(ListTasksRequest.Response.Entry::new)
-            .toList();
-    return new ListTasksRequest.Response(entries);
+            .toList());
   }
 
   public record CreateTaskRequest(
@@ -173,37 +137,25 @@ public class FeatureController {
 
   /**
    * Adding a task takes {@code qits:agent}, bound to the agent's own project: the {@code add_task}
-   * MCP tool already performs this write for an agent. The binding is against the feature's epic's
-   * project, which this route resolves for the repository check anyway — the same value {@code
-   * EpicsTopicHints.projectOfFeature} answers, reached through the lookups already in hand rather
-   * than by asking twice. See {@link EntitiesAgentAccess}.
+   * MCP tool already performs this write for an agent. The binding is against the feature's project,
+   * and the repository has to be in that project too — a 404 for none, a 400 for one elsewhere. See
+   * {@link EntitiesAgentAccess}.
    */
   @POST
   @Path("/{featureId}/tasks")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateTaskRequest.Response createTask(
       @PathParam("featureId") String featureId, @Valid CreateTaskRequest request) {
-    // Validate the repository exists (404) AND belongs to the feature's epic's project — a task
-    // must
-    // not bind a repository from an unrelated project.
-    var feature = featureService.get(featureId);
-    var epic = epicService.get(feature.parentId());
-    EntitiesAgentAccess.requireProject(identity, epic.projectId);
-    Repository repo = repositoryService.get(request.repositoryId()); // 404 if absent
-    if (repo.project == null || !epic.projectId.equals(repo.project.id)) {
-      throw new BadRequestException(
-          "Repository " + request.repositoryId() + " is not in this epic's project");
-    }
-    var task =
-        taskService.create(
-            featureId,
-            request.repositoryId(),
-            request.title(),
-            request.description(),
-            request.dependsOnTaskId(),
-            EntitiesPrincipal.changedBy(identity));
-    hints.fire(epic.projectId);
     return new CreateTaskRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toTaskDto(task.entity(), task.parentId())));
+        routes.createChild(
+            routes.tasks(),
+            Archetype.FEATURE,
+            featureId,
+            EntityWrite.task(
+                request.repositoryId(),
+                request.title(),
+                request.description(),
+                request.dependsOnTaskId()),
+            identity));
   }
 }

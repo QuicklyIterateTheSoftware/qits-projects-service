@@ -33,21 +33,19 @@ application: qits-projects
 routes: /projects
 host: projects
 # FOUR KINDS OF PLACEMENT, and two of them claim `project.detail` — one application, two rows under
-# one heading, which is what makes this file the first user of the lifted claim rule below.
+# one heading, which is what makes this file a user of the lifted claim rule below.
 #
 # `system.Overview:1` is the environment's own door, first in the global group.
 #
-# `project.detail.Epics:1=epics` is the project's plan, at `/<project>/epics`, and it is FIRST under
-# the Project node because a plan is what a project mostly is — everything else under that node is a
-# way of working on it. The board used to BE the bare project address, which meant it had no row at
-# all and a reader found it only by knowing that `/<project>` rendered it; the board moved one
-# segment down to `epics` and the project address became a hub, and this entry is how the board
-# acquired a name in the chrome.
-#
-# `project.detail.Tickets:2=tickets` is the small-scoped work beside the plan, at
-# `/<project>/tickets`, and it sits directly under Epics because the two are read together: a board
-# and the bugs and improvements too small to put on it. It is a second row for THIS application on
-# a slot this application already claims twice, which the pair-shaped claim below permits.
+# `project.detail.Work:1=work` is the project's work, at `/<project>/work` — the epics and the
+# tickets on one desk — and it is FIRST under the Project node because the work is what a project
+# mostly is; everything else under that node is a way of working on it. It was two rows until
+# qits-399, `Epics:1=epics` and `Tickets:2=tickets`, a board and the bugs and improvements too small
+# to put on it; the SPA drew them as two pages over two collections. Since qits-frontend 072512f
+# (qits-397) both archetypes are one list with one detail route, `/<project>/epics` and
+# `/<project>/tickets` redirect to `/<project>/work`, and two rows would be two names for one page.
+# (The board used to BE the bare project address, with no row at all; it moved one segment down and
+# the project address became a hub, and a row is how the work has a name in the chrome.)
 #
 # `project.detail.Release Requests:5=release-requests` is the whole project's open requests, at
 # `/<project>/release-requests`. The per-repository rows below answer "why has this repository not
@@ -70,25 +68,28 @@ host: projects
 # there, and an ordering stated against the rows qits-workspaces already publishes is expressible
 # only in that slot's own integers.
 #
-# THE PROJECT GROUP READS Epics 1, Tickets 2, Workspaces 3, Editor 4, Release Requests 5. It read
-# Epics 1, Workspaces 2, Editor 3, Release Requests 4 until Tickets arrived and took 2: this file
-# moved its own Release Requests row 4 -> 5, and qits-workspaces moves its pair 2,3 -> 3,4 in
-# parallel — the same two-repository renumber that put Epics at 1, when qits-workspaces moved 1,2 ->
-# 2,3. Deliberate integers and no ties, for the reason the renumber below gives: the edge breaks a
-# tie by label and then by application, so two rows sharing a number would make the order an
-# accident of the LABEL and renaming one would silently reorder the group.
+# THE PROJECT GROUP READS Work 1, Workspaces 3, Editor 4, Release Requests 5 — WITH A GAP AT 2, and
+# the gap is deliberate. It read Epics 1, Tickets 2, Workspaces 3, Editor 4, Release Requests 5 until
+# qits-399 folded the first two into Work, which kept Epics' 1 and left Tickets' 2 empty. The edge
+# sorts by position and only the ORDER of the integers is ever drawn, so an empty 2 renders exactly
+# as a dense list would: Work, Workspaces, Editor, Release Requests.
 #
-# The two halves of a cross-repository renumber cannot land in one commit, so the window in between
-# is a tie (Tickets and Workspaces both at 2) rather than a gap. A tie still renders — by label,
-# deterministically — so the group is merely alphabetised for as long as it lasts, which is what
-# makes shipping this half first safe. Ties are not a resting state: the other half closes it.
+# Closing it was the alternative and it was refused. It is a cross-repository renumber — this file's
+# Release Requests 5 -> 4 and qits-workspaces' pair 3,4 -> 2,3 — whose two halves cannot land in one
+# commit, so it buys a window of TIES (Workspaces and Release Requests both at 4, or Workspaces and
+# Editor both at 3) to reach a state that looks the same as today's. A tie still renders, by label
+# and then by application, but that is the order becoming an accident of the LABEL, which is what
+# the renumber below exists to avoid; a gap is never that. Deliberate integers and no ties — gaps are
+# allowed, and the next row that belongs between Work and Workspaces takes the 2 without moving
+# anybody. (5 is shared with another application's `project.detail` row today — a tie this change
+# neither made nor resolves; the renumber rule below says how to close it when it matters.)
 #
 # THIS SPA'S OWN HUB PAGE DOES NOT DRAW THEM TWICE. `ProjectPage` composes a card per
-# `project.detail` entry and drops the entries whose `app` is this application: Epics and Release
+# `project.detail` entry and drops the entries whose `app` is this application: Work and Release
 # requests are `routerLink`s it declares itself, so drawing them from the registry as well would put
 # one destination on the page twice — once as a router hop and once as a full page load of this very
-# host. The drop is by application, so it covers a second entry the moment one exists;
-# `project-page.spec.ts` states that with an Epics entry in its fixture tree.
+# host. The drop is by application, not by label, so it covers every entry this file declares
+# whatever it is called.
 #
 # `<category>.details.Release Requests:3=release-requests` is the per-repository row, and it opens
 # this SPA's `/<project>/<group>/<repo>/release-requests` — the repository's release requests, which
@@ -113,7 +114,7 @@ host: projects
 # back: API documentation is a sub-item of Docs now (the docs app renders it from published @apidocs
 # bundles). This application's viewer route (`/<project>/services/<repo>/api-docs`, the live
 # swagger-ui frame) still answers; it is just not a sidebar row.
-navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-configuration, project.detail.Epics:1=epics, project.detail.Tickets:2=tickets, project.detail.Release Requests:5=release-requests, services.details.Release Requests:3=release-requests, daemons.details.Release Requests:3=release-requests, libs.details.Release Requests:3=release-requests, apps.details.Release Requests:3=release-requests, frontends.details.Release Requests:3=release-requests, cli.details.Release Requests:3=release-requests, images.details.Release Requests:3=release-requests
+navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-configuration, project.detail.Work:1=work, project.detail.Release Requests:5=release-requests, services.details.Release Requests:3=release-requests, daemons.details.Release Requests:3=release-requests, libs.details.Release Requests:3=release-requests, apps.details.Release Requests:3=release-requests, frontends.details.Release Requests:3=release-requests, cli.details.Release Requests:3=release-requests, images.details.Release Requests:3=release-requests
 
 # THREE DATABASES, because this application opens three datasources with three Flyway lineages:
 # `projects` (domain/), `epics` (entities/) and `eventstream` (the qits-eventstream jar's outbox and

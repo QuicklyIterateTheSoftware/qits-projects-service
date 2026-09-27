@@ -1,0 +1,1888 @@
+[ {
+  "request" : "POST /projects/api/projects/<id:1>/epics",
+  "body" : {
+    "title" : "The plan",
+    "description" : "The spine"
+  },
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan",
+      "slug" : "the-plan",
+      "status" : "REPORTED",
+      "supersededByEpicId" : null,
+      "description" : "The spine",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "POST /projects/api/projects/<id:1>/epics",
+  "body" : {
+    "title" : " ",
+    "description" : null
+  },
+  "status" : 400,
+  "response" : {
+    "title" : "Constraint Violation",
+    "status" : 400,
+    "violations" : [ {
+      "field" : "create.request.title",
+      "message" : "must not be blank"
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/epics",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "epic" : {
+        "id" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 1,
+        "qualifiedId" : "<project>-1",
+        "title" : "The plan",
+        "slug" : "the-plan",
+        "status" : "REPORTED",
+        "supersededByEpicId" : null,
+        "description" : "The spine",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/epics?status=REPORTED",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "epic" : {
+        "id" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 1,
+        "qualifiedId" : "<project>-1",
+        "title" : "The plan",
+        "slug" : "the-plan",
+        "status" : "REPORTED",
+        "supersededByEpicId" : null,
+        "description" : "The spine",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/epics?status=DONE",
+  "status" : 200,
+  "response" : {
+    "entries" : [ ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/epics?status=NOPE",
+  "status" : 400,
+  "response" : {
+    "message" : "Unknown epic status: NOPE"
+  }
+}, {
+  "request" : "GET /projects/api/projects/no-such-project/epics",
+  "status" : 404,
+  "response" : {
+    "message" : "Project not found: no-such-project"
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:2>",
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan",
+      "slug" : "the-plan",
+      "status" : "REPORTED",
+      "supersededByEpicId" : null,
+      "description" : "The spine",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "GET /projects/api/epics/no-such-epic",
+  "status" : 404,
+  "response" : {
+    "message" : "Epic not found: no-such-epic"
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/features",
+  "body" : {
+    "title" : "Part A",
+    "description" : "First part",
+    "dependsOnFeatureId" : null
+  },
+  "status" : 200,
+  "response" : {
+    "feature" : {
+      "id" : "<id:3>",
+      "epicId" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 2,
+      "qualifiedId" : "<project>-2",
+      "title" : "Part A",
+      "slug" : "part-a",
+      "description" : "First part",
+      "dependsOnFeatureId" : null,
+      "implementedOn" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/features",
+  "body" : {
+    "title" : "Part B",
+    "description" : null,
+    "dependsOnFeatureId" : "<id:3>"
+  },
+  "status" : 200,
+  "response" : {
+    "feature" : {
+      "id" : "<id:4>",
+      "epicId" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 3,
+      "qualifiedId" : "<project>-3",
+      "title" : "Part B",
+      "slug" : "part-b",
+      "description" : null,
+      "dependsOnFeatureId" : "<id:3>",
+      "implementedOn" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/features",
+  "body" : {
+    "title" : "Part C",
+    "dependsOnFeatureId" : "no-such-feature"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "Unknown or out-of-epic dependsOnFeatureId: no-such-feature"
+  }
+}, {
+  "request" : "POST /projects/api/epics/no-such-epic/features",
+  "body" : {
+    "title" : "Orphan"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Epic not found: no-such-epic"
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:2>/features",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "feature" : {
+        "id" : "<id:3>",
+        "epicId" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 2,
+        "qualifiedId" : "<project>-2",
+        "title" : "Part A",
+        "slug" : "part-a",
+        "description" : "First part",
+        "dependsOnFeatureId" : null,
+        "implementedOn" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "feature" : {
+        "id" : "<id:4>",
+        "epicId" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 3,
+        "qualifiedId" : "<project>-3",
+        "title" : "Part B",
+        "slug" : "part-b",
+        "description" : null,
+        "dependsOnFeatureId" : "<id:3>",
+        "implementedOn" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/epics/no-such-epic/features",
+  "status" : 404,
+  "response" : {
+    "message" : "Epic not found: no-such-epic"
+  }
+}, {
+  "request" : "GET /projects/api/features/<id:3>",
+  "status" : 200,
+  "response" : {
+    "feature" : {
+      "id" : "<id:3>",
+      "epicId" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 2,
+      "qualifiedId" : "<project>-2",
+      "title" : "Part A",
+      "slug" : "part-a",
+      "description" : "First part",
+      "dependsOnFeatureId" : null,
+      "implementedOn" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "GET /projects/api/features/no-such-feature",
+  "status" : 404,
+  "response" : {
+    "message" : "Feature not found: no-such-feature"
+  }
+}, {
+  "request" : "PUT /projects/api/features/<id:4>",
+  "body" : {
+    "title" : "Part B, renamed",
+    "description" : "Now described"
+  },
+  "status" : 200,
+  "response" : {
+    "feature" : {
+      "id" : "<id:4>",
+      "epicId" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 3,
+      "qualifiedId" : "<project>-3",
+      "title" : "Part B, renamed",
+      "slug" : "part-b",
+      "description" : "Now described",
+      "dependsOnFeatureId" : "<id:3>",
+      "implementedOn" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "PUT /projects/api/features/<id:4>",
+  "body" : {
+    "clearDependsOn" : true
+  },
+  "status" : 200,
+  "response" : {
+    "feature" : {
+      "id" : "<id:4>",
+      "epicId" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 3,
+      "qualifiedId" : "<project>-3",
+      "title" : "Part B, renamed",
+      "slug" : "part-b",
+      "description" : "Now described",
+      "dependsOnFeatureId" : null,
+      "implementedOn" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "PUT /projects/api/features/<id:3>",
+  "body" : {
+    "dependsOnFeatureId" : "<id:3>"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "A feature cannot depend on itself"
+  }
+}, {
+  "request" : "PUT /projects/api/features/<id:3>",
+  "body" : {
+    "implementedOn" : "<instant>"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "Implemented markers move only while an epic is REFINED (being implemented): epic <id:2> is REPORTED."
+  }
+}, {
+  "request" : "POST /projects/api/features/<id:3>/tasks",
+  "body" : {
+    "repositoryId" : "<id:5>",
+    "title" : "Task one",
+    "description" : "Do the thing",
+    "dependsOnTaskId" : null
+  },
+  "status" : 200,
+  "response" : {
+    "task" : {
+      "id" : "<id:6>",
+      "featureId" : "<id:3>",
+      "projectId" : "<id:1>",
+      "number" : 4,
+      "qualifiedId" : "<project>-4",
+      "repositoryId" : "<id:5>",
+      "title" : "Task one",
+      "slug" : "task-one",
+      "description" : "Do the thing",
+      "dependsOnTaskId" : null,
+      "implementedAt" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/features/<id:3>/tasks",
+  "body" : {
+    "repositoryId" : "<id:5>",
+    "title" : "Task two",
+    "dependsOnTaskId" : "<id:6>"
+  },
+  "status" : 200,
+  "response" : {
+    "task" : {
+      "id" : "<id:7>",
+      "featureId" : "<id:3>",
+      "projectId" : "<id:1>",
+      "number" : 5,
+      "qualifiedId" : "<project>-5",
+      "repositoryId" : "<id:5>",
+      "title" : "Task two",
+      "slug" : "task-two",
+      "description" : null,
+      "dependsOnTaskId" : "<id:6>",
+      "implementedAt" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/features/<id:3>/tasks",
+  "body" : {
+    "repositoryId" : "no-such-repository",
+    "title" : "Task three"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Repository not found: no-such-repository"
+  }
+}, {
+  "request" : "GET /projects/api/features/<id:3>/tasks",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "task" : {
+        "id" : "<id:6>",
+        "featureId" : "<id:3>",
+        "projectId" : "<id:1>",
+        "number" : 4,
+        "qualifiedId" : "<project>-4",
+        "repositoryId" : "<id:5>",
+        "title" : "Task one",
+        "slug" : "task-one",
+        "description" : "Do the thing",
+        "dependsOnTaskId" : null,
+        "implementedAt" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "task" : {
+        "id" : "<id:7>",
+        "featureId" : "<id:3>",
+        "projectId" : "<id:1>",
+        "number" : 5,
+        "qualifiedId" : "<project>-5",
+        "repositoryId" : "<id:5>",
+        "title" : "Task two",
+        "slug" : "task-two",
+        "description" : null,
+        "dependsOnTaskId" : "<id:6>",
+        "implementedAt" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/tasks/<id:6>",
+  "status" : 200,
+  "response" : {
+    "task" : {
+      "id" : "<id:6>",
+      "featureId" : "<id:3>",
+      "projectId" : "<id:1>",
+      "number" : 4,
+      "qualifiedId" : "<project>-4",
+      "repositoryId" : "<id:5>",
+      "title" : "Task one",
+      "slug" : "task-one",
+      "description" : "Do the thing",
+      "dependsOnTaskId" : null,
+      "implementedAt" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "GET /projects/api/tasks/no-such-task",
+  "status" : 404,
+  "response" : {
+    "message" : "Task not found: no-such-task"
+  }
+}, {
+  "request" : "PUT /projects/api/tasks/<id:7>",
+  "body" : {
+    "title" : "Task two, renamed"
+  },
+  "status" : 200,
+  "response" : {
+    "task" : {
+      "id" : "<id:7>",
+      "featureId" : "<id:3>",
+      "projectId" : "<id:1>",
+      "number" : 5,
+      "qualifiedId" : "<project>-5",
+      "repositoryId" : "<id:5>",
+      "title" : "Task two, renamed",
+      "slug" : "task-two",
+      "description" : null,
+      "dependsOnTaskId" : "<id:6>",
+      "implementedAt" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "PUT /projects/api/tasks/<id:6>",
+  "body" : {
+    "dependsOnTaskId" : "<id:7>"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "dependsOnTaskId would create a dependency cycle"
+  }
+}, {
+  "request" : "POST /projects/api/entities/transition",
+  "body" : {
+    "<id:2>" : {
+      "archetype" : "EPIC",
+      "title" : "The plan, restated",
+      "description" : "The spine, restated",
+      "status" : "REPORTED",
+      "membership" : {
+        "parent" : null
+      }
+    }
+  },
+  "status" : 200,
+  "response" : {
+    "<id:2>" : {
+      "id" : "<id:2>",
+      "archetype" : "EPIC",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan, restated",
+      "slug" : "the-plan",
+      "slugScope" : "<id:1>",
+      "description" : "The spine, restated",
+      "status" : "REPORTED",
+      "ticketType" : null,
+      "impetus" : null,
+      "assignee" : null,
+      "createdBy" : null,
+      "supersededBy" : null,
+      "repositoryId" : null,
+      "implementedAt" : null,
+      "dependsOn" : null,
+      "parent" : null,
+      "position" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : "NOPE"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "Unknown epic status: NOPE"
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : null
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "target is required"
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : "DONE"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "An epic cannot move from REPORTED to DONE"
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : "SUPERSEDED"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "Epic <id:2> is REPORTED, a draft with no frozen scope to supersede — edit it, or drop it."
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : "REFINED"
+  },
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan, restated",
+      "slug" : "the-plan",
+      "status" : "REFINED",
+      "supersededByEpicId" : null,
+      "description" : "The spine, restated",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    },
+    "successor" : null
+  }
+}, {
+  "request" : "PUT /projects/api/tasks/<id:6>",
+  "body" : {
+    "implementedAt" : "<instant>"
+  },
+  "status" : 200,
+  "response" : {
+    "task" : {
+      "id" : "<id:6>",
+      "featureId" : "<id:3>",
+      "projectId" : "<id:1>",
+      "number" : 4,
+      "qualifiedId" : "<project>-4",
+      "repositoryId" : "<id:5>",
+      "title" : "Task one",
+      "slug" : "task-one",
+      "description" : "Do the thing",
+      "dependsOnTaskId" : null,
+      "implementedAt" : "<instant>",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "PUT /projects/api/features/<id:3>",
+  "body" : {
+    "title" : "Frozen"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+  }
+}, {
+  "request" : "PUT /projects/api/tasks/<id:7>",
+  "body" : {
+    "title" : "Frozen"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+  }
+}, {
+  "request" : "POST /projects/api/features/<id:3>/tasks",
+  "body" : {
+    "repositoryId" : "<id:5>",
+    "title" : "Too late"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+  }
+}, {
+  "request" : "DELETE /projects/api/tasks/<id:7>",
+  "status" : 409,
+  "response" : {
+    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+  }
+}, {
+  "request" : "DELETE /projects/api/features/<id:4>",
+  "status" : 409,
+  "response" : {
+    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : "IMPLEMENTED"
+  },
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan, restated",
+      "slug" : "the-plan",
+      "status" : "IMPLEMENTED",
+      "supersededByEpicId" : null,
+      "description" : "The spine, restated",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    },
+    "successor" : null
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:2>/features",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "feature" : {
+        "id" : "<id:3>",
+        "epicId" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 2,
+        "qualifiedId" : "<project>-2",
+        "title" : "Part A",
+        "slug" : "part-a",
+        "description" : "First part",
+        "dependsOnFeatureId" : null,
+        "implementedOn" : "<instant>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "feature" : {
+        "id" : "<id:4>",
+        "epicId" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 3,
+        "qualifiedId" : "<project>-3",
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "description" : "Now described",
+        "dependsOnFeatureId" : null,
+        "implementedOn" : "<instant>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/features/<id:3>/tasks",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "task" : {
+        "id" : "<id:6>",
+        "featureId" : "<id:3>",
+        "projectId" : "<id:1>",
+        "number" : 4,
+        "qualifiedId" : "<project>-4",
+        "repositoryId" : "<id:5>",
+        "title" : "Task one",
+        "slug" : "task-one",
+        "description" : "Do the thing",
+        "dependsOnTaskId" : null,
+        "implementedAt" : "<instant>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "task" : {
+        "id" : "<id:7>",
+        "featureId" : "<id:3>",
+        "projectId" : "<id:1>",
+        "number" : 5,
+        "qualifiedId" : "<project>-5",
+        "repositoryId" : "<id:5>",
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "description" : null,
+        "dependsOnTaskId" : "<id:6>",
+        "implementedAt" : "<instant>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : "SUPERSEDED"
+  },
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan, restated",
+      "slug" : "the-plan",
+      "status" : "DROPPED",
+      "supersededByEpicId" : "<id:8>",
+      "description" : "The spine, restated",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    },
+    "successor" : {
+      "id" : "<id:8>",
+      "projectId" : "<id:1>",
+      "number" : 6,
+      "qualifiedId" : "<project>-6",
+      "title" : "The plan, restated",
+      "slug" : "the-plan-restated",
+      "status" : "REPORTED",
+      "supersededByEpicId" : null,
+      "description" : "The spine, restated",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:2>",
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan, restated",
+      "slug" : "the-plan",
+      "status" : "DROPPED",
+      "supersededByEpicId" : "<id:8>",
+      "description" : "The spine, restated",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:8>",
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:8>",
+      "projectId" : "<id:1>",
+      "number" : 6,
+      "qualifiedId" : "<project>-6",
+      "title" : "The plan, restated",
+      "slug" : "the-plan-restated",
+      "status" : "REPORTED",
+      "supersededByEpicId" : null,
+      "description" : "The spine, restated",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/epics",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "epic" : {
+        "id" : "<id:2>",
+        "projectId" : "<id:1>",
+        "number" : 1,
+        "qualifiedId" : "<project>-1",
+        "title" : "The plan, restated",
+        "slug" : "the-plan",
+        "status" : "DROPPED",
+        "supersededByEpicId" : "<id:8>",
+        "description" : "The spine, restated",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    }, {
+      "epic" : {
+        "id" : "<id:8>",
+        "projectId" : "<id:1>",
+        "number" : 6,
+        "qualifiedId" : "<project>-6",
+        "title" : "The plan, restated",
+        "slug" : "the-plan-restated",
+        "status" : "REPORTED",
+        "supersededByEpicId" : null,
+        "description" : "The spine, restated",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>",
+        "workspaces" : [ ]
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:8>/features",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "feature" : {
+        "id" : "<id:9>",
+        "epicId" : "<id:8>",
+        "projectId" : "<id:1>",
+        "number" : 7,
+        "qualifiedId" : "<project>-7",
+        "title" : "Part A",
+        "slug" : "part-a",
+        "description" : "First part",
+        "dependsOnFeatureId" : null,
+        "implementedOn" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "feature" : {
+        "id" : "<id:10>",
+        "epicId" : "<id:8>",
+        "projectId" : "<id:1>",
+        "number" : 10,
+        "qualifiedId" : "<project>-10",
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "description" : "Now described",
+        "dependsOnFeatureId" : null,
+        "implementedOn" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/features/<id:9>/tasks",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "task" : {
+        "id" : "<id:11>",
+        "featureId" : "<id:9>",
+        "projectId" : "<id:1>",
+        "number" : 8,
+        "qualifiedId" : "<project>-8",
+        "repositoryId" : "<id:5>",
+        "title" : "Task one",
+        "slug" : "task-one",
+        "description" : "Do the thing",
+        "dependsOnTaskId" : null,
+        "implementedAt" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "task" : {
+        "id" : "<id:12>",
+        "featureId" : "<id:9>",
+        "projectId" : "<id:1>",
+        "number" : 9,
+        "qualifiedId" : "<project>-9",
+        "repositoryId" : "<id:5>",
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "description" : null,
+        "dependsOnTaskId" : "<id:11>",
+        "implementedAt" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/features/<id:9>/tasks",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "task" : {
+        "id" : "<id:11>",
+        "featureId" : "<id:9>",
+        "projectId" : "<id:1>",
+        "number" : 8,
+        "qualifiedId" : "<project>-8",
+        "repositoryId" : "<id:5>",
+        "title" : "Task one",
+        "slug" : "task-one",
+        "description" : "Do the thing",
+        "dependsOnTaskId" : null,
+        "implementedAt" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "task" : {
+        "id" : "<id:12>",
+        "featureId" : "<id:9>",
+        "projectId" : "<id:1>",
+        "number" : 9,
+        "qualifiedId" : "<project>-9",
+        "repositoryId" : "<id:5>",
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "description" : null,
+        "dependsOnTaskId" : "<id:11>",
+        "implementedAt" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "DELETE /projects/api/tasks/<id:12>",
+  "status" : 200,
+  "response" : {
+    "success" : true
+  }
+}, {
+  "request" : "DELETE /projects/api/tasks/no-such-task",
+  "status" : 404,
+  "response" : {
+    "message" : "Task not found: no-such-task"
+  }
+}, {
+  "request" : "GET /projects/api/features/<id:9>/tasks",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "task" : {
+        "id" : "<id:11>",
+        "featureId" : "<id:9>",
+        "projectId" : "<id:1>",
+        "number" : 8,
+        "qualifiedId" : "<project>-8",
+        "repositoryId" : "<id:5>",
+        "title" : "Task one",
+        "slug" : "task-one",
+        "description" : "Do the thing",
+        "dependsOnTaskId" : null,
+        "implementedAt" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "DELETE /projects/api/features/<id:10>",
+  "status" : 200,
+  "response" : {
+    "success" : true
+  }
+}, {
+  "request" : "DELETE /projects/api/features/no-such-feature",
+  "status" : 404,
+  "response" : {
+    "message" : "Feature not found: no-such-feature"
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:8>/features",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "feature" : {
+        "id" : "<id:9>",
+        "epicId" : "<id:8>",
+        "projectId" : "<id:1>",
+        "number" : 7,
+        "qualifiedId" : "<project>-7",
+        "title" : "Part A",
+        "slug" : "part-a",
+        "description" : "First part",
+        "dependsOnFeatureId" : null,
+        "implementedOn" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "DELETE /projects/api/epics/<id:8>",
+  "status" : 200,
+  "response" : {
+    "success" : true
+  }
+}, {
+  "request" : "DELETE /projects/api/epics/no-such-epic",
+  "status" : 404,
+  "response" : {
+    "message" : "Epic not found: no-such-epic"
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:8>",
+  "status" : 404,
+  "response" : {
+    "message" : "Epic not found: <id:8>"
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:2>/audit",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 1,
+        "title" : "The plan",
+        "slug" : "the-plan",
+        "slugScope" : "<id:1>",
+        "description" : "The spine",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 1,
+        "title" : "The plan, restated",
+        "slug" : "the-plan",
+        "slugScope" : "<id:1>",
+        "description" : "The spine, restated",
+        "status" : "DROPPED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : "<id:8>",
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 1,
+        "title" : "The plan, restated",
+        "slug" : "the-plan",
+        "slugScope" : "<id:1>",
+        "description" : "The spine, restated",
+        "status" : "IMPLEMENTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 1,
+        "title" : "The plan, restated",
+        "slug" : "the-plan",
+        "slugScope" : "<id:1>",
+        "description" : "The spine, restated",
+        "status" : "REFINED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 1,
+        "title" : "The plan, restated",
+        "slug" : "the-plan",
+        "slugScope" : "<id:1>",
+        "description" : "The spine, restated",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:3>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:3>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 2,
+        "title" : "Part A",
+        "slug" : "part-a",
+        "slugScope" : "<id:2>",
+        "description" : "First part",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:3>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:3>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 2,
+        "title" : "Part A",
+        "slug" : "part-a",
+        "slugScope" : "<id:2>",
+        "description" : "First part",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : "<instant>",
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 3,
+        "title" : "Part B",
+        "slug" : "part-b",
+        "slugScope" : "<id:2>",
+        "description" : null,
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : "<id:3>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 3,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:2>",
+        "description" : "Now described",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : "<instant>",
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 3,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:2>",
+        "description" : "Now described",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : "<id:3>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 3,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:2>",
+        "description" : "Now described",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:6>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:6>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 4,
+        "title" : "Task one",
+        "slug" : "task-one",
+        "slugScope" : "<id:3>",
+        "description" : "Do the thing",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:6>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:6>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 4,
+        "title" : "Task one",
+        "slug" : "task-one",
+        "slugScope" : "<id:3>",
+        "description" : "Do the thing",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : "<instant>",
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:7>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:7>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 5,
+        "title" : "Task two",
+        "slug" : "task-two",
+        "slugScope" : "<id:3>",
+        "description" : null,
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "dependsOnEntityId" : "<id:6>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:7>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:7>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 5,
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "slugScope" : "<id:3>",
+        "description" : null,
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : "<instant>",
+        "dependsOnEntityId" : "<id:6>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:7>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:7>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 5,
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "slugScope" : "<id:3>",
+        "description" : null,
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "dependsOnEntityId" : "<id:6>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/epics/<id:8>/audit",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:8>",
+      "epicId" : "<id:8>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:8>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 6,
+        "title" : "The plan, restated",
+        "slug" : "the-plan-restated",
+        "slugScope" : "<id:1>",
+        "description" : "The spine, restated",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:8>",
+      "epicId" : "<id:8>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:8>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 6,
+        "title" : "The plan, restated",
+        "slug" : "the-plan-restated",
+        "slugScope" : "<id:1>",
+        "description" : "The spine, restated",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:10>",
+      "epicId" : "<id:8>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:10>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 10,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:8>",
+        "description" : "Now described",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:10>",
+      "epicId" : "<id:8>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:10>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 10,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:8>",
+        "description" : "Now described",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:9>",
+      "epicId" : "<id:8>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:9>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 7,
+        "title" : "Part A",
+        "slug" : "part-a",
+        "slugScope" : "<id:8>",
+        "description" : "First part",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:9>",
+      "epicId" : "<id:8>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:9>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 7,
+        "title" : "Part A",
+        "slug" : "part-a",
+        "slugScope" : "<id:8>",
+        "description" : "First part",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:11>",
+      "epicId" : "<id:8>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:11>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 8,
+        "title" : "Task one",
+        "slug" : "task-one",
+        "slugScope" : "<id:9>",
+        "description" : "Do the thing",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:11>",
+      "epicId" : "<id:8>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:11>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 8,
+        "title" : "Task one",
+        "slug" : "task-one",
+        "slugScope" : "<id:9>",
+        "description" : "Do the thing",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:12>",
+      "epicId" : "<id:8>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:12>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 9,
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "slugScope" : "<id:9>",
+        "description" : null,
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "dependsOnEntityId" : "<id:11>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:12>",
+      "epicId" : "<id:8>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:12>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 9,
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "slugScope" : "<id:9>",
+        "description" : null,
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "dependsOnEntityId" : "<id:11>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+} ]

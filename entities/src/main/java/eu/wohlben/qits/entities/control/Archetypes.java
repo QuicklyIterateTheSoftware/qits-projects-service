@@ -80,17 +80,18 @@ import java.util.stream.Collectors;
  *
  * <h2>What "required" and "permitted" are read from</h2>
  *
- * <p>The four declarations below are what the four existing services actually enforce today, and
- * each one is that service's own rule rather than a tidier version of it:
+ * <p>The four declarations below are what the four archetype services enforced when they were
+ * written — each one that service's own rule rather than a tidier version of it — and since
+ * qits-399 folded those services into {@code WorkEntityService} they are also where that service's
+ * intake refusals are read from, so the declaration and the 400 cannot drift apart:
  *
  * <ul>
- *   <li>{@code EpicService.create} requires a project and a title, and nothing else.
- *   <li>{@code TicketService.create} requires a title, an impetus and a type, and the status column
- *       is {@code not null} from the first insert. The impetus is the one of those that {@code
- *       TicketService.update} does <em>not</em> require, which is what {@code requiredAtCreate} is
- *       for.
- *   <li>{@code FeatureService.create} requires a title.
- *   <li>{@code TaskService.create} requires a title and a repository id.
+ *   <li>An epic's create requires a project and a title, and nothing else.
+ *   <li>A ticket's create requires a title, an impetus and a type, and the status column is {@code
+ *       not null} from the first insert. The impetus is the one of those that an edit does
+ *       <em>not</em> require, which is what {@code requiredAtCreate} is for.
+ *   <li>A feature's create requires a title.
+ *   <li>A task's create requires a title and a repository id.
  * </ul>
  *
  * <p><b>The asymmetry on {@code STATUS} is deliberate and is worth naming, because it looks like an
@@ -156,7 +157,7 @@ public final class Archetypes {
     // what V4's "nothing joins the two tables and nothing should" says in prose.
     //
     // THE ONE KIND WHOSE TWO REQUIRED SETS DIFFER, and IMPETUS is the whole of the difference:
-    // intake demands it (TicketService.create, and every surface that files a ticket), while
+    // intake demands it (WorkEntityService.create, and every surface that files a ticket), while
     // entity.impetus is nullable and a person clearing one is asserted behaviour. Declaring it
     // required at every moment would refuse a write the product allows; declaring it merely
     // permitted would stop intake being described at all. It is required at create and not after.

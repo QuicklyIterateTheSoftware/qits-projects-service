@@ -23,9 +23,9 @@ import org.hibernate.annotations.UpdateTimestamp;
  * audit vocabularies, and a feature that could never be promoted to an epic because promotion would
  * have meant moving a row between tables while every id pointing at it stayed behind.
  *
- * <p><b>This is the only planning row there is.</b> {@code EpicService}, {@code TicketService},
- * {@code FeatureService} and {@code TaskService} answer every read and judge every rule against this
- * table, and hand their callers <em>this row</em> — bare for the two roots, and beside its parent's
+ * <p><b>This is the only planning row there is.</b> {@code WorkEntityService} answers every read
+ * and judges every rule against this table, for all four archetypes, and hands its callers <em>this
+ * row</em> — bare for the two roots, and beside its parent's
  * id ({@code control/Nested}) for the two descendants, whose parent is an {@link EntityMembership}
  * edge rather than a column.
  *
@@ -188,7 +188,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    * instead, both facts stay true at once: what has been achieved, and whether what runs next can
    * proceed.
    *
-   * <p><b>It is temporary by construction.</b> {@code TicketService.transition} clears it
+   * <p><b>It is temporary by construction.</b> {@code WorkEntityService.transition} clears it
    * unconditionally, so a block lives exactly as long as the phase it blocks — carrying one into
    * the next phase would assert a blocker nobody re-checked. That is what keeps this from becoming
    * a second lifecycle running alongside the first.

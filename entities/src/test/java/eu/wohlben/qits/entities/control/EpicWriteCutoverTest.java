@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test;
 /**
  * An epics <b>write</b> holds through a postgres cutover, and lands exactly once when it does.
  *
- * <p>One seam stands for the ten wrapped in this module ({@code EpicService}'s four, {@code
- * FeatureService}'s three, {@code TaskService}'s three): they share {@link WritePatience}, so what
+ * <p>One seam stands for every write wrapped in this module ({@code WorkEntityService}'s create,
+ * update, transition, blocked and delete, for every archetype): they share {@link WritePatience}, so what
  * this pins is the wiring — {@code DbRetry.inNewTx} opens the transaction, a body failure that says
  * the connection went is retried, and everything else is reported on the first attempt.
  *
@@ -64,7 +64,7 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
     }
   }
 
-  @Inject EpicService epicService;
+  @Inject WorkEntityService workEntities;
 
   @Inject FailingEpicWrites epics;
 
@@ -77,7 +77,14 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
   void aCreateLandsExactlyOnceAfterTheWriteLosesItsConnection() {
     epics.loseTheConnection(1);
 
-    var epic = epicService.create("proj-write-cutover", "Held through the cutover", null, "alice");
+    var epic =
+        workEntities
+            .create(
+                Archetype.EPIC,
+                "proj-write-cutover",
+                EntityWrite.epic("Held through the cutover", null),
+                "alice")
+            .entity();
 
     assertEquals(
         0, epics.unspent(), "the armed failure was never reached — the write did not go through");
@@ -103,7 +110,14 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
     IllegalStateException reported =
         assertThrows(
             IllegalStateException.class,
-            () -> epicService.create("proj-not-retried", "Reported, not retried", null, "alice"));
+            () ->
+                workEntities
+                    .create(
+                        Archetype.EPIC,
+                        "proj-not-retried",
+                        EntityWrite.epic("Reported, not retried", null),
+                        "alice")
+                    .entity());
     long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
 
     assertEquals(FailingEpicWrites.NOT_THE_CONNECTION, reported.getMessage());
@@ -125,7 +139,14 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
     long startedAt = System.nanoTime();
     assertThrows(
         JDBCConnectionException.class,
-        () -> epicService.create("proj-write-gone", "Never lands", null, "alice"));
+        () ->
+            workEntities
+                .create(
+                    Archetype.EPIC,
+                    "proj-write-gone",
+                    EntityWrite.epic("Never lands", null),
+                    "alice")
+                .entity());
     long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
 
     assertTrue(

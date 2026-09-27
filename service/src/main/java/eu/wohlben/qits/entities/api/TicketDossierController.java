@@ -6,7 +6,8 @@ import eu.wohlben.qits.entities.api.DossierController.MovePage;
 import eu.wohlben.qits.entities.api.DossierController.NewPage;
 import eu.wohlben.qits.entities.api.DossierController.WritePage;
 import eu.wohlben.qits.entities.control.DossierService;
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.dto.DossierPageDto;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.entity.DossierPage;
@@ -69,7 +70,7 @@ public class TicketDossierController {
 
   @Inject DossierService dossier;
 
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService entities;
 
   @Inject DossierPageMapper mapper;
 
@@ -83,7 +84,7 @@ public class TicketDossierController {
   public ListPagesResponse list(@PathParam("ticketId") String ticketId) {
     // The ticket is resolved here rather than in the entities module, which cannot see `domain` and
     // has no way to check a project scope — the same split every other ticket route makes.
-    ticketService.get(ticketId);
+    entities.get(Archetype.TICKET, ticketId);
     return new ListPagesResponse(
         dossier.listByOwner(owner(ticketId)).stream().map(mapper::toDto).toList());
   }
@@ -91,7 +92,7 @@ public class TicketDossierController {
   @POST
   @RolesAllowed({"qits:admin", "qits:agent"})
   public DossierPageDto create(@PathParam("ticketId") String ticketId, @Valid NewPage request) {
-    var ticket = ticketService.get(ticketId); // 404 if the ticket does not exist
+    var ticket = entities.get(Archetype.TICKET, ticketId); // 404 if the ticket does not exist
     EntitiesAgentAccess.requireProject(identity, ticket.projectId);
     var page =
         dossier.create(
@@ -174,7 +175,7 @@ public class TicketDossierController {
    * decoration, and a 403 would confirm the row exists somewhere else.
    */
   private DossierPage requireOfTicket(String ticketId, String slug) {
-    ticketService.get(ticketId);
+    entities.get(Archetype.TICKET, ticketId);
     DossierOwner owner = owner(ticketId);
     var bySlug = dossier.findBySlug(owner, slug);
     if (bySlug.isPresent()) {

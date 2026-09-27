@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.mcp;
 
 import eu.wohlben.qits.entities.control.DossierService;
-import eu.wohlben.qits.entities.control.EpicService;
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.entity.DossierPage;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -69,9 +69,8 @@ public class DossierMcpTools {
 
   @Inject ProjectScope scope;
 
-  @Inject EpicService epicService;
+  @Inject WorkEntityService entities;
 
-  @Inject TicketService ticketService;
 
   @Inject DossierService dossier;
 
@@ -252,7 +251,7 @@ public class DossierMcpTools {
 
   /** The epic, if it is in the scoped project. One in another project reads as absent. */
   private WorkEntity requireEpicInProject(String epicId) {
-    WorkEntity epic = epicService.get(epicId);
+    WorkEntity epic = entities.get(Archetype.EPIC, epicId);
     if (!scope.requireProjectId().equals(epic.projectId)) {
       throw new NotFoundException("Epic not found: " + epicId);
     }
@@ -261,7 +260,7 @@ public class DossierMcpTools {
 
   /** The ticket, checked back to the session's project the same way, and absent otherwise. */
   private WorkEntity requireTicketInProject(String ticketId) {
-    WorkEntity ticket = ticketService.get(ticketId);
+    WorkEntity ticket = entities.get(Archetype.TICKET, ticketId);
     if (!scope.requireProjectId().equals(ticket.projectId)) {
       throw new NotFoundException("Ticket not found: " + ticketId);
     }

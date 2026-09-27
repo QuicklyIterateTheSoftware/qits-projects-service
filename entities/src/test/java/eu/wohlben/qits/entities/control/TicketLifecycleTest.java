@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
  * refused and which must not be.
  *
  * <p><b>The DROPPED cases ask {@link EntityLifecycle} directly where everything else goes through
- * {@code TicketService}</b>, and the split is deliberate rather than convenience. Those cases sweep
+ * {@code WorkEntityService}</b>, and the split is deliberate rather than convenience. Those cases sweep
  * every pair the word takes part in — droppable from each of the four open statuses, refused from
  * DONE, and reopening to REPORTED and to nothing else — and asking the rule is how a sweep stays a
  * sweep: driving each pair over the service would mean walking a ticket to the starting status and
@@ -56,18 +56,24 @@ class TicketLifecycleTest extends EntitiesTestSupport {
           EntityStatus.VERIFIED,
           EntityStatus.DONE);
 
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService workEntities;
+
+  @Inject TicketCommentService ticketComments;
   @Inject AuditService auditService;
 
   private WorkEntity reported() {
-    return ticketService.create(
-        "proj-1",
-        "Login button does nothing",
-        "clicking the login button does nothing on the sign-in page",
-        null,
-        "BUG",
-        null,
-        "t");
+    return workEntities
+        .create(
+            Archetype.TICKET,
+            "proj-1",
+            EntityWrite.ticket(
+                "Login button does nothing",
+                "clicking the login button does nothing on the sign-in page",
+                null,
+                "BUG",
+                null),
+            "t")
+        .entity();
   }
 
   /**
@@ -79,7 +85,10 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     assertTrue(ORDER.contains(status), status + " is not on the pipeline and cannot be walked to");
     WorkEntity ticket = reported();
     for (int step = 1; step <= ORDER.indexOf(status); step++) {
-      ticket = ticketService.transition(ticket.id, ORDER.get(step).name(), "t");
+      ticket =
+          workEntities
+              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), "t")
+              .entity();
     }
     return ticket;
   }
@@ -94,7 +103,10 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     for (int step = 1; step < ORDER.size(); step++) {
       assertEquals(
           ORDER.get(step).name(),
-          ticketService.transition(ticket.id, ORDER.get(step).name(), "t").status);
+          workEntities
+              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), "t")
+              .entity()
+              .status);
     }
   }
 
@@ -106,7 +118,10 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     for (int step = ORDER.size() - 2; step >= 0; step--) {
       assertEquals(
           ORDER.get(step).name(),
-          ticketService.transition(ticket.id, ORDER.get(step).name(), "t").status);
+          workEntities
+              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), "t")
+              .entity()
+              .status);
     }
   }
 
@@ -117,11 +132,14 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     WorkEntity ticket = at(EntityStatus.IMPLEMENTED);
     assertEquals(
         EntityStatus.REFINED.name(),
-        ticketService.transition(ticket.id, "REFINED", "alice").status);
+        workEntities.transition(Archetype.TICKET, ticket.id, "REFINED", "alice").entity().status);
     // And forward again from there, as many times as the fix takes.
     assertEquals(
         EntityStatus.IMPLEMENTED.name(),
-        ticketService.transition(ticket.id, "IMPLEMENTED", "alice").status);
+        workEntities
+            .transition(Archetype.TICKET, ticket.id, "IMPLEMENTED", "alice")
+            .entity()
+            .status);
   }
 
   /**
@@ -141,7 +159,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
         WorkEntity ticket = at(from);
         assertThrows(
             ConflictException.class,
-            () -> ticketService.transition(ticket.id, to.name(), "t"),
+            () -> workEntities.transition(Archetype.TICKET, ticket.id, to.name(), "t").entity(),
             from + " -> " + to + " is not one step and must be refused");
       }
     }
@@ -155,7 +173,8 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     for (EntityStatus status : ORDER) {
       WorkEntity ticket = at(status);
       assertThrows(
-          ConflictException.class, () -> ticketService.transition(ticket.id, status.name(), "t"));
+          ConflictException.class,
+          () -> workEntities.transition(Archetype.TICKET, ticket.id, status.name(), "t").entity());
     }
   }
 
@@ -222,17 +241,21 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     WorkEntity ticket = at(EntityStatus.REFINED);
 
     assertEquals(
-        EntityStatus.DROPPED.name(), ticketService.transition(ticket.id, "DROPPED", "alice").status);
+        EntityStatus.DROPPED.name(),
+        workEntities.transition(Archetype.TICKET, ticket.id, "DROPPED", "alice").entity().status);
     // Read back rather than believed from the answer: what is under test is the row, so the
     // assertion has to be one the write actually reached the database to satisfy.
-    inFreshTx(() -> assertEquals(EntityStatus.DROPPED.name(), ticketService.get(ticket.id).status));
+    inFreshTx(
+        () ->
+            assertEquals(
+                EntityStatus.DROPPED.name(), workEntities.get(Archetype.TICKET, ticket.id).status));
 
     // And out again the one way out there is. Reviving is the refine phase, so the work does not
     // resume at the REFINED it was dropped from — see the rule-level case for why that is a graph
     // decision rather than a forgotten column.
     assertEquals(
         EntityStatus.REPORTED.name(),
-        ticketService.transition(ticket.id, "REPORTED", "alice").status);
+        workEntities.transition(Archetype.TICKET, ticket.id, "REPORTED", "alice").entity().status);
   }
 
   @Test
@@ -240,7 +263,8 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     WorkEntity ticket = reported();
     ConflictException refused =
         assertThrows(
-            ConflictException.class, () -> ticketService.transition(ticket.id, "VERIFIED", "t"));
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.TICKET, ticket.id, "VERIFIED", "t").entity());
     assertTrue(refused.getMessage().contains("REPORTED"), refused.getMessage());
     assertTrue(refused.getMessage().contains("VERIFIED"), refused.getMessage());
   }
@@ -248,7 +272,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
   @Test
   void transitionIsAuditedAsAnUpdate() {
     WorkEntity ticket = reported();
-    ticketService.transition(ticket.id, "REFINED", "alice");
+    workEntities.transition(Archetype.TICKET, ticket.id, "REFINED", "alice").entity();
 
     var history = auditService.listForEntity(AuditEntityType.TICKET, ticket.id);
     assertEquals(AuditOperation.UPDATE, history.get(0).operation);
@@ -263,17 +287,27 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     WorkEntity ticket = reported();
     // The caller asked for a state that does not exist, which is the same kind of answer as asking
     // for one that is not reachable — so 409, exactly as an epic answers.
-    assertThrows(ConflictException.class, () -> ticketService.transition(ticket.id, "CLOSED", "t"));
-    assertThrows(ConflictException.class, () -> ticketService.transition(ticket.id, "OPEN", "t"));
-    assertThrows(ConflictException.class, () -> ticketService.transition(ticket.id, "refined", "t"));
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "CLOSED", "t").entity());
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "OPEN", "t").entity());
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "refined", "t").entity());
   }
 
   @Test
   void anAbsentTargetIsABadRequest() {
     WorkEntity ticket = reported();
     // A malformed request rather than a refused move, and the split matters to the surfaces above.
-    assertThrows(BadRequestException.class, () -> ticketService.transition(ticket.id, null, "t"));
-    assertThrows(BadRequestException.class, () -> ticketService.transition(ticket.id, "  ", "t"));
+    assertThrows(
+        BadRequestException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, null, "t").entity());
+    assertThrows(
+        BadRequestException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "  ", "t").entity());
   }
 
   // --- what does NOT freeze --------------------------------------------------------------------
@@ -285,17 +319,21 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     WorkEntity ticket = at(EntityStatus.DONE);
 
     WorkEntity edited =
-        ticketService.update(
-            ticket.id,
-            "Better title",
-            "the login button is still inert on the sign-in page",
-            false,
-            "more detail",
-            false,
-            "IMPROVEMENT",
-            "bob",
-            false,
-            "bob");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit(
+                    "Better title",
+                    "the login button is still inert on the sign-in page",
+                    false,
+                    "more detail",
+                    false,
+                    "IMPROVEMENT",
+                    "bob",
+                    false),
+                "bob")
+            .entity();
     assertEquals("Better title", edited.title);
     assertEquals("the login button is still inert on the sign-in page", edited.impetus);
     assertEquals("more detail", edited.description);
@@ -306,15 +344,15 @@ class TicketLifecycleTest extends EntitiesTestSupport {
   @Test
   void aDoneTicketStillTakesComments() {
     WorkEntity ticket = at(EntityStatus.DONE);
-    assertNotNull(ticketService.addComment(ticket.id, "it came back", "alice"));
-    assertEquals(1, ticketService.listComments(ticket.id).size());
+    assertNotNull(ticketComments.addComment(ticket.id, "it came back", "alice"));
+    assertEquals(1, ticketComments.listComments(ticket.id).size());
   }
 
   @Test
   void aDoneTicketCanStillBeDeleted() {
     WorkEntity ticket = at(EntityStatus.DONE);
-    ticketService.delete(ticket.id, "t");
-    inFreshTx(() -> assertTrue(ticketService.listByProject("proj-1").isEmpty()));
+    workEntities.delete(Archetype.TICKET, ticket.id, "t");
+    inFreshTx(() -> assertTrue(workEntities.listByProject(Archetype.TICKET, "proj-1").isEmpty()));
   }
 
   @Test
@@ -323,8 +361,13 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     // field at all — there is no argument here that could carry one.
     WorkEntity ticket = reported();
     WorkEntity edited =
-        ticketService.update(
-            ticket.id, "Renamed", null, false, null, false, null, null, false, "t");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit("Renamed", null, false, null, false, null, null, false),
+                "t")
+            .entity();
     assertEquals(EntityStatus.REPORTED.name(), edited.status);
   }
 }

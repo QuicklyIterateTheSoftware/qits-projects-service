@@ -28,7 +28,8 @@ import org.hibernate.resource.jdbc.spi.StatementInspector;
  * {@code Unable to build Hibernate SessionFactory} / {@code ArrayIndexOutOfBoundsException: Index 1
  * out of bounds for length 0} at {@code AbstractCdiBeanContainer.createBean}. It was measured on the
  * {@code epics} unit and on the {@code projects} unit, in {@code EpicDispatchWithNoWorkspacesTest}
- * and in {@code BearerJwksTest} — 2 failures in 7 runs before this class, 0 in 8 after. That
+ * (folded into {@code EntityDispatchWithNoWorkspacesTest} since) and in {@code BearerJwksTest} — 2
+ * failures in 7 runs before this class, 0 in 8 after. That
  * wandering is the signature: the defect is not in any test and not in any entity, it is in what two
  * threads do to one list. <b>It is a production boot hazard and not only a test one</b> — {@code
  * startAll()} is the same code path in a deployed process.

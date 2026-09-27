@@ -21,7 +21,7 @@ import java.util.Map;
  * <p>The entities module depends on {@code domain} nowhere and must keep not depending on it, so it
  * cannot reach {@link WorkspaceAgentDispatch} and cannot answer this question for itself. The
  * <em>service</em> layer may cross — {@code ProjectTicketsController} already validates a project id
- * against {@code domain}, and {@link TicketDispatchController} is the whole dispatch door living
+ * against {@code domain}, and {@link EntityDispatchController} is the whole dispatch door living
  * here for exactly this reason — so the crossing happens once, in this class, declared by the
  * package it is in.
  *

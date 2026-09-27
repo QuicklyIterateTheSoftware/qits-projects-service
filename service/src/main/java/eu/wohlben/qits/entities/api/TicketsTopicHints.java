@@ -1,6 +1,8 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -8,10 +10,9 @@ import jakarta.inject.Inject;
 
 /**
  * Turns a ticket or comment id into the project whose live channel has to hear about it, and fires
- * the hint. The twin of {@link EpicsTopicHints} and deliberately a second bean rather than four
- * more methods on that one: the two announce different topics ({@code TICKETS} against {@code
- * EPICS}) and reach different services, so folding them together would mean one bean injecting
- * every planning service in the module to serve two unrelated channels.
+ * the hint. The twin of {@link EpicsTopicHints} and deliberately a second bean rather than more
+ * methods on that one: the two announce different topics ({@code TICKETS} against {@code EPICS}),
+ * and the topic a write redraws is the whole of the difference between them.
  *
  * <p><b>Named for the SSE topic it fires</b>, the same rule its twin carries and for the same
  * reason: {@code ProjectChangeHint.Topic.TICKETS} reaches the wire as {@code tickets} and the SPA
@@ -27,7 +28,9 @@ class TicketsTopicHints {
 
   @Inject ProjectChangePublisher publisher;
 
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService entities;
+
+  @Inject TicketCommentService comments;
 
   /** Announce that the project's tickets changed. */
   void fire(String projectId) {
@@ -35,10 +38,10 @@ class TicketsTopicHints {
   }
 
   String projectOfTicket(String ticketId) {
-    return ticketService.get(ticketId).projectId;
+    return entities.get(Archetype.TICKET, ticketId).projectId;
   }
 
   String projectOfComment(String commentId) {
-    return projectOfTicket(ticketService.getComment(commentId).ticketId);
+    return projectOfTicket(comments.getComment(commentId).ticketId);
   }
 }

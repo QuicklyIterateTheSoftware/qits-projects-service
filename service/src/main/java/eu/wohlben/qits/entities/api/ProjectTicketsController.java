@@ -1,11 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.dto.TicketDto;
-import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
-import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
-import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.control.ProjectService;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -23,8 +19,8 @@ import java.util.List;
 /**
  * Tickets collection under a project — the twin of {@link ProjectEpicsController}, and a separate
  * collection rather than a filter on that one because a ticket is a sibling root and not a kind of
- * epic. {@code projectId} is validated against {@code domain} here (the entities module has no
- * dependency on {@code domain}) so a bad project yields a clean 404.
+ * epic. A thin resource over {@link EntityRoutes} (qits-399), which validates {@code projectId}
+ * against {@code domain} so a bad project yields a clean 404.
  */
 @Path("/projects/{projectId}/tickets")
 @Produces(MediaType.APPLICATION_JSON)
@@ -32,19 +28,9 @@ import java.util.List;
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class ProjectTicketsController {
 
-  @Inject TicketService ticketService;
-
-  /** One mapper where there were four; this route answers the ticket shape. */
-  @Inject WorkEntityMapper workEntityMapper;
-
-  @Inject ProjectService projectService;
+  @Inject EntityRoutes routes;
 
   @Inject SecurityIdentity identity;
-
-  @Inject TicketsTopicHints hints;
-
-  /** One lookup for the whole listing — see {@link DispatchedWorkspaces}. */
-  @Inject DispatchedWorkspaces dispatchedWorkspaces;
 
   public record ListTicketsRequest() {
     public record Response(List<Entry> entries) {
@@ -61,22 +47,10 @@ public class ProjectTicketsController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public ListTicketsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
-    // 404 if the project does not exist — and the slug the qualified id is rendered from, which
-    // this route already had in hand and used to discard. No second lookup is made here.
-    String slug = projectService.get(projectId).slug;
-    // Mapped first, then decorated in one call: the workspaces lookup is asked once about the whole
-    // page, never once per row.
-    var entries =
-        dispatchedWorkspaces
-            .decorateTickets(
-                ticketService.listByProject(projectId, status).stream()
-                    .map(workEntityMapper::toTicketDto)
-                    .map(t -> t.withQualifiedId(QualifiedEntityIds.render(slug, t.number())))
-                    .toList())
-            .stream()
+    return new ListTicketsRequest.Response(
+        routes.listRoots(routes.tickets(), projectId, status).stream()
             .map(ListTicketsRequest.Response.Entry::new)
-            .toList();
-    return new ListTicketsRequest.Response(entries);
+            .toList());
   }
 
   /**
@@ -108,21 +82,16 @@ public class ProjectTicketsController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateTicketRequest.Response create(
       @PathParam("projectId") String projectId, @Valid CreateTicketRequest request) {
-    EntitiesAgentAccess.requireProject(identity, projectId);
-    String slug = projectService.get(projectId).slug; // 404 if the project does not exist
-    var ticket =
-        ticketService.create(
-            projectId,
-            request.title(),
-            request.impetus(),
-            request.description(),
-            request.type(),
-            request.assignee(),
-            EntitiesPrincipal.changedBy(identity));
-    hints.fire(projectId);
     return new CreateTicketRequest.Response(
-        workEntityMapper
-            .toTicketDto(ticket)
-            .withQualifiedId(QualifiedEntityIds.render(slug, ticket.number)));
+        routes.createRoot(
+            routes.tickets(),
+            projectId,
+            EntityWrite.ticket(
+                request.title(),
+                request.impetus(),
+                request.description(),
+                request.type(),
+                request.assignee()),
+            identity));
   }
 }

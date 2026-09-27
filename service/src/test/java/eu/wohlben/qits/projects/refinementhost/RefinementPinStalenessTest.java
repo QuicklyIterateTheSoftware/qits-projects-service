@@ -67,12 +67,13 @@ public class RefinementPinStalenessTest {
   }
 
   private long refinementFor(String projectName, String epicTitle) {
+    String epicId = createEpic(createProject(projectName), epicTitle);
     Number id =
         given()
             .contentType(ContentType.JSON)
-            .body(java.util.Map.of("epicId", createEpic(createProject(projectName), epicTitle)))
+            .body(java.util.Map.of())
             .when()
-            .post("/projects/api/refinements")
+            .post("/projects/api/entities/" + epicId + "/refinement")
             .then()
             .statusCode(200)
             .extract()

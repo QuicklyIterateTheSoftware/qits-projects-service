@@ -68,9 +68,9 @@ public class RefinementDesignMcpToolsTest {
     Number id =
         authenticated()
             .contentType(ContentType.JSON)
-            .body(Map.of("epicId", epicId))
+            .body(Map.of())
             .when()
-            .post("/projects/api/refinements")
+            .post("/projects/api/entities/" + epicId + "/refinement")
             .then()
             .statusCode(Response.Status.OK.getStatusCode())
             .extract()
