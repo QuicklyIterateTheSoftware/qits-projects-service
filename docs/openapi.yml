@@ -446,6 +446,11 @@ components:
           type: string
         active:
           type: boolean
+    CampaignStartResponse:
+      type: object
+      properties:
+        campaign:
+          $ref: "#/components/schemas/CampaignDto"
     CampaignSummaryDto:
       type: object
       properties:
@@ -3226,11 +3231,14 @@ paths:
         required: true
       responses:
         "200":
-          description: OK
+          description: "The dispatch made, or — for a campaign — the campaign as its\
+            \ start press left it"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response27"
+                oneOf:
+                - $ref: "#/components/schemas/Response27"
+                - $ref: "#/components/schemas/CampaignStartResponse"
         "401":
           description: Not Authorized
         "403":
@@ -6963,4 +6971,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.927.101123
+  version: 2026.927.121045

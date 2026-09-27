@@ -64,11 +64,10 @@ import org.jboss.logging.Logger;
  * <h2>What fires, and what does not fire it</h2>
  *
  * <p>Every resulting membership id fires a CDI {@link CampaignMemberSatisfied} event — synchronously
- * ({@link Event#fire}, never {@code fireAsync}), because the executor that will observe it (the next
- * task in this epic) is an {@code @Observes(during = TransactionPhase.AFTER_SUCCESS)} listener, which
- * needs an active JTA transaction to register against; {@code fireAsync} runs off any transaction and
- * would never reach one. Nothing observes the event yet, which is fine — firing it into the void is
- * exactly what proves the shape is right before anything acts on it, and {@code onFrame} runs inside
+ * ({@link Event#fire}, never {@code fireAsync}), because the executor that observes it ({@code
+ * campaignhost/CampaignExecutor}, qits-417) is an {@code @Observes(during =
+ * TransactionPhase.AFTER_SUCCESS)} listener, which needs an active JTA transaction to register
+ * against; {@code fireAsync} runs off any transaction and would never reach one. {@code onFrame} runs inside
  * {@code DurableFunnel}'s own claim transaction ({@link CampaignEvaluator}'s methods are all {@code
  * MANDATORY}), so the fire, the latch and the claim commit or roll back together.
  *

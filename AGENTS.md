@@ -1091,6 +1091,13 @@ re-implementing the status→phase rule, which lives only in `api/PhasePrompts.p
 unknown mode is a 400; a feature or a task is a 409 (no lifecycle); a blocked ticket is a 409 naming
 the block; no workspaces context is a 503; a project with no wrapper is a 409.
 
+Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
+call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
+it means "outcome unknown". **On a CAMPAIGN the press is its start** — the branch is in
+`EntityDispatchController`, to `campaignhost/CampaignStarter`, answering `{"campaign": CampaignDto}`;
+`EntityDispatch` itself still refuses a campaign. The members are then claimed and dispatched by
+`campaignhost/CampaignExecutor`, whose javadoc carries the at-most-once argument and the lock order.
+
 Five things are rules rather than details:
 
 - **The bit lives on the entity row** — `entity.dispatch_continues` (epics V16, `not null default

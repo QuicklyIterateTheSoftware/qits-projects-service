@@ -1,14 +1,20 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
+import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
 import eu.wohlben.qits.entities.control.EntityDispatchService;
+import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.TicketCommentService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.util.Optional;
 import org.jboss.logging.Logger;
 
 /**
@@ -43,6 +49,15 @@ import org.jboss.logging.Logger;
  *       gets the {@code EPICS} hint alone.
  * </ol>
  *
+ * <h2>Steps 1–4 are {@link #precheck}, and nothing after them is a refusal (qits-417)</h2>
+ *
+ * <p>Everything up to and including the address is decided without a write or a call out, and is
+ * available on its own as {@link #precheck}, each refusal thrown as a {@link DispatchRefused}. The
+ * press runs it first; from the bit onward every exception means the outcome is unknown — the bit
+ * may be written, the far side may have stood a workspace up — which is the line the campaign
+ * executor keeps or releases its claim on. The by-id overloads read the row fresh, in a transaction
+ * of their own, so a caller that read it earlier is never handed its own stale read back.
+ *
  * <h2>The bit is the whole difference between the two actions</h2>
  *
  * <p>{@link DispatchMode#FLOW} and {@link DispatchMode#PHASE} take this identical path and differ
@@ -70,6 +85,11 @@ public class EntityDispatch {
   @Inject TicketCommentService tickets;
 
   @Inject EntityWorkspaces workspaces;
+
+  /** A campaign's start, for the read {@link #state} answers a campaign with. */
+  @Inject CampaignStartRecordRepository starts;
+
+  @Inject ReadPatience reads;
 
   @Inject ProjectChangePublisher publisher;
 
@@ -121,7 +141,40 @@ public class EntityDispatch {
    * @param changedBy the caller, for the audit row and the ticket comment; may be null
    */
   public Outcome dispatch(String id, DispatchMode mode, String changedBy) {
-    return dispatch(entities.get(id), mode, changedBy); // 404
+    return dispatch(entities.fresh(id), mode, changedBy); // 404
+  }
+
+  /**
+   * The same press by id, refused with a {@link DispatchRefused} unless the phase the row's status
+   * starts is {@code requiredPhase} — the campaign executor's door (qits-417), which starts a member
+   * at REFINED, its implement phase, and nothing else. The phase is decided on the row as this call
+   * reads it, fresh, so a member that moved on since the caller last looked (another press, an agent's
+   * own claim) is refused here instead of being started at whatever phase it has reached.
+   */
+  public Outcome dispatch(
+      String id, DispatchMode mode, String changedBy, String requiredPhase) {
+    WorkEntity entity = entities.fresh(id); // 404
+    requirePhase(entity, requiredPhase);
+    return dispatch(entity, mode, changedBy);
+  }
+
+  /**
+   * <b>Every refusal {@link #dispatch} would make, with no side effect</b> (qits-417): a campaign, a
+   * kind with no lifecycle, a block, a status that starts no phase, no workspaces context, no
+   * wrapper. Nothing is written and nothing is called out to; reads only (the project and its
+   * wrapper, and an epic's tree for its refs). Each refusal is a {@link DispatchRefused} carrying the
+   * status and the sentence the press would have answered.
+   *
+   * @return the phase a press would start now
+   */
+  public String precheck(WorkEntity entity) {
+    return checked(entity).started().phase();
+  }
+
+  /** {@link #precheck}, and a {@link DispatchRefused} unless that phase is {@code requiredPhase}. */
+  public String precheck(WorkEntity entity, String requiredPhase) {
+    requirePhase(entity, requiredPhase);
+    return precheck(entity);
   }
 
   /**
@@ -131,19 +184,11 @@ public class EntityDispatch {
    * in another transaction would be handed its stale first read back by its own session.
    */
   public Outcome dispatch(WorkEntity entity, DispatchMode mode, String changedBy) {
-    refuseCampaign(entity);
-    String id = entity.id;
-    PhasePrompts.Started started = phaseOrRefuse(entity);
-    if (dispatch.isUnsatisfied()) {
-      throw new DomainException(
-          503,
-          "No workspaces context is configured, so no agent can be dispatched onto "
-              + noun(entity)
-              + " "
-              + id
-              + ".");
-    }
-    EntityWorkspaces.Target target = workspaces.require(entity);
+    // Every refusal first, with no side effect (a DispatchRefused); everything after this line is
+    // the part that writes and calls out, so anything it throws means "outcome unknown".
+    Checked checked = checked(entity);
+    PhasePrompts.Started started = checked.started();
+    EntityWorkspaces.Target target = checked.target();
     String branch = target.branch();
 
     WorkEntity recorded = entities.setDispatchContinues(entity.id, mode.continues(), changedBy);
@@ -180,7 +225,9 @@ public class EntityDispatch {
   /** What a press would do now — the read behind {@code GET /entities/{id}/dispatch}. */
   public EntityDispatchStateDto state(String id) {
     WorkEntity entity = entities.get(id);
-    refuseCampaign(entity);
+    if (entity.archetype == Archetype.CAMPAIGN) {
+      return campaignState(entity);
+    }
     String nextPhase = PhasePrompts.nextPhase(entity).orElse(null);
     boolean lifecycle = entity.status != null && nextPhaseAware(entity);
     return new EntityDispatchStateDto(
@@ -193,21 +240,100 @@ public class EntityDispatch {
         lifecycle ? DispatchMode.of(entity.dispatchContinues) : null);
   }
 
+  /**
+   * <b>A campaign's read</b> (qits-417): a press is accepted whenever it is REFINED — while it runs
+   * too, since a press re-checks every waiting member — and what it would do is start it, or, once a
+   * start is active, re-check it. A campaign has no block and no phase of its own; the mode is FLOW
+   * once it has ever been started (a campaign presses dispatch only) and null before.
+   */
+  private EntityDispatchStateDto campaignState(WorkEntity campaign) {
+    Optional<CampaignStartRecord> start =
+        reads.hold(
+            "a campaign's start",
+            () -> QuarkusTransaction.requiringNew().call(() -> starts.startOf(campaign.id)));
+    boolean active = start.map(row -> row.active).orElse(false);
+    return new EntityDispatchStateDto(
+        campaign.id,
+        campaign.archetype.name(),
+        campaign.status,
+        active ? "recheck" : "start",
+        false,
+        EntityStatus.REFINED.name().equals(campaign.status),
+        start.isPresent() ? DispatchMode.FLOW : null);
+  }
+
   // ---- the pieces --------------------------------------------------------------------------
 
+  /** What {@link #checked} decided: the phase, and where it runs. */
+  private record Checked(PhasePrompts.Started started, EntityWorkspaces.Target target) {}
+
   /**
-   * <b>A campaign is never dispatched</b> (qits-411): it has no branch, no workspace and no phase
-   * prompts — it orders work that is dispatched, and it starts through its executor. A 409 naming
-   * the campaign, for the press and for the read alike, so neither answers a phase a campaign does
-   * not have. (A later task of the campaigns epic replaces this with a branch in the controller.)
+   * The refusals, in the order the class javadoc gives them, each a {@link DispatchRefused}. The
+   * wrapper's 409 comes out of {@link EntityWorkspaces#require} as a plain {@link DomainException}
+   * and is re-thrown as a refusal with its words unchanged; anything else it throws (a database that
+   * is gone) is not a refusal and passes through as it is.
+   */
+  private Checked checked(WorkEntity entity) {
+    refuseCampaign(entity);
+    PhasePrompts.Started started = phaseOrRefuse(entity);
+    if (dispatch.isUnsatisfied()) {
+      throw new DispatchRefused(
+          503,
+          "No workspaces context is configured, so no agent can be dispatched onto "
+              + noun(entity)
+              + " "
+              + entity.id
+              + ".");
+    }
+    EntityWorkspaces.Target target;
+    try {
+      target = workspaces.require(entity);
+    } catch (DispatchRefused refused) {
+      throw refused;
+    } catch (DomainException refused) {
+      throw new DispatchRefused(refused.statusCode(), refused.getMessage());
+    }
+    return new Checked(started, target);
+  }
+
+  /**
+   * A {@link DispatchRefused} unless {@code entity}'s status starts {@code requiredPhase} — decided
+   * after the refusals every press makes, so a blocked or finished row still answers its own
+   * sentence first.
+   */
+  private static void requirePhase(WorkEntity entity, String requiredPhase) {
+    refuseCampaign(entity);
+    String phase = phaseOrRefuse(entity).phase();
+    if (requiredPhase != null && !requiredPhase.equals(phase)) {
+      throw new DispatchRefused(
+          409,
+          capitalised(noun(entity))
+              + " "
+              + entity.id
+              + " is "
+              + entity.status
+              + ", where its "
+              + phase
+              + " phase runs; only its "
+              + requiredPhase
+              + " phase is started here.");
+    }
+  }
+
+  /**
+   * <b>A campaign is never dispatched onto a workspace</b> (qits-411, kept by qits-417 as a belt): it
+   * has no branch, no workspace and no phase prompts — it orders work that is dispatched. Its press
+   * is its start, which {@code EntityDispatchController} branches to before this class is reached;
+   * this refusal is what keeps an in-process caller from ever cutting a workspace for one.
    */
   private static void refuseCampaign(WorkEntity entity) {
     if (entity.archetype == Archetype.CAMPAIGN) {
-      throw new DomainException(
+      throw new DispatchRefused(
           409,
           "Campaign "
               + entity.id
-              + " is not dispatched onto a workspace — a campaign starts through its executor.");
+              + " is not dispatched onto a workspace — a campaign is started by pressing dispatch"
+              + " on it, and its executor dispatches its members.");
     }
   }
 
@@ -222,7 +348,7 @@ public class EntityDispatch {
    */
   private static PhasePrompts.Started phaseOrRefuse(WorkEntity entity) {
     if (!nextPhaseAware(entity)) {
-      throw new DomainException(
+      throw new DispatchRefused(
           409,
           "A "
               + entity.archetype
@@ -230,7 +356,7 @@ public class EntityDispatch {
               + " dispatch its epic instead.");
     }
     if (entity.blocked) {
-      throw new DomainException(
+      throw new DispatchRefused(
           409,
           "Ticket "
               + entity.id
@@ -242,7 +368,7 @@ public class EntityDispatch {
     return PhasePrompts.startedBy(entity)
         .orElseThrow(
             () ->
-                new DomainException(
+                new DispatchRefused(
                     409,
                     capitalised(noun(entity))
                         + " "

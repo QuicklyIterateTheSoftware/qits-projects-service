@@ -9,16 +9,14 @@ import java.util.UUID;
  * eu.wohlben.qits.entities.campaign.CampaignEvaluator#satisfiedUnclaimedMembershipsOf} answered
  * satisfied — inside the listener's own transaction, on the CDI event bus, never on qits-events.
  *
- * <p><b>Nothing observes this yet.</b> The executor that dispatches a satisfied member — the next
- * task in this epic — is an {@code @Observes(during = TransactionPhase.AFTER_SUCCESS)} listener, so
- * it runs only once the latch (and the membership rows it read) have actually committed, and never
- * when the listener's claim rolls back. Firing it here, one task ahead of anything reading it, is
- * deliberate: the fact and its dispatch are two different concerns, and the fact is what this task
- * is scoped to.
+ * <p><b>{@link CampaignExecutor} observes it</b> (qits-417) with {@code @Observes(during =
+ * TransactionPhase.AFTER_SUCCESS)}, so it runs only once the latch (and the membership rows it read)
+ * have actually committed, and never when the listener's claim rolls back — and hands the membership
+ * to {@link CampaignExecutor#tryDispatch} off the committing thread.
  *
  * <p>{@code membershipId} is the {@code entity_membership} row whose condition holds;
  * {@code evidenceEventId} is the frame that latched the criterion which tipped it over — the same id
  * {@link eu.wohlben.qits.entities.campaign.Observation.Observed#eventId()} carried in, and nothing
- * more than a trace edge for whoever eventually acts on this.
+ * the cause the dispatch it leads to is stamped with.
  */
 public record CampaignMemberSatisfied(String membershipId, UUID evidenceEventId) {}
