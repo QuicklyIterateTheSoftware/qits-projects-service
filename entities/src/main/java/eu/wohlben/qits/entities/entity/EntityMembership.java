@@ -110,6 +110,56 @@ public class EntityMembership extends PanacheEntityBase implements CausedRow {
   @Column(nullable = false, length = 16)
   public MembershipKind kind = MembershipKind.STRUCTURAL;
 
+  // --- the run record (V19): a CAMPAIGN edge's alone ----------------------------------------------
+  //
+  // Everything about a member's participation in one campaign lives here, on that campaign's edge,
+  // and nothing on the member entity: an entity may be gathered by several campaigns and each claims
+  // and dispatches it on its own account. ck_entity_membership_run_record_campaign_only keeps every
+  // one of these null (or false) on a STRUCTURAL edge.
+
+  /**
+   * When the campaign took this member as its own to run — or, for a member that joined already
+   * running ({@link #joinedRunning}), when it joined. Null while the member waits. Once set, the
+   * membership's condition is no longer edited and the membership is no longer removed: the run
+   * record would be lost.
+   */
+  @Column(name = "claimed_at")
+  public Instant claimedAt;
+
+  /**
+   * True when the member joined the campaign with its work already in flight, so the campaign
+   * claimed it on joining and will never dispatch it.
+   */
+  @Column(name = "joined_running", nullable = false)
+  public boolean joinedRunning;
+
+  /** When the campaign's dispatch of this member succeeded; null until then (and for ever when joined running). */
+  @Column(name = "dispatched_at")
+  public Instant dispatchedAt;
+
+  /** The qits-workspaces row the dispatch stood up, as that service numbers it. */
+  @Column(name = "dispatch_workspace_id")
+  public String dispatchWorkspaceId;
+
+  /** The branch the dispatch ran on — {@code ticket/<slug>} or {@code epic/<slug>}. */
+  @Column(name = "dispatch_branch")
+  public String dispatchBranch;
+
+  /** What the far side did with the agent: {@code SCHEDULED} or {@code SKIPPED_RUNNING}. */
+  @Column(name = "dispatch_agent_launch", length = 32)
+  public String dispatchAgentLaunch;
+
+  /** Why the last dispatch attempt was refused before it was made; the member stays unclaimed. */
+  @Column(name = "dispatch_refusal")
+  public String dispatchRefusal;
+
+  @Column(name = "dispatch_refused_at")
+  public Instant dispatchRefusedAt;
+
+  /** A dispatch that failed after the claim: recorded, kept claimed, and never retried. */
+  @Column(name = "dispatch_error")
+  public String dispatchError;
+
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   public Instant createdAt;

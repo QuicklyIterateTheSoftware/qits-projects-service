@@ -32,7 +32,7 @@ import org.junit.jupiter.api.TestFactory;
  *   <li>every GET and HEAD on every listed controller admits {@code qits:agent};
  *   <li>a write admits it <b>if and only if</b> it is named in one of the three declared groups
  *       below — the release-request writes, the entity writes and the one catalogue write;
- *   <li>the four writes that must stay {@code qits:admin} alone are named in {@link
+ *   <li>the writes that must stay {@code qits:admin} alone are named in {@link
  *       #ADMIN_ONLY_WRITES} and asserted <em>not</em> to admit the agent, so a later widening trips
  *       this test rather than sliding past it as one more line in an opt-out set.
  * </ul>
@@ -57,12 +57,14 @@ class AgentReadAccessTest {
 
   private static final List<Class<?>> CLASSES =
       List.of(
+          eu.wohlben.qits.entities.api.CampaignController.class,
           eu.wohlben.qits.entities.api.DossierAssetController.class,
           eu.wohlben.qits.entities.api.DossierController.class,
           eu.wohlben.qits.entities.api.EntityArchetypesController.class,
           eu.wohlben.qits.entities.api.EntityTransitionController.class,
           eu.wohlben.qits.entities.api.EpicController.class,
           eu.wohlben.qits.entities.api.FeatureController.class,
+          eu.wohlben.qits.entities.api.ProjectCampaignsController.class,
           eu.wohlben.qits.entities.api.ProjectEpicsController.class,
           eu.wohlben.qits.entities.api.ProjectTicketsController.class,
           eu.wohlben.qits.entities.api.TaskController.class,
@@ -164,9 +166,28 @@ class AgentReadAccessTest {
   private static final Set<String> CATALOGUE_AGENT_WRITES =
       Set.of("ProjectController.createRepository");
 
+  /**
+   * <b>The campaign build doors an agent reaches</b> (qits-413): create, the status transition, and
+   * the four membership writes — each bound to the agent's own project by {@code
+   * EntitiesAgentAccess}, the campaign resolved first. A group of its own because the argument is
+   * the epic's ruling rather than an existing MCP tool (the {@code repository} server's campaign
+   * tools, qits-414, serve the same writes). {@code CampaignController.approve} is not here and must
+   * not arrive: an approval is a person's sign-off, which is why it is in {@link #ADMIN_ONLY_WRITES}.
+   */
+  private static final Set<String> CAMPAIGN_AGENT_WRITES =
+      Set.of(
+          "ProjectCampaignsController.create",
+          "CampaignController.transition",
+          "CampaignController.addMember",
+          "CampaignController.moveMember",
+          "CampaignController.removeMember",
+          "CampaignController.setCondition");
+
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =
-      union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES);
+      union(
+          union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
+          CAMPAIGN_AGENT_WRITES);
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> An epic's
@@ -184,7 +205,9 @@ class AgentReadAccessTest {
           "EpicController.transition",
           "EpicController.delete",
           "TicketController.delete",
-          "TicketCommentController.delete");
+          "TicketCommentController.delete",
+          // Approving a campaign criterion is the sign-off on a gated member (qits-413).
+          "CampaignController.approve");
 
   @TestFactory
   Stream<DynamicTest> anAgentReadsEverythingAndWritesOnlyTheDeclaredSet() {

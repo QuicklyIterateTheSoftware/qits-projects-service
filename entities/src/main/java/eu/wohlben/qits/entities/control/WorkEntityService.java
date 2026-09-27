@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.control;
 
+import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
@@ -103,6 +104,9 @@ public class WorkEntityService {
 
   /** The per-project numeric id every created row takes; see {@link EntityNumbers}. */
   @Inject EntityNumbers numbers;
+
+  /** A campaign's start — read by the pause hook in {@link #move}, nothing else here. */
+  @Inject CampaignStartRecordRepository campaignStarts;
 
   /**
    * <b>The supersede operation's name, which is not a status.</b> {@code SUPERSEDED} was an epic
@@ -570,6 +574,15 @@ public class WorkEntityService {
     }
     row.status = to.name();
     row.blocked = false;
+    if (archetype == Archetype.CAMPAIGN
+        && EntityStatus.REFINED.name().equals(statusBefore)
+        && to != EntityStatus.REFINED) {
+      // The pause hook (qits-413): a campaign that leaves REFINED stops its executor, in this very
+      // transaction, so no claim can land between the move and the pause. The UPDATE takes the row
+      // lock the executor's claim waits on; a campaign never started has no row and nothing happens.
+      // Resuming is a new start press at REFINED — moving back is not enough.
+      campaignStarts.pause(row.id);
+    }
     if (successor != null) {
       row.supersededByEntityId = successor.id;
     }

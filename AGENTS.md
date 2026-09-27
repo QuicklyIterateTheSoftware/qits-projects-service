@@ -531,6 +531,13 @@ write** (user ruling, 2026-09-12):
   up is a person's press; its GET is a read and admits the agent), `TicketController.delete` and
   `TicketCommentController.delete` (deleting is on neither surface: an agent that could delete what
   it disagrees with could erase the record of its own mistake).
+- **The campaign build doors take it too (qits-413), bound the same way** — the campaign resolved
+  first, its project checked by `EntitiesAgentAccess`: `POST /projects/{projectId}/campaigns`, `POST
+  /campaigns/{id}/transition` and the four membership writes (`POST …/members`, `PUT
+  …/members/{membershipId}/position`, `DELETE …/members/{membershipId}`, `PUT
+  …/members/{membershipId}/condition`). **`POST …/criteria/{criterionId}/approve` is `qits:admin`
+  alone** — an approval is the sign-off on a gated member — and `AgentReadAccessTest` pins both
+  (`CAMPAIGN_AGENT_WRITES`, and approve in `ADMIN_ONLY_WRITES`).
 - **A sixth write takes it: `ProjectController.createRepository`** — `POST
   /projects/{projectId}/repositories`, the route that adds a component to a project. It is granted
   because it is additive: it mints a blank on the git host (or attaches a url) and declares it in

@@ -29,6 +29,7 @@ have no writer and no referent; they are a frozen snapshot.
 | `V13__drop_legacy_planning_tables.sql` | the four old tables dropped, and `ck_audit_entity_type` re-stated off the archetype set over an unchanged vocabulary. It deletes the verification door with them — `entities/…/migration/`, `service/…/entities/api/MigrationVerificationController.java` and both its test classes — because a door whose comparison target no longer exists can only answer about nothing. See "The cleanup, as shipped" below | **shipped** |
 | `V15__one_entity_lifecycle.sql` | one lifecycle for every archetype: every epic row backfilled onto `EntityStatus`' words, then `ck_entity_status` narrowed from the ten-word union to those six. See "One lifecycle for every archetype" below | **shipped** |
 | `V17__campaign_archetype.sql` | `CAMPAIGN` joins the vocabulary (qits-411, epic f6c67e74): `ck_entity_archetype` re-added over five words and `ck_audit_entity_type` over seven, no row rewritten. The archetype is declared in `control/Archetypes` at depth -1, a root, `gathers = true` | on the campaigns epic branch |
+| `V19__campaign_criteria.sql` | a campaign membership's run record (`claimed_at`, `joined_running`, `dispatch_*` on `entity_membership`, empty on a STRUCTURAL edge by `ck_entity_membership_run_record_campaign_only`), `campaign_criterion_group`, `campaign_criterion` (a latch that carries its evidence, `ck_campaign_criterion_evidence`) and `campaign_start` (qits-413). The entities are in `entities/…/campaign/`, a second package of the `epics` persistence unit, written by `CampaignService`; membership changes are audited as UPDATEs of the campaign row, so `ck_audit_entity_type` did not move | on the campaigns epic branch |
 
 The ids are the **same id space**: `entity.id` is `varchar(255)` exactly as `epic.id` is, because
 V10 copies each old row in under the id it already has. Every dossier page, audit entry, branch
@@ -1491,6 +1492,14 @@ random one. Every tree read in `EntityMembershipRepository` (`childrenOf`, `chil
 containment — a listing, a subtree delete, the nesting rule, a reshape — can see a campaign's members
 as its children. A delete closes the gaps its row and subtree leave in every campaign they had
 joined. `Nesting` refuses a STRUCTURAL edge under a kind that gathers as `NOT_STRUCTURAL`.
+
+**The campaign edge's own rules (V19, qits-413)** live in `campaign/CampaignService`, not in
+`Nesting`: a campaign edge is not containment and never goes through `Nesting.check`. A member must
+be a kind a campaign may hold (`Nesting.mayContain(CAMPAIGN, …)`, which refuses a campaign in a
+campaign) **and** have a lifecycle (`Archetypes.legalStatuses`), so an epic or a ticket of the
+campaign's own project, once. Positions are dense per campaign exactly as they are per structural
+parent; an insert shifts the tail and seeds the newcomer on its predecessor, and a move never touches
+a criterion.
 
 ## The one narrowing, stated rather than discovered
 

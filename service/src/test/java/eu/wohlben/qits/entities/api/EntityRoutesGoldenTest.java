@@ -340,6 +340,82 @@ class EntityRoutesGoldenTest {
     r.assertGolden("ticket.json");
   }
 
+  /**
+   * The campaign doors (qits-413), pinned from their first version: the DTOs of the dossier page
+   * "Doors and DTOs", the seed, the condition PUT, the approval latch and the refusals.
+   */
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void campaignRoutes() throws IOException {
+    Recorder r = new Recorder();
+    String projectId = r.project("Golden Routes Campaign");
+    String p = "/projects/api/projects/" + projectId;
+    String[] tickets = new String[3];
+    for (int i = 0; i < tickets.length; i++) {
+      tickets[i] =
+          r.call(
+                  "POST",
+                  p + "/tickets",
+                  map("title", "Step " + (i + 1), "impetus", "it has to happen", "type", "IMPROVEMENT"))
+              .path("ticket.id");
+    }
+
+    String campaignId =
+        r.call("POST", p + "/campaigns", map("title", "Rename qits-x", "description", "in order"))
+            .path("campaign.id");
+    r.call("POST", p + "/campaigns", map("title", " ")); // blank title: 400
+    String c = "/projects/api/campaigns/" + campaignId;
+
+    String first =
+        r.call("POST", c + "/members", map("entityId", tickets[0])).path("member.membershipId");
+    String second =
+        r.call("POST", c + "/members", map("entityId", tickets[1])).path("member.membershipId");
+    r.call("POST", c + "/members", map("entityId", tickets[1])); // duplicate: 409
+    r.call("POST", c + "/members", map("entityId", tickets[2], "inFlight", true)); // joins running
+
+    r.call(
+        "PUT",
+        c + "/members/" + second + "/condition",
+        map(
+            "groups",
+            List.of(
+                map("criteria", List.of()),
+                map("criteria", List.of(map("kind", "DEPLOYMENT_ACTIVE", "predicate", map())))))); // 400
+    String approval =
+        r.call(
+                "PUT",
+                c + "/members/" + second + "/condition",
+                map(
+                    "groups",
+                    List.of(
+                        map(
+                            "criteria",
+                            List.of(
+                                map("kind", "APPROVAL", "predicate", map()),
+                                map(
+                                    "kind",
+                                    "ENTITY_STATUS",
+                                    "predicate",
+                                    map("entityId", tickets[0], "status", "VERIFIED")))))))
+            .path("member.groups[0].criteria[0].id");
+    r.call(
+        "POST",
+        c + "/members/" + second + "/criteria/" + approval + "/approve",
+        map("note", "go"));
+    r.call(
+        "POST",
+        c + "/members/" + second + "/criteria/" + approval + "/approve",
+        map()); // already approved: 409
+
+    r.call("DELETE", c + "/members/" + first, null); // somebody waits on it: 409
+    r.call("PUT", c + "/members/" + second + "/position", map("position", 0));
+    r.call("POST", c + "/transition", map("target", "REFINED"));
+    r.call("GET", p + "/campaigns", null);
+    r.call("GET", c, null);
+    r.call("GET", "/projects/api/campaigns/no-such-campaign", null); // 404
+    r.assertGolden("campaign.json");
+  }
+
   @Test
   @TestSecurity(user = "dev", roles = "qits:admin")
   void archetypeRegistry() throws IOException {

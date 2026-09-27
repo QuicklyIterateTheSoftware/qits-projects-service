@@ -106,6 +106,17 @@ public class EntityMembershipRepository
     return find("parentId = ?1 and kind = ?2", IN_ORDER, campaignId, GATHERED).list();
   }
 
+  /**
+   * The members of every campaign in {@code campaignIds}, in one query — a project's campaign listing
+   * counts them without a query per campaign. The empty guard is {@link #childrenOfAll}'s.
+   */
+  public List<EntityMembership> campaignMembersOfAll(Collection<String> campaignIds) {
+    if (campaignIds == null || campaignIds.isEmpty()) {
+      return List.of();
+    }
+    return find("parentId in ?1 and kind = ?2", IN_ORDER, campaignIds, GATHERED).list();
+  }
+
   /** Every campaign {@code childId} has joined, one edge per campaign, in (position, id) order. */
   public List<EntityMembership> campaignMembershipsOf(String childId) {
     return find("childId = ?1 and kind = ?2", IN_ORDER, childId, GATHERED).list();

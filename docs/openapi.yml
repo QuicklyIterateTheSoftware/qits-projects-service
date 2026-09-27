@@ -9,6 +9,19 @@ components:
       properties:
         technicalProcessId:
           type: string
+    AddCampaignMemberRequest:
+      type: object
+      required:
+      - entityId
+      properties:
+        entityId:
+          type: string
+          pattern: \S
+        position:
+          type: integer
+          format: int32
+        inFlight:
+          type: boolean
     AddReleaseRequestSource:
       type: object
       required:
@@ -222,6 +235,11 @@ components:
             $ref: "#/components/schemas/AgentMcpCatalogEntryDto"
         shipped:
           type: boolean
+    ApproveCampaignCriterionRequest:
+      type: object
+      properties:
+        note:
+          type: string
     ApproveReleaseRequest:
       type: object
       required:
@@ -329,6 +347,135 @@ components:
         behind:
           type: integer
           format: int32
+    CampaignDispatchDto:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+        branch:
+          type: string
+        agentLaunch:
+          type: string
+    CampaignDto:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
+        projectId:
+          type: string
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        start:
+          $ref: "#/components/schemas/CampaignStartDto"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignMemberDto"
+    CampaignMemberDto:
+      type: object
+      properties:
+        membershipId:
+          type: string
+        position:
+          type: integer
+          format: int32
+        entity:
+          $ref: "#/components/schemas/CampaignMemberEntityDto"
+        claimedAt:
+          $ref: "#/components/schemas/Instant"
+        joinedRunning:
+          type: boolean
+        dispatchedAt:
+          $ref: "#/components/schemas/Instant"
+        dispatch:
+          $ref: "#/components/schemas/CampaignDispatchDto"
+        dispatchRefusal:
+          type: string
+        dispatchRefusedAt:
+          $ref: "#/components/schemas/Instant"
+        dispatchError:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/CriterionGroupDto"
+    CampaignMemberEntityDto:
+      type: object
+      properties:
+        id:
+          type: string
+        archetype:
+          type: string
+        qualifiedId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        blocked:
+          type: boolean
+    CampaignMemberResponse:
+      type: object
+      properties:
+        member:
+          $ref: "#/components/schemas/CampaignMemberDto"
+    CampaignResponse:
+      type: object
+      properties:
+        campaign:
+          $ref: "#/components/schemas/CampaignDto"
+    CampaignStartDto:
+      type: object
+      properties:
+        firstStartedAt:
+          $ref: "#/components/schemas/Instant"
+        startedAt:
+          $ref: "#/components/schemas/Instant"
+        startedBy:
+          type: string
+        active:
+          type: boolean
+    CampaignSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
+        projectId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        started:
+          type: boolean
+        active:
+          type: boolean
+        members:
+          type: integer
+          format: int32
+    CampaignsResponse:
+      type: object
+      properties:
+        campaigns:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignSummaryDto"
     CapabilityReportRequest:
       type: object
       properties:
@@ -473,6 +620,23 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CommitDto"
+    ConditionCriterion:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        predicate:
+          type: object
+          additionalProperties: {}
+    ConditionGroup:
+      type: object
+      properties:
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConditionCriterion"
     ConflictedPath:
       type: object
       properties:
@@ -506,6 +670,16 @@ components:
         daemonVersionStale:
           type: boolean
         failureDetail:
+          type: string
+    CreateCampaignRequest:
+      type: object
+      required:
+      - title
+      properties:
+        title:
+          type: string
+          pattern: \S
+        description:
           type: string
     CreateEpicRequest:
       type: object
@@ -617,6 +791,54 @@ components:
           pattern: \S
         assignee:
           type: string
+    CreatedCampaignResponse:
+      type: object
+      properties:
+        campaign:
+          $ref: "#/components/schemas/CampaignDto"
+    CriterionApprovalDto:
+      type: object
+      properties:
+        approvedBy:
+          type: string
+        note:
+          type: string
+    CriterionDto:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        predicate:
+          type: object
+          additionalProperties: {}
+        seeded:
+          type: boolean
+        satisfiedAt:
+          $ref: "#/components/schemas/Instant"
+        evidence:
+          $ref: "#/components/schemas/CriterionEvidenceDto"
+        approval:
+          $ref: "#/components/schemas/CriterionApprovalDto"
+    CriterionEvidenceDto:
+      type: object
+      properties:
+        eventId:
+          type: string
+        signature:
+          type: string
+        summary:
+          type: string
+    CriterionGroupDto:
+      type: object
+      properties:
+        id:
+          type: string
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/CriterionDto"
     DeclaredArchetype:
       type: object
       properties:
@@ -1162,6 +1384,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConflictedPath"
+    MoveCampaignMemberRequest:
+      type: object
+      required:
+      - position
+      properties:
+        position:
+          type: integer
+          format: int32
     MovePage:
       type: object
       properties:
@@ -1958,6 +2188,13 @@ components:
           type: string
         serializedPrompt:
           type: string
+    SetCampaignMemberConditionRequest:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConditionGroup"
     SetMainBranchRequest:
       type: object
       required:
@@ -2196,6 +2433,14 @@ components:
       enum:
       - BUG
       - IMPROVEMENT
+    TransitionCampaignRequest:
+      type: object
+      required:
+      - target
+      properties:
+        target:
+          type: string
+          pattern: \S
     TransitionEpicRequest:
       type: object
       properties:
@@ -2642,6 +2887,248 @@ paths:
       summary: Revisions
       tags:
       - Agent Surface Configuration Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/campaigns/{id}:
+    get:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Get
+      tags:
+      - Campaign Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/campaigns/{id}/members:
+    post:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddCampaignMemberRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignMemberResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Add Member
+      tags:
+      - Campaign Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/campaigns/{id}/members/{membershipId}:
+    delete:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Remove Member
+      tags:
+      - Campaign Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/campaigns/{id}/members/{membershipId}/condition:
+    put:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetCampaignMemberConditionRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignMemberResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Set Condition
+      tags:
+      - Campaign Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/campaigns/{id}/members/{membershipId}/criteria/{criterionId}/approve:
+    post:
+      parameters:
+      - name: criterionId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveCampaignCriterionRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignMemberResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Approve
+      tags:
+      - Campaign Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/campaigns/{id}/members/{membershipId}/position:
+    put:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveCampaignMemberRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Move Member
+      tags:
+      - Campaign Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/campaigns/{id}/transition:
+    post:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransitionCampaignRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Transition
+      tags:
+      - Campaign Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -3607,6 +4094,65 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+  /projects/api/projects/{projectId}/campaigns:
+    get:
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignsResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: List
+      tags:
+      - Project Campaigns Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedCampaignResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Create
+      tags:
+      - Project Campaigns Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
   /projects/api/projects/{projectId}/epics:
     get:
       parameters:
@@ -6417,4 +6963,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.927.64551
+  version: 2026.927.101123
