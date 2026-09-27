@@ -703,12 +703,13 @@ public class AgentContainerFactory {
   /**
    * The whole resolved agent configuration document, serialized — what a container is born with.
    *
-   * <p>The surface this container's sessions launch with is {@code project.work} (qits-403); the
-   * retiring {@code project.epics} and {@code project.tickets} still ride along wherever the store
-   * holds their rows, because what goes in is <b>every</b> surface anyway, which is the container
-   * door's own decision and its javadoc carries the argument (a container that turns out to serve a
-   * surface the creator did not predict is better off holding a configuration for it than falling
-   * back to constants).
+   * <p>The surface this container's sessions launch with is {@code project.work} (qits-403; {@code
+   * project.epics} and {@code project.tickets}, the two desks it replaced, are retired entirely as of
+   * qits-404, so a container built from here now resolves both to the neutral default rather than to
+   * a shipped one). What goes in is <b>every</b> surface anyway, which is the container door's own
+   * decision and its javadoc carries the argument (a container that turns out to serve a surface the
+   * creator did not predict is better off holding a configuration for it than falling back to
+   * constants).
    *
    * <p><b>It is built here rather than fetched.</b> The store is in this service, so there is no hop
    * to make and no failure policy to write for one; this is the same code path {@code

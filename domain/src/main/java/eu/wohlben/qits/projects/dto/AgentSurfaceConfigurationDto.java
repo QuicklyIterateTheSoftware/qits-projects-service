@@ -14,7 +14,7 @@ import java.util.List;
  * shipped tool lists at all.
  *
  * <p>{@code model}, {@code effort}, {@code systemPrompt} and {@code initialPrompt} are never null:
- * empty is a first-class value here — {@code project.epics} steers with an empty system prompt on
+ * empty is a first-class value here — {@code project.work} steers with an empty system prompt on
  * purpose, and an empty model is the harness's own default.
  *
  * <p><b>{@code externalMcpServers} carries references and never a credential's value.</b> A surface

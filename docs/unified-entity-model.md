@@ -1763,11 +1763,13 @@ indistinguishable to a later reader:**
   and the datasource being the same word was a coincidence, and it is not collapsed here**: the
   module directory moved and the Flyway location did not, so `entities/src/main/resources/db/epics/migration/`
   is the deliberate result and not an oversight.
-- **`AgentSurface`'s `project.epics`** (`AgentSurfaceDefaults.PROJECT_EPICS`) — a session-surface
-  key shared with qits-projects-daemon and persisted in the agent-configuration document every
-  container is born holding. It names a screen, it is cross-repository, and it cannot be renamed
-  from here. It was not renamed: qits-403 retired it beside `project.tickets` in favour of the one
-  desk's `project.work`, whose row V30 inserted as a copy of it.
+- **`AgentSurface`'s `project.epics`** — a session-surface key shared with qits-projects-daemon and
+  once persisted in the agent-configuration document every container is born holding. It named a
+  screen and was cross-repository, so it could not be renamed from here. It was not renamed:
+  qits-403 retired it beside `project.tickets` in favour of the one desk's `project.work`, whose row
+  V30 inserted as a copy of it, and qits-404 deleted both retired rows and the
+  `AgentSurfaceDefaults.PROJECT_EPICS`/`PROJECT_TICKETS` constants outright, once nothing launched or
+  held them.
 
 **Two transitions now mean two different things, and both say so in code.** `transition_ticket` is a
 **lifecycle** move (one ticket, one adjacent step, `entity.status` alone, judged by
