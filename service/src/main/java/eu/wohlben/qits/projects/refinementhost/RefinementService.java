@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.refinementhost;
 
 import eu.wohlben.qits.entities.control.EntityDispatchService;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -192,7 +193,10 @@ public class RefinementService {
               + entity.status
               + " — only a REPORTED "
               + noun
-              + " can be refined. Move it back to REPORTED to reopen its scope.");
+              + " can be refined. "
+              + (EntityStateMachine.isTerminal(entity.status)
+                  ? EntityStateMachine.finality(EntityStatus.valueOf(entity.status)) + "."
+                  : "Move it back to REPORTED to reopen its scope."));
     }
     refuseWhileDispatched(entity, noun);
     Project project = projects.get(entity.projectId);

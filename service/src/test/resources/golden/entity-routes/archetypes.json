@@ -12,7 +12,52 @@
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE", "STATUS" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY" ],
-      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ]
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ],
+      "transitions" : {
+        "REPORTED" : [ {
+          "to" : "REFINED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "REFINED" : [ {
+          "to" : "IMPLEMENTED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "REPORTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTED" : [ {
+          "to" : "VERIFIED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "REFINED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "VERIFIED" : [ {
+          "to" : "DONE",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "DONE" : [ ],
+        "DROPPED" : [ {
+          "to" : "REPORTED",
+          "kind" : "REOPEN"
+        } ]
+      },
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
     }, {
       "archetype" : "TICKET",
       "depth" : 0,
@@ -21,7 +66,52 @@
       "requiredAtCreate" : [ "TITLE", "STATUS", "TICKET_TYPE", "IMPETUS" ],
       "requiredOnTransition" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY" ],
-      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ]
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ],
+      "transitions" : {
+        "REPORTED" : [ {
+          "to" : "REFINED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "REFINED" : [ {
+          "to" : "IMPLEMENTED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "REPORTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTED" : [ {
+          "to" : "VERIFIED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "REFINED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "VERIFIED" : [ {
+          "to" : "DONE",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "DONE" : [ ],
+        "DROPPED" : [ {
+          "to" : "REPORTED",
+          "kind" : "REOPEN"
+        } ]
+      },
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
     }, {
       "archetype" : "FEATURE",
       "depth" : 1,
@@ -30,7 +120,9 @@
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "IMPLEMENTED_AT", "DEPENDS_ON" ],
-      "legalStatuses" : [ ]
+      "legalStatuses" : [ ],
+      "transitions" : { },
+      "lifecycle" : [ ]
     }, {
       "archetype" : "TASK",
       "depth" : 2,
@@ -39,7 +131,9 @@
       "requiredAtCreate" : [ "TITLE", "REPOSITORY_ID" ],
       "requiredOnTransition" : [ "TITLE", "REPOSITORY_ID" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "REPOSITORY_ID", "IMPLEMENTED_AT", "DEPENDS_ON" ],
-      "legalStatuses" : [ ]
+      "legalStatuses" : [ ],
+      "transitions" : { },
+      "lifecycle" : [ ]
     } ]
   }
 } ]

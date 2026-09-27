@@ -38,8 +38,9 @@ import org.jboss.logging.Logger;
  * exposes no lifecycle move, because freezing a plan is a human decision about committing to scope.
  * Every ticket status is a statement about what has been achieved — refined, implemented, verified
  * — which is exactly the thing the agent that did the work knows and nobody else does yet; and
- * every move is reversible, so a wrong answer costs a call rather than a superseded epic. The last
- * move, to DONE, is still a person's: closing is a judgement about the thread.
+ * every move below DONE is reversible, so a wrong answer costs a call rather than a superseded
+ * epic. The last move, to DONE, is still a person's: closing is a judgement about the thread, and
+ * DONE is final — a follow-up is a new ticket.
  *
  * <p><strong>DROPPED is the other way out and it is not the same kind of claim.</strong> Every
  * other status reports what the work reached; this one reports that the work should not happen. An
@@ -305,7 +306,7 @@ public class TicketMcpTools {
    * <b>"Transition" here is a LIFECYCLE move, and it is not the other transition.</b> This tool
    * moves one ticket along {@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, or off that
    * line into {@code DROPPED}: it writes {@code entity.status} and nothing else, and which moves
-   * are legal is {@code EntityLifecycle.LEGAL_TARGETS}' to say and argued there.
+   * are legal is {@code EntityStateMachine}'s to say and argued there — DONE, the last, has no exits.
    *
    * <p>{@code transition_entities} ({@link EntityMcpTools}, over {@code EntityTransitionService})
    * is the ARCHETYPE transition, which the unified-entity epic introduced: it restates what KIND a
@@ -324,8 +325,10 @@ public class TicketMcpTools {
               + " AND deployed, not merely merged; VERIFIED — you checked the platform and it no"
               + " longer occurs; DONE — closed, which is a person's call; DROPPED — a decision was"
               + " taken not to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY,"
-              + " forward or back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED <-> DONE, one"
+              + " forward or back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED -> DONE, one"
               + " step at a time, and asking for the status the ticket already has is refused."
+              + " DONE IS FINAL: it has no exits at all, so a DONE ticket never moves again — if"
+              + " a done change later turns out wrong, file a NEW ticket with create_ticket."
               + " DROPPED is off that line: it is reachable from REPORTED, REFINED, IMPLEMENTED and"
               + " VERIFIED — any status that is not already closed — and it goes back only to"
               + " REPORTED. DROP A TICKET WHEN THE WORK IT ASKS FOR SHOULD NOT BE DONE: it"
@@ -334,12 +337,11 @@ public class TicketMcpTools {
               + " on the thread before you move it. Do NOT drop a ticket merely because it is hard,"
               + " stale or you could not finish it: leaving it where it is and saying what is"
               + " missing is the honest answer, and DROPPED claims a decision that nobody took."
-              + " Do not drop one that is DONE either; that move does not exist, because a real"
-              + " outcome is not overwritten by a weaker one. There is no reject verb: a"
-              + " verification that fails is the ordinary move back from IMPLEMENTED to REFINED,"
-              + " because what it establishes is that the ticket needs deciding again. Nothing is"
-              + " terminal — DONE reopens to VERIFIED and DROPPED reopens to REPORTED — so a wrong"
-              + " answer costs one more call.")
+              + " Do not drop one that is DONE either; that move does not exist, because DONE is"
+              + " final. There is no reject verb: a verification that fails is the ordinary move"
+              + " back from IMPLEMENTED to REFINED, because what it establishes is that the ticket"
+              + " needs deciding again. Below DONE every move is reversible, and DROPPED reopens to"
+              + " REPORTED, so a wrong answer costs one more call.")
   public TicketSummary transitionTicket(
       @ToolArg(
               description =
@@ -350,7 +352,7 @@ public class TicketMcpTools {
                   "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
                       + " DROPPED. On the pipeline it must be a neighbour of the ticket's current"
                       + " status; DROPPED is reachable from any status that is not DONE, and"
-                      + " reopens only to REPORTED")
+                      + " reopens only to REPORTED; DONE is final and moves nowhere")
           String target) {
     requireTicketInProject(id);
     String changedBy = changedBy();

@@ -469,7 +469,7 @@ public class TicketMcpToolsTest {
   // --- The lifecycle --------------------------------------------------------
 
   @Test
-  public void walksATicketForwardAndBackOneStepAtATime() {
+  public void walksATicketForwardOneStepAtATimeAndDoneIsFinal() {
     String projectId = createProject("Ticket Cycle");
     String ticketId = createTicket(projectId, "Round trip", "BUG");
 
@@ -483,14 +483,15 @@ public class TicketMcpToolsTest {
             assertTrue(text(response).contains("\"" + target + "\""), text(response));
           });
     }
-    // Nothing is terminal: DONE reopens to VERIFIED like any other move.
+    // DONE is final: even the step back to VERIFIED is refused, readably, and names the way on.
     call(
         projectId,
         "transition_ticket",
         Map.of("id", ticketId, "target", "VERIFIED"),
         response -> {
-          assertFalse(response.isError(), text(response));
-          assertTrue(text(response).contains("\"VERIFIED\""), text(response));
+          assertTrue(response.isError(), "DONE is final and must refuse every move");
+          assertTrue(text(response).contains("DONE is final"), text(response));
+          assertTrue(text(response).contains("a follow-up is a new ticket"), text(response));
         });
   }
 

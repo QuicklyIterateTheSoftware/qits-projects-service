@@ -1027,9 +1027,14 @@ wanting two callers is why they are two classes, on top of the failure contracts
 
 **One lifecycle for every archetype that has one (qits-392).** An epic holds one of `EntityStatus`'
 six words, exactly as a ticket does — `REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE`, plus
-`DROPPED` — over the one legal-target graph in `entities/control/EntityLifecycle.LEGAL_TARGETS`
-(adjacent moves in either direction, `DROPPED` reachable from every status that is not `DONE` and
-reopening only to `REPORTED`). New epics start `REPORTED`. `EpicStatus` and `EpicLifecycle` are
+`DROPPED` — over one explicit state machine, `entities/control/EntityStateMachine` (adjacent moves
+in either direction below `DONE`, `DROPPED` reachable from every status that is not `DONE` and
+reopening only to `REPORTED`, and **`DONE` final, with no exits at all** — a follow-up to done work
+is a new ticket or epic). The machine declares each transition once with its kind
+(`FORWARD`/`BACK`/`DROP`/`REOPEN`), checks its own declaration at class load, and is what
+`EntityLifecycle.requireTransition`, `resolves`, the DONE rule on `POST /entities/transition`, the
+served registry's `transitions`/`lifecycle` members and `PhasePrompts.phaseOf` (via
+`phaseStartedBy`) all read; nothing else spells a move. New epics start `REPORTED`. `EpicStatus` and `EpicLifecycle` are
 deleted; epics V15 backfilled `REFINING→REPORTED`, `IMPLEMENTATION→REFINED`, `ABANDONED` and
 `SUPERSEDED→DROPPED`, and narrowed `ck_entity_status` to the six. Two doors move an epic's status:
 `POST /epics/{id}/transition` (a person) and the `transition_epic` MCP tool (a dispatched agent's
@@ -1042,7 +1047,7 @@ transaction — declaring the epic implemented is declaring its scope implemente
 epic implement prompt makes the move conditional on every task already being marked.
 
 **The freeze is enforced in the services, per field rather than per endpoint, and it is reversible
-now.** `EntityLifecycle` holds the two guards and all three services obey them — a task's phase is
+now — below DONE; a DONE epic's scope is frozen for good.** `EntityLifecycle` holds the two guards and all three services obey them — a task's phase is
 the phase of its feature's epic. Structural changes (the epic's title/description, any feature/task
 create, update or delete, `dependsOn` included, and every epic-owned dossier write) need `REPORTED`
 (`requireReported`); the implemented markers need `REFINED` (`requireRefined`). Those two rules
@@ -1115,7 +1120,7 @@ Five things are rules rather than details:
 
 **`transition_epic` is on the MCP server since qits-394**, replacing the deliberate absence of an
 epic lifecycle tool: a phase whose claim cannot be made is a phase whose advance never fires. It is
-adjacent-only and reversible like `transition_ticket`, goes through `EntityResolutions`, is followed by
+adjacent-only and reversible below DONE (which is final) like `transition_ticket`, goes through `EntityResolutions`, is followed by
 `PhaseAdvance`, and is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`. It is **not** in either
 daemon's pre-approval bucket — reachable today because every surface ships CLAUDE with
 `SKIP_PERMISSIONS`; a surface moved to kimi needs it (and the epic tree writes and dossier reads the
@@ -1240,9 +1245,9 @@ and each one is a decision rather than a simplification:
 
 - **Nothing freezes.** `EntityLifecycle`'s two guards (`requireReported`, `requireRefined`) are about
   which of an epic's fields a phase still permits, because an epic carries a scope that was committed
-  to; no ticket write calls them, and there is no `requireOpen` and must not grow one: a DONE ticket stays editable, commentable and reopenable, and the
-  alternative — refusing writes once closed — only means filing a duplicate whenever a closure
-  turns out to be wrong.
+  to; no ticket write calls them, and there is no `requireOpen` and must not grow one: a DONE ticket's
+  fields stay editable and its thread commentable. Its *status* is final like every DONE entity's:
+  a closure that later turns out wrong is a new ticket, which may refer to the done one.
 
   **The lifecycle is five phases (V7, 2026-09-14) and one exit off them** — and since qits-392 it
   is the epic's lifecycle too, one `EntityStatus` over one graph (see "Epic lifecycle"): `REPORTED → REFINED →
@@ -1253,8 +1258,9 @@ and each one is a decision rather than a simplification:
   closes it), DONE means closed. So no status names work in flight and there must never be an
   `IN_PROGRESS`. Moves along that pipeline are **adjacent-only in either direction**, asking for the
   status a ticket already has stays refused, there is no reject verb — a failed verification is the
-  ordinary backward move `IMPLEMENTED → REFINED` — and nothing is terminal: DONE reopens to VERIFIED
-  like any other move.
+  ordinary backward move `IMPLEMENTED → REFINED` — and **DONE is the one terminal status**: it has
+  no exits, not back to VERIFIED and not to DROPPED (owner decision, qits-310 follow-up). Acceptance
+  could only ever throw a done item further back than VERIFIED, which is not a flow to support.
 
   **`DROPPED` is the sixth word and it is not a sixth step.** It says a decision was taken not to do
   the work: nothing was implemented, nothing was verified, and nothing is expected to be. It exists
@@ -1263,10 +1269,11 @@ and each one is a decision rather than a simplification:
   outstanding work picks up the one thing that was ruled out. It is reachable from **every status
   that is not already closed** (REPORTED, REFINED, IMPLEMENTED, VERIFIED) and it reopens to
   **REPORTED and nothing else**, because reviving abandoned work means asking again what it is for.
-  **DONE is offered no drop**: it is already an exit, and the move would only let a weaker outcome
-  overwrite a real one — a closure that was wrong goes back to VERIFIED the way every move goes
-  back, and the ticket is droppable again from there. The whole rule is written once, in
-  `EntityLifecycle.LEGAL_TARGETS`, and every other javadoc points at it rather than restating it.
+  **DONE is offered no drop**, nor any other move: it is final. The whole rule is declared once, in
+  `EntityStateMachine`, and every other javadoc points at it rather than restating it. The one door
+  that skips adjacency, `POST /entities/transition` / `transition_entities`, still keeps finality:
+  an entity that is DONE keeps status DONE and its archetype there, while its plain fields and its
+  place in the tree stay writable. No migration came with this — existing DONE rows simply stay DONE.
 
   **`impetus` is the intake field and `description` is the refinement's output.** A REPORTED ticket
   has an impetus and nothing else. The impetus takes one of two shapes — *"{some error} occurs {in
@@ -1287,7 +1294,8 @@ and each one is a decision rather than a simplification:
   and who last changed it are different facts, and the second one is the log's.
 - **The MCP surface HAS the transition.** `transition_ticket` is on the server, because resolving a
   ticket is a statement about work that is done — which the agent that did it is the one who knows —
-  and it is reversible, so a wrong answer costs a click. Since qits-394 `EpicMcpTools` has the epic's
+  and every move an agent makes is reversible (only DONE, a person's move, is final), so a wrong
+  answer costs a click. Since qits-394 `EpicMcpTools` has the epic's
   twin, `transition_epic`, for the same reason: a dispatched epic's phases end with the agent's claim
   (see "Epic lifecycle").
   `update_ticket_comment` is there for the front desk's sake — an agent that came back knowing more
@@ -1392,7 +1400,7 @@ transaction, exactly where each already fires its hint. It delivers the next tur
 entity's `dispatch_continues` says the last press asked for the whole flow; a PHASE run stops there,
 silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
 and no second switch**: the prompt for a status is the work that starts from it, so a
-failed verification moving IMPLEMENTED → REFINED gets the *implement* turn and a reopen to VERIFIED
+failed verification moving IMPLEMENTED → REFINED gets the *implement* turn and a close to DONE
 gets nothing. Direction is never consulted. It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
 
