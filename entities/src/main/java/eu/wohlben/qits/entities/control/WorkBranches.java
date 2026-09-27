@@ -81,7 +81,7 @@ public final class WorkBranches {
    * that epic.
    *
    * <p>The order is: the epic, then each feature followed by its tasks, in the order the lists are
-   * given. Call it on a frozen epic (IMPLEMENTATION): then no feature or task can be added, and the
+   * given. Call it on a frozen epic (REFINED): then no feature or task can be added, and the
    * list is complete.
    *
    * @param epic the {@code EPIC} row

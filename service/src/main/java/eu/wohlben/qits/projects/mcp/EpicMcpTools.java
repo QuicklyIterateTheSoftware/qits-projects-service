@@ -6,9 +6,11 @@ import eu.wohlben.qits.entities.control.TaskService;
 import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.NotFoundException;
+import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -18,6 +20,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
+import org.jboss.logging.Logger;
 
 /**
  * The epic-refinement half of the "repository" MCP server — the surface a per-project refinement
@@ -27,9 +30,17 @@ import java.util.List;
  * anyway (it reads the repositories it is planning work in).
  *
  * <p><strong>Use case: drafting and refining a plan.</strong> The agent lists the project's epics,
- * proposes a new one or extends a draft, and fills in its feature/task tree. Freezing a draft is
- * deliberately <em>not</em> here — moving an epic to IMPLEMENTATION is a human act in the UI, so
- * there is no transition tool for the model to reach for.
+ * proposes a new one or extends a draft, and fills in its feature/task tree.
+ *
+ * <p><strong>{@code transition_epic} is here since qits-394, and it replaces a deliberate
+ * absence.</strong> Freezing a draft used to be a human act in the UI alone, because nothing
+ * dispatched an agent that could honestly claim a plan was complete. The one dispatch path now runs
+ * an epic through the same refine → implement → verify phases a ticket runs, each ending with the
+ * agent's own claim — and a phase whose claim cannot be made is a phase whose advance never fires.
+ * So the lifecycle move is on this server exactly as {@code transition_ticket} is, reversible and
+ * adjacent-only, through {@code EntityResolutions} like every door that moves an epic, and followed by
+ * {@code PhaseAdvance}. What stays off the server is supersede, which is an operation on a plan
+ * rather than a claim about work.
  *
  * <p>Scope comes from {@link ProjectScope} (the {@code X-QITS-Project} header), never from a tool
  * argument, and every id a tool is handed is checked back to that project — an epic, feature or
@@ -76,6 +87,14 @@ public class EpicMcpTools {
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
+
+  /** The only way a door moves an epic: discards a refinement a resolving move would strand. */
+  @Inject EntityResolutions resolutions;
+
+  /** The next phase after an agent's claim — see {@code PhaseAdvance}. */
+  @Inject PhaseAdvance phaseAdvance;
+
+  private static final Logger LOG = Logger.getLogger(EpicMcpTools.class);
 
   // --- Result shapes --------------------------------------------------------
 
@@ -161,7 +180,7 @@ public class EpicMcpTools {
    * <p>A record of its own rather than an {@code implementedAt} field on {@link TaskSummary}. That
    * shape is what {@code add_task}, {@code update_task} and the removal report return, and none of
    * them can ever carry a marker — {@code update_task} is refused outright once the epic leaves
-   * REFINING, which is the only phase in which a marker can be written at all. Widening the shared
+   * REPORTED, and REPORTED is never a phase in which a marker can be written. Widening the shared
    * record would put a field on three tools that is null by construction, and a model reading a
    * null there would reasonably conclude the task is not implemented when nothing was asked.
    */
@@ -180,17 +199,16 @@ public class EpicMcpTools {
       name = "list_epics",
       description =
           "List the epics of the project this session is scoped to, oldest first, without their"
-              + " feature/task tree. Start here: call it with status=\"REFINING\" to find the"
+              + " feature/task tree. Start here: call it with status=\"REPORTED\" to find the"
               + " drafts that are open for editing, and decide between extending one of them and"
-              + " proposing a new epic. Only REFINING epics can be changed at all; the other"
-              + " statuses (IMPLEMENTATION, IMPLEMENTED, SUPERSEDED, ABANDONED) are read-only"
-              + " records.")
+              + " proposing a new epic. Only REPORTED epics can be changed at all; the other"
+              + " statuses (REFINED, IMPLEMENTED, VERIFIED, DONE, DROPPED) are read-only here.")
   public List<EpicSummary> listEpics(
       @ToolArg(
               required = false,
               description =
-                  "exact status to filter by: REFINING, IMPLEMENTATION, IMPLEMENTED, SUPERSEDED or"
-                      + " ABANDONED. Omit for every epic of the project.")
+                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
+                      + " DROPPED. Omit for every epic of the project.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return epicService.listByProject(scope.requireProjectId(), status).stream()
@@ -255,10 +273,11 @@ public class EpicMcpTools {
   @Tool(
       name = "propose_epic",
       description =
-          "Propose a new epic for this project. It is created as a REFINING draft — nothing is"
+          "Propose a new epic for this project. It is created as a REPORTED draft — nothing is"
               + " committed to and no branches are cut — so this is the right move whenever the"
-              + " work does not belong under an existing draft. Freezing the draft into"
-              + " implementation is a human decision made in the UI; you cannot do it.")
+              + " work does not belong under an existing draft. Freezing it (transition_epic to"
+              + " REFINED) is the claim that its plan is complete — make it only if you were"
+              + " dispatched to refine this epic.")
   public EpicSummary proposeEpic(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(required = false, description = "the long-form Markdown spine") String description) {
@@ -271,9 +290,9 @@ public class EpicMcpTools {
   @Tool(
       name = "update_epic",
       description =
-          "Change a REFINING epic's title or description. Omitted fields keep their current value."
-              + " Refused with a message once the epic leaves REFINING: its scope is frozen from"
-              + " then on, and the fix is to propose a new epic rather than to edit this one.")
+          "Change a REPORTED epic's title or description. Omitted fields keep their current value."
+              + " Refused with a message once the epic leaves REPORTED: its scope is frozen from"
+              + " REFINED on, and only a person moving the epic back to REPORTED reopens it.")
   public EpicSummary updateEpic(
       @ToolArg(description = "id of an epic in this project") String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
@@ -290,17 +309,69 @@ public class EpicMcpTools {
     return summarizeEpic(epic, projectSlug());
   }
 
+  /**
+   * The epic's LIFECYCLE move, the twin of {@code transition_ticket}: one adjacent step along the
+   * one lifecycle ({@code EntityLifecycle.LEGAL_TARGETS}), or off it into DROPPED. Through {@link
+   * EntityResolutions}, never {@code EpicService.transition}, so a resolving move discards the epic's
+   * refinement first; then {@link PhaseAdvance}, after the move is recorded, which delivers the next
+   * phase when the run was dispatched as a flow and asks for the release at VERIFIED. Supersede is
+   * not reachable from here: the tool takes a status word, and {@code SUPERSEDED} is not one.
+   */
+  @McpServer("repository")
+  @Tool(
+      name = "transition_epic",
+      description =
+          "Move an epic along its lifecycle. A status is a claim about what has been ACHIEVED, so"
+              + " only move to one you can honestly make: REPORTED — the work is raised and its plan"
+              + " is being written; REFINED — the plan is complete: description, feature/task tree"
+              + " and dossier, and moving here FREEZES that scope; IMPLEMENTED — every task is"
+              + " marked with mark_task_implemented and every touched repository is released AND"
+              + " deployed (moving here stamps any task still unmarked, so never make it with work"
+              + " outstanding); VERIFIED — you confirmed on the platform that what the epic promised"
+              + " holds; DONE — closed, which is a person's call; DROPPED — a decision was taken not"
+              + " to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or"
+              + " back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED <-> DONE, one step at a"
+              + " time. A verification that fails is the move back from IMPLEMENTED to REFINED;"
+              + " reopening a frozen scope is the move back from REFINED to REPORTED. Do NOT drop an"
+              + " epic merely because it is hard or you could not finish it: leave it where it is"
+              + " and say what is missing.")
+  public EpicSummary transitionEpic(
+      @ToolArg(description = "id of an epic in this project") String id,
+      @ToolArg(
+              description =
+                  "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
+                      + " DROPPED. On the pipeline it must be a neighbour of the epic's current"
+                      + " status")
+          String target) {
+    requireEpicInProject(id);
+    if (target != null && eu.wohlben.qits.entities.control.EpicService.SUPERSEDE.equals(target)) {
+      throw new eu.wohlben.qits.entities.error.ConflictException(
+          "SUPERSEDED is an operation on a plan, not a status an agent claims — a person"
+              + " supersedes an epic from the board.");
+    }
+    String changedBy = changedBy();
+    WorkEntity epic = resolutions.transition(id, target, changedBy).epic();
+    announce();
+    // The agent's claim IS the trigger for the next phase: after the move, outside its transaction.
+    try {
+      phaseAdvance.afterTransition(epic, changedBy);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not start the phase epic %s just moved into", epic.id);
+    }
+    return summarizeEpic(epic, projectSlug());
+  }
+
   // --- Features -------------------------------------------------------------
 
   @McpServer("repository")
   @Tool(
       name = "add_feature",
       description =
-          "Add a feature to a REFINING epic of this project. A feature is one shippable slice of"
+          "Add a feature to a REPORTED epic of this project. A feature is one shippable slice of"
               + " the epic; give it a body that says what it is, not how far along it is. Refused"
-              + " once the epic leaves REFINING.")
+              + " once the epic leaves REPORTED.")
   public FeatureSummary addFeature(
-      @ToolArg(description = "id of a REFINING epic in this project") String epicId,
+      @ToolArg(description = "id of a REPORTED epic in this project") String epicId,
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(required = false, description = "the long-form Markdown body") String description,
       @ToolArg(
@@ -319,8 +390,8 @@ public class EpicMcpTools {
   @Tool(
       name = "update_feature",
       description =
-          "Change a feature of a REFINING epic. Omitted fields keep their current value. Refused"
-              + " once the owning epic leaves REFINING. The implemented marker is not editable"
+          "Change a feature of a REPORTED epic. Omitted fields keep their current value. Refused"
+              + " once the owning epic leaves REPORTED. The implemented marker is not editable"
               + " here — that is recorded by people as work ships.")
   public FeatureSummary updateFeature(
       @ToolArg(description = "id of a feature in this project") String id,
@@ -345,8 +416,8 @@ public class EpicMcpTools {
   @Tool(
       name = "remove_feature",
       description =
-          "Remove a feature of a REFINING epic, along with its tasks. Refused once the owning epic"
-              + " leaves REFINING.")
+          "Remove a feature of a REPORTED epic, along with its tasks. Refused once the owning epic"
+              + " leaves REPORTED.")
   public String removeFeature(
       @ToolArg(description = "id of a feature in this project") String id) {
     requireFeatureInProject(id);
@@ -361,9 +432,9 @@ public class EpicMcpTools {
   @Tool(
       name = "add_task",
       description =
-          "Add a task to a feature of a REFINING epic. A task is the work in ONE repository, so"
+          "Add a task to a feature of a REPORTED epic. A task is the work in ONE repository, so"
               + " split a feature that spans several. Use list_repositories to pick a repositoryId;"
-              + " it has to belong to this project. Refused once the owning epic leaves REFINING.")
+              + " it has to belong to this project. Refused once the owning epic leaves REPORTED.")
   public TaskSummary addTask(
       @ToolArg(description = "id of a feature in this project") String featureId,
       @ToolArg(description = "id of a repository in this project — see list_repositories")
@@ -393,8 +464,8 @@ public class EpicMcpTools {
   @Tool(
       name = "update_task",
       description =
-          "Change a task of a REFINING epic. Omitted fields keep their current value. Refused once"
-              + " the owning epic leaves REFINING. The implemented marker is not editable here —"
+          "Change a task of a REPORTED epic. Omitted fields keep their current value. Refused once"
+              + " the owning epic leaves REPORTED. The implemented marker is not editable here —"
               + " that is recorded by people as work ships, or with mark_task_implemented by the"
               + " agent implementing the epic.")
   public TaskSummary updateTask(
@@ -424,14 +495,14 @@ public class EpicMcpTools {
    * by people as work ships", and it stays exactly as true as it was. It is a stance about the
    * <em>refining</em> agent: one that is drafting a plan must not also be able to declare parts of
    * that plan shipped, or the scope and the progress have the same author. The agent this tool is
-   * for is a different one on a different branch — dispatched by {@code EpicDispatchController} onto
+   * for is a different one on a different branch — dispatched by {@code EntityDispatch} onto
    * an epic that is already frozen — and it reports on work it actually did. Two agents, two
    * stances, two tools; the refusal in {@code update_task} is not softened, it is pointed at its
    * neighbour.
    *
    * <p>The guard is the lifecycle's own and not a second copy of it: this lands on {@code
    * TaskService.update}'s marker arm alone ({@code touchesMarker} true, {@code touchesScope} false),
-   * so {@code EpicLifecycle.requireImplementation} is what runs and its message is what a REFINING
+   * so {@code EntityLifecycle.requireRefined} is what runs and its message is what a REPORTED
    * or finished epic answers with.
    *
    * <p><b>This is an interim and it is written to be easy to remove.</b> Nothing on the platform
@@ -446,8 +517,8 @@ public class EpicMcpTools {
   @Tool(
       name = "mark_task_implemented",
       description =
-          "Record that a task's work has landed. Accepted only while the owning epic is in"
-              + " IMPLEMENTATION — a task of a REFINING epic has nothing to mark yet, and one of a"
+          "Record that a task's work has landed. Accepted only while the owning epic is"
+              + " REFINED (being implemented) — a task of a REPORTED epic has nothing to mark yet, and one of a"
               + " finished epic is already settled. This is the marker a dispatched implementing"
               + " agent sets as it goes: mark each task as its work lands, rather than all of them"
               + " at the end.")
@@ -470,7 +541,7 @@ public class EpicMcpTools {
   @Tool(
       name = "remove_task",
       description =
-          "Remove a task of a REFINING epic. Refused once the owning epic leaves REFINING.")
+          "Remove a task of a REPORTED epic. Refused once the owning epic leaves REPORTED.")
   public String removeTask(@ToolArg(description = "id of a task in this project") String id) {
     requireTaskInProject(id);
     taskService.delete(id, changedBy());

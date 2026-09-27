@@ -32,9 +32,9 @@ import java.util.stream.Collectors;
  * the tasks removed on cascade delete and the dependents cleared when a depended-on feature is
  * deleted — is recorded in the {@link AuditService audit log}.
  *
- * <p>Every write here obeys the owning epic's phase ({@link EpicLifecycle}): a feature is scope, so
- * creating, deleting or structurally editing one needs a draft, while {@code implementedOn} moves
- * only once that scope is frozen.
+ * <p>Every write here obeys the owning epic's phase ({@link EntityLifecycle}): a feature is scope, so
+ * creating, deleting or structurally editing one needs a draft (REPORTED), while {@code
+ * implementedOn} moves only once that scope is frozen and being implemented (REFINED).
  *
  * <h2>The merged table is the source of truth, and the parent is a row of its own</h2>
  *
@@ -134,7 +134,7 @@ public class FeatureService {
         "feature create",
         () -> {
           WorkEntity epicRow = epic(epicId);
-          EpicLifecycle.requireRefining(epicRow);
+          EntityLifecycle.requireReported(epicRow);
           if (dependsOnFeatureId != null) {
             requireDependencyUnder(dependsOnFeatureId, epicId);
           }
@@ -201,10 +201,10 @@ public class FeatureService {
                   || !touchesMarker;
           WorkEntity epic = epic(epicId);
           if (touchesScope) {
-            EpicLifecycle.requireRefining(epic);
+            EntityLifecycle.requireReported(epic);
           }
           if (touchesMarker) {
-            EpicLifecycle.requireImplementation(epic);
+            EntityLifecycle.requireRefined(epic);
           }
           if (title != null) {
             Validations.requireText(title, "title");
@@ -250,7 +250,7 @@ public class FeatureService {
           WorkEntity row = entity(id);
           EntityMembership edge = memberships.membershipOf(id).orElse(null);
           String epicId = edge == null ? null : edge.parentId;
-          EpicLifecycle.requireRefining(epic(epicId));
+          EntityLifecycle.requireReported(epic(epicId));
 
           // Clear same-epic dependents' pointer in-service (audited) rather than leaning on the FK's
           // SET NULL, which would leave no trace.

@@ -177,7 +177,7 @@ class EntityNumbersTest extends EntitiesTestSupport {
     WorkEntity epic = epicService.create("proj-1", "Plan", null, "t");
     Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
     taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
-    epicService.transition(epic.id, "IMPLEMENTATION", "t");
+    epicService.transition(epic.id, "REFINED", "t");
 
     epicService.transition(epic.id, "SUPERSEDED", "t");
 

@@ -258,13 +258,13 @@ public class RefinementContainerFactory {
   public static final String MANAGED_LABEL_VALUE = "refinement";
 
   /**
-   * The deterministic container name: {@code qits-ref-<projectSlug>-<epicSlug>}, truncated to
+   * The deterministic container name: {@code qits-ref-<projectSlug>-<slug>}, truncated to
    * docker's practical bound. A {@code docker ps} hint travelling as {@code explicitName} — the
    * address is {@code owner/refinement/<rowId>}, and the provisioning arm answers a name collision
    * with a 409.
    */
-  public String containerName(String projectSlug, String epicSlug) {
-    String name = "qits-ref-" + projectSlug + "-" + epicSlug;
+  public String containerName(String projectSlug, String slug) {
+    String name = "qits-ref-" + projectSlug + "-" + slug;
     return name.length() <= 63 ? name : name.substring(0, 63);
   }
 
@@ -275,18 +275,18 @@ public class RefinementContainerFactory {
 
   /** The fresh arm — commissions a credential of the container's own. */
   public EnsureRequest forFreshContainer(
-      Refinement refinement, String projectSlug, String epicSlug, String wrapperName) {
+      Refinement refinement, String projectSlug, String slug, String wrapperName) {
     return request(
-        refinement, projectSlug, epicSlug, wrapperName, commissions.forFreshContainer(refinement));
+        refinement, projectSlug, slug, wrapperName, commissions.forFreshContainer(refinement));
   }
 
   /** The wake arm — reads the row's pair back and sends it unchanged. */
   public EnsureRequest forExistingContainer(
-      Refinement refinement, String projectSlug, String epicSlug, String wrapperName) {
+      Refinement refinement, String projectSlug, String slug, String wrapperName) {
     return request(
         refinement,
         projectSlug,
-        epicSlug,
+        slug,
         wrapperName,
         commissions.forExistingContainer(refinement));
   }
@@ -294,7 +294,7 @@ public class RefinementContainerFactory {
   private EnsureRequest request(
       Refinement refinement,
       String projectSlug,
-      String epicSlug,
+      String slug,
       String wrapperName,
       Optional<RefinementCredentials.Commissioned> credential) {
     Map<String, String> env = new LinkedHashMap<>();
@@ -321,8 +321,8 @@ public class RefinementContainerFactory {
     env.put("QITS_WORKSPACE_DAEMON_SERVICES_AUTOSTART", "false");
     env.put("QITS_WORKSPACE_DAEMON_API_TOKEN", daemonApiToken);
     // The two MCP servers a refinement launch may attach: this service's repository server (the
-    // epic tools — the reason the container exists) and observability. No actions server, on
-    // purpose: there is no actions surface on this route.
+    // epic, ticket, dossier and design tools — the reason the container exists) and observability.
+    // No actions server, on purpose: there is no actions surface on this route.
     env.put("QITS_REPOSITORY_MCP_URL", repositoryMcpUrl());
     env.put("QITS_OBSERVABILITY_MCP_URL", observabilityMcpUrl);
     credential.ifPresent(
@@ -371,7 +371,11 @@ public class RefinementContainerFactory {
     Map<String, String> labels = new LinkedHashMap<>();
     labels.put("qits.managed", MANAGED_LABEL_VALUE);
     labels.put("qits.project", refinement.projectId);
-    labels.put("qits.epic", refinement.epicId);
+    // The label KEY stays `qits.epic` although the value is now any refined entity's id (qits-395):
+    // qits-containers hashes the whole spec, labels included, and Recreate.ifChanged replaces a
+    // container whose hash moved — so renaming the key would replace every standing refinement
+    // container at its next wake. A docker-ps hint nothing selects on is not worth that.
+    labels.put("qits.epic", refinement.entityId);
 
     String memory = memoryLimit.filter(value -> !value.isBlank()).orElse(null);
     Spec spec =
@@ -401,7 +405,7 @@ public class RefinementContainerFactory {
                 cpus.filter(v -> !v.isBlank()).orElse(null),
                 oomScoreAdj),
             PullPolicy.MISSING,
-            containerName(projectSlug, epicSlug),
+            containerName(projectSlug, slug),
             Long.toString(hostUid()),
             // tini at PID 1, so a long-lived container spawning agents collects no zombies.
             true);

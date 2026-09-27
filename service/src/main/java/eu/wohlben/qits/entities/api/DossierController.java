@@ -48,7 +48,7 @@ import java.util.List;
  * lookup; see {@link EntitiesAgentAccess} for the rule and for why a forwarded header is refused.
  *
  * <p><b>A frozen epic is readable and unwritable.</b> Reads succeed in every status — implementation
- * reads this months later — and every mutation is refused by the service's own {@code REFINING}
+ * reads this months later — and every mutation is refused by the service's own {@code REPORTED}
  * guard, the same one features and tasks obey. The tab renders read-only off that.
  */
 @Path("/epics/{epicId}/dossier")

@@ -10,7 +10,7 @@ import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.DossierAsset;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.entity.DossierPage;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.NotFoundException;
@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
  * owner</b> is the database's rule and is asserted against the database, because it is what makes
  * two nullable FK columns a safe shape instead of a polymorphic pair. <b>Nothing freezes</b> is the
  * whole difference from the epic half: a ticket's page is writable while the ticket is REPORTED,
- * IMPLEMENTED and DONE alike, while an epic's is still refused outside REFINING. And <b>a ticket
+ * IMPLEMENTED and DONE alike, while an epic's is still refused outside REPORTED. And <b>a ticket
  * page has no figures</b> — {@code dossier_asset} is deliberately epic-only, so markdown naming an
  * asset on a ticket page copies nothing and references nothing.
  */
@@ -105,16 +105,16 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
 
     // REPORTED: the refine phase's own write.
     DossierPage page = dossier.create(owner, "The root cause", "four services deep", "t");
-    assertEquals(TicketStatus.REPORTED.name(), ticketService.get(t.id).status);
+    assertEquals(EntityStatus.REPORTED.name(), ticketService.get(t.id).status);
 
-    ticketService.transition(t.id, TicketStatus.REFINED.name(), "t");
-    ticketService.transition(t.id, TicketStatus.IMPLEMENTED.name(), "t");
+    ticketService.transition(t.id, EntityStatus.REFINED.name(), "t");
+    ticketService.transition(t.id, EntityStatus.IMPLEMENTED.name(), "t");
     // IMPLEMENTED: the implement phase correcting what it found wrong is the ordinary case.
     DossierPage rewritten = dossier.update(page.id, null, "five, as it turns out", 0L, "t");
     assertEquals("five, as it turns out", rewritten.body);
 
-    ticketService.transition(t.id, TicketStatus.VERIFIED.name(), "t");
-    ticketService.transition(t.id, TicketStatus.DONE.name(), "t");
+    ticketService.transition(t.id, EntityStatus.VERIFIED.name(), "t");
+    ticketService.transition(t.id, EntityStatus.DONE.name(), "t");
     // DONE: a closed ticket stays editable, exactly as its description and its thread do.
     DossierPage second = dossier.create(owner, "What verifying looked like", "", "t");
     dossier.move(second.id, 0, "t");
@@ -128,7 +128,7 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
     WorkEntity e = epic();
     DossierOwner owner = DossierOwner.epic(e.id);
     DossierPage page = dossier.create(owner, "The claim loop", "the body", "t");
-    epicService.transition(e.id, "IMPLEMENTATION", "t");
+    epicService.transition(e.id, "REFINED", "t");
 
     assertThrows(ConflictException.class, () -> dossier.create(owner, "Another", "", "t"));
     assertThrows(ConflictException.class, () -> dossier.update(page.id, "New", null, 0L, "t"));

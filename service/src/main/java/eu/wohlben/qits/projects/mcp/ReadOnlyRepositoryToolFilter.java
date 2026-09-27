@@ -45,8 +45,9 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * one of its tasks shipped. That is a statement people act on — a board reads it as progress and
    * an epic's "done" is derived from it — so an unattended run steered by an untrusted commit
    * message must not be able to make it. The implementing agent that owns it is dispatched through
-   * {@code EpicDispatchController} and connects without the marker, exactly as the refinement agent
-   * does.
+   * {@code EntityDispatch} and connects without the marker, exactly as the refinement agent does.
+   * {@code transition_epic} (qits-394) joins them on the strongest reading of all: it freezes a
+   * plan or declares it implemented, and an implemented move stamps every unmarked task.
    *
    * <p>{@code put_design} joins them, and the case got stronger rather than weaker when designs
    * stopped being proposals: a write is live in the Design tab the moment it lands, so an unattended
@@ -100,6 +101,7 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "update_task",
           "remove_task",
           "mark_task_implemented",
+          "transition_epic",
           "put_design",
           "put_dossier_page",
           "move_dossier_page",

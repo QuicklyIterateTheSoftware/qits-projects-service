@@ -14,7 +14,7 @@ package eu.wohlben.qits.entities.entity;
  * rather than off a null check, which is the other reason this is a type:
  *
  * <ul>
- *   <li>the {@code REFINING} freeze applies to an <b>epic</b> owner only — a plan freezes, a ticket
+ *   <li>the {@code REPORTED} freeze applies to an <b>epic</b> owner only — a plan freezes, a ticket
  *       does not, so a ticket's pages are writable at every status;
  *   <li>an inlined figure ({@code dossier_asset}) is <b>epic-only</b>, so the reference sync runs
  *       for an epic owner and is skipped for a ticket one.

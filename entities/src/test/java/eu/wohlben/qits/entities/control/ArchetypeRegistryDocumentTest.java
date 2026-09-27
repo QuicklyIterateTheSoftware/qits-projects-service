@@ -192,9 +192,10 @@ class ArchetypeRegistryDocumentTest {
       List<String> statuses = declared(archetype).legalStatuses();
       assertEquals(statuses.stream().sorted().toList(), statuses, archetype.name());
     }
+    assertEquals(List.of("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"), declared(Archetype.EPIC).legalStatuses());
+    // One vocabulary since qits-392: the epic and the ticket serve the same six words.
     assertEquals(
-        List.of("ABANDONED", "IMPLEMENTATION", "IMPLEMENTED", "REFINING", "SUPERSEDED"),
-        declared(Archetype.EPIC).legalStatuses());
+        declared(Archetype.EPIC).legalStatuses(), declared(Archetype.TICKET).legalStatuses());
   }
 
   @Test

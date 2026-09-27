@@ -84,7 +84,7 @@ class EntityTransitionApiTest {
         Map.of(
             "archetype", "EPIC",
             "title", "The part",
-            "status", "REFINING",
+            "status", "REPORTED",
             "membership", mapWithNullParent()));
 
     given()
@@ -95,7 +95,7 @@ class EntityTransitionApiTest {
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("'" + featureId + "'.archetype", equalTo("EPIC"))
-        .body("'" + featureId + "'.status", equalTo("REFINING"))
+        .body("'" + featureId + "'.status", equalTo("REPORTED"))
         .body("'" + featureId + "'.parent", nullValue())
         .body("'" + featureId + "'.slugScope", equalTo(projectId))
         .body("'" + featureId + "'.position", nullValue());
@@ -112,7 +112,7 @@ class EntityTransitionApiTest {
 
     Map<String, Object> body = new LinkedHashMap<>();
     body.put(epicId, Map.of("archetype", "EPIC", "title", "The plan")); // no status stated
-    body.put("ghost-id", Map.of("archetype", "EPIC", "title", "A ghost", "status", "REFINING"));
+    body.put("ghost-id", Map.of("archetype", "EPIC", "title", "A ghost", "status", "REPORTED"));
 
     given()
         .contentType(ContentType.JSON)

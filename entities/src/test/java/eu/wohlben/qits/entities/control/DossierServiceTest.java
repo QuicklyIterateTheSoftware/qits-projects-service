@@ -8,7 +8,7 @@ import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.entity.DossierPage;
-import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  * The dossier's storage layer, tested here rather than through the controllers so the MCP door
  * inherits proven behaviour instead of a second implementation of it.
  *
- * <p>Two of these carry the feature's whole argument. The {@code REFINING} guard is the same one
+ * <p>Two of these carry the feature's whole argument. The {@code REPORTED} guard is the same one
  * features and tasks obey, so a frozen epic's dossier is readable and unwritable everywhere at once;
  * and the version check is what stands where an acceptance step would be, since nothing on this
  * route accepts a write.
@@ -110,7 +110,7 @@ class DossierServiceTest extends EntitiesTestSupport {
   void aFrozenEpicIsReadableAndUnwritable() {
     WorkEntity e = epic();
     DossierPage page = dossier.create(DossierOwner.epic(e.id), "The claim loop", "the body", "t");
-    epicService.transition(e.id, EpicStatus.IMPLEMENTATION.name(), "t");
+    epicService.transition(e.id, EntityStatus.REFINED.name(), "t");
 
     // The read is what implementation is for.
     assertEquals("the body", dossier.listByOwner(DossierOwner.epic(e.id)).get(0).body);

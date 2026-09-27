@@ -101,7 +101,8 @@ class EntityArchetypesApiTest {
             contains("TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY"))
         .body(
             at("EPIC") + "legalStatuses",
-            contains("ABANDONED", "IMPLEMENTATION", "IMPLEMENTED", "REFINING", "SUPERSEDED"));
+            contains("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"))
+        .body(at("TICKET") + "legalStatuses", contains("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"));
   }
 
   @Test

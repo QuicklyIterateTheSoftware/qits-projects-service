@@ -165,7 +165,7 @@ public class DossierControllerTest {
 
     given()
         .contentType(ContentType.JSON)
-        .body(Map.of("target", "IMPLEMENTATION"))
+        .body(Map.of("target", "REFINED"))
         .when()
         .post("/projects/api/epics/" + epicId + "/transition")
         .then()

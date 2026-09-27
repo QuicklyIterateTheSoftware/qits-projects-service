@@ -123,7 +123,7 @@ public class RefinementLifecycleTest {
     String epicId = createEpic(projectId, "Frozen Epic");
     given()
         .contentType(ContentType.JSON)
-        .body(java.util.Map.of("target", "IMPLEMENTATION"))
+        .body(java.util.Map.of("target", "REFINED"))
         .when()
         .post("/projects/api/epics/" + epicId + "/transition")
         .then()

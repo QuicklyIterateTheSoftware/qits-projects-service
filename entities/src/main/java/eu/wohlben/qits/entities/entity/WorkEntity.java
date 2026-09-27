@@ -160,20 +160,17 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String description;
 
   /**
-   * <b>One column for two lifecycles</b>, and {@link #archetype} is what says which. An {@link
-   * Archetype#EPIC} holds one of {@link EpicStatus}' five words, an {@link Archetype#TICKET} one of
-   * {@link TicketStatus}' five, and a feature and a task hold none — which is why this is nullable:
-   * an absent status is the ordinary state of most rows here rather than a gap.
+   * <b>One column for one lifecycle</b>: an {@link Archetype#EPIC} and an {@link Archetype#TICKET}
+   * both hold one of {@link EntityStatus}' six words, and a feature and a task hold none — which is
+   * why this is nullable: an absent status is the ordinary state of most rows here rather than a
+   * gap. (Until qits-392 an epic held words of its own, {@code EpicStatus}; epics V15 backfilled
+   * them.)
    *
-   * <p><b>It is a String and not an enum</b>, deliberately. There is no Java type that is "either
-   * an EpicStatus or a TicketStatus", and inventing one — a nine-word merged enum — would give
-   * {@code IMPLEMENTED} (which both already spell) a single identity across two lifecycles that
-   * mean different things by it, and would leave every existing switch over the two real enums with
-   * a third vocabulary to translate from. The stored word is the enum's own {@code name()}, the
-   * check constraint is the union of the two, and {@code control/Archetypes} is what refuses an
-   * epic word on a ticket — a split the database cannot make, because a check constraint has no way
-   * to say "these five when the archetype is EPIC" without becoming a second place the vocabulary
-   * is written down.
+   * <p><b>It is a String and not an enum</b>, which means a comparison against a word nobody spells
+   * any more compiles and fails silently at runtime — compare against {@link EntityStatus#name()},
+   * never a literal. The stored word is the enum's own {@code name()}, {@code ck_entity_status}
+   * spells exactly the six, and {@code control/Archetypes} is what refuses a status on a kind with
+   * no lifecycle — a split the database cannot make.
    */
   @Column(length = 32)
   public String status;
@@ -184,7 +181,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    * phase to block.
    *
    * <p><b>It is a flag and not a status, and that is the decision rather than a shortcut.</b>
-   * {@link TicketStatus} forbids a word for what is being <em>done</em> — there is no {@code
+   * {@link EntityStatus} forbids a word for what is being <em>done</em> — there is no {@code
    * IN_PROGRESS} there and there must never be one — and a {@code BLOCKED} word would be worse than
    * that rule's usual violation: it would <em>overwrite</em> the status, so a ticket blocked while
    * REFINED would lose the one fact saying implement is the phase to resume. Held beside the status
@@ -209,6 +206,28 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public boolean blocked;
 
   /**
+   * <b>Whether the phase advance carries this entity's run on by itself</b> — the continue-or-stop
+   * bit of the one dispatch path (qits-394). {@code true} is <em>Dispatch</em>: every transition
+   * the agent claims delivers the next phase's prompt into the workspace standing on the branch.
+   * {@code false} is <em>Run the next phase</em>: one phase runs and the next transition delivers
+   * nothing, so a person steps the entity on by pressing again.
+   *
+   * <p><b>It lives on the entity because the entity is the one row this service holds for a run of
+   * work.</b> The press that records it and the transition that reads it are different requests,
+   * minutes or hours apart, and the workspace the run stands in is qits-workspaces' row, not ours.
+   * Written by every dispatch press ({@code EntityDispatchService.setDispatchContinues}) and by
+   * nothing else — a transition leaves it alone, which is exactly what lets it survive the round
+   * trip through the agent's own claim.
+   *
+   * <p>The release a move into VERIFIED asks for is <b>not</b> governed by it: that branch is
+   * finished whoever pressed what. Not an {@code EntityProperty}, for {@link #blocked}'s reason.
+   * The Java default matches the column's ({@code not null default true}, epics V16), so a row
+   * created here without saying is a row that continues, as a ticket always did.
+   */
+  @Column(name = "dispatch_continues", nullable = false)
+  public boolean dispatchContinues = true;
+
+  /**
    * Bug or improvement ({@link TicketType}), on a ticket and on nothing else. Named {@code
    * ticketType} rather than {@code type}, because {@code type} in a row holding four archetypes
    * reads as the archetype, which is the one thing it is not.
@@ -219,7 +238,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
 
   /**
    * <b>Why a ticket came about, in the reporter's or the triage agent's own words.</b> It is what a
-   * {@link TicketStatus#REPORTED} ticket consists of — an impetus and nothing else.
+   * {@link EntityStatus#REPORTED} ticket consists of — an impetus and nothing else.
    *
    * <p><b>The length rule, which is the whole of the field's discipline.</b> An impetus takes one of
    * two shapes — <em>"{some error} occurs {in some context}"</em> or <em>"{an existing part} should

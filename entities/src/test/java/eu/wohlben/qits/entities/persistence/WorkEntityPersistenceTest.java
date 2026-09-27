@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
-import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -55,7 +55,7 @@ class WorkEntityPersistenceTest {
         .run(
             () -> {
               WorkEntity epic = root("e-1", Archetype.EPIC, "plan");
-              epic.status = EpicStatus.REFINING.name();
+              epic.status = EntityStatus.REPORTED.name();
               epic.description = "the pitch";
               entities.persist(epic);
 
@@ -85,11 +85,11 @@ class WorkEntityPersistenceTest {
         .run(
             () -> {
               WorkEntity refining = root("e-1", Archetype.EPIC, "one");
-              refining.status = EpicStatus.REFINING.name();
+              refining.status = EntityStatus.REPORTED.name();
               entities.persist(refining);
 
               WorkEntity frozen = root("e-2", Archetype.EPIC, "two");
-              frozen.status = EpicStatus.IMPLEMENTATION.name();
+              frozen.status = EntityStatus.REFINED.name();
               entities.persist(frozen);
 
               entities.persist(nested("f-1", Archetype.FEATURE, "part", "e-1"));
@@ -105,7 +105,7 @@ class WorkEntityPersistenceTest {
                   List.of("e-1"),
                   entities
                       .listByProjectArchetypeAndStatus(
-                          "proj-1", Archetype.EPIC, EpicStatus.REFINING.name())
+                          "proj-1", Archetype.EPIC, EntityStatus.REPORTED.name())
                       .stream()
                       .map(entity -> entity.id)
                       .toList());

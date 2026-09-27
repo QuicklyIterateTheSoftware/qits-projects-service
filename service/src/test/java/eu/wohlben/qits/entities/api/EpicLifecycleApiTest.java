@@ -47,7 +47,7 @@ class EpicLifecycleApiTest {
         .post("/projects/api/projects/" + projectId + "/epics")
         .then()
         .statusCode(200)
-        .body("epic.status", equalTo("REFINING"))
+        .body("epic.status", equalTo("REPORTED"))
         .body("epic.supersededByEpicId", nullValue())
         .extract()
         .path("epic.id");
@@ -66,10 +66,10 @@ class EpicLifecycleApiTest {
   void freezingAnEpicReturnsItWithoutASuccessor() {
     String epicId = createEpic(createProject(), "Planning domain");
 
-    transition(epicId, "IMPLEMENTATION")
+    transition(epicId, "REFINED")
         .statusCode(200)
         .body("epic.id", equalTo(epicId))
-        .body("epic.status", equalTo("IMPLEMENTATION"))
+        .body("epic.status", equalTo("REFINED"))
         .body("successor", nullValue());
 
     given()
@@ -77,7 +77,7 @@ class EpicLifecycleApiTest {
         .get("/projects/api/epics/" + epicId)
         .then()
         .statusCode(200)
-        .body("epic.status", equalTo("IMPLEMENTATION"));
+        .body("epic.status", equalTo("REFINED"));
   }
 
   @Test
@@ -91,15 +91,15 @@ class EpicLifecycleApiTest {
         .post("/projects/api/epics/" + epicId + "/features")
         .then()
         .statusCode(200);
-    transition(epicId, "IMPLEMENTATION").statusCode(200);
+    transition(epicId, "REFINED").statusCode(200);
 
     String successorId =
         transition(epicId, "SUPERSEDED")
             .statusCode(200)
-            .body("epic.status", equalTo("SUPERSEDED"))
+            .body("epic.status", equalTo("DROPPED"))
             .body("epic.supersededByEpicId", notNullValue())
             .body("successor.id", not(equalTo(epicId)))
-            .body("successor.status", equalTo("REFINING"))
+            .body("successor.status", equalTo("REPORTED"))
             .body("successor.projectId", equalTo(projectId))
             .body("successor.title", equalTo("Planning domain"))
             .body("successor.supersededByEpicId", nullValue())
@@ -131,11 +131,54 @@ class EpicLifecycleApiTest {
     transition(epicId, "SUPERSEDED")
         .statusCode(Response.Status.CONFLICT.getStatusCode())
         .body("message", notNullValue());
-    // "Done" is derived, not stored, so it names no status at all.
+    // DONE is a word of the lifecycle, but nothing is skipped: a draft is not closed in one move.
     transition(epicId, "DONE").statusCode(Response.Status.CONFLICT.getStatusCode());
-    // Freezing is one-way.
-    transition(epicId, "IMPLEMENTATION").statusCode(200);
+    // A retired epic word names no status at all.
     transition(epicId, "REFINING").statusCode(Response.Status.CONFLICT.getStatusCode());
+    // Freezing is reversible now, one step at a time — and never to where the epic already is.
+    transition(epicId, "REFINED").statusCode(200);
+    transition(epicId, "REPORTED").statusCode(200).body("epic.status", equalTo("REPORTED"));
+    transition(epicId, "REPORTED").statusCode(Response.Status.CONFLICT.getStatusCode());
+  }
+
+  /** What qits-392 exists for: over the wire, an epic reaches VERIFIED and DONE. */
+  @Test
+  void anEpicWalksToVerifiedAndDone() {
+    String epicId = createEpic(createProject(), "Planning domain");
+    for (String target : new String[] {"REFINED", "IMPLEMENTED", "VERIFIED", "DONE"}) {
+      transition(epicId, target).statusCode(200).body("epic.status", equalTo(target));
+    }
+    given()
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(200)
+        .body("epic.status", equalTo("DONE"));
+  }
+
+  @Test
+  void movingAFrozenEpicBackToReportedReopensItsScope() {
+    String epicId = createEpic(createProject(), "Planning domain");
+    transition(epicId, "REFINED").statusCode(200);
+    given()
+        .contentType(ContentType.JSON)
+        .body(new EpicController.UpdateEpicRequest("Renamed", null))
+        .when()
+        .put("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(Response.Status.CONFLICT.getStatusCode())
+        .body("message", org.hamcrest.Matchers.containsString("REPORTED"));
+
+    transition(epicId, "REPORTED").statusCode(200);
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(new EpicController.UpdateEpicRequest("Renamed", null))
+        .when()
+        .put("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(200)
+        .body("epic.title", equalTo("Renamed"));
   }
 
   @Test
@@ -164,7 +207,7 @@ class EpicLifecycleApiTest {
         .then()
         .statusCode(Response.Status.CONFLICT.getStatusCode());
 
-    transition(epicId, "IMPLEMENTATION").statusCode(200);
+    transition(epicId, "REFINED").statusCode(200);
 
     // Frozen: the title edit is refused and the marker goes through.
     given()
@@ -198,7 +241,7 @@ class EpicLifecycleApiTest {
     String projectId = createProject();
     String draftId = createEpic(projectId, "Still drafting");
     String frozenId = createEpic(projectId, "Being built");
-    transition(frozenId, "IMPLEMENTATION").statusCode(200);
+    transition(frozenId, "REFINED").statusCode(200);
 
     given()
         .when()
@@ -207,7 +250,7 @@ class EpicLifecycleApiTest {
         .statusCode(200)
         .body("entries", hasSize(2));
     given()
-        .queryParam("status", "REFINING")
+        .queryParam("status", "REPORTED")
         .when()
         .get("/projects/api/projects/" + projectId + "/epics")
         .then()
@@ -215,14 +258,14 @@ class EpicLifecycleApiTest {
         .body("entries", hasSize(1))
         .body("entries.epic.id", hasItem(draftId));
     given()
-        .queryParam("status", "IMPLEMENTATION")
+        .queryParam("status", "REFINED")
         .when()
         .get("/projects/api/projects/" + projectId + "/epics")
         .then()
         .statusCode(200)
         .body("entries.epic.id", hasItem(frozenId));
     given()
-        .queryParam("status", "ABANDONED")
+        .queryParam("status", "DROPPED")
         .when()
         .get("/projects/api/projects/" + projectId + "/epics")
         .then()
@@ -240,7 +283,7 @@ class EpicLifecycleApiTest {
   @Test
   void aTransitionIsAuditedOnTheEpic() {
     String epicId = createEpic(createProject(), "Planning domain");
-    transition(epicId, "ABANDONED").statusCode(200);
+    transition(epicId, "DROPPED").statusCode(200);
 
     given()
         .when()

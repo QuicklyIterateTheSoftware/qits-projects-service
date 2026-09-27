@@ -23,7 +23,7 @@ import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
 import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
+import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entity.Project;
@@ -118,7 +118,8 @@ class EntityAgentBoundsTest {
   @Inject TicketsTopicHints ticketHints;
   @Inject QualifiedEntityIds qualifiedIds;
   @Inject DispatchedWorkspaces dispatchedWorkspaces;
-  @Inject TicketPhaseAdvance phaseAdvance;
+  @Inject PhaseAdvance phaseAdvance;
+  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
 
   @Inject ProjectService projectService;
   @Inject RepositoryService repositoryService;
@@ -250,6 +251,7 @@ class EntityAgentBoundsTest {
     door.dispatchedWorkspaces = dispatchedWorkspaces;
     door.qualifiedIds = qualifiedIds;
     door.phaseAdvance = phaseAdvance;
+    door.resolutions = resolutions;
     return door;
   }
 
@@ -361,7 +363,7 @@ class EntityAgentBoundsTest {
         new EntityTransition.Membership(null, null),
         title,
         null,
-        "REFINING",
+        "REPORTED",
         null,
         null,
         null,
@@ -656,7 +658,7 @@ class EntityAgentBoundsTest {
   @Test
   void theLifecycleMoveAndTheDeletesAreRefusedAtTheDoor() {
     asForwardedAgent()
-        .body(Map.of("target", "IMPLEMENTATION"))
+        .body(Map.of("target", "REFINED"))
         .post("/projects/api/epics/no-such-entity/transition")
         .then()
         .statusCode(403);

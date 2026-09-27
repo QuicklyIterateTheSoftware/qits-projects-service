@@ -30,9 +30,19 @@ import java.time.Instant;
  * no daemon being connected — which this row already says twice, in {@code daemonConnectedAt} and
  * {@code daemonVersion}. So {@code false} is "no claim" and never a guess, exactly as it is on
  * {@code agenthost/AgentContainerState}, whose shape this pair copies.
+ *
+ * <p><b>{@code entityId} and {@code epicId} carry the same value, and only one of them is staying</b>
+ * (qits-395). A refinement names an entity of any archetype with a lifecycle — an epic or a ticket —
+ * and {@code entityId} is that key. {@code epicId} is the name the deployed SPA reads (it matches its
+ * epic against the project listing by it), so it keeps answering in this release, holding the entity
+ * id whatever the archetype: ids are one space, so an epic-matching reader never matches a ticket's
+ * room by accident. <b>{@code epicId} is removed in a later release</b>, once the SPA reads {@code
+ * entityId}; nothing new may read it.
  */
 public record RefinementDto(
     Long id,
+    String entityId,
+    // Deprecated duplicate of entityId, kept for the deployed SPA — see the class javadoc.
     String epicId,
     String projectId,
     String repositoryId,
@@ -56,7 +66,8 @@ public record RefinementDto(
   public static RefinementDto of(RefinementService.RefinementView view) {
     return new RefinementDto(
         view.refinement().id,
-        view.refinement().epicId,
+        view.refinement().entityId,
+        view.refinement().entityId,
         view.refinement().projectId,
         view.refinement().repositoryId,
         view.refinement().branch,

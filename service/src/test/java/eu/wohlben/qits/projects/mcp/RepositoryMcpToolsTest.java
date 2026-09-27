@@ -406,13 +406,14 @@ public class RepositoryMcpToolsTest {
                       "add_task",
                       "update_task",
                       "remove_task",
-                      // ... and mark_task_implemented, the one write an IMPLEMENTING agent makes
-                      // on this surface. Still no transition tool: reporting a task shipped is not
-                      // moving a phase, and the epic's own close stays a human act in the UI.
+                      // ... and mark_task_implemented, the write an IMPLEMENTING agent makes as
+                      // each task lands, and transition_epic (qits-394), the claim that ends each
+                      // dispatched epic phase.
                       "mark_task_implemented",
-                      // TicketMcpTools — the small-scoped work beside the plan. The transition IS
-                      // here, unlike the epics': resolving a ticket is a statement about work that
-                      // is done, and it is reversible.
+                      "transition_epic",
+                      // TicketMcpTools — the small-scoped work beside the plan. The transition is
+                      // here too: resolving a ticket is a statement about work that is done, and
+                      // it is reversible.
                       "list_tickets",
                       "get_ticket",
                       "create_ticket",

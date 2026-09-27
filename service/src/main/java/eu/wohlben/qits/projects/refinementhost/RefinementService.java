@@ -1,12 +1,14 @@
 package eu.wohlben.qits.projects.refinementhost;
 
-import eu.wohlben.qits.entities.control.EpicService;
+import eu.wohlben.qits.entities.control.EntityDispatchService;
+import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.entity.EpicStatus;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.TechnicalProcess;
+import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -20,6 +22,7 @@ import eu.wohlben.qits.projects.control.TechnicalProcessRegistry;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
@@ -31,10 +34,10 @@ import java.util.concurrent.Semaphore;
 import org.jboss.logging.Logger;
 
 /**
- * The refinement lifecycle: find-or-create keyed by epic, the ensure ladder, stop, recreate,
- * discard, and the row projection the status strip reads. The projects-side replacement for what
- * the refining route used to take from qits-workspaces' {@code WorkspaceService}, narrowed to what
- * that route actually consumes.
+ * The refinement lifecycle: find-or-create keyed by entity (an epic or a ticket), the ensure
+ * ladder, stop, recreate, discard, and the row projection the status strip reads. The projects-side
+ * replacement for what the refining route used to take from qits-workspaces' {@code
+ * WorkspaceService}, narrowed to what that route actually consumes.
  *
  * <h2>The ladder</h2>
  *
@@ -53,18 +56,29 @@ import org.jboss.logging.Logger;
  *
  * <h2>The branch</h2>
  *
- * <p>{@code refining/<epicSlug>}, cut on the project's wrapper at its default branch — a refinement
+ * <p>{@code refining/<slug>}, cut on the project's wrapper at its default branch — a refinement
  * always forks the wrapper's main, which is why the parent/child workspace tree and the integrate
- * door do not exist here. Adopt-existing is the create's ordinary path, not an error dance: a
- * branch already on the origin (a previous refinement of this epic, discarded row and all) is
- * adopted as it stands.
+ * door do not exist here. The wrapper is the project, and that holds for a ticket exactly as for an
+ * epic: neither names a repository, and both dispatch onto the wrapper too. The slug is the entity's,
+ * and a root entity's slug is unique per project across archetypes, so an epic and a ticket never
+ * cut the same branch. Adopt-existing is the create's ordinary path, not an error dance: a branch
+ * already on the origin (a previous refinement of this entity, discarded row and all) is adopted as
+ * it stands.
  */
 @ApplicationScoped
 public class RefinementService {
 
   private static final Logger LOG = Logger.getLogger(RefinementService.class);
 
-  @Inject EpicService epics;
+  /** Reads an entity of any archetype — the open is about epics and tickets alike (qits-395). */
+  @Inject EntityDispatchService entities;
+
+  /**
+   * Optional, like every port here, and read for one thing: whether an agent is already working the
+   * entity a room is being opened on. See {@link #findOrCreate} for what its never-throw contract
+   * means for that check.
+   */
+  @Inject Instance<WorkspaceAgentDispatch> workspaces;
   @Inject ProjectService projects;
   @Inject RepositoryService repositories;
   @Inject GitMirrorRegistry mirrors;
@@ -116,56 +130,148 @@ public class RefinementService {
   // ---- find or create ----------------------------------------------------------------------
 
   /**
-   * The refinement of {@code epicId}, created if the epic has none. Creation needs the epic itself
-   * — its status gates the open, and its slug names {@code refining/<epicSlug>} on the project's
-   * wrapper — so an unknown id 404s here and nothing is half-made.
+   * The refinement of {@code entityId} — an epic or a ticket — created if it has none. Creation needs
+   * the entity itself — its archetype and status gate the open, and its slug names {@code
+   * refining/<slug>} on the project's wrapper — so an unknown id 404s here and nothing is half-made.
    *
-   * <p>Nothing about the epic is copied onto the row beyond that slug. The row names its epic in
-   * {@code epicId}, which is its unique key, and every reader that wants the epic's prose reads it
+   * <p><b>The refusals, in order, and all of them on the create path only</b> (qits-395):
+   *
+   * <ol>
+   *   <li><b>No lifecycle</b> — a feature or a task is a <b>409</b>. It has no status to refine at,
+   *       and its scope is its epic's: the room to open is the epic's.
+   *   <li><b>Not REPORTED</b> — a <b>409</b> naming the status. Refinement is the REPORTED phase and
+   *       scope is editable only there ({@code EntityLifecycle.requireReported}), for both
+   *       archetypes; a room on a frozen scope would be a room whose every write is refused.
+   *   <li><b>A dispatch is running on it</b> — a <b>409</b>. An ACTIVE qits-workspaces workspace
+   *       naming this entity means an agent is (or may be) working it, on {@code ticket/<slug>} or
+   *       {@code epic/<slug>}, and at REPORTED that agent is <em>refining</em> it — writing the very
+   *       description, tree and dossier a person in the room would be writing. Two authors on one
+   *       draft with neither aware of the other is the collision this refuses. Read through {@link
+   *       WorkspaceAgentDispatch#workspacesReferencing}, whose contract is <b>never throw, answer
+   *       empty on failure</b> — so the check <b>fails open</b>: with qits-workspaces unreachable, or
+   *       no workspaces context assembled at all, it sees nobody and the room opens. That is the
+   *       port's degraded answer everywhere (every button live), and refusing every open whenever a
+   *       sibling restarts would be worse than the rare collision it would catch.
+   * </ol>
+   *
+   * <p><b>An existing room is always answered, whatever the entity's state now.</b> One room per
+   * entity (the unique key on {@code entity_id}); a second open returns the first. Refusing to show
+   * a room that already exists — because the status moved on, or an agent was dispatched after it
+   * opened — would strand it: the room is the only place its prompt, sketches and designs are
+   * reached from, and discard is how it ends.
+   *
+   * <p>Nothing about the entity is copied onto the row beyond that slug. The row names its entity in
+   * {@code entityId}, which is its unique key, and every reader that wants the entity's prose reads it
    * live from there; a rendered snapshot taken here would describe the draft as it stood before the
    * refinement that is about to edit it.
    */
-  public Refinement findOrCreate(String epicId) {
+  public Refinement findOrCreate(String entityId) {
     Optional<Refinement> existing =
-        QuarkusTransaction.requiringNew().call(() -> store.findByEpic(epicId));
+        QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
     if (existing.isPresent()) {
       return existing.get();
     }
-    WorkEntity epic = epics.get(epicId);
-    // The merged row stores the status word, so REFINING is compared by name against the column.
-    if (!EpicStatus.REFINING.name().equals(epic.status)) {
+    WorkEntity entity = entities.get(entityId); // 404, of any archetype
+    String noun = nounOf(entity);
+    if (entity.archetype != Archetype.EPIC && entity.archetype != Archetype.TICKET) {
       throw new DomainException(
           409,
-          "Epic " + epicId + " is " + epic.status + " — only a REFINING epic can be refined.");
+          "A "
+              + noun
+              + " has no lifecycle, so it is not refined on its own — only an epic or a ticket"
+              + " opens a refinement. Refine the epic it belongs to.");
     }
-    Project project = projects.get(epic.projectId);
+    // The merged row stores the status word, so REPORTED is compared by name against the column.
+    if (!EntityStatus.REPORTED.name().equals(entity.status)) {
+      throw new DomainException(
+          409,
+          capitalized(noun)
+              + " "
+              + entityId
+              + " is "
+              + entity.status
+              + " — only a REPORTED "
+              + noun
+              + " can be refined. Move it back to REPORTED to reopen its scope.");
+    }
+    refuseWhileDispatched(entity, noun);
+    Project project = projects.get(entity.projectId);
     Repository wrapper = wrapperOf(project);
-    String branch = "refining/" + epic.slug;
+    String branch = "refining/" + entity.slug;
     cutOrAdoptBranch(wrapper, branch);
 
     Refinement refinement = new Refinement();
-    refinement.epicId = epic.id;
+    refinement.entityId = entity.id;
     refinement.projectId = project.id;
     refinement.repositoryId = wrapper.id;
     refinement.branch = branch;
     refinement.parent = wrapper.mainBranch == null ? "main" : wrapper.mainBranch;
-    refinement.label = label(epic.slug);
+    refinement.label = label(entity.slug);
     refinement.createdAt = Instant.now();
     try {
       QuarkusTransaction.requiringNew().run(() -> store.persist(refinement));
     } catch (RuntimeException maybeRace) {
-      // Two opens racing: the unique constraint on epic_id decides, and the loser adopts.
+      // Two opens racing: the unique constraint on entity_id decides, and the loser adopts.
       Optional<Refinement> won =
-          QuarkusTransaction.requiringNew().call(() -> store.findByEpic(epicId));
+          QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
       if (won.isPresent()) {
         return won.get();
       }
       throw maybeRace;
     }
     LOG.infof(
-        "Created refinement %s for epic %s on %s (%s)",
-        refinement.id, epicId, ProjectService.wrapperName(project), branch);
+        "Created refinement %s for %s %s on %s (%s)",
+        refinement.id, noun, entityId, ProjectService.wrapperName(project), branch);
     return refinement;
+  }
+
+  /**
+   * The third refusal of {@link #findOrCreate}: an ACTIVE workspace names this entity. Only ACTIVE
+   * counts — the port answers integrated and abandoned workspaces too, and a resolved one has no
+   * container and no agent in it, so it collides with nothing. The references are also matched back
+   * to this entity's id rather than trusted to be about it: the answer is a list over whatever was
+   * asked, and a check that refuses somebody else's work would be the worse bug.
+   */
+  private void refuseWhileDispatched(WorkEntity entity, String noun) {
+    if (workspaces.isUnsatisfied()) {
+      return; // no workspaces context: nothing can be dispatched here, so nothing is running
+    }
+    boolean ticket = entity.archetype == Archetype.TICKET;
+    List<WorkspaceAgentDispatch.Reference> found =
+        workspaces
+            .get()
+            .workspacesReferencing(
+                ticket ? List.of(entity.id) : List.of(), ticket ? List.of() : List.of(entity.id));
+    Optional<WorkspaceAgentDispatch.Reference> live =
+        found.stream()
+            // A write-side reader, so ACTIVE alone: see the port's javadoc for why this is ours.
+            .filter(ref -> WorkspaceAgentDispatch.Reference.ACTIVE.equals(ref.status()))
+            .filter(ref -> entity.id.equals(ticket ? ref.ticketId() : ref.epicId()))
+            .findFirst();
+    if (live.isPresent()) {
+      throw new DomainException(
+          409,
+          capitalized(noun)
+              + " "
+              + entity.id
+              + " has a dispatched agent working it in workspace "
+              + live.get().workspaceId()
+              + " (on "
+              + live.get().branch()
+              + "), so a refinement room will not be opened beside it — two authors on one draft"
+              + " would overwrite each other. Let that run finish, or integrate or abandon the"
+              + " workspace, then refine.");
+    }
+  }
+
+  private static String nounOf(WorkEntity entity) {
+    return entity.archetype == null
+        ? "entity"
+        : entity.archetype.name().toLowerCase(java.util.Locale.ROOT);
+  }
+
+  private static String capitalized(String noun) {
+    return Character.toUpperCase(noun.charAt(0)) + noun.substring(1);
   }
 
   /** The refinement row, or 404. */
@@ -175,9 +281,14 @@ public class RefinementService {
         .orElseThrow(() -> new NotFoundException("No refinement " + id));
   }
 
-  /** The refinement of an epic, or empty — the read that never creates. */
-  public Optional<Refinement> findByEpic(String epicId) {
-    return QuarkusTransaction.requiringNew().call(() -> store.findByEpic(epicId));
+  /** The entity this id names, of any archetype, or a 404 — for a read that must not answer null. */
+  public WorkEntity requireEntity(String entityId) {
+    return entities.get(entityId);
+  }
+
+  /** The refinement of an entity (epic or ticket), or empty — the read that never creates. */
+  public Optional<Refinement> findByEntity(String entityId) {
+    return QuarkusTransaction.requiringNew().call(() -> store.findByEntity(entityId));
   }
 
   /**
@@ -270,8 +381,8 @@ public class RefinementService {
 
   /**
    * The end of a refinement: container, volume, credential, branch, row — in that order, so a
-   * failure leaves nothing orphaned ahead of it. The epic's ABANDONED transition is its own call
-   * on the epics surface; this tears down only what this service hosts.
+   * failure leaves nothing orphaned ahead of it. The entity's DROPPED transition is its own call on
+   * its archetype's surface; this tears down only what this service hosts.
    */
   public void discard(long id) {
     Refinement refinement = get(id);
@@ -284,7 +395,7 @@ public class RefinementService {
     QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
     lastErrors.remove(id);
     drift.forget(id);
-    LOG.infof("Discarded refinement %s (epic %s)", id, refinement.epicId);
+    LOG.infof("Discarded refinement %s (entity %s)", id, refinement.entityId);
   }
 
   /** The id of the ensure narration currently live for this row, or null. */
@@ -336,12 +447,12 @@ public class RefinementService {
       Repository wrapper =
           QuarkusTransaction.requiringNew().call(() -> repositories.get(refinement.repositoryId));
       String wrapperName = ProjectService.wrapperName(project);
-      String epicSlug = epicSlugOf(refinement);
+      String slug = slugOf(refinement);
       process.openSegment("container");
       if (!branchStillExists(refinement)) {
         // The branch is gone from under the refinement — somebody resolved it out-of-band. The
         // container and its checkout are torn down rather than resurrecting a deleted branch; the
-        // next open recreates the refinement from the epic.
+        // next open recreates the refinement from the entity.
         process.appendLine(
             "container",
             "The branch " + refinement.branch + " no longer exists on " + ProjectService.wrapperName(project) + ".");
@@ -350,7 +461,8 @@ public class RefinementService {
         QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
         process.appendLine("container", "The refinement was torn down.");
         process.settleSegment("container", false);
-        process.failProvision("The refining branch is gone; open the epic again to start afresh.");
+        process.failProvision(
+            "The refining branch is gone; open the refinement again to start afresh.");
         return;
       }
       RefinementRuntime.ContainerInfo existing = runtime.inspect(id).orElse(null);
@@ -361,13 +473,13 @@ public class RefinementService {
       }
       if (existing == null) {
         process.appendLine("container", "Provisioning a fresh refinement container.");
-        runtime.provision(refinement, project.slug, epicSlug, wrapperName);
+        runtime.provision(refinement, project.slug, slug, wrapperName);
         process.settleSegment("container", true);
         // Not settled here: the daemon's Provisioned/ProvisionFailed settles the narration, via
         // the registry. The idle reaper is the backstop for a daemon that never dials home.
       } else if (!existing.running()) {
         process.appendLine("container", "Waking the stopped container.");
-        runtime.wake(refinement, project.slug, epicSlug, wrapperName);
+        runtime.wake(refinement, project.slug, slug, wrapperName);
         process.settleSegment("container", true);
       } else {
         runtime.touch(id);
@@ -558,22 +670,22 @@ public class RefinementService {
   }
 
   /**
-   * The epic slug a refinement's container name is built from, read off the branch it cut.
+   * The entity slug a refinement's container name is built from, read off the branch it cut.
    *
    * <p>Package-private and static rather than private, so {@link RefinementStaleImageSweep} can
    * resolve a container name back to a row without a second reading of the {@code refining/<slug>}
    * grammar. Two readings of one convention is exactly how a sweep comes to match nothing on the
    * day the branch prefix changes, with everything still compiling and every test still green.
    */
-  static String epicSlugOf(Refinement refinement) {
+  static String slugOf(Refinement refinement) {
     return refinement.branch.startsWith("refining/")
         ? refinement.branch.substring("refining/".length())
         : refinement.label;
   }
 
-  /** {@code refining-<epicSlug>}, non-alphanumeric runs collapsed, 64 chars — the SPA's own rule. */
-  static String label(String epicSlug) {
-    String label = ("refining-" + epicSlug).replaceAll("[^A-Za-z0-9_-]+", "-");
+  /** {@code refining-<slug>}, non-alphanumeric runs collapsed, 64 chars — the SPA's own rule. */
+  static String label(String slug) {
+    String label = ("refining-" + slug).replaceAll("[^A-Za-z0-9_-]+", "-");
     return label.length() <= 64 ? label : label.substring(0, 64);
   }
 }

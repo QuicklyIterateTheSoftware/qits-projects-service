@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  * proves only that the DDL parses.
  *
  * <p>Two claims live only here. The first is that the widening was <b>necessary</b>: {@code
- * TicketStatus.DROPPED} existing in Java buys nothing while {@code ck_entity_status} still spells
+ * EntityStatus.DROPPED} existing in Java buys nothing while {@code ck_entity_status} still spells
  * V9's nine words, and standing at V13 and being refused is the only way to say so — a suite
  * migrated to head can no longer observe the refusal it was written to remove. The second is that
  * {@code blocked} is <b>born false on rows that predate it</b>, which is a statement about a row

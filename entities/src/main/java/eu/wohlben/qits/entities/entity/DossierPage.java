@@ -21,7 +21,7 @@ import java.util.UUID;
  * that route's sketches and designs, so the tempting home is beside {@code RefinementDesign} in
  * {@code domain} — but a refinement is a container, and discarding it cascades everything hanging
  * off it away. The plan has to outlive the container, and implementation reads it months later when
- * no refinement is open at all. Living here, it inherits the {@code REFINING}-only mutation guard
+ * no refinement is open at all. Living here, it inherits the {@code REPORTED}-only mutation guard
  * that already freezes features and tasks, an {@code AuditEntry} beside every change, and the
  * causation stamp; and a refinement discard cannot touch it.
  *
@@ -30,7 +30,7 @@ import java.util.UUID;
  * sequence worth a figure — and it outlives the workspace that phase ran in for exactly the reason
  * an epic's outlives the refinement: the implement phase reads it from a container that no longer
  * exists, and the verify phase reads it again after that. What does <em>not</em> carry over is the
- * freeze: a ticket commits to no scope ({@code TicketLifecycle}'s first sentence), so its pages are
+ * freeze: a ticket commits to no scope ({@code EntityLifecycle}'s first sentence), so its pages are
  * writable at every status.
  *
  * <p><b>Flat, and deliberately so.</b> There is no {@code parentId}: the second level of the tab's
@@ -72,7 +72,7 @@ public class DossierPage extends PanacheEntityBase implements CausedRow {
    * {@link DossierOwner} is the value that makes it unconstructable otherwise.
    *
    * <p>An epic owner means the page is part of a plan: it is written while the epic is {@code
-   * REFINING}, frozen with the rest of the scope, and read by the agent implementing it.
+   * REPORTED}, frozen with the rest of the scope, and read by the agent implementing it.
    *
    * <p>A real intra-module FK, like {@link #ticketId}: deleting the epic takes its dossier.
    */

@@ -22,6 +22,11 @@ import java.nio.charset.StandardCharsets;
  * {@link DossierAssetService#copyFrom} is handed bytes, mime type and label. One seam rather than a
  * port interface implemented across the boundary.
  *
+ * <p><b>Epic-only, while a ticket can hold a refinement too (qits-395).</b> Dossier assets are
+ * epic-owned by epics V8's decision — a ticket's pages are prose — so both callers resolve an
+ * <em>epic</em> before they get here, and a ticket's room has sketches and designs but no inline
+ * door. Widening that is a change to the asset table's owner, not to this seam.
+ *
  * <p><b>The source is validated against the refinement of THIS epic.</b> An attachment or a design
  * from somebody else's refinement is a 404, not a copy — that boundary is what keeps
  * copy-on-reference from quietly becoming a cross-epic reference.
@@ -54,7 +59,7 @@ public class DossierFigures {
     DossierAsset.Kind wanted = kindOf(kind);
     Refinement refinement =
         QuarkusTransaction.requiringNew()
-            .call(() -> refinements.findByEpic(epicId))
+            .call(() -> refinements.findByEntity(epicId))
             .orElseThrow(() -> new NotFoundException("No refinement is open for epic " + epicId));
 
     DossierAsset asset =

@@ -162,7 +162,7 @@ class CommitSubjectEntitiesTest {
         subjects.resolve("feat(" + slug + "-" + number + "): the plan").orElseThrow();
 
     assertEquals(Archetype.EPIC, named.archetype());
-    assertEquals("REFINING", named.status());
+    assertEquals("REPORTED", named.status());
   }
 
   @Test

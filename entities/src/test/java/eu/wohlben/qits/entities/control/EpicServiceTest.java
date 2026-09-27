@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
-import eu.wohlben.qits.entities.entity.EpicStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.NotFoundException;
@@ -37,7 +37,7 @@ class EpicServiceTest extends EntitiesTestSupport {
     WorkEntity epic = epicService.create("proj-1", "Planning domain", "The spine", "alice");
     assertNotNull(epic.id);
     assertEquals("proj-1", epic.projectId);
-    assertEquals(EpicStatus.REFINING.name(), epic.status);
+    assertEquals(EntityStatus.REPORTED.name(), epic.status);
     assertNull(epic.supersededByEntityId);
     assertNotNull(epic.createdAt);
     assertNotNull(epic.updatedAt);

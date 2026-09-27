@@ -78,9 +78,9 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   - `control/ReleasedBranchWorkspaces` → `HttpReleasedBranchWorkspaces`: the POST a release makes,
     after it has already landed, to say that a branch it deleted is gone. Fire-and-forget, **never
     throws**.
-  - `control/WorkspaceAgentDispatch` → `HttpWorkspaceAgentDispatch`: the POST a ticket's "Assign
-    agent" makes to `/workspaces/api/agent-dispatches`, which stands an aggregate workspace on
-    `ticket/<slug>` and launches an agent in it. A **request somebody is waiting on**, so it throws
+  - `control/WorkspaceAgentDispatch` → `HttpWorkspaceAgentDispatch`: the POST the one dispatch
+    path (`api/EntityDispatch`) makes to `/workspaces/api/agent-dispatches`, which stands an
+    aggregate workspace on `ticket/<slug>` or `epic/<slug>` and launches an agent in it. A **request somebody is waiting on**, so it throws
     a `DomainException` — 502 for the exchange, 503 for a hop with no address or no credential.
     <br>Its second verb, `workspacesReferencing`, is the **read back** of the reference that dispatch
     writes — `GET /workspaces/api/agent-dispatches/references?ticketId=…&epicId=…`, both repeating,
@@ -499,8 +499,10 @@ write** (user ruling, 2026-09-12):
   `POST /entities/transition` — which binds **all or nothing** over every id and every parent in the
   batch, resolved in one `EntityCatalogService.byIds` read, with an unresolvable id falling through
   to the write's own 400 rather than becoming a 403. **Still `qits:admin` alone:**
-  `EpicController.transition` and `delete` (freezing or resolving a plan is a decision about scope,
-  and `EpicMcpTools` deliberately exposes no lifecycle move), `TicketController.delete` and
+  `EpicController.transition` and `delete` (freezing or resolving a plan from the board is a
+  person's door; the agent's claim goes through `transition_epic` on the MCP server, qits-394, and
+  the REST grant was not widened with it), `EntityDispatchController.dispatch` (standing a workspace
+  up is a person's press; its GET is a read and admits the agent), `TicketController.delete` and
   `TicketCommentController.delete` (deleting is on neither surface: an agent that could delete what
   it disagrees with could erase the record of its own mistake).
 - **A sixth write takes it: `ProjectController.createRepository`** — `POST
@@ -752,8 +754,11 @@ a pattern.
 | epic | `epic/<slug>` | the epic branch, every feature branch and every task branch of the epic |
 
 - **There is no task dispatch door yet.** `WorkBranches.task` holds the rule for when there is one.
-- **The epic list is read after the freeze** to `IMPLEMENTATION`. From then on no feature or task can
-  be added, so the list is complete. A slug never changes, so no ref on it goes stale.
+- **The epic list is read when the dispatch is pressed** (`api/EntityWorkspaces`). From REFINED on no
+  feature or task can be added, so a press at REFINED or later sends the complete list. A press at
+  REPORTED (the refine phase) sends the tree as it stands then; a feature or task branch refinement
+  mints afterwards is not in the workspace's refs until the next press, while `epic/<slug>` — the
+  branch the agent works on — always is. A slug never changes, so no ref on it goes stale.
 - **Absent is safe both ways.** Without `gitRefs`, qits-workspaces allows the workspace's own branch;
   a qits-workspaces older than the member ignores it.
 - **Size.** The idp takes at most 500 refs of at most 255 characters each (contract C2). A slug is at
@@ -764,7 +769,7 @@ The idp commissions of this service's own containers state refs too (contract C2
 
 - **An agent container states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
   clones, and qits-coding-agents runs no git.
-- **A refinement container states `"gitRefs": ["refs/heads/refining/<epicSlug>"]`**: its own branch
+- **A refinement container states `"gitRefs": ["refs/heads/refining/<slug>"]`**: its own branch
   and nothing else. Its qits-workspace-daemon auto-pushes each commit there (`OriginSync`,
   `auto-push-enabled` defaults to true). `RefinementCommissions.gitRefsOf` reads the ref off the
   row's `branch`: the branch `RefinementService.findOrCreate` cut, and the value the container gets
@@ -994,94 +999,107 @@ wanting two callers is why they are two classes, on top of the failure contracts
 
 ## Epic lifecycle
 
-An epic is in one of four stored statuses (V3): `REFINING`, `IMPLEMENTATION`, `SUPERSEDED`,
-`ABANDONED`. New epics start `REFINING`, and `POST /epics/{id}/transition` is the only thing that
-moves the status. Four moves are legal — `REFINING→IMPLEMENTATION` (the scope freeze),
-`REFINING→ABANDONED`, `IMPLEMENTATION→SUPERSEDED`, `IMPLEMENTATION→ABANDONED` — and everything else,
-including a target that names no status, is a 409.
+**One lifecycle for every archetype that has one (qits-392).** An epic holds one of `EntityStatus`'
+six words, exactly as a ticket does — `REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE`, plus
+`DROPPED` — over the one legal-target graph in `entities/control/EntityLifecycle.LEGAL_TARGETS`
+(adjacent moves in either direction, `DROPPED` reachable from every status that is not `DONE` and
+reopening only to `REPORTED`). New epics start `REPORTED`. `EpicStatus` and `EpicLifecycle` are
+deleted; epics V15 backfilled `REFINING→REPORTED`, `IMPLEMENTATION→REFINED`, `ABANDONED` and
+`SUPERSEDED→DROPPED`, and narrowed `ck_entity_status` to the six. Two doors move an epic's status:
+`POST /epics/{id}/transition` (a person) and the `transition_epic` MCP tool (a dispatched agent's
+claim, qits-394), both through `refinementhost/EntityResolutions` and both followed by
+`api/PhaseAdvance`. **An epic can now be VERIFIED and DONE**, which is what the campaigns epic waits
+on.
 
-**"Done" is not stored.** It is derived: an `IMPLEMENTATION` epic with at least one feature and every
-feature's `implementedOn` set, which is the derivation the SPA already does. A fifth status would
-give the same fact two sources that can disagree.
+**Moving to `IMPLEMENTED` stamps every feature and task still unimplemented**, in the same
+transaction — declaring the epic implemented is declaring its scope implemented. That is why the
+epic implement prompt makes the move conditional on every task already being marked.
 
-**The freeze is enforced in the services, per field rather than per endpoint.** `EpicLifecycle` holds
-the rules and all three services obey them — a task's phase is the phase of its feature's epic.
-Structural changes (the epic's title/description, and any feature/task create, update or delete,
-`dependsOn` included) need `REFINING`; the implemented markers (`implementedOn`/`implementedAt`) need
-`IMPLEMENTATION`. Those two rules alone reject every write in the terminal statuses, and a call
-carrying both kinds always fails. Deleting an *epic* stays allowed in every status: it removes the
-row rather than editing a frozen scope, and the audit log outlives it.
+**The freeze is enforced in the services, per field rather than per endpoint, and it is reversible
+now.** `EntityLifecycle` holds the two guards and all three services obey them — a task's phase is
+the phase of its feature's epic. Structural changes (the epic's title/description, any feature/task
+create, update or delete, `dependsOn` included, and every epic-owned dossier write) need `REPORTED`
+(`requireReported`); the implemented markers need `REFINED` (`requireRefined`). Those two rules
+reject every write past `REFINED`, and a call carrying both kinds always fails. Moving an epic back
+to `REPORTED` is how its scope is reopened — no new door. Deleting an *epic* stays allowed in every
+status: it removes the row rather than editing a frozen scope, and the audit log outlives it.
 
-**Superseding copies the whole discarded scope** into a successor draft — a new `REFINING` epic with
-the old title, description and feature/task tree, fresh ids, implemented markers reset, `dependsOn*`
-remapped to the new rows, and `supersededByEpicId` on the old row pointing at it. The old row keeps
-its frozen scope as the record of what was discarded, which is why superseded epics stay in the
-list. Features and tasks keep their slugs, because the new epic and its features are new scopes; the
-successor *epic's* slug cannot, because its scope is the project and the old row still holds it, so
-it mints the next free suffix like any other create.
+**Superseding is an operation, not a status.** A transition asking for `SUPERSEDED`
+(`EpicService.SUPERSEDE`) lands the epic `DROPPED` with `superseded_by_entity_id` pointing at a
+successor draft — a new `REPORTED` epic with the old title, description and feature/task tree, fresh
+ids, implemented markers reset, `dependsOn*` remapped. A `REPORTED` epic cannot be superseded (edit
+it or drop it). Features and tasks keep their slugs, because the new epic and its features are new
+scopes; the successor *epic's* slug cannot, so it mints the next free suffix like any other create.
+`transition_epic` refuses `SUPERSEDED`: an operation on a plan is a person's, from the board.
 
-### Starting implementation dispatches an agent
+### One dispatch path, phase-shaped, with a continue-or-stop bit (qits-394)
 
-**"Start implementation" is not a status move any more.** `POST /projects/api/epics/{id}/dispatch-agent`
-(`projects/api/EpicDispatchController`) freezes the scope *and* stands an implementing agent up on
-it, in one press — the ticket door's shape one planning level higher, so read
-`TicketDispatchController` first: everything the two share is explained there. The workspace is the
-project's **wrapper** with `branchTree` true, on `epic/<epicSlug>`, because an epic spans the estate
-and names no single component (its *tasks* name repositories, one each, and no one of them is what
-the epic is about). It lives in `projects.api` for the ticket door's reason: it needs `domain`, and
-the entities jar depends on `domain` nowhere.
+**Putting an agent on an epic or a ticket is one action**, `POST /projects/api/entities/{id}/dispatch`
+(`projects/api/EntityDispatchController` → `EntityDispatch`), `qits:admin` alone. It starts the phase
+the entity's **status** implies — REPORTED starts refine, REFINED implement, IMPLEMENTED verify;
+VERIFIED, DONE and DROPPED start nothing and answer **409** naming the status — in one workspace on
+the project's **wrapper** with `branchTree`, on `ticket/<slug>` or `epic/<slug>`. The body names a
+mode, and the mode is the only difference between the two actions the UI offers:
 
-Four things are rules rather than details:
+    POST /projects/api/entities/{id}/dispatch   {"mode":"FLOW"}    Dispatch — run the whole flow
+                                                {"mode":"PHASE"}   Run the next phase — one, then stop
+      → {"dispatch": {entityId, archetype, phase, mode, workspaceRowId, repositoryId, branch,
+                      fresh, agentLaunch}}
+    GET  /projects/api/entities/{id}/dispatch   (qits:admin, qits:agent)
+      → {"state": {entityId, archetype, status, nextPhase, blocked, dispatchable, mode}}
 
-- **The transition comes first and the dispatch second, and that order is load-bearing.**
-  `mark_task_implemented` is only open while the owning epic is in `IMPLEMENTATION`, so a dispatch
-  that raced the transition would hand the agent a tool its own epic refuses — discovered halfway
-  through the first task, from inside a container, with no way to fix it. The cost of that order is
-  accepted deliberately: a dispatch that then fails leaves the epic in implementation with no agent
-  on it, which is a *legitimate* state (the scope really is frozen) and a re-pressable one, since the
-  far side adopts the workspace already standing on the branch. What runs **before** the transition
-  is only what is knowable without attempting anything — the epic (404), a status whose work is over
-  (409), a project with no wrapper (409), and no workspaces context at all (503).
-- **A re-press is the retry, so `IMPLEMENTATION` is not a refusal.** The transition runs only from
-  `REFINING`; an epic already in implementation is dispatched onto as it stands, because
-  `EpicService.planTransition` would 409 on `IMPLEMENTATION→IMPLEMENTATION` and a door whose retry
-  answered 409 would strand a failed dispatch. `IMPLEMENTED`, `SUPERSEDED` and `ABANDONED` are a 409
-  naming the status. The move goes through `EpicResolutions` and never `EpicService.transition` —
-  and since `REFINING→IMPLEMENTATION` does not resolve, no refinement is discarded here.
-- **Nothing is written on the epic.** That is the whole difference from the ticket door, which
-  stamps a comment: an epic has no thread, and its *description is the plan*, so a dispatch appending
-  its own bookkeeping to it would be this door editing somebody's plan. What lands is the `EPICS`
-  hint on the status move and the returned DTO — a failed dispatch has written nothing to undo.
-- **The epic dispatch names its epic and sends no preamble either**, the ticket door's rule one
-  planning level up and for the sharper version of its reason: the tree moves under an
-  implementation, so a rendering frozen at creation is stale the moment a task is marked.
-  **`refinementhost/EpicOutline` is deleted with it**: a refinement had already stopped storing a
-  render of its epic (see "Refinement containers"), so this door was its last caller and the class
-  had nobody left to render for. The
-  instruction sends the agent to `get_epic` for the live tree, **to the dossier for the detail the
-  epic leaves out**, to work the features and tasks in
-  `dependsOn` order, to mark each task with `mark_task_implemented` **as it lands**, and to treat the
-  work as unfinished until the changes are **released**. Its closing move stops short of the epic's
-  own close: the agent reports, and *Mark implemented* stays a person's press — declaring an epic
-  done stamps every unimplemented feature and task in one transaction, which is a decision about
-  scope and not a report about work.
-- **The dossier sentence names the two tools rather than the concept** (`list_dossier_pages`,
-  `get_dossier_page`), because "consult the dossier" is not something a model can act on. An epic's
-  description is the pitch and the dossier is the breakdown, so an agent given only the epic fills
-  the gaps by guessing and the guess arrives in the diff looking like a decision. It also says the
-  dossier is **read-only from here**, which is a description rather than a warning: `DossierService`
-  guards every write behind the epic's `REFINING` phase, so a session that finds the plan wrong
-  reports it instead of correcting it. Those two reads are **not** in either daemon's `repository`
-  pre-approval bucket — every surface ships CLAUDE with `SKIP_PERMISSIONS`, so an unlisted read is
-  reachable today. A surface moved to **kimi** needs them in qits-workspace-daemon's read-only bucket
-  and in `AgentSurfaceDefaults`' copy of it on the same day, or the sentence is the dead letter that
-  javadoc warns about.
+The GET is how the SPA learns which phase a press would start (`nextPhase`, or null) without
+re-implementing the status→phase rule, which lives only in `api/PhasePrompts.phaseOf`. A missing or
+unknown mode is a 400; a feature or a task is a 409 (no lifecycle); a blocked ticket is a 409 naming
+the block; no workspaces context is a 503; a project with no wrapper is a 409.
+
+Five things are rules rather than details:
+
+- **The bit lives on the entity row** — `entity.dispatch_continues` (epics V16, `not null default
+  true`, existing epic rows backfilled `false`) — because the press that decides it and the
+  transition that reads it are different requests hours apart, and the workspace the run stands in
+  is qits-workspaces' row in another service. Every press writes it (`EntityDispatchService
+  .setDispatchContinues`, audited) *before* the dispatch, so an agent faster than the response still
+  finds it; nothing else writes it and a transition leaves it alone. `PhaseAdvance` reads it at one
+  place: before delivering the next phase's turn. A second PHASE press continues from the new status
+  and records PHASE again — that is how an entity is stepped through by hand.
+- **The release at VERIFIED is not part of the bit.** A move into VERIFIED asks for the release of
+  the branch whichever mode started the run, and so does the IMPLEMENTED note about a release still
+  standing open — see "Tickets", which argues both, for an epic exactly as for a ticket.
+- **Prompts are per archetype, the phase is not.** `PhasePrompts.render(archetype, phase, entity)`:
+  an epic's refine turn writes the description, the feature/task tree (with `dependsOn`) and the
+  dossier and ends with `transition_epic` to REFINED (the freeze); its implement turn works the tasks
+  in `dependsOn` order, marks each with `mark_task_implemented` as it lands, releases every touched
+  repository, does **not** integrate the workspace, and ends with `transition_epic` to IMPLEMENTED
+  only once every task is marked; its verify turn confirms live on the platform and ends at VERIFIED
+  or back at REFINED. An epic has no thread and no block flag, so its "could not finish" arm says what
+  is missing in the agent's report and leaves the status alone. Every turn opens with
+  `PhasePrompts.FLOW_BRIEF_POINTER`, prepended once at the render seam.
+- **An epic's dispatch writes nothing on the epic.** A ticket's thread gets one comment naming the
+  phase (and, for PHASE, that the run stops there); an epic has no thread and its *description is
+  the plan*, so it gets the `EPICS` hint alone, and every sentence `PhaseAdvance` would put on a
+  thread is a log line for an epic.
+- **The two old doors are thin delegates, and they go in a later release.** The deployed SPA still
+  calls `POST /tickets/{id}/dispatch-agent` (→ FLOW, `TicketAgentDispatchDto`) and
+  `POST /epics/{id}/dispatch-agent` (→ PHASE, `EpicAgentDispatchDto`). The epic door keeps one thing
+  of its own: on a REPORTED epic it first freezes it to REFINED through `EntityResolutions`, because the
+  deployed button reads "Start implementation" — delegating straight through would start the refine
+  phase behind that label. Both are removed, with their DTOs and tests, once the SPA calls the unified
+  door. Nothing may be added to them meanwhile.
+
+**`transition_epic` is on the MCP server since qits-394**, replacing the deliberate absence of an
+epic lifecycle tool: a phase whose claim cannot be made is a phase whose advance never fires. It is
+adjacent-only and reversible like `transition_ticket`, goes through `EntityResolutions`, is followed by
+`PhaseAdvance`, and is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`. It is **not** in either
+daemon's pre-approval bucket — reachable today because every surface ships CLAUDE with
+`SKIP_PERMISSIONS`; a surface moved to kimi needs it (and the epic tree writes and dossier reads the
+epic prompts name) added there and in `AgentSurfaceDefaults` on the same day.
 
 **`mark_task_implemented` on `EpicMcpTools` is a dedicated tool and a deliberate interim.** It is not
 a widening of `update_task`, whose refusal ("the implemented marker is not editable here") is a
 stance about the *refining* agent and stays intact — one that is drafting a plan must not also be
 able to declare parts of it shipped. Two agents, two stances, two tools. It lands on
-`TaskService.update`'s marker arm alone, so `EpicLifecycle.requireImplementation` is the guard that
+`TaskService.update`'s marker arm alone, so `EntityLifecycle.requireRefined` is the guard that
 runs and its message is what a draft's task answers with, and it returns its own small result record
 rather than widening `TaskSummary` (which three tools return and none of which can ever carry a
 marker). It is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`: an unattended run steered by an
@@ -1101,8 +1119,8 @@ would cascade it away on a discard, and the plan has to outlive the container: i
 it months later, when no refinement is open at all.
 
 Being in the entities module is the point, not a filing decision: `DossierService` inherits the
-`REFINING`-only guard `EpicLifecycle` already applies to features and tasks (**reuse it, never
-restate the condition**), an `AuditEntry` per create/update/move/delete under the epic's own id, and
+`REPORTED`-only guard `EntityLifecycle.requireReported` already applies to features and tasks
+(**reuse it, never restate the condition**), an `AuditEntry` per create/update/move/delete under the epic's own id, and
 the `CausationStamp` listener.
 
 - **A page has ONE owner and there are two kinds of owner: an epic or a TICKET** (epics V8,
@@ -1114,9 +1132,9 @@ the `CausationStamp` listener.
   value every repository and service method takes instead of an epic id. What a ticket's dossier is
   *for* is the refine phase: the result goes in the ticket's `description`, and a page is what that
   phase writes when the body cannot hold it. Four consequences, each a rule:
-  - **The `REFINING` guard applies to epic-owned pages only.** A plan freezes; a ticket freezes
-    nothing (`TicketLifecycle`'s first sentence), so a ticket page is writable at every status and
-    the refine phase is not the only phase allowed to write one.
+  - **The `REPORTED` guard applies to epic-owned pages only.** A plan freezes; a ticket freezes
+    nothing (`EntityLifecycle`'s guards are about an epic's scope), so a ticket page is writable at
+    every status and the refine phase is not the only phase allowed to write one.
   - **`dossier_asset` is NOT widened, deliberately.** A figure is a copy of the refining route's
     sketches and designs, a route a ticket has not got, so `DossierAssetService.syncReferences` is
     **skipped** for a ticket-owned page rather than handed a null epic id — and a ticket page whose
@@ -1192,13 +1210,14 @@ comment gets its own audit row, the `value` + `clear*` pairing on the three null
 target naming no status answering 409 while an absent one answers 400. Three things are *different*,
 and each one is a decision rather than a simplification:
 
-- **Nothing freezes.** `EpicLifecycle`'s whole subject is which fields a phase still permits,
-  because an epic carries a scope that was committed to. `TicketLifecycle` has no `requireOpen` and
-  must not grow one: a DONE ticket stays editable, commentable and reopenable, and the
+- **Nothing freezes.** `EntityLifecycle`'s two guards (`requireReported`, `requireRefined`) are about
+  which of an epic's fields a phase still permits, because an epic carries a scope that was committed
+  to; no ticket write calls them, and there is no `requireOpen` and must not grow one: a DONE ticket stays editable, commentable and reopenable, and the
   alternative — refusing writes once closed — only means filing a duplicate whenever a closure
   turns out to be wrong.
 
-  **The lifecycle is five phases (V7, 2026-09-14) and one exit off them:** `REPORTED → REFINED →
+  **The lifecycle is five phases (V7, 2026-09-14) and one exit off them** — and since qits-392 it
+  is the epic's lifecycle too, one `EntityStatus` over one graph (see "Epic lifecycle"): `REPORTED → REFINED →
   IMPLEMENTED → VERIFIED → DONE`. **A status is what has been ACHIEVED, and the phase that runs
   while it holds is what happens next** — REPORTED means somebody said what is wrong (refine runs),
   REFINED means the ticket says what to do (implement runs), IMPLEMENTED means the change is
@@ -1219,7 +1238,7 @@ and each one is a decision rather than a simplification:
   **DONE is offered no drop**: it is already an exit, and the move would only let a weaker outcome
   overwrite a real one — a closure that was wrong goes back to VERIFIED the way every move goes
   back, and the ticket is droppable again from there. The whole rule is written once, in
-  `TicketLifecycle.LEGAL_TARGETS`, and every other javadoc points at it rather than restating it.
+  `EntityLifecycle.LEGAL_TARGETS`, and every other javadoc points at it rather than restating it.
 
   **`impetus` is the intake field and `description` is the refinement's output.** A REPORTED ticket
   has an impetus and nothing else. The impetus takes one of two shapes — *"{some error} occurs {in
@@ -1238,10 +1257,11 @@ and each one is a decision rather than a simplification:
   request identity at the seam (`EntitiesPrincipal.changedBy`, or the MCP session's), never from a
   request body, so nobody can file as somebody else. An edit does not re-stamp either: who wrote it
   and who last changed it are different facts, and the second one is the log's.
-- **The MCP surface HAS the transition.** `EpicMcpTools` deliberately exposes no lifecycle move,
-  because freezing a plan is a human decision about committing to scope. `transition_ticket` is on
-  the server, because resolving a ticket is a statement about work that is done — which the agent
-  that did it is the one who knows — and it is reversible, so a wrong answer costs a click.
+- **The MCP surface HAS the transition.** `transition_ticket` is on the server, because resolving a
+  ticket is a statement about work that is done — which the agent that did it is the one who knows —
+  and it is reversible, so a wrong answer costs a click. Since qits-394 `EpicMcpTools` has the epic's
+  twin, `transition_epic`, for the same reason: a dispatched epic's phases end with the agent's claim
+  (see "Epic lifecycle").
   `update_ticket_comment` is there for the front desk's sake — an agent that came back knowing more
   corrects its own earlier note rather than stacking a contradiction under it — and it obeys the
   rule above rather than bending it: an edit moves `updatedAt` and never `author`. All five ticket
@@ -1266,15 +1286,17 @@ and comment mutation fires it, through `TicketsTopicHints` — a sibling bean to
 rather than four more methods on it, because the two announce different channels. Firing on `EPICS`
 would redraw a board because somebody commented on a bug.
 
-**A ticket can be handed to an agent, and that door is the one ticket route not in `entities.api`.**
-`POST /projects/api/tickets/{id}/dispatch-agent` (`projects/api/TicketDispatchController`) stands an
-aggregate workspace on `ticket/<slug>` at the project's **wrapper** — a ticket names no repository,
-so the whole estate is the answer and `branchTree` is true — and launches a coding agent in it over
-the `control/WorkspaceAgentDispatch` port. It lives in `projects.api` because it needs `domain` (the
-project, the wrapper, the port) and the **entities jar depends on `domain` nowhere and must keep not
-depending on it**; the service layer may cross, which is the crossing `ProjectTicketsController`
-already makes. `EntitiesPrincipal` is public for that one caller rather than copied into a second
-package.
+**A ticket can be handed to an agent, through the one dispatch path every lifecycle archetype
+shares** — `POST /projects/api/entities/{id}/dispatch` (`projects/api/EntityDispatch`, qits-394; see
+"Epic lifecycle" for the route, the FLOW/PHASE bit and the read). The old ticket door,
+`POST /projects/api/tickets/{id}/dispatch-agent` (`TicketDispatchController`), is a thin FLOW
+delegate onto it until the SPA stops calling it. It stands an aggregate workspace on `ticket/<slug>`
+at the project's **wrapper** — a ticket names no repository, so the whole estate is the answer and
+`branchTree` is true — and launches a coding agent in it over the `control/WorkspaceAgentDispatch`
+port. It lives in `projects.api` because it needs `domain` (the project, the wrapper, the port) and
+the **entities jar depends on `domain` nowhere and must keep not depending on it**; the service layer
+may cross, which is the crossing `ProjectTicketsController` already makes. `EntitiesPrincipal` is
+public for that one caller rather than copied into a second package.
 
 Three things travel with it:
 
@@ -1288,8 +1310,8 @@ Three things travel with it:
   as a field (`workspace.ticket_id`, its `V5`) and resolves it with nothing; the workspaces SPA
   composes the link, because that needs the platform's public origin, which a browser is told by
   `/main-navigation` and no service here holds a key for.
-- **The agent's first turn is `api/TicketPhasePrompts` and the ticket's STATUS picks it.** Three
-  templates, one per phase — REPORTED starts refine, REFINED starts implement, IMPLEMENTED starts
+- **The agent's first turn is `api/PhasePrompts` and the ticket's STATUS picks it.** Three
+  ticket templates (an epic has its own three, over the same status→phase rule), one per phase — REPORTED starts refine, REFINED starts implement, IMPLEMENTED starts
   verify — and VERIFIED, DONE and DROPPED render **nothing**, so the door answers **409** naming the
   status and stands no workspace up (the refusal runs before the port is asked for anything). The
   same emptiness is what makes a transition into DROPPED deliver no turn and say nothing on the
@@ -1317,7 +1339,7 @@ Three things travel with it:
     took.
 
   Two seams make all three instructions rather than dead letters, and both are stated in
-  `TicketPhasePrompts`' javadoc (they **moved there** from the instruction it replaces):
+  `PhasePrompts`' javadoc (they **moved there** from the instruction it replaces):
   qits-workspace-daemon lists `transition_ticket` in its own `TICKET_RESOLUTION_TOOLS` bucket (on the
   kimi path `enabledTools` is the whole tool surface, so an unlisted tool does not exist), and a
   dispatch keeps connecting **without** `agentReadOnly=true`, so `ReadOnlyRepositoryToolFilter` still
@@ -1326,20 +1348,24 @@ Three things travel with it:
   `SKIP_PERMISSIONS`, and a surface moved to kimi needs both added there and in
   `AgentSurfaceDefaults`' copy on the same day, or the refine phase has been told to write into a
   field it cannot write.
-- **A dispatch that succeeded stamps the thread, naming the phase it started; one that failed writes
-  nothing.** The comment is
+- **A dispatch that succeeded stamps the thread, naming the phase it started (and, for a PHASE-mode
+  press, that the run stops after it); one that failed writes nothing.** The comment is
   stamped from the caller's identity like any other, and a re-dispatch that qits-workspaces answered
   `SKIPPED_RUNNING` says it found an agent already working rather than claiming a second one — and
   names no phase, because that agent was started for whatever the status said then. A
   failure surfaces on the door instead — 502 from the far side, 503 with no workspaces context at all
   — because a comment saying an agent is on it when none is would be worse than the error.
 
-**A transition starts the next phase by itself, and the transition is the whole trigger.**
-`projects/api/TicketPhaseAdvance` (application-scoped, `afterTransition(ticket, changedBy)`) is
-called by **both** transition surfaces — `entities/api/TicketController`'s route and
-`mcp/TicketMcpTools.transitionTicket` — *after* the move is recorded and outside its transaction,
-exactly where each already fires its hint. It reads `TicketPhasePrompts.startedBy` and **adds no
-second table and no second switch**: the prompt for a status is the work that starts from it, so a
+**A transition starts the next phase by itself — when the run was dispatched as a flow — and the
+transition is the whole trigger.** `projects/api/PhaseAdvance` (application-scoped,
+`afterTransition(entity, changedBy)`; `TicketPhaseAdvance` until qits-394) is called by **every**
+lifecycle transition surface — `entities/api/TicketController`'s route and
+`mcp/TicketMcpTools.transitionTicket` for a ticket, `entities/api/EpicController`'s route and
+`mcp/EpicMcpTools.transitionEpic` for an epic — *after* the move is recorded and outside its
+transaction, exactly where each already fires its hint. It delivers the next turn only when the
+entity's `dispatch_continues` says the last press asked for the whole flow; a PHASE run stops there,
+silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
+and no second switch**: the prompt for a status is the work that starts from it, so a
 failed verification moving IMPLEMENTED → REFINED gets the *implement* turn and a reopen to VERIFIED
 gets nothing. Direction is never consulted. It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
@@ -1348,8 +1374,9 @@ assignment, not a comment, not a release.
   keep not having one, and because recording a fact and calling out to a sibling service must not
   share a transaction. Both call sites wrap the call in the belt `ReleaseRequests` carries: the port
   must not throw, and a throw is a port bug that may not touch a transition that already happened.
-- **`projects/api/TicketWorkspaces` is where the wrapper and the branch are resolved**, for the
-  dispatch door and the hand-off alike — one address, derived rather than stored, so a copy could
+- **`projects/api/EntityWorkspaces` is where the wrapper and the branch are resolved** (either
+  shape, `ticket/<slug>` or `epic/<slug>` with the epic's feature and task refs), for the dispatch
+  path and the hand-off alike — one address, derived rather than stored, so a copy could
   drift with nothing failing. `require` carries the dispatch door's 409 unchanged; `find` answers
   empty for the caller that has nobody to refuse.
 - **What lands on the thread is what actually happened**, stamped from the caller like the dispatch
@@ -1927,7 +1954,8 @@ own agent container. qits-workspaces writes the matching one for a workspace's.
 
 ## Refinement containers
 
-One container per REFINING epic — the refining route's whole backend, which used to be an ordinary
+One container per REPORTED epic **or ticket** (the status refinement runs in since qits-392; a ticket
+since qits-395) — the refining route's whole backend, which used to be an ordinary
 qits-workspaces workspace on a `refining/*` branch (epic refinement-improvements, part 2). The host
 side is `service/…/refinementhost/`; the container runs the WORKSPACE image and daemon, unchanged —
 `qits-workspace-daemon` dials home to whatever `QITS_WORKSPACE_DAEMON_URL` names, and this service
@@ -1952,8 +1980,13 @@ all three append-only once a container exists (`RefinementPaths`):
 
 Where it differs from the agent harness, each difference is the domain line:
 
-- **Keyed by epic, addressed by row id.** `refinement` (V4) holds one row per epic (unique), with
-  the branch (`refining/<epicSlug>`), the parent (the wrapper's default branch — a refinement always
+- **Keyed by entity, addressed by row id.** `refinement` (V4) holds one row per entity (unique) —
+  an epic or a ticket; the column was `epic_id` until domain **V29** renamed it `entity_id` (ids are
+  one space across archetypes, so no value moved, and `refinement_epic_id_key` became
+  `refinement_entity_id_key`). No archetype is copied onto the row: the open reads the entity live,
+  and a copy would go stale the day `transition_entities` re-archetypes a row. The row holds
+  the branch (`refining/<slug>` — the entity's slug, and a root entity's slug is unique per project
+  across archetypes, so an epic and a ticket never cut the same branch), the parent (the wrapper's default branch — a refinement always
   forks it, which is why there is no parent/child tree and no integrate door), and the commissioned
   credential — ON THE ROW, because `Recreate.ifChanged` hashes the whole spec and a resume must
   reproduce the pair byte for byte.
@@ -1961,8 +1994,9 @@ Where it differs from the agent harness, each difference is the domain line:
   V22.** It held `EpicOutline.render(epic, "Refine")` — title, description and the whole feature/task
   tree — written once at create, never recomputed, and so a copy of the very draft the refinement
   exists to edit. Its one reader was the SPA's prompt-rewrite helper, which passes it to the daemon as
-  that model call's context; `epic_id` is `text not null unique` and *is* the row's key, so the
-  refining page derives one line from the epic it has already resolved, at the moment it asks. The
+  that model call's context; `entity_id` (then `epic_id`) is `text not null unique` and *is* the
+  row's key, so the refining page derives one line from the entity it has already resolved, at the
+  moment it asks. The
   `[preamble]` binding keeps its name down to the prompt panel because `POST /prompt-refinements` is
   where the word comes from — renaming it here while the wire kept the old one would be two names for
   one thing.
@@ -1973,16 +2007,22 @@ Where it differs from the agent harness, each difference is the domain line:
   in that order; the agent harness deliberately has no removal at all. `RefinementCommissions`
   decommissions at the explicit seams; `RefinementCommissionReconcile` reaps `refinement`-kind idp
   clients no row claims (its own CONTEXT_KIND, invisible to the agent reconcile and vice versa).
-- **Resolving the epic is what calls that verb, and it is a rule of the service rather than a
-  browser dance.** `refinementhost/EpicResolutions` is the only thing a door may use to move an
-  epic's status: it previews the move (`EpicService.planTransition`, which throws every refusal the
-  transition would), discards the refinement when the target **resolves** the epic — `IMPLEMENTED`,
-  `SUPERSEDED`, `ABANDONED`, never the `REFINING→IMPLEMENTATION` freeze — and only then transitions.
+- **Resolving the entity is what calls that verb, and it is a rule of the service rather than a
+  browser dance.** `refinementhost/EntityResolutions` (`EpicResolutions` until qits-395) is the only
+  thing a door may use to move an epic's or a ticket's status: it previews the move
+  (`EpicService.planTransition` / `TicketService.planTransition`, which throw every refusal the
+  transition would), discards the refinement when the target **resolves** the entity —
+  `IMPLEMENTED`, `VERIFIED`, `DONE`, `DROPPED` (supersede included), never the `REPORTED→REFINED`
+  freeze — and only then transitions. Four lifecycle doors use it: `POST /epics/{id}/transition`,
+  `transition_epic`, `POST /tickets/{id}/transition` and `transition_ticket`. `POST
+  /entities/transition` / `transition_entities` write statuses through `EntityTransitions` and do
+  **not** come through it — a gap for an epic before qits-395 and for a ticket now, stated rather than
+  fixed here; so is deleting an entity, which leaves its room for a discard.
   The order is the point: a resolved epic must never own a workspace nothing can reach, so a failed
   teardown leaves a still-refining epic with a UI to retry from. Until 2026-09-08 the cleanup was
   `refining-page.ts` discarding before transitioning, and only for `ABANDONED`: the epics board, the
   REST API and any machine caller all leaked a container, a volume, a commissioned credential and a
-  `refining/<slug>` branch, and `findOrCreate` refuses a non-`REFINING` epic so the stranded row
+  `refining/<slug>` branch, and `findOrCreate` refuses a non-`REPORTED` epic so the stranded row
   could not even be adopted back. Do not call `EpicService.transition` from a door again.
 - **The ensure ladder runs off the request thread** (`RefinementService`): the browser gets a
   technical-process id to watch instead of a request that hangs behind an image pull. One
@@ -2035,8 +2075,10 @@ Where it differs from the agent harness, each difference is the domain line:
   (`refinement-maven-repository-url` / `-npm-registry-url` / `-npm-proxy-url`) ship blank like
   qits-workspaces' — unset injects nothing.
 
-The REST surface is under `/projects/api`: `POST /refinements` (find-or-create keyed by epic —
-adopt-existing is the create's ordinary path, not an error dance), `GET/verbs /refinements/{id}`,
+The REST surface is under `/projects/api`: `POST /entities/{id}/refinement` (find-or-create keyed by
+entity — adopt-existing is the create's ordinary path, not an error dance; see "The refine action"
+below), `GET /entities/{id}/refinement` (find only), the deployed SPA's `POST /refinements`
+(`{"epicId"}`, a thin delegate retiring once the SPA moves), `GET/verbs /refinements/{id}`,
 `GET /projects/{projectId}/refinements` (the LIGHT projection — live halves, no git drift, because
 the list redraws on every activity hint), the prompt draft and attachments (content URLs are
 embedded into epic markdown, so attachment ids are never renumbered), the per-row SSE hint channel,
@@ -2078,8 +2120,9 @@ review flow did. A REST `POST` creates and a `PUT` rewrites in place; the three 
 replaced the person's decision is the **version check**: a write carrying a version somebody has
 already moved past is a **409 carrying the current row**, document included, and never a merge —
 `error/StaleWriteException` is the type and `ProjectsExceptionMapper` is what puts `current` in the
-body. The gate on the draft is the epic's own `REFINING → IMPLEMENTATION` transition, which a
-person controls and which freezes the whole plan at once.
+body. The gate on the draft is the epic's own `REPORTED → REFINED` transition, which freezes the
+whole plan at once — a person's press on the board, or the claim a dispatched refine phase makes with
+`transition_epic` (qits-394).
 
 Three things ride with the removal. **The column drop lost no document**: a row that stood at
 PROPOSED simply became a design in the list. **`propose_design` was renamed rather than kept as an
@@ -2088,6 +2131,63 @@ than a tool whose name states a lifecycle that is gone. And `put_design` is stil
 `ReadOnlyRepositoryToolFilter`'s mutating set, on a *stronger* reading than before: a write is live
 in the tab the moment it lands, so an unattended run holding it could overwrite a document somebody
 is working from.
+
+### The refine action, for any archetype (qits-395)
+
+**Opening a refinement room is one action for an epic or a ticket**, beside the dispatch door and
+deliberately not part of it (`projects/api/EntityRefinementController` → `RefinementService
+.findOrCreate`):
+
+    POST /projects/api/entities/{id}/refinement   (qits:admin)
+      → {"refinement": RefinementDto}               find-or-create
+    GET  /projects/api/entities/{id}/refinement   (qits:admin, qits:agent)
+      → {"refinement": RefinementDto | null}        find only; 404 only for an id naming no entity
+
+It shares an address with `/entities/{id}/dispatch` and nothing else. A dispatch is a qits-workspaces
+workspace on `ticket/<slug>` or `epic/<slug>`; a refinement is a `domain` row and a `refinementhost/`
+container (workload `refinement`, its own registry, commissions, proxy and control socket) on
+`refining/<slug>`. The SPA's refining page being a copy of the workspace page does not make them one
+path. `RefinementDto` gains `entityId`; **`epicId` stays, holding the same value** for every
+archetype, because the deployed SPA matches its epic against the project listing by it. `epicId`,
+`POST /refinements {"epicId"}` and `RefinementController.OpenRequest` are removed in a later release
+once the SPA reads `entityId` and calls the entity door — nothing new may read or call them.
+
+The refusals, all on the **create** path, in order: 404 unknown id; **409 for a feature or a task**
+(no lifecycle — refine its epic); **409 unless REPORTED**, for both archetypes, since refinement is
+the REPORTED phase (`requireReported` for an epic's scope; a ticket's fields do not freeze, but its
+room opens only where its refine phase runs); **409 while a dispatch runs on it** (below); 409 for a
+project with no wrapper; 502 when the git host will not cut the branch. **The wrapper is the project
+for a ticket exactly as for an epic** — neither names a repository, both dispatch onto the wrapper —
+so the wrapper resolution needed no archetype arm.
+
+Concurrency, decided:
+
+- **One room per entity.** A second open — from either door — answers the first (unique
+  `entity_id`; a racing insert loses to the constraint and adopts the winner). **An existing room is
+  answered whatever the entity's state now**: refusing to show a room because its status moved on, or
+  because an agent was dispatched after it opened, would strand the only place its prompt, sketches
+  and designs are reached from. Discard, or a resolving transition, is how a room ends.
+- **No new room while a dispatch runs on the entity: 409.** At REPORTED a dispatched agent *is*
+  refining — writing the same description, tree and dossier a person in the room would write — and two
+  authors on one draft unaware of each other overwrite each other. "Running" is an **ACTIVE** workspace
+  naming the entity, read through `WorkspaceAgentDispatch.workspacesReferencing` and matched back to
+  the entity's id (integrated and abandoned ones collide with nothing). That read **never throws and
+  answers empty on failure**, so the check **fails open**: with qits-workspaces unreachable, or no
+  workspaces context assembled, it sees nobody and the room opens. That is the port's degraded answer
+  everywhere, and refusing every open whenever a sibling restarts would cost more than the rare
+  collision it would catch. The reverse — dispatching onto an entity whose room is open — is **not**
+  refused by the dispatch door today.
+
+What a ticket's room is told: **nothing on this side composes the refining prompt** — the SPA's prompt
+draft does, and a ticket's room must be told to refine the ticket (its description and dossier) there.
+The server half is the tool surface: `list_designs` / `get_design` / `put_design` take **`entityId`**
+(the epic's or ticket's id) and still accept `epicId`, exactly one of the two, so a session already
+using `epicId` keeps working until the prompts name `entityId`. `inline_figure` and the REST inline
+door stay **epic-only** — dossier assets are epic-owned by epics V8's decision — so a ticket's room has
+sketches and designs but no inline door. **No surface key moved**: a ticket's room reuses `epic.chat`
+/ `epic.agent`, whose rename is the separate four-repository sequence `AgentSurfaceDefaults` describes.
+The container's `qits.epic` label keeps its key (value: the entity id) because renaming it would change
+the spec hash and replace every standing refinement container at its next wake.
 
 ## The container orchestrator
 

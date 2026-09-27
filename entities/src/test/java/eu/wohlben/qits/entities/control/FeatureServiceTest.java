@@ -100,7 +100,7 @@ class FeatureServiceTest extends EntitiesTestSupport {
     assertEquals(a.entity().id, renamed.entity().dependsOnEntityId);
 
     // The ship date needs a frozen scope, and setting it must not drop title or dependency.
-    epicService.transition(e.id, "IMPLEMENTATION", "t");
+    epicService.transition(e.id, "REFINED", "t");
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     Nested shipped = featureService.update(b.entity().id, null, null, null, false, when, false, "t");
     assertEquals("B renamed", shipped.entity().title);
@@ -150,7 +150,7 @@ class FeatureServiceTest extends EntitiesTestSupport {
     Nested f = featureService.create(e.id, "A", null, null, "t");
     assertNull(f.entity().implementedAt);
     // The marker only moves once the epic's scope is frozen.
-    epicService.transition(e.id, "IMPLEMENTATION", "t");
+    epicService.transition(e.id, "REFINED", "t");
 
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     Nested shipped = featureService.update(f.entity().id, null, null, null, false, when, false, "t");
