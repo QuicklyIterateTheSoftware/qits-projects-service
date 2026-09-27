@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -39,6 +40,19 @@ public class EntityDispatchService {
    */
   public WorkEntity get(String id) {
     return reads.hold("an entity by id", () -> entity(id));
+  }
+
+  /**
+   * {@link #get}, read in a transaction of its own (qits-417) — so what it answers is what is
+   * committed now, never a row an earlier read in the same request or request context left in that
+   * context's session. The by-id dispatch reads through here: it decides a phase from the status, and
+   * a caller that looked at the row earlier (the campaign executor's own checks) must not be handed
+   * that earlier look back.
+   */
+  public WorkEntity fresh(String id) {
+    return reads.hold(
+        "an entity by id, fresh",
+        () -> QuarkusTransaction.requiringNew().call(() -> entity(id)));
   }
 
   /**

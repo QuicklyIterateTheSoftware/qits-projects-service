@@ -800,7 +800,149 @@
     }
   }
 }, {
+  "request" : "GET /projects/api/campaigns/<id:5>/progress",
+  "status" : 200,
+  "response" : {
+    "progress" : {
+      "campaign" : {
+        "id" : "<id:5>",
+        "qualifiedId" : "<project>-4",
+        "title" : "Rename qits-x",
+        "status" : "REFINED",
+        "start" : null
+      },
+      "evaluator" : {
+        "connected" : false,
+        "lastSweepCompletedAt" : null,
+        "stalled" : false
+      },
+      "members" : [ {
+        "membershipId" : "<id:7>",
+        "position" : 0,
+        "entity" : {
+          "id" : "<id:3>",
+          "archetype" : "TICKET",
+          "qualifiedId" : "<project>-2",
+          "title" : "Step 2",
+          "status" : "REPORTED",
+          "blocked" : false
+        },
+        "state" : "WAITING",
+        "waitsFor" : [ "<id:2>" ],
+        "joinedRunning" : false,
+        "groups" : [ {
+          "id" : "<id:13>",
+          "satisfied" : false,
+          "criteria" : [ {
+            "id" : "<id:14>",
+            "kind" : "APPROVAL",
+            "seeded" : false,
+            "satisfied" : true,
+            "wouldBeSatisfiedBy" : "a person approves",
+            "satisfiable" : true,
+            "reason" : null,
+            "evidence" : null,
+            "approval" : {
+              "approvedBy" : "dev",
+              "note" : "go"
+            },
+            "satisfiedAt" : "<instant>"
+          }, {
+            "id" : "<id:15>",
+            "kind" : "ENTITY_STATUS",
+            "seeded" : false,
+            "satisfied" : false,
+            "wouldBeSatisfiedBy" : "<project>-1 (Step 1) reaches VERIFIED",
+            "satisfiable" : true,
+            "reason" : null,
+            "evidence" : null,
+            "approval" : null,
+            "satisfiedAt" : null
+          } ]
+        } ],
+        "dispatchedAt" : null,
+        "dispatch" : {
+          "workspaceId" : null,
+          "branch" : null,
+          "agentLaunch" : null
+        },
+        "dispatchRefusal" : null,
+        "dispatchRefusedAt" : null,
+        "dispatchError" : null
+      }, {
+        "membershipId" : "<id:6>",
+        "position" : 1,
+        "entity" : {
+          "id" : "<id:2>",
+          "archetype" : "TICKET",
+          "qualifiedId" : "<project>-1",
+          "title" : "Step 1",
+          "status" : "REPORTED",
+          "blocked" : false
+        },
+        "state" : "READY",
+        "waitsFor" : [ ],
+        "joinedRunning" : false,
+        "groups" : [ ],
+        "dispatchedAt" : null,
+        "dispatch" : {
+          "workspaceId" : null,
+          "branch" : null,
+          "agentLaunch" : null
+        },
+        "dispatchRefusal" : null,
+        "dispatchRefusedAt" : null,
+        "dispatchError" : null
+      }, {
+        "membershipId" : "<id:10>",
+        "position" : 2,
+        "entity" : {
+          "id" : "<id:4>",
+          "archetype" : "TICKET",
+          "qualifiedId" : "<project>-3",
+          "title" : "Step 3",
+          "status" : "REPORTED",
+          "blocked" : false
+        },
+        "state" : "JOINED_RUNNING",
+        "waitsFor" : [ "<id:3>" ],
+        "joinedRunning" : true,
+        "groups" : [ {
+          "id" : "<id:11>",
+          "satisfied" : false,
+          "criteria" : [ {
+            "id" : "<id:12>",
+            "kind" : "ENTITY_STATUS",
+            "seeded" : true,
+            "satisfied" : false,
+            "wouldBeSatisfiedBy" : "<project>-2 (Step 2) reaches VERIFIED",
+            "satisfiable" : true,
+            "reason" : null,
+            "evidence" : null,
+            "approval" : null,
+            "satisfiedAt" : null
+          } ]
+        } ],
+        "dispatchedAt" : null,
+        "dispatch" : {
+          "workspaceId" : null,
+          "branch" : null,
+          "agentLaunch" : null
+        },
+        "dispatchRefusal" : null,
+        "dispatchRefusedAt" : null,
+        "dispatchError" : null
+      } ]
+    }
+  }
+}, {
   "request" : "GET /projects/api/campaigns/no-such-campaign",
+  "status" : 404,
+  "response" : {
+    "message" : "Campaign not found: no-such-campaign"
+  }
+}, {
+  "request" : "GET /projects/api/campaigns/no-such-campaign/progress",
   "status" : 404,
   "response" : {
     "message" : "Campaign not found: no-such-campaign"

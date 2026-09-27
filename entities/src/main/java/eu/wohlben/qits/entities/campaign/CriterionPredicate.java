@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -72,6 +73,43 @@ public sealed interface CriterionPredicate {
     public CriterionKind kind() {
       return CriterionKind.APPROVAL;
     }
+  }
+
+  /**
+   * <b>Whether {@code observation} satisfies this predicate</b> — the catalogue's "matches when",
+   * one arm per kind. An observation of another kind never matches.
+   *
+   * <ul>
+   *   <li><b>ENTITY_STATUS</b>: the entity ids are equal, {@code status} is the target, and {@code
+   *       statusBefore != status} — a re-announcement of a status already held satisfies nothing.
+   *   <li><b>DEPLOYMENT_ACTIVE</b>: {@code applicationName} is equal; {@code environmentName} is
+   *       equal if the criterion sets one; the version is {@link ReleaseVersions#atLeast} the
+   *       floor if the criterion sets one — so a blank version never satisfies a floor.
+   *   <li><b>SCM_RELEASE</b>: {@code repositoryName} is equal; {@code projectId} is equal if set;
+   *       the floor as above.
+   *   <li><b>APPROVAL</b>: never — it is latched only by a person.
+   * </ul>
+   */
+  default boolean matches(Observation observation) {
+    return switch (this) {
+      case EntityStatusIs p ->
+          observation instanceof Observation.EntityReached reached
+              && Objects.equals(p.entityId(), reached.entityId())
+              && Objects.equals(p.status(), reached.status())
+              && !Objects.equals(reached.statusBefore(), reached.status());
+      case DeploymentActive p ->
+          observation instanceof Observation.DeploymentWentActive active
+              && Objects.equals(p.applicationName(), active.applicationName())
+              && (p.environmentName() == null
+                  || Objects.equals(p.environmentName(), active.environmentName()))
+              && ReleaseVersions.atLeast(active.version(), p.minimumVersion());
+      case ScmRelease p ->
+          observation instanceof Observation.Released released
+              && Objects.equals(p.repositoryName(), released.repositoryName())
+              && (p.projectId() == null || Objects.equals(p.projectId(), released.projectId()))
+              && ReleaseVersions.atLeast(released.version(), p.minimumVersion());
+      case Approval p -> false;
+    };
   }
 
   /** The canonical JSON of this predicate — see the interface javadoc. */

@@ -464,6 +464,7 @@ public class RepositoryMcpToolsTest {
                       // tool would be the "dispatch without a person" door the epic refuses.
                       "list_campaigns",
                       "get_campaign",
+                      "get_campaign_progress",
                       "create_campaign",
                       "transition_campaign",
                       "add_campaign_member",

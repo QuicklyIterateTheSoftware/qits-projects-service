@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.mcp;
 import eu.wohlben.qits.entities.api.CampaignController;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberDto;
+import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignSummaryDto;
 import eu.wohlben.qits.entities.api.CampaignViews;
 import eu.wohlben.qits.entities.campaign.CampaignService;
@@ -41,8 +42,8 @@ import java.util.List;
  * and approving an APPROVAL criterion are both {@code qits:admin} presses on the REST door — a
  * person's sign-off — and an MCP tool with no credential behind it would be exactly the "dispatch
  * without a person" door the campaigns epic exists to refuse. An agent may build the plan; only a
- * person may press go on it or sign off a gated member. ({@code get_campaign_progress} — reading how
- * a running campaign is doing — is a later task and is not on this class.)
+ * person may press go on it or sign off a gated member. Reading how a running campaign is doing,
+ * {@code get_campaign_progress} (qits-418), is a read and is here.
  *
  * <p>Scope comes from {@link ProjectScope} (the {@code X-QITS-Project} header), never from a tool
  * argument, and every campaign id a tool is handed is checked back to that project — a campaign in
@@ -116,6 +117,25 @@ public class CampaignMcpTools {
   public CampaignDto getCampaign(@ToolArg(description = "id of a campaign in this project") String id) {
     requireCampaignInProject(id);
     return views.campaign(campaigns.get(id));
+  }
+
+  @McpServer("repository")
+  @Tool(
+      name = "get_campaign_progress",
+      description =
+          "Read how a campaign of this project is doing: for every member, in position order, its"
+              + " state (DROPPED, DONE, DISPATCH_FAILED, JOINED_RUNNING, RUNNING, REFUSED, READY or"
+              + " WAITING), the entity ids it waits for, and each criterion of its condition judged —"
+              + " whether it is satisfied and by what evidence, the sentence that would satisfy it,"
+              + " and, for one that waits on another member's status, whether it still can and why"
+              + " not. It also says whether the criteria evaluator is listening at all (evaluator:"
+              + " connected, lastSweepCompletedAt, stalled), which is how a correctly waiting"
+              + " campaign is told from one nothing is listening for. Read-only; derived afresh on"
+              + " every call.")
+  public CampaignProgressDto getCampaignProgress(
+      @ToolArg(description = "id of a campaign in this project") String id) {
+    requireCampaignInProject(id);
+    return views.progress(campaigns.progress(id));
   }
 
   // --- Create and transition ---------------------------------------------------

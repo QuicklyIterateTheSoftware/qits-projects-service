@@ -67,10 +67,15 @@ public class EntityDispatchControllerTest {
     projectIds.clear();
   }
 
-  // ---- a campaign is never dispatched (qits-411) ---------------------------------------------
+  // ---- a campaign's press is its start (qits-417) ----------------------------------------------
 
+  /**
+   * A campaign is never dispatched onto a workspace: its press is its start, which a REPORTED
+   * campaign refuses, and its read answers the campaign's own state. The start itself is {@code
+   * campaignhost/CampaignExecutorTest}'s.
+   */
   @Test
-  void aCampaignIsNeitherDispatchedNorAnsweredAPhaseAndBothRefusalsNameIt() {
+  void aCampaignsPressIsItsStartAndItsReadSaysSo() {
     String projectId = createProject("Dispatch Campaign");
     String campaignId = workEntities.createCampaign(projectId, "Spring", null, "setup").id;
 
@@ -80,14 +85,17 @@ public class EntityDispatchControllerTest {
         .post("/projects/api/entities/" + campaignId + "/dispatch")
         .then()
         .statusCode(409)
-        .body("message", containsString("Campaign " + campaignId))
-        .body("message", containsString("a campaign starts through its executor"));
+        .body("message", containsString("Start a campaign from REFINED"));
     asAdmin("dana")
         .when()
         .get("/projects/api/entities/" + campaignId + "/dispatch")
         .then()
-        .statusCode(409)
-        .body("message", containsString("Campaign " + campaignId));
+        .statusCode(200)
+        .body("state.archetype", equalTo("CAMPAIGN"))
+        .body("state.status", equalTo("REPORTED"))
+        .body("state.nextPhase", equalTo("start"))
+        .body("state.dispatchable", equalTo(false))
+        .body("state.mode", nullValue());
 
     assertEquals(List.of(), dispatch.calls(), "no agent was dispatched onto a campaign");
   }

@@ -412,7 +412,9 @@ class EntityRoutesGoldenTest {
     r.call("POST", c + "/transition", map("target", "REFINED"));
     r.call("GET", p + "/campaigns", null);
     r.call("GET", c, null);
+    r.call("GET", c + "/progress", null); // qits-418
     r.call("GET", "/projects/api/campaigns/no-such-campaign", null); // 404
+    r.call("GET", "/projects/api/campaigns/no-such-campaign/progress", null); // 404
     r.assertGolden("campaign.json");
   }
 

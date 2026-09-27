@@ -19,6 +19,7 @@ import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -563,6 +564,12 @@ public class WorkEntityService {
   /** The body of {@link #transition}: database-only, so a retry may run it again. */
   private Moved move(Kind kind, Archetype archetype, String id, String target, String changedBy) {
     WorkEntity row = lookup(archetype, id);
+    if (archetype == Archetype.CAMPAIGN) {
+      // The campaign row first (qits-417), re-read under its lock, and only then the start row the
+      // pause hook below updates: the order CampaignService.start takes the same two rows in, so a
+      // pause racing a start press serialises on this row instead of deadlocking on the pair.
+      entities.getEntityManager().refresh(row, LockModeType.PESSIMISTIC_WRITE);
+    }
     String statusBefore = row.status;
     EntityStatus to = targetStatus(kind, row, target);
     requireSupersedable(kind, row, target);

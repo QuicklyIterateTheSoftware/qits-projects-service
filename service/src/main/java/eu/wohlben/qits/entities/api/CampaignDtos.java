@@ -86,4 +86,76 @@ public final class CampaignDtos {
 
   /** Who approved an APPROVAL criterion, and what they said. */
   public record CriterionApprovalDto(String approvedBy, String note) {}
+
+  // --- the progress read (qits-418) ----------------------------------------------------------------
+
+  /**
+   * A campaign's progress: the campaign, whether anything is listening for the events its criteria
+   * wait on, and every member's derived state — {@code GET /campaigns/{id}/progress} and the start
+   * press answer it. Derived by {@link CampaignProgress}; nothing of it is stored.
+   */
+  public record CampaignProgressDto(
+      CampaignProgressCampaignDto campaign,
+      CampaignEvaluatorDto evaluator,
+      List<CampaignMemberProgressDto> members) {}
+
+  /** The campaign a progress read is of. */
+  public record CampaignProgressCampaignDto(
+      String id, String qualifiedId, String title, String status, CampaignStartDto start) {}
+
+  /**
+   * The criteria evaluator's health: {@code connected} is the event stream subscriber's live
+   * connection, {@code lastSweepCompletedAt} and {@code stalled} the catch-up sweep's census — what
+   * tells a correct wait from nothing listening.
+   */
+  public record CampaignEvaluatorDto(
+      boolean connected, Instant lastSweepCompletedAt, boolean stalled) {}
+
+  /** The eight words a member's state is, derived in this order, the first match winning. */
+  public enum CampaignMemberState {
+    DROPPED,
+    DONE,
+    DISPATCH_FAILED,
+    JOINED_RUNNING,
+    RUNNING,
+    REFUSED,
+    READY,
+    WAITING
+  }
+
+  /** One member's progress: its state, what it waits for, its condition judged, its run record. */
+  public record CampaignMemberProgressDto(
+      String membershipId,
+      int position,
+      CampaignMemberEntityDto entity,
+      CampaignMemberState state,
+      List<String> waitsFor,
+      boolean joinedRunning,
+      List<CampaignGroupProgressDto> groups,
+      Instant dispatchedAt,
+      CampaignDispatchDto dispatch,
+      String dispatchRefusal,
+      Instant dispatchRefusedAt,
+      String dispatchError) {}
+
+  /** One OR'd group, and whether every one of its criteria is latched. */
+  public record CampaignGroupProgressDto(
+      String id, boolean satisfied, List<CampaignCriterionProgressDto> criteria) {}
+
+  /**
+   * One criterion judged: latched or not, the sentence that would latch it, whether it still can
+   * (ENTITY_STATUS alone is ever judged unsatisfiable, and {@code reason} says why), and its
+   * evidence once latched.
+   */
+  public record CampaignCriterionProgressDto(
+      String id,
+      String kind,
+      boolean seeded,
+      boolean satisfied,
+      String wouldBeSatisfiedBy,
+      boolean satisfiable,
+      String reason,
+      CriterionEvidenceDto evidence,
+      CriterionApprovalDto approval,
+      Instant satisfiedAt) {}
 }

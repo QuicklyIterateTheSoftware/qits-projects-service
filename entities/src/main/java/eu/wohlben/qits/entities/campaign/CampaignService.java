@@ -20,6 +20,7 @@ import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -39,7 +40,8 @@ import java.util.stream.Collectors;
 /**
  * <b>A campaign's membership, its members' conditions, and the latches a person or the current
  * state can set</b> (epic f6c67e74, qits-413) — the authoring half. Nothing here matches an event or
- * dispatches; the evaluator and the executor are later tasks that read and write the same rows.
+ * dispatches: {@link CampaignEvaluator} latches from events (qits-415) and is also the one
+ * "satisfied memberships" step {@link #approve} and {@link #latchFromCurrentState} answer through.
  *
  * <h2>The rules, each stated once</h2>
  *
@@ -69,7 +71,10 @@ import java.util.stream.Collectors;
  * then takes {@code PESSIMISTIC_WRITE} on <b>that membership row</b> before reading its criteria,
  * which is the {@code FOR UPDATE} the executor's claim also takes: a condition edit and a claim
  * cannot interleave. The order is always campaign row, then membership rows, and the executor takes
- * no campaign-row lock, so the two never wait on each other in a cycle.
+ * no campaign-row lock, so the two never wait on each other in a cycle. {@link #start} takes the
+ * campaign row and then the {@code campaign_start} row, the pause hook's order; nothing here locks
+ * {@code campaign_start} while holding a membership, which is what keeps the executor's own order
+ * ({@code campaign_start FOR SHARE}, then the membership) out of any cycle as well.
  *
  * <h2>Transactions and audit</h2>
  *
@@ -122,8 +127,17 @@ public class CampaignService {
 
   @Inject WritePatience writes;
 
+  /** The one "satisfied memberships" step every latch source answers through. */
+  @Inject CampaignEvaluator evaluator;
+
   /** Renders {@code qits-412}; optional — see {@link EntityQualifier}. */
   @Inject Instance<EntityQualifier> qualifier;
+
+  /**
+   * Hands the memberships a write left satisfied to the executor — fired inside the write, observed
+   * after it commits. See {@link CampaignMembersSatisfied}.
+   */
+  @Inject Event<CampaignMembersSatisfied> satisfied;
 
   // --- the views ------------------------------------------------------------------------------------
 
@@ -154,7 +168,14 @@ public class CampaignService {
    */
   public record CriterionSpec(String id, String kind, Map<String, Object> predicate) {}
 
-  /** An approval's answer: the member, and the memberships whose condition it made hold. */
+  /**
+   * What the progress read (qits-418) derives from: the whole campaign, and every row an
+   * ENTITY_STATUS criterion of it targets, keyed by id — members or not, so a target that left the
+   * campaign still reads as itself and only a deleted one is absent.
+   */
+  public record ProgressRead(Campaign campaign, Map<String, WorkEntity> targets) {}
+
+  /** An approval's answer: the member, and — when its condition now holds — its membership id. */
   public record Approved(Member member, List<String> satisfied) {}
 
   // --- reads ----------------------------------------------------------------------------------------
@@ -172,6 +193,31 @@ public class CampaignService {
     return patience.hold(
         "campaign read",
         () -> QuarkusTransaction.requiringNew().call(() -> view(campaign(campaignId))));
+  }
+
+  /**
+   * <b>The campaign and its criteria's targets, read together</b> (qits-418) — {@link #get}'s five
+   * queries plus one for the targets, in one fresh transaction for {@link #get}'s reason. Nothing is
+   * stored: the progress read derives every word from these rows.
+   */
+  public ProgressRead progress(String campaignId) {
+    return patience.hold(
+        "campaign progress read",
+        () ->
+            QuarkusTransaction.requiringNew()
+                .call(
+                    () -> {
+                      Campaign whole = view(campaign(campaignId));
+                      Set<String> targetIds = new HashSet<>();
+                      for (Member member : whole.members()) {
+                        targetIds.addAll(targets(member));
+                      }
+                      return new ProgressRead(
+                          whole,
+                          targetIds.isEmpty()
+                              ? Map.of()
+                              : Map.copyOf(byId(entities.listByIds(targetIds))));
+                    }));
   }
 
   /** A project's campaigns, oldest first, each with its start and its member count. */
@@ -287,7 +333,7 @@ public class CampaignService {
           flush();
           audit(campaign, "MEMBER_ADDED", edge, changedBy);
           if (starts.isActive(campaignId)) {
-            latch(campaign);
+            handOver(campaign, latch(campaign), edge);
           }
           return member(edge);
         });
@@ -522,7 +568,7 @@ public class CampaignService {
           flush();
           audit(campaign, "CONDITION_SET", edge, changedBy);
           if (starts.isActive(campaignId)) {
-            latch(campaign);
+            handOver(campaign, latch(campaign), edge);
           }
           return member(edge);
         });
@@ -532,7 +578,10 @@ public class CampaignService {
    * <b>A person's yes</b>: latches an APPROVAL criterion with {@code approved_by}, {@code
    * approval_note} and {@code satisfied_at}. 409 when the criterion is not APPROVAL, when it is
    * already satisfied (naming who and when), and when the campaign is DONE or DROPPED. Answers the
-   * memberships whose condition this made hold, so the executor can act on them.
+   * member if its condition now holds and it is unclaimed ({@link
+   * CampaignEvaluator#satisfiedUnclaimed}, the step every latch source shares), and hands it to the
+   * executor ({@link CampaignMembersSatisfied}, observed after commit), so an approval dispatches
+   * without waiting for the sweep.
    */
   public Approved approve(
       String campaignId, String membershipId, String criterionId, String note, String actor) {
@@ -574,17 +623,89 @@ public class CampaignService {
                     + criterion.satisfiedAt
                     + ".");
           }
-          boolean held = before.satisfied();
           criterion.approvedBy = actor;
           criterion.approvalNote = note == null || note.isBlank() ? null : note;
           criterion.satisfiedAt = Instant.now();
           flush();
           audit(campaign, "CRITERION_APPROVED", edge, actor);
-          Member after = member(edge);
-          List<String> satisfied =
-              !held && after.satisfied() && edge.claimedAt == null ? List.of(edge.id) : List.of();
-          return new Approved(after, satisfied);
+          List<String> ready = evaluator.satisfiedUnclaimed(List.of(edge.id));
+          if (!ready.isEmpty()) {
+            satisfied.fire(new CampaignMembersSatisfied(campaign.id, ready));
+          }
+          return new Approved(member(edge), ready);
         });
+  }
+
+  /**
+   * <b>A start press's row</b> (qits-417): upserts {@code campaign_start} — the first press inserts
+   * it with {@code first_started_at = started_at = now}, every later one sets {@code started_at},
+   * {@code started_by} and {@code active = true}, and {@code first_started_at}, the forward-only
+   * floor event criteria read, never moves. 409 unless the campaign is REFINED, decided under the
+   * campaign row's lock, so a pause that committed first is what this sees.
+   *
+   * <p>Locks the campaign's entity row, then the start row — the same order the pause hook in {@code
+   * WorkEntityService.transition} takes them in, so a press and a pause serialise on the first and
+   * never meet in opposite orders. Latching from the current state and sweeping are the caller's,
+   * after this has committed.
+   */
+  public CampaignStartRecord start(String campaignId, String startedBy) {
+    requireText(startedBy, "startedBy");
+    return writes.hold(
+        "campaign start",
+        () -> {
+          WorkEntity campaign = lockCampaign(campaignId);
+          if (!EntityStatus.REFINED.name().equals(campaign.status)) {
+            throw new ConflictException(
+                "Start a campaign from REFINED; campaign "
+                    + qid(campaign)
+                    + " is "
+                    + campaign.status
+                    + ". Move it to REFINED first.");
+          }
+          // Microseconds, what the column holds, so the row answered is the row stored.
+          Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+          CampaignStartRecord start =
+              em().find(CampaignStartRecord.class, campaignId, LockModeType.PESSIMISTIC_WRITE);
+          boolean first = start == null;
+          if (first) {
+            start = new CampaignStartRecord();
+            start.campaignId = campaignId;
+            start.firstStartedAt = now;
+          }
+          start.startedAt = now;
+          start.startedBy = startedBy;
+          start.active = true;
+          if (first) {
+            starts.persist(start);
+          }
+          flush();
+          Map<String, Object> snapshot = new LinkedHashMap<>();
+          snapshot.put("change", first ? "STARTED" : "RESTARTED");
+          snapshot.put("firstStartedAt", text(start.firstStartedAt));
+          snapshot.put("startedAt", text(start.startedAt));
+          snapshot.put("startedBy", start.startedBy);
+          auditService.record(
+              AuditEntityType.CAMPAIGN,
+              campaign.id,
+              campaign.id,
+              AuditOperation.UPDATE,
+              startedBy,
+              snapshot);
+          return start;
+        });
+  }
+
+  /**
+   * An active campaign's add or condition edit hands over what it left satisfied: the memberships
+   * the state-at-start latch satisfied, and the edited one itself when its condition now holds (a
+   * member joined with no condition, or a condition edited down to one already met).
+   */
+  private void handOver(WorkEntity campaign, List<String> latched, EntityMembership edge) {
+    Set<String> ready = new java.util.LinkedHashSet<>(latched);
+    ready.addAll(evaluator.satisfiedUnclaimed(List.of(edge.id)));
+    if (!ready.isEmpty()) {
+      satisfied.fire(new CampaignMembersSatisfied(campaign.id, List.copyOf(ready)));
+    }
   }
 
   /**
@@ -598,7 +719,8 @@ public class CampaignService {
    * evidence_signature = 'STATE_AT_START'}, no event id, and the summary {@code "<qid> was already
    * <status> when the campaign started"}. Not history: it reads a row this service owns.
    *
-   * @return the memberships whose condition now holds and did not before
+   * @return the memberships a latch landed on whose condition now holds — {@link
+   *     CampaignEvaluator#satisfiedUnclaimed}, the step every latch source answers through
    */
   public List<String> latchFromCurrentState(String campaignId) {
     return writes.hold("campaign latch from current state", () -> latch(lockCampaign(campaignId)));
@@ -628,11 +750,10 @@ public class CampaignService {
     }
     Map<String, WorkEntity> targets = byId(entities.listByIds(targetIds));
 
-    List<String> became = new ArrayList<>();
+    List<String> latchedOn = new ArrayList<>();
     Instant now = Instant.now();
     for (EntityMembership edge : unclaimed) {
       List<Group> condition = conditions.getOrDefault(edge.id, List.of());
-      boolean held = Conditions.satisfied(condition.stream().map(Group::criteria).toList());
       boolean latched = false;
       for (Group group : condition) {
         for (CampaignCriterion criterion : group.criteria()) {
@@ -656,19 +777,17 @@ public class CampaignService {
       if (latched) {
         flush();
         audit(campaign, "LATCHED_FROM_CURRENT_STATE", edge, null);
-        if (!held && Conditions.satisfied(condition.stream().map(Group::criteria).toList())) {
-          became.add(edge.id);
-        }
+        latchedOn.add(edge.id);
       }
     }
-    return List.copyOf(became);
+    return evaluator.satisfiedUnclaimed(latchedOn);
   }
 
   /**
    * Whether {@code current} is at or past {@code wanted} along {@link #FORWARD}. DROPPED is never
    * past anything; a DROPPED target is at a wanted DROPPED and nowhere else.
    */
-  static boolean reached(String current, String wanted) {
+  public static boolean reached(String current, String wanted) {
     if (current == null || wanted == null) {
       return false;
     }
@@ -852,20 +971,7 @@ public class CampaignService {
 
   /** {@code qits-412}, or {@code #412} with no qualifier — see {@link EntityQualifier}. */
   private String qid(WorkEntity row) {
-    if (row == null) {
-      return "an entity";
-    }
-    if (!qualifier.isUnsatisfied()) {
-      try {
-        String rendered = qualifier.get().qualifiedId(row);
-        if (rendered != null) {
-          return rendered;
-        }
-      } catch (RuntimeException e) {
-        // A decoration: it must never fail the write. The fallback below is still unambiguous.
-      }
-    }
-    return "#" + row.number;
+    return EntityQualifier.render(qualifier, row);
   }
 
   /**
