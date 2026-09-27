@@ -84,6 +84,13 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * the implementing one) connect without the marker, exactly as they do for the epic tools.
    * {@code list_entities} beside it is a read and is deliberately not here: an unattended run may
    * always see the plan it must not rewrite.
+   *
+   * <p>{@code CampaignMcpTools}' six writes join on the same reading as the epic tools (qits-414):
+   * an unattended run steered by an untrusted commit message must not build or reorder a campaign's
+   * membership, seed or clear its conditions, or move its lifecycle. There is no {@code
+   * start_campaign} or {@code approve_campaign_criterion} tool to list here at all — both are
+   * {@code qits:admin} presses on the REST door, deliberately absent from this server, so an
+   * unattended run could never reach them regardless of this filter.
    */
   private static final Set<String> MUTATING_TOOLS =
       Set.of(
@@ -114,7 +121,13 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "unblock_ticket",
           "add_ticket_comment",
           "update_ticket_comment",
-          "transition_entities");
+          "transition_entities",
+          "create_campaign",
+          "transition_campaign",
+          "add_campaign_member",
+          "move_campaign_member",
+          "remove_campaign_member",
+          "set_campaign_member_condition");
 
   @Inject HttpServerRequest request;
 

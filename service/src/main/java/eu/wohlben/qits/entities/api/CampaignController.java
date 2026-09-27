@@ -155,6 +155,34 @@ public class CampaignController {
   /** The whole condition — PUT semantics; an empty list means the member waits on nothing. */
   public record SetCampaignMemberConditionRequest(List<ConditionGroup> groups) {}
 
+  /**
+   * The wire shape of a condition, translated into {@link CampaignService}'s own spec — shared with
+   * {@code CampaignMcpTools}' {@code set_campaign_member_condition}, which takes the identical {@link
+   * ConditionGroup}/{@link ConditionCriterion} records as tool arguments, so the two doors cannot
+   * translate the wire the same shape two different ways.
+   */
+  public static List<CampaignService.GroupSpec> toGroupSpecs(List<ConditionGroup> groups) {
+    return groups == null
+        ? List.of()
+        : groups.stream()
+            .map(
+                group ->
+                    group == null || group.criteria() == null
+                        ? new CampaignService.GroupSpec(List.of())
+                        : new CampaignService.GroupSpec(
+                            group.criteria().stream()
+                                .map(
+                                    criterion ->
+                                        criterion == null
+                                            ? null
+                                            : new CampaignService.CriterionSpec(
+                                                criterion.id(),
+                                                criterion.kind(),
+                                                criterion.predicate()))
+                                .toList()))
+            .toList();
+  }
+
   @PUT
   @Path("/{id}/members/{membershipId}/condition")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
@@ -164,25 +192,7 @@ public class CampaignController {
       SetCampaignMemberConditionRequest request) {
     String projectId = bind(id);
     List<CampaignService.GroupSpec> groups =
-        request == null || request.groups() == null
-            ? List.of()
-            : request.groups().stream()
-                .map(
-                    group ->
-                        group == null || group.criteria() == null
-                            ? new CampaignService.GroupSpec(List.of())
-                            : new CampaignService.GroupSpec(
-                                group.criteria().stream()
-                                    .map(
-                                        criterion ->
-                                            criterion == null
-                                                ? null
-                                                : new CampaignService.CriterionSpec(
-                                                    criterion.id(),
-                                                    criterion.kind(),
-                                                    criterion.predicate()))
-                                    .toList()))
-                .toList();
+        toGroupSpecs(request == null ? null : request.groups());
     CampaignService.Member member =
         campaigns.setCondition(id, membershipId, groups, EntitiesPrincipal.changedBy(identity));
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);

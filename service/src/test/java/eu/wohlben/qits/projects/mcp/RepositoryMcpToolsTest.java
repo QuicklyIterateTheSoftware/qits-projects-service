@@ -335,7 +335,15 @@ public class RepositoryMcpToolsTest {
                       "update_ticket",
                       "transition_ticket",
                       "add_ticket_comment",
-                      "update_ticket_comment")) {
+                      "update_ticket_comment",
+                      // The campaign write tools (CampaignMcpTools, qits-414) join for the same
+                      // reason: an unattended run must not build, reorder or gate a campaign.
+                      "create_campaign",
+                      "transition_campaign",
+                      "add_campaign_member",
+                      "move_campaign_member",
+                      "remove_campaign_member",
+                      "set_campaign_member_condition")) {
                 assertFalse(
                     names.contains(mutating),
                     "read-only run still exposes mutating tool " + mutating + ": " + names);
@@ -450,7 +458,18 @@ public class RepositoryMcpToolsTest {
                       // membership. Neither is an epic lifecycle move: no status travels along
                       // any lifecycle here, and freezing a draft is still a human act in the UI.
                       "transition_entities",
-                      "list_entities"),
+                      "list_entities",
+                      // CampaignMcpTools (qits-414) — building a campaign's membership and order.
+                      // No start tool and no approve tool: both are qits:admin presses, and an MCP
+                      // tool would be the "dispatch without a person" door the epic refuses.
+                      "list_campaigns",
+                      "get_campaign",
+                      "create_campaign",
+                      "transition_campaign",
+                      "add_campaign_member",
+                      "move_campaign_member",
+                      "remove_campaign_member",
+                      "set_campaign_member_condition"),
                   java.util.Set.copyOf(names),
                   "unexpected tool surface: " + names);
             })
