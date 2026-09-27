@@ -455,10 +455,12 @@ class CampaignExecutorTest {
         .post(path)
         .then()
         .statusCode(200)
-        .body("campaign.id", equalTo(f.campaign.id))
-        .body("campaign.start.startedBy", equalTo("dana"))
-        .body("campaign.start.active", equalTo(true))
-        .body("campaign.members[0].dispatch.workspaceId", equalTo("41"));
+        .body("progress.campaign.id", equalTo(f.campaign.id))
+        .body("progress.campaign.start.startedBy", equalTo("dana"))
+        .body("progress.campaign.start.active", equalTo(true))
+        .body("progress.evaluator.connected", equalTo(false))
+        .body("progress.members[0].state", equalTo("RUNNING"))
+        .body("progress.members[0].dispatch.workspaceId", equalTo("41"));
     asAdmin("dana")
         .get(path)
         .then()

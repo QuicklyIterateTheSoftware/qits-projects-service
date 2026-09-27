@@ -168,6 +168,13 @@ public class CampaignService {
    */
   public record CriterionSpec(String id, String kind, Map<String, Object> predicate) {}
 
+  /**
+   * What the progress read (qits-418) derives from: the whole campaign, and every row an
+   * ENTITY_STATUS criterion of it targets, keyed by id — members or not, so a target that left the
+   * campaign still reads as itself and only a deleted one is absent.
+   */
+  public record ProgressRead(Campaign campaign, Map<String, WorkEntity> targets) {}
+
   /** An approval's answer: the member, and — when its condition now holds — its membership id. */
   public record Approved(Member member, List<String> satisfied) {}
 
@@ -186,6 +193,31 @@ public class CampaignService {
     return patience.hold(
         "campaign read",
         () -> QuarkusTransaction.requiringNew().call(() -> view(campaign(campaignId))));
+  }
+
+  /**
+   * <b>The campaign and its criteria's targets, read together</b> (qits-418) — {@link #get}'s five
+   * queries plus one for the targets, in one fresh transaction for {@link #get}'s reason. Nothing is
+   * stored: the progress read derives every word from these rows.
+   */
+  public ProgressRead progress(String campaignId) {
+    return patience.hold(
+        "campaign progress read",
+        () ->
+            QuarkusTransaction.requiringNew()
+                .call(
+                    () -> {
+                      Campaign whole = view(campaign(campaignId));
+                      Set<String> targetIds = new HashSet<>();
+                      for (Member member : whole.members()) {
+                        targetIds.addAll(targets(member));
+                      }
+                      return new ProgressRead(
+                          whole,
+                          targetIds.isEmpty()
+                              ? Map.of()
+                              : Map.copyOf(byId(entities.listByIds(targetIds))));
+                    }));
   }
 
   /** A project's campaigns, oldest first, each with its start and its member count. */
@@ -755,7 +787,7 @@ public class CampaignService {
    * Whether {@code current} is at or past {@code wanted} along {@link #FORWARD}. DROPPED is never
    * past anything; a DROPPED target is at a wanted DROPPED and nowhere else.
    */
-  static boolean reached(String current, String wanted) {
+  public static boolean reached(String current, String wanted) {
     if (current == null || wanted == null) {
       return false;
     }

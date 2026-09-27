@@ -39,11 +39,12 @@ public class CampaignStarter {
   @Inject ProjectChangePublisher publisher;
 
   /**
-   * The press. Answers the campaign as it stands after the sweep.
+   * The press. Answers the campaign's progress as the sweep left it — the rows {@link
+   * CampaignService#progress} reads, which the door renders as the progress read's own wrapper.
    *
    * @param actor who pressed; recorded as {@code started_by} and named in every member's dispatch
    */
-  public CampaignService.Campaign start(WorkEntity campaign, DispatchMode mode, String actor) {
+  public CampaignService.ProgressRead start(WorkEntity campaign, DispatchMode mode, String actor) {
     if (campaign.archetype != Archetype.CAMPAIGN) {
       throw new IllegalArgumentException(campaign.id + " is a " + campaign.archetype);
     }
@@ -68,6 +69,6 @@ public class CampaignStarter {
     publisher.fire(campaign.projectId, ProjectChangeHint.Topic.EPICS);
     campaigns.latchFromCurrentState(campaign.id);
     executor.sweep(campaign.id);
-    return campaigns.get(campaign.id);
+    return campaigns.progress(campaign.id);
   }
 }

@@ -4,6 +4,7 @@ import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDispatchDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberEntityDto;
+import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignStartDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignSummaryDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CriterionApprovalDto;
@@ -16,6 +17,7 @@ import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.campaignhost.CampaignEvaluatorHealth;
 import eu.wohlben.qits.projects.control.ProjectService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -34,6 +36,8 @@ import java.util.Set;
 public class CampaignViews {
 
   @Inject ProjectService projectService;
+
+  @Inject CampaignEvaluatorHealth health;
 
   /** A project's listing. */
   public List<CampaignSummaryDto> summaries(List<CampaignService.Summary> summaries) {
@@ -119,22 +123,41 @@ public class CampaignViews {
   }
 
   private static CriterionDto criterion(CampaignCriterion criterion) {
-    boolean latched = criterion.satisfiedAt != null;
     return new CriterionDto(
         criterion.id,
         criterion.kind.name(),
         criterion.decoded().asMap(),
         criterion.seeded,
         criterion.satisfiedAt,
-        latched && criterion.evidenceSignature != null
-            ? new CriterionEvidenceDto(
-                criterion.evidenceEventId == null ? null : criterion.evidenceEventId.toString(),
-                criterion.evidenceSignature,
-                criterion.evidenceSummary)
-            : null,
-        latched && criterion.approvedBy != null
-            ? new CriterionApprovalDto(criterion.approvedBy, criterion.approvalNote)
-            : null);
+        evidence(criterion),
+        approval(criterion));
+  }
+
+  /** What latched {@code criterion} — an event or {@code STATE_AT_START} — or null. */
+  static CriterionEvidenceDto evidence(CampaignCriterion criterion) {
+    return criterion.satisfiedAt != null && criterion.evidenceSignature != null
+        ? new CriterionEvidenceDto(
+            criterion.evidenceEventId == null ? null : criterion.evidenceEventId.toString(),
+            criterion.evidenceSignature,
+            criterion.evidenceSummary)
+        : null;
+  }
+
+  /** Who approved {@code criterion}, and what they said — or null. */
+  static CriterionApprovalDto approval(CampaignCriterion criterion) {
+    return criterion.satisfiedAt != null && criterion.approvedBy != null
+        ? new CriterionApprovalDto(criterion.approvedBy, criterion.approvalNote)
+        : null;
+  }
+
+  /**
+   * A campaign's progress (qits-418) — {@link CampaignProgress#derive} over the rows {@link
+   * CampaignService#progress} read, qualified from the one slug, with the evaluator's health as it
+   * stands now.
+   */
+  public CampaignProgressDto progress(CampaignService.ProgressRead read) {
+    String slug = slugOf(read.campaign().campaign().projectId);
+    return CampaignProgress.derive(read, row -> qualified(slug, row), health.now());
   }
 
   /** The project's slug, or null when it cannot be read — a decoration never fails the read. */

@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
+import eu.wohlben.qits.entities.api.CampaignController.CampaignProgressResponse;
 import eu.wohlben.qits.entities.api.CampaignViews;
 import eu.wohlben.qits.entities.api.EntitiesPrincipal;
 import eu.wohlben.qits.entities.campaign.CampaignService;
@@ -30,7 +30,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <pre>
  *   POST /projects/api/entities/{id}/dispatch   {"mode":"FLOW"|"PHASE"}  → {"dispatch": EntityDispatchDto}
- *                                                on a campaign: {"mode":"FLOW"} → {"campaign": CampaignDto}
+ *                                                on a campaign: {"mode":"FLOW"} → {"progress": CampaignProgressDto}
  *   GET  /projects/api/entities/{id}/dispatch                            → {"state": EntityDispatchStateDto}
  * </pre>
  *
@@ -88,14 +88,9 @@ public class EntityDispatchController {
   }
 
   /**
-   * A campaign's press answers the campaign it started (qits-417) — {@code {"campaign":
-   * CampaignDto}} — the same wrapper {@code GET /campaigns/{id}} answers.
-   */
-  public record CampaignStartResponse(CampaignDto campaign) {}
-
-  /**
    * The press. On a campaign it is the campaign's start ({@link CampaignStarter}), answering {@link
-   * CampaignStartResponse}; on anything else the one dispatch path, answering {@link
+   * CampaignProgressResponse} — {@code {"progress": CampaignProgressDto}}, the same wrapper {@code
+   * GET /campaigns/{id}/progress} answers (qits-418); on anything else the one dispatch path, answering {@link
    * DispatchRequest.Response}. Hence a {@link Response} rather than either record.
    */
   @POST
@@ -103,19 +98,19 @@ public class EntityDispatchController {
   @APIResponse(
       responseCode = "200",
       description =
-          "The dispatch made, or — for a campaign — the campaign as its start press left it",
+          "The dispatch made, or — for a campaign — its progress as the start press left it",
       content =
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema =
-                  @Schema(oneOf = {DispatchRequest.Response.class, CampaignStartResponse.class})))
+                  @Schema(oneOf = {DispatchRequest.Response.class, CampaignProgressResponse.class})))
   public Response dispatch(@PathParam("id") String id, DispatchRequest request) {
     DispatchMode mode = modeOf(request);
     String changedBy = EntitiesPrincipal.changedBy(identity);
     WorkEntity entity = dispatch.get(id); // 404
     if (entity.archetype == Archetype.CAMPAIGN) {
-      CampaignService.Campaign started = starter.start(entity, mode, changedBy);
-      return Response.ok(new CampaignStartResponse(views.campaign(started))).build();
+      CampaignService.ProgressRead started = starter.start(entity, mode, changedBy);
+      return Response.ok(new CampaignProgressResponse(views.progress(started))).build();
     }
     EntityDispatch.Outcome outcome = dispatch.dispatch(id, mode, changedBy);
     return Response.ok(new DispatchRequest.Response(outcome.toDto())).build();

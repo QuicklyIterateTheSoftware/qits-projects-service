@@ -2,6 +2,7 @@ package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberDto;
+import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -28,7 +29,8 @@ import java.util.Map;
 
 /**
  * <b>One campaign</b> (qits-413): the read, the status transition, and the authoring of its
- * membership — add, move, remove, condition — plus the one person's latch, approve.
+ * membership — add, move, remove, condition — plus the one person's latch, approve, and the
+ * progress read (qits-418).
  *
  * <ul>
  *   <li><b>Every door but approve admits {@code qits:agent}</b>, bound to the agent's own project:
@@ -67,11 +69,26 @@ public class CampaignController {
 
   public record CampaignMemberResponse(CampaignMemberDto member) {}
 
+  /** The progress read's wrapper — also what the start press answers (qits-418). */
+  public record CampaignProgressResponse(CampaignProgressDto progress) {}
+
   @GET
   @Path("/{id}")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CampaignResponse get(@PathParam("id") String id) {
     return new CampaignResponse(views.campaign(campaigns.get(id)));
+  }
+
+  /**
+   * <b>How the campaign is doing</b> (qits-418): every member's derived state, what it waits for,
+   * each criterion judged (the sentence that would latch it, whether it still can, its evidence),
+   * and whether the criteria evaluator is listening at all. Derived on every read; nothing stored.
+   */
+  @GET
+  @Path("/{id}/progress")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  public CampaignProgressResponse progress(@PathParam("id") String id) {
+    return new CampaignProgressResponse(views.progress(campaigns.progress(id)));
   }
 
   public record TransitionCampaignRequest(@NotBlank String target) {}

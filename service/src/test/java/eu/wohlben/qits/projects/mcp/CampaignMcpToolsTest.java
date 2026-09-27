@@ -254,6 +254,22 @@ public class CampaignMcpToolsTest {
 
     call(
         projectId,
+        "get_campaign_progress",
+        Map.of("id", campaignId[0]),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          JsonNode progress = json(response);
+          assertEquals(campaignId[0], progress.get("campaign").get("id").asText());
+          assertFalse(progress.get("evaluator").get("connected").asBoolean(), "the bus is dark");
+          assertEquals(3, progress.get("members").size());
+          JsonNode gated =
+              findMember(progress, secondMembershipId[0]).get("groups").get(0).get("criteria").get(0);
+          assertEquals("a person approves", gated.get("wouldBeSatisfiedBy").asText());
+          assertTrue(gated.get("satisfiable").asBoolean());
+        });
+
+    call(
+        projectId,
         "transition_campaign",
         Map.of("id", campaignId[0], "target", "REFINED"),
         response -> {
@@ -375,6 +391,8 @@ public class CampaignMcpToolsTest {
               }
               assertTrue(names.contains("list_campaigns"), "read-only tool wrongly hidden: " + names);
               assertTrue(names.contains("get_campaign"), "read-only tool wrongly hidden: " + names);
+              assertTrue(
+                  names.contains("get_campaign_progress"), "read-only tool wrongly hidden: " + names);
             })
         .thenAssertResults();
   }
@@ -391,7 +409,7 @@ public class CampaignMcpToolsTest {
               assertTrue(names.contains("transition_campaign"), names.toString());
               assertFalse(names.contains("start_campaign"), names.toString());
               assertFalse(names.contains("approve_campaign_criterion"), names.toString());
-              assertFalse(names.contains("get_campaign_progress"), names.toString());
+              assertTrue(names.contains("get_campaign_progress"), names.toString());
             })
         .thenAssertResults();
   }

@@ -242,6 +242,63 @@ class CampaignApiTest {
         .statusCode(409);
   }
 
+  // --- the progress read (qits-418) ----------------------------------------------------------------
+
+  /**
+   * The progress door answers {@code {"progress": CampaignProgressDto}}: a member with no condition
+   * is READY, one waiting on it WAITING with the sentence that would satisfy it, and the evaluator
+   * reads dark because the bus is off in {@code %test}. An agent reads it; an unknown id is a 404.
+   */
+  @Test
+  void theProgressDoorDerivesEachMembersStateAndAdmitsTheAgent() {
+    WorkEntity campaign = workEntities.createCampaign(PROJECT, "Progress", null, "t");
+    WorkEntity first = ticket("Progress first");
+    WorkEntity second = ticket("Progress second");
+    campaigns.addMember(campaign.id, first.id, null, false, "t");
+    campaigns.addMember(campaign.id, second.id, null, false, "t");
+    String base = "/projects/api/campaigns/" + campaign.id;
+
+    given()
+        .get(base + "/progress")
+        .then()
+        .statusCode(200)
+        .body("progress.campaign.id", equalTo(campaign.id))
+        .body("progress.campaign.qualifiedId", equalTo(PROJECT + "-" + campaign.number))
+        .body("progress.campaign.status", equalTo("REPORTED"))
+        .body("progress.campaign.start", nullValue())
+        .body("progress.evaluator.connected", equalTo(false))
+        .body("progress.evaluator.stalled", equalTo(false))
+        .body("progress.members.size()", equalTo(2))
+        .body("progress.members[0].state", equalTo("READY"))
+        .body("progress.members[0].waitsFor.size()", equalTo(0))
+        .body("progress.members[1].state", equalTo("WAITING"))
+        .body("progress.members[1].waitsFor", equalTo(List.of(first.id)))
+        .body("progress.members[1].groups[0].satisfied", equalTo(false))
+        .body("progress.members[1].groups[0].criteria[0].seeded", equalTo(true))
+        .body(
+            "progress.members[1].groups[0].criteria[0].wouldBeSatisfiedBy",
+            equalTo(PROJECT + "-" + first.number + " (Progress first) reaches VERIFIED"))
+        .body("progress.members[1].groups[0].criteria[0].satisfiable", equalTo(true))
+        .body("progress.members[1].groups[0].criteria[0].reason", nullValue())
+        .body("progress.members[1].dispatch.workspaceId", nullValue());
+
+    asForwardedAgent()
+        .get(base + "/progress")
+        .then()
+        .statusCode(200)
+        .body("progress.members.size()", equalTo(2));
+    asForwardedAgent()
+        .get("/projects/api/campaigns/no-such-campaign/progress")
+        .then()
+        .statusCode(404);
+    given()
+        .header("X-Qits-User", "someone")
+        .header("X-Qits-Roles", "qits:system")
+        .get(base + "/progress")
+        .then()
+        .statusCode(403);
+  }
+
   // --- roles ---------------------------------------------------------------------------------------
 
   /** Approve is the sign-off: the role list refuses the agent before any body runs. */

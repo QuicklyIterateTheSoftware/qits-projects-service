@@ -347,6 +347,29 @@ components:
         behind:
           type: integer
           format: int32
+    CampaignCriterionProgressDto:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        seeded:
+          type: boolean
+        satisfied:
+          type: boolean
+        wouldBeSatisfiedBy:
+          type: string
+        satisfiable:
+          type: boolean
+        reason:
+          type: string
+        evidence:
+          $ref: "#/components/schemas/CriterionEvidenceDto"
+        approval:
+          $ref: "#/components/schemas/CriterionApprovalDto"
+        satisfiedAt:
+          $ref: "#/components/schemas/Instant"
     CampaignDispatchDto:
       type: object
       properties:
@@ -382,6 +405,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CampaignMemberDto"
+    CampaignEvaluatorDto:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        lastSweepCompletedAt:
+          $ref: "#/components/schemas/Instant"
+        stalled:
+          type: boolean
+    CampaignGroupProgressDto:
+      type: object
+      properties:
+        id:
+          type: string
+        satisfied:
+          type: boolean
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignCriterionProgressDto"
     CampaignMemberDto:
       type: object
       properties:
@@ -425,11 +468,83 @@ components:
           type: string
         blocked:
           type: boolean
+    CampaignMemberProgressDto:
+      type: object
+      properties:
+        membershipId:
+          type: string
+        position:
+          type: integer
+          format: int32
+        entity:
+          $ref: "#/components/schemas/CampaignMemberEntityDto"
+        state:
+          $ref: "#/components/schemas/CampaignMemberState"
+        waitsFor:
+          type: array
+          items:
+            type: string
+        joinedRunning:
+          type: boolean
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignGroupProgressDto"
+        dispatchedAt:
+          $ref: "#/components/schemas/Instant"
+        dispatch:
+          $ref: "#/components/schemas/CampaignDispatchDto"
+        dispatchRefusal:
+          type: string
+        dispatchRefusedAt:
+          $ref: "#/components/schemas/Instant"
+        dispatchError:
+          type: string
     CampaignMemberResponse:
       type: object
       properties:
         member:
           $ref: "#/components/schemas/CampaignMemberDto"
+    CampaignMemberState:
+      type: string
+      enum:
+      - DROPPED
+      - DONE
+      - DISPATCH_FAILED
+      - JOINED_RUNNING
+      - RUNNING
+      - REFUSED
+      - READY
+      - WAITING
+    CampaignProgressCampaignDto:
+      type: object
+      properties:
+        id:
+          type: string
+        qualifiedId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        start:
+          $ref: "#/components/schemas/CampaignStartDto"
+    CampaignProgressDto:
+      type: object
+      properties:
+        campaign:
+          $ref: "#/components/schemas/CampaignProgressCampaignDto"
+        evaluator:
+          $ref: "#/components/schemas/CampaignEvaluatorDto"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignMemberProgressDto"
+    CampaignProgressResponse:
+      type: object
+      properties:
+        progress:
+          $ref: "#/components/schemas/CampaignProgressDto"
     CampaignResponse:
       type: object
       properties:
@@ -446,11 +561,6 @@ components:
           type: string
         active:
           type: boolean
-    CampaignStartResponse:
-      type: object
-      properties:
-        campaign:
-          $ref: "#/components/schemas/CampaignDto"
     CampaignSummaryDto:
       type: object
       properties:
@@ -3104,6 +3214,32 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/campaigns/{id}/progress:
+    get:
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignProgressResponse"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      summary: Progress
+      tags:
+      - Campaign Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
   /projects/api/campaigns/{id}/transition:
     post:
       parameters:
@@ -3231,14 +3367,14 @@ paths:
         required: true
       responses:
         "200":
-          description: "The dispatch made, or — for a campaign — the campaign as its\
+          description: "The dispatch made, or — for a campaign — its progress as the\
             \ start press left it"
           content:
             application/json:
               schema:
                 oneOf:
                 - $ref: "#/components/schemas/Response27"
-                - $ref: "#/components/schemas/CampaignStartResponse"
+                - $ref: "#/components/schemas/CampaignProgressResponse"
         "401":
           description: Not Authorized
         "403":
