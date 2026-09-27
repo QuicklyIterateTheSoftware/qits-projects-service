@@ -156,8 +156,11 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   in the qits-coding-agents javalib, which both daemons refuse a surface outside of with a 400 — so
   changing it is a coordinated release of this service, its SPA and two daemons rather than a
   rename, and nothing here would notice one (the store has no check constraint and an unknown key
-  reads as its shipped default). It is deferred to epic qits-310, which may merge it with
-  `project.tickets` anyway; `AgentSurfaceDefaults.PROJECT_EPICS` carries the argument.
+  reads as its shipped default). Epic qits-310 merged the two desks instead of renaming either:
+  since qits-403 the one desk launches as `project.work` (`AgentSurfaceDefaults.PROJECT_WORK`,
+  `AgentSurface.PROJECT_WORK` from qits-coding-agents 2026.927.4238), V30 inserted its row as a
+  copy of `project.epics`, and `project.epics`/`project.tickets` are `RETIRING` — they still
+  resolve, but nothing launches with them.
   `docs/unified-entity-model.md` § "The 'epics' vocabulary rename, as
   shipped" is the full table and the argument.
 
@@ -1664,13 +1667,23 @@ on those five strings and they are a published contract.
 ### Agent surface configuration
 
 **What a session runs as is a row here now, not a constant in a daemon.** A *session surface* is
-where in the product a session was started from — `project.epics`, `project.tickets`, `epic.chat`,
-`epic.agent`, `workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch` — and one
+where in the product a session was started from — `project.work`, `epic.chat`, `epic.agent`,
+`workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch` — and one
 configuration per surface, **platform-wide**, holds the harness, model, effort, remote control,
 permission mode, activity tracking, the system prompt, the initial prompt, and which of the three
 built-in MCP servers attach with what narrowing. Schema in `V16`; entities, store and shipped
 defaults in `domain`; two controllers and the boot seed in `service`.
 
+- **`project.work` is the one desk; `project.epics` and `project.tickets` are retiring
+  (qits-403).** The merged front desk at `:project/work` launches every new session as
+  `project.work`. The two old keys left `AgentSurfaceDefaults.SURFACES` for `RETIRING`: not seeded,
+  not leading the listing, but still in `SHIPPED`, so they resolve — their rows stay, and every
+  container born before the switch read a document naming them once, at boot. `V30` **inserted**
+  (never updated) a `project.work` row copied from `project.epics` — row, built-in and catalog
+  attachments — because the merged desk inherits the refinement surface's configuration, not the
+  tickets desk's prompt. It is guarded so an existing `project.work` row is never touched, and it
+  cannot be pre-empted by the seed: Flyway's `migrate-at-start` runs before the `StartupEvent`
+  that starts `AgentSurfaceSeed`, which then finds the row and writes nothing.
 - **The seed is the safety.** `control/AgentSurfaceDefaults` carries the eight surfaces seeded from
   what the two daemons hardcode today, so turning the store on changes nothing: the tickets desk's
   text block byte for byte, an **empty** system prompt on the epics desk (a value, not an absence),
@@ -1837,9 +1850,10 @@ interpolated into any message, including an exception's.
 
 **A project agent container is born holding what its sessions run as.** `AgentContainerFactory`
 builds the resolved document from the store **in process** — no fetch, because the store is here —
-and puts it in the container's spec beside the path it is to land at. The two surfaces this
-container serves are `project.epics` and `project.tickets`; what goes in is *every* surface, which
-is the container door's own decision and its javadoc carries the argument.
+and puts it in the container's spec beside the path it is to land at. The surface this
+container's sessions launch with is `project.work` (the retiring `project.epics` and
+`project.tickets` ride along wherever their rows are stored); what goes in is *every* surface,
+which is the container door's own decision and its javadoc carries the argument.
 
     QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION       the whole resolved document, serialized
     QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH  /tmp/qits/agent-configuration.json

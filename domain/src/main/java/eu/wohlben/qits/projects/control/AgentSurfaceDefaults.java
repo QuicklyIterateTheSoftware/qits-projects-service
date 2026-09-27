@@ -16,7 +16,8 @@ import java.util.stream.Stream;
  * <p><b>The whole safety of this feature is that these values are what the daemons already
  * render.</b> Turning the store on must change nothing: {@code project.tickets} carries the tickets
  * desk's text block byte for byte, {@code project.epics} carries an <em>empty</em> system prompt
- * (which is a value and not an absence — the epics desk steers with nothing, deliberately), every
+ * (which is a value and not an absence — the epics desk steers with nothing, deliberately) and so
+ * does {@code project.work}, the one desk that replaced both (qits-403), every
  * surface carries skip-permissions because that is what every launch does unconditionally today, and
  * each attaches exactly the MCP servers its host daemon's {@code serversFor} attaches at the scope
  * that surface launches with. Everything downstream of here assumes "configured" and "hardcoded" are
@@ -62,30 +63,45 @@ public final class AgentSurfaceDefaults {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * The refinement agent on a project's epics overview. Projects daemon, {@code PROJECT} scope.
+   * The one front desk at {@code :project/work} — the epics and tickets desks merged (qits-310).
+   * Projects daemon, {@code PROJECT} scope. <b>Every new desk session launches with this key</b>
+   * (qits-403); {@link #PROJECT_EPICS} and {@link #PROJECT_TICKETS} only still resolve.
    *
-   * <p><b>The word {@code epics} survives the {@code entities} rename here deliberately, and this
-   * is the one place it is not simply "deployment configuration or applied history".</b> It is a
-   * cross-repository WIRE CONTRACT: {@code AgentSurface} in {@code
-   * eu.wohlben.qits:qits-coding-agents} is a closed list, and {@code AgentSurface.of} refuses
-   * anything outside it — so both qits-projects-daemon (on the launch body) and qits-workspace-daemon
-   * (on its own surface parameter) answer a 400 to a spelling neither was released with. Renaming
-   * this constant is a coordinated release of this service, its SPA and two daemons, not a rename.
+   * <p><b>It is a cross-repository WIRE CONTRACT, not a label.</b> {@code AgentSurface} in {@code
+   * eu.wohlben.qits:qits-coding-agents} is a closed list and {@code AgentSurface.of} refuses anything
+   * outside it, so both daemons answer a 400 to a spelling neither was released with. {@code
+   * project.work} entered that list in qits-coding-agents 2026.927.4238 ({@code
+   * AgentSurface.PROJECT_WORK}), and the daemons carrying it deploy before this service launches
+   * with it. This service does not depend on that library, so the key is spelled here as a string;
+   * nothing in this repository would notice a misspelling — the store is permissive on purpose
+   * ({@code surface_key} carries no check constraint, V16, and an unknown key reads as {@link
+   * #neutralDefault} rather than 404ing) — which is why {@code AgentSurfaceDefaultsTest} pins the
+   * literal.
    *
-   * <p><b>Nothing in this repository would notice, which is exactly why the note is here.</b> The
-   * store is permissive on purpose — {@code surface_key} carries no check constraint (V16) and an
-   * unknown key reads as {@link #shippedDefault}/{@link #neutralDefault} rather than 404ing — so a
-   * rename would seed a new row, pass this whole suite, and fail for the first person who pressed a
-   * button in a deployed image.
+   * <p><b>It ships as the epics desk shipped</b> — an empty system prompt, the one project-narrowed
+   * {@code repository} server — because the merged desk inherits the refinement surface's
+   * configuration, not the triage one's. V30 copies the stored {@code project.epics} row onto this
+   * key for the same reason, so an estate that had edited the epics desk carries the edit across.
+   */
+  public static final String PROJECT_WORK = "project.work";
+
+  /**
+   * The epics desk's surface, <b>retiring</b>: no new session launches with it since qits-403, and
+   * it leaves the launching vocabulary ({@link #SURFACES}) for {@link #RETIRING}.
    *
-   * <p>The rename is therefore deferred to epic qits-310, which proposes collapsing the epics and
-   * tickets desks into one front desk and may merge this surface with {@link #PROJECT_TICKETS}
-   * altogether. Renaming it first would be renaming it twice, or minting a name that collides with
-   * whatever that epic lands on.
+   * <p>It still resolves — it stays in {@link #SHIPPED} — for two readers that outlive the switch:
+   * its stored row, which V30 left in place, and every container born before the switch, which
+   * read its configuration document once at boot and names this key for as long as it lives. The
+   * key and its row retire together with {@link #PROJECT_TICKETS} in a later change, once nothing
+   * launches or holds it.
    */
   public static final String PROJECT_EPICS = "project.epics";
 
-  /** The triage agent on a project's tickets overview. Projects daemon, {@code PROJECT} scope. */
+  /**
+   * The tickets desk's surface, <b>retiring</b> exactly as {@link #PROJECT_EPICS} is and for the
+   * same reasons. It keeps {@link #TICKETS_DESK_PROMPT} as its shipped default so a container still
+   * holding it renders what it always rendered.
+   */
   public static final String PROJECT_TICKETS = "project.tickets";
 
   /** The refining route's chat tab. Workspace daemon, {@code REPOSITORY} scope. */
@@ -107,23 +123,33 @@ public final class AgentSurfaceDefaults {
   public static final String TICKET_DISPATCH = "ticket.dispatch";
 
   /**
-   * The eight surfaces the platform has, in the order the editor lists them: the two project desks,
-   * the four a human opens in a workspace container, then the two composed runs.
+   * The seven surfaces sessions launch with, in the order the editor lists them: the project's one
+   * front desk, the four a human opens in a workspace container, then the two composed runs. This
+   * is what the boot seed writes and what the listing leads with.
    *
-   * <p>Adding a ninth is a line here and a shipped default below — no migration, no schema change.
+   * <p>Adding one is a line here and a shipped default below — no migration, no schema change.
    * That openness is the point: an unknown surface reads as {@link #neutralDefault} rather than
    * 404ing, so a daemon that knows a surface this store has not been told about still launches.
+   * (V30 is the one exception, and it is a data copy, not a schema change: see {@link
+   * #PROJECT_WORK}.)
    */
   public static final List<String> SURFACES =
       List.of(
-          PROJECT_EPICS,
-          PROJECT_TICKETS,
+          PROJECT_WORK,
           EPIC_CHAT,
           EPIC_AGENT,
           WORKSPACE_CHAT,
           WORKSPACE_AGENT,
           EPIC_AUTONOMOUS,
           TICKET_DISPATCH);
+
+  /**
+   * Surfaces no new session launches with that still resolve to their shipped default: the two
+   * desks {@link #PROJECT_WORK} replaced. Not seeded — a fresh estate has no use for them — and not
+   * in the listing's lead; an estate that holds their rows lists them after the vocabulary, the way
+   * it lists any stored surface outside it.
+   */
+  public static final List<String> RETIRING = List.of(PROJECT_EPICS, PROJECT_TICKETS);
 
   // ---------------------------------------------------------------------------------------------
   // The platform's own MCP servers
@@ -404,7 +430,8 @@ public final class AgentSurfaceDefaults {
   }
 
   /**
-   * The eight shipped configurations, keyed by surface and in {@link #SURFACES} order.
+   * The shipped configurations — the seven in {@link #SURFACES} and the two {@link #RETIRING} ones —
+   * keyed by surface.
    *
    * <p>Read this table beside the two {@code AgentLaunchService}s; every value in it came from one.
    */
@@ -412,13 +439,19 @@ public final class AgentSurfaceDefaults {
 
   private static Map<String, AgentSurfaceConfigurationDto> shipped() {
     Map<String, AgentSurfaceConfigurationDto> map = new LinkedHashMap<>();
-    // The epics desk steers with NOTHING — systemPromptFor(EPICS) returns null — and that emptiness
-    // is the reason the desk axis could be added without touching a running launch. Remote control
-    // is on: it is a chat, and the projects daemon's claudeChatProtocol bridges every chat.
+    // The one front desk ships as the epics desk did: the merged desk inherits the refinement
+    // surface's configuration, and the library's shipped prompt for PROJECT_WORK is empty too.
+    map.put(
+        PROJECT_WORK,
+        surface(PROJECT_WORK, true, "", "", List.of(projectScopedRepository(false))));
+    // RETIRING. The epics desk steers with NOTHING — systemPromptFor(EPICS) returns null — and that
+    // emptiness is the reason the desk axis could be added without touching a running launch.
+    // Remote control is on: it is a chat, and the projects daemon's claudeChatProtocol bridges
+    // every chat.
     map.put(
         PROJECT_EPICS,
         surface(PROJECT_EPICS, true, "", "", List.of(projectScopedRepository(false))));
-    // The one surface with a system prompt today.
+    // RETIRING. The one desk with a system prompt.
     map.put(
         PROJECT_TICKETS,
         surface(

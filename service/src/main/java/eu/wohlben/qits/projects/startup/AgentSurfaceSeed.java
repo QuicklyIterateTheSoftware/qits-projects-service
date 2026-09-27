@@ -9,7 +9,9 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 /**
- * Writes the eight shipped surface configurations, once, for a store that has never held them.
+ * Writes the shipped surface configurations in {@link AgentSurfaceDefaults#SURFACES}, once, for a
+ * store that has never held them. The {@link AgentSurfaceDefaults#RETIRING} desks are not seeded:
+ * nothing launches with them, and they resolve to their shipped default without a row.
  *
  * <p><b>Why a boot seed rather than an {@code insert} in V16.</b> The vocabulary has to stay open —
  * adding a ninth surface must be a constant in {@link AgentSurfaceDefaults} and not a migration —
@@ -20,6 +22,17 @@ import org.jboss.logging.Logger;
  * <p><b>Insert-if-absent, never upsert.</b> An operator's edit must survive every boot after it, so
  * this writes only surfaces the store holds no row for. That also makes it self-healing for a
  * surface added later: the boot after the constant lands seeds it, and nothing else is touched.
+ *
+ * <p><b>It runs after V30, never before it, which is what keeps the {@code project.work} copy from
+ * being pre-empted.</b> Flyway's {@code migrate-at-start} runs while the datasource is being set up,
+ * before {@link StartupEvent} fires, and this seed is started from that event — so on the boot that
+ * first carries {@code project.work} in the vocabulary, V30 has already copied the stored {@code
+ * project.epics} row onto it, and {@link AgentSurfaceConfigurationService#seedIfAbsent} finds the
+ * row and writes nothing. Had the seed run first it would have written the shipped default and
+ * V30's {@code where not exists} would have (correctly, for idempotence) declined to overwrite it,
+ * silently dropping an operator's epics-desk edits. On a fresh estate V30 finds no {@code
+ * project.epics} row to copy and this seed writes {@code project.work} from its shipped default,
+ * which is the epics desk's shipped default: the same answer either way.
  *
  * <p><b>It never fails boot and never blocks it.</b> A missing seed row is not a reason to refuse to
  * serve — a surface with no row reads as its shipped default anyway, which is the same answer the
