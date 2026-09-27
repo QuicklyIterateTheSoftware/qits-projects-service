@@ -28,11 +28,16 @@ import org.junit.jupiter.api.Test;
  *
  * <p>What it proves is the sentence in the port's javadoc, and the second half matters as much as
  * the first: an assembly with no workspaces context answers <b>503</b> naming what is missing, and
- * the ticket is left exactly as it was — no comment claiming an agent is on it.
+ * the entity is left exactly as it was — no comment claiming an agent is on a ticket, and no status
+ * moved on an epic.
+ *
+ * <p>One class for both archetypes, because since qits-399 there is one door: the ticket's and the
+ * epic's retired {@code dispatch-agent} routes each had a class of their own on this profile, and
+ * both cases now press {@code POST /entities/{id}/dispatch}.
  */
 @QuarkusTest
-@TestProfile(TicketDispatchWithNoWorkspacesTest.NoWorkspaceAgentDispatchProfile.class)
-public class TicketDispatchWithNoWorkspacesTest {
+@TestProfile(EntityDispatchWithNoWorkspacesTest.NoWorkspaceAgentDispatchProfile.class)
+public class EntityDispatchWithNoWorkspacesTest {
 
   /** Both implementations gone, so the {@code Instance<T>} is genuinely unresolvable. */
   public static class NoWorkspaceAgentDispatchProfile implements QuarkusTestProfile {
@@ -57,10 +62,7 @@ public class TicketDispatchWithNoWorkspacesTest {
 
   @Test
   public void theDoorAnswers503AndTheTicketIsLeftAlone() {
-    assertFalse(
-        port.isResolvable(),
-        "the point of this class is an unresolvable port; the exclude-types override stopped"
-            + " working, and everything below would be asserting nothing");
+    assertThePortIsAbsent();
 
     String projectId =
         asAdmin()
@@ -90,8 +92,9 @@ public class TicketDispatchWithNoWorkspacesTest {
             .path("ticket.id");
 
     asAdmin()
+        .body(Map.of("mode", "FLOW"))
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(503)
         .body("message", containsString("No workspaces context is configured"));
@@ -102,5 +105,54 @@ public class TicketDispatchWithNoWorkspacesTest {
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(0));
+  }
+
+  @Test
+  public void theDoorAnswers503AndTheEpicIsLeftWhereItWas() {
+    assertThePortIsAbsent();
+
+    String projectId =
+        asAdmin()
+            .body(
+                new ProjectController.CreateProjectRequest(
+                    "No Workspaces For Epics", null, null, null, ProjectRequests.DNS))
+            .when()
+            .post("/projects/api/projects")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("project.id");
+    String epicId =
+        asAdmin()
+            .body(Map.of("title", "Nobody to dispatch", "description", "Nobody home."))
+            .when()
+            .post("/projects/api/projects/" + projectId + "/epics")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("epic.id");
+
+    asAdmin()
+        .body(Map.of("mode", "PHASE"))
+        .when()
+        .post("/projects/api/entities/" + epicId + "/dispatch")
+        .then()
+        .statusCode(503)
+        .body("message", containsString("No workspaces context is configured"));
+
+    asAdmin()
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(200)
+        .body("epic.status", equalTo("REPORTED"));
+  }
+
+  /** The premise of every assertion here, so a config override that stopped working says so. */
+  private void assertThePortIsAbsent() {
+    assertFalse(
+        port.isResolvable(),
+        "the point of this class is an unresolvable port; the exclude-types override stopped"
+            + " working, and everything below would be asserting nothing");
   }
 }

@@ -112,12 +112,11 @@ class EpicApiTest {
         .statusCode(200)
         .body("entries.epic.id", hasItem(epicId));
 
-    // Update.
+    // Update — through the whole-row door the SPA edits with; PUT /epics/{id} went in qits-399.
+    restate(epicId, "Planning domain v2", "Longer");
     given()
-        .contentType(ContentType.JSON)
-        .body(new EpicController.UpdateEpicRequest("Planning domain v2", "Longer"))
         .when()
-        .put("/projects/api/epics/" + epicId)
+        .get("/projects/api/epics/" + epicId)
         .then()
         .statusCode(200)
         .body("epic.title", equalTo("Planning domain v2"))
@@ -339,13 +338,7 @@ class EpicApiTest {
             .statusCode(200)
             .extract()
             .path("epic.id");
-    given()
-        .contentType(ContentType.JSON)
-        .body(new EpicController.UpdateEpicRequest("E2", null))
-        .when()
-        .put("/projects/api/epics/" + epicId)
-        .then()
-        .statusCode(200);
+    restate(epicId, "E2", null);
 
     // Newest first: UPDATE then CREATE (delete would remove the epic and 404 the audit endpoint).
     given()
@@ -354,5 +347,22 @@ class EpicApiTest {
         .then()
         .statusCode(200)
         .body("entries.operation", contains("UPDATE", "CREATE"));
+  }
+
+  /** An epic's words rewritten through {@code POST /entities/transition}, the SPA's edit. */
+  private static void restate(String epicId, String title, String description) {
+    java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+    row.put("archetype", "EPIC");
+    row.put("title", title);
+    row.put("description", description);
+    row.put("status", "REPORTED");
+    row.put("membership", java.util.Collections.singletonMap("parent", null));
+    given()
+        .contentType(ContentType.JSON)
+        .body(java.util.Map.of(epicId, row))
+        .when()
+        .post("/projects/api/entities/transition")
+        .then()
+        .statusCode(200);
   }
 }

@@ -67,9 +67,9 @@ public class RefinementDesignControllerTest {
     Number id =
         given()
             .contentType(ContentType.JSON)
-            .body(Map.of("epicId", epicId))
+            .body(Map.of())
             .when()
-            .post("/projects/api/refinements")
+            .post("/projects/api/entities/" + epicId + "/refinement")
             .then()
             .statusCode(200)
             .extract()

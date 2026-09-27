@@ -17,7 +17,6 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
-import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -86,29 +85,6 @@ public class EpicController {
     return new GetEpicRequest.Response(
         qualifiedIds.qualify(
             dispatchedWorkspaces.decorate(workEntityMapper.toEpicDto(epicService.get(id)))));
-  }
-
-  public record UpdateEpicRequest(@NotBlank String title, String description) {
-    public record Response(EpicDto epic) {}
-  }
-
-  /**
-   * Editing an epic's words takes {@code qits:agent}, bound to the agent's own project: the {@code
-   * update_epic} MCP tool already performs this write for an agent. The project is resolved from the
-   * epic before the write, so an id naming nothing is the 404 it always was — see {@link
-   * EntitiesAgentAccess}.
-   */
-  @PUT
-  @Path("/{id}")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
-  public UpdateEpicRequest.Response update(
-      @PathParam("id") String id, @Valid UpdateEpicRequest request) {
-    EntitiesAgentAccess.requireProject(identity, hints.projectOfEpic(id));
-    var epic =
-        epicService.update(
-            id, request.title(), request.description(), EntitiesPrincipal.changedBy(identity));
-    hints.fire(epic.projectId);
-    return new UpdateEpicRequest.Response(qualifiedIds.qualify(workEntityMapper.toEpicDto(epic)));
   }
 
   /**

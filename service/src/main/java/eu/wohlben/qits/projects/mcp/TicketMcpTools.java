@@ -90,7 +90,7 @@ public class TicketMcpTools {
 
   /**
    * The phase a transition starts. Crossing into {@code projects.api} from here is the same
-   * crossing {@code TicketDispatchController} declares: a workspace is {@code domain}'s, and this
+   * crossing {@code EntityDispatchController} declares: a workspace is {@code domain}'s, and this
    * module assembles both.
    */
   @Inject PhaseAdvance phaseAdvance;

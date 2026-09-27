@@ -26,7 +26,7 @@ import org.jboss.logging.Logger;
  * because <b>{@code entities} depends on {@code domain} nowhere and must keep not depending on it</b>:
  * it has its own package, its own error types and its own physical database, and it is the module
  * most likely to be lifted out next. {@code service} is the layer that may cross, the precedent
- * {@code TicketDispatchController} already sets, and putting the class in a {@code *host} package is
+ * {@code EntityDispatchController} already sets, and putting the class in a {@code *host} package is
  * that crossing declared in the package name rather than smuggled into a control class.
  *
  * <p>It is {@code @DefaultBean} for the reason every adapter here is: a test that wants to watch

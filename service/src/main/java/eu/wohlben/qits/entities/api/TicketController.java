@@ -7,7 +7,6 @@ import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
 import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.api.PhaseAdvance;
-import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -16,7 +15,6 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
-import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -97,58 +95,6 @@ public class TicketController {
     return new GetTicketRequest.Response(
         qualifiedIds.qualify(
             dispatchedWorkspaces.decorate(workEntityMapper.toTicketDto(ticketService.get(id)))));
-  }
-
-  /**
-   * Partial update: a null {@code title}/{@code type} leaves it unchanged. The three nullable
-   * fields change only when their {@code clear*} flag is true (→ cleared) or a non-null value is
-   * supplied (→ set), so a retitle can't silently unassign a ticket or drop its body — the pairing
-   * {@code FeatureController.UpdateFeatureRequest} carries.
-   *
-   * <p>{@code impetus} is editable here because triage corrects reports; what it must not become is
-   * a second place to write the refinement — see {@code Ticket.impetus} for the length rule.
-   *
-   * <p>The status is deliberately absent: {@link #transition} is the only thing that moves it.
-   */
-  public record UpdateTicketRequest(
-      @NotBlankIfPresent String title,
-      @NotBlankIfPresent String impetus,
-      boolean clearImpetus,
-      String description,
-      boolean clearDescription,
-      @NotBlankIfPresent String type,
-      String assignee,
-      boolean clearAssignee) {
-    public record Response(TicketDto ticket) {}
-  }
-
-  /**
-   * Editing a ticket takes {@code qits:agent}, bound to the agent's own project: the {@code
-   * update_ticket} MCP tool already performs this write for an agent. The project is resolved from
-   * the ticket before the write, so an id naming nothing is the 404 it always was — see {@link
-   * EntitiesAgentAccess}.
-   */
-  @PUT
-  @Path("/{id}")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
-  public UpdateTicketRequest.Response update(
-      @PathParam("id") String id, @Valid UpdateTicketRequest request) {
-    EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
-    var ticket =
-        ticketService.update(
-            id,
-            request.title(),
-            request.impetus(),
-            request.clearImpetus(),
-            request.description(),
-            request.clearDescription(),
-            request.type(),
-            request.assignee(),
-            request.clearAssignee(),
-            EntitiesPrincipal.changedBy(identity));
-    hints.fire(ticket.projectId);
-    return new UpdateTicketRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toTicketDto(ticket)));
   }
 
   /**

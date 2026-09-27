@@ -156,15 +156,21 @@ class EpicLifecycleApiTest {
         .body("epic.status", equalTo("DONE"));
   }
 
+  /**
+   * The scope freeze, reopened along the graph. Adding a feature is the structural write asked
+   * here: the epic's own retitle no longer has a per-archetype door ({@code PUT /epics/{id}} went in
+   * qits-399), and the freeze on it is the same {@code EntityLifecycle.requireReported} this call
+   * meets — {@code update_epic}'s, pinned in the entities module's lifecycle suite.
+   */
   @Test
   void movingAFrozenEpicBackToReportedReopensItsScope() {
     String epicId = createEpic(createProject(), "Planning domain");
     transition(epicId, "REFINED").statusCode(200);
     given()
         .contentType(ContentType.JSON)
-        .body(new EpicController.UpdateEpicRequest("Renamed", null))
+        .body(new EpicController.CreateFeatureRequest("Feature A", null, null))
         .when()
-        .put("/projects/api/epics/" + epicId)
+        .post("/projects/api/epics/" + epicId + "/features")
         .then()
         .statusCode(Response.Status.CONFLICT.getStatusCode())
         .body("message", org.hamcrest.Matchers.containsString("REPORTED"));
@@ -173,12 +179,12 @@ class EpicLifecycleApiTest {
 
     given()
         .contentType(ContentType.JSON)
-        .body(new EpicController.UpdateEpicRequest("Renamed", null))
+        .body(new EpicController.CreateFeatureRequest("Feature A", null, null))
         .when()
-        .put("/projects/api/epics/" + epicId)
+        .post("/projects/api/epics/" + epicId + "/features")
         .then()
         .statusCode(200)
-        .body("epic.title", equalTo("Renamed"));
+        .body("feature.title", equalTo("Feature A"));
   }
 
   @Test
@@ -209,14 +215,7 @@ class EpicLifecycleApiTest {
 
     transition(epicId, "REFINED").statusCode(200);
 
-    // Frozen: the title edit is refused and the marker goes through.
-    given()
-        .contentType(ContentType.JSON)
-        .body(new EpicController.UpdateEpicRequest("Renamed", null))
-        .when()
-        .put("/projects/api/epics/" + epicId)
-        .then()
-        .statusCode(Response.Status.CONFLICT.getStatusCode());
+    // Frozen: a structural write is refused and the marker goes through.
     given()
         .contentType(ContentType.JSON)
         .body(new EpicController.CreateFeatureRequest("Feature B", null, null))

@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
  * simulated; the three templates' own sentences are {@link PhasePromptsTest}'s.
  *
  * <p>The caller is named with the real {@code X-Qits-*} pair rather than {@code @TestSecurity}, for
- * {@link TicketDispatchControllerTest}'s reason: the comment's {@code author} is one of the
+ * {@link TicketFlowDispatchTest}'s reason: the comment's {@code author} is one of the
  * assertions and the header is what produces it in a deployment.
  */
 @QuarkusTest

@@ -1079,13 +1079,13 @@ Five things are rules rather than details:
   phase (and, for PHASE, that the run stops there); an epic has no thread and its *description is
   the plan*, so it gets the `EPICS` hint alone, and every sentence `PhaseAdvance` would put on a
   thread is a log line for an epic.
-- **The two old doors are thin delegates, and they go in a later release.** The deployed SPA still
-  calls `POST /tickets/{id}/dispatch-agent` (→ FLOW, `TicketAgentDispatchDto`) and
-  `POST /epics/{id}/dispatch-agent` (→ PHASE, `EpicAgentDispatchDto`). The epic door keeps one thing
-  of its own: on a REPORTED epic it first freezes it to REFINED through `EntityResolutions`, because the
-  deployed button reads "Start implementation" — delegating straight through would start the refine
-  phase behind that label. Both are removed, with their DTOs and tests, once the SPA calls the unified
-  door. Nothing may be added to them meanwhile.
+- **The two old doors are gone (qits-399).** `POST /tickets/{id}/dispatch-agent` (a FLOW delegate)
+  and `POST /epics/{id}/dispatch-agent` (a PHASE delegate that first froze a REPORTED epic to
+  REFINED, because its button read "Start implementation") were removed with their DTOs once the SPA
+  (qits-frontend 072512f) pressed the unified door; both paths answer **404** now
+  (`RetiredEntityDoorsTest`). The ticket door's refusal cases survive in `TicketFlowDispatchTest`,
+  pointed at the unified door, and the two no-workspaces classes are one,
+  `EntityDispatchWithNoWorkspacesTest`.
 
 **`transition_epic` is on the MCP server since qits-394**, replacing the deliberate absence of an
 epic lifecycle tool: a phase whose claim cannot be made is a phase whose advance never fires. It is
@@ -1289,8 +1289,7 @@ would redraw a board because somebody commented on a bug.
 **A ticket can be handed to an agent, through the one dispatch path every lifecycle archetype
 shares** — `POST /projects/api/entities/{id}/dispatch` (`projects/api/EntityDispatch`, qits-394; see
 "Epic lifecycle" for the route, the FLOW/PHASE bit and the read). The old ticket door,
-`POST /projects/api/tickets/{id}/dispatch-agent` (`TicketDispatchController`), is a thin FLOW
-delegate onto it until the SPA stops calling it. It stands an aggregate workspace on `ticket/<slug>`
+`POST /projects/api/tickets/{id}/dispatch-agent`, was removed in qits-399. It stands an aggregate workspace on `ticket/<slug>`
 at the project's **wrapper** — a ticket names no repository, so the whole estate is the answer and
 `branchTree` is true — and launches a coding agent in it over the `control/WorkspaceAgentDispatch`
 port. It lives in `projects.api` because it needs `domain` (the project, the wrapper, the port) and
@@ -2077,8 +2076,7 @@ Where it differs from the agent harness, each difference is the domain line:
 
 The REST surface is under `/projects/api`: `POST /entities/{id}/refinement` (find-or-create keyed by
 entity — adopt-existing is the create's ordinary path, not an error dance; see "The refine action"
-below), `GET /entities/{id}/refinement` (find only), the deployed SPA's `POST /refinements`
-(`{"epicId"}`, a thin delegate retiring once the SPA moves), `GET/verbs /refinements/{id}`,
+below), `GET /entities/{id}/refinement` (find only), `GET/verbs /refinements/{id}`,
 `GET /projects/{projectId}/refinements` (the LIGHT projection — live halves, no git drift, because
 the list redraws on every activity hint), the prompt draft and attachments (content URLs are
 embedded into epic markdown, so attachment ids are never renumbered), the per-row SSE hint channel,
@@ -2148,9 +2146,11 @@ workspace on `ticket/<slug>` or `epic/<slug>`; a refinement is a `domain` row an
 container (workload `refinement`, its own registry, commissions, proxy and control socket) on
 `refining/<slug>`. The SPA's refining page being a copy of the workspace page does not make them one
 path. `RefinementDto` gains `entityId`; **`epicId` stays, holding the same value** for every
-archetype, because the deployed SPA matches its epic against the project listing by it. `epicId`,
-`POST /refinements {"epicId"}` and `RefinementController.OpenRequest` are removed in a later release
-once the SPA reads `entityId` and calls the entity door — nothing new may read or call them.
+archetype. `POST /refinements {"epicId"}` and `RefinementController.OpenRequest` were removed in
+qits-399 once the SPA called the entity door (the bare `/refinements` answers **404** now — no
+resource method sits on the class root — `RetiredEntityDoorsTest`), but **`epicId` was kept**: the
+SPA at 072512f still reads `row.entityId ?? row.epicId` for a row from an older service, and a field
+nobody new may read costs nothing to carry. Nothing new may read it.
 
 The refusals, all on the **create** path, in order: 404 unknown id; **409 for a feature or a task**
 (no lifecycle — refine its epic); **409 unless REPORTED**, for both archetypes, since refinement is

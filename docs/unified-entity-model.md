@@ -1648,6 +1648,12 @@ the four derived ones.
 
 ### Every per-entity endpoint stays, and the reason is a cross-repository check
 
+> **Superseded in part by qits-399.** Once the SPA moved its edits onto `POST /entities/transition`
+> (qits-frontend 072512f), `PUT /projects/api/epics/{id}` and `PUT /projects/api/tickets/{id}` had no
+> caller and were removed; they answer 405 now. The feature and task PUTs, every POST and DELETE, and
+> both lifecycle transitions stay, for the reasons below. The section is kept as the record of the
+> check that was made at the time.
+
 **No route was removed.** The tempting reading was that the multi-entity transition had retired the
 per-entity surface, and it is wrong in two separate ways, both of which were checked against the
 deployed SPA (qits-projects-frontend `main`, released 2026.920.846) rather than reasoned about:

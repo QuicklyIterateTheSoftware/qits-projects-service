@@ -62,7 +62,7 @@ import org.junit.jupiter.api.function.Executable;
  * and answers 403. That is the role list being read, observed from outside.
  *
  * <p><b>The representative routes.</b> One write per controller is driven for the through-case and
- * the refusal, rather than all twenty-two: the binding is one helper called as the first statement
+ * the refusal, rather than all twenty: the binding is one helper called as the first statement
  * of each route ({@code EntitiesAgentAccess}), so what a second route on the same controller would
  * add is a second reading of one line. What is <em>not</em> representative is the batched
  * transition, which has a binding of its own — all or nothing over a whole request — and that one is
@@ -72,7 +72,7 @@ import org.junit.jupiter.api.function.Executable;
  * write copies a figure out of a live refinement's attachments, which needs a refinement row, a
  * container-side prompt attachment and the {@code DossierFigures} crossing to stand up — wholly
  * disproportionate to re-reading one line of binding. Its role list is pinned by {@code
- * AgentReadAccessTest} and its binding is the same {@code requireProject} call as the fourteen
+ * AgentReadAccessTest} and its binding is the same {@code requireProject} call as the twelve
  * below.
  */
 @QuarkusTest
@@ -319,10 +319,6 @@ class EntityAgentBoundsTest {
 
   // ---- the request bodies ----------------------------------------------------------------------
 
-  private static EpicController.UpdateEpicRequest epicEdit(String title) {
-    return new EpicController.UpdateEpicRequest(title, "edited");
-  }
-
   private static EpicController.CreateFeatureRequest newFeature(String title) {
     return new EpicController.CreateFeatureRequest(title, null, null);
   }
@@ -337,11 +333,6 @@ class EntityAgentBoundsTest {
 
   private static TaskController.UpdateTaskRequest taskEdit(String title) {
     return new TaskController.UpdateTaskRequest(title, null, null, false, null, false);
-  }
-
-  private static TicketController.UpdateTicketRequest ticketEdit(String title) {
-    return new TicketController.UpdateTicketRequest(
-        title, null, false, null, false, null, null, false);
   }
 
   private static ProjectEpicsController.CreateEpicRequest newEpic(String title) {
@@ -405,9 +396,6 @@ class EntityAgentBoundsTest {
    */
   @Test
   void anAgentWritesItsOwnProjectsEntities() {
-    assertEquals(
-        "Retitled by the agent",
-        epics(AGENT).update(rows.epicId(), epicEdit("Retitled by the agent")).epic().title());
     String feature = epics(AGENT).createFeature(rows.epicId(), newFeature("A part")).feature().id();
     assertNotNull(feature);
 
@@ -420,9 +408,6 @@ class EntityAgentBoundsTest {
     assertEquals("A renamed step", tasks(AGENT).update(task, taskEdit("A renamed step")).task().title());
     assertTrue(tasks(AGENT).delete(task).success());
 
-    assertEquals(
-        "A renamed ticket",
-        tickets(AGENT).update(rows.ticketId(), ticketEdit("A renamed ticket")).ticket().title());
     assertEquals(
         "REFINED",
         tickets(AGENT)
@@ -461,17 +446,15 @@ class EntityAgentBoundsTest {
 
   // ---- and are refused for any other project ----------------------------------------------------
 
-  /** The same fourteen calls, by an agent whose token names the other project. */
+  /** The same calls, by an agent whose token names the other project. */
   @Test
   void anAgentIsRefusedAnotherProjectsEntities() {
-    refused(() -> epics(FOREIGN_AGENT).update(rows.epicId(), epicEdit("Not yours")));
     refused(() -> epics(FOREIGN_AGENT).createFeature(rows.epicId(), newFeature("Not yours")));
     refused(() -> features(FOREIGN_AGENT).update(rows.featureId(), featureEdit("Not yours")));
     refused(() -> features(FOREIGN_AGENT).createTask(rows.featureId(), newTask("Not yours")));
     refused(() -> features(FOREIGN_AGENT).delete(rows.featureId()));
     refused(() -> tasks(FOREIGN_AGENT).update(rows.taskId(), taskEdit("Not yours")));
     refused(() -> tasks(FOREIGN_AGENT).delete(rows.taskId()));
-    refused(() -> tickets(FOREIGN_AGENT).update(rows.ticketId(), ticketEdit("Not yours")));
     refused(
         () ->
             tickets(FOREIGN_AGENT)
@@ -514,14 +497,12 @@ class EntityAgentBoundsTest {
    */
   @Test
   void anAgentWithNoClaimsIsRefusedEverything() {
-    refused(() -> epics(CLAIMLESS_AGENT).update(rows.epicId(), epicEdit("No claim")));
     refused(() -> epics(CLAIMLESS_AGENT).createFeature(rows.epicId(), newFeature("No claim")));
     refused(() -> features(CLAIMLESS_AGENT).update(rows.featureId(), featureEdit("No claim")));
     refused(() -> features(CLAIMLESS_AGENT).createTask(rows.featureId(), newTask("No claim")));
     refused(() -> features(CLAIMLESS_AGENT).delete(rows.featureId()));
     refused(() -> tasks(CLAIMLESS_AGENT).update(rows.taskId(), taskEdit("No claim")));
     refused(() -> tasks(CLAIMLESS_AGENT).delete(rows.taskId()));
-    refused(() -> tickets(CLAIMLESS_AGENT).update(rows.ticketId(), ticketEdit("No claim")));
     refused(
         () ->
             tickets(CLAIMLESS_AGENT)
@@ -562,13 +543,13 @@ class EntityAgentBoundsTest {
   @Test
   void anAdminIsUnaffectedByTheBinding() {
     assertEquals(
-        "Edited by a person",
-        epics(OPERATOR).update(rows.epicId(), epicEdit("Edited by a person")).epic().title());
+        "Added by a person",
+        epics(OPERATOR).createFeature(rows.epicId(), newFeature("Added by a person")).feature().title());
     assertEquals(
-        "Edited by a person holding both roles",
+        "Added by a person holding both roles",
         epics(OPERATOR_AGENT)
-            .update(rows.epicId(), epicEdit("Edited by a person holding both roles"))
-            .epic()
+            .createFeature(rows.epicId(), newFeature("Added by a person holding both roles"))
+            .feature()
             .title());
   }
 
@@ -675,13 +656,13 @@ class EntityAgentBoundsTest {
   @Test
   void aGrantedRouteGetsPastTheRoleCheck() {
     asForwardedAgent()
-        .body(Map.of("title", "no such epic"))
-        .put("/projects/api/epics/no-such-entity")
+        .body(Map.of("title", "no such feature"))
+        .put("/projects/api/features/no-such-entity")
         .then()
         .statusCode(404);
     asForwardedAgent()
-        .body(Map.of("title", "no such ticket"))
-        .put("/projects/api/tickets/no-such-entity")
+        .body(Map.of("target", "REFINED"))
+        .post("/projects/api/tickets/no-such-entity/transition")
         .then()
         .statusCode(404);
     asForwardedAgent()
@@ -704,11 +685,11 @@ class EntityAgentBoundsTest {
   void aForwardedAgentCarriesNoClaimAndIsRefusedARealRow() {
     asForwardedAgent()
         .body(Map.of("title", "from a header"))
-        .put("/projects/api/epics/" + rows.epicId())
+        .post("/projects/api/epics/" + rows.epicId() + "/features")
         .then()
         .statusCode(403)
         .body("message", org.hamcrest.Matchers.equalTo(REFUSAL));
 
-    assertEquals("The own plan", epicService.get(rows.epicId()).title);
+    assertEquals(1, featureService.listByEpic(rows.epicId()).size(), "nothing was added");
   }
 }

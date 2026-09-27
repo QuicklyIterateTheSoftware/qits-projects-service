@@ -4,7 +4,6 @@ import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -14,17 +13,15 @@ import jakarta.ws.rs.core.MediaType;
 
 /**
  * The refinement lifecycle surface the refining route drives — the projects-side replacement for
- * the workspace verbs it used to call on qits-workspaces. Keyed by entity on the way in
- * (find-or-create is one idempotent POST; the adopt-existing dance the old create needed is the
- * server's ordinary path now) and by refinement row id everywhere else.
+ * the workspace verbs it used to call on qits-workspaces, keyed by refinement row id.
  *
- * <p><b>The way in has moved</b> (qits-395): {@code POST /entities/{id}/refinement} ({@link
- * EntityRefinementController}) opens a room on an epic or a ticket. {@code POST /refinements} with
- * an {@code epicId} body is the deployed SPA's door and stays in this release as a thin delegate onto
- * the same {@link RefinementService#findOrCreate} — every refusal is shared, and a ticket's id on it
- * opens the ticket's room, because ids are one space. <b>It is removed in a later release</b>, once
- * the SPA calls the entity door; nothing may be added to it meanwhile. The per-row verbs below are
- * not duplicates and stay.
+ * <p><b>The way in is not here</b> (qits-395): {@code POST /entities/{id}/refinement} ({@link
+ * EntityRefinementController}) opens a room on an epic or a ticket — find-or-create in one
+ * idempotent POST, the adopt-existing dance an older create needed being the server's ordinary path
+ * now. {@code POST /refinements} with
+ * an {@code epicId} body was the older SPA's door onto the same {@link RefinementService#findOrCreate}
+ * and was removed in qits-399, once the SPA called the entity door; the per-row verbs below are not
+ * duplicates and stay.
  *
  * <p>The ensure and recreate verbs answer a technical-process id to watch; the work itself runs
  * off the request thread, behind an image pull if it must.
@@ -36,9 +33,6 @@ public class RefinementController {
 
   @Inject RefinementService refinements;
 
-  /** Find-or-create the refinement of an epic. Deprecated with {@link #open}. */
-  public record OpenRequest(@NotBlank String epicId) {}
-
   public record RefinementResponse(RefinementDto refinement) {}
 
   public record ProcessResponse(RefinementDto refinement, String technicalProcessId) {}
@@ -46,13 +40,6 @@ public class RefinementController {
   public record ActiveProcessResponse(String technicalProcessId) {}
 
   public record DiscardResponse(boolean success) {}
-
-  /** The deployed SPA's open. Retires once it calls {@code POST /entities/{id}/refinement}. */
-  @POST
-  public RefinementResponse open(OpenRequest request) {
-    Refinement refinement = refinements.findOrCreate(request.epicId());
-    return new RefinementResponse(RefinementDto.of(refinements.view(refinement)));
-  }
 
   @GET
   @RolesAllowed({"qits:admin", "qits:agent"})

@@ -154,14 +154,20 @@ class TicketApiTest {
         .statusCode(200)
         .body("entries.ticket.id", hasItem(ticketId));
 
-    // Update: a retitle plus a re-type, leaving the nullable fields alone.
+    // Update: a retitle plus a re-type, the rest restated as it was. Through the whole-row door
+    // the SPA edits with; PUT /tickets/{id} went in qits-399.
+    restate(
+        ticketId,
+        ticketRow(
+            "Login button is inert",
+            "clicking the login button does nothing on the sign-in page",
+            "It just sits there",
+            "IMPROVEMENT",
+            "alice"))
+        .statusCode(200);
     given()
-        .contentType(ContentType.JSON)
-        .body(
-            new TicketController.UpdateTicketRequest(
-                "Login button is inert", null, false, null, false, "IMPROVEMENT", null, false))
         .when()
-        .put("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(200)
         .body("ticket.title", equalTo("Login button is inert"))
@@ -348,11 +354,19 @@ class TicketApiTest {
         .body("entries.comment.body", contains("one", "two", "three"));
   }
 
-  // --- Partial updates -------------------------------------------------------------------------
+  // --- Emptying the nullable fields ------------------------------------------------------------
 
+  /**
+   * <b>The impetus can be emptied after intake</b>, and so can the description and the assignee.
+   * {@code IMPETUS} is in the registry's {@code requiredAtCreate} for a ticket and not in its {@code
+   * required}: intake demands one, and an existing row is not obliged to carry it for ever. This
+   * test used to empty the three through {@code PUT /tickets/{id}}'s clear flags; that door went in
+   * qits-399, and the edit that remains is the whole-row one, where a field left out of the row is
+   * a field emptied.
+   */
   @Test
   @TestSecurity(user = "dev", roles = "qits:admin")
-  void theClearFlagsAreWhatEmptyTheNullableFields() {
+  void theNullableFieldsEmptyThroughTheWholeRowEdit() {
     String projectId = createProject();
     String ticketId =
         given()
@@ -367,28 +381,14 @@ class TicketApiTest {
             .extract()
             .path("ticket.id");
 
-    // A title-only edit touches none of the three — the defect the flags exist to stop.
-    given()
-        .contentType(ContentType.JSON)
-        .body(
-            new TicketController.UpdateTicketRequest(
-                "Renamed", null, false, null, false, null, null, false))
-        .when()
-        .put("/projects/api/tickets/" + ticketId)
-        .then()
-        .statusCode(200)
-        .body("ticket.impetus", equalTo("the list is unsorted"))
-        .body("ticket.description", equalTo("a body"))
-        .body("ticket.assignee", equalTo("alice"));
+    restate(ticketId, ticketRow("Renamed", null, null, "BUG", null)).statusCode(200);
 
     given()
-        .contentType(ContentType.JSON)
-        .body(
-            new TicketController.UpdateTicketRequest(null, null, true, null, true, null, null, true))
         .when()
-        .put("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(200)
+        .body("ticket.title", equalTo("Renamed"))
         .body("ticket.impetus", nullValue())
         .body("ticket.description", nullValue())
         .body("ticket.assignee", nullValue());
@@ -594,16 +594,9 @@ class TicketApiTest {
         .post("/projects/api/tickets/" + ticketId + "/comments")
         .then()
         .statusCode(anyOf(equalTo(Response.Status.BAD_REQUEST.getStatusCode()), equalTo(422)));
-    // A supplied-but-blank title on the partial update is NotBlankIfPresent's refusal.
-    given()
-        .contentType(ContentType.JSON)
-        .body(
-            new TicketController.UpdateTicketRequest(
-                "  ", null, false, null, false, null, null, false))
-        .when()
-        .put("/projects/api/tickets/" + ticketId)
-        .then()
-        .statusCode(anyOf(equalTo(Response.Status.BAD_REQUEST.getStatusCode()), equalTo(422)));
+    // A blank title on the whole-row edit is the registry's refusal: a ticket requires one.
+    restate(ticketId, ticketRow("  ", "x", null, "BUG", null))
+        .statusCode(Response.Status.BAD_REQUEST.getStatusCode());
   }
 
   // --- Blocking ----------------------------------------------------------------------------------
@@ -784,5 +777,30 @@ class TicketApiTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .body("ticket.blocked", equalTo(false))
         .body("ticket.status", equalTo("VERIFIED"));
+  }
+
+  /** One ticket's whole row as {@code POST /entities/transition} takes it, at REPORTED. */
+  private static java.util.Map<String, Object> ticketRow(
+      String title, String impetus, String description, String type, String assignee) {
+    java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+    row.put("archetype", "TICKET");
+    row.put("title", title);
+    row.put("impetus", impetus);
+    row.put("description", description);
+    row.put("ticketType", type);
+    row.put("assignee", assignee);
+    row.put("status", "REPORTED");
+    row.put("membership", java.util.Collections.singletonMap("parent", null));
+    return row;
+  }
+
+  /** The SPA's edit: the ticket's intended post-state, whole. */
+  private static ValidatableResponse restate(String ticketId, java.util.Map<String, Object> row) {
+    return given()
+        .contentType(ContentType.JSON)
+        .body(java.util.Map.of(ticketId, row))
+        .when()
+        .post("/projects/api/entities/transition")
+        .then();
   }
 }

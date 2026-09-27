@@ -254,18 +254,21 @@ public class EntityRefinementControllerTest {
         workspaces.lookups().get(0).epicIds().contains(epicId), "an epic is asked as an epic");
   }
 
-  // ---- the deployed SPA's doors still answer -------------------------------------------------
+  // ---- what the SPA still reads of the legacy shape -------------------------------------------
 
+  /**
+   * The epic-only {@code POST /refinements {"epicId"}} door is gone (qits-399) — {@code
+   * RetiredEntityDoorsTest} pins what it answers now — but {@code epicId} stays on {@link
+   * RefinementDto}: the SPA reads {@code row.entityId ?? row.epicId}, so a room opened on an epic
+   * keeps answering with both on the listing and on the row read.
+   */
   @Test
-  public void theEpicOnlyOpenAndTheProjectListingStillAnswerWithEpicId() {
+  public void theProjectListingAndTheRowReadStillCarryEpicId() {
     String projectId = createProject("Refine Legacy");
     String epicId = createEpic(projectId, "Legacy epic");
 
-    Number viaOld =
-        asAdmin()
-            .body(Map.of("epicId", epicId))
-            .when()
-            .post("/projects/api/refinements")
+    Number room =
+        open(epicId)
             .then()
             .statusCode(200)
             .body("refinement.epicId", equalTo(epicId))
@@ -273,9 +276,6 @@ public class EntityRefinementControllerTest {
             .body("refinement.branch", equalTo("refining/legacy-epic"))
             .extract()
             .path("refinement.id");
-
-    Number viaNew = open(epicId).then().statusCode(200).extract().path("refinement.id");
-    assertEquals(viaOld.longValue(), viaNew.longValue(), "one room, whichever door opened it");
 
     asAdmin()
         .when()
@@ -286,7 +286,7 @@ public class EntityRefinementControllerTest {
         .body("refinements.entityId", hasItem(epicId));
     asAdmin()
         .when()
-        .get("/projects/api/refinements/" + viaOld)
+        .get("/projects/api/refinements/" + room)
         .then()
         .statusCode(200)
         .body("refinement.epicId", equalTo(epicId));

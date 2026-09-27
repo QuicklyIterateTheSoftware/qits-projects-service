@@ -10,7 +10,7 @@ import java.util.Optional;
  * The first turn a dispatched agent is given — one template per <b>phase</b> and per
  * <b>archetype</b>, the phase chosen by the entity's status and never by anything the caller said.
  * Until qits-394 this was {@code TicketPhasePrompts} and knew only tickets; the epic's one
- * implementation turn lived in {@code EpicDispatchController}. Both are here now, because the
+ * implementation turn lived in {@code EpicDispatchController} (removed in qits-399). Both are here now, because the
  * status→phase rule is one rule for every archetype with a lifecycle.
  *
  * <h2>The status picks the phase, and that is the whole design</h2>

@@ -20,7 +20,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The ticket agent-dispatch door, REST-level and end to end against the recording port.
+ * A ticket dispatched as the whole flow through the one dispatch door ({@code POST
+ * /entities/{id}/dispatch {"mode":"FLOW"}}), REST-level and end to end against the recording port.
  *
  * <p>What it pins is the half of the flow this service actually owns: <b>what is asked for</b> — the
  * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, the ticket's id and
@@ -30,15 +31,21 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The caller is named with the real {@code X-Qits-*} pair rather than {@code @TestSecurity},
  * because the comment's {@code author} is one of the assertions and the header is what produces it
- * in a deployment ({@code EntitiesAuditIdentityTest}'s reasoning, applied to the one comment this door
- * writes itself).
+ * in a deployment ({@code EntitiesAuditIdentityTest}'s reasoning, applied to the one comment the
+ * door writes itself).
  *
- * <p><b>Since qits-394 the door is a delegate onto {@code EntityDispatch} in FLOW mode.</b> These
- * cases are what prove the delegation kept the route's contract — its shape, its refusals, its
- * thread comment — until the SPA stops calling it and the class and this suite are removed.
+ * <p><b>This was the suite of {@code POST /tickets/{id}/dispatch-agent}</b>, the ticket door that
+ * became a FLOW delegate in qits-394 and was removed in qits-399 once the SPA pressed the entity
+ * door instead. Its cases were kept and pointed at the door that replaced it, because every one of
+ * them — the refusals past the work, the block, the second press, the failed dispatch — is a rule
+ * of the one path ({@code EntityDispatch}) and not of the retired route; {@link
+ * EntityDispatchControllerTest} is the door's own suite across both archetypes.
  */
 @QuarkusTest
-public class TicketDispatchControllerTest {
+public class TicketFlowDispatchTest {
+
+  /** The press this suite makes: the whole flow, which is what the retired ticket door always meant. */
+  private static final java.util.Map<String, String> FLOW = java.util.Map.of("mode", "FLOW");
 
   @Inject RecordingWorkspaceAgentDispatch dispatch;
 
@@ -138,8 +145,9 @@ public class TicketDispatchControllerTest {
         createTicket(projectId, "Login button is the wrong colour", "BUG", "It is puce.");
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(200)
         .body("dispatch.workspaceRowId", equalTo(41))
@@ -190,7 +198,7 @@ public class TicketDispatchControllerTest {
             "entries[0].comment.body",
             containsString("for the refine phase"));
 
-    // The old door is a delegate onto the one path in FLOW mode, which the unified read reports.
+    // A FLOW press is recorded as such, which the unified read reports.
     asAdmin("mallory")
         .when()
         .get("/projects/api/entities/" + ticketId + "/dispatch")
@@ -212,8 +220,9 @@ public class TicketDispatchControllerTest {
     transition(ticketId, "REFINED");
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(200);
 
@@ -244,8 +253,9 @@ public class TicketDispatchControllerTest {
     transition(ticketId, "DONE");
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("is DONE"))
@@ -279,8 +289,9 @@ public class TicketDispatchControllerTest {
     transition(ticketId, "VERIFIED");
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("is VERIFIED"));
@@ -302,8 +313,9 @@ public class TicketDispatchControllerTest {
     transition(ticketId, "DROPPED");
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("is DROPPED"))
@@ -335,8 +347,9 @@ public class TicketDispatchControllerTest {
     dispatch.reset(); // the transition and the block are fixture; what follows is the subject
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("blocked"))
@@ -355,8 +368,9 @@ public class TicketDispatchControllerTest {
     dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(77L, false, "SKIPPED_RUNNING"));
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(200)
         .body("dispatch.workspaceRowId", equalTo(77))
@@ -374,8 +388,9 @@ public class TicketDispatchControllerTest {
   @Test
   public void anUnknownTicketIsA404AndNothingIsDispatched() {
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/no-such-ticket/dispatch-agent")
+        .post("/projects/api/entities/no-such-ticket/dispatch")
         .then()
         .statusCode(404);
     assertTrue(dispatch.calls().isEmpty(), "a ticket that does not exist asks nothing of anybody");
@@ -389,8 +404,9 @@ public class TicketDispatchControllerTest {
         new DomainException(502, "Could not dispatch an agent onto ticket/nothing-answers: 503"));
 
     asAdmin("mallory")
+        .body(FLOW)
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/dispatch-agent")
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
         .then()
         .statusCode(502)
         .body("message", containsString("Could not dispatch an agent"));

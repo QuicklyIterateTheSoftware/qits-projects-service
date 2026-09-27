@@ -121,7 +121,6 @@ class AgentReadAccessTest {
   private static final Set<String> ENTITY_AGENT_WRITES =
       Set.of(
           "ProjectEpicsController.create",
-          "EpicController.update",
           "EpicController.createFeature",
           "FeatureController.update",
           "FeatureController.delete",
@@ -129,7 +128,6 @@ class AgentReadAccessTest {
           "TaskController.update",
           "TaskController.delete",
           "ProjectTicketsController.create",
-          "TicketController.update",
           "TicketController.transition",
           // The block door, granted by the same rule and reached the same way: block_ticket and
           // unblock_ticket are on the repository MCP server, which serves an agent with no
