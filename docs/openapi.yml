@@ -414,6 +414,14 @@ components:
           $ref: "#/components/schemas/Instant"
         stalled:
           type: boolean
+        consumerFailing:
+          type: boolean
+        lastError:
+          type: string
+        lastErrorAt:
+          $ref: "#/components/schemas/Instant"
+        watermarkAt:
+          $ref: "#/components/schemas/Instant"
     CampaignGroupProgressDto:
       type: object
       properties:
@@ -7107,4 +7115,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.927.121045
+  version: 2026.927.154433

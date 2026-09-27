@@ -129,8 +129,11 @@ public class CampaignMcpTools {
               + " whether it is satisfied and by what evidence, the sentence that would satisfy it,"
               + " and, for one that waits on another member's status, whether it still can and why"
               + " not. It also says whether the criteria evaluator is listening at all (evaluator:"
-              + " connected, lastSweepCompletedAt, stalled), which is how a correctly waiting"
-              + " campaign is told from one nothing is listening for. Read-only; derived afresh on"
+              + " connected, lastSweepCompletedAt, stalled; consumerFailing with lastError and"
+              + " lastErrorAt when the criteria consumer is failing on its frames, which also makes"
+              + " stalled true; watermarkAt, how far its catch-up has read), which is how a"
+              + " correctly waiting campaign is told from one nothing is listening for. Read-only;"
+              + " derived afresh on"
               + " every call.")
   public CampaignProgressDto getCampaignProgress(
       @ToolArg(description = "id of a campaign in this project") String id) {

@@ -38,7 +38,8 @@ class CampaignProgressTest {
 
   private static final Instant T = Instant.parse("2026-09-27T12:00:00Z");
 
-  private static final CampaignEvaluatorDto DARK = new CampaignEvaluatorDto(false, null, false);
+  private static final CampaignEvaluatorDto DARK =
+      new CampaignEvaluatorDto(false, null, false, false, null, null, null);
 
   /** Qualifies every row of project {@code p-qits} as {@code qits-<n>}. */
   private static final Function<WorkEntity, String> QITS =
@@ -352,7 +353,7 @@ class CampaignProgressTest {
     start.startedAt = T.plusSeconds(60);
     start.startedBy = "xion";
     start.active = true;
-    CampaignEvaluatorDto live = new CampaignEvaluatorDto(true, T, false);
+    CampaignEvaluatorDto live = new CampaignEvaluatorDto(true, T, false, false, null, null, null);
 
     CampaignProgressDto progress =
         CampaignProgress.derive(

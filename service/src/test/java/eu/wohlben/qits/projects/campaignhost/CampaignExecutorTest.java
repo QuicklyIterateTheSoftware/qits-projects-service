@@ -601,7 +601,13 @@ class CampaignExecutorTest {
         null);
   }
 
-  /** {@code onFrame} inside a transaction of its own — the library's claim transaction's stand-in. */
+  /**
+   * {@code onFrame} inside a transaction of its own. NOT a faithful stand-in for the library's
+   * claim: that one has enlisted the {@code eventstream} datasource before {@code onFrame} runs, and
+   * this one has enlisted nothing — which is exactly how the two-datasource wedge of 2026-09-27
+   * shipped green. {@link CampaignCriteriaClaimSeamTest} drives the real claim; this stays for the
+   * executor's own cases, which are about what happens after a latch.
+   */
   private void deliver(EventFrame frame) {
     QuarkusTransaction.requiringNew().run(() -> listener.onFrame(frame));
   }

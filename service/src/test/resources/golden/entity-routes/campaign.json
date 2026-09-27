@@ -814,7 +814,11 @@
       "evaluator" : {
         "connected" : false,
         "lastSweepCompletedAt" : null,
-        "stalled" : false
+        "stalled" : false,
+        "consumerFailing" : false,
+        "lastError" : null,
+        "lastErrorAt" : null,
+        "watermarkAt" : null
       },
       "members" : [ {
         "membershipId" : "<id:7>",

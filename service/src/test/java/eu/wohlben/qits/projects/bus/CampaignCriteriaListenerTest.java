@@ -1,7 +1,11 @@
 package eu.wohlben.qits.projects.bus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.campaign.CampaignEvaluator;
@@ -9,6 +13,7 @@ import eu.wohlben.qits.entities.campaign.Observation;
 import eu.wohlben.qits.eventstream.QitsEvent;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
+import eu.wohlben.qits.projects.campaignhost.CampaignCriteriaConsumerHealth;
 import eu.wohlben.qits.projects.campaignhost.CampaignMemberSatisfied;
 import jakarta.enterprise.event.Event;
 import jakarta.enterprise.event.NotificationOptions;
@@ -36,14 +41,20 @@ class CampaignCriteriaListenerTest {
   private CampaignCriteriaListener listener;
   private RecordingEvaluator evaluator;
   private CapturingEvent fired;
+  private CampaignCriteriaConsumerHealth health;
 
   @BeforeEach
   void setUp() {
     listener = new CampaignCriteriaListener();
     evaluator = new RecordingEvaluator();
     fired = new CapturingEvent();
+    health = new CampaignCriteriaConsumerHealth();
     listener.evaluator = evaluator;
     listener.memberSatisfied = fired;
+    listener.health = health;
+    // The epics transaction is the seam CampaignCriteriaClaimSeamTest proves against the real
+    // claim; with no container there is no transaction to open, so the work runs as it stands.
+    listener.epicsTransaction = Runnable::run;
   }
 
   @Test
@@ -229,6 +240,45 @@ class CampaignCriteriaListenerTest {
     assertEquals(id, fired.fired.get(0).evidenceEventId());
   }
 
+  @Test
+  void aFailingEvaluatorIsRecordedAndRethrownSoTheClaimRollsBack() {
+    evaluator.failWith = new IllegalStateException("the epics database is gone");
+    EventFrame frame =
+        frameOf(
+            new EntityTransitioned(
+                List.of(entity("qits-1", "REFINED", "REPORTED")),
+                Instant.parse("2026-09-27T10:00:00Z")));
+
+    IllegalStateException thrown =
+        assertThrows(IllegalStateException.class, () -> listener.onFrame(frame));
+
+    assertSame(evaluator.failWith, thrown, "rethrown as it came, for the library to roll back");
+    assertTrue(health.failing());
+    assertTrue(health.lastError().contains(frame.id()), health.lastError());
+    assertTrue(health.lastError().contains("the epics database is gone"), health.lastError());
+    assertTrue(fired.fired.isEmpty(), "nothing is handed on from a frame that failed");
+
+    evaluator.failWith = null;
+    listener.onFrame(frame);
+    assertFalse(health.failing(), "the next frame that gets through clears it");
+    assertTrue(health.lastError().contains(frame.id()), "the last error stays, as history");
+  }
+
+  @Test
+  void aPoisonFrameCountsAsHandled() {
+    listener.onFrame(
+        new EventFrame(
+            UUID.randomUUID().toString(),
+            "SCMRelease",
+            Instant.parse("2026-09-27T10:00:00Z"),
+            "not json at all",
+            null,
+            null,
+            null));
+    assertFalse(health.failing());
+    assertNotNull(health.lastHandledAt(), "settled, so handled");
+  }
+
   // -------------------------------------------------------------------------------------------
 
   private static EntityTransitioned.Entity entity(String entityId, String status, String statusBefore) {
@@ -258,9 +308,13 @@ class CampaignCriteriaListenerTest {
     final Deque<List<String>> observeAnswers = new ArrayDeque<>();
     final List<String> retryCalls = new ArrayList<>();
     final Map<String, List<String>> retryAnswers = new HashMap<>();
+    RuntimeException failWith;
 
     @Override
     public List<String> observe(Observation.Observed observed) {
+      if (failWith != null) {
+        throw failWith;
+      }
       this.observed.add(observed);
       return observeAnswers.isEmpty() ? List.of() : observeAnswers.poll();
     }

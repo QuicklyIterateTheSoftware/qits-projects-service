@@ -1102,7 +1102,16 @@ The progress read stores nothing: `entities/api/CampaignProgress` derives every 
 `waitsFor` and each criterion's `wouldBeSatisfiedBy`/`satisfiable`/`reason` from the rows
 `CampaignService.progress` reads, and `campaignhost/CampaignEvaluatorHealth` adds whether the event
 stream is connected and the catch-up sweep's census, so a waiting campaign can be told from a deaf
-one.
+one — and whether the criteria consumer itself is getting through its frames
+(`CampaignCriteriaConsumerHealth`: `consumerFailing`, `lastError`, `lastErrorAt`, plus the
+consumer's `watermarkAt`), folded into `stalled` too. Connected and sweeping is not listening: on
+2026-09-27 `bus/CampaignCriteriaListener` failed on every frame while this read said `connected:
+true, stalled: false`, because it touched the `epics` datasource inside the library's claim
+transaction, which has already enlisted `eventstream` — two non-XA resources, which Narayana
+refuses (`ARJUNA016045 … Enlisted connection used without active transaction`). **A durable
+listener's database work runs in its own `QuarkusTransaction.requiringNew()`**, as every other
+consumption here already did; `CampaignCriteriaClaimSeamTest` drives the library's real
+`DurableFunnel.offer` so the claim around the listener is never a stand-in again.
 
 Five things are rules rather than details:
 

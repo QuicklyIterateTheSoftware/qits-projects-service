@@ -104,12 +104,32 @@ public final class CampaignDtos {
       String id, String qualifiedId, String title, String status, CampaignStartDto start) {}
 
   /**
-   * The criteria evaluator's health: {@code connected} is the event stream subscriber's live
-   * connection, {@code lastSweepCompletedAt} and {@code stalled} the catch-up sweep's census — what
-   * tells a correct wait from nothing listening.
+   * The criteria evaluator's health — what tells a correct wait from nothing listening.
+   *
+   * <ul>
+   *   <li>{@code connected}: the event stream subscriber's live connection.
+   *   <li>{@code lastSweepCompletedAt}: the catch-up sweep's last completed pass.
+   *   <li>{@code stalled}: the running sweep is stalled <b>or</b> the criteria consumer is failing —
+   *       either way nothing is being latched, and a reader warning on {@code !connected || stalled}
+   *       warns on both.
+   *   <li>{@code consumerFailing}: the criteria consumer's newest outcome is a failed frame (its
+   *       claim rolled back, the event still owed).
+   *   <li>{@code lastError}/{@code lastErrorAt}: the newest failure this process has seen — the
+   *       frame, the exception and its root cause — kept after a recovery; {@code consumerFailing} is
+   *       what says whether it is current. Null when there has been none.
+   *   <li>{@code watermarkAt}: how far the consumer's catch-up has read the log ({@code
+   *       consumer_watermark.occurred_at}); null when it has no row yet or cannot be read. A
+   *       watermark that stops while events keep happening is a wedged consumer.
+   * </ul>
    */
   public record CampaignEvaluatorDto(
-      boolean connected, Instant lastSweepCompletedAt, boolean stalled) {}
+      boolean connected,
+      Instant lastSweepCompletedAt,
+      boolean stalled,
+      boolean consumerFailing,
+      String lastError,
+      Instant lastErrorAt,
+      Instant watermarkAt) {}
 
   /** The eight words a member's state is, derived in this order, the first match winning. */
   public enum CampaignMemberState {
