@@ -10,8 +10,9 @@ import org.jboss.logging.Logger;
 
 /**
  * Writes the shipped surface configurations in {@link AgentSurfaceDefaults#SURFACES}, once, for a
- * store that has never held them. The {@link AgentSurfaceDefaults#RETIRING} desks are not seeded:
- * nothing launches with them, and they resolve to their shipped default without a row.
+ * store that has never held them. {@code project.epics} and {@code project.tickets} — the two desks
+ * {@link AgentSurfaceDefaults#PROJECT_WORK} replaced — are retired outright (qits-404) and are not
+ * seeded: nothing launches with them, no constant names them any more, and their rows are gone.
  *
  * <p><b>Why a boot seed rather than an {@code insert} in V16.</b> The vocabulary has to stay open —
  * adding a ninth surface must be a constant in {@link AgentSurfaceDefaults} and not a migration —

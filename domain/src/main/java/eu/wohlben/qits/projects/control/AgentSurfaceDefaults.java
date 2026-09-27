@@ -64,8 +64,9 @@ public final class AgentSurfaceDefaults {
 
   /**
    * The one front desk at {@code :project/work} — the epics and tickets desks merged (qits-310).
-   * Projects daemon, {@code PROJECT} scope. <b>Every new desk session launches with this key</b>
-   * (qits-403); {@link #PROJECT_EPICS} and {@link #PROJECT_TICKETS} only still resolve.
+   * Projects daemon, {@code PROJECT} scope. <b>Every desk session launches with this key</b>
+   * (qits-403); the two desks it replaced, {@code project.epics} and {@code project.tickets}, are
+   * retired (qits-404) — their rows are gone, along with the constants that used to name them.
    *
    * <p><b>It is a cross-repository WIRE CONTRACT, not a label.</b> {@code AgentSurface} in {@code
    * eu.wohlben.qits:qits-coding-agents} is a closed list and {@code AgentSurface.of} refuses anything
@@ -80,29 +81,11 @@ public final class AgentSurfaceDefaults {
    *
    * <p><b>It ships as the epics desk shipped</b> — an empty system prompt, the one project-narrowed
    * {@code repository} server — because the merged desk inherits the refinement surface's
-   * configuration, not the triage one's. V30 copies the stored {@code project.epics} row onto this
-   * key for the same reason, so an estate that had edited the epics desk carries the edit across.
+   * configuration, not the triage one's. V30 copied the stored {@code project.epics} row onto this
+   * key for the same reason, so an estate that had edited the epics desk carried the edit across
+   * before that row was retired (qits-404).
    */
   public static final String PROJECT_WORK = "project.work";
-
-  /**
-   * The epics desk's surface, <b>retiring</b>: no new session launches with it since qits-403, and
-   * it leaves the launching vocabulary ({@link #SURFACES}) for {@link #RETIRING}.
-   *
-   * <p>It still resolves — it stays in {@link #SHIPPED} — for two readers that outlive the switch:
-   * its stored row, which V30 left in place, and every container born before the switch, which
-   * read its configuration document once at boot and names this key for as long as it lives. The
-   * key and its row retire together with {@link #PROJECT_TICKETS} in a later change, once nothing
-   * launches or holds it.
-   */
-  public static final String PROJECT_EPICS = "project.epics";
-
-  /**
-   * The tickets desk's surface, <b>retiring</b> exactly as {@link #PROJECT_EPICS} is and for the
-   * same reasons. It keeps {@link #TICKETS_DESK_PROMPT} as its shipped default so a container still
-   * holding it renders what it always rendered.
-   */
-  public static final String PROJECT_TICKETS = "project.tickets";
 
   /** The refining route's chat tab. Workspace daemon, {@code REPOSITORY} scope. */
   public static final String EPIC_CHAT = "epic.chat";
@@ -130,7 +113,7 @@ public final class AgentSurfaceDefaults {
    * <p>Adding one is a line here and a shipped default below — no migration, no schema change.
    * That openness is the point: an unknown surface reads as {@link #neutralDefault} rather than
    * 404ing, so a daemon that knows a surface this store has not been told about still launches.
-   * (V30 is the one exception, and it is a data copy, not a schema change: see {@link
+   * (V30 was the one exception, and it was a data copy, not a schema change: see {@link
    * #PROJECT_WORK}.)
    */
   public static final List<String> SURFACES =
@@ -142,14 +125,6 @@ public final class AgentSurfaceDefaults {
           WORKSPACE_AGENT,
           EPIC_AUTONOMOUS,
           TICKET_DISPATCH);
-
-  /**
-   * Surfaces no new session launches with that still resolve to their shipped default: the two
-   * desks {@link #PROJECT_WORK} replaced. Not seeded — a fresh estate has no use for them — and not
-   * in the listing's lead; an estate that holds their rows lists them after the vocabulary, the way
-   * it lists any stored surface outside it.
-   */
-  public static final List<String> RETIRING = List.of(PROJECT_EPICS, PROJECT_TICKETS);
 
   // ---------------------------------------------------------------------------------------------
   // The platform's own MCP servers
@@ -268,44 +243,14 @@ public final class AgentSurfaceDefaults {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * The tickets desk's steering, copied byte for byte from the projects daemon's {@code
-   * AgentLaunchService.TICKETS_DESK_PROMPT}.
-   *
-   * <p>Copied as a text block with its line continuations intact rather than reflowed: the daemon
-   * renders it as a shell-quoted argument and the workspace suite asserts the rendered command line
-   * as a literal, so a re-wrap here would be a silent behaviour change that only a live launch could
-   * catch. If you are editing this to say something new, edit the row through the editor — the
-   * constant is the shipped default and moves only when the daemon's does.
-   */
-  public static final String TICKETS_DESK_PROMPT =
-      """
-      You are this project's tickets front desk: intake and triage for the small-scoped work \
-      that sits beside the epic plans — bugs and improvements.
-
-      Work through the repository MCP server's ticket tools. Survey with list_tickets and \
-      get_ticket before anything else; a ticket carries its own comment thread, so get_ticket \
-      is the whole conversation and not just the fields. File with create_ticket, typed BUG or \
-      IMPROVEMENT, and say in the description how to see the problem, not only that it exists. \
-      Assign with update_ticket. Discuss on the thread with add_ticket_comment, and correct \
-      your own notes with update_ticket_comment rather than posting a second one after the \
-      first. Resolve with transition_ticket once the work is confirmed done, and reopen the \
-      same way when it turns out not to be: resolving is reversible, and nothing about a ticket \
-      freezes.
-
-      When something is too big for a ticket — when it needs a plan rather than a fix — say so \
-      and point at the epics desk. Do not file an epic from here.\
-      """;
-
-  /**
    * The steering the two composed runs launch with, copied byte for byte from the library's {@code
    * AgentLaunchService.COMPOSED_RUN_PROMPT} (surfaced there as {@code
    * AgentSurfaceConfigurations.shippedSystemPrompt}).
    *
-   * <p>Copied as a text block with its line continuations intact rather than reflowed, exactly as
-   * {@link #TICKETS_DESK_PROMPT} is: the daemon renders it as a shell-quoted argument, so a re-wrap
-   * here would be a silent behaviour change that only a live launch could catch. If you are editing
-   * this to say something new, edit the row through the editor — the constant is the shipped default
-   * and moves only when the library's does.
+   * <p>Copied as a text block with its line continuations intact rather than reflowed: the daemon
+   * renders it as a shell-quoted argument, so a re-wrap here would be a silent behaviour change that
+   * only a live launch could catch. If you are editing this to say something new, edit the row
+   * through the editor — the constant is the shipped default and moves only when the library's does.
    *
    * <p><b>One constant for both surfaces, and that is the decision rather than an economy.</b> What
    * it says is how to run an orchestrated session — plan, delegate, verify — and none of that
@@ -430,10 +375,16 @@ public final class AgentSurfaceDefaults {
   }
 
   /**
-   * The shipped configurations — the seven in {@link #SURFACES} and the two {@link #RETIRING} ones —
-   * keyed by surface.
+   * The shipped configurations, keyed by surface — one per entry in {@link #SURFACES}.
    *
    * <p>Read this table beside the two {@code AgentLaunchService}s; every value in it came from one.
+   *
+   * <p>{@code project.epics} and {@code project.tickets} — the two desks {@link #PROJECT_WORK}
+   * replaced — are not here. They resolved to their shipped defaults for a time after qits-403
+   * retired their launch (qits-403's {@code RETIRING} list), so a container born before the switch
+   * could still read the document it was created with; qits-404 deleted both their stored rows and
+   * the constants that named them, so they now fall through to {@link #neutralDefault} like any
+   * other key nobody has heard of.
    */
   public static final Map<String, AgentSurfaceConfigurationDto> SHIPPED = shipped();
 
@@ -444,18 +395,6 @@ public final class AgentSurfaceDefaults {
     map.put(
         PROJECT_WORK,
         surface(PROJECT_WORK, true, "", "", List.of(projectScopedRepository(false))));
-    // RETIRING. The epics desk steers with NOTHING — systemPromptFor(EPICS) returns null — and that
-    // emptiness is the reason the desk axis could be added without touching a running launch.
-    // Remote control is on: it is a chat, and the projects daemon's claudeChatProtocol bridges
-    // every chat.
-    map.put(
-        PROJECT_EPICS,
-        surface(PROJECT_EPICS, true, "", "", List.of(projectScopedRepository(false))));
-    // RETIRING. The one desk with a system prompt.
-    map.put(
-        PROJECT_TICKETS,
-        surface(
-            PROJECT_TICKETS, true, TICKETS_DESK_PROMPT, "", List.of(projectScopedRepository(false))));
     // The four workspace surfaces send byte-identical launch requests today — which is the whole
     // reason the surface had to become a value that travels before any of this could be configured.
     // They are seeded identically here, and that identity is what an editor can now break.

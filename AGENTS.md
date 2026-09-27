@@ -151,7 +151,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   not code, and the module name and the datasource name having been the same word was a coincidence.
   So `entities/src/main/resources/db/epics/migration/` is the intended result. Likewise unmoved:
   every REST route (`/projects/api/epics/…`), every DTO field, every MCP tool name, the SSE topics
-  `epics`/`tickets` (see "The event bus"), and `AgentSurface`'s `project.epics`, which is not
+  `epics`/`tickets` (see "The event bus"), and `AgentSurface`'s `project.work`, which is not
   merely shared with qits-projects-daemon but **validated against a closed list** — `AgentSurface`
   in the qits-coding-agents javalib, which both daemons refuse a surface outside of with a 400 — so
   changing it is a coordinated release of this service, its SPA and two daemons rather than a
@@ -159,9 +159,10 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   reads as its shipped default). Epic qits-310 merged the two desks instead of renaming either:
   since qits-403 the one desk launches as `project.work` (`AgentSurfaceDefaults.PROJECT_WORK`,
   `AgentSurface.PROJECT_WORK` from qits-coding-agents 2026.927.4238), V30 inserted its row as a
-  copy of `project.epics`, and `project.epics`/`project.tickets` are `RETIRING` — they still
-  resolve, but nothing launches with them.
-  `docs/unified-entity-model.md` § "The 'epics' vocabulary rename, as
+  copy of `project.epics`, and `project.epics`/`project.tickets` were `RETIRING` for a time — still
+  resolving, but launching nothing — until qits-404 deleted both rows and the constants that named
+  them, so the two keys now fall through to the neutral default like any other key nobody has heard
+  of. `docs/unified-entity-model.md` § "The 'epics' vocabulary rename, as
   shipped" is the full table and the argument.
 
   **One service and one route implementation for the four archetypes (qits-399).**
@@ -1674,17 +1675,23 @@ permission mode, activity tracking, the system prompt, the initial prompt, and w
 built-in MCP servers attach with what narrowing. Schema in `V16`; entities, store and shipped
 defaults in `domain`; two controllers and the boot seed in `service`.
 
-- **`project.work` is the one desk; `project.epics` and `project.tickets` are retiring
-  (qits-403).** The merged front desk at `:project/work` launches every new session as
-  `project.work`. The two old keys left `AgentSurfaceDefaults.SURFACES` for `RETIRING`: not seeded,
-  not leading the listing, but still in `SHIPPED`, so they resolve — their rows stay, and every
-  container born before the switch read a document naming them once, at boot. `V30` **inserted**
-  (never updated) a `project.work` row copied from `project.epics` — row, built-in and catalog
-  attachments — because the merged desk inherits the refinement surface's configuration, not the
-  tickets desk's prompt. It is guarded so an existing `project.work` row is never touched, and it
-  cannot be pre-empted by the seed: Flyway's `migrate-at-start` runs before the `StartupEvent`
-  that starts `AgentSurfaceSeed`, which then finds the row and writes nothing.
-- **The seed is the safety.** `control/AgentSurfaceDefaults` carries the eight surfaces seeded from
+- **`project.work` is the one desk; `project.epics` and `project.tickets` are retired
+  (qits-403, fully deleted qits-404).** The merged front desk at `:project/work` launches every new
+  session as `project.work`. The two old keys left `AgentSurfaceDefaults.SURFACES` for `RETIRING` at
+  qits-403 — not seeded, not leading the listing, but still in `SHIPPED`, so they resolved and their
+  rows stayed, which is what let a container born before the switch keep reading a document naming
+  them from its boot-time snapshot. `V30` **inserted** (never updated) a `project.work` row copied
+  from `project.epics` — row, built-in and catalog attachments — because the merged desk inherits
+  the refinement surface's configuration, not the tickets desk's prompt. It is guarded so an
+  existing `project.work` row is never touched, and it cannot be pre-empted by the seed: Flyway's
+  `migrate-at-start` runs before the `StartupEvent` that starts `AgentSurfaceSeed`, which then finds
+  the row and writes nothing. **qits-404 deleted both retired rows** — `V31` removes
+  `project.epics`/`project.tickets` from `agent_surface_configuration` and their attachments from
+  both attachment tables (children first, for the foreign keys), and `PROJECT_EPICS`/
+  `PROJECT_TICKETS` are gone from `AgentSurfaceDefaults` along with their `SHIPPED` entries and the
+  now-unused `TICKETS_DESK_PROMPT` constant — so a container old enough to still name either key now
+  reads the neutral default rather than the tickets prompt or the empty epics prompt it used to.
+- **The seed is the safety.** `control/AgentSurfaceDefaults` carries the seven surfaces seeded from
   what the two daemons hardcode today, so turning the store on changes nothing: the tickets desk's
   text block byte for byte, an **empty** system prompt on the epics desk (a value, not an absence),
   skip-permissions everywhere because every launch renders it unconditionally, and per surface
@@ -1851,9 +1858,10 @@ interpolated into any message, including an exception's.
 **A project agent container is born holding what its sessions run as.** `AgentContainerFactory`
 builds the resolved document from the store **in process** — no fetch, because the store is here —
 and puts it in the container's spec beside the path it is to land at. The surface this
-container's sessions launch with is `project.work` (the retiring `project.epics` and
-`project.tickets` ride along wherever their rows are stored); what goes in is *every* surface,
-which is the container door's own decision and its javadoc carries the argument.
+container's sessions launch with is `project.work` (`project.epics` and `project.tickets`, the two
+desks it replaced, are retired outright since qits-404 and resolve to the neutral default); what
+goes in is *every* surface, which is the container door's own decision and its javadoc carries the
+argument.
 
     QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION       the whole resolved document, serialized
     QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH  /tmp/qits/agent-configuration.json

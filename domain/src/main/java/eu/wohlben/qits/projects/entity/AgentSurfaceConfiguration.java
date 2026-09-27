@@ -17,9 +17,9 @@ import java.util.UUID;
  * What one <b>session surface</b> is configured to launch as — the row a constant in {@code
  * AgentLaunchService} used to be.
  *
- * <p>A surface is <em>where in the product a session was started from</em>: the epics overview's
- * refinement panel is {@code project.epics}, the tickets page is {@code project.tickets}, the
- * refining route's two tabs are {@code epic.chat} and {@code epic.agent}, and so on. It is the key
+ * <p>A surface is <em>where in the product a session was started from</em>: the project's one front
+ * desk is {@code project.work}, the refining route's two tabs are {@code epic.chat} and {@code
+ * epic.agent}, and so on. It is the key
  * everything here hangs off, and it is deliberately a free {@link #surfaceKey string} rather than an
  * enum column: adding a surface must be an additive change in one shipped-defaults constant, not a
  * migration and not a schema change in three repositories.
@@ -31,7 +31,7 @@ import java.util.UUID;
  * shaped for them.
  *
  * <p><b>Empty is a value, everywhere text is stored.</b> {@link #systemPrompt} is the case that
- * forced the rule: {@code project.epics} steers with nothing at all, deliberately, and that is what
+ * forced the rule: {@code project.work} steers with nothing at all, deliberately, and that is what
  * lets it render byte-identically to the pre-desk launch. So the text columns are {@code not null}
  * and {@code ""} means "render nothing" rather than "nobody has said". {@link #model} and {@link
  * #effort} read the same way — empty is the harness's own default, which is what every surface but
@@ -57,7 +57,7 @@ import java.util.UUID;
 @EntityListeners(CausationStamp.class)
 public class AgentSurfaceConfiguration extends PanacheEntityBase implements CausedRow {
 
-  /** The surface key — {@code project.epics}, {@code epic.chat}, {@code ticket.dispatch}, … */
+  /** The surface key — {@code project.work}, {@code epic.chat}, {@code ticket.dispatch}, … */
   @Id
   @Column(name = "surface_key")
   public String surfaceKey;

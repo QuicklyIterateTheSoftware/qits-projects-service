@@ -55,34 +55,28 @@ public class AgentSurfaceConfigurationControllerTest {
   }
 
   /**
-   * The retiring tickets desk still resolves — its prompt byte for byte and its one server — though
-   * it is no longer seeded: a container born before qits-403 still names it.
+   * The two retired desks {@code project.work} replaced are gone outright (qits-404): they answer
+   * the neutral default rather than 404ing, exactly like any other key nobody has heard of, and
+   * carry none of their old prompt or server.
    */
   @Test
-  public void theRetiringTicketsDeskStillAnswersItsPromptAndItsOneProjectScopedServer() {
-    JsonPath answer =
-        given()
-            .when()
-            .get("/projects/api/agent-surfaces/project.tickets")
-            .then()
-            .statusCode(200)
-            .extract()
-            .jsonPath();
+  public void theTwoRetiredDesksAnswerTheNeutralDefaultRatherThanTheirOldPromptOrServer() {
+    for (String retired : List.of("project.epics", "project.tickets")) {
+      JsonPath answer =
+          given()
+              .when()
+              .get("/projects/api/agent-surfaces/" + retired)
+              .then()
+              .statusCode(200)
+              .extract()
+              .jsonPath();
 
-    assertThat(answer.getString("surface"), is("project.tickets"));
-    assertThat(answer.getString("harness"), is("CLAUDE"));
-    assertThat(answer.getString("permissionMode"), is("SKIP_PERMISSIONS"));
-    assertThat(answer.getBoolean("activityTracking"), is(true));
-    assertThat(answer.getString("model"), is(""));
-    assertThat(answer.getString("effort"), is(""));
-    assertThat(answer.getString("systemPrompt"), is(AgentSurfaceDefaults.TICKETS_DESK_PROMPT));
-    assertThat(answer.getList("mcpServers.server", String.class), is(List.of("repository")));
-    assertThat(answer.getBoolean("mcpServers[0].narrowProject"), is(true));
-    assertThat(answer.getBoolean("mcpServers[0].narrowRepository"), is(false));
-    assertThat(answer.getBoolean("mcpServers[0].readOnly"), is(false));
-    assertThat(
-        answer.getList("mcpServers[0].allowedTools", String.class),
-        hasItem("mcp__repository__get_ticket"));
+      assertThat(answer.getString("surface"), is(retired));
+      assertThat(answer.getString("harness"), is("CLAUDE"));
+      assertThat(answer.getBoolean("shipped"), is(true));
+      assertThat(answer.getString("systemPrompt"), is(""));
+      assertThat(answer.getList("mcpServers"), is(List.of()));
+    }
   }
 
   /**

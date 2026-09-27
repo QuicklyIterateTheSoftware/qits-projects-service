@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.control;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.dto.AgentMcpAttachmentDto;
@@ -125,30 +126,6 @@ public class AgentSurfaceDefaultsTest {
           + " what it describes.";
 
   /**
-   * The tickets desk prompt as the daemon's text block renders it — the same block, with the same
-   * line continuations, so this literal and the shipped constant are two independent copies of the
-   * bytes rather than one copy read twice.
-   */
-  private static final String TICKETS_DESK_PROMPT =
-      """
-      You are this project's tickets front desk: intake and triage for the small-scoped work \
-      that sits beside the epic plans — bugs and improvements.
-
-      Work through the repository MCP server's ticket tools. Survey with list_tickets and \
-      get_ticket before anything else; a ticket carries its own comment thread, so get_ticket \
-      is the whole conversation and not just the fields. File with create_ticket, typed BUG or \
-      IMPROVEMENT, and say in the description how to see the problem, not only that it exists. \
-      Assign with update_ticket. Discuss on the thread with add_ticket_comment, and correct \
-      your own notes with update_ticket_comment rather than posting a second one after the \
-      first. Resolve with transition_ticket once the work is confirmed done, and reopen the \
-      same way when it turns out not to be: resolving is reversible, and nothing about a ticket \
-      freezes.
-
-      When something is too big for a ticket — when it needs a plan rather than a fix — say so \
-      and point at the epics desk. Do not file an epic from here.\
-      """;
-
-  /**
    * The composed runs' orchestration prompt as the library's text block renders it — the same block,
    * with the same line continuations, so this literal and the shipped constant are two independent
    * copies of the bytes rather than one copy read twice.
@@ -210,22 +187,23 @@ public class AgentSurfaceDefaultsTest {
   }
 
   /**
-   * The two desks {@code project.work} replaced launch nothing any more, and still resolve: their
-   * rows stay, and every container born before the switch reads them from its boot-time document.
+   * The two desks {@code project.work} replaced are retired outright (qits-404): no constant names
+   * them any more, they carry no shipped default, and a lookup falls through to the neutral default
+   * exactly as any other key nobody has heard of does.
    */
   @Test
-  public void theTwoRetiredDesksAreOutOfTheVocabularyAndStillResolve() {
-    assertEquals(List.of("project.epics", "project.tickets"), AgentSurfaceDefaults.RETIRING);
-    for (String retiring : AgentSurfaceDefaults.RETIRING) {
+  public void theTwoRetiredDesksAreGoneEntirelyAndFallThroughToTheNeutralDefault() {
+    for (String retired : List.of("project.epics", "project.tickets")) {
       assertFalse(
-          AgentSurfaceDefaults.SURFACES.contains(retiring),
-          retiring + " must not be seeded or lead the listing any more");
-      assertNotNull(AgentSurfaceDefaults.SHIPPED.get(retiring), retiring + " must still resolve");
-      assertEquals(retiring, AgentSurfaceDefaults.shippedDefault(retiring).surface());
+          AgentSurfaceDefaults.SURFACES.contains(retired),
+          retired + " must not be seeded or lead the listing");
+      assertNull(AgentSurfaceDefaults.SHIPPED.get(retired), retired + " must carry no shipped default");
+      AgentSurfaceConfigurationDto resolved = AgentSurfaceDefaults.shippedDefault(retired);
+      assertEquals(retired, resolved.surface());
+      assertTrue(resolved.shipped());
+      assertEquals(List.of(), resolved.mcpServers(), retired + " resolves to the neutral default");
     }
-    assertEquals(
-        AgentSurfaceDefaults.SURFACES.size() + AgentSurfaceDefaults.RETIRING.size(),
-        AgentSurfaceDefaults.SHIPPED.size());
+    assertEquals(AgentSurfaceDefaults.SURFACES.size(), AgentSurfaceDefaults.SHIPPED.size());
   }
 
   @Test
@@ -276,60 +254,27 @@ public class AgentSurfaceDefaultsTest {
   }
 
   // -------------------------------------------------------------------------------------------
-  // The two project desks
+  // The one project desk
   // -------------------------------------------------------------------------------------------
 
-  @Test
-  public void theEpicsDeskShipsAnEmptySystemPromptWhichIsAValueAndNotAnAbsence() {
-    AgentSurfaceConfigurationDto epics = AgentSurfaceDefaults.SHIPPED.get("project.epics");
-    assertNotNull(epics.systemPrompt(), "empty, never null — systemPromptFor(EPICS) renders nothing");
-    assertEquals("", epics.systemPrompt());
-    assertEquals("", epics.initialPrompt());
-    assertEquals(
-        List.of(
-            new AgentMcpAttachmentDto("repository", true, false, false, false, PROJECTS_REPOSITORY_TOOLS)),
-        epics.mcpServers(),
-        "the projects daemon attaches exactly one server, project-narrowed, at PROJECT scope");
-  }
-
   /**
-   * The one front desk ships as the epics desk did, field for field bar the key: the merged desk
-   * inherits the refinement surface's configuration, which is also what V30 copies from.
+   * {@code project.work} ships as the epics desk it replaced did — an empty system prompt (a value,
+   * not an absence: the desk steers with nothing, deliberately) and the one project-narrowed {@code
+   * repository} server at {@code PROJECT} scope. The epics desk itself, and its literal, are gone
+   * (qits-404); this is the surface that carries the answer forward now.
    */
   @Test
-  public void theOneDeskShipsAsTheEpicsDeskDid() {
+  public void theOneDeskShipsAnEmptySystemPromptWhichIsAValueAndNotAnAbsence() {
     AgentSurfaceConfigurationDto work = AgentSurfaceDefaults.SHIPPED.get("project.work");
-    AgentSurfaceConfigurationDto epics = AgentSurfaceDefaults.SHIPPED.get("project.epics");
     assertEquals("project.work", work.surface());
-    assertEquals(
-        new AgentSurfaceConfigurationDto(
-            "project.work",
-            epics.harness(),
-            epics.model(),
-            epics.effort(),
-            epics.remoteControl(),
-            epics.permissionMode(),
-            epics.activityTracking(),
-            epics.systemPrompt(),
-            epics.initialPrompt(),
-            epics.mcpServers(),
-            epics.externalMcpServers(),
-            epics.shipped()),
-        work);
+    assertNotNull(work.systemPrompt(), "empty, never null — the merged desk steers with nothing");
     assertEquals("", work.systemPrompt(), "not the tickets desk's prompt");
-  }
-
-  @Test
-  public void theTicketsDeskCarriesTheDeskPromptByteForByte() {
-    AgentSurfaceConfigurationDto tickets = AgentSurfaceDefaults.SHIPPED.get("project.tickets");
-    assertEquals(TICKETS_DESK_PROMPT, tickets.systemPrompt());
-    assertEquals(
-        TICKETS_DESK_PROMPT, AgentSurfaceDefaults.TICKETS_DESK_PROMPT, "the constant and the copy");
+    assertEquals("", work.initialPrompt());
     assertEquals(
         List.of(
             new AgentMcpAttachmentDto("repository", true, false, false, false, PROJECTS_REPOSITORY_TOOLS)),
-        tickets.mcpServers(),
-        "the tickets desk is the same container and the same scope as the epics desk");
+        work.mcpServers(),
+        "the projects daemon attaches exactly one server, project-narrowed, at PROJECT scope");
   }
 
   // -------------------------------------------------------------------------------------------
@@ -431,8 +376,6 @@ public class AgentSurfaceDefaultsTest {
     for (String chat :
         List.of(
             "project.work",
-            "project.epics",
-            "project.tickets",
             "epic.chat",
             "workspace.chat",
             "epic.autonomous",
@@ -469,8 +412,8 @@ public class AgentSurfaceDefaultsTest {
   @Test
   public void aKnownSurfaceResolvesToItsSeededDefaultAndIsFlaggedShipped() {
     assertEquals(
-        AgentSurfaceDefaults.SHIPPED.get("project.tickets"),
-        AgentSurfaceDefaults.shippedDefault("project.tickets"));
-    assertTrue(AgentSurfaceDefaults.SHIPPED.get("project.tickets").shipped());
+        AgentSurfaceDefaults.SHIPPED.get("project.work"),
+        AgentSurfaceDefaults.shippedDefault("project.work"));
+    assertTrue(AgentSurfaceDefaults.SHIPPED.get("project.work").shipped());
   }
 }
