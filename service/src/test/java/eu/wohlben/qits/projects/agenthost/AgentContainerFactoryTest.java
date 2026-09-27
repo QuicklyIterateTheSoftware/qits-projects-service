@@ -283,11 +283,12 @@ class AgentContainerFactoryTest {
         "a daemon reading a shape it does not understand must be able to say so at boot");
     List<String> surfaces = new ArrayList<>();
     document.get("surfaces").forEach(s -> surfaces.add(s.get("configuration").get("surface").asText()));
-    // The two this container serves, and every other surface besides — which is the container
-    // door's own decision, argued in AgentConfigurationController: a container that turns out to
-    // serve a surface the creator did not predict is better off holding a configuration for it.
-    assertTrue(surfaces.contains("project.epics"), surfaces.toString());
-    assertTrue(surfaces.contains("project.tickets"), surfaces.toString());
+    // The one desk this container's sessions launch with (qits-403), and every other surface
+    // besides — which is the container door's own decision, argued in
+    // AgentConfigurationController: a container that turns out to serve a surface the creator did
+    // not predict is better off holding a configuration for it.
+    assertTrue(surfaces.contains("project.work"), surfaces.toString());
+    assertTrue(surfaces.contains("ticket.dispatch"), surfaces.toString());
   }
 
   /**

@@ -1766,7 +1766,8 @@ indistinguishable to a later reader:**
 - **`AgentSurface`'s `project.epics`** (`AgentSurfaceDefaults.PROJECT_EPICS`) — a session-surface
   key shared with qits-projects-daemon and persisted in the agent-configuration document every
   container is born holding. It names a screen, it is cross-repository, and it cannot be renamed
-  from here.
+  from here. It was not renamed: qits-403 retired it beside `project.tickets` in favour of the one
+  desk's `project.work`, whose row V30 inserted as a copy of it.
 
 **Two transitions now mean two different things, and both say so in code.** `transition_ticket` is a
 **lifecycle** move (one ticket, one adjacent step, `entity.status` alone, judged by

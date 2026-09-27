@@ -246,10 +246,10 @@ public class AgentMcpCatalogControllerTest {
   @Test
   public void aSurfaceAttachesACatalogEntryByKeyAndReadsItBackByReference() {
     define("weather", KEY);
-    attach("project.epics", List.of("weather"));
+    attach("project.work", List.of("weather"));
 
     JsonPath answer =
-        given().when().get(SURFACES + "/project.epics").then().statusCode(200).extract().jsonPath();
+        given().when().get(SURFACES + "/project.work").then().statusCode(200).extract().jsonPath();
 
     assertThat(answer.getList("externalMcpServers.key", String.class), is(List.of("weather")));
     assertThat(answer.getString("externalMcpServers[0].url"), is("https://mcp.example.com/sse"));
@@ -265,7 +265,7 @@ public class AgentMcpCatalogControllerTest {
             .contentType(ContentType.JSON)
             .body(surfaceBody(List.of("nonesuch")))
             .when()
-            .put(SURFACES + "/project.epics")
+            .put(SURFACES + "/project.work")
             .then()
             .statusCode(400)
             .extract()
@@ -282,7 +282,7 @@ public class AgentMcpCatalogControllerTest {
         .contentType(ContentType.JSON)
         .body(surfaceBody(List.of("weather", "weather")))
         .when()
-        .put(SURFACES + "/project.epics")
+        .put(SURFACES + "/project.work")
         .then()
         .statusCode(400);
   }
@@ -294,14 +294,14 @@ public class AgentMcpCatalogControllerTest {
   @Test
   public void anEntryStillAttachedCannotBeDeletedAndTheRefusalNamesTheSurfaces() {
     define("weather", KEY);
-    attach("project.epics", List.of("weather"));
+    attach("project.work", List.of("weather"));
 
     String detail =
         given().when().delete(CATALOG + "/weather").then().statusCode(400).extract().asString();
-    assertThat(detail, containsString("project.epics"));
+    assertThat(detail, containsString("project.work"));
 
     // Detach, and it goes.
-    attach("project.epics", List.of());
+    attach("project.work", List.of());
     given().when().delete(CATALOG + "/weather").then().statusCode(204);
     given().when().get(CATALOG + "/weather").then().statusCode(404);
   }
@@ -315,13 +315,13 @@ public class AgentMcpCatalogControllerTest {
   @Test
   public void theDocumentCarriesTheFullyRenderedServer() {
     define("weather", KEY);
-    attach("project.epics", List.of("weather"));
+    attach("project.work", List.of("weather"));
 
     JsonPath document = given().when().get(DOCUMENT).then().statusCode(200).extract().jsonPath();
 
-    int epics =
-        document.getList("surfaces.configuration.surface", String.class).indexOf("project.epics");
-    String at = "surfaces[" + epics + "].externalMcpServers[0].";
+    int work =
+        document.getList("surfaces.configuration.surface", String.class).indexOf("project.work");
+    String at = "surfaces[" + work + "].externalMcpServers[0].";
     assertThat(document.getString(at + "key"), is("weather"));
     assertThat(document.getString(at + "url"), is("https://mcp.example.com/sse"));
     assertThat(document.getString(at + "headerName"), is("Authorization"));
@@ -338,11 +338,11 @@ public class AgentMcpCatalogControllerTest {
   @Test
   public void theEditorsAnswersNeverCarryAHeaderValue() {
     define("weather", KEY);
-    attach("project.epics", List.of("weather"));
+    attach("project.work", List.of("weather"));
 
     for (String path :
-        List.of(CATALOG, CATALOG + "/weather", SURFACES, SURFACES + "/project.epics",
-            SURFACES + "/project.epics/revisions")) {
+        List.of(CATALOG, CATALOG + "/weather", SURFACES, SURFACES + "/project.work",
+            SURFACES + "/project.work/revisions")) {
       String body = given().when().get(path).then().statusCode(200).extract().asString();
       assertFalse(body.contains(SECRET), path + " answered a credential's value");
       assertThat(body, not(containsString(SECRET)));
@@ -357,7 +357,7 @@ public class AgentMcpCatalogControllerTest {
   @Test
   public void anUnresolvableCredentialFailsTheDocumentBuildLoudlyAndNamesTheKey() {
     define("weather", KEY);
-    attach("project.epics", List.of("weather"));
+    attach("project.work", List.of("weather"));
     credentials.unreachable(true);
 
     String detail =
