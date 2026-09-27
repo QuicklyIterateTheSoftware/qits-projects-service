@@ -12,7 +12,7 @@ import java.util.Optional;
  * <p><b>The place is {@code owner/refinement/<rowId>}.</b> The row id is minted by this database,
  * is unique forever, and is already a legal orchestrator ref — so unlike qits-workspaces there is
  * no name-derived ref and no hash disambiguator to need: the container <em>name</em>
- * ({@code qits-ref-<projectSlug>-<epicSlug>}) is a {@code docker ps} hint carried as
+ * ({@code qits-ref-<projectSlug>-<slug>}) is a {@code docker ps} hint carried as
  * {@code explicitName}, never an address. What a human-derived name can still do is collide, and
  * the provisioning arm answers that with a 409 rather than a constraint 500.
  *
@@ -31,10 +31,10 @@ public interface RefinementRuntime {
    * Bring a fresh container up — the arm that commissions. Throws when no running container could
    * be produced; a 2xx whose observed state is MISSING/GONE is a failed launch, not a retry case.
    */
-  void provision(Refinement refinement, String projectSlug, String epicSlug, String wrapperName);
+  void provision(Refinement refinement, String projectSlug, String slug, String wrapperName);
 
   /** Wake a stopped container — a start in place, a replacement only if the spec really changed. */
-  void wake(Refinement refinement, String projectSlug, String epicSlug, String wrapperName);
+  void wake(Refinement refinement, String projectSlug, String slug, String wrapperName);
 
   /** Stop the container gracefully, leaving it and its volume in place. Best-effort. */
   void stop(long refinementId);

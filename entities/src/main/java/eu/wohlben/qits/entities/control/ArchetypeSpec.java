@@ -29,9 +29,8 @@ import java.util.Set;
  * @param permitted every property a row of this kind may carry, required ones included. A property
  *     outside this set is <b>refused</b> on a write and never silently dropped: a caller that sent
  *     it meant something by it, and dropping it would lose the meaning and the complaint together
- * @param legalStatuses the exact status words legal on this kind, as stored — {@code EpicStatus}'
- *     five for an epic, {@code TicketStatus}' five for a ticket, none at all for a feature or a
- *     task. Empty means the kind has no status, which is why {@link EntityProperty#STATUS} is
+ * @param legalStatuses the exact status words legal on this kind, as stored — {@code EntityStatus}'
+ *     six for an epic and for a ticket alike, none at all for a feature or a task. Empty means the kind has no status, which is why {@link EntityProperty#STATUS} is
  *     outside its {@link #permitted} set as well; the two say the same thing from two directions and
  *     {@link Archetypes} checks that they agree
  */

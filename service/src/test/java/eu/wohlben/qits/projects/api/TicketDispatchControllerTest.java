@@ -26,12 +26,16 @@ import org.junit.jupiter.api.Test;
  * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, the ticket's id and
  * the turn the ticket's <b>status</b> picked — and <b>what the ticket is left saying</b> afterwards.
  * The dispatch itself is qits-workspaces' and is not simulated here, and the three templates'
- * sentences are {@link TicketPhasePromptsTest}'s.
+ * sentences are {@link PhasePromptsTest}'s.
  *
  * <p>The caller is named with the real {@code X-Qits-*} pair rather than {@code @TestSecurity},
  * because the comment's {@code author} is one of the assertions and the header is what produces it
  * in a deployment ({@code EntitiesAuditIdentityTest}'s reasoning, applied to the one comment this door
  * writes itself).
+ *
+ * <p><b>Since qits-394 the door is a delegate onto {@code EntityDispatch} in FLOW mode.</b> These
+ * cases are what prove the delegation kept the route's contract — its shape, its refusals, its
+ * thread comment — until the SPA stops calling it and the class and this suite are removed.
  */
 @QuarkusTest
 public class TicketDispatchControllerTest {
@@ -162,7 +166,7 @@ public class TicketDispatchControllerTest {
     assertNull(asked.subject().epicId(), "a ticket dispatch names no epic");
 
     // A freshly created ticket is REPORTED, so the turn it is given is the refine phase's — the
-    // templates themselves are asserted sentence by sentence in TicketPhasePromptsTest.
+    // templates themselves are asserted sentence by sentence in PhasePromptsTest.
     assertTrue(
         asked.instruction().contains("Refine ticket \""),
         "the status picks the phase, and a new ticket's phase is refinement: "
@@ -185,6 +189,15 @@ public class TicketDispatchControllerTest {
         .body(
             "entries[0].comment.body",
             containsString("for the refine phase"));
+
+    // The old door is a delegate onto the one path in FLOW mode, which the unified read reports.
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/entities/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.mode", equalTo("FLOW"))
+        .body("state.nextPhase", equalTo("refine"));
   }
 
   /**

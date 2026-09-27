@@ -106,8 +106,8 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
     Nested task = taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
     assertEquals(feature.entity().id, taskService.get(task.entity().id).parentId());
 
-    // The marker is only writable in IMPLEMENTATION, and the only way to know the phase is the walk.
-    epicService.transition(epic.id, "IMPLEMENTATION", "t");
+    // The marker is only writable at REFINED, and the only way to know the phase is the walk.
+    epicService.transition(epic.id, "REFINED", "t");
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     assertEquals(
         when,

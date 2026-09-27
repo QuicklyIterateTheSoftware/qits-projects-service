@@ -333,7 +333,7 @@ class HttpWorkspaceAgentDispatchTest {
    * separately and nothing orders them, so this service can perfectly well be live first — and a
    * qits-workspaces that predates the change answers rows with no {@code status} member at all.
    * Reading that as a blank status would fail every {@code ACTIVE} filter downstream, which would
-   * silently stop {@code TicketPhaseAdvance} asking for any release whatsoever. ACTIVE is also the
+   * silently stop {@code PhaseAdvance} asking for any release whatsoever. ACTIVE is also the
    * honest reading: an older far side answered live workspaces and nothing else.
    */
   @Test

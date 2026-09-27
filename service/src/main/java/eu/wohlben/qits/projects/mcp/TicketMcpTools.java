@@ -8,7 +8,7 @@ import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.api.TicketBlocks;
-import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
+import eu.wohlben.qits.projects.api.PhaseAdvance;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -81,6 +81,9 @@ public class TicketMcpTools {
 
   @Inject TicketService ticketService;
 
+  /** Every ticket move goes through here, so a resolving one discards the ticket's refinement. */
+  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
+
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
@@ -90,7 +93,7 @@ public class TicketMcpTools {
    * crossing {@code TicketDispatchController} declares: a workspace is {@code domain}'s, and this
    * module assembles both.
    */
-  @Inject TicketPhaseAdvance phaseAdvance;
+  @Inject PhaseAdvance phaseAdvance;
 
   /**
    * The block door's whole rule, shared with {@code TicketController}'s route over the same write.
@@ -286,7 +289,7 @@ public class TicketMcpTools {
    * <b>"Transition" here is a LIFECYCLE move, and it is not the other transition.</b> This tool
    * moves one ticket along {@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, or off that
    * line into {@code DROPPED}: it writes {@code entity.status} and nothing else, and which moves
-   * are legal is {@code TicketLifecycle.LEGAL_TARGETS}' to say and argued there.
+   * are legal is {@code EntityLifecycle.LEGAL_TARGETS}' to say and argued there.
    *
    * <p>{@code transition_entities} ({@link EntityMcpTools}, over {@code EntityTransitionService})
    * is the ARCHETYPE transition, which the unified-entity epic introduced: it restates what KIND a
@@ -335,7 +338,8 @@ public class TicketMcpTools {
           String target) {
     requireTicketInProject(id);
     String changedBy = changedBy();
-    WorkEntity ticket = ticketService.transition(id, target, changedBy);
+    // Through EntityResolutions (qits-395): a resolving move discards the ticket's refinement first.
+    WorkEntity ticket = resolutions.transitionTicket(id, target, changedBy);
     announce();
     // The agent's claim IS the trigger for the next phase, and this is where it lands: after the
     // move is recorded, outside its transaction, so a transition that failed speaks to nobody. The

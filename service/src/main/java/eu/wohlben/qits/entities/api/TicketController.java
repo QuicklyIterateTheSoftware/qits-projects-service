@@ -6,7 +6,7 @@ import eu.wohlben.qits.entities.dto.TicketDto;
 import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
 import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
 import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
-import eu.wohlben.qits.projects.api.TicketPhaseAdvance;
+import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.validation.NotBlankIfPresent;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -29,7 +29,7 @@ import org.jboss.logging.Logger;
  *
  * <h2>One injection points the other way, and it is the service layer's crossing</h2>
  *
- * <p>{@link #transition} calls {@link TicketPhaseAdvance}, which lives in {@code
+ * <p>{@link #transition} calls {@link PhaseAdvance}, which lives in {@code
  * eu.wohlben.qits.projects.api} because it needs the project, the wrapper repository and a workspace
  * port. That is not the epics <b>jar</b> learning about {@code domain}: this class is under {@code
  * service/}, the module that assembles both, and it is only the package name that reads like the
@@ -46,6 +46,8 @@ public class TicketController {
   private static final Logger LOG = Logger.getLogger(TicketController.class);
 
   @Inject TicketService ticketService;
+
+  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
 
   /** One mapper where there were four; this route answers the ticket shape. */
   @Inject WorkEntityMapper workEntityMapper;
@@ -67,11 +69,11 @@ public class TicketController {
   @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
 
   /** The phase a transition starts, delivered into the workspace on the ticket's branch. */
-  @Inject TicketPhaseAdvance phaseAdvance;
+  @Inject PhaseAdvance phaseAdvance;
 
   /**
    * The block door's whole rule — the refusal, the row and the remark — shared with the two MCP
-   * tools over the same write. It is in {@code projects.api} for {@link TicketPhaseAdvance}'s
+   * tools over the same write. It is in {@code projects.api} for {@link PhaseAdvance}'s
    * reason: what a status means for the work is decided there.
    */
   @Inject eu.wohlben.qits.projects.api.TicketBlocks blocks;
@@ -154,7 +156,7 @@ public class TicketController {
    * VERIFIED → DONE the move must be to a NEIGHBOUR of the ticket's current status — one step,
    * forward or back — and DROPPED sits off that line, reachable from any status that is not already
    * closed and reopening only to REPORTED. The rule is argued once, in {@code
-   * TicketLifecycle.LEGAL_TARGETS}. A move the lifecycle does not allow (including a move to the
+   * EntityLifecycle.LEGAL_TARGETS}. A move the lifecycle does not allow (including a move to the
    * status the ticket already has), and a target naming no status, both answer 409 with a message;
    * an absent target is a 400.
    */
@@ -165,8 +167,8 @@ public class TicketController {
   /**
    * Moving a ticket takes {@code qits:agent}, bound to the agent's own project: the {@code
    * transition_ticket} MCP tool already performs this write for an agent, lifecycle rule and all.
-   * Unlike an epic's transition, this one resolves nothing and starts a phase the agent is itself
-   * the subject of. See {@link EntitiesAgentAccess}.
+   * It starts a phase the agent is itself the subject of, and — like an epic's — a resolving move
+   * discards the ticket's refinement room first (qits-395). See {@link EntitiesAgentAccess}.
    */
   @POST
   @Path("/{id}/transition")
@@ -175,11 +177,13 @@ public class TicketController {
       @PathParam("id") String id, @Valid TransitionTicketRequest request) {
     EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
     String changedBy = EntitiesPrincipal.changedBy(identity);
-    var ticket = ticketService.transition(id, request.target(), changedBy);
+    // Through EntityResolutions, like an epic's move: a ticket can hold a refinement room since
+    // qits-395, and a resolving move tears it down before the status lands.
+    var ticket = resolutions.transitionTicket(id, request.target(), changedBy);
     hints.fire(ticket.projectId);
     // AFTER the move is recorded and outside its transaction, like the hint above: the next phase
     // is started from the status the ticket now holds, and a transition that rolled back speaks to
-    // nobody. See TicketPhaseAdvance for why this is not a step inside TicketService.transition.
+    // nobody. See PhaseAdvance for why this is not a step inside TicketService.transition.
     try {
       phaseAdvance.afterTransition(ticket, changedBy);
     } catch (RuntimeException e) {

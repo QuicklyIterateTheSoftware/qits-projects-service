@@ -137,7 +137,7 @@ public class EntityMcpTools {
    * <p><b>"Transition" here is an ARCHETYPE move, and it is not {@code transition_ticket}.</b> What
    * this restates is what KIND a row is ({@code entity.archetype}) and whose child it is ({@code
    * entity_membership}). {@code transition_ticket} ({@link TicketMcpTools}, over {@code
-   * TicketLifecycle}) is the LIFECYCLE transition: one ticket, one adjacent step along {@code
+   * EntityLifecycle}) is the LIFECYCLE transition: one ticket, one adjacent step along {@code
    * REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, writing {@code entity.status} alone. The
    * two share a word and share nothing else — this one never applies a lifecycle's adjacency rule
    * (a status it carries is judged only against the TARGET archetype's vocabulary), and that one
@@ -193,9 +193,8 @@ public class EntityMcpTools {
                       + " membership ({\"parent\": \"<id>\", \"position\": 0} — omit it or state a"
                       + " null parent to make the entity a root, and a parent may be another entity"
                       + " in this same map); title; description; status (required for an EPIC or a"
-                      + " TICKET, which are the kinds that have one — REFINING/IMPLEMENTATION/"
-                      + "IMPLEMENTED/SUPERSEDED/ABANDONED for an epic, REPORTED/REFINED/IMPLEMENTED/"
-                      + "VERIFIED/DONE/DROPPED for a ticket); ticketType (BUG or IMPROVEMENT);"
+                      + " TICKET, which are the kinds that have one — REPORTED/REFINED/IMPLEMENTED/"
+                      + "VERIFIED/DONE/DROPPED, the same six words for both); ticketType (BUG or IMPROVEMENT);"
                       + " impetus;"
                       + " assignee; repositoryId (a TASK's repository); implementedAt; dependsOn (a"
                       + " sibling to do first, never nesting). Position is clamped to the legal"

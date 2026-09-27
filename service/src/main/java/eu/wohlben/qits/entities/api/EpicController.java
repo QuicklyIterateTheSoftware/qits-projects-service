@@ -8,7 +8,7 @@ import eu.wohlben.qits.entities.dto.EpicDto;
 import eu.wohlben.qits.entities.dto.FeatureDto;
 import eu.wohlben.qits.entities.mapper.AuditEntryMapper;
 import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
-import eu.wohlben.qits.projects.refinementhost.EpicResolutions;
+import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -33,7 +33,7 @@ public class EpicController {
 
   @Inject EpicService epicService;
 
-  @Inject EpicResolutions epicResolutions;
+  @Inject EntityResolutions resolutions;
 
   @Inject FeatureService featureService;
 
@@ -61,6 +61,17 @@ public class EpicController {
    * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
    */
   @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
+
+  /**
+   * The next phase after a move, for an epic exactly as for a ticket (qits-394): the turn the new
+   * status starts, delivered into the workspace on {@code epic/<slug>} when the run that stands there
+   * was dispatched as a flow, and the release asked for at VERIFIED either way. See {@code
+   * PhaseAdvance}.
+   */
+  @Inject eu.wohlben.qits.projects.api.PhaseAdvance phaseAdvance;
+
+  private static final org.jboss.logging.Logger LOG =
+      org.jboss.logging.Logger.getLogger(EpicController.class);
 
   // --- Epic ---
 
@@ -101,12 +112,15 @@ public class EpicController {
   }
 
   /**
-   * A lifecycle move. {@code target} is the status name — {@code IMPLEMENTATION} (the scope
-   * freeze), {@code IMPLEMENTED} (shipped: stamps every feature and task still unimplemented),
-   * {@code SUPERSEDED} or {@code ABANDONED}. A move the lifecycle does not allow, and a target
-   * naming no status, both answer 409 with a message.
+   * A lifecycle move. {@code target} is a status name of the one entity lifecycle — {@code
+   * REFINED} (the scope freeze), {@code IMPLEMENTED} (shipped: stamps every feature and task still
+   * unimplemented), {@code VERIFIED}, {@code DONE}, {@code DROPPED}, or back along the walk ({@code
+   * REPORTED} reopens a frozen scope) — or {@code SUPERSEDED}, which is not a status but the
+   * supersede operation: the epic lands {@code DROPPED} pointing at the successor draft it spawned
+   * (see {@code EpicService.SUPERSEDE}). A move the lifecycle does not allow, and a target naming
+   * no status, both answer 409 with a message.
    *
-   * <p>It goes through {@link EpicResolutions} rather than straight to {@code EpicService}, because
+   * <p>It goes through {@link EntityResolutions} rather than straight to {@code EpicService}, because
    * a move that resolves the epic has to tear its refinement down first — see that class for the
    * order and for what the browser-side version of it used to leak.
    */
@@ -119,10 +133,17 @@ public class EpicController {
   @Path("/{id}/transition")
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
-    var result =
-        epicResolutions.transition(id, request.target(), EntitiesPrincipal.changedBy(identity));
+    String changedBy = EntitiesPrincipal.changedBy(identity);
+    var result = resolutions.transition(id, request.target(), changedBy);
     // A supersede spawns a second epic in the same project, so one hint still covers both rows.
     hints.fire(result.epic().projectId);
+    // AFTER the move is recorded and outside its transaction, as the ticket door does it.
+    try {
+      phaseAdvance.afterTransition(result.epic(), changedBy);
+    } catch (RuntimeException e) {
+      // It says it must not throw; a throw is a bug in it and must not touch a recorded move.
+      LOG.warnf(e, "Could not start the phase epic %s just moved into", result.epic().id);
+    }
     return new TransitionEpicRequest.Response(
         qualifiedIds.qualify(workEntityMapper.toEpicDto(result.epic())),
         result.successor() == null

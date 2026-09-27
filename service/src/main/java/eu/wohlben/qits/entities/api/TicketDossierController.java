@@ -42,7 +42,7 @@ import jakarta.ws.rs.core.MediaType;
  *
  * <p><b>What is deliberately different is the freeze, and it is the absence of one.</b> A ticket
  * commits to no scope, so these pages are writable while the ticket is {@code REPORTED}, {@code
- * IMPLEMENTED} and {@code DONE} alike. {@code EpicLifecycle.requireRefining} is not reached from
+ * IMPLEMENTED} and {@code DONE} alike. {@code EntityLifecycle.requireReported} is not reached from
  * here at all.
  *
  * <p><b>There is no {@code /tickets/{id}/dossier-assets} route, by simple absence.</b> {@code

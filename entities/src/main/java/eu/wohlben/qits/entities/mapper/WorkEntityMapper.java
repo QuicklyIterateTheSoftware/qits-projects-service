@@ -4,8 +4,7 @@ import eu.wohlben.qits.entities.dto.EpicDto;
 import eu.wohlben.qits.entities.dto.FeatureDto;
 import eu.wohlben.qits.entities.dto.TaskDto;
 import eu.wohlben.qits.entities.dto.TicketDto;
-import eu.wohlben.qits.entities.entity.EpicStatus;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -65,7 +64,7 @@ public interface WorkEntityMapper {
    *
    * <p>{@code number} and {@code projectId} map by name off the merged row.
    */
-  @Mapping(target = "status", source = "status", qualifiedByName = "epicStatus")
+  @Mapping(target = "status", source = "status", qualifiedByName = "status")
   @Mapping(target = "supersededByEpicId", source = "supersededByEntityId")
   @Mapping(target = "workspaces", expression = "java(java.util.List.of())")
   @Mapping(target = "qualifiedId", ignore = true)
@@ -73,7 +72,7 @@ public interface WorkEntityMapper {
 
   /** A {@code TICKET} row as the shape the ticket routes have always answered. */
   @Mapping(target = "type", source = "ticketType")
-  @Mapping(target = "status", source = "status", qualifiedByName = "ticketStatus")
+  @Mapping(target = "status", source = "status", qualifiedByName = "status")
   @Mapping(target = "workspaces", expression = "java(java.util.List.of())")
   @Mapping(target = "qualifiedId", ignore = true)
   TicketDto toTicketDto(WorkEntity entity);
@@ -101,29 +100,21 @@ public interface WorkEntityMapper {
   TaskDto toTaskDto(WorkEntity entity, String featureId);
 
   /**
-   * <b>The stored word, read as an {@link EpicStatus} and written back out as its {@code name()}.</b>
+   * <b>The stored word, read as an {@link EntityStatus} and written back out as its {@code
+   * name()}.</b>
    *
    * <p>The DTO component is a {@code String} and the column is a {@code String}, so a straight
-   * pass-through would compile and would be <em>wrong in one direction that matters</em>: {@code
-   * ck_entity_status} spells the UNION of both lifecycles' words, so an {@code EPIC} row holding
-   * {@code REPORTED} satisfies the constraint and would be handed to a client as an epic status.
-   * Going through the enum is exactly what the deleted {@code WorkEntityProjections.epic} did
-   * ({@code EpicStatus.valueOf(source.status)}), and it keeps that refusal where it was rather than
-   * quietly widening the epic vocabulary to nine words at the DTO boundary. The database spells the
-   * vocabulary; {@code control/Archetypes} spells the rule; this keeps the reader honest about which
-   * half it is reading.
+   * pass-through would compile — and would hand a client whatever the column holds. Going through
+   * the enum keeps the refusal the deleted {@code WorkEntityProjections.epic} made: a word the one
+   * lifecycle does not spell is an exception at the boundary rather than a status a client has to
+   * guess at. There were two of these, one per enum, until qits-392 made the epic and the ticket
+   * one vocabulary ({@code ck_entity_status}, epics V15, spells exactly the same six words).
    *
    * <p>Null in, null out: a status-less row is an ordinary row here (a feature and a task hold
    * none), and {@code valueOf(null)} would be a {@code NullPointerException} rather than an answer.
    */
-  @Named("epicStatus")
-  static String epicStatus(String stored) {
-    return stored == null ? null : EpicStatus.valueOf(stored).name();
-  }
-
-  /** {@link #epicStatus}'s rule for the other lifecycle, and for its reason. */
-  @Named("ticketStatus")
-  static String ticketStatus(String stored) {
-    return stored == null ? null : TicketStatus.valueOf(stored).name();
+  @Named("status")
+  static String status(String stored) {
+    return stored == null ? null : EntityStatus.valueOf(stored).name();
   }
 }

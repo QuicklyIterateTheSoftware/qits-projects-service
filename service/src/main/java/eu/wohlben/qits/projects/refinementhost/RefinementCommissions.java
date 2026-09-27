@@ -108,7 +108,7 @@ public class RefinementCommissions {
 
   /**
    * What a refinement's credential may push: exactly its own branch. The row's {@code branch} is
-   * the one {@code RefinementService.findOrCreate} cut ({@code refining/<epicSlug>}), and {@code
+   * the one {@code RefinementService.findOrCreate} cut ({@code refining/<slug>}), and {@code
    * RefinementContainerFactory} gives the same value to the container as {@code
    * QITS_WORKSPACE_DAEMON_BRANCH}. So the daemon's auto-push goes to this ref and to no other. A row
    * with no branch may push nothing.

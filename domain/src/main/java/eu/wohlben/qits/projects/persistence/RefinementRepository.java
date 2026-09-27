@@ -13,9 +13,9 @@ import java.util.Optional;
 @ApplicationScoped
 public class RefinementRepository implements PanacheRepositoryBase<Refinement, Long> {
 
-  /** The refinement of one epic, if it exists. The find half of find-or-create. */
-  public Optional<Refinement> findByEpic(String epicId) {
-    return find("epicId", epicId).firstResultOptional();
+  /** The refinement of one entity (epic or ticket), if it exists. The find half of find-or-create. */
+  public Optional<Refinement> findByEntity(String entityId) {
+    return find("entityId", entityId).firstResultOptional();
   }
 
   /** Every refinement holding a commissioned credential — the reconcile's local inventory. */

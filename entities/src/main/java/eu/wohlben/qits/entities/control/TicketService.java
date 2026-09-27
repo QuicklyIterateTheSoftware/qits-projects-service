@@ -4,7 +4,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.TicketComment;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
@@ -24,8 +24,8 @@ import java.util.stream.Collectors;
  * domain}'s {@code Project} is validated in the {@code service} controller (this module has no
  * dependency on {@code domain}), exactly as {@link EpicService} has it.
  *
- * <p>A new ticket starts {@link TicketStatus#REPORTED}; {@link #transition} is the only thing that
- * moves the status, one step at a time, and {@link TicketLifecycle} is where the adjacency rule
+ * <p>A new ticket starts {@link EntityStatus#REPORTED}; {@link #transition} is the only thing that
+ * moves the status, one step at a time, and {@link EntityLifecycle} is where the adjacency rule
  * lives. Nothing here freezes: see that class for why a ticket has no equivalent of the epic scope
  * freeze.
  *
@@ -101,8 +101,8 @@ public class TicketService {
       return patience.hold(
           "ticket list", () -> entities.listByProjectAndArchetype(projectId, Archetype.TICKET));
     }
-    TicketStatus filter =
-        TicketLifecycle.parse(status)
+    EntityStatus filter =
+        EntityLifecycle.parse(status)
             .orElseThrow(() -> new BadRequestException("Unknown ticket status: " + status));
     return patience.hold(
         "ticket list by status",
@@ -116,7 +116,7 @@ public class TicketService {
   }
 
   /**
-   * A new {@link TicketStatus#REPORTED} ticket. {@code type} is the enum name and is required — a
+   * A new {@link EntityStatus#REPORTED} ticket. {@code type} is the enum name and is required — a
    * ticket that says neither bug nor improvement is a report nobody can triage — and so is {@code
    * impetus}, which is what a REPORTED ticket consists of: see {@code WorkEntity.impetus} for the
    * length rule the intake surfaces quote. {@code description} is the refinement's output and is
@@ -140,7 +140,7 @@ public class TicketService {
     Validations.requireText(impetus, "impetus");
     Validations.requireText(type, "type");
     TicketType kind =
-        TicketLifecycle.parseType(type)
+        EntityLifecycle.parseType(type)
             .orElseThrow(() -> new BadRequestException("Unknown ticket type: " + type));
     return writes.hold(
         "ticket create",
@@ -163,7 +163,7 @@ public class TicketService {
               Slugs.unique(
                   Slugs.slugify(title, row.id, "ticket-"), entities.slugsInScope(projectId));
           row.ticketType = kind;
-          row.status = TicketStatus.REPORTED.name();
+          row.status = EntityStatus.REPORTED.name();
           row.assignee = blankToNull(assignee);
           row.createdBy = changedBy;
           row.impetus = impetus;
@@ -218,7 +218,7 @@ public class TicketService {
     TicketType kind =
         type == null
             ? null
-            : TicketLifecycle.parseType(type)
+            : EntityLifecycle.parseType(type)
                 .orElseThrow(() -> new BadRequestException("Unknown ticket type: " + type));
     return writes.hold(
         "ticket update",
@@ -260,8 +260,8 @@ public class TicketService {
 
   /**
    * Moves a ticket to {@code target} (the enum name), rejecting a move the lifecycle does not allow
-   * with a 409. Which moves those are is {@link TicketLifecycle}'s to say and is argued there — the
-   * adjacent-only pipeline, the off-path exit that is {@link TicketStatus#DROPPED}, and the move to
+   * with a 409. Which moves those are is {@link EntityLifecycle}'s to say and is argued there — the
+   * adjacent-only pipeline, the off-path exit that is {@link EntityStatus#DROPPED}, and the move to
    * the status the ticket already has, which is refused rather than read as a no-op. A target
    * naming no status is a 409 too, for the reason {@link EpicService#transition} gives; an absent
    * one is a 400, because that is a malformed request rather than a refused move.
@@ -278,14 +278,39 @@ public class TicketService {
    */
   public WorkEntity transition(String id, String target, String changedBy) {
     Validations.requireText(target, "target");
+    return transitionChecked(id, target, changedBy);
+  }
+
+  /**
+   * What a {@link #transition} to {@code target} would be — {@link EpicService.PlannedTransition}'s
+   * twin, for the same reason (qits-395): a ticket can hold a refinement container now, and the
+   * assembling service has to tear it down <em>before</em> a resolving move while still refusing an
+   * illegal one first. Every rejection is the transition's own; this is a preview, never a
+   * reservation, and the move is re-checked inside {@link #transition}.
+   */
+  public record PlannedTransition(WorkEntity ticket, EntityStatus target, boolean resolving) {}
+
+  /** The preview of a move — see {@link PlannedTransition}. */
+  public PlannedTransition planTransition(String id, String target) {
+    Validations.requireText(target, "target");
+    WorkEntity row = entity(id);
+    EntityStatus to =
+        EntityLifecycle.parse(target)
+            .orElseThrow(() -> new ConflictException("Unknown ticket status: " + target));
+    EntityLifecycle.requireTransition(Archetype.TICKET, EntityStatus.valueOf(row.status), to);
+    return new PlannedTransition(row, to, EntityLifecycle.resolves(to));
+  }
+
+  private WorkEntity transitionChecked(String id, String target, String changedBy) {
     return writes.hold(
         "ticket transition",
         () -> {
           WorkEntity row = entity(id);
-          TicketStatus to =
-              TicketLifecycle.parse(target)
+          EntityStatus to =
+              EntityLifecycle.parse(target)
                   .orElseThrow(() -> new ConflictException("Unknown ticket status: " + target));
-          TicketLifecycle.requireTransition(TicketStatus.valueOf(row.status), to);
+          EntityLifecycle.requireTransition(
+              Archetype.TICKET, EntityStatus.valueOf(row.status), to);
           row.status = to.name();
           row.blocked = false;
           requireArchetypeValid(row, Demand.ON_UPDATE);
@@ -312,11 +337,11 @@ public class TicketService {
    * omission.</b> Blocking is meaningful only where a phase runs — REPORTED, REFINED, IMPLEMENTED —
    * and asking it of a VERIFIED, DONE or DROPPED ticket is refused with a 409 by the doors, in the
    * {@code service} module. The rule is not enforceable here and must not be copied here:
-   * <em>phase</em> is the service layer's concept, mapped in {@code projects/api/TicketPhasePrompts}
+   * <em>phase</em> is the service layer's concept, mapped in {@code projects/api/PhasePrompts}
    * beside the prompts and the workspaces, and this module has no idea a phase exists — it is the
    * module most likely to be lifted out next and it depends on {@code domain} nowhere. A second
    * list of the three phased statuses written here would be the drift {@code
-   * TicketLifecycle.LEGAL_TARGETS} exists to prevent, one concept over.
+   * EntityLifecycle.LEGAL_TARGETS} exists to prevent, one concept over.
    *
    * <p>The {@code reason} is not stored on the row and this method does not take one: a blocker is
    * a remark with an author and a time, which is what the thread already is, so the doors record it

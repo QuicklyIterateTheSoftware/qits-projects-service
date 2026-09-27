@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.entitieshost;
 
 import eu.wohlben.qits.entities.control.TicketService;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
@@ -175,8 +175,8 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     }
     // The merged row stores the status word, so the two closing words are compared by name against
     // the column.
-    return TicketStatus.DONE.name().equals(ticket.status)
-            || TicketStatus.DROPPED.name().equals(ticket.status)
+    return EntityStatus.DONE.name().equals(ticket.status)
+            || EntityStatus.DROPPED.name().equals(ticket.status)
         ? null
         : ticket;
   }

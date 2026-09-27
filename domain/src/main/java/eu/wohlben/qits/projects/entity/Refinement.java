@@ -14,19 +14,21 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One epic's refinement container, as this service hosts it — the row behind the projects SPA's
+ * One entity's refinement container, as this service hosts it — the row behind the projects SPA's
  * refining route, which used to be an ordinary qits-workspaces workspace on a {@code refining/*}
- * branch.
+ * branch. The entity is an epic or a ticket, the two archetypes with a lifecycle (qits-395; until
+ * then only an epic could be refined).
  *
- * <p><b>Keyed by epic, addressed by row id.</b> An epic has at most one refinement (the unique
- * constraint on {@code epic_id} is what makes find-or-create race-safe), and every URL — lifecycle
+ * <p><b>Keyed by entity, addressed by row id.</b> An entity has at most one refinement (the unique
+ * constraint on {@code entity_id} is what makes find-or-create race-safe), and every URL — lifecycle
  * verbs, the daemon proxy, the SSE channel — carries the numeric row id, the same shape the
  * workspaces domain used and the shape the SPA's panels already take.
  *
- * <p><b>The epic id is a key, not a relation.</b> The epic lives in the {@code entities} module's own
- * database and Flyway lineage; a foreign key across persistence units is not a thing, and the epics
- * module deliberately depends on nothing here. The row is torn down by an explicit discard, never
- * by a cascade from a table it cannot see.
+ * <p><b>The entity id is a key, not a relation.</b> The entity lives in the {@code entities}
+ * module's own database and Flyway lineage; a foreign key across persistence units is not a thing,
+ * and that module deliberately depends on nothing here. The row is torn down by an explicit discard,
+ * never by a cascade from a table it cannot see. Nor is the archetype copied here (V29 says why): the
+ * open reads the entity live, and nothing after it needs to know.
  *
  * <p><b>The commissioned credential is two columns, and that is forced rather than chosen.</b> The
  * pair reaches the container as environment, and qits-containers hashes a workload's whole spec —
@@ -47,11 +49,15 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   public Long id;
 
-  /** The epic being refined. Unique — an epic has at most one refinement. */
-  @Column(name = "epic_id", nullable = false, unique = true)
-  public String epicId;
+  /**
+   * The entity being refined — an epic or a ticket. Unique — an entity has at most one refinement.
+   * The column was {@code epic_id} until V29 renamed it; ids are one space across archetypes, so no
+   * value moved.
+   */
+  @Column(name = "entity_id", nullable = false, unique = true)
+  public String entityId;
 
-  /** The project the epic belongs to. A key into another table of this database, kept plain. */
+  /** The project the entity belongs to. A key into another table of this database, kept plain. */
   @Column(name = "project_id", nullable = false)
   public String projectId;
 
@@ -59,7 +65,11 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   @Column(name = "repository_id", nullable = false)
   public String repositoryId;
 
-  /** The refinement's branch on the wrapper: {@code refining/<epicSlug>}. */
+  /**
+   * The refinement's branch on the wrapper: {@code refining/<slug>}, the entity's slug. A root
+   * entity's slug is unique per project across archetypes ({@code uq_entity_slug_scope_slug}), so an
+   * epic and a ticket can never cut the same branch.
+   */
   @Column(name = "branch", nullable = false)
   public String branch;
 
@@ -68,7 +78,7 @@ public class Refinement extends PanacheEntityBase implements CausedRow {
   public String parent;
 
   /**
-   * A human-readable label ({@code refining-<epicSlug>}, sanitized), announced to the daemon as its
+   * A human-readable label ({@code refining-<slug>}, sanitized), announced to the daemon as its
    * workspace id so logs and frames read well. Decoration — the row id is the address.
    */
   @Column(name = "label", nullable = false)

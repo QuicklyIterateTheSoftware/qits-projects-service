@@ -67,7 +67,7 @@ import java.util.Set;
  * <ol>
  *   <li><b>The row.</b> Each entry against its <em>target</em> archetype, through {@code
  *       Archetypes.validate(EntityState)} — so a property the target has no slot for is refused
- *       rather than dropped, and a status word from the other lifecycle is named.
+ *       rather than dropped, and a status word outside the lifecycle is named.
  *   <li><b>The slug scope.</b> A move changes what a slug is unique within, so a slug that was free
  *       under one parent may be taken under another. That is a <b>validation refusal naming the slug
  *       and the new parent</b>, computed over the post-state occupancy of every affected scope —
@@ -85,7 +85,7 @@ import java.util.Set;
  *       Archetypes} declares {@code STATUS} merely <em>permitted</em> on an {@code EPIC} because an
  *       epic's first status is minted by {@code EpicService.create} and requiring it would fail every
  *       create. A transition mints nothing, so under the PUT rule an omitted status would
- *       <em>clear</em> one and leave a status-less epic {@code EpicLifecycle.parse} cannot read.
+ *       <em>clear</em> one and leave a status-less epic {@code EntityLifecycle.parse} cannot read.
  *       Requiring it of the caller is the only answer that neither invents a value nor ships a
  *       lifecycle-broken row. The word is still judged by the registry against the target's
  *       vocabulary.
@@ -95,10 +95,9 @@ import java.util.Set;
  *       never mentioned. Refusing it is the honest answer, and no surface asks for the move.
  * </ul>
  *
- * <p><b>This is NOT a lifecycle move.</b> {@code EpicLifecycle.requireTransition} and {@code
- * TicketLifecycle.requireTransition} are not run here and must not be: the adjacency rules —
- * one step forward or back along five statuses — stay owned by the two existing transition
- * endpoints, which is where a caller asking "advance this ticket" goes. This endpoint answers a
+ * <p><b>This is NOT a lifecycle move.</b> {@code EntityLifecycle.requireTransition} is not
+ * run here and must not be: the adjacency rules — one step forward or back along five statuses —
+ * stay owned by the two existing transition endpoints, which is where a caller asking "advance this ticket" goes. This endpoint answers a
  * different question, "make the shape of the plan be this", and a status it is handed is part of the
  * shape rather than a step.
  *
@@ -396,7 +395,7 @@ public class EntityTransitionService {
    * <em>permitted</em> on an {@code EPIC} because an epic's first status is minted by {@code
    * EpicService.create} and requiring it would fail every create before the writer had run. A
    * transition mints nothing, so under the PUT rule an omitted status would <em>clear</em> one and
-   * leave a status-less epic {@code EpicLifecycle.parse} cannot read.
+   * leave a status-less epic {@code EntityLifecycle.parse} cannot read.
    *
    * <p>It is public and named because it has two readers that must not drift: {@link
    * #propertyViolations}, which enforces it after the press, and {@code ArchetypeRegistryDocument},

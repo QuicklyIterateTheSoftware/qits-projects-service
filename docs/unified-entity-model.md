@@ -27,6 +27,7 @@ have no writer and no referent; they are a frozen snapshot.
 | `V11__entity_number.sql` | the numeric id: the column, `uq_entity_project_number`, the backfill and the allocator's counter | **shipped** |
 | `V12__owner_keys_to_entity.sql` | the four outward foreign keys repointed at `entity(id)`, which retires the mirror | **shipped** |
 | `V13__drop_legacy_planning_tables.sql` | the four old tables dropped, and `ck_audit_entity_type` re-stated off the archetype set over an unchanged vocabulary. It deletes the verification door with them — `entities/…/migration/`, `service/…/entities/api/MigrationVerificationController.java` and both its test classes — because a door whose comparison target no longer exists can only answer about nothing. See "The cleanup, as shipped" below | **shipped** |
+| `V15__one_entity_lifecycle.sql` | one lifecycle for every archetype: every epic row backfilled onto `EntityStatus`' words, then `ck_entity_status` narrowed from the ten-word union to those six. See "One lifecycle for every archetype" below | **shipped** |
 
 The ids are the **same id space**: `entity.id` is `varchar(255)` exactly as `epic.id` is, because
 V10 copies each old row in under the id it already has. Every dossier page, audit entry, branch
@@ -456,8 +457,8 @@ Declared in `entities/control/Archetypes.java`, as data. Nothing else re-decides
 
 | archetype | depth | may be a root | requires | permits (beyond required) | legal statuses |
 | --- | --- | --- | --- | --- | --- |
-| `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the five `EpicStatus` words |
-| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the six `TicketStatus` words |
+| `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the six `EntityStatus` words (was the five `EpicStatus` words until V15 — see "One lifecycle for every archetype") |
+| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the six `EntityStatus` words (the enum was `TicketStatus` until V15) |
 | `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
 | `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
 
@@ -1032,8 +1033,8 @@ of a project's whole plan to.
                      "required": ["TITLE"], "requiredAtCreate": ["TITLE"],
                      "requiredOnTransition": ["TITLE","STATUS"],
                      "permitted": ["TITLE","SLUG","DESCRIPTION","STATUS","SUPERSEDED_BY"],
-                     "legalStatuses": ["ABANDONED","IMPLEMENTATION","IMPLEMENTED","REFINING",
-                                       "SUPERSEDED"] } ] }
+                     "legalStatuses": ["DONE","DROPPED","IMPLEMENTED","REFINED","REPORTED",
+                                       "VERIFIED"] } ] }
 ```
 
 **It exists so the archetype gate is met as form fields rather than as an error after a button
@@ -1074,8 +1075,8 @@ are `Set`s in Java and are answered in `EntityProperty` declaration order — th
 `Archetypes.validate` reports violations in, so a form's fields and a refusal's complaints read in one
 sequence. `legalStatuses` is a `Set<String>` whose source enum order is **not recoverable** from
 `ArchetypeSpec`, so it is sorted alphabetically to make the answer deterministic, and **a client must
-not read a lifecycle, an ordering or a first phase out of it**: `ABANDONED` leads an epic's list and
-is its last word. The adjacency rules stay on the two lifecycle endpoints and are not served here.
+not read a lifecycle, an ordering or a first phase out of it**: `DONE` leads the list and is not
+its first phase (it was `ABANDONED` leading an epic's list while epics had a vocabulary of their own). The adjacency rules stay on the two lifecycle endpoints and are not served here.
 
 **It is a class of its own, `service/…/entities/api/EntityArchetypesController`, and it takes
 `qits:agent`.** Every read route on this surface takes the agent, and this is a read of four public
@@ -1945,6 +1946,42 @@ builds, and that the record tree serialises. It asserts CLEAN over a database wh
 are **empty** and `entity` is full — which is the shape the three findings are about, and exactly
 what a door written with the reverse assertion would report as broken.
 
+## One lifecycle for every archetype (V15, qits-392)
+
+**`EpicStatus` is deleted, and the ticket's six words are the lifecycle of every archetype that has
+one.** `entity/EntityStatus` (renamed from `TicketStatus`) — `REPORTED → REFINED → IMPLEMENTED →
+VERIFIED → DONE`, plus `DROPPED`, walked reversibly — is what an epic holds too, and
+`control/EntityLifecycle` (the survivor of `EpicLifecycle` and `TicketLifecycle`) is one legal-target
+graph over it. `Archetypes` declares one status set for `EPIC` and `TICKET`, so the served registry
+above carries the one vocabulary. The point of the change: an epic can now be VERIFIED and DONE.
+
+The mapping, which is also V15's backfill:
+
+| was | becomes |
+| --- | --- |
+| `REFINING` | `REPORTED` |
+| `IMPLEMENTATION` | `REFINED` |
+| `IMPLEMENTED` | `IMPLEMENTED` |
+| `ABANDONED` | `DROPPED` |
+| `SUPERSEDED` | `DROPPED`, with `superseded_by_entity_id` kept exactly as it is |
+
+- **The order inside V15 is the whole risk**: the four `update`s run first and the drop-and-re-add of
+  `ck_entity_status` second. Narrow first and every `REFINING` row violates the new constraint.
+  `migration/OneEntityLifecycleMigrationTest` stands at V14 with one epic per old word and asserts
+  the post-state, the kept successor pointer and that no row was lost.
+- **The freeze re-expresses and becomes reversible.** `EntityLifecycle.requireReported` (was
+  `requireRefining`): an epic's scope is editable at REPORTED and frozen from REFINED on.
+  `requireRefined` (was `requireImplementation`): the implemented markers move only at REFINED. A
+  frozen scope is reopened by the ordinary backward move to REPORTED — no new door.
+- **`SUPERSEDED` is an operation now, not a status.** `POST /epics/{id}/transition` still accepts
+  the target `SUPERSEDED` (`EpicService.SUPERSEDE`): it is judged as a move to DROPPED, lands the
+  epic DROPPED, runs the unchanged deep copy into a successor draft and points the old row at it.
+  One refusal is the operation's own: a REPORTED epic has no frozen scope to supersede.
+- **Not derivation.** A transition asserts a status on the node it is about; it neither fans out to
+  the children nor rolls up from them. Moving to IMPLEMENTED still stamps the unimplemented markers
+  in the same transaction, exactly as before.
+- **Resolving** (what tears a refinement down) is a move to IMPLEMENTED, VERIFIED, DONE or DROPPED.
+
 ## Where the code is
 
 | | |
@@ -1954,7 +1991,7 @@ what a door written with the reverse assertion would report as broken.
 | repositories | `entities/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
 | the registry | `entities/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
 | the five cut-over services | `entities/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java` — answering `WorkEntity` and `control/Nested.java`; `WorkEntityProjections.java` is **deleted** |
-| the lifecycle guards | `entities/…/control/EpicLifecycle.java` — every caller hands it the `entity` row itself |
+| the lifecycle guards | `entities/…/control/EntityLifecycle.java` (was `EpicLifecycle.java` + `TicketLifecycle.java` until qits-392) — every caller hands it the `entity` row itself |
 | the one mapper | `entities/…/mapper/WorkEntityMapper.java` — `toEpicDto`/`toTicketDto`/`toFeatureDto`/`toTaskDto`, replacing `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`, all four **deleted** |
 | the four old entities and their repositories | **deleted** with their tables (V13): `entities/…/entity/Epic.java`, `Ticket.java`, `Feature.java`, `Task.java`; `entities/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` |
 | the nesting rule | `entities/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |

@@ -43,9 +43,9 @@ public enum EntityProperty {
   DESCRIPTION,
 
   /**
-   * {@code entity.status}. One column, two vocabularies: an epic's word comes from {@code
-   * EpicStatus} and a ticket's from {@code TicketStatus}, and which set is legal is part of the
-   * archetype's declaration rather than a thing the column can express.
+   * {@code entity.status}. One column, one vocabulary ({@code EntityStatus}) for every kind
+   * with a lifecycle, and whether a kind has one is part of the archetype's declaration rather than
+   * a thing the column can express.
    */
   STATUS,
 

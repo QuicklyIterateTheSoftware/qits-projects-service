@@ -299,8 +299,8 @@ public class RefinementStaleImageSweep {
    * <p><b>Two reads per pass and no network call at all</b>, which is the shape {@code
    * AgentStaleImageSweep.liveProjectsByContainerName} keeps and the reason the name is computed
    * here rather than asked for per row. A refinement's container name is {@code
-   * qits-ref-<projectSlug>-<epicSlug>}: the epic slug is on the row (the branch it cut is {@code
-   * refining/<epicSlug>}, which {@link RefinementService#epicSlugOf} is the one reading of), and
+   * qits-ref-<projectSlug>-<slug>}: the entity slug is on the row (the branch it cut is {@code
+   * refining/<slug>}, which {@link RefinementService#slugOf} is the one reading of), and
    * the project slug comes from the projects table — so one listing of each, folded into a map,
    * answers for every container in the orchestrator's listing. Going the other way, from container
    * to row, would be {@link RefinementService#view} per name: a drift read and an {@code inspect}
@@ -324,7 +324,7 @@ public class RefinementStaleImageSweep {
         continue;
       }
       byName.put(
-          factory.containerName(projectSlug, RefinementService.epicSlugOf(refinement)),
+          factory.containerName(projectSlug, RefinementService.slugOf(refinement)),
           refinement.id);
     }
     return byName;

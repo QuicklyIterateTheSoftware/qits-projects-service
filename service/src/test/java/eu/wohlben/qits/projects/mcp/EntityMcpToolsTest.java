@@ -293,7 +293,7 @@ public class EntityMcpToolsTest {
     Map<String, Object> entities = new LinkedHashMap<>();
     entities.put(
         featureId,
-        Map.of("archetype", "EPIC", "title", "Really an epic", "status", "REFINING"));
+        Map.of("archetype", "EPIC", "title", "Really an epic", "status", "REPORTED"));
     entities.put(
         first,
         Map.of("archetype", "FEATURE", "title", "First slice", "membership", under(featureId, 0)));
@@ -343,7 +343,7 @@ public class EntityMcpToolsTest {
                 Map.of(
                     "archetype", "EPIC",
                     "title", "Second thoughts",
-                    "status", "REFINING",
+                    "status", "REPORTED",
                     "description", "still the same plan"))),
         response -> {
           assertFalse(response.isError(), text(response));
@@ -366,7 +366,7 @@ public class EntityMcpToolsTest {
         "transition_entities",
         Map.of(
             "entities",
-            Map.of(epicInA, Map.of("archetype", "EPIC", "title", "Taken", "status", "REFINING"))),
+            Map.of(epicInA, Map.of("archetype", "EPIC", "title", "Taken", "status", "REPORTED"))),
         response -> {
           assertTrue(response.isError(), "cross-project access must be refused");
           assertTrue(text(response).contains("not found in this project"), text(response));
@@ -415,7 +415,7 @@ public class EntityMcpToolsTest {
             "entities",
             Map.of(
                 "ghost-id",
-                Map.of("archetype", "EPIC", "title", "A ghost", "status", "REFINING"))),
+                Map.of("archetype", "EPIC", "title", "A ghost", "status", "REPORTED"))),
         response -> {
           assertTrue(response.isError(), "an unknown id must not become a row");
           assertTrue(text(response).contains("there is no ghost-id"), text(response));
@@ -484,8 +484,9 @@ public class EntityMcpToolsTest {
               assertTrue(names.contains("list_entities"), names.toString());
               assertFalse(names.contains("transition_entity"), names.toString());
               assertFalse(names.contains("move_entity"), names.toString());
-              // Still no epic lifecycle move, which the archetype transition does not become.
-              assertFalse(names.contains("transition_epic"), names.toString());
+              // The epic's lifecycle move is its own tool (transition_epic, qits-394); the
+              // archetype transition does not become it, and the two stay two names.
+              assertTrue(names.contains("transition_epic"), names.toString());
 
               var transition =
                   tools.stream().filter(t -> t.name().equals("transition_entities")).findFirst();

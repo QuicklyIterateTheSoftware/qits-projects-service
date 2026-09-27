@@ -11,8 +11,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditEntry;
 import eu.wohlben.qits.entities.entity.AuditOperation;
-import eu.wohlben.qits.entities.entity.EpicStatus;
-import eu.wohlben.qits.entities.entity.TicketStatus;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
@@ -83,7 +82,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         transitions.transition(
             stated(
                 feature.entity().id,
-                epicEntry("The part", "a part of the plan", null, EpicStatus.REFINING),
+                epicEntry("The part", "a part of the plan", null, EntityStatus.REPORTED),
                 staying.entity().id,
                 taskEntry(feature.entity().id, 0, "Stays", "repo-1"),
                 moving.entity().id,
@@ -94,7 +93,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     assertEquals(Archetype.EPIC, after.get(feature.entity().id).archetype());
     assertNull(after.get(feature.entity().id).parent(), "the promoted feature stands at the root");
     assertEquals(
-        EpicStatus.REFINING.name(), after.get(feature.entity().id).status(), "an epic must have a phase");
+        EntityStatus.REPORTED.name(), after.get(feature.entity().id).status(), "an epic must have a phase");
     assertEquals(feature.entity().id, after.get(staying.entity().id).parent());
     assertEquals(epic.id, after.get(moving.entity().id).parent());
 
@@ -143,7 +142,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                 transitions.transition(
                     stated(
                         feature.entity().id,
-                        epicEntry("The part", null, null, EpicStatus.REFINING),
+                        epicEntry("The part", null, null, EntityStatus.REPORTED),
                         task.entity().id,
                         new EntityTransition(
                             Archetype.TASK,
@@ -199,7 +198,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     for (String id : List.of(one.entity().id, two.entity().id, three.entity().id)) {
       assertEquals(Archetype.TICKET, after.get(id).archetype());
       assertNull(after.get(id).parent(), "a ticket is a root");
-      assertEquals(TicketStatus.REPORTED.name(), after.get(id).status());
+      assertEquals(EntityStatus.REPORTED.name(), after.get(id).status());
       assertEquals(PROJECT, after.get(id).slugScope());
     }
     inFreshTx(
@@ -220,7 +219,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
 
     Map<String, TransitionedEntity> after =
         transitions.transition(
-            stated(epic.id, epicEntry("After", "the new body", null, EpicStatus.REFINING)), WHO);
+            stated(epic.id, epicEntry("After", "the new body", null, EntityStatus.REPORTED)), WHO);
 
     assertEquals("After", after.get(epic.id).title());
     assertEquals("the new body", after.get(epic.id).description());
@@ -243,7 +242,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     transitions.transition(
         stated(
             promoted.entity().id,
-            epicEntry("Becomes an epic", null, null, EpicStatus.REFINING),
+            epicEntry("Becomes an epic", null, null, EntityStatus.REPORTED),
             child.entity().id,
             featureEntry(promoted.entity().id, null, "Goes under it")),
         WHO);
@@ -289,9 +288,9 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                 transitions.transition(
                     stated(
                         epic.id,
-                        epicEntry("The plan", null, null, EpicStatus.REFINING),
+                        epicEntry("The plan", null, null, EntityStatus.REPORTED),
                         "ghost-id",
-                        epicEntry("A ghost", null, null, EpicStatus.REFINING)),
+                        epicEntry("A ghost", null, null, EntityStatus.REPORTED)),
                     WHO));
     assertEquals(400, refusal.statusCode(), "a caller fixes every id in one round trip");
     assertTrue(refusal.getMessage().contains("there is no ghost-id"), refusal.getMessage());
@@ -395,7 +394,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                     null,
                     "The gate times out on a cold cache", // restated, and changed
                     null,
-                    TicketStatus.REPORTED.name(),
+                    EntityStatus.REPORTED.name(),
                     TicketType.BUG,
                     "it came up",
                     null, // the assignee is not restated, so the PUT clears it
@@ -439,7 +438,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             new EntityTransition.Membership(epic.id, null),
                             "The part",
                             null,
-                            "REFINING", // layer one: a FEATURE has no status
+                            "REPORTED", // layer one: a FEATURE has no status
                             null,
                             null,
                             null,
@@ -449,7 +448,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null),
                         epic.id,
                         // layer two: an epic cannot be part of a feature
-                        epicEntry("The plan", null, feature.entity().id, EpicStatus.REFINING)),
+                        epicEntry("The plan", null, feature.entity().id, EntityStatus.REPORTED)),
                     WHO));
 
     assertTrue(refusal.getMessage().contains("has no status"), refusal.getMessage());
@@ -509,7 +508,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                     null,
                     "Really a bug",
                     null,
-                    TicketStatus.REPORTED.name(),
+                    EntityStatus.REPORTED.name(),
                     TicketType.BUG,
                     null, // no impetus: the column allows it and an update may not demand it
                     null,
@@ -526,13 +525,13 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
           WorkEntity row = entities.findById(feature.entity().id);
           assertEquals(Archetype.TICKET, row.archetype);
           assertNull(row.impetus);
-          assertEquals(TicketStatus.REPORTED.name(), row.status);
+          assertEquals(EntityStatus.REPORTED.name(), row.status);
         });
   }
 
   /** Everything else about a promotion to TICKET is refused as ever — the concession is narrow. */
   @Test
-  void aPromotionToTicketStillNeedsItsTypeAndAStatusFromItsOwnLifecycle() {
+  void aPromotionToTicketStillNeedsItsTypeAndAStatusOfTheLifecycle() {
     WorkEntity epic = epicService.create(PROJECT, "The plan", null, WHO);
     Nested feature = featureService.create(epic.id, "Really a bug", null, null, WHO);
 
@@ -548,7 +547,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null,
                             "Really a bug",
                             null,
-                            EpicStatus.REFINING.name(), // the other lifecycle's word
+                            "REFINING", // a retired epic word, in no lifecycle any more
                             null, // and no ticket type
                             null,
                             null,
@@ -558,7 +557,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null)),
                     WHO));
     assertTrue(refusal.getMessage().contains("ticket type"), refusal.getMessage());
-    assertTrue(refusal.getMessage().contains("different lifecycle"), refusal.getMessage());
+    assertTrue(refusal.getMessage().contains("not a word of the entity lifecycle"), refusal.getMessage());
   }
 
   /**
@@ -575,7 +574,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             BadRequestException.class,
             () -> transitions.transition(stated(epic.id, epicEntry("The plan", null, null, null)), WHO));
     assertTrue(refusal.getMessage().contains("requires status"), refusal.getMessage());
-    inFreshTx(() -> assertEquals(EpicStatus.REFINING.name(), entities.findById(epic.id).status));
+    inFreshTx(() -> assertEquals(EntityStatus.REPORTED.name(), entities.findById(epic.id).status));
   }
 
   // --- position -------------------------------------------------------------
@@ -671,7 +670,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   }
 
   private static EntityTransition epicEntry(
-      String title, String description, String parent, EpicStatus status) {
+      String title, String description, String parent, EntityStatus status) {
     return new EntityTransition(
         Archetype.EPIC,
         new EntityTransition.Membership(parent, null),
@@ -693,7 +692,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         title,
         null,
-        TicketStatus.REPORTED.name(),
+        EntityStatus.REPORTED.name(),
         TicketType.BUG,
         impetus,
         null,

@@ -27,7 +27,7 @@ import java.util.List;
  *
  * <p><strong>The epic is the pitch; the dossier is the implementation reference.</strong> An epic's
  * description argues that the work is worth doing; a dossier page is read by the agent implementing
- * the epic — {@code EpicDispatchController.instruction(...)} sends it here for the detail the epic
+ * the epic — {@code PhasePrompts} (the epic templates) sends it here for the detail the epic
  * leaves out — so a page records what changes and how it works: paths, names, commands, file lists,
  * exact values, with examples, images from the Sketch tab and designs framed inline. An agent
  * refining an epic writes both, and the tool descriptions say which is which so the argument stays

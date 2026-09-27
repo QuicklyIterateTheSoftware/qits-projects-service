@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.control;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 
 /**
  * <b>One thing wrong with a candidate row</b>, structured rather than a sentence.
@@ -39,11 +40,10 @@ public record ArchetypeViolation(
     NOT_PERMITTED,
 
     /**
-     * The status word is outside the vocabulary this archetype's lifecycle is written in — an
-     * {@code EpicStatus} on a ticket, a {@code TicketStatus} on an epic, or a word neither enum
-     * spells. The database cannot catch this: {@code ck_entity_status} is the union of both enums,
-     * because a check constraint has no way to say "these five when the archetype is EPIC" without
-     * becoming a second place the vocabulary is written down.
+     * The status word is outside the vocabulary this archetype's lifecycle is written in — a word
+     * {@code EntityStatus} does not spell, or any status at all on a kind with no lifecycle (a
+     * feature, a task). Epics and tickets share the one vocabulary since qits-392; {@code
+     * ck_entity_status} spells the same six words, but cannot say that a feature holds none.
      */
     ILLEGAL_STATUS
   }
@@ -55,7 +55,15 @@ public record ArchetypeViolation(
           "a " + archetype + " requires " + name(property) + ", and none was given";
       case NOT_PERMITTED -> "a " + archetype + " has no " + name(property);
       case ILLEGAL_STATUS ->
-          "a " + archetype + " has no status " + detail + " — its statuses are a different lifecycle";
+          "a "
+              + archetype
+              + " has no status "
+              + detail
+              + " — it is not a word of the entity lifecycle ("
+              + java.util.Arrays.stream(EntityStatus.values())
+                  .map(Enum::name)
+                  .collect(java.util.stream.Collectors.joining(", "))
+              + ")";
     };
   }
 

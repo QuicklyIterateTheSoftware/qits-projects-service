@@ -32,6 +32,11 @@ import org.junit.jupiter.api.Test;
  * <p>{@link TicketDispatchControllerTest} is the sibling and the shape is deliberately its; the
  * assertion that has no counterpart there is the one about the epic being left alone — an epic has
  * no thread to write on and this door must not edit the plan instead.
+ *
+ * <p><b>Since qits-394 the door is a delegate onto {@code EntityDispatch} in PHASE mode</b>, keeping
+ * only the freeze its deployed button has always meant. These cases are what prove the delegation
+ * kept the route's contract — its shape, its refusals, its retry — until the SPA stops calling it
+ * and the class, its DTO and this suite are removed together.
  */
 @QuarkusTest
 public class EpicDispatchControllerTest {
@@ -144,7 +149,7 @@ public class EpicDispatchControllerTest {
         .body("dispatch.agentLaunch", equalTo("SCHEDULED"));
 
     assertEquals(
-        "IMPLEMENTATION",
+        "REFINED",
         statusOf(epicId),
         "the press transitions the epic, and does it before the dispatch");
 
@@ -184,25 +189,35 @@ public class EpicDispatchControllerTest {
         "the agent is sent to the dossier for the detail the epic leaves out: "
             + asked.instruction());
     assertTrue(
-        asked.instruction().contains("read-only while the epic is in implementation"),
-        "and told it cannot correct the dossier from here, which is what the REFINING guard does");
+        asked.instruction().contains("read-only while the epic is REFINED"),
+        "and told it cannot correct the dossier from here, which is what the REPORTED guard does");
     assertTrue(
         asked.instruction().contains("mark_task_implemented"),
         "and told to record each task as it lands");
     assertTrue(asked.instruction().contains("dependsOn"), "and to respect the ordering links");
     assertTrue(
-        asked.instruction().contains("fully released"),
-        "and that the work is not done until it is released");
+        asked.instruction().contains("Release every repository you touched"),
+        "and that the work is not done until every touched repository is released");
     assertTrue(
-        asked.instruction().contains("leave the epic in implementation"),
+        asked.instruction().contains("leave the epic REFINED"),
         "the other arm: an unfinished run says what is missing rather than claiming the epic");
 
     // The flow brief comes FIRST and is the ticket doors' own constant, never a second literal —
-    // TicketPhasePromptsTest.everyDispatchedInstructionOpensWithTheOneFlowBriefPointer is where
+    // PhasePromptsTest.everyDispatchedInstructionOpensWithTheOneFlowBriefPointer is where
     // all four instructions are held to it together. What this half adds is that the sentence
     // survives the real door, end to end, and is not merely a property of the renderer.
+    // The old door is a delegate onto the one path in PHASE mode: the run it starts stops after
+    // this phase, which the unified read reports.
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/entities/" + epicId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.mode", equalTo("PHASE"))
+        .body("state.nextPhase", equalTo("implement"));
+
     assertTrue(
-        asked.instruction().startsWith(TicketPhasePrompts.FLOW_BRIEF_POINTER + " "),
+        asked.instruction().startsWith(PhasePrompts.FLOW_BRIEF_POINTER + " "),
         "an epic's agent is pointed at the project's flow brief before anything else: "
             + asked.instruction());
   }
@@ -211,12 +226,12 @@ public class EpicDispatchControllerTest {
   public void aSecondPressOnAnEpicAlreadyInImplementationDispatchesAgain() {
     String projectId = createProject("Epic Dispatch Again");
     String epicId = createEpic(projectId, "Second press", "Press it twice.");
-    transition(epicId, "IMPLEMENTATION");
+    transition(epicId, "REFINED");
     dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(77L, false, "SKIPPED_RUNNING"));
 
-    // A re-press is how a failed dispatch is retried, so IMPLEMENTATION must not be a 409 here —
-    // EpicService.planTransition would refuse IMPLEMENTATION -> IMPLEMENTATION, which is exactly
-    // why the door only transitions a REFINING epic.
+    // A re-press is how a failed dispatch is retried, so REFINED must not be a 409 here —
+    // EpicService.planTransition would refuse REFINED -> REFINED, which is exactly
+    // why the door only transitions a REPORTED epic.
     asAdmin("mallory")
         .when()
         .post("/projects/api/epics/" + epicId + "/dispatch-agent")
@@ -231,31 +246,32 @@ public class EpicDispatchControllerTest {
         java.util.List.of("refs/heads/epic/second-press"),
         dispatch.lastCall().gitRefs(),
         "an epic with no features or tasks may push its own branch and nothing else");
-    assertEquals("IMPLEMENTATION", statusOf(epicId), "and the epic is where it already was");
+    assertEquals("REFINED", statusOf(epicId), "and the epic is where it already was");
   }
 
   @Test
   public void anEpicWhoseWorkIsOverIsRefusedNamingItsStatus() {
     String projectId = createProject("Epic Dispatch Over");
     String shipped = createEpic(projectId, "Already shipped", "Done.");
-    transition(shipped, "IMPLEMENTATION");
+    transition(shipped, "REFINED");
     transition(shipped, "IMPLEMENTED");
+    transition(shipped, "VERIFIED");
     String abandoned = createEpic(projectId, "Never happening", "Dropped.");
-    transition(abandoned, "ABANDONED");
+    transition(abandoned, "DROPPED");
 
     asAdmin("mallory")
         .when()
         .post("/projects/api/epics/" + shipped + "/dispatch-agent")
         .then()
         .statusCode(409)
-        .body("message", containsString("IMPLEMENTED"));
+        .body("message", containsString("is VERIFIED"));
 
     asAdmin("mallory")
         .when()
         .post("/projects/api/epics/" + abandoned + "/dispatch-agent")
         .then()
         .statusCode(409)
-        .body("message", containsString("ABANDONED"));
+        .body("message", containsString("DROPPED"));
 
     assertTrue(dispatch.calls().isEmpty(), "work that is over asks nothing of anybody");
   }
@@ -287,7 +303,7 @@ public class EpicDispatchControllerTest {
 
     // The order's deliberate cost: the transition already happened, and that is the state the
     // retry needs. The epic is legitimately in implementation — somebody did decide to start.
-    assertEquals("IMPLEMENTATION", statusOf(epicId));
+    assertEquals("REFINED", statusOf(epicId));
 
     // And nothing was written on the epic itself: the description is the plan, not a log.
     asAdmin("mallory")

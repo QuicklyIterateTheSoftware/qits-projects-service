@@ -17,7 +17,7 @@ import java.util.UUID;
  *
  * <p><b>It is a document, not a proposal.</b> There is no lifecycle: an agent and a person write
  * and rewrite the same row, the way they both write the epic's description. The gate on a draft is
- * the epic's own {@code REFINING → IMPLEMENTATION} transition, which a person controls and which
+ * the epic's own {@code REPORTED → REFINED} transition, which a person controls and which
  * freezes the whole plan at once. {@link #version} is what keeps two writers from silently
  * overwriting each other — a write carrying a stale version is refused, never merged.
  *
