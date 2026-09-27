@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.campaign;
 
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import jakarta.enterprise.inject.Instance;
 
 /**
  * <b>The qualified id of a row — {@code qits-412} — for a sentence this module writes down.</b>
@@ -18,4 +19,25 @@ public interface EntityQualifier {
 
   /** {@code <project-slug>-<number>}, or null when the project cannot be resolved. */
   String qualifiedId(WorkEntity entity);
+
+  /**
+   * {@code qits-412} through {@code qualifier} when one is assembled and answers, else {@code
+   * #412}; {@code "an entity"} for no row. Never throws — see the interface javadoc.
+   */
+  static String render(Instance<EntityQualifier> qualifier, WorkEntity row) {
+    if (row == null) {
+      return "an entity";
+    }
+    if (qualifier != null && !qualifier.isUnsatisfied()) {
+      try {
+        String rendered = qualifier.get().qualifiedId(row);
+        if (rendered != null) {
+          return rendered;
+        }
+      } catch (RuntimeException e) {
+        // A decoration: it must never fail the write. The fallback below is still unambiguous.
+      }
+    }
+    return "#" + row.number;
+  }
 }

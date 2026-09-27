@@ -39,7 +39,8 @@ import java.util.stream.Collectors;
 /**
  * <b>A campaign's membership, its members' conditions, and the latches a person or the current
  * state can set</b> (epic f6c67e74, qits-413) — the authoring half. Nothing here matches an event or
- * dispatches; the evaluator and the executor are later tasks that read and write the same rows.
+ * dispatches: {@link CampaignEvaluator} latches from events (qits-415) and is also the one
+ * "satisfied memberships" step {@link #approve} and {@link #latchFromCurrentState} answer through.
  *
  * <h2>The rules, each stated once</h2>
  *
@@ -122,6 +123,9 @@ public class CampaignService {
 
   @Inject WritePatience writes;
 
+  /** The one "satisfied memberships" step every latch source answers through. */
+  @Inject CampaignEvaluator evaluator;
+
   /** Renders {@code qits-412}; optional — see {@link EntityQualifier}. */
   @Inject Instance<EntityQualifier> qualifier;
 
@@ -154,7 +158,7 @@ public class CampaignService {
    */
   public record CriterionSpec(String id, String kind, Map<String, Object> predicate) {}
 
-  /** An approval's answer: the member, and the memberships whose condition it made hold. */
+  /** An approval's answer: the member, and — when its condition now holds — its membership id. */
   public record Approved(Member member, List<String> satisfied) {}
 
   // --- reads ----------------------------------------------------------------------------------------
@@ -532,7 +536,9 @@ public class CampaignService {
    * <b>A person's yes</b>: latches an APPROVAL criterion with {@code approved_by}, {@code
    * approval_note} and {@code satisfied_at}. 409 when the criterion is not APPROVAL, when it is
    * already satisfied (naming who and when), and when the campaign is DONE or DROPPED. Answers the
-   * memberships whose condition this made hold, so the executor can act on them.
+   * member if its condition now holds and it is unclaimed ({@link
+   * CampaignEvaluator#satisfiedUnclaimed}, the step every latch source shares), so the executor can
+   * act on it.
    */
   public Approved approve(
       String campaignId, String membershipId, String criterionId, String note, String actor) {
@@ -574,16 +580,13 @@ public class CampaignService {
                     + criterion.satisfiedAt
                     + ".");
           }
-          boolean held = before.satisfied();
           criterion.approvedBy = actor;
           criterion.approvalNote = note == null || note.isBlank() ? null : note;
           criterion.satisfiedAt = Instant.now();
           flush();
           audit(campaign, "CRITERION_APPROVED", edge, actor);
-          Member after = member(edge);
-          List<String> satisfied =
-              !held && after.satisfied() && edge.claimedAt == null ? List.of(edge.id) : List.of();
-          return new Approved(after, satisfied);
+          List<String> satisfied = evaluator.satisfiedUnclaimed(List.of(edge.id));
+          return new Approved(member(edge), satisfied);
         });
   }
 
@@ -598,7 +601,8 @@ public class CampaignService {
    * evidence_signature = 'STATE_AT_START'}, no event id, and the summary {@code "<qid> was already
    * <status> when the campaign started"}. Not history: it reads a row this service owns.
    *
-   * @return the memberships whose condition now holds and did not before
+   * @return the memberships a latch landed on whose condition now holds — {@link
+   *     CampaignEvaluator#satisfiedUnclaimed}, the step every latch source answers through
    */
   public List<String> latchFromCurrentState(String campaignId) {
     return writes.hold("campaign latch from current state", () -> latch(lockCampaign(campaignId)));
@@ -628,11 +632,10 @@ public class CampaignService {
     }
     Map<String, WorkEntity> targets = byId(entities.listByIds(targetIds));
 
-    List<String> became = new ArrayList<>();
+    List<String> latchedOn = new ArrayList<>();
     Instant now = Instant.now();
     for (EntityMembership edge : unclaimed) {
       List<Group> condition = conditions.getOrDefault(edge.id, List.of());
-      boolean held = Conditions.satisfied(condition.stream().map(Group::criteria).toList());
       boolean latched = false;
       for (Group group : condition) {
         for (CampaignCriterion criterion : group.criteria()) {
@@ -656,12 +659,10 @@ public class CampaignService {
       if (latched) {
         flush();
         audit(campaign, "LATCHED_FROM_CURRENT_STATE", edge, null);
-        if (!held && Conditions.satisfied(condition.stream().map(Group::criteria).toList())) {
-          became.add(edge.id);
-        }
+        latchedOn.add(edge.id);
       }
     }
-    return List.copyOf(became);
+    return evaluator.satisfiedUnclaimed(latchedOn);
   }
 
   /**
@@ -852,20 +853,7 @@ public class CampaignService {
 
   /** {@code qits-412}, or {@code #412} with no qualifier — see {@link EntityQualifier}. */
   private String qid(WorkEntity row) {
-    if (row == null) {
-      return "an entity";
-    }
-    if (!qualifier.isUnsatisfied()) {
-      try {
-        String rendered = qualifier.get().qualifiedId(row);
-        if (rendered != null) {
-          return rendered;
-        }
-      } catch (RuntimeException e) {
-        // A decoration: it must never fail the write. The fallback below is still unambiguous.
-      }
-    }
-    return "#" + row.number;
+    return EntityQualifier.render(qualifier, row);
   }
 
   /**

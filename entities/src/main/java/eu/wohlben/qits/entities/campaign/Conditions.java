@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.campaign;
 
 import java.util.Collection;
+import java.util.function.Predicate;
 
 /**
  * <b>The rule that decides whether a campaign member's condition holds</b> — a monotone DNF, and
@@ -22,11 +23,21 @@ public final class Conditions {
 
   /** Whether the DNF over {@code groups} holds — see the class javadoc. */
   public static boolean satisfied(Collection<? extends Collection<CampaignCriterion>> groups) {
+    return holds(groups, criterion -> criterion.satisfiedAt != null);
+  }
+
+  /**
+   * The same rule over any representation of a criterion, {@code latched} saying whether one is —
+   * for a reader that has the latches as columns rather than as entities ({@link
+   * CampaignEvaluator#satisfiedUnclaimed}).
+   */
+  public static <T> boolean holds(
+      Collection<? extends Collection<T>> groups, Predicate<? super T> latched) {
     if (groups == null || groups.isEmpty()) {
       return true;
     }
-    for (Collection<CampaignCriterion> group : groups) {
-      if (group.stream().allMatch(criterion -> criterion.satisfiedAt != null)) {
+    for (Collection<T> group : groups) {
+      if (group.stream().allMatch(latched)) {
         return true;
       }
     }
