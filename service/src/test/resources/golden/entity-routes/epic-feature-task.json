@@ -501,6 +501,7 @@
       "slugScope" : "<id:1>",
       "description" : "The spine, restated",
       "status" : "REPORTED",
+      "statusBefore" : "REPORTED",
       "ticketType" : null,
       "impetus" : null,
       "assignee" : null,
@@ -512,7 +513,8 @@
       "parent" : null,
       "position" : null,
       "createdAt" : "<instant>",
-      "updatedAt" : "<instant>"
+      "updatedAt" : "<instant>",
+      "changedBy" : "dev"
     }
   }
 }, {

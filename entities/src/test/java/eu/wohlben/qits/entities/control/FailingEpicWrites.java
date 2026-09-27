@@ -4,6 +4,9 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Alternative;
+import jakarta.inject.Inject;
+import jakarta.transaction.Synchronization;
+import jakarta.transaction.TransactionSynchronizationRegistry;
 import java.sql.SQLTransientConnectionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.hibernate.exception.JDBCConnectionException;
@@ -44,8 +47,14 @@ public class FailingEpicWrites extends WorkEntityRepository {
   /** The message the non-connection arm fails with, so a test can name it rather than a type. */
   public static final String NOT_THE_CONNECTION = "the epic slug is already taken";
 
+  /** The message the commit-phase arm fails with. */
+  public static final String AT_COMMIT = "the commit was refused";
+
   private final AtomicInteger cutovers = new AtomicInteger();
   private final AtomicInteger otherFailures = new AtomicInteger();
+  private final AtomicInteger commitFailures = new AtomicInteger();
+
+  @Inject TransactionSynchronizationRegistry transactions;
 
   /** Arms the next {@code count} inserts to fail as a severed connection does, after staging. */
   public void loseTheConnection(int count) {
@@ -59,15 +68,30 @@ public class FailingEpicWrites extends WorkEntityRepository {
     otherFailures.set(count);
   }
 
-  /** Clears both arms. */
+  /**
+   * Arms the next {@code count} inserts to succeed and then have their transaction refuse to
+   * commit — a failure <em>past</em> the end of the write's body, where nothing the body did can be
+   * taken back. That is the one place a thing done at the end of the body and a thing done after
+   * the write returns can be told apart.
+   */
+  public void failAtCommit(int count) {
+    cutovers.set(0);
+    otherFailures.set(0);
+    commitFailures.set(count);
+  }
+
+  /** Clears every arm. */
   public void healthy() {
     cutovers.set(0);
     otherFailures.set(0);
+    commitFailures.set(0);
   }
 
   /** How many armed failures were never used — the attempt count, read from the other end. */
   public int unspent() {
-    return Math.max(0, cutovers.get()) + Math.max(0, otherFailures.get());
+    return Math.max(0, cutovers.get())
+        + Math.max(0, otherFailures.get())
+        + Math.max(0, commitFailures.get());
   }
 
   @Override
@@ -81,6 +105,18 @@ public class FailingEpicWrites extends WorkEntityRepository {
     }
     if (otherFailures.getAndDecrement() > 0) {
       throw new IllegalStateException(NOT_THE_CONNECTION);
+    }
+    if (commitFailures.getAndDecrement() > 0) {
+      transactions.registerInterposedSynchronization(
+          new Synchronization() {
+            @Override
+            public void beforeCompletion() {
+              throw new IllegalStateException(AT_COMMIT);
+            }
+
+            @Override
+            public void afterCompletion(int status) {}
+          });
     }
   }
 }

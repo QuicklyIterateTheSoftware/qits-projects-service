@@ -142,8 +142,8 @@ public class EventWireReflectionTest {
 
   /**
    * The transition announcer, by its OWN type past its {@code @DefaultBean} — the port's injection
-   * point is won by the epics suite's recording double, so asking for the port here would prove
-   * nothing about what ships.
+   * point is won by the suite's {@code RecordingEntityTransitionAnnouncer}, so asking for the port
+   * here would prove nothing about what ships.
    */
   @Test
   public void theEntityTransitionAnnouncerShipsAsABean() {

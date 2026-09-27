@@ -2209,6 +2209,8 @@ components:
           type: string
         status:
           type: string
+        statusBefore:
+          type: string
         ticketType:
           $ref: "#/components/schemas/TicketType"
         impetus:
@@ -2234,6 +2236,8 @@ components:
           $ref: "#/components/schemas/Instant"
         updatedAt:
           $ref: "#/components/schemas/Instant"
+        changedBy:
+          type: string
     UpdateDesign:
       type: object
       required:
@@ -6385,4 +6389,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.926.172757
+  version: 2026.927.64551

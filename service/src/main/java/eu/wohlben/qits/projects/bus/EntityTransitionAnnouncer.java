@@ -40,8 +40,16 @@ public class EntityTransitionAnnouncer implements TransitionAnnouncer {
 
   @Override
   public void onEntitiesTransitioned(List<TransitionedEntity> entities, Instant transitionedAt) {
-    bus.publish(
-        new EntityTransitioned(entities.stream().map(this::wire).toList(), transitionedAt));
+    bus.publish(event(entities, transitionedAt));
+  }
+
+  /**
+   * The event this adapter publishes for a batch — static and package-visible so the suite's
+   * recording double can state what <em>would</em> have crossed the wire without reaching the bus.
+   */
+  static EntityTransitioned event(List<TransitionedEntity> entities, Instant transitionedAt) {
+    return new EntityTransitioned(
+        entities.stream().map(EntityTransitionAnnouncer::wire).toList(), transitionedAt);
   }
 
   /**
@@ -49,7 +57,7 @@ public class EntityTransitionAnnouncer implements TransitionAnnouncer {
    * rather than as an enum of this module's, for the reason every id here is a string: a consumer
    * decodes into a record of its own and must not need this service's types to do it.
    */
-  private EntityTransitioned.Entity wire(TransitionedEntity entity) {
+  private static EntityTransitioned.Entity wire(TransitionedEntity entity) {
     return new EntityTransitioned.Entity(
         entity.id(),
         entity.projectId(),
@@ -58,6 +66,9 @@ public class EntityTransitionAnnouncer implements TransitionAnnouncer {
         entity.position(),
         entity.slug(),
         entity.title(),
-        entity.status());
+        entity.status(),
+        entity.statusBefore(),
+        entity.changedBy(),
+        entity.number());
   }
 }

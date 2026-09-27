@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -10,6 +11,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.hibernate.exception.JDBCConnectionException;
@@ -68,9 +70,53 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
 
   @Inject FailingEpicWrites epics;
 
+  @Inject RecordingTransitionAnnouncer announcer;
+
   @BeforeEach
   void healthy() {
     epics.healthy();
+    announcer.clear();
+  }
+
+  /**
+   * <b>A retried move is announced once</b>, and what it announces is the attempt that committed.
+   * A supersede is the transition that inserts — its successor draft — so it is the one {@link
+   * FailingEpicWrites} can interrupt after staging: the first attempt dies with the successor in the
+   * transaction, the body re-runs, and an announcement made inside the hold would have told the
+   * platform about a successor that was rolled back.
+   */
+  @Test
+  void aRetriedTransitionIsAnnouncedExactlyOnce() {
+    var epic =
+        workEntities
+            .create(
+                Archetype.EPIC,
+                "proj-transition-cutover",
+                EntityWrite.epic("Superseded through the cutover", null),
+                "alice")
+            .entity();
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "alice");
+    announcer.clear();
+    epics.loseTheConnection(1);
+
+    var moved =
+        workEntities.transition(Archetype.EPIC, epic.id, WorkEntityService.SUPERSEDE, "alice");
+
+    assertEquals(0, epics.unspent(), "the armed failure was never reached — nothing was retried");
+    assertEquals(1, announcer.batches().size(), "a retried hold announced more than once");
+    var batch = announcer.batches().get(0).entities();
+    assertEquals(2, batch.size(), "the moved row and its successor: " + batch);
+    assertEquals(epic.id, batch.get(0).id());
+    assertEquals("REFINED", batch.get(0).statusBefore());
+    assertEquals("DROPPED", batch.get(0).status());
+    assertEquals("REFINED", moved.statusBefore());
+    assertEquals(
+        moved.successor().id,
+        batch.get(1).id(),
+        "the successor announced is the one that committed, not the rolled-back first attempt's");
+    assertNull(batch.get(1).statusBefore(), "the successor was created by the move");
+    assertEquals("REPORTED", batch.get(1).status());
+    assertTrue(batch.stream().allMatch(entity -> "alice".equals(entity.changedBy())));
   }
 
   @Test
@@ -99,6 +145,35 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
               auditRepository.listForEntity(AuditEntityType.EPIC, epic.id).size(),
               "the retried create left more than one audit row behind");
         });
+  }
+
+  /**
+   * <b>A move whose commit fails is announced to nobody</b> — the half of "after the hold, never
+   * inside it" a retry cannot show. The retryable failures all land inside the body, before the
+   * batch exists, so an announcement at the very end of the body would pass the test above; it is
+   * only a failure past the body's end that tells it from an announcement made after the write
+   * returned.
+   */
+  @Test
+  void aTransitionWhoseCommitFailsIsNotAnnounced() {
+    var epic =
+        workEntities
+            .create(
+                Archetype.EPIC,
+                "proj-transition-commit",
+                EntityWrite.epic("Never superseded", null),
+                "alice")
+            .entity();
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "alice");
+    announcer.clear();
+    epics.failAtCommit(1);
+
+    assertThrows(
+        RuntimeException.class,
+        () -> workEntities.transition(Archetype.EPIC, epic.id, WorkEntityService.SUPERSEDE, "alice"));
+
+    assertEquals(0, epics.unspent(), "the commit failure was never armed");
+    assertEquals(List.of(), announcer.batches(), "a move that never committed was announced");
   }
 
   /** A failure that is not the connection is reported at once, after exactly one attempt. */

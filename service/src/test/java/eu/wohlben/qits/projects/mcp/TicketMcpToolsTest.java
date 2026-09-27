@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
 import io.quarkiverse.mcp.server.ToolResponse;
@@ -39,6 +41,9 @@ public class TicketMcpToolsTest {
 
   /** The delivery seam the transition hands the next phase's prompt to. */
   @jakarta.inject.Inject RecordingWorkspaceAgentTurns turns;
+
+  /** What each lifecycle move would have published, recorded instead. */
+  @jakarta.inject.Inject RecordingEntityTransitionAnnouncer transitions;
 
   /**
    * One application per class means one instance of that bean, and most tests here walk a ticket's
@@ -492,6 +497,61 @@ public class TicketMcpToolsTest {
           assertFalse(response.isError(), text(response));
           assertTrue(text(response).contains("\"VERIFIED\""), text(response));
         });
+  }
+
+  /**
+   * <b>A lifecycle move is announced, once, as a batch of one</b> — the {@code EntityTransitioned}
+   * the multi-entity transition already published, now carrying where the ticket came from and who
+   * moved it. The recording double records the adapter's own wire record, so this is the payload a
+   * consumer would decode and not a restatement of the control-layer shape.
+   */
+  @Test
+  public void aMoveToVerifiedPublishesOneEntityTransitionedWithTheStatusItLeftAndTheActor() {
+    String projectId = createProject("Ticket Announced");
+    String ticketId = createTicket(projectId, "Announce me", "BUG");
+    for (String target : List.of("REFINED", "IMPLEMENTED")) {
+      call(
+          projectId,
+          "transition_ticket",
+          Map.of("id", ticketId, "target", target),
+          response -> assertFalse(response.isError(), text(response)));
+    }
+    transitions.reset();
+
+    callAs(
+        projectId,
+        "verifier",
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "VERIFIED"),
+        response -> assertFalse(response.isError(), text(response)));
+
+    List<EntityTransitioned> published = transitions.published();
+    assertEquals(1, published.size(), "one move, one announcement: " + published);
+    assertEquals(1, published.get(0).entities().size(), "a single move is a batch of one");
+    EntityTransitioned.Entity moved = published.get(0).entities().get(0);
+    assertEquals(ticketId, moved.entityId());
+    assertEquals(projectId, moved.projectId());
+    assertEquals("TICKET", moved.archetype());
+    assertEquals("IMPLEMENTED", moved.statusBefore(), "the status the move left");
+    assertEquals("VERIFIED", moved.status(), "the status the move reached");
+    assertEquals("verifier", moved.changedBy(), "the actor the move was audited under");
+    assertTrue(moved.number() > 0, "the per-project number travels: " + moved);
+  }
+
+  /** A refused move wrote nothing, so it is announced to nobody. */
+  @Test
+  public void aRefusedMoveIsNotAnnounced() {
+    String projectId = createProject("Ticket Unannounced");
+    String ticketId = createTicket(projectId, "Stays put", "BUG");
+    transitions.reset();
+
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "IMPLEMENTED"),
+        response -> assertTrue(response.isError(), "REPORTED → IMPLEMENTED is two steps"));
+
+    assertEquals(List.of(), transitions.published());
   }
 
   @Test

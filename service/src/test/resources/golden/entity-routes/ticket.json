@@ -252,6 +252,7 @@
       "slugScope" : "<id:1>",
       "description" : "It just sits there",
       "status" : "REPORTED",
+      "statusBefore" : "REPORTED",
       "ticketType" : "IMPROVEMENT",
       "impetus" : null,
       "assignee" : "bob",
@@ -263,7 +264,8 @@
       "parent" : null,
       "position" : null,
       "createdAt" : "<instant>",
-      "updatedAt" : "<instant>"
+      "updatedAt" : "<instant>",
+      "changedBy" : "dev"
     }
   }
 }, {
