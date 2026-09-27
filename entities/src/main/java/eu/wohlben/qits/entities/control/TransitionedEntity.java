@@ -48,6 +48,11 @@ import java.time.Instant;
  *     for a root. <b>This is what a move changes</b>
  * @param description the long-form body
  * @param status the status word as stored, or null for a kind with no lifecycle
+ * @param statusBefore the status word the transition moved the row <em>from</em>: the pre-state's
+ *     {@link #status}, which is {@link #status} itself for a row the transition reshaped without
+ *     moving its status, and <b>null</b> for a row the transition created (a supersede's successor
+ *     draft) or for a kind with no lifecycle. <b>Null on every read</b> — {@code
+ *     EntityCatalogService} answers a row as it stands, and a read moved nothing
  * @param ticketType a ticket's kind, or null
  * @param impetus why a ticket came about, or null
  * @param assignee who is looking at it, or null
@@ -60,6 +65,8 @@ import java.time.Instant;
  * @param position where among its siblings it sits, or null for a root. Dense and zero-based
  * @param createdAt unchanged by a transition
  * @param updatedAt when the transition committed
+ * @param changedBy who made the transition — the audit principal the write was recorded under.
+ *     <b>Null on every read</b>, for {@link #statusBefore}'s reason
  */
 public record TransitionedEntity(
     String id,
@@ -72,6 +79,7 @@ public record TransitionedEntity(
     String slugScope,
     String description,
     String status,
+    String statusBefore,
     TicketType ticketType,
     String impetus,
     String assignee,
@@ -83,7 +91,8 @@ public record TransitionedEntity(
     String parent,
     Integer position,
     Instant createdAt,
-    Instant updatedAt) {
+    Instant updatedAt,
+    String changedBy) {
 
   /**
    * The same entity, told what it is called in a commit subject. {@code EpicDto.withWorkspaces}'
@@ -101,6 +110,7 @@ public record TransitionedEntity(
         slugScope,
         description,
         status,
+        statusBefore,
         ticketType,
         impetus,
         assignee,
@@ -112,17 +122,29 @@ public record TransitionedEntity(
         parent,
         position,
         createdAt,
-        updatedAt);
+        updatedAt,
+        changedBy);
   }
 
   /**
-   * The row and its edge, read back. {@code edge} is null for a root, which is a statement and not
-   * an omission — see {@code EntityFact.parentId}.
+   * The row and its edge, read back — a <b>read</b>, so {@link #statusBefore} and {@link
+   * #changedBy} are null: nothing moved. {@code edge} is null for a root, which is a statement and
+   * not an omission — see {@code EntityFact.parentId}.
    *
    * <p><b>{@code qualifiedId} is left null here and that is deliberate</b>, not an oversight: see
    * the class javadoc. {@link #withQualifiedId} is how it is filled.
    */
   static TransitionedEntity of(WorkEntity row, EntityMembership edge) {
+    return of(row, edge, null, null);
+  }
+
+  /**
+   * The row and its edge as a transition left them, told the status it moved from and who moved it
+   * — the announcement shape. {@code statusBefore} is captured by the caller <em>before</em> it
+   * wrote the row, because afterwards the managed entity only knows its new status.
+   */
+  static TransitionedEntity of(
+      WorkEntity row, EntityMembership edge, String statusBefore, String changedBy) {
     return new TransitionedEntity(
         row.id,
         row.archetype,
@@ -134,6 +156,7 @@ public record TransitionedEntity(
         row.slugScope,
         row.description,
         row.status,
+        statusBefore,
         row.ticketType,
         row.impetus,
         row.assignee,
@@ -145,6 +168,7 @@ public record TransitionedEntity(
         edge == null ? null : edge.parentId,
         edge == null ? null : edge.position,
         row.createdAt,
-        row.updatedAt);
+        row.updatedAt,
+        changedBy);
   }
 }

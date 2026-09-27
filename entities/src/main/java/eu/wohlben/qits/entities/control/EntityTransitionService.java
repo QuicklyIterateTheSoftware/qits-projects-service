@@ -239,6 +239,14 @@ public class EntityTransitionService {
       throw new BadRequestException(String.join("; ", violations));
     }
 
+    // The pre-state's status, read before the first write: the rows are managed, so once written
+    // they only know where they went. Nothing is created here, so every entry has one — and a row
+    // the batch reshapes without moving its status reports the same word on both ends.
+    Map<String, String> statusBefore = new HashMap<>();
+    for (String id : stated.keySet()) {
+      statusBefore.put(id, rows.get(id).status);
+    }
+
     for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
       write(rows.get(entry.getKey()), entry.getValue(), scopeOf(entry.getValue(), rows.get(entry.getKey())));
     }
@@ -251,7 +259,7 @@ public class EntityTransitionService {
     Map<String, TransitionedEntity> written = new LinkedHashMap<>();
     for (String id : stated.keySet()) {
       WorkEntity row = rows.get(id);
-      written.put(id, TransitionedEntity.of(row, edges.get(id)));
+      written.put(id, TransitionedEntity.of(row, edges.get(id), statusBefore.get(id), changedBy));
     }
 
     for (Map.Entry<String, TransitionedEntity> entry : written.entrySet()) {

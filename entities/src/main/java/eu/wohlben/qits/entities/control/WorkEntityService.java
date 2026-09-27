@@ -15,6 +15,7 @@ import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.TicketCommentRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -120,9 +121,23 @@ public class WorkEntityService {
 
   /**
    * The outcome of a {@link #transition}: the row in its new status, plus the successor draft when
-   * the move was a {@linkplain #SUPERSEDE supersede} (null otherwise).
+   * the move was a {@linkplain #SUPERSEDE supersede} (null otherwise), and the status the row moved
+   * <em>from</em> — captured inside the write, because afterwards the row only knows where it went.
    */
-  public record Transition(WorkEntity entity, WorkEntity successor) {}
+  public record Transition(WorkEntity entity, WorkEntity successor, String statusBefore) {}
+
+  /**
+   * What the write hands out of {@link WritePatience}: the outcome, plus the announcement batch read
+   * in the same transaction — the edges are only readable in there, and the announcement itself is
+   * made outside it.
+   */
+  private record Moved(Transition transition, List<TransitionedEntity> batch) {}
+
+  /**
+   * The announcement seam, optional like every port here: with no implementation a move still moves
+   * and announces nothing. {@link EntityTransitionService} announces through the same port.
+   */
+  @Inject Instance<TransitionAnnouncer> announcer;
 
   /**
    * What a {@link #transition} to {@code target} would be: the row as it stands, the status it would
@@ -502,32 +517,61 @@ public class WorkEntityService {
    *
    * <p>Held through a cutover ({@link WritePatience}), the whole move in one transaction —
    * supersede's successor tree included, so a retry never leaves half a copy behind.
+   *
+   * <p><b>Announced once, after the hold returns</b> — never inside it, because the body re-runs on
+   * a retry. The batch is the moved row, plus the successor draft when there is one (created by this
+   * move, so it left no status: {@code statusBefore} null, status REPORTED). A move is a batch of
+   * one; see {@link TransitionAnnouncer}.
    */
   public Transition transition(Archetype archetype, String id, String target, String changedBy) {
     Kind kind = kind(archetype);
     Validations.requireText(target, "target");
-    return writes.hold(
-        kind.label("transition"),
-        () -> {
-          WorkEntity row = lookup(archetype, id);
-          EntityStatus to = targetStatus(kind, row, target);
-          requireSupersedable(kind, row, target);
+    Moved moved =
+        writes.hold(kind.label("transition"), () -> move(kind, archetype, id, target, changedBy));
+    announce(moved.batch());
+    return moved.transition();
+  }
 
-          WorkEntity successor =
-              kind.supersedable() && SUPERSEDE.equals(target) ? supersede(kind, row, changedBy) : null;
-          if (to == EntityStatus.IMPLEMENTED) {
-            stampImplemented(row, changedBy);
-          }
-          row.status = to.name();
-          row.blocked = false;
-          if (successor != null) {
-            row.supersededByEntityId = successor.id;
-          }
-          requireArchetypeValid(row, Demand.ON_UPDATE);
-          WorkEntity moved = settled(row);
-          audit(moved, moved.id, AuditOperation.UPDATE, changedBy);
-          return new Transition(moved, successor);
-        });
+  /** The body of {@link #transition}: database-only, so a retry may run it again. */
+  private Moved move(Kind kind, Archetype archetype, String id, String target, String changedBy) {
+    WorkEntity row = lookup(archetype, id);
+    String statusBefore = row.status;
+    EntityStatus to = targetStatus(kind, row, target);
+    requireSupersedable(kind, row, target);
+
+    WorkEntity successor =
+        kind.supersedable() && SUPERSEDE.equals(target) ? supersede(kind, row, changedBy) : null;
+    if (to == EntityStatus.IMPLEMENTED) {
+      stampImplemented(row, changedBy);
+    }
+    row.status = to.name();
+    row.blocked = false;
+    if (successor != null) {
+      row.supersededByEntityId = successor.id;
+    }
+    requireArchetypeValid(row, Demand.ON_UPDATE);
+    WorkEntity moved = settled(row);
+    audit(moved, moved.id, AuditOperation.UPDATE, changedBy);
+
+    List<TransitionedEntity> batch = new ArrayList<>(2);
+    batch.add(TransitionedEntity.of(moved, edgeOf(moved.id), statusBefore, changedBy));
+    if (successor != null) {
+      batch.add(TransitionedEntity.of(successor, edgeOf(successor.id), null, changedBy));
+    }
+    return new Moved(new Transition(moved, successor, statusBefore), List.copyOf(batch));
+  }
+
+  /** A row's edge, or null for a root — the statement {@code EntityFact.parentId} makes. */
+  private EntityMembership edgeOf(String id) {
+    return memberships.membershipOf(id).orElse(null);
+  }
+
+  /** One call per move, never inside the write — see {@link TransitionAnnouncer}. */
+  private void announce(List<TransitionedEntity> batch) {
+    if (announcer.isUnsatisfied()) {
+      return;
+    }
+    announcer.get().onEntitiesTransitioned(batch, Instant.now());
   }
 
   /**

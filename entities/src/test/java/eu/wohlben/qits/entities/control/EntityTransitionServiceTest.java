@@ -816,6 +816,40 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         "the announcement carries the POST-state, not what the rows used to be");
   }
 
+  /**
+   * <b>Every entity says where its status came from, and who moved it.</b> A feature has no
+   * lifecycle, so becoming a REPORTED ticket moves it from nothing; an epic retitled in place keeps
+   * its status, and says so by reporting the same word on both ends.
+   */
+  @Test
+  void theBatchCarriesTheStatusEachEntityLeftAndTheActor() {
+    WorkEntity epic =
+        workEntities
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .entity();
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Lifted", null, null), WHO);
+
+    transitions.transition(
+        stated(
+            epic.id, epicEntry("The plan, retitled", null, null, EntityStatus.REPORTED),
+            feature.entity().id, ticketEntry("Lifted", "it came up")),
+        "mover");
+
+    List<TransitionedEntity> batch = announcer.batches().get(0).entities();
+    TransitionedEntity reshaped = batch.get(0);
+    assertEquals("REPORTED", reshaped.statusBefore(), "reshaped in place: the status did not move");
+    assertEquals("REPORTED", reshaped.status());
+    TransitionedEntity lifted = batch.get(1);
+    assertNull(lifted.statusBefore(), "a feature has no status to have left");
+    assertEquals("REPORTED", lifted.status());
+    assertTrue(
+        batch.stream().allMatch(entity -> "mover".equals(entity.changedBy())),
+        "the actor is the audit principal the transition ran as: " + batch);
+    assertTrue(batch.get(0).number() > 0, "the per-project number rides along");
+  }
+
   // --- the audit log --------------------------------------------------------
 
   /**

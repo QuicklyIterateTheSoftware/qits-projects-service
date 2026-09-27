@@ -56,6 +56,12 @@ public record EntityTransitioned(UUID eventId, List<Entity> entities, Instant tr
    *     cut — which is exactly why a consumer holding a branch name needs no repair
    * @param title the label
    * @param status the status word as stored, or absent for a kind with no lifecycle
+   * @param statusBefore the status word the entity moved <em>from</em>: equal to {@code status} for
+   *     an entity the batch reshaped without moving its status, and absent for one the batch created
+   *     (a supersede's successor draft) or for a kind with no lifecycle
+   * @param changedBy who made the transition — the audit principal the write was recorded under
+   * @param number the per-project numeric id, the {@code <n>} of {@code <project-slug>-<n>}. Never
+   *     moved by a transition: it names the node, and a node changing kind is the same node
    */
   public record Entity(
       String entityId,
@@ -65,7 +71,10 @@ public record EntityTransitioned(UUID eventId, List<Entity> entities, Instant tr
       Integer position,
       String slug,
       String title,
-      String status) {}
+      String status,
+      String statusBefore,
+      String changedBy,
+      long number) {}
 
   public EntityTransitioned {
     if (eventId == null) {
