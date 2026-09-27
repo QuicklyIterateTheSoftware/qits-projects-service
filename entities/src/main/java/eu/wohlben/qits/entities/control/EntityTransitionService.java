@@ -4,6 +4,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityMembership;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
@@ -23,6 +24,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -99,7 +101,9 @@ import java.util.Set;
  * run here and must not be: the adjacency rules — one step forward or back along five statuses —
  * stay owned by the two existing transition endpoints, which is where a caller asking "advance this ticket" goes. This endpoint answers a
  * different question, "make the shape of the plan be this", and a status it is handed is part of the
- * shape rather than a step.
+ * shape rather than a step. <b>The one exception is finality</b>: an entity that is DONE — terminal
+ * in {@link EntityStateMachine} — keeps its status and its archetype here as everywhere, and only
+ * its plain fields and its place in the tree may change (see {@link #finalityViolations}).
  *
  * <p><b>Every entry is judged {@link Demand#ON_UPDATE}</b>, which is the whole of what this
  * operation says about intake: it creates nothing, so each entry names a row that already exists
@@ -299,6 +303,7 @@ public class EntityTransitionService {
       if (row == null) {
         continue;
       }
+      violations.addAll(finalityViolations(entry.getKey(), entry.getValue(), row));
       violations.addAll(propertyViolations(entry.getValue(), row));
       violations.addAll(projectViolations(entry.getKey(), entry.getValue(), rows, statedParents));
     }
@@ -317,6 +322,47 @@ public class EntityTransitionService {
     }
 
     return violations;
+  }
+
+  /**
+   * <b>The one lifecycle rule this door does enforce: a terminal status is final.</b> An entity that
+   * is currently DONE ({@link EntityStateMachine#isTerminal}) may not leave it here — neither by a
+   * different status word nor by being re-archetyped, which would either re-read the status in
+   * another vocabulary or clear it — because DONE has no exits on the per-archetype routes either,
+   * and this door skipping adjacency must not become the back door out of DONE. Its plain fields
+   * (title, description, impetus, assignee, …) and its place in the tree stay writable, exactly as a
+   * DONE ticket stays editable on every other surface. The message is the machine's own {@link
+   * EntityStateMachine#finality} sentence, so every door refuses a move out of DONE in one wording.
+   */
+  private static List<String> finalityViolations(
+      String id, EntityTransition target, WorkEntity row) {
+    Optional<EntityStatus> current = EntityLifecycle.parse(row.status);
+    if (current.isEmpty() || !EntityStateMachine.isTerminal(current.get())) {
+      return List.of();
+    }
+    List<String> refused = new ArrayList<>();
+    if (target.archetype() != row.archetype) {
+      refused.add(
+          id
+              + " is "
+              + row.status
+              + " and cannot be re-archetyped from "
+              + row.archetype
+              + " to "
+              + target.archetype()
+              + ": "
+              + EntityStateMachine.finality(current.get()));
+    } else if (!row.status.equals(blankToNull(target.status()))) {
+      refused.add(
+          id
+              + " is "
+              + row.status
+              + " and cannot be moved to "
+              + blankToNull(target.status())
+              + ": "
+              + EntityStateMachine.finality(current.get()));
+    }
+    return refused;
   }
 
   /**

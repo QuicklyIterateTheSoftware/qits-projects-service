@@ -1,9 +1,13 @@
 package eu.wohlben.qits.entities.control;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -89,8 +93,15 @@ public record ArchetypeRegistryDocument(
    *     lifecycle. <b>Sorted alphabetically, and the order carries no meaning</b>: {@link
    *     ArchetypeSpec#legalStatuses} is a {@code Set<String>} and the source enum's declaration
    *     order is not recoverable from it, so a client must not read a lifecycle, an ordering or a
-   *     first phase out of this list. The adjacency rules live on the two lifecycle endpoints and
-   *     are not served here at all
+   *     first phase out of this list — {@link #lifecycle} is the ordered one
+   * @param transitions the legal moves of this kind's lifecycle, keyed by <b>every</b> status word
+   *     in {@link #lifecycle} order; each value lists the moves out of that status, FORWARD first,
+   *     then BACK, then DROP/REOPEN — and DONE maps to an empty list, because DONE is final. Empty
+   *     for a kind with no lifecycle. Read off {@link EntityStateMachine#transitionsFrom}, so the
+   *     served moves and the enforced ones are one declaration. Added after {@link #legalStatuses}
+   *     and beside it, never instead of it
+   * @param lifecycle the lifecycle's states in order — the walk REPORTED → … → DONE, then DROPPED
+   *     ({@link EntityStateMachine#states}); empty for a kind with no lifecycle
    */
   public record DeclaredArchetype(
       Archetype archetype,
@@ -100,7 +111,17 @@ public record ArchetypeRegistryDocument(
       List<EntityProperty> requiredAtCreate,
       List<EntityProperty> requiredOnTransition,
       List<EntityProperty> permitted,
-      List<String> legalStatuses) {}
+      List<String> legalStatuses,
+      Map<String, List<LegalMove>> transitions,
+      List<String> lifecycle) {}
+
+  /**
+   * One legal move out of a status, as served: where it lands and what kind of move it is.
+   *
+   * @param to the status the move lands on
+   * @param kind FORWARD, BACK, DROP or REOPEN — {@link EntityStateMachine.TransitionKind}
+   */
+  public record LegalMove(String to, EntityStateMachine.TransitionKind kind) {}
 
   /**
    * The document as the registry stands right now.
@@ -123,7 +144,9 @@ public record ArchetypeRegistryDocument(
               inVocabularyOrder(spec.requiredAtCreate()),
               inVocabularyOrder(requiredOnTransition(spec)),
               inVocabularyOrder(spec.permitted()),
-              spec.legalStatuses().stream().sorted().toList()));
+              spec.legalStatuses().stream().sorted().toList(),
+              transitions(spec),
+              lifecycle(spec)));
     }
     return new ArchetypeRegistryDocument(
         List.of(EntityProperty.values()),
@@ -146,6 +169,34 @@ public record ArchetypeRegistryDocument(
     widened.addAll(spec.required());
     widened.add(EntityProperty.STATUS);
     return widened;
+  }
+
+  /**
+   * The machine's moves, keyed by every state in lifecycle order — or nothing, for a kind with no
+   * lifecycle. An insertion-ordered map behind an unmodifiable view and <b>not</b> {@code
+   * Map.copyOf}, whose iteration order is salted per JVM: the key order is part of what is served.
+   */
+  private static Map<String, List<LegalMove>> transitions(ArchetypeSpec spec) {
+    if (spec.legalStatuses().isEmpty()) {
+      return Map.of();
+    }
+    Map<String, List<LegalMove>> served = new LinkedHashMap<>();
+    for (EntityStatus state : EntityStateMachine.states()) {
+      served.put(
+          state.name(),
+          EntityStateMachine.transitionsFrom(state).stream()
+              .map(move -> new LegalMove(move.to().name(), move.kind()))
+              .toList());
+    }
+    return Collections.unmodifiableMap(served);
+  }
+
+  /** The machine's states in lifecycle order, or nothing for a kind with no lifecycle. */
+  private static List<String> lifecycle(ArchetypeSpec spec) {
+    if (spec.legalStatuses().isEmpty()) {
+      return List.of();
+    }
+    return EntityStateMachine.states().stream().map(EntityStatus::name).toList();
   }
 
   /** The members of {@code properties}, in the vocabulary's own declaration order. */

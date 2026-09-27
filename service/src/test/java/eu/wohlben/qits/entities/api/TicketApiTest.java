@@ -439,6 +439,38 @@ class TicketApiTest {
         .statusCode(Response.Status.BAD_REQUEST.getStatusCode());
   }
 
+  /**
+   * DONE is final: over the ticket's own transition route every target is refused, the one step
+   * back to VERIFIED included, and the refusal says a follow-up is a new ticket. The ticket stays
+   * DONE afterwards.
+   */
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void aDoneTicketRefusesEveryTarget() {
+    String projectId = createProject();
+    String ticketId = createTicket(projectId, "Closed for good", "BUG");
+    walkTo(ticketId, "REFINED", "IMPLEMENTED", "VERIFIED", "DONE");
+
+    for (String target :
+        List.of("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED")) {
+      given()
+          .contentType(ContentType.JSON)
+          .body(new TicketController.TransitionTicketRequest(target))
+          .when()
+          .post("/projects/api/tickets/" + ticketId + "/transition")
+          .then()
+          .statusCode(Response.Status.CONFLICT.getStatusCode())
+          .body("message", containsString("DONE is final"))
+          .body("message", containsString("a follow-up is a new ticket or epic"));
+    }
+    given()
+        .when()
+        .get("/projects/api/tickets/" + ticketId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("ticket.status", equalTo("DONE"));
+  }
+
   @Test
   @TestSecurity(user = "dev", roles = "qits:admin")
   void deletingATicketTakesItsCommentsWithIt() {

@@ -37,8 +37,8 @@ import org.jboss.logging.Logger;
  * dispatched an agent that could honestly claim a plan was complete. The one dispatch path now runs
  * an epic through the same refine → implement → verify phases a ticket runs, each ending with the
  * agent's own claim — and a phase whose claim cannot be made is a phase whose advance never fires.
- * So the lifecycle move is on this server exactly as {@code transition_ticket} is, reversible and
- * adjacent-only, through {@code EntityResolutions} like every door that moves an epic, and followed by
+ * So the lifecycle move is on this server exactly as {@code transition_ticket} is, reversible below
+ * DONE (which is final) and adjacent-only, through {@code EntityResolutions} like every door that moves an epic, and followed by
  * {@code PhaseAdvance}. What stays off the server is supersede, which is an operation on a plan
  * rather than a claim about work.
  *
@@ -318,7 +318,7 @@ public class EpicMcpTools {
 
   /**
    * The epic's LIFECYCLE move, the twin of {@code transition_ticket}: one adjacent step along the
-   * one lifecycle ({@code EntityLifecycle.LEGAL_TARGETS}), or off it into DROPPED. Through {@link
+   * one lifecycle ({@code EntityStateMachine}), or off it into DROPPED; nothing out of DONE. Through {@link
    * EntityResolutions}, never {@code WorkEntityService.transition}, so a resolving move discards the
    * epic's refinement first; then {@link PhaseAdvance}, after the move is recorded, which delivers the next
    * phase when the run was dispatched as a flow and asks for the release at VERIFIED. Supersede is
@@ -337,8 +337,9 @@ public class EpicMcpTools {
               + " outstanding); VERIFIED — you confirmed on the platform that what the epic promised"
               + " holds; DONE — closed, which is a person's call; DROPPED — a decision was taken not"
               + " to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or"
-              + " back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED <-> DONE, one step at a"
-              + " time. A verification that fails is the move back from IMPLEMENTED to REFINED;"
+              + " back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED -> DONE, one step at a"
+              + " time. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
+              + " epic (propose_epic). A verification that fails is the move back from IMPLEMENTED to REFINED;"
               + " reopening a frozen scope is the move back from REFINED to REPORTED. Do NOT drop an"
               + " epic merely because it is hard or you could not finish it: leave it where it is"
               + " and say what is missing.")
@@ -348,7 +349,7 @@ public class EpicMcpTools {
               description =
                   "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
                       + " DROPPED. On the pipeline it must be a neighbour of the epic's current"
-                      + " status")
+                      + " status; DONE is final and moves nowhere")
           String target) {
     requireEpicInProject(id);
     if (target != null && WorkEntityService.SUPERSEDE.equals(target)) {

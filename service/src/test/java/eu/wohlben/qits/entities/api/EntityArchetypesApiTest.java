@@ -8,11 +8,16 @@ import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.entities.control.EntityProperty;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.response.ValidatableResponse;
 import jakarta.ws.rs.core.Response;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -112,6 +117,70 @@ class EntityArchetypesApiTest {
         .body(at("FEATURE") + "required", contains("TITLE"))
         .body(at("FEATURE") + "requiredAtCreate", contains("TITLE"))
         .body(at("FEATURE") + "requiredOnTransition", contains("TITLE"));
+  }
+
+  /** A legal move as the wire spells it. */
+  private static Map<String, String> move(String to, String kind) {
+    return Map.of("to", to, "kind", kind);
+  }
+
+  /**
+   * The ticket's whole served map of legal moves, asserted exactly — keys in lifecycle order, each
+   * value FORWARD, then BACK, then DROP/REOPEN — and DONE answering no move at all, because DONE is
+   * final. Parsed with Jackson rather than read through a GPath so the key order is what arrived.
+   */
+  @Test
+  void aTicketServesItsLegalMovesAndItsOrderedLifecycle() throws Exception {
+    JsonNode document = new ObjectMapper().readTree(document().extract().asString());
+    JsonNode ticket = null;
+    for (JsonNode entry : document.path("archetypes")) {
+      if ("TICKET".equals(entry.path("archetype").asText())) {
+        ticket = entry;
+      }
+    }
+    Map<String, List<Map<String, String>>> transitions =
+        new ObjectMapper().convertValue(ticket.path("transitions"), new TypeReference<>() {});
+    Map<String, List<Map<String, String>>> expected = new LinkedHashMap<>();
+    expected.put(
+        "REPORTED", List.of(move("REFINED", "FORWARD"), move("DROPPED", "DROP")));
+    expected.put(
+        "REFINED",
+        List.of(move("IMPLEMENTED", "FORWARD"), move("REPORTED", "BACK"), move("DROPPED", "DROP")));
+    expected.put(
+        "IMPLEMENTED",
+        List.of(move("VERIFIED", "FORWARD"), move("REFINED", "BACK"), move("DROPPED", "DROP")));
+    expected.put(
+        "VERIFIED",
+        List.of(move("DONE", "FORWARD"), move("IMPLEMENTED", "BACK"), move("DROPPED", "DROP")));
+    expected.put("DONE", List.of());
+    expected.put("DROPPED", List.of(move("REPORTED", "REOPEN")));
+    assertEquals(expected, transitions);
+    assertEquals(
+        List.copyOf(expected.keySet()),
+        List.copyOf(transitions.keySet()),
+        "keyed in lifecycle order");
+
+    document()
+        .body(
+            at("TICKET") + "lifecycle",
+            contains("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
+        .body(
+            at("EPIC") + "lifecycle",
+            contains("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
+        .body(at("EPIC") + "transitions.DONE", empty())
+        // Additive: the alphabetical legalStatuses is still there, unchanged, beside it.
+        .body(
+            at("TICKET") + "legalStatuses",
+            contains("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"));
+  }
+
+  @Test
+  void aKindWithNoLifecycleServesNoMovesAndNoLifecycle() {
+    for (String archetype : List.of("FEATURE", "TASK")) {
+      document()
+          .body(at(archetype) + "transitions", equalTo(Map.of()))
+          .body(at(archetype) + "lifecycle", empty());
+    }
   }
 
   @Test

@@ -66,8 +66,8 @@ import org.jboss.logging.Logger;
  * <p><b>Direction is deliberately not consulted.</b> The ticket's new status is the entire input, so
  * a failed verification moving IMPLEMENTED → REFINED gets the <em>implement</em> turn — which is
  * precisely right, because REFINED means the ticket says what to do and implementing is what runs
- * next — and a person reopening a DONE ticket to VERIFIED gets nothing, which is also right, because
- * VERIFIED starts no phase at all. A rule that asked "forward or back?" would need a second table to
+ * next — and a person closing a VERIFIED ticket to DONE gets nothing, which is also right, because
+ * DONE starts no phase at all (and, being final, never moves again). A rule that asked "forward or back?" would need a second table to
  * answer from, and the second table is the thing that goes wrong.
  *
  * <p>{@link EntityStatus#VERIFIED}, {@link EntityStatus#DONE} and {@link EntityStatus#DROPPED}

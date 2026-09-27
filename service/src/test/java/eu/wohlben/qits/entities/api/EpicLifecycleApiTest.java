@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
@@ -154,6 +155,34 @@ class EpicLifecycleApiTest {
         .then()
         .statusCode(200)
         .body("epic.status", equalTo("DONE"));
+  }
+
+  /**
+   * DONE is final: over the epic's own transition route every target is refused — the step back to
+   * VERIFIED, DROPPED and the supersede operation included — and the refusal says a follow-up is a
+   * new epic rather than a reopened one.
+   */
+  @Test
+  void aDoneEpicRefusesEveryTarget() {
+    String epicId = createEpic(createProject(), "Planning domain");
+    for (String target : new String[] {"REFINED", "IMPLEMENTED", "VERIFIED", "DONE"}) {
+      transition(epicId, target).statusCode(200);
+    }
+    for (String target :
+        new String[] {"REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED",
+            "SUPERSEDED"}) {
+      transition(epicId, target)
+          .statusCode(Response.Status.CONFLICT.getStatusCode())
+          .body("message", containsString("DONE is final"))
+          .body("message", containsString("a follow-up is a new ticket or epic"));
+    }
+    given()
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(200)
+        .body("epic.status", equalTo("DONE"))
+        .body("epic.supersededByEpicId", nullValue());
   }
 
   /**

@@ -4,7 +4,7 @@ package eu.wohlben.qits.entities.entity;
  * The lifecycle of every archetype that has one — {@link Archetype#EPIC} and {@link
  * Archetype#TICKET} alike. Stored as the enum name in {@link WorkEntity#status}, spelled by {@code
  * ck_entity_status} (epics V15), and moved only through a transition — see {@code EntityLifecycle}
- * for which moves are legal.
+ * for the guards and {@code EntityStateMachine} for which moves are legal.
  *
  * <p><b>It was the ticket's vocabulary, and it is the only one now.</b> Epics had a lifecycle of
  * their own ({@code EpicStatus}: {@code REFINING → IMPLEMENTATION → IMPLEMENTED → SUPERSEDED |
@@ -34,13 +34,15 @@ package eu.wohlben.qits.entities.entity;
  * <p><b>{@link #DROPPED} is the one word not on that line</b>, and it starts nothing: it does not
  * say a phase finished, it says the phases stopped. Everything above is about work that is moving
  * forward or being redone; this is the exit for work that is neither, and where it may be reached
- * from is {@code EntityLifecycle}'s to say rather than this file's.
+ * from is {@code EntityStateMachine}'s to say rather than this file's.
  *
- * <p><b>Nothing is terminal.</b> {@link #DONE} reopens to {@link #VERIFIED} exactly as every other
- * move goes back, and there is no reject verb anywhere in the lifecycle: a verification that fails
- * is the ordinary backward move {@link #IMPLEMENTED} → {@link #REFINED}. {@link #DROPPED} reopens
- * too, to {@link #REPORTED}. The alternative to a status that reopens is a second row saying the
- * same thing.
+ * <p><b>{@link #DONE} is the one terminal status, and it has no exits</b> — not back to {@link
+ * #VERIFIED}, not to {@link #DROPPED}. A done development that later turns out wrong is a new
+ * ticket or epic, which may refer to the done one. Below DONE every move is reversible, and there
+ * is no reject verb anywhere in the lifecycle: a verification that fails is the ordinary backward
+ * move {@link #IMPLEMENTED} → {@link #REFINED}. {@link #DROPPED} reopens, to {@link #REPORTED}. The
+ * states and every legal move between them are declared once, as a state machine, in {@code
+ * EntityStateMachine}.
  *
  * <p><b>What the words freeze is per archetype, and only an epic freezes anything.</b> An epic's
  * scope (title, description, features, tasks) is editable at {@link #REPORTED} and frozen from
@@ -68,7 +70,10 @@ public enum EntityStatus {
    */
   VERIFIED,
 
-  /** Closed. Not terminal: it moves back to {@link #VERIFIED} like any other status. */
+  /**
+   * Closed, and final: the one terminal status, with no exits at all. A follow-up to done work is a
+   * new entity.
+   */
   DONE,
 
   /**
@@ -81,7 +86,7 @@ public enum EntityStatus {
    * word the listing surfaces advertise as ready to be picked up, so the next agent asked to take
    * on the outstanding work picks up the one thing that was ruled out.
    *
-   * <p>Not terminal either: it moves back to {@link #REPORTED}, because reviving work that was
+   * <p>Not terminal: it moves back to {@link #REPORTED}, because reviving work that was
    * abandoned means asking again what it is for, and that is the refine phase.
    */
   DROPPED

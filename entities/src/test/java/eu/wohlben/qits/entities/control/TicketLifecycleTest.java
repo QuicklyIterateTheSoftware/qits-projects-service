@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  * <p><b>The DROPPED cases ask {@link EntityLifecycle} directly where everything else goes through
  * {@code WorkEntityService}</b>, and the split is deliberate rather than convenience. Those cases sweep
  * every pair the word takes part in — droppable from each of the four open statuses, refused from
- * DONE, and reopening to REPORTED and to nothing else — and asking the rule is how a sweep stays a
+ * DONE (which is final and refuses everything), and reopening to REPORTED and to nothing else — and asking the rule is how a sweep stays a
  * sweep: driving each pair over the service would mean walking a ticket to the starting status and
  * writing a row per pair to assert something the rule decides on its own.
  *
@@ -111,11 +111,10 @@ class TicketLifecycleTest extends EntitiesTestSupport {
   }
 
   @Test
-  void aTicketWalksTheWholeLifecycleBackward() {
-    // Nothing is terminal, DONE included: it reopens to VERIFIED like every other status moves
-    // back. The alternative to a status that reopens is a second row saying the same thing.
-    WorkEntity ticket = at(EntityStatus.DONE);
-    for (int step = ORDER.size() - 2; step >= 0; step--) {
+  void aTicketWalksTheWholeLifecycleBackwardFromVerified() {
+    // Below DONE every status moves back one step. DONE itself is final and is asserted on its own.
+    WorkEntity ticket = at(EntityStatus.VERIFIED);
+    for (int step = ORDER.size() - 3; step >= 0; step--) {
       assertEquals(
           ORDER.get(step).name(),
           workEntities
@@ -153,7 +152,8 @@ class TicketLifecycleTest extends EntitiesTestSupport {
   void everyNonAdjacentPipelinePairIsRefusedInBothDirections() {
     for (EntityStatus from : ORDER) {
       for (EntityStatus to : ORDER) {
-        if (Math.abs(ORDER.indexOf(from) - ORDER.indexOf(to)) == 1) {
+        if (Math.abs(ORDER.indexOf(from) - ORDER.indexOf(to)) == 1
+            && from != EntityStatus.DONE) {
           continue;
         }
         WorkEntity ticket = at(from);
@@ -210,13 +210,38 @@ class TicketLifecycleTest extends EntitiesTestSupport {
   }
 
   @Test
-  void aDoneTicketIsNotDropped() {
-    // DONE is already an exit, so the move would do nothing but let the weaker outcome overwrite a
-    // real one. The route is still there for a closure that was wrong — back the way every move
-    // goes back, and droppable again from the open status it lands on.
-    refused(EntityStatus.DONE, EntityStatus.DROPPED);
-    legal(EntityStatus.DONE, EntityStatus.VERIFIED);
+  void doneIsFinalAndRefusesEveryTarget() {
+    // DONE has no exits: not the step back to VERIFIED, not DROPPED, not itself. A done development
+    // that later turns out wrong is a new ticket, and the refusal says so.
+    for (EntityStatus target : EntityStatus.values()) {
+      ConflictException refusal =
+          assertThrows(
+              ConflictException.class,
+              () -> EntityLifecycle.requireTransition(Archetype.TICKET, EntityStatus.DONE, target),
+              "DONE -> " + target + " must be refused");
+      assertTrue(refusal.getMessage().contains("DONE is final"), refusal.getMessage());
+      assertTrue(
+          refusal.getMessage().contains("a follow-up is a new ticket or epic"),
+          refusal.getMessage());
+    }
+  }
+
+  @Test
+  void aDoneTicketRefusesEveryTargetThroughTheService() {
+    WorkEntity ticket = at(EntityStatus.DONE);
+    for (EntityStatus target : EntityStatus.values()) {
+      assertThrows(
+          ConflictException.class,
+          () -> workEntities.transition(Archetype.TICKET, ticket.id, target.name(), "t"),
+          "DONE -> " + target + " must be refused");
+    }
+    assertEquals(EntityStatus.DONE.name(), workEntities.get(Archetype.TICKET, ticket.id).status);
+  }
+
+  @Test
+  void verifiedIsStillDroppable() {
     legal(EntityStatus.VERIFIED, EntityStatus.DROPPED);
+    refused(EntityStatus.DONE, EntityStatus.DROPPED);
   }
 
   @Test

@@ -5,10 +5,7 @@ import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
-import java.util.EnumSet;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * The lifecycle rules of every archetype that has a status — epic and ticket alike — in one place
@@ -17,9 +14,11 @@ import java.util.Set;
  * one that survived, and the epic's two freeze guards were re-expressed in its words rather than
  * kept beside it.
  *
- * <p><b>The graph is the same for every archetype.</b> {@link #LEGAL_TARGETS} is written once and
- * {@link #requireTransition} asks it for an epic exactly as it does for a ticket; only the sentence
- * a refusal is phrased in names the kind.
+ * <p><b>The graph is the same for every archetype, and it is not written here.</b> It is {@link
+ * EntityStateMachine}, the one explicit declaration of the states and their moves; {@link
+ * #requireTransition} asks it for an epic exactly as it does for a ticket, and only the sentence a
+ * refusal is phrased in names the kind. The guards below are this class's own: they are about which
+ * fields a status still permits, not about which moves it permits.
  *
  * <p><b>What freezes is not the same, and only an epic freezes anything.</b> An epic carries a
  * scope that is committed to, so its status decides which fields may still be written:
@@ -33,11 +32,11 @@ import java.util.Set;
  * </ul>
  *
  * The two guards therefore reject everything from IMPLEMENTED on without a rule of their own. The
- * freeze is <b>reversible in the ordinary way</b>: an epic whose scope has to change moves back to
- * REPORTED along the graph, and nobody needs a new door for it. A ticket carries one small thing, so
- * a DONE ticket is still editable, still commentable and still reopenable: there is no {@code
- * requireOpen} for it, and adding one would only mean filing a duplicate whenever a closure turned
- * out to be wrong.
+ * freeze is <b>reversible in the ordinary way below DONE</b>: an epic whose scope has to change moves
+ * back to REPORTED along the graph, and nobody needs a new door for it. A DONE epic's scope is frozen
+ * for good, because DONE is final — a follow-up is a new epic. A ticket carries one small thing, so a
+ * DONE ticket is still editable and still commentable: there is no {@code requireOpen} for its
+ * fields. Its <em>status</em> is final like any DONE entity's.
  *
  * <p>Deleting an epic stays allowed in every status: it removes the row and its subtree rather than
  * changing a frozen scope, and the audit log outlives it.
@@ -49,55 +48,12 @@ import java.util.Set;
  * and that is not an inconsistency: a type is a field being written, not a move being requested.
  *
  * <p><b>The two guards read {@link WorkEntity#status}, which is a {@code String}</b>, and compare it
- * against {@link EntityStatus#name()} rather than parsing it. That is deliberate: a guard's job is
- * to refuse, and a row whose status word is unreadable must be refused rather than blow up with a
- * different exception on the way to the refusal.
+ * against {@link EntityStatus#name()} rather than {@code valueOf}-ing it. That is deliberate: a
+ * guard's job is to refuse, and a row whose status word is unreadable must be refused rather than
+ * blow up with a different exception on the way to the refusal ({@link #requireReported} reads the
+ * word through {@link #parse} only to choose the wording of its refusal).
  */
 final class EntityLifecycle {
-
-  /**
-   * What each status may move to, and <b>the one place the rule is written</b> — everything else in
-   * this repository that has to describe an epic's or a ticket's moves points here rather than
-   * restating them.
-   *
-   * <p><b>The pipeline is adjacent-only, in both directions.</b> REPORTED → REFINED → IMPLEMENTED →
-   * VERIFIED → DONE is walked one step at a time, forward as each phase finishes and backward when
-   * one has to be redone, and asking for the status the entity already has stays refused rather
-   * than reading as a no-op.
-   *
-   * <p><b>{@link EntityStatus#DROPPED} is off that line.</b> It is not a sixth step and it has no
-   * neighbours on the chain: it is reachable from every status that is not already closed —
-   * REPORTED, REFINED, IMPLEMENTED and VERIFIED — because a decision not to do the work can be
-   * taken at any point while the work is still open, and it is reached from nowhere else.
-   *
-   * <p><b>DONE is offered no drop</b>, and that absence is the decision rather than an oversight.
-   * DONE is already an exit; the only thing the move could achieve is to let the weaker outcome
-   * overwrite a real one, and an entity that shipped did not stop having shipped. A closure that was
-   * wrong still goes back the way every move goes back — DONE → VERIFIED — and the entity is then
-   * open again and droppable like any other.
-   *
-   * <p><b>DROPPED reopens to REPORTED and to nothing else</b>, which is what keeps this a graph
-   * rather than a graph plus a column: resuming at wherever the entity was abandoned would mean
-   * remembering where that was, and it is the wrong answer regardless — somebody who has changed
-   * their mind about abandoned work is asking what it is for again, which is the refine phase.
-   *
-   * <p>Written out per status rather than derived from the ordinal, because the order is a fact
-   * about the lifecycle and not about how the enum happens to be declared.
-   */
-  private static final Map<EntityStatus, Set<EntityStatus>> LEGAL_TARGETS =
-      Map.of(
-          EntityStatus.REPORTED,
-          EnumSet.of(EntityStatus.REFINED, EntityStatus.DROPPED),
-          EntityStatus.REFINED,
-          EnumSet.of(EntityStatus.REPORTED, EntityStatus.IMPLEMENTED, EntityStatus.DROPPED),
-          EntityStatus.IMPLEMENTED,
-          EnumSet.of(EntityStatus.REFINED, EntityStatus.VERIFIED, EntityStatus.DROPPED),
-          EntityStatus.VERIFIED,
-          EnumSet.of(EntityStatus.IMPLEMENTED, EntityStatus.DONE, EntityStatus.DROPPED),
-          EntityStatus.DONE,
-          EnumSet.of(EntityStatus.VERIFIED),
-          EntityStatus.DROPPED,
-          EnumSet.of(EntityStatus.REPORTED));
 
   private EntityLifecycle() {}
 
@@ -122,9 +78,10 @@ final class EntityLifecycle {
   }
 
   /**
-   * Rejects a move the lifecycle does not allow, naming both ends. Which moves those are is {@link
-   * #LEGAL_TARGETS}' to say and is argued there — the adjacent-only pipeline, the off-path exit,
-   * and why DONE is offered no drop — because a rule written twice is a rule that drifts.
+   * Rejects a move the lifecycle does not allow, naming both ends — and, for a move out of DONE,
+   * saying that DONE is final and that a follow-up is a new ticket or epic. Which moves are legal is
+   * {@link EntityStateMachine}'s to say and is argued there, because a rule written twice is a rule
+   * that drifts; this adds only the subject of the sentence.
    *
    * <p>That is also why there is no reject verb: a verification that fails is the ordinary backward
    * move IMPLEMENTED → REFINED, because what a failed verification establishes is that the ticket
@@ -132,10 +89,11 @@ final class EntityLifecycle {
    * first time, and a second vocabulary for it would only have to be mapped back onto this one.
    */
   static void requireTransition(Archetype archetype, EntityStatus from, EntityStatus target) {
-    if (!LEGAL_TARGETS.getOrDefault(from, EnumSet.noneOf(EntityStatus.class)).contains(target)) {
-      throw new ConflictException(
-          subject(archetype) + " cannot move from " + from + " to " + target);
-    }
+    EntityStateMachine.refusal(from, target)
+        .ifPresent(
+            reason -> {
+              throw new ConflictException(subject(archetype) + " " + reason);
+            });
   }
 
   /** "An epic" / "A ticket" — the start of a refusal's sentence. */
@@ -144,29 +102,35 @@ final class EntityLifecycle {
   }
 
   /**
-   * The statuses in which an epic's work is over: {@link EntityStatus#IMPLEMENTED}, {@link
-   * EntityStatus#VERIFIED}, {@link EntityStatus#DONE} and {@link EntityStatus#DROPPED}. Not the
-   * same question as "what may this status move to" — every one of them still has a legal move,
-   * backwards included — and resolved all the same. This is what an assembling layer asks before
-   * tearing down anything the epic was still holding (its refinement room).
+   * Whether {@code status} says an epic's work is over: IMPLEMENTED or beyond on the walk, or
+   * DROPPED. Not the same question as "what may this status move to" — IMPLEMENTED and VERIFIED
+   * still move backwards — and resolved all the same. This is what an assembling layer asks before
+   * tearing down anything the epic was still holding (its refinement room). Read off {@link
+   * EntityStateMachine} rather than listed, so it cannot disagree with the walk.
    */
-  private static final Set<EntityStatus> RESOLVED =
-      EnumSet.of(
-          EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, EntityStatus.DONE, EntityStatus.DROPPED);
-
-  /** Whether {@code status} says the epic's work is over — see {@link #RESOLVED}. */
   static boolean resolves(EntityStatus status) {
-    return RESOLVED.contains(status);
+    return EntityStateMachine.isOffWalk(status)
+        || EntityStateMachine.isAtOrPast(status, EntityStatus.IMPLEMENTED);
   }
 
   /**
    * Rejects a structural change to an epic whose scope is no longer a draft: scope is editable at
    * {@link EntityStatus#REPORTED} and frozen from {@link EntityStatus#REFINED} on. The message names
    * the status the epic is in, the one the write needs, and the way back — the freeze is reversible
-   * along the ordinary graph.
+   * along the ordinary graph, except at DONE, which is final: there the message says so instead of
+   * pointing at a way back that does not exist.
    */
   static void requireReported(WorkEntity epic) {
     if (!EntityStatus.REPORTED.name().equals(epic.status)) {
+      Optional<EntityStatus> status = parse(epic.status);
+      if (status.isPresent() && EntityStateMachine.isTerminal(status.get())) {
+        throw new ConflictException(
+            "The scope of epic "
+                + epic.id
+                + " is frozen for good: "
+                + EntityStateMachine.finality(status.get())
+                + ".");
+      }
       throw new ConflictException(
           "The scope of epic "
               + epic.id
