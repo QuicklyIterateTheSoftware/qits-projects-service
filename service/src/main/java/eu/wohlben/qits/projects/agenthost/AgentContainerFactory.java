@@ -55,7 +55,7 @@ import org.jboss.logging.Logger;
  * <p><b>It also carries what the container's sessions are configured to run as.</b> The resolved
  * agent configuration document — every session surface, built from this service's own store in
  * process — goes in as {@link #AGENT_CONFIGURATION_ENV} beside the path the daemon is to put it at,
- * so a container is <em>born</em> knowing how {@code project.epics} and {@code project.tickets} are
+ * so a container is <em>born</em> knowing how {@code project.work} — the one front desk — is
  * steered rather than asking at launch. {@link #agentConfiguration()} carries the whole of why it is
  * env rather than the mounted file the epic specified, and what that costs.
  *
@@ -703,10 +703,12 @@ public class AgentContainerFactory {
   /**
    * The whole resolved agent configuration document, serialized — what a container is born with.
    *
-   * <p>The two surfaces this container serves are {@code project.epics} and {@code project.tickets};
-   * what goes in is <b>every</b> surface anyway, which is the container door's own decision and its
-   * javadoc carries the argument (a container that turns out to serve a surface the creator did not
-   * predict is better off holding a configuration for it than falling back to constants).
+   * <p>The surface this container's sessions launch with is {@code project.work} (qits-403); the
+   * retiring {@code project.epics} and {@code project.tickets} still ride along wherever the store
+   * holds their rows, because what goes in is <b>every</b> surface anyway, which is the container
+   * door's own decision and its javadoc carries the argument (a container that turns out to serve a
+   * surface the creator did not predict is better off holding a configuration for it than falling
+   * back to constants).
    *
    * <p><b>It is built here rather than fetched.</b> The store is in this service, so there is no hop
    * to make and no failure policy to write for one; this is the same code path {@code

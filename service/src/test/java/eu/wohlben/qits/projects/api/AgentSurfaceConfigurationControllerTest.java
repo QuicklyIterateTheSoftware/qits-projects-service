@@ -54,9 +54,12 @@ public class AgentSurfaceConfigurationControllerTest {
         is(List.of("repository", "observability", "actions")));
   }
 
-  /** The one seeded prompt, over the wire, byte for byte. */
+  /**
+   * The retiring tickets desk still resolves — its prompt byte for byte and its one server — though
+   * it is no longer seeded: a container born before qits-403 still names it.
+   */
   @Test
-  public void theTicketsDeskAnswersItsSeededPromptAndItsOneProjectScopedServer() {
+  public void theRetiringTicketsDeskStillAnswersItsPromptAndItsOneProjectScopedServer() {
     JsonPath answer =
         given()
             .when()
@@ -83,15 +86,15 @@ public class AgentSurfaceConfigurationControllerTest {
   }
 
   /**
-   * The epics desk's empty system prompt is present as {@code ""} and not absent, because the two
-   * mean different things everywhere downstream of here.
+   * The one desk's empty system prompt — the epics desk's, inherited — is present as {@code ""} and
+   * not absent, because the two mean different things everywhere downstream of here.
    */
   @Test
-  public void theEpicsDeskAnswersAnEmptySystemPromptRatherThanNone() {
+  public void theOneDeskAnswersAnEmptySystemPromptRatherThanNone() {
     JsonPath answer =
         given()
             .when()
-            .get("/projects/api/agent-surfaces/project.epics")
+            .get("/projects/api/agent-surfaces/project.work")
             .then()
             .statusCode(200)
             .extract()
@@ -182,7 +185,7 @@ public class AgentSurfaceConfigurationControllerTest {
         .contentType(ContentType.JSON)
         .body(update("GEMINI", "SKIP_PERMISSIONS", List.of()))
         .when()
-        .put("/projects/api/agent-surfaces/project.epics")
+        .put("/projects/api/agent-surfaces/project.work")
         .then()
         .statusCode(400)
         .body("message", containsString("CLAUDE, KIMI"));
@@ -194,7 +197,7 @@ public class AgentSurfaceConfigurationControllerTest {
         .contentType(ContentType.JSON)
         .body(update("CLAUDE", "ASK_NICELY", List.of()))
         .when()
-        .put("/projects/api/agent-surfaces/project.epics")
+        .put("/projects/api/agent-surfaces/project.work")
         .then()
         .statusCode(400)
         .body("message", containsString("SKIP_PERMISSIONS, PROMPT"));
@@ -220,7 +223,7 @@ public class AgentSurfaceConfigurationControllerTest {
                         "narrowWorkspace", false,
                         "readOnly", false))))
         .when()
-        .put("/projects/api/agent-surfaces/project.epics")
+        .put("/projects/api/agent-surfaces/project.work")
         .then()
         .statusCode(400)
         .body("message", containsString("repository, observability, actions"));
@@ -240,7 +243,7 @@ public class AgentSurfaceConfigurationControllerTest {
         .contentType(ContentType.JSON)
         .body(update("CLAUDE", "SKIP_PERMISSIONS", List.of(attachment, attachment)))
         .when()
-        .put("/projects/api/agent-surfaces/project.epics")
+        .put("/projects/api/agent-surfaces/project.work")
         .then()
         .statusCode(400)
         .body("message", containsString("attached twice"));
@@ -269,20 +272,19 @@ public class AgentSurfaceConfigurationControllerTest {
     assertThat(document.getInt("version"), is(2));
     assertThat(document.getString("generatedAt"), notNullValue());
     assertThat(
-        document.getList("surfaces.configuration.surface", String.class), hasItem("project.tickets"));
+        document.getList("surfaces.configuration.surface", String.class), hasItem("project.work"));
     assertThat(
         document.getList("surfaces.configuration.surface", String.class), hasItem("ticket.dispatch"));
     assertThat(
         document.getString(
-            "surfaces.find { it.configuration.surface == 'project.tickets' }"
+            "surfaces.find { it.configuration.surface == 'ticket.dispatch' }"
                 + ".configuration.systemPrompt"),
-        is(AgentSurfaceDefaults.TICKETS_DESK_PROMPT));
-    // No catalog entry is attached anywhere by default, so no credential is read to build this.
+        is(AgentSurfaceDefaults.COMPOSED_RUN_PROMPT));
     assertThat(
         document.getList(
-            "surfaces.find { it.configuration.surface == 'project.tickets' }.externalMcpServers",
-            Object.class),
-        is(List.of()));
+            "surfaces.find { it.configuration.surface == 'project.work' }.configuration.mcpServers.server",
+            String.class),
+        is(List.of("repository")));
   }
 
   private static Map<String, Object> update(

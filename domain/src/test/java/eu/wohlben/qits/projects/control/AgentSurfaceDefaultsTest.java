@@ -180,11 +180,10 @@ public class AgentSurfaceDefaultsTest {
   // -------------------------------------------------------------------------------------------
 
   @Test
-  public void theVocabularyIsTheEightSurfacesTheProductHas() {
+  public void theVocabularyIsTheSevenSurfacesSessionsLaunchWith() {
     assertEquals(
         List.of(
-            "project.epics",
-            "project.tickets",
+            "project.work",
             "epic.chat",
             "epic.agent",
             "workspace.chat",
@@ -192,13 +191,41 @@ public class AgentSurfaceDefaultsTest {
             "epic.autonomous",
             "ticket.dispatch"),
         AgentSurfaceDefaults.SURFACES,
-        "the six a human opens plus the two composed runs; a ninth is a line here and a default"
+        "the five a human opens plus the two composed runs; another is a line here and a default"
             + " below, never a migration");
-    assertEquals(8, AgentSurfaceDefaults.SHIPPED.size());
     for (String surface : AgentSurfaceDefaults.SURFACES) {
       assertNotNull(
           AgentSurfaceDefaults.SHIPPED.get(surface), surface + " is in the vocabulary but unseeded");
     }
+  }
+
+  /**
+   * The literal is a wire contract with {@code AgentSurface.PROJECT_WORK} in qits-coding-agents
+   * 2026.927.4238, which both daemons validate against a closed list — and nothing else in this
+   * repository would notice a misspelling, because the store accepts any key.
+   */
+  @Test
+  public void theOneDeskLaunchesAsProjectWork() {
+    assertEquals("project.work", AgentSurfaceDefaults.PROJECT_WORK);
+  }
+
+  /**
+   * The two desks {@code project.work} replaced launch nothing any more, and still resolve: their
+   * rows stay, and every container born before the switch reads them from its boot-time document.
+   */
+  @Test
+  public void theTwoRetiredDesksAreOutOfTheVocabularyAndStillResolve() {
+    assertEquals(List.of("project.epics", "project.tickets"), AgentSurfaceDefaults.RETIRING);
+    for (String retiring : AgentSurfaceDefaults.RETIRING) {
+      assertFalse(
+          AgentSurfaceDefaults.SURFACES.contains(retiring),
+          retiring + " must not be seeded or lead the listing any more");
+      assertNotNull(AgentSurfaceDefaults.SHIPPED.get(retiring), retiring + " must still resolve");
+      assertEquals(retiring, AgentSurfaceDefaults.shippedDefault(retiring).surface());
+    }
+    assertEquals(
+        AgentSurfaceDefaults.SURFACES.size() + AgentSurfaceDefaults.RETIRING.size(),
+        AgentSurfaceDefaults.SHIPPED.size());
   }
 
   @Test
@@ -213,7 +240,7 @@ public class AgentSurfaceDefaultsTest {
 
   @Test
   public void everySurfaceShipsClaudeSkipPermissionsAndActivityTracking() {
-    for (String surface : AgentSurfaceDefaults.SURFACES) {
+    for (String surface : AgentSurfaceDefaults.SHIPPED.keySet()) {
       AgentSurfaceConfigurationDto shipped = AgentSurfaceDefaults.SHIPPED.get(surface);
       assertEquals(
           AgentHarness.CLAUDE,
@@ -263,6 +290,33 @@ public class AgentSurfaceDefaultsTest {
             new AgentMcpAttachmentDto("repository", true, false, false, false, PROJECTS_REPOSITORY_TOOLS)),
         epics.mcpServers(),
         "the projects daemon attaches exactly one server, project-narrowed, at PROJECT scope");
+  }
+
+  /**
+   * The one front desk ships as the epics desk did, field for field bar the key: the merged desk
+   * inherits the refinement surface's configuration, which is also what V30 copies from.
+   */
+  @Test
+  public void theOneDeskShipsAsTheEpicsDeskDid() {
+    AgentSurfaceConfigurationDto work = AgentSurfaceDefaults.SHIPPED.get("project.work");
+    AgentSurfaceConfigurationDto epics = AgentSurfaceDefaults.SHIPPED.get("project.epics");
+    assertEquals("project.work", work.surface());
+    assertEquals(
+        new AgentSurfaceConfigurationDto(
+            "project.work",
+            epics.harness(),
+            epics.model(),
+            epics.effort(),
+            epics.remoteControl(),
+            epics.permissionMode(),
+            epics.activityTracking(),
+            epics.systemPrompt(),
+            epics.initialPrompt(),
+            epics.mcpServers(),
+            epics.externalMcpServers(),
+            epics.shipped()),
+        work);
+    assertEquals("", work.systemPrompt(), "not the tickets desk's prompt");
   }
 
   @Test
@@ -376,6 +430,7 @@ public class AgentSurfaceDefaultsTest {
   public void remoteControlIsOnForEveryChatSurfaceAndOffForTheInteractiveOnes() {
     for (String chat :
         List.of(
+            "project.work",
             "project.epics",
             "project.tickets",
             "epic.chat",
