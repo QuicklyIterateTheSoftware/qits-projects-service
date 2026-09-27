@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.Archetypes;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
+import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -20,9 +22,10 @@ import java.util.Optional;
  * EntityStatus}). So REPORTED starts the refine phase, REFINED starts implement, IMPLEMENTED starts
  * verify, and VERIFIED and DONE start nothing at all — the work is over and closing is a person's
  * move. {@link EntityStatus#DROPPED} starts nothing either, for the opposite reason: the work was
- * decided against, so there is no phase left to run and there never will be. {@link #phaseOf} is
- * that reading, the <b>only</b> place in this service that turns a status into a phase, and it does
- * not look at the archetype: an epic and a ticket at the same status run the same phase.
+ * decided against, so there is no phase left to run and there never will be. That mapping is
+ * declared once, on the state machine ({@code EntityStateMachine.phaseStartedBy}); {@link #phaseOf}
+ * is the <b>only</b> place in this service that asks it, and it does not look at the archetype: an
+ * epic and a ticket at the same status run the same phase.
  *
  * <p>Two things follow from the prompt being derived rather than passed in, and both are the point
  * rather than a side effect. Pressing dispatch on a half-finished entity <b>resumes</b> it at the
@@ -52,7 +55,9 @@ import java.util.Optional;
  * <h2>Each template ends the same way, and that ending is load-bearing</h2>
  *
  * <p>The transition is the <b>agent's claim</b>, made explicitly with {@code transition_ticket} or
- * {@code transition_epic}, and it is reversible in both directions through the same door; where the
+ * {@code transition_epic}, and every move an agent is asked to make — to REFINED, IMPLEMENTED or
+ * VERIFIED, or back — is reversible in both directions through the same door (only DONE is final,
+ * and closing is a person's move, never an agent's); where the
  * agent could not finish, it says what is missing and <b>leaves the status where it is</b>. An
  * unsure agent needs a cheap correct answer rather than a coin flip, and a wrong forward move skips a
  * whole phase — the one that would have caught it. Whether the <em>next</em> phase then starts by
@@ -114,43 +119,24 @@ final class PhasePrompts {
           + " transitions, and when the workspace is resolved. If that file is not there, this"
           + " project carries no brief; proceed without it.";
 
-  /** A phase a status starts. Its {@link #word} is what a comment, a log line and the SPA read. */
-  enum Phase {
-    REFINE("refine"),
-    IMPLEMENT("implement"),
-    VERIFY("verify");
-
-    final String word;
-
-    Phase(String word) {
-      this.word = word;
-    }
-  }
-
   /**
    * The one mapping: what has been achieved decides what runs next — or empty where nothing does,
-   * including every row of a kind with no lifecycle (a feature, a task), whose status is null.
+   * including every row of a kind with no lifecycle (a feature, a task), whose status is null. The
+   * mapping itself is the state machine's ({@link EntityStateMachine#phaseStartedBy}): REPORTED
+   * starts refine, REFINED implement, IMPLEMENTED verify, and VERIFIED, DONE and DROPPED nothing —
+   * VERIFIED and DONE because the work is over and closing is a person's, DROPPED because the work
+   * was decided against. This method only reads the stored word back into the enum first.
    */
   static Optional<Phase> phaseOf(WorkEntity entity) {
     if (entity.status == null || Archetypes.legalStatuses(entity.archetype).isEmpty()) {
       return Optional.empty();
     }
-    // The merged row stores the word, so it is read back into the lifecycle's own enum before the
-    // mapping is made — what keeps this switch exhaustive over the six words rather than open over
-    // whatever the String column holds.
-    return switch (EntityStatus.valueOf(entity.status)) {
-      case REPORTED -> Optional.of(Phase.REFINE);
-      case REFINED -> Optional.of(Phase.IMPLEMENT);
-      case IMPLEMENTED -> Optional.of(Phase.VERIFY);
-      // Nothing runs. VERIFIED and DONE are past the work and closing is a person's; DROPPED is the
-      // work decided against, which is the one case where no phase runs because none ever will.
-      case VERIFIED, DONE, DROPPED -> Optional.empty();
-    };
+    return EntityStateMachine.phaseStartedBy(EntityStatus.valueOf(entity.status));
   }
 
   /** The word of the phase a dispatch press would start now, or empty — what the SPA is served. */
   static Optional<String> nextPhase(WorkEntity entity) {
-    return phaseOf(entity).map(phase -> phase.word);
+    return phaseOf(entity).map(phase -> phase.word());
   }
 
   /**
@@ -167,7 +153,7 @@ final class PhasePrompts {
    */
   static Optional<Started> startedBy(WorkEntity entity) {
     return phaseOf(entity)
-        .map(phase -> new Started(phase.word, render(entity.archetype, phase, entity)));
+        .map(phase -> new Started(phase.word(), render(entity.archetype, phase, entity)));
   }
 
   /** The agent's first turn alone, which is what every assertion about the words reads. */

@@ -353,6 +353,48 @@ public class EntityMcpToolsTest {
     assertEquals("Second thoughts", entity(projectId, epicId).path("title").asText());
   }
 
+  /**
+   * DONE is final at this door too: adjacency is skipped (an epic may be restated DONE in one call),
+   * but once it is DONE its status cannot be changed here — only its plain fields.
+   */
+  @Test
+  public void aDoneEntityKeepsItsStatusButTakesAPlainEdit() {
+    String projectId = createProject("Done is final");
+    String epicId = proposeEpic(projectId, "Shipped");
+
+    call(
+        projectId,
+        "transition_entities",
+        Map.of(
+            "entities",
+            Map.of(epicId, Map.of("archetype", "EPIC", "title", "Shipped", "status", "DONE"))),
+        response -> assertFalse(response.isError(), text(response)));
+
+    call(
+        projectId,
+        "transition_entities",
+        Map.of(
+            "entities",
+            Map.of(epicId, Map.of("archetype", "EPIC", "title", "Shipped", "status", "VERIFIED"))),
+        response -> {
+          assertTrue(response.isError(), "a DONE entity's status must not change");
+          assertTrue(text(response).contains("DONE is final"), text(response));
+        });
+
+    call(
+        projectId,
+        "transition_entities",
+        Map.of(
+            "entities",
+            Map.of(
+                epicId,
+                Map.of("archetype", "EPIC", "title", "Shipped, renamed", "status", "DONE"))),
+        response -> assertFalse(response.isError(), text(response)));
+
+    assertEquals("DONE", entity(projectId, epicId).path("status").asText());
+    assertEquals("Shipped, renamed", entity(projectId, epicId).path("title").asText());
+  }
+
   // --- The project boundary -------------------------------------------------
 
   @Test

@@ -140,7 +140,8 @@ public class EntityMcpTools {
    * EntityLifecycle}) is the LIFECYCLE transition: one ticket, one adjacent step along {@code
    * REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, writing {@code entity.status} alone. The
    * two share a word and share nothing else — this one never applies a lifecycle's adjacency rule
-   * (a status it carries is judged only against the TARGET archetype's vocabulary), and that one
+   * (a status it carries is judged only against the TARGET archetype's vocabulary; the one lifecycle
+   * rule it keeps is that DONE is final, so a DONE entity keeps its status and archetype), and that one
    * never moves an archetype or a parent. The word alone will not tell a later reader which one a
    * call site means; the noun after it will.
    */
@@ -184,7 +185,12 @@ public class EntityMcpTools {
               + " rather than quietly dropped. The fix is to supply what it names and call again"
               + " with a corrected map; retrying the same map will be refused the same way. Every"
               + " complaint about the whole request comes back at once, so fix all of them"
-              + " together. Nothing is written when anything is refused.")
+              + " together. Nothing is written when anything is refused.\n"
+              + "\n"
+              + "DONE IS FINAL, HERE AS EVERYWHERE. An entity that is DONE keeps status DONE and its"
+              + " archetype: restate both unchanged. Its title, description and other plain fields"
+              + " may still be edited, but a different status or archetype for it is refused — a"
+              + " follow-up to done work is a new ticket or epic.")
   public Map<String, TransitionedEntity> transitionEntities(
       @ToolArg(
               description =

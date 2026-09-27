@@ -1035,7 +1035,18 @@ of a project's whole plan to.
                      "requiredOnTransition": ["TITLE","STATUS"],
                      "permitted": ["TITLE","SLUG","DESCRIPTION","STATUS","SUPERSEDED_BY"],
                      "legalStatuses": ["DONE","DROPPED","IMPLEMENTED","REFINED","REPORTED",
-                                       "VERIFIED"] } ] }
+                                       "VERIFIED"],
+                     "transitions": {
+                       "REPORTED":    [{"to":"REFINED","kind":"FORWARD"},{"to":"DROPPED","kind":"DROP"}],
+                       "REFINED":     [{"to":"IMPLEMENTED","kind":"FORWARD"},{"to":"REPORTED","kind":"BACK"},
+                                       {"to":"DROPPED","kind":"DROP"}],
+                       "IMPLEMENTED": [{"to":"VERIFIED","kind":"FORWARD"},{"to":"REFINED","kind":"BACK"},
+                                       {"to":"DROPPED","kind":"DROP"}],
+                       "VERIFIED":    [{"to":"DONE","kind":"FORWARD"},{"to":"IMPLEMENTED","kind":"BACK"},
+                                       {"to":"DROPPED","kind":"DROP"}],
+                       "DONE":        [],
+                       "DROPPED":     [{"to":"REPORTED","kind":"REOPEN"}] },
+                     "lifecycle": ["REPORTED","REFINED","IMPLEMENTED","VERIFIED","DONE","DROPPED"] } ] }
 ```
 
 **It exists so the archetype gate is met as form fields rather than as an error after a button
@@ -1077,7 +1088,15 @@ are `Set`s in Java and are answered in `EntityProperty` declaration order — th
 sequence. `legalStatuses` is a `Set<String>` whose source enum order is **not recoverable** from
 `ArchetypeSpec`, so it is sorted alphabetically to make the answer deterministic, and **a client must
 not read a lifecycle, an ordering or a first phase out of it**: `DONE` leads the list and is not
-its first phase (it was `ABANDONED` leading an epic's list while epics had a vocabulary of their own). The adjacency rules stay on the two lifecycle endpoints and are not served here.
+its first phase (it was `ABANDONED` leading an epic's list while epics had a vocabulary of their own). The ordered reading is served beside it instead.
+
+**The legal moves are served, off the state machine (qits-310 follow-up).** `transitions` is keyed by
+every status word in lifecycle order, and each value lists the moves out of that status —
+`{"to", "kind"}`, `FORWARD` first, then `BACK`, then `DROP`/`REOPEN` — with `DONE` answering `[]`
+because DONE is final; `lifecycle` is the ordered walk plus `DROPPED`. A kind with no lifecycle serves
+`{}` and `[]`. Both are read off `control/EntityStateMachine`, the one declaration of the states and
+their moves that the per-archetype transition doors enforce, so the served moves and the enforced
+ones cannot come apart. Additive: every earlier member is unchanged.
 
 **It is a class of its own, `service/…/entities/api/EntityArchetypesController`, and it takes
 `qits:agent`.** Every read route on this surface takes the agent, and this is a read of four public
@@ -1971,9 +1990,10 @@ what a door written with the reverse assertion would report as broken.
 
 **`EpicStatus` is deleted, and the ticket's six words are the lifecycle of every archetype that has
 one.** `entity/EntityStatus` (renamed from `TicketStatus`) — `REPORTED → REFINED → IMPLEMENTED →
-VERIFIED → DONE`, plus `DROPPED`, walked reversibly — is what an epic holds too, and
-`control/EntityLifecycle` (the survivor of `EpicLifecycle` and `TicketLifecycle`) is one legal-target
-graph over it. `Archetypes` declares one status set for `EPIC` and `TICKET`, so the served registry
+VERIFIED → DONE`, plus `DROPPED`, walked reversibly below DONE — is what an epic holds too, and
+`control/EntityLifecycle` (the survivor of `EpicLifecycle` and `TicketLifecycle`) asks one state
+machine over it, `control/EntityStateMachine`. **DONE is final and has no exits** (qits-310
+follow-up): a follow-up to done work is a new ticket or epic. `Archetypes` declares one status set for `EPIC` and `TICKET`, so the served registry
 above carries the one vocabulary. The point of the change: an epic can now be VERIFIED and DONE.
 
 The mapping, which is also V15's backfill:
@@ -1993,7 +2013,8 @@ The mapping, which is also V15's backfill:
 - **The freeze re-expresses and becomes reversible.** `EntityLifecycle.requireReported` (was
   `requireRefining`): an epic's scope is editable at REPORTED and frozen from REFINED on.
   `requireRefined` (was `requireImplementation`): the implemented markers move only at REFINED. A
-  frozen scope is reopened by the ordinary backward move to REPORTED — no new door.
+  frozen scope is reopened by the ordinary backward move to REPORTED — no new door — except at DONE,
+  which is final: a DONE epic's scope is frozen for good.
 - **`SUPERSEDED` is an operation now, not a status.** `POST /epics/{id}/transition` still accepts
   the target `SUPERSEDED` (`EpicService.SUPERSEDE`): it is judged as a move to DROPPED, lands the
   epic DROPPED, runs the unchanged deep copy into a successor draft and points the old row at it.

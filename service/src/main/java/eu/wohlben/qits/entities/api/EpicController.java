@@ -62,7 +62,8 @@ public class EpicController {
    * A lifecycle move. {@code target} is a status name of the one entity lifecycle — {@code
    * REFINED} (the scope freeze), {@code IMPLEMENTED} (shipped: stamps every feature and task still
    * unimplemented), {@code VERIFIED}, {@code DONE}, {@code DROPPED}, or back along the walk ({@code
-   * REPORTED} reopens a frozen scope) — or {@code SUPERSEDED}, which is not a status but the
+   * REPORTED} reopens a frozen scope) — never out of {@code DONE}, which is final — or {@code
+   * SUPERSEDED}, which is not a status but the
    * supersede operation: the epic lands {@code DROPPED} pointing at the successor draft it spawned
    * (see {@code WorkEntityService.SUPERSEDE}). A move the lifecycle does not allow, and a target
    * naming no status, both answer 409 with a message.

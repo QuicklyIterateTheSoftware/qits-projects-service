@@ -649,6 +649,16 @@ components:
           type: array
           items:
             type: string
+        transitions:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/LegalMove"
+        lifecycle:
+          type: array
+          items:
+            type: string
     DeclineReleaseRequest:
       type: object
       required:
@@ -1085,6 +1095,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LaunchPin"
+    LegalMove:
+      type: object
+      properties:
+        to:
+          type: string
+        kind:
+          $ref: "#/components/schemas/TransitionKind"
     ListPagesResponse:
       type: object
       properties:
@@ -2184,6 +2201,13 @@ components:
       properties:
         target:
           type: string
+    TransitionKind:
+      type: string
+      enum:
+      - FORWARD
+      - BACK
+      - DROP
+      - REOPEN
     TransitionTicketRequest:
       type: object
       properties:

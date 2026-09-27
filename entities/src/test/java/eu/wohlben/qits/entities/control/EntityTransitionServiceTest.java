@@ -269,6 +269,79 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     inFreshTx(() -> assertEquals("After", entities.findById(epic.id).title));
   }
 
+  // --- DONE is final, and it is the one lifecycle rule this door keeps -----
+
+  private WorkEntity doneEpic(String title) {
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic(title, null), WHO).entity();
+    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      workEntities.transition(Archetype.EPIC, epic.id, target, WHO);
+    }
+    return epic;
+  }
+
+  /** Every status other than DONE is refused on a DONE entity, and nothing is written. */
+  @Test
+  void aDoneEntityRefusesEveryStatusChange() {
+    WorkEntity epic = doneEpic("Shipped");
+    for (EntityStatus target : EntityStatus.values()) {
+      if (target == EntityStatus.DONE) {
+        continue;
+      }
+      BadRequestException refusal =
+          assertThrows(
+              BadRequestException.class,
+              () ->
+                  transitions.transition(
+                      stated(epic.id, epicEntry("Shipped", null, null, target)), WHO),
+              "DONE -> " + target);
+      assertTrue(refusal.getMessage().contains("DONE is final"), refusal.getMessage());
+      assertTrue(
+          refusal.getMessage().contains("a follow-up is a new ticket or epic"),
+          refusal.getMessage());
+    }
+    inFreshTx(() -> assertEquals(EntityStatus.DONE.name(), entities.findById(epic.id).status));
+  }
+
+  /** Re-archetyping a DONE entity is refused too, even to a kind with no lifecycle. */
+  @Test
+  void aDoneEntityCannotBeReArchetyped() {
+    WorkEntity epic = doneEpic("Shipped");
+    WorkEntity other =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Host", null), WHO).entity();
+    BadRequestException refusal =
+        assertThrows(
+            BadRequestException.class,
+            () ->
+                transitions.transition(
+                    stated(epic.id, featureEntry(other.id, 0, "Shipped")), WHO));
+    assertTrue(refusal.getMessage().contains("cannot be re-archetyped"), refusal.getMessage());
+    assertTrue(refusal.getMessage().contains("DONE is final"), refusal.getMessage());
+    inFreshTx(() -> assertEquals(Archetype.EPIC, entities.findById(epic.id).archetype));
+  }
+
+  /** A DONE entity's plain fields stay editable, as long as it stays DONE. */
+  @Test
+  void aDoneEntityStillTakesAPlainEdit() {
+    WorkEntity epic = doneEpic("Shipped");
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(epic.id, epicEntry("Shipped, renamed", "a note", null, EntityStatus.DONE)), WHO);
+    assertEquals("Shipped, renamed", after.get(epic.id).title());
+    assertEquals(EntityStatus.DONE.name(), after.get(epic.id).status());
+  }
+
+  /** The door still skips adjacency everywhere else: a REPORTED epic may be restated DONE. */
+  @Test
+  void anOpenEntityMayStillBeRestatedAtAnyStatus() {
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Draft", null), WHO).entity();
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(epic.id, epicEntry("Draft", null, null, EntityStatus.DONE)), WHO);
+    assertEquals(EntityStatus.DONE.name(), after.get(epic.id).status());
+  }
+
   // --- resolution of a parent inside the map -------------------------------
 
   /**

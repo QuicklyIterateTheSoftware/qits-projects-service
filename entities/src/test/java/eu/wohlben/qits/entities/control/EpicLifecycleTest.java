@@ -80,18 +80,45 @@ class EpicLifecycleTest extends EntitiesTestSupport {
 
   /** The point of qits-392: an epic can be VERIFIED and DONE, which it could not before. */
   @Test
-  void anEpicWalksAllTheWayToVerifiedAndDoneAndBack() {
+  void anEpicWalksAllTheWayToVerifiedAndDoneAndStaysThere() {
     WorkEntity epic = epic();
     for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
       assertEquals(
           target, workEntities.transition(Archetype.EPIC, epic.id, target, "t").entity().status);
     }
-    // Nothing is terminal: DONE reopens to VERIFIED like every other move goes back.
-    assertEquals(
-        "VERIFIED",
-        workEntities.transition(Archetype.EPIC, epic.id, "VERIFIED", "t").entity().status);
+    // DONE is final: every target is refused, the step back to VERIFIED and supersede included.
+    for (String target :
+        List.of(
+            "REPORTED",
+            "REFINED",
+            "IMPLEMENTED",
+            "VERIFIED",
+            "DONE",
+            "DROPPED",
+            WorkEntityService.SUPERSEDE)) {
+      ConflictException refusal =
+          assertThrows(
+              ConflictException.class,
+              () -> workEntities.transition(Archetype.EPIC, epic.id, target, "t"),
+              "DONE -> " + target);
+      assertTrue(refusal.getMessage().contains("DONE is final"), refusal.getMessage());
+    }
     // A transition asserts a status on the node it is about and nothing else — no child is moved.
-    assertEquals(EntityStatus.VERIFIED.name(), workEntities.get(Archetype.EPIC, epic.id).status);
+    assertEquals(EntityStatus.DONE.name(), workEntities.get(Archetype.EPIC, epic.id).status);
+  }
+
+  @Test
+  void aDoneEpicsScopeIsFrozenForGoodAndTheRefusalSaysSo() {
+    WorkEntity epic = epic();
+    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      workEntities.transition(Archetype.EPIC, epic.id, target, "t");
+    }
+    ConflictException refusal =
+        assertThrows(
+            ConflictException.class,
+            () -> EntityLifecycle.requireReported(workEntities.get(Archetype.EPIC, epic.id)));
+    assertTrue(refusal.getMessage().contains("frozen for good"), refusal.getMessage());
+    assertTrue(refusal.getMessage().contains("DONE is final"), refusal.getMessage());
   }
 
   @Test

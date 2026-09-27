@@ -605,11 +605,11 @@ public class WorkEntityService {
    * separation — an edit that could also block would let a retitle assert that somebody is stuck.
    *
    * <p><b>Legal at every status as far as this module is concerned, and that is not an
-   * omission.</b> Blocking is meaningful only where a phase runs, and <em>phase</em> is the service
-   * layer's concept ({@code projects/api/PhasePrompts}); this module has no idea a phase exists and
-   * depends on {@code domain} nowhere, so the doors refuse a VERIFIED, DONE or DROPPED row with a 409
-   * and a second list of the phased statuses written here would be the drift {@code
-   * EntityLifecycle.LEGAL_TARGETS} exists to prevent.
+   * omission.</b> Blocking is meaningful only where a phase runs; which status starts a phase is
+   * {@link EntityStateMachine#phaseStartedBy}, and refusing on it is the doors' business (they
+   * answer a VERIFIED, DONE or DROPPED row with a 409 through {@code projects/api/PhasePrompts}). A
+   * second list of the phased statuses written here would be the drift the machine exists to
+   * prevent.
    *
    * <p>The reason is not stored on the row and this method does not take one: a blocker is a remark
    * with an author and a time, which is what the thread already is. Idempotent: blocking a blocked

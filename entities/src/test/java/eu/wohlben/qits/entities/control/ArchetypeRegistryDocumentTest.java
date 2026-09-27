@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -223,6 +226,85 @@ class ArchetypeRegistryDocumentTest {
     // One vocabulary since qits-392: the epic and the ticket serve the same six words.
     assertEquals(
         declared(Archetype.EPIC).legalStatuses(), declared(Archetype.TICKET).legalStatuses());
+  }
+
+  // ---- the legal moves, served off the state machine -------------------------------------------
+
+  @Test
+  void theServedMovesAreTheMachinesDeclarationExactly() {
+    // Rebuilt from EntityStateMachine.transitions() — the declaration itself, not transitionsFrom —
+    // so a served move the machine does not declare, or a declared move the document drops, fails.
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
+      ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
+      Map<String, List<ArchetypeRegistryDocument.LegalMove>> expected = new LinkedHashMap<>();
+      for (EntityStatus state : EntityStateMachine.states()) {
+        expected.put(state.name(), new ArrayList<>());
+      }
+      for (EntityStateMachine.Transition move : EntityStateMachine.transitions()) {
+        expected
+            .get(move.from().name())
+            .add(new ArchetypeRegistryDocument.LegalMove(move.to().name(), move.kind()));
+      }
+      assertEquals(expected, served.transitions(), archetype.name());
+      assertEquals(
+          List.copyOf(expected.keySet()),
+          List.copyOf(served.transitions().keySet()),
+          archetype + " keys in lifecycle order");
+      assertEquals(
+          EntityStateMachine.states().stream().map(EntityStatus::name).toList(),
+          served.lifecycle(),
+          archetype.name());
+      assertEquals(
+          Set.copyOf(served.legalStatuses()),
+          Set.copyOf(served.lifecycle()),
+          archetype + ": the ordered lifecycle and the alphabetical list name the same words");
+    }
+  }
+
+  @Test
+  void theTicketsServedMovesReadAsSpecified() {
+    Map<String, List<ArchetypeRegistryDocument.LegalMove>> moves =
+        declared(Archetype.TICKET).transitions();
+    assertEquals(
+        List.of(
+            "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
+        List.copyOf(moves.keySet()));
+    assertEquals(
+        List.of(move("REFINED", EntityStateMachine.TransitionKind.FORWARD), move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("REPORTED"));
+    assertEquals(
+        List.of(
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
+            move("REPORTED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("REFINED"));
+    assertEquals(
+        List.of(
+            move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
+            move("REFINED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("IMPLEMENTED"));
+    assertEquals(
+        List.of(
+            move("DONE", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("VERIFIED"));
+    assertEquals(List.of(), moves.get("DONE"), "DONE is final");
+    assertEquals(List.of(move("REPORTED", EntityStateMachine.TransitionKind.REOPEN)), moves.get("DROPPED"));
+  }
+
+  @Test
+  void aKindWithNoLifecycleServesNoMovesAndNoLifecycle() {
+    for (Archetype archetype : List.of(Archetype.FEATURE, Archetype.TASK)) {
+      assertEquals(Map.of(), declared(archetype).transitions(), archetype.name());
+      assertEquals(List.of(), declared(archetype).lifecycle(), archetype.name());
+    }
+  }
+
+  private static ArchetypeRegistryDocument.LegalMove move(
+      String to, EntityStateMachine.TransitionKind kind) {
+    return new ArchetypeRegistryDocument.LegalMove(to, kind);
   }
 
   @Test
