@@ -28,6 +28,10 @@ import java.util.Map;
  * {@code EntityFact.parentId} being null <em>states</em> rootness — see that record's javadoc — so an
  * epic and a ticket come back as facts, not as absences, and {@code Nesting} can judge them.
  *
+ * <p><b>Tree edges only.</b> Both reads go through the repository's STRUCTURAL methods (V18), so a
+ * fact's parent is the one tree parent and a campaign membership is never a fact — which is what
+ * lets {@link Nesting} judge containment without being told there are two kinds of edge.
+ *
  * <p>It opens no transaction and holds no patience of its own: every caller is already inside a
  * {@link WritePatience} body, where a wrap would be a retry on a connection the outer one has
  * already marked.
@@ -63,7 +67,7 @@ public class StoredEntityFacts implements EntityFacts {
     return facts;
   }
 
-  /** The one edge above each of {@code childIds}, as a map; a child with no edge is simply absent. */
+  /** The one structural edge above each of {@code childIds}; a child with none is simply absent. */
   private Map<String, String> parentsOf(Collection<String> childIds) {
     Map<String, String> parents = new HashMap<>();
     for (EntityMembership edge : memberships.membershipsOfAll(childIds)) {

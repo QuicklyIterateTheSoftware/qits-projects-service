@@ -4,6 +4,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityMembership;
+import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketComment;
 import eu.wohlben.qits.entities.entity.TicketType;
@@ -586,7 +587,7 @@ public class WorkEntityService {
 
   /** A row's edge, or null for a root — the statement {@code EntityFact.parentId} makes. */
   private EntityMembership edgeOf(String id) {
-    return memberships.membershipOf(id).orElse(null);
+    return memberships.structuralMembershipOf(id).orElse(null);
   }
 
   /** One call per move, never inside the write — see {@link TransitionAnnouncer}. */
@@ -771,6 +772,7 @@ public class WorkEntityService {
 
     EntityMembership edge = new EntityMembership();
     edge.id = copy.id;
+    edge.kind = MembershipKind.STRUCTURAL;
     edge.parentId = parentId;
     edge.childId = copy.id;
     edge.position = position;
@@ -787,6 +789,10 @@ public class WorkEntityService {
    * <ol>
    *   <li>siblings of the same kind that depend on it lose the pointer, each audited — in-service
    *       rather than the FK's SET NULL, which would leave no trace;
+   *   <li>every campaign membership of the row or a descendant goes and its gap is closed, so every
+   *       campaign it was gathered into stays dense — the FK would cascade the edges away but leave
+   *       the holes. The subtree is the <em>structural</em> one: a campaign's own members are not
+   *       below it, so deleting a campaign removes its edges (by the cascade) and none of its work;
    *   <li>its descendants go, each with a DELETE audit row, oldest first — the subtree read a level
    *       at a time, their edges with them by the FK's cascade;
    *   <li>a kind with a thread loses its comments, each with a DELETE audit row;
@@ -804,7 +810,8 @@ public class WorkEntityService {
         kind.label("delete"),
         () -> {
           WorkEntity row = lookup(archetype, id);
-          EntityMembership edge = kind.isRoot() ? null : memberships.membershipOf(id).orElse(null);
+          EntityMembership edge =
+              kind.isRoot() ? null : memberships.structuralMembershipOf(id).orElse(null);
           String parentId = edge == null ? null : edge.parentId;
           WorkEntity owner = kind.isRoot() ? null : owner(kind, row, parentId);
           if (owner != null) {
@@ -821,6 +828,9 @@ public class WorkEntityService {
           }
 
           Subtree subtree = subtreeOf(id);
+          // Before any row goes: a query here auto-flushes, and a row already deleted would have
+          // cascaded its campaign edges away and left their gaps behind.
+          leaveCampaigns(id, subtree);
           for (WorkEntity descendant : subtree.oldestFirst()) {
             entities.delete(descendant);
             audit(descendant, rootId, AuditOperation.DELETE, changedBy);
@@ -847,6 +857,28 @@ public class WorkEntityService {
           entities.delete(row);
           audit(row, rootId, AuditOperation.DELETE, changedBy);
         });
+  }
+
+  /**
+   * Removes every CAMPAIGN edge whose child is {@code id} or one of its descendants, closing each
+   * campaign's gap as it goes. <b>Highest position first</b>: {@code campaignCloseGapAfter} is a bulk
+   * update the session does not see, so an edge still to be removed must never be one a previous
+   * close has already shifted — and removing from the top down means no close ever touches one.
+   */
+  private void leaveCampaigns(String id, Subtree subtree) {
+    List<String> gone = new ArrayList<>();
+    gone.add(id);
+    gone.addAll(subtree.rows().keySet());
+    List<EntityMembership> edges = new ArrayList<>();
+    for (String member : gone) {
+      edges.addAll(memberships.campaignMembershipsOf(member));
+    }
+    edges.sort(
+        java.util.Comparator.comparingInt((EntityMembership edge) -> edge.position).reversed());
+    for (EntityMembership edge : edges) {
+      memberships.delete(edge);
+      memberships.campaignCloseGapAfter(edge.parentId, edge.position);
+    }
   }
 
   // --- the tree -------------------------------------------------------------------------------------
@@ -963,7 +995,7 @@ public class WorkEntityService {
 
   /** What this row hangs under, or null for one that hangs under nothing. */
   private String parentOf(String childId) {
-    return memberships.membershipOf(childId).map(edge -> edge.parentId).orElse(null);
+    return memberships.structuralMembershipOf(childId).map(edge -> edge.parentId).orElse(null);
   }
 
   /**
@@ -1009,14 +1041,16 @@ public class WorkEntityService {
 
   /**
    * The edge that makes {@code row} part of {@code parentId}, appended at the end of the parent's
-   * children, then judged by {@link Nesting} over the post-state it produces. <b>The edge's id is the
-   * child's</b>, V10's rule: an edge's identity is the end of it that can only be in one. {@code
+   * children, then judged by {@link Nesting} over the post-state it produces. <b>A structural edge's
+   * id is the child's</b>, V10's rule: an edge's identity is the end of it that can only be in one (a
+   * campaign edge, which a child may have several of, takes a random id instead). {@code
    * dependsOn} is never handed to the nesting rule — a dependency is a sibling ordering edge, and
    * containment is what {@code Nesting} is about.
    */
   private void attach(String parentId, WorkEntity row) {
     EntityMembership edge = new EntityMembership();
     edge.id = row.id;
+    edge.kind = MembershipKind.STRUCTURAL;
     edge.parentId = parentId;
     edge.childId = row.id;
     edge.position = memberships.maxPosition(parentId) + 1;

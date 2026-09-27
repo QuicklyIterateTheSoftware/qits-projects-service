@@ -11,19 +11,23 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditEntry;
 import eu.wohlben.qits.entities.entity.AuditOperation;
+import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.EntityStatus;
+import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -123,7 +127,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
               feature.entity().slug,
               promoted.slug,
               "a move never re-mints a slug — branches are cut on it");
-          assertTrue(memberships.membershipOf(feature.entity().id).isEmpty(), "a root has no edge");
+          assertTrue(memberships.structuralMembershipOf(feature.entity().id).isEmpty(), "a root has no edge");
 
           assertEquals(List.of(staying.entity().id), childIdsOf(feature.entity().id));
           assertEquals(List.of(moving.entity().id), childIdsOf(epic.id));
@@ -192,8 +196,8 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
               Archetype.FEATURE,
               entities.findById(feature.entity().id).archetype,
               "the valid half of a refused request is not written either");
-          assertEquals(epic.id, memberships.membershipOf(feature.entity().id).orElseThrow().parentId);
-          assertEquals(feature.entity().id, memberships.membershipOf(task.entity().id).orElseThrow().parentId);
+          assertEquals(epic.id, memberships.structuralMembershipOf(feature.entity().id).orElseThrow().parentId);
+          assertEquals(feature.entity().id, memberships.structuralMembershipOf(task.entity().id).orElseThrow().parentId);
           assertEquals("repo-1", entities.findById(task.entity().id).repositoryId);
           assertEquals(epic.id, entities.findById(feature.entity().id).slugScope);
         });
@@ -295,7 +299,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     inFreshTx(
         () -> {
           assertEquals(Archetype.EPIC, entities.findById(promoted.entity().id).archetype);
-          assertEquals(promoted.entity().id, memberships.membershipOf(child.entity().id).orElseThrow().parentId);
+          assertEquals(promoted.entity().id, memberships.structuralMembershipOf(child.entity().id).orElseThrow().parentId);
           assertEquals(List.of(), childIdsOf(epic.id));
         });
   }
@@ -321,7 +325,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
 
     inFreshTx(
         () -> {
-          assertEquals(epic.id, memberships.membershipOf(feature.entity().id).orElseThrow().parentId);
+          assertEquals(epic.id, memberships.structuralMembershipOf(feature.entity().id).orElseThrow().parentId);
           assertNull(entities.findById("no-such-entity"), "nothing was created for the unknown id");
         });
   }
@@ -568,7 +572,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     assertTrue(refusal.getMessage().contains(there.id), refusal.getMessage());
     inFreshTx(
         () -> {
-          assertEquals(here.id, memberships.membershipOf(moving.entity().id).orElseThrow().parentId);
+          assertEquals(here.id, memberships.structuralMembershipOf(moving.entity().id).orElseThrow().parentId);
           assertEquals(moving.entity().slug, entities.findById(moving.entity().id).slug, "and never re-minted");
         });
   }
@@ -911,6 +915,64 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
           assertEquals(EntityStatus.REPORTED.name(), stored.status);
           assertEquals(Archetype.CAMPAIGN, stored.archetype);
         });
+  }
+
+  // --- a campaign edge is not the tree (qits-412) --------------------------
+
+  /**
+   * <b>A reshape rewrites the tree and nothing else.</b> A feature that a campaign gathers is moved
+   * to another epic; its structural edge moves, and its CAMPAIGN edge — inserted directly, since no
+   * door writes one yet — survives with the same id, parent and position. Were {@code
+   * replaceMemberships} to read or delete edges of every kind, the reshape would silently take the
+   * feature out of the campaign.
+   */
+  @Test
+  void aReshapeLeavesTheCampaignEdgesOfWhatItMovesStanding() {
+    WorkEntity here =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Here", null), WHO).entity();
+    WorkEntity there =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("There", null), WHO).entity();
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, here.id, EntityWrite.feature("Gathered", null, null), WHO);
+    WorkEntity campaign = workEntities.createCampaign(PROJECT, "The order", null, WHO);
+    String campaignEdge = gather(campaign.id, feature.entity().id);
+
+    transitions.transition(
+        stated(feature.entity().id, featureEntry(there.id, 0, "Gathered")), WHO);
+
+    inFreshTx(
+        () -> {
+          assertEquals(
+              there.id,
+              memberships.structuralMembershipOf(feature.entity().id).orElseThrow().parentId,
+              "the tree edge moved");
+          List<EntityMembership> gathered = memberships.campaignMembershipsOf(feature.entity().id);
+          assertEquals(1, gathered.size(), "the campaign edge survived the reshape");
+          assertEquals(campaignEdge, gathered.get(0).id);
+          assertEquals(campaign.id, gathered.get(0).parentId);
+          assertEquals(0, gathered.get(0).position);
+          assertEquals(MembershipKind.CAMPAIGN, gathered.get(0).kind);
+          assertTrue(childIdsOf(campaign.id).isEmpty(), "a campaign has no structural children");
+          assertEquals(List.of(feature.entity().id), childIdsOf(there.id));
+          assertTrue(childIdsOf(here.id).isEmpty());
+        });
+  }
+
+  /** A CAMPAIGN edge from {@code campaignId} to {@code childId}, appended, committed; its id. */
+  private String gather(String campaignId, String childId) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              EntityMembership edge = new EntityMembership();
+              edge.id = UUID.randomUUID().toString();
+              edge.kind = MembershipKind.CAMPAIGN;
+              edge.parentId = campaignId;
+              edge.childId = childId;
+              edge.position = memberships.campaignMaxPosition(campaignId) + 1;
+              memberships.persist(edge);
+              return edge.id;
+            });
   }
 
   // --- fixtures -------------------------------------------------------------

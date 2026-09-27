@@ -520,7 +520,7 @@ names at the DTO boundary instead, in `mapper/WorkEntityMapper`, which is where
 The parent is the change that is not merely a rename. **`feature.epic_id` and `task.feature_id` are
 `entity_membership` rows now**, and four things follow:
 
-- **"The same epic" is "the same parent".** The dependency scope check is one `membershipOf` lookup
+- **"The same epic" is "the same parent".** The dependency scope check is one `structuralMembershipOf` lookup
   plus an archetype check, not a column comparison. Both refusal messages are unchanged
   (`Unknown or out-of-epic dependsOnFeatureId: …`, `Unknown or out-of-feature dependsOnTaskId: …`).
 - **A task's epic is TWO hops** — task → feature → epic — where it was two columns. It is resolved
@@ -1461,6 +1461,17 @@ membership kind, so the relaxation is a `kind` column on this table (`STRUCTURAL
 this constraint becoming partial — `unique (child_id) where kind = 'STRUCTURAL'`. That is a
 migration on one table, which is only true because the tree-ness stands in **one named constraint**
 rather than being spread across the schema.
+
+**As shipped (V18, qits-412).** The constraint became a partial unique **index** of the same name —
+postgres cannot make a constraint partial — beside `uq_entity_membership_campaign_child (parent_id,
+child_id) where kind = 'CAMPAIGN'`. A STRUCTURAL edge keeps the child's id; a CAMPAIGN edge takes a
+random one. Every tree read in `EntityMembershipRepository` (`childrenOf`, `childrenOfAll`,
+`structuralMembershipOf` — renamed from `membershipOf`, `membershipsOfAll`, `maxPosition`,
+`closeGapAfter`) filters on STRUCTURAL, and the campaign reads are separate methods (`campaignMembers`,
+`campaignMembershipsOf`, `campaignMaxPosition`, `campaignCloseGapAfter`), so nothing that walks
+containment — a listing, a subtree delete, the nesting rule, a reshape — can see a campaign's members
+as its children. A delete closes the gaps its row and subtree leave in every campaign they had
+joined. `Nesting` refuses a STRUCTURAL edge under a kind that gathers as `NOT_STRUCTURAL`.
 
 ## The one narrowing, stated rather than discovered
 

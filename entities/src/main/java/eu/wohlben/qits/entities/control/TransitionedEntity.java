@@ -128,8 +128,9 @@ public record TransitionedEntity(
 
   /**
    * The row and its edge, read back — a <b>read</b>, so {@link #statusBefore} and {@link
-   * #changedBy} are null: nothing moved. {@code edge} is null for a root, which is a statement and
-   * not an omission — see {@code EntityFact.parentId}.
+   * #changedBy} are null: nothing moved. {@code edge} is the row's <b>structural</b> edge — the
+   * tree parent and the position under it, never a campaign membership — and null for a root, which
+   * is a statement and not an omission — see {@code EntityFact.parentId}.
    *
    * <p><b>{@code qualifiedId} is left null here and that is deliberate</b>, not an oversight: see
    * the class javadoc. {@link #withQualifiedId} is how it is filled.

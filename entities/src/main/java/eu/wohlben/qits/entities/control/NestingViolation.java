@@ -58,7 +58,16 @@ public record NestingViolation(
      * <em>could</em> arise is a post-state assembled by a caller that has not been validated yet.
      * A cycle found here means the depth rule was not applied or was applied to a different graph.
      */
-    CYCLE
+    CYCLE,
+
+    /**
+     * A structural edge under a kind that {@linkplain Archetypes#gathers gathers} — a ticket hung in
+     * the tree under a campaign, through the multi-entity transition door or anywhere else. A
+     * campaign's children are campaign memberships of work that already hangs somewhere; it never
+     * contains anything. Its own reason, not {@link #NOT_NESTABLE}, because the depths are fine: a
+     * campaign is shallower than everything, and the complaint is the kind of edge, not the order.
+     */
+    NOT_STRUCTURAL
   }
 
   /** A readable sentence for a log line or a plain error body; the structure above is the contract. */
@@ -68,6 +77,14 @@ public record NestingViolation(
       case UNKNOWN_PARENT -> "there is no " + parentId + " to be part of";
       case NOT_NESTABLE -> "a " + archetype + " cannot be part of a " + parentArchetype;
       case CYCLE -> "this would make " + entityId + " part of itself";
+      case NOT_STRUCTURAL ->
+          "a "
+              + archetype
+              + " cannot hang in the tree under a "
+              + parentArchetype
+              + " — a "
+              + parentArchetype
+              + " gathers work, it does not contain it";
     };
   }
 }

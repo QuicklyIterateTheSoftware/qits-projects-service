@@ -190,7 +190,7 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
         () ->
             assertEquals(
                 epic.id,
-                entityMembershipRepository.membershipOf(b.entity().id).orElseThrow().parentId,
+                entityMembershipRepository.structuralMembershipOf(b.entity().id).orElseThrow().parentId,
                 "the dependency was written as a membership"));
 
     // And had it been judged as one, it would have been refused: FEATURE cannot contain FEATURE.

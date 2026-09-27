@@ -38,6 +38,12 @@ import java.util.Set;
  *       very much a root.
  * </ul>
  *
+ * <p><b>It judges the tree, and only the tree.</b> Every {@link EntityFact} is a STRUCTURAL edge
+ * (V18); a campaign's memberships are not facts here. A structural edge under a kind that
+ * {@linkplain Archetypes#gathers gathers} is refused as {@link NestingViolation.Reason#NOT_STRUCTURAL}
+ * — a campaign's members hang somewhere else and are merely ordered by it. A CAMPAIGN edge is
+ * judged by {@link #mayContain} and the campaign's own rules, never by {@link #check}.
+ *
  * <h2>Why it is a post-state and not a pair</h2>
  *
  * <p>The operation this exists for is a promotion: a feature becomes an epic and stops hanging under
@@ -108,7 +114,7 @@ public final class Nesting {
     return List.copyOf(violations);
   }
 
-  /** The three questions asked of one subject; at most one violation each, and the first stops the rest. */
+  /** The questions asked of one subject; at most one violation each, and the first stops the rest. */
   private static void judge(
       EntityFact subject, Resolver resolver, List<NestingViolation> violations) {
 
@@ -150,6 +156,22 @@ public final class Nesting {
               parent.id(),
               parent.archetype(),
               NestingViolation.Reason.NOT_NESTABLE));
+      return;
+    }
+
+    // A kind that gathers (a campaign) has campaign memberships beneath it and never a structural
+    // child. Every fact here is a structural edge — EntityFacts reads the tree and nothing else — so
+    // one naming a gathering parent is a ticket hung in the tree under a campaign. It comes after the
+    // depth rule, which such a parent (declared shallowest of all) passes for everything but another
+    // of its own kind — and that one stays NOT_NESTABLE, the more basic complaint.
+    if (Archetypes.gathers(parent.archetype())) {
+      violations.add(
+          new NestingViolation(
+              subject.id(),
+              subject.archetype(),
+              parent.id(),
+              parent.archetype(),
+              NestingViolation.Reason.NOT_STRUCTURAL));
       return;
     }
 

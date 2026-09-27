@@ -32,7 +32,7 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
  * it and answering the 404 that resolution produces.
  *
  * @param entity the descendant row itself, of {@link Archetype#FEATURE} or {@link Archetype#TASK}
- * @param parentId the {@code parent_id} of that row's {@code entity_membership} edge — the epic of a
+ * @param parentId the {@code parent_id} of that row's STRUCTURAL {@code entity_membership} edge — the epic of a
  *     feature, the feature of a task — or null when it has no edge
  */
 public record Nested(WorkEntity entity, String parentId) {}

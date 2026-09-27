@@ -136,6 +136,7 @@ public class EntityCatalogService {
     }
   }
 
+  /** Each row's structural edge — the tree this catalogue draws; campaign memberships are not in it. */
   private Map<String, EntityMembership> edgesOf(List<WorkEntity> rows) {
     List<String> ids = new ArrayList<>(rows.size());
     for (WorkEntity row : rows) {

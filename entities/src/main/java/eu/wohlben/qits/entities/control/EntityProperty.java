@@ -75,7 +75,7 @@ public enum EntityProperty {
 
   /**
    * {@code entity.depends_on_entity_id} — the merge of {@code depends_on_feature_id} and {@code
-   * depends_on_task_id}. A <b>sibling ordering</b> edge and never containment; {@code
+   * depends_on_task_id}. A <b>sibling ordering</b> edge and never containment; a STRUCTURAL {@code
    * EntityMembership} is the relation that is containment, and {@link Nesting} is what judges it.
    */
   DEPENDS_ON

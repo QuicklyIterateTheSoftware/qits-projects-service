@@ -6,6 +6,8 @@ import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -26,11 +28,24 @@ import org.hibernate.annotations.UpdateTimestamp;
  * to be checked over a <em>post-state</em> rather than one row at a time: neither half of a
  * promotion is legal on its own.
  *
- * <p><b>At most one parent per child</b>, said by {@code uq_entity_membership_one_parent_per_child}
- * — the hierarchy is a tree. The campaign work widens that with an overlapping membership kind (a
- * campaign gathers rows that already hang somewhere else), which is a {@code kind} column on this
- * table and that constraint becoming partial; the constraint is named for what it asserts rather
- * than for the column it covers so the relaxation reads as a relaxation.
+ * <p><b>Two kinds of edge share this table</b> (V18, {@link MembershipKind}):
+ *
+ * <ul>
+ *   <li><b>{@link MembershipKind#STRUCTURAL} is the tree.</b> At most one per child, said by {@code
+ *       uq_entity_membership_one_parent_per_child} — since V18 a partial unique index over {@code
+ *       kind = 'STRUCTURAL'}, because postgres cannot make a constraint partial. <b>A structural
+ *       edge's id is the child's</b> (V10's rule: an edge's identity is the end of it that can only
+ *       be in one), so a reparent is an update of that one row.
+ *   <li><b>{@link MembershipKind#CAMPAIGN} is a campaign gathering work that already hangs
+ *       somewhere</b>, overlapping the tree rather than extending it. Any number per child, one per
+ *       (campaign, child) ({@code uq_entity_membership_campaign_child}), and its id is {@code
+ *       UUID.randomUUID()} — the child's id is already taken by its structural edge, and a child may
+ *       join several campaigns.
+ * </ul>
+ *
+ * <p>Every tree read in {@code EntityMembershipRepository} is STRUCTURAL-only, so nothing that walks
+ * containment — listings, subtree deletes, the nesting rule, a reshape — can mistake a campaign's
+ * members for its children. The campaign reads are separate methods with their own names.
  *
  * <p><b>Both ends cascade.</b> An edge to a row that is gone is not a fact about anything. The
  * services still tear subtrees down in-service so every removed row gets its own {@link AuditEntry}
@@ -68,8 +83,9 @@ public class EntityMembership extends PanacheEntityBase implements CausedRow {
   public String parentId;
 
   /**
-   * The contained entity. A real intra-module FK, {@code on delete cascade}, and unique across the
-   * table — see the class javadoc for what that asserts and what will relax it.
+   * The contained (or, for a {@link MembershipKind#CAMPAIGN} edge, gathered) entity. A real
+   * intra-module FK, {@code on delete cascade}; unique among STRUCTURAL edges — see the class
+   * javadoc.
    */
   @Column(name = "child_id", nullable = false)
   public String childId;
@@ -85,6 +101,14 @@ public class EntityMembership extends PanacheEntityBase implements CausedRow {
    */
   @Column(nullable = false)
   public int position;
+
+  /**
+   * Which kind of edge this is — see the class javadoc. Defaults to {@link MembershipKind#STRUCTURAL},
+   * the column's own default, so a tree edge written anywhere is a tree edge without saying so.
+   */
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 16)
+  public MembershipKind kind = MembershipKind.STRUCTURAL;
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)

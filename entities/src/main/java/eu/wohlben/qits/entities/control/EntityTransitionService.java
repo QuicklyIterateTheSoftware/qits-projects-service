@@ -4,6 +4,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityMembership;
+import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
@@ -591,9 +592,16 @@ public class EntityTransitionService {
    * delete uses — cannot be right here: several children leaving one parent in a single request
    * would each compute their gap from positions a previous close had already moved.
    *
-   * <p><b>An edge's id is the child's</b>, V10's rule, so a reparent is an {@code UPDATE} of the one
-   * edge a child can have rather than a delete and an insert. A child becoming a root loses its edge
-   * outright: a root <em>has</em> no membership, which is a statement and not an absence.
+   * <p><b>A structural edge's id is the child's</b>, V10's rule, so a reparent is an {@code UPDATE}
+   * of the one edge a child can have rather than a delete and an insert. A child becoming a root
+   * loses its edge outright: a root <em>has</em> no membership, which is a statement and not an
+   * absence.
+   *
+   * <p><b>STRUCTURAL rows only, read and written.</b> A {@code parent} in an {@link
+   * EntityTransition} is the tree parent, so every read here goes through the repository's
+   * structural methods and every row it deletes or inserts is a tree edge. A campaign edge of an
+   * entity this reshapes is not the caller's statement about anything and survives untouched —
+   * rewriting it would silently take the entity out of every campaign it had joined.
    */
   private void replaceMemberships(Map<String, EntityTransition> stated) {
     Map<String, EntityMembership> existing = edgesOf(stated.keySet());
@@ -633,6 +641,7 @@ public class EntityTransitionService {
       if (edge == null) {
         edge = new EntityMembership();
         edge.id = id;
+        edge.kind = MembershipKind.STRUCTURAL;
         edge.childId = id;
         edge.parentId = parentId;
         edge.position = 0;
@@ -686,7 +695,7 @@ public class EntityTransitionService {
     return index(entities.listByIds(wanted));
   }
 
-  /** The one edge above each of {@code ids}, keyed by child; a root is simply absent. */
+  /** The one structural edge above each of {@code ids}, keyed by child; a root is simply absent. */
   private Map<String, EntityMembership> edgesOf(Collection<String> ids) {
     Map<String, EntityMembership> edges = new HashMap<>();
     for (EntityMembership edge : memberships.membershipsOfAll(ids)) {
@@ -714,7 +723,7 @@ public class EntityTransitionService {
       if (target != null) {
         parentId = target.parent();
       } else {
-        parentId = memberships.membershipOf(cursor).map(edge -> edge.parentId).orElse(null);
+        parentId = memberships.structuralMembershipOf(cursor).map(edge -> edge.parentId).orElse(null);
       }
       if (parentId == null) {
         return cursor;

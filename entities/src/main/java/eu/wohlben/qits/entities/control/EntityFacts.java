@@ -36,7 +36,10 @@ public interface EntityFacts {
   /** The stored fact for each of {@code ids} that exists. Ids that name nothing are simply absent. */
   Map<String, EntityFact> byIds(Collection<String> ids);
 
-  /** The stored children of each of {@code parentIds}, as facts. */
+  /**
+   * The stored <b>structural</b> children of each of {@code parentIds}, as facts — a campaign's
+   * members are not its children, and a fact is always a tree edge.
+   */
   List<EntityFact> childrenOfAll(Collection<String> parentIds);
 
   /** One id, for readability at a call site that has exactly one. */

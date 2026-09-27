@@ -177,7 +177,7 @@ class WorkEntityPersistenceTest {
                   List.of("f-0", "f-1", "f-2"),
                   memberships.childrenOf("e-1").stream().map(edge -> edge.childId).toList());
 
-              memberships.delete(memberships.membershipOf("f-0").orElseThrow());
+              memberships.delete(memberships.structuralMembershipOf("f-0").orElseThrow());
               memberships.closeGapAfter("e-1", 0);
             });
 

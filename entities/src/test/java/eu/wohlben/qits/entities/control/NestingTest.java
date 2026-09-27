@@ -65,15 +65,59 @@ class NestingTest {
 
   @Test
   void aCampaignMayHoldAnEpicATicketAndATaskByDepth() {
-    // Nothing here names the campaign: -1 is less than 0 and less than 2, so the ordinary rule
-    // admits all three. Which KIND of edge joins them (a campaign membership, never structural) is
-    // ArchetypeSpec.gathers' question, not this one.
-    assertAccepted(Archetype.CAMPAIGN, Archetype.EPIC);
-    assertAccepted(Archetype.CAMPAIGN, Archetype.TICKET);
-    assertAccepted(Archetype.CAMPAIGN, Archetype.TASK);
+    // Nothing here names the campaign: -1 is less than 0 and less than 2, so the depth rule admits
+    // all three. Which KIND of edge joins them is ArchetypeSpec.gathers' question — and since
+    // qits-412 check() answers it: every fact is a STRUCTURAL edge, so a campaign holding anything in
+    // the tree is NOT_STRUCTURAL (see theTreeRefusesAStructuralEdgeUnderAGatheringKind). The depth
+    // half stands in the pair rule, which is what judges a CAMPAIGN edge.
     assertTrue(Nesting.mayContain(Archetype.CAMPAIGN, Archetype.EPIC));
     assertTrue(Nesting.mayContain(Archetype.CAMPAIGN, Archetype.TICKET));
     assertTrue(Nesting.mayContain(Archetype.CAMPAIGN, Archetype.TASK));
+  }
+
+  // ---- the tree is structural edges only (qits-412) --------------------------------------------
+
+  @Test
+  void theTreeRefusesAStructuralEdgeUnderAGatheringKind() {
+    // A campaign's children are campaign memberships of work that hangs somewhere else; nobody hangs
+    // a ticket in the tree under one, through the transition door or anywhere else. Depth is fine
+    // (-1 is shallowest), so this is its own reason and not NOT_NESTABLE.
+    assertRefused(Archetype.CAMPAIGN, Archetype.EPIC, NestingViolation.Reason.NOT_STRUCTURAL);
+    assertRefused(Archetype.CAMPAIGN, Archetype.TICKET, NestingViolation.Reason.NOT_STRUCTURAL);
+    assertRefused(Archetype.CAMPAIGN, Archetype.FEATURE, NestingViolation.Reason.NOT_STRUCTURAL);
+    assertRefused(Archetype.CAMPAIGN, Archetype.TASK, NestingViolation.Reason.NOT_STRUCTURAL);
+  }
+
+  @Test
+  void noOtherKindGathersSoTheOrdinaryTreeNeverMeetsTheReason() {
+    for (Archetype parent : Archetype.values()) {
+      for (Archetype child : Archetype.values()) {
+        for (NestingViolation violation : Nesting.check(pair(parent, child))) {
+          if (violation.reason() == NestingViolation.Reason.NOT_STRUCTURAL) {
+            assertTrue(
+                Archetypes.gathers(violation.parentArchetype()),
+                parent + " holding " + child + ": " + violation);
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  void aStoredStructuralChildIsReJudgedWhenItsParentWouldBecomeAGatheringKind() {
+    // The downward half of the post-state, for the new reason: an epic stated as a campaign
+    // re-judges the feature already stored beneath it, which may not stay in the tree under it.
+    EntityFacts store =
+        EntityFacts.of(
+            List.of(EntityFact.root("e", Archetype.EPIC), new EntityFact("f", Archetype.FEATURE, "e")));
+
+    List<NestingViolation> violations =
+        Nesting.check(List.of(EntityFact.root("e", Archetype.CAMPAIGN)), store);
+
+    assertEquals(1, violations.size(), violations::toString);
+    assertEquals("f", violations.get(0).entityId());
+    assertEquals(NestingViolation.Reason.NOT_STRUCTURAL, violations.get(0).reason());
+    assertTrue(violations.get(0).message().contains("gathers work"), violations.get(0).message());
   }
 
   @Test
