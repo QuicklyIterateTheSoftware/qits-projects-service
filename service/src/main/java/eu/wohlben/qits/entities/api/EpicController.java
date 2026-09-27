@@ -1,14 +1,12 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.AuditService;
-import eu.wohlben.qits.entities.control.EpicService;
-import eu.wohlben.qits.entities.control.FeatureService;
+import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.dto.AuditEntryDto;
 import eu.wohlben.qits.entities.dto.EpicDto;
 import eu.wohlben.qits.entities.dto.FeatureDto;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.mapper.AuditEntryMapper;
-import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
-import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -23,54 +21,28 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 
-/** A single epic (the spine), its feature collection, and its audit subtree. */
+/**
+ * A single epic (the spine), its feature collection, and its audit subtree.
+ *
+ * <p>A thin resource over {@link EntityRoutes}, which is the one implementation behind every
+ * per-archetype route (qits-399): this class holds what the wire names — the paths, the request
+ * records, the {@code {"epic": …}} envelopes and the role lists — and each body is one call with the
+ * archetype handed over as a view. The epic's words are edited through {@code POST
+ * /entities/transition} (or the {@code update_epic} tool); the per-epic {@code PUT} went in qits-399.
+ */
 @Path("/epics")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class EpicController {
 
-  @Inject EpicService epicService;
-
-  @Inject EntityResolutions resolutions;
-
-  @Inject FeatureService featureService;
+  @Inject EntityRoutes routes;
 
   @Inject AuditService auditService;
-
-  /** One mapper where there were four — this route answers an epic shape and a feature shape. */
-  @Inject WorkEntityMapper workEntityMapper;
 
   @Inject AuditEntryMapper auditEntryMapper;
 
   @Inject SecurityIdentity identity;
-
-  @Inject EpicsTopicHints hints;
-
-  /**
-   * Which live workspaces are on this epic — derived per read; see {@code DispatchedWorkspaces}.
-   * Only the detail read carries them: the writes below answer the row they changed, and an edit is
-   * not the question "who is working on this".
-   */
-  @Inject eu.wohlben.qits.projects.api.DispatchedWorkspaces dispatchedWorkspaces;
-
-  /**
-   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
-   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
-   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
-   */
-  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
-
-  /**
-   * The next phase after a move, for an epic exactly as for a ticket (qits-394): the turn the new
-   * status starts, delivered into the workspace on {@code epic/<slug>} when the run that stands there
-   * was dispatched as a flow, and the release asked for at VERIFIED either way. See {@code
-   * PhaseAdvance}.
-   */
-  @Inject eu.wohlben.qits.projects.api.PhaseAdvance phaseAdvance;
-
-  private static final org.jboss.logging.Logger LOG =
-      org.jboss.logging.Logger.getLogger(EpicController.class);
 
   // --- Epic ---
 
@@ -78,13 +50,12 @@ public class EpicController {
     public record Response(EpicDto epic) {}
   }
 
+  /** The detail read, and the one place a single epic carries its workspaces. */
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetEpicRequest.Response get(@PathParam("id") String id) {
-    return new GetEpicRequest.Response(
-        qualifiedIds.qualify(
-            dispatchedWorkspaces.decorate(workEntityMapper.toEpicDto(epicService.get(id)))));
+    return new GetEpicRequest.Response(routes.get(routes.epics(), id));
   }
 
   /**
@@ -93,12 +64,11 @@ public class EpicController {
    * unimplemented), {@code VERIFIED}, {@code DONE}, {@code DROPPED}, or back along the walk ({@code
    * REPORTED} reopens a frozen scope) — or {@code SUPERSEDED}, which is not a status but the
    * supersede operation: the epic lands {@code DROPPED} pointing at the successor draft it spawned
-   * (see {@code EpicService.SUPERSEDE}). A move the lifecycle does not allow, and a target naming
-   * no status, both answer 409 with a message.
+   * (see {@code WorkEntityService.SUPERSEDE}). A move the lifecycle does not allow, and a target
+   * naming no status, both answer 409 with a message.
    *
-   * <p>It goes through {@link EntityResolutions} rather than straight to {@code EpicService}, because
-   * a move that resolves the epic has to tear its refinement down first — see that class for the
-   * order and for what the browser-side version of it used to leak.
+   * <p>{@code qits:admin} alone, so it binds no agent: moving a plan through its lifecycle is a
+   * person's decision on this surface.
    */
   public record TransitionEpicRequest(String target) {
     /** The epic in its new status, plus the successor draft a supersede spawned (null otherwise). */
@@ -109,22 +79,8 @@ public class EpicController {
   @Path("/{id}/transition")
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
-    String changedBy = EntitiesPrincipal.changedBy(identity);
-    var result = resolutions.transition(id, request.target(), changedBy);
-    // A supersede spawns a second epic in the same project, so one hint still covers both rows.
-    hints.fire(result.epic().projectId);
-    // AFTER the move is recorded and outside its transaction, as the ticket door does it.
-    try {
-      phaseAdvance.afterTransition(result.epic(), changedBy);
-    } catch (RuntimeException e) {
-      // It says it must not throw; a throw is a bug in it and must not touch a recorded move.
-      LOG.warnf(e, "Could not start the phase epic %s just moved into", result.epic().id);
-    }
-    return new TransitionEpicRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toEpicDto(result.epic())),
-        result.successor() == null
-            ? null
-            : qualifiedIds.qualify(workEntityMapper.toEpicDto(result.successor())));
+    var moved = routes.transition(routes.epics(), id, request.target(), false, identity);
+    return new TransitionEpicRequest.Response(moved.entity(), moved.successor());
   }
 
   public record DeleteEpicRequest() {
@@ -134,10 +90,7 @@ public class EpicController {
   @DELETE
   @Path("/{id}")
   public DeleteEpicRequest.Response delete(@PathParam("id") String id) {
-    // Resolved before the delete — afterwards there is no row to walk up from.
-    String projectId = hints.projectOfEpic(id);
-    epicService.delete(id, EntitiesPrincipal.changedBy(identity));
-    hints.fire(projectId);
+    routes.delete(routes.epics(), id, false, identity);
     return new DeleteEpicRequest.Response(true);
   }
 
@@ -153,19 +106,10 @@ public class EpicController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{epicId}/features")
   public ListFeaturesRequest.Response listFeatures(@PathParam("epicId") String epicId) {
-    epicService.get(epicId); // 404 if the epic does not exist
-    // Mapped first, then qualified in one call: the project-slug lookup is asked once about the
-    // whole list, never once per feature.
-    var entries =
-        qualifiedIds
-            .qualifyFeatures(
-                featureService.listByEpic(epicId).stream()
-                    .map(f -> workEntityMapper.toFeatureDto(f.entity(), f.parentId()))
-                    .toList())
-            .stream()
+    return new ListFeaturesRequest.Response(
+        routes.listChildren(routes.features(), Archetype.EPIC, epicId).stream()
             .map(ListFeaturesRequest.Response.Entry::new)
-            .toList();
-    return new ListFeaturesRequest.Response(entries);
+            .toList());
   }
 
   public record CreateFeatureRequest(
@@ -176,25 +120,21 @@ public class EpicController {
   /**
    * Adding a feature takes {@code qits:agent}, bound to the agent's own project: the {@code
    * add_feature} MCP tool already performs this write for an agent. The epic's project is resolved
-   * before the write and reused for the hint — see {@link EntitiesAgentAccess}.
+   * before the write — see {@link EntitiesAgentAccess}.
    */
   @POST
   @Path("/{epicId}/features")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CreateFeatureRequest.Response createFeature(
       @PathParam("epicId") String epicId, @Valid CreateFeatureRequest request) {
-    String projectId = hints.projectOfEpic(epicId); // 404 if the epic does not exist
-    EntitiesAgentAccess.requireProject(identity, projectId);
-    var feature =
-        featureService.create(
-            epicId,
-            request.title(),
-            request.description(),
-            request.dependsOnFeatureId(),
-            EntitiesPrincipal.changedBy(identity));
-    hints.fire(projectId);
     return new CreateFeatureRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toFeatureDto(feature.entity(), feature.parentId())));
+        routes.createChild(
+            routes.features(),
+            Archetype.EPIC,
+            epicId,
+            EntityWrite.feature(
+                request.title(), request.description(), request.dependsOnFeatureId()),
+            identity));
   }
 
   // --- Audit subtree ---
@@ -207,7 +147,8 @@ public class EpicController {
    * Full change history for the epic subtree, newest first. Queried by the {@code epicId} column
    * stamped on every audit row, so it includes rows for features/tasks already deleted and remains
    * readable after the epic itself is deleted (the audit log is the git replacement — it must
-   * outlive the rows). Deliberately does NOT require the epic to still exist.
+   * outlive the rows). Deliberately does NOT require the epic to still exist. The column is the
+   * subtree key, so a ticket's id answers the ticket's history here too.
    */
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})

@@ -274,7 +274,7 @@ public class PhaseAdvanceTest {
    *
    * <p>It hands the bean the row directly, the idiom {@link
    * #aTicketThatWasDroppedDeliversNoTurnAndAsksAboutNoBranch} uses, and here that is not merely the
-   * cheaper route but the <b>only</b> one: {@code TicketService.transition} clears the flag on
+   * cheaper route but the <b>only</b> one: {@code WorkEntityService.transition} clears the flag on
    * every move, so a ticket can never arrive at this bean through the transition door with it set.
    * A test that pressed the door would be asserting that an unblocked ticket starts its phase,
    * which is the opposite arm and is covered by every other case in this class.

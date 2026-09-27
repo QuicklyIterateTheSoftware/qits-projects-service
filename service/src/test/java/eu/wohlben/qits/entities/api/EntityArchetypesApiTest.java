@@ -75,7 +75,7 @@ class EntityArchetypesApiTest {
   @Test
   void aTicketAsksForItsImpetusAtINTAKEAndForItsTypeAndStatusForEver() {
     // The three axes, over the wire, on the one archetype whose create list is wider than its
-    // invariant. requiredAtCreate is the four a TicketService.create refuses a row without — what
+    // invariant. requiredAtCreate is the four a ticket create refuses a row without — what
     // an intake form must gather — and required is the three an edit or a transition is judged
     // against, because entity.impetus is nullable and clearing one is behaviour a person has. In
     // vocabulary order, so the fields read in the order the violations would.

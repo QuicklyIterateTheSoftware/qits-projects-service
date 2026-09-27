@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
@@ -18,9 +19,8 @@ import org.junit.jupiter.api.Test;
  * The epics board's top-level read holds through a postgres cutover instead of drawing a project
  * with no epics in it.
  *
- * <p>One seam stands for the four wrapped here ({@code EpicService.listByProject}, {@code
- * FeatureService.listByEpic}, {@code TaskService.listByFeature}, {@code AuditService}'s two
- * histories): they share {@link ReadPatience}, so what this pins is the wiring — the retry fires on
+ * <p>One seam stands for the reads wrapped here ({@code WorkEntityService.listByProject} and
+ * {@code listChildren}, {@code AuditService}'s two histories): they share {@link ReadPatience}, so what this pins is the wiring — the retry fires on
  * a real cutover exception, and it stops at the configured deadline rather than forever.
  *
  * <p>The give-up half matters as much as the recovery. A retry with no floor turns a database that
@@ -48,7 +48,7 @@ class EpicListCutoverTest extends EntitiesTestSupport {
     }
   }
 
-  @Inject EpicService epicService;
+  @Inject WorkEntityService workEntities;
 
   @Inject ConnectionLosingEpics epics;
 
@@ -59,10 +59,16 @@ class EpicListCutoverTest extends EntitiesTestSupport {
 
   @Test
   void aListAnswersAfterTheReadLosesItsConnection() {
-    epicService.create("proj-cutover", "Held through the cutover", null, "alice");
+    workEntities
+        .create(
+            Archetype.EPIC,
+            "proj-cutover",
+            EntityWrite.epic("Held through the cutover", null),
+            "alice")
+        .entity();
 
     epics.loseTheConnection(1);
-    assertEquals(1, epicService.listByProject("proj-cutover").size());
+    assertEquals(1, workEntities.listByProject(Archetype.EPIC, "proj-cutover").size());
     assertEquals(
         0, epics.unspent(), "the armed failure was never reached — the read did not go through");
   }
@@ -73,7 +79,9 @@ class EpicListCutoverTest extends EntitiesTestSupport {
     epics.loseTheConnection(1_000);
 
     long startedAt = System.nanoTime();
-    assertThrows(JDBCConnectionException.class, () -> epicService.listByProject("proj-gone"));
+    assertThrows(
+        JDBCConnectionException.class,
+        () -> workEntities.listByProject(Archetype.EPIC, "proj-gone"));
     long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
 
     assertTrue(elapsedMs >= 900, "gave up after " + elapsedMs + "ms — the read did not wait at all");

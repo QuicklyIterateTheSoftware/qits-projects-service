@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.TicketComment;
@@ -23,18 +24,20 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class TicketServiceTest extends EntitiesTestSupport {
 
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService workEntities;
+
+  @Inject TicketCommentService ticketComments;
   @Inject AuditService auditService;
 
   private WorkEntity bug(String title) {
-    return ticketService.create(
-        "proj-1",
-        title,
-        "something occurs on the login page",
-        "what went wrong",
-        "BUG",
-        null,
-        "alice");
+    return workEntities
+        .create(
+            Archetype.TICKET,
+            "proj-1",
+            EntityWrite.ticket(
+                title, "something occurs on the login page", "what went wrong", "BUG", null),
+            "alice")
+        .entity();
   }
 
   // --- Tickets ---------------------------------------------------------------------------------
@@ -50,11 +53,17 @@ class TicketServiceTest extends EntitiesTestSupport {
     assertNotNull(ticket.createdAt);
     assertNotNull(ticket.updatedAt);
 
-    assertEquals("Login button does nothing", ticketService.get(ticket.id).title);
+    assertEquals("Login button does nothing", workEntities.get(Archetype.TICKET, ticket.id).title);
 
     WorkEntity updated =
-        ticketService.update(
-            ticket.id, "Login button is inert", null, false, null, false, "IMPROVEMENT", "bob", false, "bob");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit(
+                    "Login button is inert", null, false, null, false, "IMPROVEMENT", "bob", false),
+                "bob")
+            .entity();
     assertEquals("Login button is inert", updated.title);
     assertEquals(TicketType.IMPROVEMENT, updated.ticketType);
     assertEquals("bob", updated.assignee);
@@ -63,8 +72,11 @@ class TicketServiceTest extends EntitiesTestSupport {
     assertEquals(ticket.createdAt, updated.createdAt);
     assertFalse(updated.updatedAt.isBefore(updated.createdAt));
 
-    ticketService.delete(ticket.id, "bob");
-    inFreshTx(() -> assertThrows(NotFoundException.class, () -> ticketService.get(ticket.id)));
+    workEntities.delete(Archetype.TICKET, ticket.id, "bob");
+    inFreshTx(
+        () ->
+            assertThrows(
+                NotFoundException.class, () -> workEntities.get(Archetype.TICKET, ticket.id)));
   }
 
   @Test
@@ -73,15 +85,14 @@ class TicketServiceTest extends EntitiesTestSupport {
     // never client-supplied — the service takes it from the same value it audits with.
     assertEquals("alice", bug("Stamped").createdBy);
     assertNull(
-        ticketService
+        workEntities
             .create(
+                Archetype.TICKET,
                 "proj-1",
-                "Unattributed",
-                "something occurs on the login page",
-                null,
-                "BUG",
-                null,
+                EntityWrite.ticket(
+                    "Unattributed", "something occurs on the login page", null, "BUG", null),
                 null)
+            .entity()
             .createdBy,
         "an unattributed caller is an ordinary caller");
   }
@@ -90,19 +101,45 @@ class TicketServiceTest extends EntitiesTestSupport {
   void createdByIsNotRewrittenByALaterEdit() {
     WorkEntity ticket = bug("Filed by alice");
     WorkEntity edited =
-        ticketService.update(ticket.id, "Edited by bob", null, false, null, false, null, null, false, "bob");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit(
+                    "Edited by bob", null, false, null, false, null, null, false),
+                "bob")
+            .entity();
     assertEquals("alice", edited.createdBy);
   }
 
   @Test
   void listByProjectScopesToTheProject() {
-    ticketService.create("proj-a", "A1", "something occurs on the login page", null, "BUG", null, "t");
-    ticketService.create("proj-a", "A2", "something occurs on the login page", null, "IMPROVEMENT", null, "t");
-    ticketService.create("proj-b", "B1", "something occurs on the login page", null, "BUG", null, "t");
+    workEntities
+        .create(
+            Archetype.TICKET,
+            "proj-a",
+            EntityWrite.ticket("A1", "something occurs on the login page", null, "BUG", null),
+            "t")
+        .entity();
+    workEntities
+        .create(
+            Archetype.TICKET,
+            "proj-a",
+            EntityWrite.ticket(
+                "A2", "something occurs on the login page", null, "IMPROVEMENT", null),
+            "t")
+        .entity();
+    workEntities
+        .create(
+            Archetype.TICKET,
+            "proj-b",
+            EntityWrite.ticket("B1", "something occurs on the login page", null, "BUG", null),
+            "t")
+        .entity();
 
-    assertEquals(2, ticketService.listByProject("proj-a").size());
-    assertEquals(1, ticketService.listByProject("proj-b").size());
-    assertTrue(ticketService.listByProject("proj-none").isEmpty());
+    assertEquals(2, workEntities.listByProject(Archetype.TICKET, "proj-a").size());
+    assertEquals(1, workEntities.listByProject(Archetype.TICKET, "proj-b").size());
+    assertTrue(workEntities.listByProject(Archetype.TICKET, "proj-none").isEmpty());
   }
 
   @Test
@@ -112,34 +149,43 @@ class TicketServiceTest extends EntitiesTestSupport {
     WorkEntity third = bug("Third");
     assertEquals(
         List.of(first.id, second.id, third.id),
-        ticketService.listByProject("proj-1").stream().map(t -> t.id).toList());
+        workEntities.listByProject(Archetype.TICKET, "proj-1").stream().map(t -> t.id).toList());
   }
 
   @Test
   void listByProjectFiltersByStatus() {
     WorkEntity reported = bug("Still broken");
     WorkEntity refined = bug("Described");
-    ticketService.transition(refined.id, "REFINED", "t");
+    workEntities.transition(Archetype.TICKET, refined.id, "REFINED", "t").entity();
 
-    assertEquals(2, ticketService.listByProject("proj-1").size());
+    assertEquals(2, workEntities.listByProject(Archetype.TICKET, "proj-1").size());
     assertEquals(
         List.of(reported.id),
-        ticketService.listByProject("proj-1", "REPORTED").stream().map(t -> t.id).toList());
+        workEntities.listByProject(Archetype.TICKET, "proj-1", "REPORTED").stream()
+            .map(t -> t.id)
+            .toList());
     assertEquals(
         List.of(refined.id),
-        ticketService.listByProject("proj-1", "REFINED").stream().map(t -> t.id).toList());
+        workEntities.listByProject(Archetype.TICKET, "proj-1", "REFINED").stream()
+            .map(t -> t.id)
+            .toList());
     // A blank filter is no filter.
-    assertEquals(2, ticketService.listByProject("proj-1", "  ").size());
+    assertEquals(2, workEntities.listByProject(Archetype.TICKET, "proj-1", "  ").size());
   }
 
   @Test
   void anUnknownStatusFilterIsRejected() {
     // A typo must not read as "no tickets".
     assertThrows(
-        BadRequestException.class, () -> ticketService.listByProject("proj-1", "REFIND"));
-    assertThrows(BadRequestException.class, () -> ticketService.listByProject("proj-1", "reported"));
+        BadRequestException.class,
+        () -> workEntities.listByProject(Archetype.TICKET, "proj-1", "REFIND"));
+    assertThrows(
+        BadRequestException.class,
+        () -> workEntities.listByProject(Archetype.TICKET, "proj-1", "reported"));
     // The old vocabulary is a typo now like any other.
-    assertThrows(BadRequestException.class, () -> ticketService.listByProject("proj-1", "OPEN"));
+    assertThrows(
+        BadRequestException.class,
+        () -> workEntities.listByProject(Archetype.TICKET, "proj-1", "OPEN"));
   }
 
   @Test
@@ -150,15 +196,18 @@ class TicketServiceTest extends EntitiesTestSupport {
     // Another project is another scope, so the clean slug is free again.
     assertEquals(
         "login-button-does-nothing",
-        ticketService
+        workEntities
             .create(
+                Archetype.TICKET,
                 "proj-2",
-                "Login button does nothing",
-                "something occurs on the login page",
-                null,
-                "BUG",
-                null,
+                EntityWrite.ticket(
+                    "Login button does nothing",
+                    "something occurs on the login page",
+                    null,
+                    "BUG",
+                    null),
                 "t")
+            .entity()
             .slug);
   }
 
@@ -166,8 +215,14 @@ class TicketServiceTest extends EntitiesTestSupport {
   void updateLeavesTheSlugAlone() {
     WorkEntity ticket = bug("Login button does nothing");
     WorkEntity renamed =
-        ticketService.update(
-            ticket.id, "Something else entirely", null, false, null, false, null, null, false, "t");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit(
+                    "Something else entirely", null, false, null, false, null, null, false),
+                "t")
+            .entity();
     // The slug is the row's stable address; retitling must not move it.
     assertEquals("login-button-does-nothing", renamed.slug);
   }
@@ -175,18 +230,35 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void theClearFlagsAreWhatEmptyTheNullableFields() {
     WorkEntity ticket =
-        ticketService.create(
-            "proj-1", "Assigned", "the list is unsorted", "a body", "BUG", "alice", "alice");
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket("Assigned", "the list is unsorted", "a body", "BUG", "alice"),
+                "alice")
+            .entity();
 
     // A title-only edit touches none of the three.
     WorkEntity retitled =
-        ticketService.update(ticket.id, "Renamed", null, false, null, false, null, null, false, "t");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit("Renamed", null, false, null, false, null, null, false),
+                "t")
+            .entity();
     assertEquals("the list is unsorted", retitled.impetus);
     assertEquals("a body", retitled.description);
     assertEquals("alice", retitled.assignee);
 
     WorkEntity cleared =
-        ticketService.update(ticket.id, null, null, true, null, true, null, null, true, "t");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit(null, null, true, null, true, null, null, true),
+                "t")
+            .entity();
     assertNull(cleared.impetus);
     assertNull(cleared.description);
     assertNull(cleared.assignee);
@@ -197,20 +269,24 @@ class TicketServiceTest extends EntitiesTestSupport {
     // A REPORTED ticket is an impetus and nothing else: the description is the refinement's output
     // and is ordinarily written later, by the phase this status starts.
     WorkEntity filed =
-        ticketService.create(
-            "proj-1",
-            "Login button does nothing",
-            "clicking the login button does nothing on the sign-in page",
-            null,
-            "BUG",
-            null,
-            "alice");
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket(
+                    "Login button does nothing",
+                    "clicking the login button does nothing on the sign-in page",
+                    null,
+                    "BUG",
+                    null),
+                "alice")
+            .entity();
     assertEquals(EntityStatus.REPORTED.name(), filed.status);
     assertEquals("clicking the login button does nothing on the sign-in page", filed.impetus);
     assertNull(filed.description, "refinement has not run yet");
 
     // It survives the round trip, and a read of the row says what the create answered.
-    assertEquals(filed.impetus, ticketService.get(filed.id).impetus);
+    assertEquals(filed.impetus, workEntities.get(Archetype.TICKET, filed.id).impetus);
   }
 
   @Test
@@ -219,31 +295,55 @@ class TicketServiceTest extends EntitiesTestSupport {
     // exists is a row nobody can refine.
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "T", null, "a body", "BUG", null, "t"));
+        () ->
+            workEntities
+                .create(
+                    Archetype.TICKET,
+                    "proj-1",
+                    EntityWrite.ticket("T", null, "a body", "BUG", null),
+                    "t")
+                .entity());
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "T", "   ", "a body", "BUG", null, "t"));
+        () ->
+            workEntities
+                .create(
+                    Archetype.TICKET,
+                    "proj-1",
+                    EntityWrite.ticket("T", "   ", "a body", "BUG", null),
+                    "t")
+                .entity());
   }
 
   @Test
   void theImpetusIsEditableAndTheRefinementIsWrittenBesideit() {
     WorkEntity filed =
-        ticketService.create(
-            "proj-1", "Inert button", "the login button does nothing", null, "BUG", null, "alice");
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket(
+                    "Inert button", "the login button does nothing", null, "BUG", null),
+                "alice")
+            .entity();
 
     // Triage corrects the words; the refinement writes its own field. Neither overwrites the other.
     WorkEntity refined =
-        ticketService.update(
-            filed.id,
-            null,
-            "the login button does nothing while a session is expired",
-            false,
-            "Re-issue the session before the click handler runs.",
-            false,
-            null,
-            null,
-            false,
-            "bob");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                filed.id,
+                EntityWrite.ticketEdit(
+                    null,
+                    "the login button does nothing while a session is expired",
+                    false,
+                    "Re-issue the session before the click handler runs.",
+                    false,
+                    null,
+                    null,
+                    false),
+                "bob")
+            .entity();
     assertEquals("the login button does nothing while a session is expired", refined.impetus);
     assertEquals("Re-issue the session before the click handler runs.", refined.description);
 
@@ -256,37 +356,87 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void aBlankAssigneeMeansNobody() {
     WorkEntity ticket =
-        ticketService.create(
-            "proj-1", "T", "something occurs on the login page", null, "BUG", "   ", "t");
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket("T", "something occurs on the login page", null, "BUG", "   "),
+                "t")
+            .entity();
     assertNull(ticket.assignee);
-    assertNull(ticketService.update(ticket.id, null, null, false, null, false, null, "  ", false, "t").assignee);
+    assertNull(
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit(null, null, false, null, false, null, "  ", false),
+                "t")
+            .entity()
+            .assignee);
   }
 
   @Test
   void blankTitleAndUnknownTypeAreRejected() {
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "  ", "something occurs on the login page", null, "BUG", null, "t"));
+        () ->
+            workEntities
+                .create(
+                    Archetype.TICKET,
+                    "proj-1",
+                    EntityWrite.ticket(
+                        "  ", "something occurs on the login page", null, "BUG", null),
+                    "t")
+                .entity());
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "T", "something occurs on the login page", null, "  ", null, "t"));
+        () ->
+            workEntities
+                .create(
+                    Archetype.TICKET,
+                    "proj-1",
+                    EntityWrite.ticket("T", "something occurs on the login page", null, "  ", null),
+                    "t")
+                .entity());
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.create("proj-1", "T", "something occurs on the login page", null, "DEFECT", null, "t"));
+        () ->
+            workEntities
+                .create(
+                    Archetype.TICKET,
+                    "proj-1",
+                    EntityWrite.ticket(
+                        "T", "something occurs on the login page", null, "DEFECT", null),
+                    "t")
+                .entity());
 
     WorkEntity ticket = bug("Live");
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.update(ticket.id, "  ", null, false, null, false, null, null, false, "t"));
+        () ->
+            workEntities
+                .update(
+                    Archetype.TICKET,
+                    ticket.id,
+                    EntityWrite.ticketEdit("  ", null, false, null, false, null, null, false),
+                    "t")
+                .entity());
     assertThrows(
         BadRequestException.class,
-        () -> ticketService.update(ticket.id, null, null, false, null, false, "bug", null, false, "t"));
+        () ->
+            workEntities
+                .update(
+                    Archetype.TICKET,
+                    ticket.id,
+                    EntityWrite.ticketEdit(null, null, false, null, false, "bug", null, false),
+                    "t")
+                .entity());
   }
 
   @Test
   void getUnknownTicketThrowsNotFound() {
-    assertThrows(NotFoundException.class, () -> ticketService.get("nope"));
-    assertThrows(NotFoundException.class, () -> ticketService.getComment("nope"));
+    assertThrows(NotFoundException.class, () -> workEntities.get(Archetype.TICKET, "nope"));
+    assertThrows(NotFoundException.class, () -> ticketComments.getComment("nope"));
   }
 
   // --- Blocked ---------------------------------------------------------------------------------
@@ -296,13 +446,13 @@ class TicketServiceTest extends EntitiesTestSupport {
     WorkEntity ticket = bug("Waiting on the vendor");
     assertFalse(ticket.blocked, "every ticket is born unblocked; the column's default says so too");
 
-    assertTrue(ticketService.setBlocked(ticket.id, true, "alice").blocked);
+    assertTrue(workEntities.setBlocked(Archetype.TICKET, ticket.id, true, "alice").blocked);
     // Read back, because the flag is worth nothing unless the row holds it: a caller picking work
     // up reads the row, not the answer to somebody else's write.
-    inFreshTx(() -> assertTrue(ticketService.get(ticket.id).blocked));
+    inFreshTx(() -> assertTrue(workEntities.get(Archetype.TICKET, ticket.id).blocked));
 
-    assertFalse(ticketService.setBlocked(ticket.id, false, "alice").blocked);
-    inFreshTx(() -> assertFalse(ticketService.get(ticket.id).blocked));
+    assertFalse(workEntities.setBlocked(Archetype.TICKET, ticket.id, false, "alice").blocked);
+    inFreshTx(() -> assertFalse(workEntities.get(Archetype.TICKET, ticket.id).blocked));
   }
 
   @Test
@@ -311,19 +461,24 @@ class TicketServiceTest extends EntitiesTestSupport {
     // the next one has not been tried, so a flag carried across would assert a blocker nobody
     // re-checked — against work nobody has attempted yet.
     WorkEntity forward = bug("Blocked while being refined");
-    ticketService.setBlocked(forward.id, true, "alice");
-    assertFalse(ticketService.transition(forward.id, "REFINED", "alice").blocked);
+    workEntities.setBlocked(Archetype.TICKET, forward.id, true, "alice");
+    assertFalse(
+        workEntities.transition(Archetype.TICKET, forward.id, "REFINED", "alice").entity().blocked);
 
     // The backward arm, which is the one a reader expects to preserve it: sending a ticket back
     // from IMPLEMENTED to REFINED looks like a return to where it was, block and all. It is not —
     // it is an ask to implement again, and whether THAT is blocked is a question for whoever
     // tries. There is no rule here for backward moves; there is one rule, and this pins it.
     WorkEntity backward = bug("Blocked while being implemented");
-    ticketService.transition(backward.id, "REFINED", "alice");
-    ticketService.transition(backward.id, "IMPLEMENTED", "alice");
-    ticketService.setBlocked(backward.id, true, "alice");
-    assertFalse(ticketService.transition(backward.id, "REFINED", "alice").blocked);
-    inFreshTx(() -> assertFalse(ticketService.get(backward.id).blocked));
+    workEntities.transition(Archetype.TICKET, backward.id, "REFINED", "alice").entity();
+    workEntities.transition(Archetype.TICKET, backward.id, "IMPLEMENTED", "alice").entity();
+    workEntities.setBlocked(Archetype.TICKET, backward.id, true, "alice");
+    assertFalse(
+        workEntities
+            .transition(Archetype.TICKET, backward.id, "REFINED", "alice")
+            .entity()
+            .blocked);
+    inFreshTx(() -> assertFalse(workEntities.get(Archetype.TICKET, backward.id).blocked));
   }
 
   @Test
@@ -332,11 +487,17 @@ class TicketServiceTest extends EntitiesTestSupport {
     // stands is not the same act as editing the text describing it, so a retitle that could also
     // unblock would let somebody clear a blocker without ever saying they had.
     WorkEntity ticket = bug("Stuck and misnamed");
-    ticketService.setBlocked(ticket.id, true, "alice");
+    workEntities.setBlocked(Archetype.TICKET, ticket.id, true, "alice");
 
     WorkEntity renamed =
-        ticketService.update(
-            ticket.id, "Stuck, correctly named", null, false, null, false, null, null, false, "bob");
+        workEntities
+            .update(
+                Archetype.TICKET,
+                ticket.id,
+                EntityWrite.ticketEdit(
+                    "Stuck, correctly named", null, false, null, false, null, null, false),
+                "bob")
+            .entity();
     assertTrue(renamed.blocked);
     assertEquals(EntityStatus.REPORTED.name(), renamed.status, "nor does it move the status");
   }
@@ -345,8 +506,12 @@ class TicketServiceTest extends EntitiesTestSupport {
   void blockingATicketThatDoesNotExistIsNotFound() {
     // Like every other write there, and worth stating because the door is new: an id naming
     // nothing is a 404 and not a silently created row or a quiet no-op.
-    assertThrows(NotFoundException.class, () -> ticketService.setBlocked("nope", true, "t"));
-    assertThrows(NotFoundException.class, () -> ticketService.setBlocked("nope", false, "t"));
+    assertThrows(
+        NotFoundException.class,
+        () -> workEntities.setBlocked(Archetype.TICKET, "nope", true, "t"));
+    assertThrows(
+        NotFoundException.class,
+        () -> workEntities.setBlocked(Archetype.TICKET, "nope", false, "t"));
   }
 
   // --- Comments --------------------------------------------------------------------------------
@@ -354,34 +519,34 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void commentsAreReadOldestFirst() {
     WorkEntity ticket = bug("Threaded");
-    TicketComment first = ticketService.addComment(ticket.id, "I can reproduce it", "alice");
-    TicketComment second = ticketService.addComment(ticket.id, "It is the cache", "bob");
-    TicketComment third = ticketService.addComment(ticket.id, "Fixed on main", "alice");
+    TicketComment first = ticketComments.addComment(ticket.id, "I can reproduce it", "alice");
+    TicketComment second = ticketComments.addComment(ticket.id, "It is the cache", "bob");
+    TicketComment third = ticketComments.addComment(ticket.id, "Fixed on main", "alice");
 
     // A thread is a sequence: reading it backwards is reading a different thread.
     assertEquals(
         List.of(first.id, second.id, third.id),
-        ticketService.listComments(ticket.id).stream().map(c -> c.id).toList());
+        ticketComments.listComments(ticket.id).stream().map(c -> c.id).toList());
   }
 
   @Test
   void commentsAreScopedToTheirTicket() {
     WorkEntity one = bug("One");
     WorkEntity two = bug("Two");
-    ticketService.addComment(one.id, "on one", "t");
-    ticketService.addComment(two.id, "on two", "t");
+    ticketComments.addComment(one.id, "on one", "t");
+    ticketComments.addComment(two.id, "on two", "t");
 
-    assertEquals(1, ticketService.listComments(one.id).size());
-    assertEquals("on one", ticketService.listComments(one.id).get(0).body);
+    assertEquals(1, ticketComments.listComments(one.id).size());
+    assertEquals("on one", ticketComments.listComments(one.id).get(0).body);
   }
 
   @Test
   void theAuthorIsStampedAndAnEditDoesNotRewriteIt() {
     WorkEntity ticket = bug("Attributed");
-    TicketComment comment = ticketService.addComment(ticket.id, "mine", "alice");
+    TicketComment comment = ticketComments.addComment(ticket.id, "mine", "alice");
     assertEquals("alice", comment.author);
 
-    TicketComment edited = ticketService.updateComment(comment.id, "mine, corrected", "bob");
+    TicketComment edited = ticketComments.updateComment(comment.id, "mine, corrected", "bob");
     assertEquals("mine, corrected", edited.body);
     // Who wrote it and who last changed it are different facts; the second one is the audit log's.
     assertEquals("alice", edited.author);
@@ -389,47 +554,48 @@ class TicketServiceTest extends EntitiesTestSupport {
 
   @Test
   void aCommentOnAnUnknownTicketIsNotFound() {
-    assertThrows(NotFoundException.class, () -> ticketService.addComment("ghost", "hello", "t"));
+    assertThrows(NotFoundException.class, () -> ticketComments.addComment("ghost", "hello", "t"));
   }
 
   @Test
   void blankCommentBodiesAreRejected() {
     WorkEntity ticket = bug("T");
-    assertThrows(BadRequestException.class, () -> ticketService.addComment(ticket.id, "  ", "t"));
-    TicketComment comment = ticketService.addComment(ticket.id, "real", "t");
+    assertThrows(BadRequestException.class, () -> ticketComments.addComment(ticket.id, "  ", "t"));
+    TicketComment comment = ticketComments.addComment(ticket.id, "real", "t");
     assertThrows(
-        BadRequestException.class, () -> ticketService.updateComment(comment.id, "", "t"));
+        BadRequestException.class, () -> ticketComments.updateComment(comment.id, "", "t"));
   }
 
   @Test
   void deletingACommentLeavesTheTicketAndItsSiblings() {
     WorkEntity ticket = bug("T");
-    TicketComment kept = ticketService.addComment(ticket.id, "kept", "t");
-    TicketComment gone = ticketService.addComment(ticket.id, "gone", "t");
+    TicketComment kept = ticketComments.addComment(ticket.id, "kept", "t");
+    TicketComment gone = ticketComments.addComment(ticket.id, "gone", "t");
 
-    ticketService.deleteComment(gone.id, "t");
+    ticketComments.deleteComment(gone.id, "t");
 
     inFreshTx(
         () -> {
-          assertThrows(NotFoundException.class, () -> ticketService.getComment(gone.id));
+          assertThrows(NotFoundException.class, () -> ticketComments.getComment(gone.id));
           assertEquals(
               List.of(kept.id),
-              ticketService.listComments(ticket.id).stream().map(c -> c.id).toList());
-          assertNotNull(ticketService.get(ticket.id));
+              ticketComments.listComments(ticket.id).stream().map(c -> c.id).toList());
+          assertNotNull(workEntities.get(Archetype.TICKET, ticket.id));
         });
   }
 
   @Test
   void deletingATicketCascadesToItsComments() {
     WorkEntity ticket = bug("Doomed");
-    TicketComment comment = ticketService.addComment(ticket.id, "still here", "t");
+    TicketComment comment = ticketComments.addComment(ticket.id, "still here", "t");
 
-    ticketService.delete(ticket.id, "t");
+    workEntities.delete(Archetype.TICKET, ticket.id, "t");
 
     inFreshTx(
         () -> {
-          assertThrows(NotFoundException.class, () -> ticketService.get(ticket.id));
-          assertThrows(NotFoundException.class, () -> ticketService.getComment(comment.id));
+          assertThrows(
+              NotFoundException.class, () -> workEntities.get(Archetype.TICKET, ticket.id));
+          assertThrows(NotFoundException.class, () -> ticketComments.getComment(comment.id));
         });
   }
 
@@ -438,7 +604,13 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void everyMutationIsAudited() {
     WorkEntity ticket = bug("Audited");
-    ticketService.update(ticket.id, "Audited twice", null, false, null, false, null, null, false, "bob");
+    workEntities
+        .update(
+            Archetype.TICKET,
+            ticket.id,
+            EntityWrite.ticketEdit("Audited twice", null, false, null, false, null, null, false),
+            "bob")
+        .entity();
 
     var history = auditService.listForEntity(AuditEntityType.TICKET, ticket.id);
     assertEquals(2, history.size());
@@ -456,8 +628,8 @@ class TicketServiceTest extends EntitiesTestSupport {
     // rows and its comments' rows carry the TICKET's id, so one indexed query answers "the whole
     // history of this thing" — and still answers after the live rows are gone.
     WorkEntity ticket = bug("Rooted");
-    TicketComment comment = ticketService.addComment(ticket.id, "a remark", "alice");
-    ticketService.updateComment(comment.id, "a better remark", "alice");
+    TicketComment comment = ticketComments.addComment(ticket.id, "a remark", "alice");
+    ticketComments.updateComment(comment.id, "a better remark", "alice");
 
     var history = auditService.listForEpic(ticket.id);
     assertEquals(3, history.size());
@@ -470,9 +642,9 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void deleteAuditsEveryRemovedRowAndSurvivesTheDeletion() {
     WorkEntity ticket = bug("Doomed");
-    TicketComment comment = ticketService.addComment(ticket.id, "goes with it", "carol");
+    TicketComment comment = ticketComments.addComment(ticket.id, "goes with it", "carol");
 
-    ticketService.delete(ticket.id, "carol");
+    workEntities.delete(Archetype.TICKET, ticket.id, "carol");
 
     // The comments are deleted IN-SERVICE rather than by the DB cascade, precisely so each removal
     // leaves a row here. The log is the git replacement and outlives what it describes.

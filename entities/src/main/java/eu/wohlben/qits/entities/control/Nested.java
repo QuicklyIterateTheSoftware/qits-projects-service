@@ -5,9 +5,10 @@ import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 
 /**
- * <b>A descendant row and the parent its {@link EntityMembership} edge names.</b> The answer shape
- * of {@link FeatureService} and {@link TaskService} — the two archetypes that cannot be roots —
- * where {@link EpicService} and {@link TicketService} answer a bare {@link WorkEntity}.
+ * <b>A row and the parent its {@link EntityMembership} edge names.</b> The answer shape of {@link
+ * WorkEntityService}'s creates, edits, child listings and {@code nested} read — null beside a root,
+ * the parent's id beside a feature or a task — where its {@code get} answers a bare {@link
+ * WorkEntity}.
  *
  * <h2>Why the parent travels BESIDE the row rather than on it</h2>
  *
@@ -20,8 +21,8 @@ import eu.wohlben.qits.entities.entity.WorkEntity;
  *
  * <p><b>The alternative is an N+1 on exactly the reads this model makes one easy on.</b> A row that
  * fetched its own membership would be a query per row on a tree listing — the single performance
- * mistake the unified table invites, and the one {@code FeatureService.listByEpic} and {@code
- * TaskService.listByFeature} are written as two queries to avoid. This is the argument the deleted
+ * mistake the unified table invites, and the one {@code WorkEntityService.listChildren} is
+ * written as two queries to avoid. This is the argument the deleted
  * {@code WorkEntityProjections} carried ("The parent is passed in, never read from the row"), and it
  * survives the projections it was written for: what changed is that the row handed out is now the
  * merged row itself rather than a shape of it, and the parent still has nowhere on that row to sit.

@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.TicketCommentService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -125,18 +125,18 @@ import org.jboss.logging.Logger;
  * arriving back from VERIFIED it does, and the sentence lands. The fact is read rather than inferred
  * from where the ticket came from, so there is still no second table saying which way is which.
  *
- * <h2>Why this is not on {@code TicketService}</h2>
+ * <h2>Why this is not on {@code WorkEntityService}</h2>
  *
  * <p>Because the entities module has no idea what a workspace is, and must keep not having one. {@code
  * entities/} depends on neither {@code domain} nor anything framework-shaped; it owns its database, its
  * errors and its lineage, and it is the module most likely to be lifted out of this repository next.
- * Putting this on {@code TicketService} would make the lifecycle itself depend on {@code
+ * Putting this on {@code WorkEntityService} would make the lifecycle itself depend on {@code
  * control/WorkspaceAgentTurns}, on the project, on the wrapper repository and thereby on the whole
  * catalog — the entities jar would carry a workspace concept into any service that ever reused it, and
  * the lift-out would stop being a database move.
  *
  * <p>There is a second reason, and it survives even if the modules were one. {@code
- * TicketService.transition} is the <b>recording</b> of a fact, held under the module's write
+ * WorkEntityService.transition} is the <b>recording</b> of a fact, held under the module's write
  * patience; delivery is an outward call to another service that may hang, refuse or be absent. A
  * transaction that had to wait on qits-workspaces before it could commit would let an unreachable
  * sibling fail a move that has already happened in every sense that matters, and a transaction that
@@ -184,7 +184,7 @@ public class PhaseAdvance {
 
   private static final Logger LOG = Logger.getLogger(PhaseAdvance.class);
 
-  @Inject TicketService tickets;
+  @Inject TicketCommentService tickets;
 
   @Inject EntityWorkspaces workspaces;
 
@@ -255,7 +255,7 @@ public class PhaseAdvance {
     }
     if (ticket.blocked) {
       // A blocked ticket's phase is not started, and the ORDER against the clearing rule is the
-      // whole of what this arm means. TicketService.transition clears the flag unconditionally, so
+      // whole of what this arm means. WorkEntityService.transition clears the flag unconditionally, so
       // the ticket handed here by either transition surface is never blocked and the phase it just
       // entered DOES start — which is right: a block is about the phase that was running, and the
       // one beginning now has not been tried. What this catches is the other caller and the other

@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.EntityDispatchService;
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.TicketCommentService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -54,8 +54,8 @@ import org.jboss.logging.Logger;
  * <h2>Why a bean and not the controller's body</h2>
  *
  * <p>Three doors reach it and must not be three implementations; the old ones add nothing but their
- * own response shape (and, for the epic door, the freeze the deployed "Start implementation" button
- * has always made first). It lives in {@code projects.api} for the reason every dispatch did: it
+ * own response shape (and, for the epic door, the freeze the older "Start implementation" button
+ * always made first) — and both were removed in qits-399, leaving this the one path. It lives in {@code projects.api} for the reason every dispatch did: it
  * needs {@code domain} — the project, the wrapper, the port — and the entities jar depends on {@code
  * domain} nowhere.
  */
@@ -66,8 +66,8 @@ public class EntityDispatch {
 
   @Inject EntityDispatchService entities;
 
-  /** A ticket's thread is written through the ticket service, the one writer of comments. */
-  @Inject TicketService tickets;
+  /** A ticket's thread is written through the comment service, the one writer of comments. */
+  @Inject TicketCommentService tickets;
 
   @Inject EntityWorkspaces workspaces;
 

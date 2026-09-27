@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierAsset;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.entity.DossierPage;
@@ -30,13 +31,15 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class DossierAssetServiceTest extends EntitiesTestSupport {
 
-  @Inject EpicService epicService;
+  @Inject WorkEntityService workEntities;
   @Inject DossierService dossier;
   @Inject DossierAssetService assets;
   @Inject DossierAssetRepository store;
 
   private WorkEntity epic() {
-    return epicService.create("proj-1", "Epic", null, "t");
+    return workEntities
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t")
+        .entity();
   }
 
   private DossierAsset copy(String epicId, String sourceId) {

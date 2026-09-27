@@ -29,7 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
  *
  * <p><b>The four legacy wipes are gone with the four legacy tables</b> (epics V13). {@code
  * TicketCommentRepository} stays and its position does not move: a comment is not an archetype of
- * the merged model, it is still written by {@code TicketService}, and its key is {@code entity (id)}
+ * the merged model, it is written by {@code TicketCommentService}, and its key is {@code entity (id)}
  * — which is exactly why it goes before the merged rows and not after them.
  */
 public abstract class EntitiesTestSupport {

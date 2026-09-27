@@ -96,7 +96,7 @@ class EntityRoutesGoldenTest {
 
     // Epic: create, list, read.
     String epicId =
-        r.call("POST", p + "/epics", Map.of("title", "The plan", "description", "The spine"))
+        r.call("POST", p + "/epics", map("title", "The plan", "description", "The spine"))
             .path("epic.id");
     r.call("POST", p + "/epics", map("title", " ", "description", null)); // blank title: 400
     r.call("GET", p + "/epics", null);

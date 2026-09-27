@@ -55,7 +55,7 @@ public class DossierAssetController {
 
   /**
    * The epic's project, for the agent binding on {@link #inline} — and the epic's existence with it,
-   * since resolving the project is a {@code get}. It replaces the bare {@code EpicService.get} this
+   * since resolving the project is a {@code get}. It replaces the bare epic {@code get} this
    * route used to make for the 404 alone: one lookup answers both questions.
    */
   @Inject EpicsTopicHints hints;

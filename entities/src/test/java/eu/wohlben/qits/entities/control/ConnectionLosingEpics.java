@@ -14,7 +14,7 @@ import org.hibernate.exception.JDBCConnectionException;
  * The merged planning table with a postgres cutover in it: the next {@code
  * listByProjectAndArchetype} reads throw what a caller actually sees when its connection dies
  * mid-flight, then the table answers normally again. That is the read behind {@code
- * EpicService.listByProject} now — the epics are rows of {@code entity} discriminated by their
+ * WorkEntityService.listByProject} now — the epics are rows of {@code entity} discriminated by their
  * archetype, and the old {@code EpicRepository} listing is not in any read path.
  *
  * <p>The failure is the real shape rather than a marker — Hibernate's {@code

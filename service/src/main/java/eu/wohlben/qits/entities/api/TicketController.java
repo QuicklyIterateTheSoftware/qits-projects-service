@@ -1,12 +1,11 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.dto.TicketCommentDto;
 import eu.wohlben.qits.entities.dto.TicketDto;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
-import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
-import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
-import eu.wohlben.qits.projects.api.PhaseAdvance;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -20,20 +19,15 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
-import org.jboss.logging.Logger;
 
 /**
  * A single ticket and its comment thread.
  *
- * <h2>One injection points the other way, and it is the service layer's crossing</h2>
- *
- * <p>{@link #transition} calls {@link PhaseAdvance}, which lives in {@code
- * eu.wohlben.qits.projects.api} because it needs the project, the wrapper repository and a workspace
- * port. That is not the epics <b>jar</b> learning about {@code domain}: this class is under {@code
- * service/}, the module that assembles both, and it is only the package name that reads like the
- * entities module. The {@code entities} jar itself still depends on {@code domain} nowhere, which is what
- * keeps it liftable — and the same crossing {@code DispatchedWorkspaces} already makes below, one
- * field up.
+ * <p>A thin resource over {@link EntityRoutes}, the one implementation behind every per-archetype
+ * route (qits-399): this class holds what the wire names — the paths, the request records, the
+ * {@code {"ticket": …}} envelopes and the role lists. The ticket's words are edited through {@code
+ * POST /entities/transition} (or the {@code update_ticket} tool); the per-ticket {@code PUT} went in
+ * qits-399. What is a ticket's alone — the block door and the thread — is here.
  */
 @Path("/tickets")
 @Produces(MediaType.APPLICATION_JSON)
@@ -41,14 +35,11 @@ import org.jboss.logging.Logger;
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class TicketController {
 
-  private static final Logger LOG = Logger.getLogger(TicketController.class);
+  @Inject EntityRoutes routes;
 
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService entities;
 
-  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
-
-  /** One mapper where there were four; this route answers the ticket shape. */
-  @Inject WorkEntityMapper workEntityMapper;
+  @Inject TicketCommentService comments;
 
   @Inject TicketCommentMapper commentMapper;
 
@@ -56,23 +47,10 @@ public class TicketController {
 
   @Inject TicketsTopicHints hints;
 
-  /** Which live workspaces are on this ticket — derived per read; see {@link DispatchedWorkspaces}. */
-  @Inject DispatchedWorkspaces dispatchedWorkspaces;
-
-  /**
-   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
-   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
-   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
-   */
-  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
-
-  /** The phase a transition starts, delivered into the workspace on the ticket's branch. */
-  @Inject PhaseAdvance phaseAdvance;
-
   /**
    * The block door's whole rule — the refusal, the row and the remark — shared with the two MCP
-   * tools over the same write. It is in {@code projects.api} for {@link PhaseAdvance}'s
-   * reason: what a status means for the work is decided there.
+   * tools over the same write. It is in {@code projects.api} because what a status means for the
+   * work — whether a phase runs — is decided there.
    */
   @Inject eu.wohlben.qits.projects.api.TicketBlocks blocks;
 
@@ -85,16 +63,13 @@ public class TicketController {
   /**
    * The detail read, and the one place a single ticket carries its workspaces. The writes below
    * answer the row they changed and leave the field empty: an edit is not the question "who is
-   * working on this", and asking a sibling service on every keystroke's save would be a round trip
-   * bought for nothing — the client re-reads.
+   * working on this", and the client re-reads.
    */
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
   public GetTicketRequest.Response get(@PathParam("id") String id) {
-    return new GetTicketRequest.Response(
-        qualifiedIds.qualify(
-            dispatchedWorkspaces.decorate(workEntityMapper.toTicketDto(ticketService.get(id)))));
+    return new GetTicketRequest.Response(routes.get(routes.tickets(), id));
   }
 
   /**
@@ -121,29 +96,13 @@ public class TicketController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public TransitionTicketRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionTicketRequest request) {
-    EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
-    String changedBy = EntitiesPrincipal.changedBy(identity);
-    // Through EntityResolutions, like an epic's move: a ticket can hold a refinement room since
-    // qits-395, and a resolving move tears it down before the status lands.
-    var ticket = resolutions.transitionTicket(id, request.target(), changedBy);
-    hints.fire(ticket.projectId);
-    // AFTER the move is recorded and outside its transaction, like the hint above: the next phase
-    // is started from the status the ticket now holds, and a transition that rolled back speaks to
-    // nobody. See PhaseAdvance for why this is not a step inside TicketService.transition.
-    try {
-      phaseAdvance.afterTransition(ticket, changedBy);
-    } catch (RuntimeException e) {
-      // It says it must not throw; a throw is a bug in it and must not touch a transition that has
-      // already been recorded and already been answered for.
-      LOG.warnf(e, "Could not start the phase ticket %s just moved into", ticket.id);
-    }
     return new TransitionTicketRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toTicketDto(ticket)));
+        routes.transition(routes.tickets(), id, request.target(), true, identity).entity());
   }
 
   /**
-   * <b>Blocking is not part of {@link #update}, and that separation is the same one the status
-   * has.</b> {@code update} deliberately cannot move the status, because a statement about where
+   * <b>Blocking is not part of the edit, and that separation is the same one the status has.</b>
+   * An edit deliberately cannot move the status, because a statement about where
    * the work stands is a different act from editing the text that describes it; "the phase running
    * now cannot finish" is exactly such a statement, so it gets a door of its own rather than a
    * field on the edit form — otherwise a retitle could assert that somebody is stuck.
@@ -174,13 +133,13 @@ public class TicketController {
     EntitiesAgentAccess.requireProject(identity, hints.projectOfTicket(id));
     var ticket =
         blocks.apply(
-            ticketService.get(id),
+            entities.get(Archetype.TICKET, id),
             request.blocked(),
             request.reason(),
             EntitiesPrincipal.changedBy(identity));
     hints.fire(ticket.projectId);
     return new SetTicketBlockedRequest.Response(
-        qualifiedIds.qualify(workEntityMapper.toTicketDto(ticket)));
+        routes.tickets().qualify().apply(routes.tickets().render(ticket, null)));
   }
 
   public record DeleteTicketRequest() {
@@ -190,10 +149,7 @@ public class TicketController {
   @DELETE
   @Path("/{id}")
   public DeleteTicketRequest.Response delete(@PathParam("id") String id) {
-    // Resolved before the delete — afterwards there is no row to walk up from.
-    String projectId = hints.projectOfTicket(id);
-    ticketService.delete(id, EntitiesPrincipal.changedBy(identity));
-    hints.fire(projectId);
+    routes.delete(routes.tickets(), id, false, identity);
     return new DeleteTicketRequest.Response(true);
   }
 
@@ -210,9 +166,9 @@ public class TicketController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{ticketId}/comments")
   public ListTicketCommentsRequest.Response listComments(@PathParam("ticketId") String ticketId) {
-    ticketService.get(ticketId); // 404 if the ticket does not exist
+    entities.get(Archetype.TICKET, ticketId); // 404 if the ticket does not exist
     var entries =
-        ticketService.listComments(ticketId).stream()
+        comments.listComments(ticketId).stream()
             .map(c -> new ListTicketCommentsRequest.Response.Entry(commentMapper.toDto(c)))
             .toList();
     return new ListTicketCommentsRequest.Response(entries);
@@ -236,7 +192,7 @@ public class TicketController {
     String projectId = hints.projectOfTicket(ticketId); // 404 if the ticket does not exist
     EntitiesAgentAccess.requireProject(identity, projectId);
     var comment =
-        ticketService.addComment(ticketId, request.body(), EntitiesPrincipal.changedBy(identity));
+        comments.addComment(ticketId, request.body(), EntitiesPrincipal.changedBy(identity));
     hints.fire(projectId);
     return new CreateTicketCommentRequest.Response(commentMapper.toDto(comment));
   }

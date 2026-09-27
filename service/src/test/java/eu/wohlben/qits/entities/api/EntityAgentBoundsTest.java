@@ -10,22 +10,16 @@ import eu.wohlben.qits.entities.control.DossierService;
 import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
-import eu.wohlben.qits.entities.control.EpicService;
-import eu.wohlben.qits.entities.control.FeatureService;
-import eu.wohlben.qits.entities.control.TaskService;
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.entities.mapper.DossierPageMapper;
 import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
-import eu.wohlben.qits.entities.mapper.WorkEntityMapper;
-import eu.wohlben.qits.projects.api.DispatchedWorkspaces;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.api.PhaseAdvance;
-import eu.wohlben.qits.projects.control.ProjectService;
-import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.security.AgentTokens;
@@ -102,27 +96,18 @@ class EntityAgentBoundsTest {
 
   private static final String REFUSAL = "An agent may write only the entities of its own project.";
 
-  @Inject EpicService epicService;
-  @Inject FeatureService featureService;
-  @Inject TaskService taskService;
-  @Inject TicketService ticketService;
+  @Inject WorkEntityService workEntities;
+  @Inject TicketCommentService ticketComments;
   @Inject DossierService dossierService;
   @Inject EntityTransitionService transitionService;
   @Inject EntityCatalogService catalogService;
 
-  @Inject WorkEntityMapper workEntityMapper;
   @Inject TicketCommentMapper ticketCommentMapper;
   @Inject DossierPageMapper dossierPageMapper;
 
   @Inject EpicsTopicHints epicHints;
   @Inject TicketsTopicHints ticketHints;
   @Inject QualifiedEntityIds qualifiedIds;
-  @Inject DispatchedWorkspaces dispatchedWorkspaces;
-  @Inject PhaseAdvance phaseAdvance;
-  @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
-
-  @Inject ProjectService projectService;
-  @Inject RepositoryService repositoryService;
 
   /** Everything one test needs: an own-project tree and enough of another project to reach for. */
   private record Seeded(
@@ -153,25 +138,59 @@ class EntityAgentBoundsTest {
     // DbRetry.inNewTx) and therefore must not be called from inside one. Fresh rows per test: the
     // most valuable assertion in this class is that a refused batch wrote NOTHING, and that is only
     // readable against state this test put there.
-    String epicId = epicService.create(OWN_PROJECT, "The own plan", "as filed", "seed").id;
-    String featureId = featureService.create(epicId, "The own part", null, null, "seed").entity().id;
-    String taskId =
-        taskService.create(featureId, OWN_REPO, "The own step", null, null, "seed").entity().id;
-    String ticketId =
-        ticketService
-            .create(OWN_PROJECT, "The own ticket", "it occurs", null, "BUG", null, "seed")
+    String epicId =
+        workEntities
+            .create(
+                Archetype.EPIC, OWN_PROJECT, EntityWrite.epic("The own plan", "as filed"), "seed")
+            .entity()
             .id;
-    String commentId = ticketService.addComment(ticketId, "a note", "seed").id;
+    String featureId =
+        workEntities
+            .create(
+                Archetype.FEATURE, epicId, EntityWrite.feature("The own part", null, null), "seed")
+            .entity()
+            .id;
+    String taskId =
+        workEntities
+            .create(
+                Archetype.TASK,
+                featureId,
+                EntityWrite.task(OWN_REPO, "The own step", null, null),
+                "seed")
+            .entity()
+            .id;
+    String ticketId =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                OWN_PROJECT,
+                EntityWrite.ticket("The own ticket", "it occurs", null, "BUG", null),
+                "seed")
+            .entity()
+            .id;
+    String commentId = ticketComments.addComment(ticketId, "a note", "seed").id;
     String epicPageId =
         dossierService.create(DossierOwner.epic(epicId), "Epic page", "body", "seed").id;
     String ticketPageId =
         dossierService.create(DossierOwner.ticket(ticketId), "Ticket page", "body", "seed").id;
 
     String foreignEpicId =
-        epicService.create(FOREIGN_PROJECT, "The other plan", "as filed", "seed").id;
+        workEntities
+            .create(
+                Archetype.EPIC,
+                FOREIGN_PROJECT,
+                EntityWrite.epic("The other plan", "as filed"),
+                "seed")
+            .entity()
+            .id;
     String foreignTicketId =
-        ticketService
-            .create(FOREIGN_PROJECT, "The other ticket", "it occurs", null, "BUG", null, "seed")
+        workEntities
+            .create(
+                Archetype.TICKET,
+                FOREIGN_PROJECT,
+                EntityWrite.ticket("The other ticket", "it occurs", null, "BUG", null),
+                "seed")
+            .entity()
             .id;
 
     rows =
@@ -206,58 +225,47 @@ class EntityAgentBoundsTest {
 
   // ---- the doors, driven directly --------------------------------------------------------------
 
+  /**
+   * Every per-archetype door is a thin resource over the one {@link EntityRoutes} bean (qits-399),
+   * so the doors below share the real bean and differ only in the caller they are handed.
+   */
+  @Inject EntityRoutes routes;
+
   private EpicController epics(SecurityIdentity caller) {
     EpicController door = new EpicController();
-    door.epicService = epicService;
-    door.featureService = featureService;
-    door.workEntityMapper = workEntityMapper;
+    door.routes = routes;
     door.identity = caller;
-    door.hints = epicHints;
-    door.dispatchedWorkspaces = dispatchedWorkspaces;
-    door.qualifiedIds = qualifiedIds;
     return door;
   }
 
   private FeatureController features(SecurityIdentity caller) {
     FeatureController door = new FeatureController();
-    door.featureService = featureService;
-    door.taskService = taskService;
-    door.epicService = epicService;
-    door.workEntityMapper = workEntityMapper;
-    door.repositoryService = repositoryService;
+    door.routes = routes;
     door.identity = caller;
-    door.hints = epicHints;
-    door.qualifiedIds = qualifiedIds;
     return door;
   }
 
   private TaskController tasks(SecurityIdentity caller) {
     TaskController door = new TaskController();
-    door.taskService = taskService;
-    door.workEntityMapper = workEntityMapper;
+    door.routes = routes;
     door.identity = caller;
-    door.hints = epicHints;
-    door.qualifiedIds = qualifiedIds;
     return door;
   }
 
   private TicketController tickets(SecurityIdentity caller) {
     TicketController door = new TicketController();
-    door.ticketService = ticketService;
-    door.workEntityMapper = workEntityMapper;
+    door.routes = routes;
+    door.entities = workEntities;
+    door.comments = ticketComments;
     door.commentMapper = ticketCommentMapper;
     door.identity = caller;
     door.hints = ticketHints;
-    door.dispatchedWorkspaces = dispatchedWorkspaces;
-    door.qualifiedIds = qualifiedIds;
-    door.phaseAdvance = phaseAdvance;
-    door.resolutions = resolutions;
     return door;
   }
 
   private TicketCommentController comments(SecurityIdentity caller) {
     TicketCommentController door = new TicketCommentController();
-    door.ticketService = ticketService;
+    door.comments = ticketComments;
     door.commentMapper = ticketCommentMapper;
     door.identity = caller;
     door.hints = ticketHints;
@@ -266,30 +274,22 @@ class EntityAgentBoundsTest {
 
   private ProjectEpicsController projectEpics(SecurityIdentity caller) {
     ProjectEpicsController door = new ProjectEpicsController();
-    door.epicService = epicService;
-    door.workEntityMapper = workEntityMapper;
-    door.projectService = projectService;
+    door.routes = routes;
     door.identity = caller;
-    door.hints = epicHints;
-    door.dispatchedWorkspaces = dispatchedWorkspaces;
     return door;
   }
 
   private ProjectTicketsController projectTickets(SecurityIdentity caller) {
     ProjectTicketsController door = new ProjectTicketsController();
-    door.ticketService = ticketService;
-    door.workEntityMapper = workEntityMapper;
-    door.projectService = projectService;
+    door.routes = routes;
     door.identity = caller;
-    door.hints = ticketHints;
-    door.dispatchedWorkspaces = dispatchedWorkspaces;
     return door;
   }
 
   private DossierController dossier(SecurityIdentity caller) {
     DossierController door = new DossierController();
     door.dossier = dossierService;
-    door.epicService = epicService;
+    door.entities = workEntities;
     door.mapper = dossierPageMapper;
     door.identity = caller;
     door.hints = epicHints;
@@ -299,7 +299,7 @@ class EntityAgentBoundsTest {
   private TicketDossierController ticketDossier(SecurityIdentity caller) {
     TicketDossierController door = new TicketDossierController();
     door.dossier = dossierService;
-    door.ticketService = ticketService;
+    door.entities = workEntities;
     door.mapper = dossierPageMapper;
     door.identity = caller;
     door.hints = ticketHints;
@@ -486,7 +486,7 @@ class EntityAgentBoundsTest {
                 .transition(Map.of(rows.epicId(), epicRenamedTo("Not yours"))));
 
     // Nothing moved: every refusal ran before its write.
-    assertEquals("The own plan", epicService.get(rows.epicId()).title);
+    assertEquals("The own plan", workEntities.get(Archetype.EPIC, rows.epicId()).title);
     assertEquals("body", dossierService.get(rows.epicPageId()).body);
   }
 
@@ -582,9 +582,10 @@ class EntityAgentBoundsTest {
 
     refused(() -> entities(AGENT).transition(request));
 
-    assertEquals("The own plan", epicService.get(rows.epicId()).title);
-    assertEquals("The other plan", epicService.get(rows.foreignEpicId()).title);
-    assertEquals(rows.epicId(), featureService.get(rows.featureId()).parentId());
+    assertEquals("The own plan", workEntities.get(Archetype.EPIC, rows.epicId()).title);
+    assertEquals("The other plan", workEntities.get(Archetype.EPIC, rows.foreignEpicId()).title);
+    assertEquals(
+        rows.epicId(), workEntities.nested(Archetype.FEATURE, rows.featureId()).parentId());
   }
 
   /**
@@ -599,7 +600,8 @@ class EntityAgentBoundsTest {
 
     refused(() -> entities(AGENT).transition(request));
 
-    assertEquals(rows.epicId(), featureService.get(rows.featureId()).parentId());
+    assertEquals(
+        rows.epicId(), workEntities.nested(Archetype.FEATURE, rows.featureId()).parentId());
   }
 
   /**
@@ -690,6 +692,7 @@ class EntityAgentBoundsTest {
         .statusCode(403)
         .body("message", org.hamcrest.Matchers.equalTo(REFUSAL));
 
-    assertEquals(1, featureService.listByEpic(rows.epicId()).size(), "nothing was added");
+    assertEquals(
+        1, workEntities.listChildren(Archetype.FEATURE, rows.epicId()).size(), "nothing was added");
   }
 }

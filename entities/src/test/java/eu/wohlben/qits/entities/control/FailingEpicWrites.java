@@ -11,8 +11,8 @@ import org.hibernate.exception.JDBCConnectionException;
 /**
  * The merged planning table with a postgres cutover in the middle of a <b>write</b>: the row is
  * staged, and then the insert throws what a caller sees when its connection dies mid-flight. That is
- * the insert an epic create makes now — {@code EpicService} writes {@code entity} and mirrors the
- * old row behind it, so this is the write that decides whether the create landed.
+ * the insert an epic create makes now — {@code WorkEntityService} writes {@code entity}, so this is
+ * the write that decides whether the create landed.
  *
  * <p><b>The order is the whole point.</b> {@code super.persist} runs first, so the failure lands
  * <em>after</em> the write is in the transaction rather than before it. That is what makes the

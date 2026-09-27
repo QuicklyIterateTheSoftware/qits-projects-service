@@ -16,8 +16,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * What is genuinely new once {@code FeatureService} and {@code TaskService} read and write {@code
- * entity} + {@code entity_membership}: the edge, its position, and the two hops a task's epic is
+ * What is genuinely new once features and tasks are read and written as {@code entity} + {@code
+ * entity_membership} (by {@code FeatureService} and {@code TaskService} then, by {@code
+ * WorkEntityService} since qits-399): the edge, its position, and the two hops a task's epic is
  * now away.
  *
  * <p>Everything these four assert was previously a column and could not be got wrong — {@code
@@ -29,14 +30,14 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class UnifiedDescendantsTest extends EntitiesTestSupport {
 
-  @Inject EpicService epicService;
-  @Inject FeatureService featureService;
-  @Inject TaskService taskService;
+  @Inject WorkEntityService workEntities;
   @Inject AuditService auditService;
   @Inject StoredEntityFacts facts;
 
   private WorkEntity epic() {
-    return epicService.create("proj-1", "Epic", null, "t");
+    return workEntities
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t")
+        .entity();
   }
 
   /**
@@ -47,20 +48,31 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
   @Test
   void aListingIsDrawnInMembershipPositionOrder() {
     WorkEntity epic = epic();
-    Nested a = featureService.create(epic.id, "A", null, null, "t");
-    Nested b = featureService.create(epic.id, "B", null, null, "t");
-    Nested c = featureService.create(epic.id, "C", null, null, "t");
+    Nested a =
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), "t");
+    Nested b =
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null, null), "t");
+    Nested c =
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null, null), "t");
 
     assertEquals(
         List.of(a.entity().id, b.entity().id, c.entity().id),
-        featureService.listByEpic(epic.id).stream().map(f -> f.entity().id).toList());
+        workEntities.listChildren(Archetype.FEATURE, epic.id).stream()
+            .map(f -> f.entity().id)
+            .toList());
     inFreshTx(() -> assertEquals(List.of(0, 1, 2), positionsUnder(epic.id)));
 
-    Nested one = taskService.create(a.entity().id, "repo-1", "One", null, null, "t");
-    Nested two = taskService.create(a.entity().id, "repo-1", "Two", null, null, "t");
+    Nested one =
+        workEntities.create(
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "One", null, null), "t");
+    Nested two =
+        workEntities.create(
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Two", null, null), "t");
     assertEquals(
         List.of(one.entity().id, two.entity().id),
-        taskService.listByFeature(a.entity().id).stream().map(t -> t.entity().id).toList());
+        workEntities.listChildren(Archetype.TASK, a.entity().id).stream()
+            .map(t -> t.entity().id)
+            .toList());
     inFreshTx(() -> assertEquals(List.of(0, 1), positionsUnder(a.entity().id)));
   }
 
@@ -72,25 +84,38 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
   @Test
   void removingAMiddleSiblingLeavesTheRestDenseAndInOrder() {
     WorkEntity epic = epic();
-    Nested a = featureService.create(epic.id, "A", null, null, "t");
-    Nested b = featureService.create(epic.id, "B", null, null, "t");
-    Nested c = featureService.create(epic.id, "C", null, null, "t");
+    Nested a =
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), "t");
+    Nested b =
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("B", null, null), "t");
+    Nested c =
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("C", null, null), "t");
 
-    featureService.delete(b.entity().id, "t");
+    workEntities.delete(Archetype.FEATURE, b.entity().id, "t");
 
     assertEquals(
         List.of(a.entity().id, c.entity().id),
-        featureService.listByEpic(epic.id).stream().map(f -> f.entity().id).toList());
+        workEntities.listChildren(Archetype.FEATURE, epic.id).stream()
+            .map(f -> f.entity().id)
+            .toList());
     inFreshTx(() -> assertEquals(List.of(0, 1), positionsUnder(epic.id)));
 
-    Nested one = taskService.create(a.entity().id, "repo-1", "One", null, null, "t");
-    Nested two = taskService.create(a.entity().id, "repo-1", "Two", null, null, "t");
-    Nested three = taskService.create(a.entity().id, "repo-1", "Three", null, null, "t");
-    taskService.delete(two.entity().id, "t");
+    Nested one =
+        workEntities.create(
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "One", null, null), "t");
+    Nested two =
+        workEntities.create(
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Two", null, null), "t");
+    Nested three =
+        workEntities.create(
+            Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Three", null, null), "t");
+    workEntities.delete(Archetype.TASK, two.entity().id, "t");
 
     assertEquals(
         List.of(one.entity().id, three.entity().id),
-        taskService.listByFeature(a.entity().id).stream().map(t -> t.entity().id).toList());
+        workEntities.listChildren(Archetype.TASK, a.entity().id).stream()
+            .map(t -> t.entity().id)
+            .toList());
     inFreshTx(() -> assertEquals(List.of(0, 1), positionsUnder(a.entity().id)));
   }
 
@@ -102,17 +127,29 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
   @Test
   void aTasksEpicIsReachedByTwoMembershipHops() {
     WorkEntity epic = epic();
-    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
-    Nested task = taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
-    assertEquals(feature.entity().id, taskService.get(task.entity().id).parentId());
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    Nested task =
+        workEntities.create(
+            Archetype.TASK,
+            feature.entity().id,
+            EntityWrite.task("repo-1", "Task", null, null),
+            "t");
+    assertEquals(
+        feature.entity().id, workEntities.nested(Archetype.TASK, task.entity().id).parentId());
 
     // The marker is only writable at REFINED, and the only way to know the phase is the walk.
-    epicService.transition(epic.id, "REFINED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     assertEquals(
         when,
-        taskService
-            .update(task.entity().id, null, null, null, false, when, false, "t")
+        workEntities
+            .update(
+                Archetype.TASK,
+                task.entity().id,
+                EntityWrite.nodeEdit(null, null, null, false, when, false),
+                "t")
             .entity()
             .implementedAt);
 
@@ -140,8 +177,11 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
   @Test
   void nestingIsNotConsultedForADependency() {
     WorkEntity epic = epic();
-    Nested a = featureService.create(epic.id, "A", null, null, "t");
-    Nested b = featureService.create(epic.id, "B", null, a.entity().id, "t");
+    Nested a =
+        workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), "t");
+    Nested b =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("B", null, a.entity().id), "t");
 
     assertEquals(a.entity().id, b.entity().dependsOnEntityId);
     // The parent is still the epic. A dependency says "do that one first", not "part of".

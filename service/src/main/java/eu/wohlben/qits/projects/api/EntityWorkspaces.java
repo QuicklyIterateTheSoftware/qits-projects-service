@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.control.FeatureService;
-import eu.wohlben.qits.entities.control.TaskService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.control.WorkBranches;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -59,9 +59,7 @@ class EntityWorkspaces {
   @Inject RepositoryService repositories;
 
   /** An epic's features and tasks name the branches its agent may push. */
-  @Inject FeatureService features;
-
-  @Inject TaskService tasks;
+  @Inject WorkEntityService entities;
 
   /**
    * An entity's workspace address.
@@ -140,8 +138,8 @@ class EntityWorkspaces {
       case EPIC ->
           WorkBranches.epic(
               entity,
-              features.listByEpic(entity.id),
-              feature -> tasks.listByFeature(feature.entity().id));
+              entities.listChildren(Archetype.FEATURE, entity.id),
+              feature -> entities.listChildren(Archetype.TASK, feature.entity().id));
       case FEATURE, TASK ->
           throw new IllegalStateException("A " + entity.archetype + " is never dispatched");
     };

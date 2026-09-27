@@ -1,8 +1,7 @@
 package eu.wohlben.qits.projects.refinementhost;
 
-import eu.wohlben.qits.entities.control.EpicService;
-import eu.wohlben.qits.entities.control.TicketService;
-import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.entity.Refinement;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -12,15 +11,15 @@ import org.jboss.logging.Logger;
 /**
  * Resolving an entity tears its refinement down. The assembling layer's join between the two, and
  * the <b>only</b> way an epic's or a ticket's status should be moved from a door: {@code
- * EpicService.transition} or {@code TicketService.transition} alone leaks whatever the entity was
- * still holding. It was {@code EpicResolutions} until qits-395 let a ticket open a refinement too;
+ * WorkEntityService.transition} alone leaks whatever the entity was still holding. It was {@code EpicResolutions} until qits-395 let a ticket open a refinement too;
  * the rule did not change, only the set of archetypes that can own a room.
  *
  * <p>It lives here, beside the thing it tears down, rather than in the {@code entities} module: that
  * jar depends on {@code domain} nowhere and must keep not depending on it, and the direction is
  * already this way round — {@link RefinementService} depends on the entity services, not the
- * reverse. The seam a caller uses is one method per archetype on this bean, so a door that moves an
- * entity gets the cleanup by construction and not by remembering.
+ * reverse. The seam a caller uses is the one method on this bean, taking the archetype as data like
+ * the service under it (qits-399), so a door that moves an entity gets the cleanup by construction
+ * and not by remembering.
  *
  * <p>Until 2026-09-08 the cleanup was in the browser instead — the refining page discarded before
  * transitioning, and only for what was then {@code ABANDONED} (now {@code DROPPED}). Every other
@@ -55,28 +54,24 @@ public class EntityResolutions {
 
   private static final Logger LOG = Logger.getLogger(EntityResolutions.class);
 
-  @Inject EpicService epics;
-
-  @Inject TicketService tickets;
+  @Inject WorkEntityService entities;
 
   @Inject RefinementService refinements;
 
-  /** An epic's move, with its refinement torn down first when it resolves the epic. */
-  public EpicService.Transition transition(String epicId, String target, String changedBy) {
-    EpicService.PlannedTransition planned = epics.planTransition(epicId, target);
+  /** A move of any lifecycle archetype, with its refinement torn down first when it resolves it. */
+  public WorkEntityService.Transition transition(
+      Archetype archetype, String id, String target, String changedBy) {
+    WorkEntityService.PlannedTransition planned = entities.planTransition(archetype, id, target);
     if (planned.resolving()) {
-      discardHeldBy(epicId, "Epic", planned.target().name());
+      discardHeldBy(id, noun(archetype), planned.target().name());
     }
-    return epics.transition(epicId, target, changedBy);
+    return entities.transition(archetype, id, target, changedBy);
   }
 
-  /** A ticket's move, with its refinement torn down first when it resolves the ticket (qits-395). */
-  public WorkEntity transitionTicket(String ticketId, String target, String changedBy) {
-    TicketService.PlannedTransition planned = tickets.planTransition(ticketId, target);
-    if (planned.resolving()) {
-      discardHeldBy(ticketId, "Ticket", planned.target().name());
-    }
-    return tickets.transition(ticketId, target, changedBy);
+  /** "Epic" / "Ticket", for the log line. */
+  private static String noun(Archetype archetype) {
+    String name = archetype.name();
+    return name.charAt(0) + name.substring(1).toLowerCase(java.util.Locale.ROOT);
   }
 
   private void discardHeldBy(String entityId, String noun, String target) {

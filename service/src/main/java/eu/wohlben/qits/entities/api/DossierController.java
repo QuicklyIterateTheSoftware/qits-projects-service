@@ -1,7 +1,8 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.DossierService;
-import eu.wohlben.qits.entities.control.EpicService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.dto.DossierPageDto;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.mapper.DossierPageMapper;
@@ -59,7 +60,7 @@ public class DossierController {
 
   @Inject DossierService dossier;
 
-  @Inject EpicService epicService;
+  @Inject WorkEntityService entities;
 
   @Inject DossierPageMapper mapper;
 
@@ -84,7 +85,7 @@ public class DossierController {
   public ListPagesResponse list(@PathParam("epicId") String epicId) {
     // The epic is resolved here rather than in the entities module, which cannot see `domain` and has
     // no way to check a project scope — the same split EpicController makes.
-    epicService.get(epicId);
+    entities.get(Archetype.EPIC, epicId);
     return new ListPagesResponse(
         dossier.listByOwner(DossierOwner.epic(epicId)).stream().map(mapper::toDto).toList());
   }
@@ -170,7 +171,7 @@ public class DossierController {
    * boundary, not decoration, and a 403 would confirm the row exists somewhere else.
    */
   private eu.wohlben.qits.entities.entity.DossierPage requireOfEpic(String epicId, String pageId) {
-    epicService.get(epicId);
+    entities.get(Archetype.EPIC, epicId);
     var page = dossier.get(pageId);
     if (!epicId.equals(page.epicId)) {
       throw new eu.wohlben.qits.entities.error.NotFoundException("Dossier page not found: " + pageId);

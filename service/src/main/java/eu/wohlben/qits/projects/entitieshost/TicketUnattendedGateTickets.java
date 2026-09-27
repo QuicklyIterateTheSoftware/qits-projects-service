@@ -1,6 +1,9 @@
 package eu.wohlben.qits.projects.entitieshost;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.TicketType;
@@ -59,7 +62,9 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
    */
   static final String REPORTER = "qits-projects";
 
-  @Inject TicketService tickets;
+  @Inject WorkEntityService entities;
+
+  @Inject TicketCommentService tickets;
 
   @Inject ProjectChangePublisher publisher;
 
@@ -76,20 +81,24 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
         return Optional.of(open.id);
       }
       WorkEntity filed =
-          tickets.create(
-              rejection.projectId(),
-              title(rejection),
-              // The impetus is the one-sentence statement of what occurs; the long report goes in
-              // the description, where it always has. Both are written here because this filer is
-              // both the reporter and the only thing that will ever know these facts — nothing
-              // later can reconstruct which run came back red.
-              impetus(rejection),
-              body(rejection),
-              TicketType.BUG.name(),
-              // No assignee. Nobody was watching this release; inventing an owner for the ticket
-              // would be the same guess one directory over.
-              null,
-              REPORTER);
+          entities
+              .create(
+                  Archetype.TICKET,
+                  rejection.projectId(),
+                  EntityWrite.ticket(
+                      title(rejection),
+                      // The impetus is the one-sentence statement of what occurs; the long report
+                      // goes in the description, where it always has. Both are written here because
+                      // this filer is both the reporter and the only thing that will ever know
+                      // these facts — nothing later can reconstruct which run came back red.
+                      impetus(rejection),
+                      body(rejection),
+                      TicketType.BUG.name(),
+                      // No assignee. Nobody was watching this release; inventing an owner for the
+                      // ticket would be the same guess one directory over.
+                      null),
+                  REPORTER)
+              .entity();
       redraw(rejection.projectId());
       LOG.warnf(
           "Release request %s of %s was rejected with nobody watching it; filed BUG ticket %s (%s)",
@@ -165,9 +174,9 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     try {
       // In a transaction of its own, and that is not decoration: the release arm runs on the
       // release-request worker, a plain thread with no request scope and no session on it, where a
-      // bare Panache read throws rather than answering. TicketService's writes each open their own;
+      // bare Panache read throws rather than answering. WorkEntityService's writes each open their own;
       // this read had none, and the loop was closed on a log line and nowhere else.
-      ticket = QuarkusTransaction.requiringNew().call(() -> tickets.get(ticketId));
+      ticket = QuarkusTransaction.requiringNew().call(() -> entities.get(Archetype.TICKET, ticketId));
     } catch (RuntimeException e) {
       // A ticket somebody deleted. "There is no ticket" is the honest reading and files a fresh one.
       LOG.debugf("Gate-failure ticket %s could not be read; treating it as gone", ticketId);

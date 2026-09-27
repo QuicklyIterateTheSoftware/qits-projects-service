@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.control.TicketService;
+import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
@@ -13,7 +15,7 @@ import jakarta.inject.Inject;
  *
  * <p>A block says the phase the ticket's <em>current</em> status starts cannot finish right now. It
  * is a flag and not a status ({@code WorkEntity.blocked} carries that argument), it is cleared by
- * every transition ({@code TicketService.transition}), and it is set here and nowhere else.
+ * every transition ({@code WorkEntityService.transition}), and it is set here and nowhere else.
  *
  * <h2>Why this class exists rather than the rule being written at each door</h2>
  *
@@ -32,7 +34,7 @@ import jakarta.inject.Inject;
  * three statuses a phase runs under — so a fourth phase, or a status moving off the line, changes
  * one switch and this refusal follows it. The entities module cannot hold the rule at all: it has
  * no idea a phase exists and depends on {@code domain} nowhere, which is what keeps it liftable.
- * {@code TicketService.setBlocked} therefore writes the row and judges nothing, and says so.
+ * {@code WorkEntityService.setBlocked} therefore writes the row and judges nothing, and says so.
  *
  * <p>That places this beside {@link PhaseAdvance} and {@link EntityWorkspaces}, which are
  * here for the same reason and are the precedent: what a ticket's status <em>means for the work</em>
@@ -41,7 +43,7 @@ import jakarta.inject.Inject;
  * <h2>The reason is a comment and not a column</h2>
  *
  * <p>A blocker is a remark with an author and a time — which is what the thread already is — so it
- * lands through {@code TicketService.addComment} the way {@code PhaseAdvance.say} lands what
+ * lands through {@code TicketCommentService.addComment} the way {@code PhaseAdvance.say} lands what
  * became of a phase. A column would be a second place the same sentence lives, and it would go
  * stale the moment the thread moved past it. It is <b>required when blocking</b> because a block
  * with no stated blocker is one nobody can clear: the next reader is told the work stopped and not
@@ -57,7 +59,9 @@ import jakarta.inject.Inject;
 @ApplicationScoped
 public class TicketBlocks {
 
-  @Inject TicketService tickets;
+  @Inject TicketCommentService tickets;
+
+  @Inject WorkEntityService entities;
 
   /**
    * Blocks or unblocks {@code ticket}, records why on its thread, and answers the row as it now
@@ -83,7 +87,7 @@ public class TicketBlocks {
       requireBlockable(ticket);
     }
     tickets.addComment(ticket.id, remark(blocked, stated), changedBy);
-    return tickets.setBlocked(ticket.id, blocked, changedBy);
+    return entities.setBlocked(Archetype.TICKET, ticket.id, blocked, changedBy);
   }
 
   /**

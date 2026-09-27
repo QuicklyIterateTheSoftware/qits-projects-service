@@ -64,14 +64,14 @@ import java.util.UUID;
  *
  * <p><b>This class reads {@code entity} and no old table.</b> Both owner resolutions — the one
  * behind every write and the public {@link #requireOwner} the read doors call — are one {@link
- * WorkEntityRepository} lookup by id <b>and archetype</b>, which is {@code EpicService.entity} and
- * {@code TicketService.entity} applied a third time and for their reason: the four kinds share one
+ * WorkEntityRepository} lookup by id <b>and archetype</b>, which is {@code WorkEntityService}'s
+ * lookup applied again and for its reason: the four kinds share one
  * table and one id space now, so "no epic with this id" has to mean "no EPIC row with this id"
  * rather than "no row at all", and a ticket id offered to an epic route is a 404 rather than a page
  * written under the wrong owner. Both refusals are the sentences they always were.
  *
  * <p>The {@code REPORTED} guard reads that same row — {@code EntityLifecycle.requireReported(row)},
- * exactly as {@code EpicService}, {@code FeatureService} and {@code TaskService} already call it.
+ * exactly as {@code WorkEntityService} already calls it.
  * The guard keeps its one signature: a second would be the freeze condition written in two places,
  * and there is only ever one condition.
  *
@@ -287,8 +287,8 @@ public class DossierService {
     if (owner.isEpic()) {
       // The freeze, and only here. A ticket owner is resolved and then left alone.
       //
-      // The phase is read off the entity row through the module's one guard — EpicService.update,
-      // FeatureService and TaskService all reach it exactly this way.
+      // The phase is read off the entity row through the module's one guard — WorkEntityService's
+      // edits, creates and deletes all reach it exactly this way.
       EntityLifecycle.requireReported(row);
     }
   }
@@ -313,8 +313,7 @@ public class DossierService {
    * now, so a ticket's id resolves perfectly well through an epic route's {@code DossierOwner} and
    * would, without this, write a page whose {@code epic_id} names a ticket — which the repointed
    * foreign key can no longer refuse, since it constrains the column to {@code entity(id)} and not
-   * to an epic. {@code EpicService.entity} and {@code TicketService.entity} make the same check for
-   * the same reason; this is the third of the three.
+   * to an epic. {@code WorkEntityService}'s lookup makes the same check for the same reason.
    *
    * <p>Both refusals are byte-identical to what the legacy reads answered, because the id in them
    * is the id the caller supplied and nothing else about the question changed.

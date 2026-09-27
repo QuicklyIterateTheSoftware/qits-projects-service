@@ -1,8 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.EpicService;
-import eu.wohlben.qits.entities.control.FeatureService;
-import eu.wohlben.qits.entities.control.TaskService;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -22,33 +21,29 @@ import jakarta.inject.Inject;
  * channel they redraw.
  *
  * <p>Resolve <em>before</em> a delete: once the row is gone there is no way back to its project.
+ *
+ * <p>The project is read off the row itself — every entity row carries its {@code projectId}, root
+ * and node alike — so a feature or a task needs no walk up to its epic. The lookup is still the
+ * archetype's, so an id naming no row of that kind is that kind's 404.
  */
 @ApplicationScoped
 class EpicsTopicHints {
 
   @Inject ProjectChangePublisher publisher;
 
-  @Inject EpicService epicService;
-
-  @Inject FeatureService featureService;
-
-  @Inject TaskService taskService;
+  @Inject WorkEntityService entities;
 
   /** Announce that the project's epic tree changed. */
   void fire(String projectId) {
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
   }
 
+  /** The project of a row of {@code archetype} — EPIC, FEATURE or TASK — or that kind's 404. */
+  String projectOf(Archetype archetype, String id) {
+    return entities.get(archetype, id).projectId;
+  }
+
   String projectOfEpic(String epicId) {
-    return epicService.get(epicId).projectId;
-  }
-
-  /** The parent is the membership edge's, carried beside the row as a {@code control/Nested}. */
-  String projectOfFeature(String featureId) {
-    return projectOfEpic(featureService.get(featureId).parentId());
-  }
-
-  String projectOfTask(String taskId) {
-    return projectOfFeature(taskService.get(taskId).parentId());
+    return projectOf(Archetype.EPIC, epicId);
   }
 }

@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.mcp;
 
-import eu.wohlben.qits.entities.control.EpicService;
-import eu.wohlben.qits.entities.control.FeatureService;
-import eu.wohlben.qits.entities.control.TaskService;
+import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.NotFoundException;
@@ -78,11 +78,7 @@ public class EpicMcpTools {
 
   @Inject ProjectScopeGuard scopeGuard;
 
-  @Inject EpicService epicService;
-
-  @Inject FeatureService featureService;
-
-  @Inject TaskService taskService;
+  @Inject WorkEntityService entities;
 
   @Inject ProjectChangePublisher changePublisher;
 
@@ -211,7 +207,7 @@ public class EpicMcpTools {
                       + " DROPPED. Omit for every epic of the project.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
-    return epicService.listByProject(scope.requireProjectId(), status).stream()
+    return entities.listByProject(Archetype.EPIC, scope.requireProjectId(), status).stream()
         .map(epic -> summarizeEpic(epic, projectSlug))
         .toList();
   }
@@ -230,7 +226,7 @@ public class EpicMcpTools {
     WorkEntity epic = requireEpicInProject(id);
     String projectSlug = projectSlug(); // once for the whole tree, never once per node
     List<FeatureDetail> features =
-        featureService.listByEpic(epic.id).stream()
+        entities.listChildren(Archetype.FEATURE, epic.id).stream()
             .map(
                 nested -> {
                   WorkEntity feature = nested.entity();
@@ -242,7 +238,7 @@ public class EpicMcpTools {
                       feature.description,
                       feature.dependsOnEntityId,
                       feature.implementedAt,
-                      taskService.listByFeature(feature.id).stream()
+                      entities.listChildren(Archetype.TASK, feature.id).stream()
                           .map(Nested::entity)
                           .map(
                               task ->
@@ -281,7 +277,14 @@ public class EpicMcpTools {
   public EpicSummary proposeEpic(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(required = false, description = "the long-form Markdown spine") String description) {
-    WorkEntity epic = epicService.create(scope.requireProjectId(), title, description, changedBy());
+    WorkEntity epic =
+        entities
+            .create(
+                Archetype.EPIC,
+                scope.requireProjectId(),
+                EntityWrite.epic(title, description),
+                changedBy())
+            .entity();
     announce();
     return summarizeEpic(epic, projectSlug());
   }
@@ -300,11 +303,15 @@ public class EpicMcpTools {
           String description) {
     WorkEntity current = requireEpicInProject(id);
     WorkEntity epic =
-        epicService.update(
-            id,
-            (title == null || title.isBlank()) ? current.title : title,
-            description == null ? current.description : description,
-            changedBy());
+        entities
+            .update(
+                Archetype.EPIC,
+                id,
+                EntityWrite.epic(
+                    (title == null || title.isBlank()) ? current.title : title,
+                    description == null ? current.description : description),
+                changedBy())
+            .entity();
     announce();
     return summarizeEpic(epic, projectSlug());
   }
@@ -312,8 +319,8 @@ public class EpicMcpTools {
   /**
    * The epic's LIFECYCLE move, the twin of {@code transition_ticket}: one adjacent step along the
    * one lifecycle ({@code EntityLifecycle.LEGAL_TARGETS}), or off it into DROPPED. Through {@link
-   * EntityResolutions}, never {@code EpicService.transition}, so a resolving move discards the epic's
-   * refinement first; then {@link PhaseAdvance}, after the move is recorded, which delivers the next
+   * EntityResolutions}, never {@code WorkEntityService.transition}, so a resolving move discards the
+   * epic's refinement first; then {@link PhaseAdvance}, after the move is recorded, which delivers the next
    * phase when the run was dispatched as a flow and asks for the release at VERIFIED. Supersede is
    * not reachable from here: the tool takes a status word, and {@code SUPERSEDED} is not one.
    */
@@ -344,13 +351,13 @@ public class EpicMcpTools {
                       + " status")
           String target) {
     requireEpicInProject(id);
-    if (target != null && eu.wohlben.qits.entities.control.EpicService.SUPERSEDE.equals(target)) {
+    if (target != null && WorkEntityService.SUPERSEDE.equals(target)) {
       throw new eu.wohlben.qits.entities.error.ConflictException(
           "SUPERSEDED is an operation on a plan, not a status an agent claims — a person"
               + " supersedes an epic from the board.");
     }
     String changedBy = changedBy();
-    WorkEntity epic = resolutions.transition(id, target, changedBy).epic();
+    WorkEntity epic = resolutions.transition(Archetype.EPIC, id, target, changedBy).entity();
     announce();
     // The agent's claim IS the trigger for the next phase: after the move, outside its transaction.
     try {
@@ -381,7 +388,11 @@ public class EpicMcpTools {
           String dependsOnFeatureId) {
     requireEpicInProject(epicId);
     Nested feature =
-        featureService.create(epicId, title, description, dependsOnFeatureId, changedBy());
+        entities.create(
+            Archetype.FEATURE,
+            epicId,
+            EntityWrite.feature(title, description, dependsOnFeatureId),
+            changedBy());
     announce();
     return summarizeFeature(feature, projectSlug());
   }
@@ -406,8 +417,11 @@ public class EpicMcpTools {
           String dependsOnFeatureId) {
     requireFeatureInProject(id);
     Nested feature =
-        featureService.update(
-            id, title, description, dependsOnFeatureId, false, null, false, changedBy());
+        entities.update(
+            Archetype.FEATURE,
+            id,
+            EntityWrite.nodeEdit(title, description, dependsOnFeatureId, false, null, false),
+            changedBy());
     announce();
     return summarizeFeature(feature, projectSlug());
   }
@@ -421,7 +435,7 @@ public class EpicMcpTools {
   public String removeFeature(
       @ToolArg(description = "id of a feature in this project") String id) {
     requireFeatureInProject(id);
-    featureService.delete(id, changedBy());
+    entities.delete(Archetype.FEATURE, id, changedBy());
     announce();
     return "Removed feature " + id;
   }
@@ -454,8 +468,11 @@ public class EpicMcpTools {
     // work for the whole estate.
     scopeGuard.requireRepoInProjectUnnarrowed(repositoryId);
     Nested task =
-        taskService.create(
-            featureId, repositoryId, title, description, dependsOnTaskId, changedBy());
+        entities.create(
+            Archetype.TASK,
+            featureId,
+            EntityWrite.task(repositoryId, title, description, dependsOnTaskId),
+            changedBy());
     announce();
     return summarizeTask(task, projectSlug());
   }
@@ -481,8 +498,11 @@ public class EpicMcpTools {
           String dependsOnTaskId) {
     requireTaskInProject(id);
     Nested task =
-        taskService.update(
-            id, title, description, dependsOnTaskId, false, null, false, changedBy());
+        entities.update(
+            Archetype.TASK,
+            id,
+            EntityWrite.nodeEdit(title, description, dependsOnTaskId, false, null, false),
+            changedBy());
     announce();
     return summarizeTask(task, projectSlug());
   }
@@ -501,9 +521,9 @@ public class EpicMcpTools {
    * neighbour.
    *
    * <p>The guard is the lifecycle's own and not a second copy of it: this lands on {@code
-   * TaskService.update}'s marker arm alone ({@code touchesMarker} true, {@code touchesScope} false),
-   * so {@code EntityLifecycle.requireRefined} is what runs and its message is what a REPORTED
-   * or finished epic answers with.
+   * WorkEntityService.update}'s marker arm alone (an {@code EntityWrite} that touches the marker and
+   * no scope), so {@code EntityLifecycle.requireRefined} is what runs and its message is what a
+   * REPORTED or finished epic answers with.
    *
    * <p><b>This is an interim and it is written to be easy to remove.</b> Nothing on the platform
    * derives these markers today — no listener sets one when a task's work merges — so a dispatched
@@ -526,7 +546,9 @@ public class EpicMcpTools {
       @ToolArg(description = "id of a task in this project") String id) {
     requireTaskInProject(id);
     WorkEntity task =
-        taskService.update(id, null, null, null, false, Instant.now(), false, changedBy()).entity();
+        entities
+            .update(Archetype.TASK, id, EntityWrite.implementedAt(Instant.now()), changedBy())
+            .entity();
     announce();
     return new TaskImplemented(
         task.id,
@@ -544,7 +566,7 @@ public class EpicMcpTools {
           "Remove a task of a REPORTED epic. Refused once the owning epic leaves REPORTED.")
   public String removeTask(@ToolArg(description = "id of a task in this project") String id) {
     requireTaskInProject(id);
-    taskService.delete(id, changedBy());
+    entities.delete(Archetype.TASK, id, changedBy());
     announce();
     return "Removed task " + id;
   }
@@ -556,7 +578,7 @@ public class EpicMcpTools {
    * found rather than as forbidden — the model is told nothing about what other projects hold.
    */
   private WorkEntity requireEpicInProject(String epicId) {
-    WorkEntity epic = epicService.get(epicId);
+    WorkEntity epic = entities.get(Archetype.EPIC, epicId);
     if (!scope.requireProjectId().equals(epic.projectId)) {
       throw new NotFoundException("Epic not found in this project: " + epicId);
     }
@@ -565,13 +587,13 @@ public class EpicMcpTools {
 
   /** The owning epic is the membership edge's parent now, carried beside the row as a {@link Nested}. */
   private Nested requireFeatureInProject(String featureId) {
-    Nested feature = featureService.get(featureId);
+    Nested feature = entities.nested(Archetype.FEATURE, featureId);
     requireEpicInProject(feature.parentId());
     return feature;
   }
 
   private Nested requireTaskInProject(String taskId) {
-    Nested task = taskService.get(taskId);
+    Nested task = entities.nested(Archetype.TASK, taskId);
     requireFeatureInProject(task.parentId());
     return task;
   }

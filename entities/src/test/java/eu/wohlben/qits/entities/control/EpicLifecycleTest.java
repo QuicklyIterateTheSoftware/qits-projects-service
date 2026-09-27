@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityStatus;
@@ -32,20 +33,20 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class EpicLifecycleTest extends EntitiesTestSupport {
 
-  @Inject EpicService epicService;
-  @Inject FeatureService featureService;
-  @Inject TaskService taskService;
+  @Inject WorkEntityService workEntities;
   @Inject AuditService auditService;
 
   private static final Instant WHEN = Instant.parse("2026-07-25T10:15:30.00Z");
 
   private WorkEntity epic() {
-    return epicService.create("proj-1", "Planning domain", "The spine", "t");
+    return workEntities
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Planning domain", "The spine"), "t")
+        .entity();
   }
 
   private WorkEntity frozen() {
     WorkEntity epic = epic();
-    return epicService.transition(epic.id, "REFINED", "t").epic();
+    return workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t").entity();
   }
 
   // --- legal moves ---------------------------------------------------------------------------
@@ -54,25 +55,27 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   void aNewEpicIsReportedAndFreezesToRefined() {
     WorkEntity epic = epic();
     assertEquals(EntityStatus.REPORTED.name(), epic.status);
-    var result = epicService.transition(epic.id, "REFINED", "alice");
-    assertEquals(EntityStatus.REFINED.name(), result.epic().status);
+    var result = workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "alice");
+    assertEquals(EntityStatus.REFINED.name(), result.entity().status);
     assertNull(result.successor());
-    assertNull(result.epic().supersededByEntityId);
+    assertNull(result.entity().supersededByEntityId);
   }
 
   @Test
   void aDraftCanBeAbandoned() {
     WorkEntity epic = epic();
-    assertEquals(EntityStatus.DROPPED.name(), epicService.transition(epic.id, "DROPPED", "t").epic().status);
+    assertEquals(
+        EntityStatus.DROPPED.name(),
+        workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t").entity().status);
   }
 
   @Test
   void aFrozenEpicCanBeDroppedAndADropCarriesNoSuccessor() {
     WorkEntity epic = frozen();
-    var result = epicService.transition(epic.id, "DROPPED", "t");
-    assertEquals(EntityStatus.DROPPED.name(), result.epic().status);
+    var result = workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t");
+    assertEquals(EntityStatus.DROPPED.name(), result.entity().status);
     assertNull(result.successor());
-    assertNull(result.epic().supersededByEntityId, "an abandoned epic names no successor");
+    assertNull(result.entity().supersededByEntityId, "an abandoned epic names no successor");
   }
 
   /** The point of qits-392: an epic can be VERIFIED and DONE, which it could not before. */
@@ -80,28 +83,35 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   void anEpicWalksAllTheWayToVerifiedAndDoneAndBack() {
     WorkEntity epic = epic();
     for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      assertEquals(target, epicService.transition(epic.id, target, "t").epic().status);
+      assertEquals(
+          target, workEntities.transition(Archetype.EPIC, epic.id, target, "t").entity().status);
     }
     // Nothing is terminal: DONE reopens to VERIFIED like every other move goes back.
-    assertEquals("VERIFIED", epicService.transition(epic.id, "VERIFIED", "t").epic().status);
+    assertEquals(
+        "VERIFIED",
+        workEntities.transition(Archetype.EPIC, epic.id, "VERIFIED", "t").entity().status);
     // A transition asserts a status on the node it is about and nothing else — no child is moved.
-    assertEquals(EntityStatus.VERIFIED.name(), epicService.get(epic.id).status);
+    assertEquals(EntityStatus.VERIFIED.name(), workEntities.get(Archetype.EPIC, epic.id).status);
   }
 
   @Test
   void aDroppedEpicReopensToReportedAndNowhereElse() {
     WorkEntity epic = frozen();
-    epicService.transition(epic.id, "DROPPED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t");
     for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED")) {
-      assertThrows(ConflictException.class, () -> epicService.transition(epic.id, target, "t"));
+      assertThrows(
+          ConflictException.class,
+          () -> workEntities.transition(Archetype.EPIC, epic.id, target, "t"));
     }
-    assertEquals("REPORTED", epicService.transition(epic.id, "REPORTED", "t").epic().status);
+    assertEquals(
+        "REPORTED",
+        workEntities.transition(Archetype.EPIC, epic.id, "REPORTED", "t").entity().status);
   }
 
   @Test
   void transitionIsAuditedAsAnUpdate() {
     WorkEntity epic = epic();
-    epicService.transition(epic.id, "REFINED", "alice");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "alice");
 
     var history = auditService.listForEntity(AuditEntityType.EPIC, epic.id);
     assertEquals(AuditOperation.UPDATE, history.get(0).operation);
@@ -116,47 +126,79 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     // The motivating case: an epic implemented straight from its description has nothing for the
     // feature derivation to fire on, and used to sit in implementation forever.
     WorkEntity epic = frozen();
-    var result = epicService.transition(epic.id, "IMPLEMENTED", "alice");
-    assertEquals(EntityStatus.IMPLEMENTED.name(), result.epic().status);
+    var result = workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "alice");
+    assertEquals(EntityStatus.IMPLEMENTED.name(), result.entity().status);
     assertNull(result.successor());
   }
 
   @Test
   void markingImplementedStampsTheUnstampedAndKeepsEarlierTimestamps() {
     WorkEntity epic = epic();
-    Nested done = featureService.create(epic.id, "Shipped in June", null, null, "t");
-    Nested open = featureService.create(epic.id, "Finished by the declaration", null, null, "t");
-    Nested task = taskService.create(open.entity().id, "repo-1", "Loose end", null, null, "t");
-    epicService.transition(epic.id, "REFINED", "t");
+    Nested done =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Shipped in June", null, null), "t");
+    Nested open =
+        workEntities.create(
+            Archetype.FEATURE,
+            epic.id,
+            EntityWrite.feature("Finished by the declaration", null, null),
+            "t");
+    Nested task =
+        workEntities.create(
+            Archetype.TASK,
+            open.entity().id,
+            EntityWrite.task("repo-1", "Loose end", null, null),
+            "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     java.time.Instant june = java.time.Instant.parse("2026-06-01T12:00:00Z");
-    featureService.update(done.entity().id, null, null, null, false, june, false, "t");
+    workEntities.update(
+        Archetype.FEATURE,
+        done.entity().id,
+        EntityWrite.nodeEdit(null, null, null, false, june, false),
+        "t");
 
-    epicService.transition(epic.id, "IMPLEMENTED", "alice");
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "alice");
 
-    assertEquals(june, featureService.get(done.entity().id).entity().implementedAt, "history is not rewritten");
-    assertNotNull(featureService.get(open.entity().id).entity().implementedAt);
-    assertNotNull(taskService.get(task.entity().id).entity().implementedAt);
+    assertEquals(
+        june,
+        workEntities.nested(Archetype.FEATURE, done.entity().id).entity().implementedAt,
+        "history is not rewritten");
+    assertNotNull(workEntities.nested(Archetype.FEATURE, open.entity().id).entity().implementedAt);
+    assertNotNull(workEntities.nested(Archetype.TASK, task.entity().id).entity().implementedAt);
   }
 
   @Test
   void implementedFreezesEverythingAndMovesOnlyAlongTheWalk() {
     WorkEntity epic = epic();
-    Nested feature = featureService.create(epic.id, "The one feature", null, null, "t");
-    epicService.transition(epic.id, "REFINED", "t");
-    epicService.transition(epic.id, "IMPLEMENTED", "t");
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("The one feature", null, null), "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "t");
 
     // Structural changes and marker changes are both rejected — the guards' status checks.
     assertThrows(
-        ConflictException.class, () -> featureService.create(epic.id, "Late scope", null, null, "t"));
+        ConflictException.class,
+        () ->
+            workEntities.create(
+                Archetype.FEATURE, epic.id, EntityWrite.feature("Late scope", null, null), "t"));
     assertThrows(
         ConflictException.class,
-        () -> featureService.update(feature.entity().id, null, null, null, false, null, true, "t"));
+        () ->
+            workEntities.update(
+                Archetype.FEATURE,
+                feature.entity().id,
+                EntityWrite.nodeEdit(null, null, null, false, null, true),
+                "t"));
     // Adjacent-only: not back to the draft in one jump, not to where it already is, not to DONE.
     for (String target : List.of("REPORTED", "IMPLEMENTED", "DONE")) {
-      assertThrows(ConflictException.class, () -> epicService.transition(epic.id, target, "t"));
+      assertThrows(
+          ConflictException.class,
+          () -> workEntities.transition(Archetype.EPIC, epic.id, target, "t"));
     }
-    var superseded = epicService.transition(epic.id, EpicService.SUPERSEDE, "t");
-    assertEquals(EntityStatus.DROPPED.name(), superseded.epic().status);
+    var superseded =
+        workEntities.transition(Archetype.EPIC, epic.id, WorkEntityService.SUPERSEDE, "t");
+    assertEquals(EntityStatus.DROPPED.name(), superseded.entity().status);
     assertNotNull(superseded.successor());
   }
 
@@ -167,33 +209,44 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity draft = epic();
     // A draft cannot move to where it already is, and nothing is skipped: IMPLEMENTED is reached
     // through REFINED alone.
-    assertThrows(ConflictException.class, () -> epicService.transition(draft.id, "REPORTED", "t"));
     assertThrows(
-        ConflictException.class, () -> epicService.transition(draft.id, "IMPLEMENTED", "t"));
-    assertThrows(ConflictException.class, () -> epicService.transition(draft.id, "VERIFIED", "t"));
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.EPIC, draft.id, "REPORTED", "t"));
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.EPIC, draft.id, "IMPLEMENTED", "t"));
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.EPIC, draft.id, "VERIFIED", "t"));
     // A draft has no frozen scope to supersede — the operation's own refusal, not the graph's.
     ConflictException noScope =
         assertThrows(
             ConflictException.class,
-            () -> epicService.transition(draft.id, EpicService.SUPERSEDE, "t"));
+            () ->
+                workEntities.transition(
+                    Archetype.EPIC, draft.id, WorkEntityService.SUPERSEDE, "t"));
     assertTrue(noScope.getMessage().contains("REPORTED"), noScope.getMessage());
-    assertEquals(EntityStatus.REPORTED.name(), epicService.get(draft.id).status);
+    assertEquals(EntityStatus.REPORTED.name(), workEntities.get(Archetype.EPIC, draft.id).status);
 
     WorkEntity implementing = frozen();
     assertThrows(
-        ConflictException.class, () -> epicService.transition(implementing.id, "REFINED", "t"));
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.EPIC, implementing.id, "REFINED", "t"));
     assertThrows(
-        ConflictException.class, () -> epicService.transition(implementing.id, "VERIFIED", "t"));
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.EPIC, implementing.id, "VERIFIED", "t"));
   }
 
   @Test
   void aSupersededEpicIsDroppedAndCannotBeSupersededAgain() {
     WorkEntity superseded = frozen();
-    epicService.transition(superseded.id, EpicService.SUPERSEDE, "t");
+    workEntities.transition(Archetype.EPIC, superseded.id, WorkEntityService.SUPERSEDE, "t");
     for (String target :
-        List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED", EpicService.SUPERSEDE)) {
+        List.of(
+            "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED", WorkEntityService.SUPERSEDE)) {
       assertThrows(
-          ConflictException.class, () -> epicService.transition(superseded.id, target, "t"));
+          ConflictException.class,
+          () -> workEntities.transition(Archetype.EPIC, superseded.id, target, "t"));
     }
   }
 
@@ -202,9 +255,13 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     // The retired epic words name no status any more — a missed caller gets a 409, not a write.
     for (String retired : List.of("REFINING", "IMPLEMENTATION", "ABANDONED")) {
-      assertThrows(ConflictException.class, () -> epicService.transition(epic.id, retired, "t"));
+      assertThrows(
+          ConflictException.class,
+          () -> workEntities.transition(Archetype.EPIC, epic.id, retired, "t"));
     }
-    assertThrows(ConflictException.class, () -> epicService.transition(epic.id, "reported", "t"));
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.EPIC, epic.id, "reported", "t"));
   }
 
   // --- the preview ---------------------------------------------------------------------------
@@ -218,25 +275,31 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   void planTransitionAnswersWhatTheMoveWouldBeAndRefusesWhatTheMoveWould() {
     WorkEntity epic = epic();
 
-    var freeze = epicService.planTransition(epic.id, "REFINED");
+    var freeze = workEntities.planTransition(Archetype.EPIC, epic.id, "REFINED");
     assertEquals(EntityStatus.REFINED, freeze.target());
-    assertEquals(epic.id, freeze.epic().id);
+    assertEquals(epic.id, freeze.entity().id);
     assertFalse(freeze.resolving(), "the scope freeze does not resolve the epic");
 
-    assertTrue(epicService.planTransition(epic.id, "DROPPED").resolving());
+    assertTrue(workEntities.planTransition(Archetype.EPIC, epic.id, "DROPPED").resolving());
     assertThrows(
-        ConflictException.class, () -> epicService.planTransition(epic.id, "IMPLEMENTED"));
-    assertThrows(ConflictException.class, () -> epicService.planTransition(epic.id, "DONE"));
-    assertThrows(ConflictException.class, () -> epicService.planTransition(epic.id, "REFINING"));
+        ConflictException.class,
+        () -> workEntities.planTransition(Archetype.EPIC, epic.id, "IMPLEMENTED"));
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.planTransition(Archetype.EPIC, epic.id, "DONE"));
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.planTransition(Archetype.EPIC, epic.id, "REFINING"));
     // The preview reserves nothing: the epic is where it was, and the move still runs.
-    assertEquals(EntityStatus.REPORTED.name(), epicService.get(epic.id).status);
+    assertEquals(EntityStatus.REPORTED.name(), workEntities.get(Archetype.EPIC, epic.id).status);
 
     WorkEntity frozen = frozen();
-    assertTrue(epicService.planTransition(frozen.id, "IMPLEMENTED").resolving());
+    assertTrue(workEntities.planTransition(Archetype.EPIC, frozen.id, "IMPLEMENTED").resolving());
     assertFalse(
-        epicService.planTransition(frozen.id, "REPORTED").resolving(),
+        workEntities.planTransition(Archetype.EPIC, frozen.id, "REPORTED").resolving(),
         "reopening the scope resolves nothing");
-    var supersede = epicService.planTransition(frozen.id, EpicService.SUPERSEDE);
+    var supersede =
+        workEntities.planTransition(Archetype.EPIC, frozen.id, WorkEntityService.SUPERSEDE);
     assertEquals(EntityStatus.DROPPED, supersede.target());
     assertTrue(supersede.resolving());
   }
@@ -246,22 +309,45 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   @Test
   void supersedingCopiesTheWholeScopeIntoAFreshDraft() {
     WorkEntity old = epic();
-    Nested a = featureService.create(old.id, "Feature A", "body A", null, "t");
-    Nested b = featureService.create(old.id, "Feature B", null, a.entity().id, "t");
-    Nested t1 = taskService.create(a.entity().id, "repo-1", "Task one", "body 1", null, "t");
-    Nested t2 = taskService.create(a.entity().id, "repo-2", "Task two", null, t1.entity().id, "t");
-    epicService.transition(old.id, "REFINED", "t");
-    featureService.update(a.entity().id, null, null, null, false, WHEN, false, "t");
-    taskService.update(t1.entity().id, null, null, null, false, WHEN, false, "t");
+    Nested a =
+        workEntities.create(
+            Archetype.FEATURE, old.id, EntityWrite.feature("Feature A", "body A", null), "t");
+    Nested b =
+        workEntities.create(
+            Archetype.FEATURE, old.id, EntityWrite.feature("Feature B", null, a.entity().id), "t");
+    Nested t1 =
+        workEntities.create(
+            Archetype.TASK,
+            a.entity().id,
+            EntityWrite.task("repo-1", "Task one", "body 1", null),
+            "t");
+    Nested t2 =
+        workEntities.create(
+            Archetype.TASK,
+            a.entity().id,
+            EntityWrite.task("repo-2", "Task two", null, t1.entity().id),
+            "t");
+    workEntities.transition(Archetype.EPIC, old.id, "REFINED", "t");
+    workEntities.update(
+        Archetype.FEATURE,
+        a.entity().id,
+        EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+        "t");
+    workEntities.update(
+        Archetype.TASK,
+        t1.entity().id,
+        EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+        "t");
 
-    var result = epicService.transition(old.id, EpicService.SUPERSEDE, "carol");
+    var result =
+        workEntities.transition(Archetype.EPIC, old.id, WorkEntityService.SUPERSEDE, "carol");
     WorkEntity successor = result.successor();
 
     assertNotNull(successor);
     // SUPERSEDED is an operation now, not a status: the row lands DROPPED, and the successor
     // pointer is what says it was superseded rather than abandoned.
-    assertEquals(EntityStatus.DROPPED.name(), result.epic().status);
-    assertEquals(successor.id, result.epic().supersededByEntityId);
+    assertEquals(EntityStatus.DROPPED.name(), result.entity().status);
+    assertEquals(successor.id, result.entity().supersededByEntityId);
     assertEquals(EntityStatus.REPORTED.name(), successor.status);
     assertNotEquals(old.id, successor.id);
     assertEquals(old.projectId, successor.projectId);
@@ -271,7 +357,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     // the next free one; the copied features and tasks keep theirs (new epic, new scope).
     assertEquals("planning-domain-2", successor.slug);
 
-    List<Nested> features = featureService.listByEpic(successor.id);
+    List<Nested> features = workEntities.listChildren(Archetype.FEATURE, successor.id);
     assertEquals(2, features.size());
     Nested copyA = features.get(0);
     Nested copyB = features.get(1);
@@ -283,7 +369,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     // The dependency points at the copy, never back at the old tree.
     assertEquals(copyA.entity().id, copyB.entity().dependsOnEntityId);
 
-    List<Nested> tasks = taskService.listByFeature(copyA.entity().id);
+    List<Nested> tasks = workEntities.listChildren(Archetype.TASK, copyA.entity().id);
     assertEquals(List.of("task-one", "task-two"), tasks.stream().map(x -> x.entity().slug).toList());
     assertEquals("repo-1", tasks.get(0).entity().repositoryId);
     assertEquals("repo-2", tasks.get(1).entity().repositoryId);
@@ -292,19 +378,25 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertNotEquals(t2.entity().id, tasks.get(1).entity().id);
 
     // The old tree is untouched: it is the record of what was discarded.
-    assertEquals(WHEN, featureService.get(a.entity().id).entity().implementedAt);
-    assertEquals(2, featureService.listByEpic(old.id).size());
+    assertEquals(
+        WHEN, workEntities.nested(Archetype.FEATURE, a.entity().id).entity().implementedAt);
+    assertEquals(2, workEntities.listChildren(Archetype.FEATURE, old.id).size());
   }
 
   @Test
   void everyCopiedRowIsAuditedAsACreate() {
     WorkEntity old = epic();
-    Nested a = featureService.create(old.id, "Feature A", null, null, "t");
-    taskService.create(a.entity().id, "repo-1", "Task one", null, null, "t");
-    epicService.transition(old.id, "REFINED", "t");
+    Nested a =
+        workEntities.create(
+            Archetype.FEATURE, old.id, EntityWrite.feature("Feature A", null, null), "t");
+    workEntities.create(
+        Archetype.TASK, a.entity().id, EntityWrite.task("repo-1", "Task one", null, null), "t");
+    workEntities.transition(Archetype.EPIC, old.id, "REFINED", "t");
 
     WorkEntity successor =
-        epicService.transition(old.id, EpicService.SUPERSEDE, "carol").successor();
+        workEntities
+            .transition(Archetype.EPIC, old.id, WorkEntityService.SUPERSEDE, "carol")
+            .successor();
 
     var history = auditService.listForEpic(successor.id);
     assertEquals(3, history.size());
@@ -318,9 +410,12 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   @Test
   void supersedingAnEmptyEpicYieldsAnEmptyDraft() {
     WorkEntity old = frozen();
-    WorkEntity successor = epicService.transition(old.id, EpicService.SUPERSEDE, "t").successor();
+    WorkEntity successor =
+        workEntities
+            .transition(Archetype.EPIC, old.id, WorkEntityService.SUPERSEDE, "t")
+            .successor();
     assertNotNull(successor);
-    assertTrue(featureService.listByEpic(successor.id).isEmpty());
+    assertTrue(workEntities.listChildren(Archetype.FEATURE, successor.id).isEmpty());
   }
 
   // --- the freeze ----------------------------------------------------------------------------
@@ -328,123 +423,244 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   @Test
   void structuralChangesAreRejectedOnceTheScopeIsFrozen() {
     WorkEntity epic = epic();
-    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
-    Nested task = taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
-    epicService.transition(epic.id, "REFINED", "t");
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    Nested task =
+        workEntities.create(
+            Archetype.TASK,
+            feature.entity().id,
+            EntityWrite.task("repo-1", "Task", null, null),
+            "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
 
     ConflictException refused =
         assertThrows(
-            ConflictException.class, () -> epicService.update(epic.id, "Renamed", null, "t"));
+            ConflictException.class,
+            () ->
+                workEntities
+                    .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null), "t")
+                    .entity());
     // The refusal says why: the status it is in, the one scope needs, and the way back.
     assertTrue(refused.getMessage().contains("REFINED"), refused.getMessage());
     assertTrue(refused.getMessage().contains("REPORTED"), refused.getMessage());
     assertThrows(
-        ConflictException.class, () -> featureService.create(epic.id, "Another", null, null, "t"));
+        ConflictException.class,
+        () ->
+            workEntities.create(
+                Archetype.FEATURE, epic.id, EntityWrite.feature("Another", null, null), "t"));
     assertThrows(
         ConflictException.class,
-        () -> featureService.update(feature.entity().id, "Renamed", null, null, false, null, false, "t"));
+        () ->
+            workEntities.update(
+                Archetype.FEATURE,
+                feature.entity().id,
+                EntityWrite.nodeEdit("Renamed", null, null, false, null, false),
+                "t"));
     assertThrows(
         ConflictException.class,
-        () -> featureService.update(feature.entity().id, null, null, null, true, null, false, "t"));
-    assertThrows(ConflictException.class, () -> featureService.delete(feature.entity().id, "t"));
+        () ->
+            workEntities.update(
+                Archetype.FEATURE,
+                feature.entity().id,
+                EntityWrite.nodeEdit(null, null, null, true, null, false),
+                "t"));
     assertThrows(
         ConflictException.class,
-        () -> taskService.create(feature.entity().id, "repo-1", "Another", null, null, "t"));
+        () -> workEntities.delete(Archetype.FEATURE, feature.entity().id, "t"));
     assertThrows(
         ConflictException.class,
-        () -> taskService.update(task.entity().id, "Renamed", null, null, false, null, false, "t"));
-    assertThrows(ConflictException.class, () -> taskService.delete(task.entity().id, "t"));
+        () ->
+            workEntities.create(
+                Archetype.TASK,
+                feature.entity().id,
+                EntityWrite.task("repo-1", "Another", null, null),
+                "t"));
+    assertThrows(
+        ConflictException.class,
+        () ->
+            workEntities.update(
+                Archetype.TASK,
+                task.entity().id,
+                EntityWrite.nodeEdit("Renamed", null, null, false, null, false),
+                "t"));
+    assertThrows(
+        ConflictException.class, () -> workEntities.delete(Archetype.TASK, task.entity().id, "t"));
   }
 
   /** The freeze is reversible in the ordinary way: back to REPORTED, and scope moves again. */
   @Test
   void movingAFrozenEpicBackToReportedReopensItsScope() {
     WorkEntity epic = epic();
-    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
-    epicService.transition(epic.id, "REFINED", "t");
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
     assertThrows(
-        ConflictException.class, () -> featureService.create(epic.id, "Late", null, null, "t"));
+        ConflictException.class,
+        () ->
+            workEntities.create(
+                Archetype.FEATURE, epic.id, EntityWrite.feature("Late", null, null), "t"));
 
-    epicService.transition(epic.id, "REPORTED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REPORTED", "t");
 
-    assertEquals("Renamed", epicService.update(epic.id, "Renamed", null, "t").title);
-    featureService.create(epic.id, "Late", null, null, "t");
-    featureService.update(feature.entity().id, "Renamed too", null, null, false, null, false, "t");
-    assertEquals(2, featureService.listByEpic(epic.id).size());
+    assertEquals(
+        "Renamed",
+        workEntities
+            .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null), "t")
+            .entity()
+            .title);
+    workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("Late", null, null), "t");
+    workEntities.update(
+        Archetype.FEATURE,
+        feature.entity().id,
+        EntityWrite.nodeEdit("Renamed too", null, null, false, null, false),
+        "t");
+    assertEquals(2, workEntities.listChildren(Archetype.FEATURE, epic.id).size());
     // And the markers are closed again — they move only at REFINED.
     ConflictException refused =
         assertThrows(
             ConflictException.class,
             () ->
-                featureService.update(
-                    feature.entity().id, null, null, null, false, WHEN, false, "t"));
+                workEntities.update(
+                    Archetype.FEATURE,
+                    feature.entity().id,
+                    EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                    "t"));
     assertTrue(refused.getMessage().contains("REFINED"), refused.getMessage());
   }
 
   @Test
   void implementedMarkersAreRejectedWhileTheEpicIsStillADraft() {
     WorkEntity epic = epic();
-    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
-    Nested task = taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    Nested task =
+        workEntities.create(
+            Archetype.TASK,
+            feature.entity().id,
+            EntityWrite.task("repo-1", "Task", null, null),
+            "t");
 
     // Nothing ships from a draft — neither setting the marker nor clearing it.
     assertThrows(
         ConflictException.class,
-        () -> featureService.update(feature.entity().id, null, null, null, false, WHEN, false, "t"));
+        () ->
+            workEntities.update(
+                Archetype.FEATURE,
+                feature.entity().id,
+                EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                "t"));
     assertThrows(
         ConflictException.class,
-        () -> featureService.update(feature.entity().id, null, null, null, false, null, true, "t"));
+        () ->
+            workEntities.update(
+                Archetype.FEATURE,
+                feature.entity().id,
+                EntityWrite.nodeEdit(null, null, null, false, null, true),
+                "t"));
     assertThrows(
         ConflictException.class,
-        () -> taskService.update(task.entity().id, null, null, null, false, WHEN, false, "t"));
+        () ->
+            workEntities.update(
+                Archetype.TASK,
+                task.entity().id,
+                EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                "t"));
     assertThrows(
         ConflictException.class,
-        () -> taskService.update(task.entity().id, null, null, null, false, null, true, "t"));
+        () ->
+            workEntities.update(
+                Archetype.TASK,
+                task.entity().id,
+                EntityWrite.nodeEdit(null, null, null, false, null, true),
+                "t"));
   }
 
   @Test
   void oneCallCannotMixScopeAndMarkers() {
     WorkEntity epic = epic();
-    Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
-    epicService.transition(epic.id, "REFINED", "t");
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
 
     // No phase allows both, so the pair is refused whichever phase the epic is in.
     assertThrows(
         ConflictException.class,
-        () -> featureService.update(feature.entity().id, "Renamed", null, null, false, WHEN, false, "t"));
+        () ->
+            workEntities.update(
+                Archetype.FEATURE,
+                feature.entity().id,
+                EntityWrite.nodeEdit("Renamed", null, null, false, WHEN, false),
+                "t"));
   }
 
   @Test
   void resolvedEpicsRejectEveryWrite() {
     for (List<String> walk :
         List.of(
-            List.of(EpicService.SUPERSEDE),
+            List.of(WorkEntityService.SUPERSEDE),
             List.of("DROPPED"),
             List.of("IMPLEMENTED", "VERIFIED"),
             List.of("IMPLEMENTED", "VERIFIED", "DONE"))) {
       WorkEntity epic = epic();
-      Nested feature = featureService.create(epic.id, "Feature", null, null, "t");
-      Nested task = taskService.create(feature.entity().id, "repo-1", "Task", null, null, "t");
-      epicService.transition(epic.id, "REFINED", "t");
+      Nested feature =
+          workEntities.create(
+              Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+      Nested task =
+          workEntities.create(
+              Archetype.TASK,
+              feature.entity().id,
+              EntityWrite.task("repo-1", "Task", null, null),
+              "t");
+      workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
       for (String target : walk) {
-        epicService.transition(epic.id, target, "t");
+        workEntities.transition(Archetype.EPIC, epic.id, target, "t");
       }
 
       assertThrows(
-          ConflictException.class, () -> epicService.update(epic.id, "Renamed", null, "t"));
-      assertThrows(
-          ConflictException.class, () -> featureService.create(epic.id, "Another", null, null, "t"));
+          ConflictException.class,
+          () ->
+              workEntities
+                  .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null), "t")
+                  .entity());
       assertThrows(
           ConflictException.class,
-          () -> featureService.update(feature.entity().id, "Renamed", null, null, false, null, false, "t"));
+          () ->
+              workEntities.create(
+                  Archetype.FEATURE, epic.id, EntityWrite.feature("Another", null, null), "t"));
       assertThrows(
           ConflictException.class,
-          () -> featureService.update(feature.entity().id, null, null, null, false, WHEN, false, "t"));
-      assertThrows(ConflictException.class, () -> featureService.delete(feature.entity().id, "t"));
+          () ->
+              workEntities.update(
+                  Archetype.FEATURE,
+                  feature.entity().id,
+                  EntityWrite.nodeEdit("Renamed", null, null, false, null, false),
+                  "t"));
       assertThrows(
           ConflictException.class,
-          () -> taskService.update(task.entity().id, null, null, null, false, WHEN, false, "t"));
-      assertThrows(ConflictException.class, () -> taskService.delete(task.entity().id, "t"));
+          () ->
+              workEntities.update(
+                  Archetype.FEATURE,
+                  feature.entity().id,
+                  EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                  "t"));
+      assertThrows(
+          ConflictException.class,
+          () -> workEntities.delete(Archetype.FEATURE, feature.entity().id, "t"));
+      assertThrows(
+          ConflictException.class,
+          () ->
+              workEntities.update(
+                  Archetype.TASK,
+                  task.entity().id,
+                  EntityWrite.nodeEdit(null, null, null, false, WHEN, false),
+                  "t"));
+      assertThrows(
+          ConflictException.class,
+          () -> workEntities.delete(Archetype.TASK, task.entity().id, "t"));
     }
   }
 
@@ -452,11 +668,13 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   void deletingAnEpicStaysAllowedInEveryStatus() {
     for (String target : List.of("REFINED", "DROPPED")) {
       WorkEntity epic = epic();
-      featureService.create(epic.id, "Feature", null, null, "t");
-      epicService.transition(epic.id, target, "t");
+      workEntities.create(
+          Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+      workEntities.transition(Archetype.EPIC, epic.id, target, "t");
       // Deleting removes the row rather than editing a frozen scope; the audit log outlives it.
-      epicService.delete(epic.id, "t");
-      inFreshTx(() -> assertTrue(epicService.listByProject("proj-1", target).isEmpty()));
+      workEntities.delete(Archetype.EPIC, epic.id, "t");
+      inFreshTx(
+          () -> assertTrue(workEntities.listByProject(Archetype.EPIC, "proj-1", target).isEmpty()));
     }
   }
 
@@ -467,20 +685,26 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity draft = epic();
     WorkEntity implementing = frozen();
     WorkEntity abandoned = epic();
-    epicService.transition(abandoned.id, "DROPPED", "t");
+    workEntities.transition(Archetype.EPIC, abandoned.id, "DROPPED", "t");
 
-    assertEquals(3, epicService.listByProject("proj-1").size());
+    assertEquals(3, workEntities.listByProject(Archetype.EPIC, "proj-1").size());
     assertEquals(
         List.of(draft.id),
-        epicService.listByProject("proj-1", "REPORTED").stream().map(e -> e.id).toList());
+        workEntities.listByProject(Archetype.EPIC, "proj-1", "REPORTED").stream()
+            .map(e -> e.id)
+            .toList());
     assertEquals(
         List.of(implementing.id),
-        epicService.listByProject("proj-1", "REFINED").stream().map(e -> e.id).toList());
+        workEntities.listByProject(Archetype.EPIC, "proj-1", "REFINED").stream()
+            .map(e -> e.id)
+            .toList());
     assertEquals(
         List.of(abandoned.id),
-        epicService.listByProject("proj-1", "DROPPED").stream().map(e -> e.id).toList());
-    assertTrue(epicService.listByProject("proj-1", "DONE").isEmpty());
+        workEntities.listByProject(Archetype.EPIC, "proj-1", "DROPPED").stream()
+            .map(e -> e.id)
+            .toList());
+    assertTrue(workEntities.listByProject(Archetype.EPIC, "proj-1", "DONE").isEmpty());
     // A blank filter is no filter.
-    assertEquals(3, epicService.listByProject("proj-1", "  ").size());
+    assertEquals(3, workEntities.listByProject(Archetype.EPIC, "proj-1", "  ").size());
   }
 }
