@@ -363,6 +363,44 @@ public class UnattendedGateTicketTest {
   }
 
   /**
+   * <b>The live failure of 2026-09-29, reproduced.</b> Every bus consumer runs inside the eventstream
+   * funnel's own {@code requiringNew} transaction, so the push to main that finalizes a request is
+   * handled with a projects-database transaction open on the thread. The close made from there used
+   * to run inside it, and the transition's preview answered "Ticket not found" — the comment landed
+   * and the ticket stayed REPORTED. Delivered here exactly that way: the real listener, inside a
+   * transaction of the test's.
+   */
+  @Test
+  public void aFinalizationHeardInsideTheConsumersTransactionStillDropsTheTicket() {
+    String version = uniqueVersion();
+    String releasedSha = RecordingBackingBranchMerger.freshSha();
+    Released released = releasedWithTicket(version, releasedSha);
+    awaitComment(released.ticketId(), "released as");
+
+    String mainSha = RecordingBackingBranchMerger.freshSha();
+    gitHost.containsCommit(repoId, releasedSha, mainSha);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              // The funnel claims the frame in the projects database BEFORE the handler runs, so
+              // that datasource is already enlisted in the transaction the handler inherits. An
+              // empty transaction reproduces nothing — it is the enlisted connection the ticket
+              // store must not be made to join. A read enlists it just as the claim's insert does,
+              // without holding a lock anything below would wait on.
+              ReleaseRequest.count("projectId", projectId);
+              headMovedTo("main", mainSha);
+            });
+
+    awaitState(released.requestId(), "FINALIZED");
+    awaitStatus(released.ticketId(), "DROPPED");
+    assertTrue(awaitClosedAt(released.requestId()) != null, "and the request is stamped");
+    List<String> finalized =
+        commentBodies(released.ticketId()).stream().filter(c -> c.contains("FINALIZED")).toList();
+    assertEquals(1, finalized.size(), "said once: " + finalized);
+    assertTrue(finalized.get(0).contains(version), finalized.get(0));
+  }
+
+  /**
    * <b>The ordering a repository with nothing to deploy produces, pinned.</b> Its tag goes to main
    * inside the release itself ({@code ReleaseFinalization.onReleased}), so FINALIZED — and with it
    * the ticket's close — is written BEFORE the "released as" comment would be. That comment is then

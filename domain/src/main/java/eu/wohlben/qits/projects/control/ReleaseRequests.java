@@ -39,6 +39,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.persistence.LockModeType;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
+import jakarta.transaction.TransactionSynchronizationRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -342,6 +345,9 @@ public class ReleaseRequests {
   @Inject Instance<DownstreamComponents> downstreamComponents;
 
   @Inject Instance<UnattendedGateTickets> gateTickets;
+
+  /** Asked whether a caller's transaction is active — see {@link #closeGateTicket}. */
+  @Inject Instance<TransactionSynchronizationRegistry> transactions;
 
   /**
    * The two hops a <b>rerun</b> of a phase goes out through — qits-ci for the QA and publish runs,
@@ -2875,6 +2881,22 @@ public class ReleaseRequests {
    * wrote it. A false answer, an absent port and a port that threw all leave {@link
    * ReleaseRequest#gateTicketClosedAt} null, which is exactly what puts the request on {@link
    * #sweepGateTickets}' worklist — the inline call is the prompt path, the sweep is the floor.
+   *
+   * <h2>"After its own transaction" is not "outside every transaction"</h2>
+   *
+   * <p>The endings reached from a bus consumer — {@link #onMainMoved} and {@link #onBranchDeleted}
+   * off the head listener, {@link #onMainMoved} again through {@code ReleaseFinalization.merge} off
+   * a verdict or a deployment — run inside the eventstream library's own claim transaction: its
+   * durable funnel calls every handler in a {@code requiringNew} of its own. This method's
+   * transactions are {@code requiringNew} too, so the ending still commits on its own; but the port
+   * call made from here would run <em>inside the funnel's transaction</em>, which is a
+   * projects-database transaction the ticket store has no business in, and that is exactly how the
+   * first live close failed (2026-09-29: the transition's preview, which opens no transaction of its
+   * own, answered "Ticket not found" from inside it). So when a transaction is active on this
+   * thread the close is <b>deferred</b>: an interposed synchronization hands it to the release
+   * worker once that transaction has committed, and drops it if it rolled back — the frame will be
+   * offered again, and the sweep covers it either way. With no transaction active (the HTTP doors,
+   * the worker, the scheduler) it runs inline, as before.
    */
   private void closeGateTicket(
       String requestId,
@@ -2885,6 +2907,72 @@ public class ReleaseRequests {
     if (ticketId == null || !gateTickets.isResolvable()) {
       return;
     }
+    TransactionSynchronizationRegistry registry = activeTransaction();
+    if (registry == null) {
+      closeGateTicketNow(requestId, ticketId, repoName, ending, detail);
+      return;
+    }
+    try {
+      registry.registerInterposedSynchronization(
+          new Synchronization() {
+            @Override
+            public void beforeCompletion() {}
+
+            @Override
+            public void afterCompletion(int status) {
+              if (status != Status.STATUS_COMMITTED) {
+                LOG.debugf(
+                    "The transaction that saw request %s end did not commit; its ticket %s is"
+                        + " left to the sweep",
+                    requestId,
+                    ticketId);
+                return;
+              }
+              try {
+                worker.submit(
+                    () -> closeGateTicketNow(requestId, ticketId, repoName, ending, detail));
+              } catch (RuntimeException e) {
+                // Shutting down: the sweep closes it on the next start.
+                LOG.debugf(e, "Could not hand the close of ticket %s to the worker", ticketId);
+              }
+            }
+          });
+    } catch (RuntimeException e) {
+      // Could not defer; never run it inside somebody else's transaction instead. The sweep has it.
+      LOG.warnf(
+          e,
+          "Could not defer closing ticket %s of release request %s; the sweep will",
+          ticketId,
+          requestId);
+    }
+  }
+
+  /**
+   * The registry of the transaction active on this thread, or null where there is none — the one
+   * question {@link #closeGateTicket} asks before calling out.
+   */
+  private TransactionSynchronizationRegistry activeTransaction() {
+    if (!transactions.isResolvable()) {
+      return null;
+    }
+    try {
+      TransactionSynchronizationRegistry registry = transactions.get();
+      int status = registry.getTransactionStatus();
+      return status == Status.STATUS_ACTIVE || status == Status.STATUS_MARKED_ROLLBACK
+          ? registry
+          : null;
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  /** {@link #closeGateTicket}'s body, on a thread with no transaction of its caller's. */
+  private void closeGateTicketNow(
+      String requestId,
+      String ticketId,
+      String repoName,
+      UnattendedGateTickets.Ending ending,
+      String detail) {
     boolean done;
     try {
       done = gateTickets.get().ended(ticketId, requestId, repoName, ending, detail);

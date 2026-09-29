@@ -177,9 +177,8 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
    * would be a stamp that stops the sweep from ever closing a ticket that is still there. So only the
    * entities module's own {@link NotFoundException} reads as gone; any other failure is retried.
    *
-   * <p>A comment written before a failed transition is written again on the retry. That is accepted:
-   * it takes a failure between two writes to the same database, and a repeated sentence on a thread
-   * costs less than a close that is never attempted again.
+   * <p>The ticket is moved before the ending is said on it, so a move that failed has written
+   * nothing and its retry cannot repeat a sentence already on the thread.
    *
    * <p>{@link ActivateRequestContext} because the callers are the bus consumers, the release worker
    * and the scheduler — none with a request scope — and the transition's preview reads the row
@@ -193,50 +192,14 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
       return true;
     }
     try {
-      WorkEntity ticket;
-      try {
-        // Its own transaction, for reusableTicket's reason: no caller brings one.
-        ticket =
-            QuarkusTransaction.requiringNew().call(() -> entities.get(Archetype.TICKET, ticketId));
-      } catch (RuntimeException e) {
-        if (!isNotFound(e)) {
-          throw e;
-        }
-        LOG.debugf(
-            "The ticket %s of ended release request %s is gone; nothing to close",
-            ticketId, requestId);
-        return true;
-      }
-      if (EntityStatus.DONE.name().equals(ticket.status)
-          || EntityStatus.DROPPED.name().equals(ticket.status)) {
-        return true;
-      }
-      if (ticket.ticketType != TicketType.MAINTENANCE) {
-        tickets.addComment(
-            ticket.id,
-            endedSentence(requestId, repoName, ending, detail)
-                + "\n\nThis ticket is no longer MAINTENANCE, so it is left open: whoever retyped it"
-                + " has taken it over.",
-            REPORTER);
-        redraw(ticket.projectId);
-        LOG.infof(
-            "Release request %s ended as %s; ticket %s is %s now, so it was only told",
-            requestId, ending, ticket.id, ticket.ticketType);
-        return true;
-      }
-      tickets.addComment(
-          ticket.id,
-          endedSentence(requestId, repoName, ending, detail)
-              + "\n\nThere is no stuck request left for this ticket to be about, so the platform"
-              + " drops it. If the failure comes back, a fresh request's red gate files a fresh"
-              + " ticket.",
-          REPORTER);
-      resolutions.transition(Archetype.TICKET, ticket.id, EntityStatus.DROPPED.name(), REPORTER);
-      redraw(ticket.projectId);
-      LOG.infof(
-          "Release request %s ended as %s; dropped its MAINTENANCE ticket %s",
-          requestId, ending, ticket.id);
-      return true;
+      // With any caller's transaction SUSPENDED, whoever the caller is. The ticket store is another
+      // database and the two are never enlisted together (WorkEntityService: every write its own
+      // requiringNew, no XA); its reads and writes bring their own transactions, and the one read
+      // that does not — the transition's preview — must see no transaction rather than the
+      // caller's. Inside the eventstream funnel's projects-database transaction that preview
+      // answered "Ticket not found" for a ticket that was there (2026-09-29).
+      return QuarkusTransaction.suspendingExisting()
+          .call(() -> close(ticketId, requestId, repoName, ending, detail));
     } catch (RuntimeException e) {
       LOG.warnf(
           e,
@@ -247,6 +210,62 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
           ending);
       return false;
     }
+  }
+
+  /** {@link #ended}'s body, with no transaction of the caller's on the thread. */
+  private boolean close(
+      String ticketId, String requestId, String repoName, Ending ending, String detail) {
+    WorkEntity ticket;
+    try {
+      // Its own transaction: whatever the caller had is suspended by now, so there is none here.
+      ticket =
+          QuarkusTransaction.requiringNew().call(() -> entities.get(Archetype.TICKET, ticketId));
+    } catch (RuntimeException e) {
+      if (!isNotFound(e)) {
+        throw e;
+      }
+      LOG.debugf(
+          "The ticket %s of ended release request %s is gone; nothing to close",
+          ticketId, requestId);
+      return true;
+    }
+    if (EntityStatus.DONE.name().equals(ticket.status)
+        || EntityStatus.DROPPED.name().equals(ticket.status)) {
+      return true;
+    }
+    if (ticket.ticketType != TicketType.MAINTENANCE) {
+      tickets.addComment(
+          ticket.id,
+          endedSentence(requestId, repoName, ending, detail)
+              + "\n\nThis ticket is no longer MAINTENANCE, so it is left open: whoever retyped it"
+              + " has taken it over.",
+          REPORTER);
+      redraw(ticket.projectId);
+      LOG.infof(
+          "Release request %s ended as %s; ticket %s is %s now, so it was only told",
+          requestId, ending, ticket.id, ticket.ticketType);
+      return true;
+    }
+    // The move FIRST and the comment after it: a failed move then leaves nothing written, so the
+    // retry cannot say the same sentence twice; a failed comment after a move that landed is one
+    // WARN, and the ticket is closed all the same — a retry would find it DROPPED and do nothing.
+    resolutions.transition(Archetype.TICKET, ticket.id, EntityStatus.DROPPED.name(), REPORTER);
+    try {
+      tickets.addComment(
+          ticket.id,
+          endedSentence(requestId, repoName, ending, detail)
+              + "\n\nThere is no stuck request left for this ticket to be about, so the platform"
+              + " drops it. If the failure comes back, a fresh request's red gate files a fresh"
+              + " ticket.",
+          REPORTER);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Dropped ticket %s but could not say why on its thread", ticket.id);
+    }
+    redraw(ticket.projectId);
+    LOG.infof(
+        "Release request %s ended as %s; dropped its MAINTENANCE ticket %s",
+        requestId, ending, ticket.id);
+    return true;
   }
 
   /** The entities module's 404, however the transaction wrapper handed it back. */
