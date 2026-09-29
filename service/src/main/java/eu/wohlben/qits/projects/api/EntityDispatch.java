@@ -4,7 +4,7 @@ import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
 import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.control.ReadPatience;
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -82,7 +82,7 @@ public class EntityDispatch {
   @Inject EntityDispatchService entities;
 
   /** A ticket's thread is written through the comment service, the one writer of comments. */
-  @Inject TicketCommentService tickets;
+  @Inject EntityCommentService tickets;
 
   @Inject EntityWorkspaces workspaces;
 

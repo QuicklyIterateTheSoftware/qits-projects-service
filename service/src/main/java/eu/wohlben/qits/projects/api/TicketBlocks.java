@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -43,7 +43,7 @@ import jakarta.inject.Inject;
  * <h2>The reason is a comment and not a column</h2>
  *
  * <p>A blocker is a remark with an author and a time — which is what the thread already is — so it
- * lands through {@code TicketCommentService.addComment} the way {@code PhaseAdvance.say} lands what
+ * lands through {@code EntityCommentService.addComment} the way {@code PhaseAdvance.say} lands what
  * became of a phase. A column would be a second place the same sentence lives, and it would go
  * stale the moment the thread moved past it. It is <b>required when blocking</b> because a block
  * with no stated blocker is one nobody can clear: the next reader is told the work stopped and not
@@ -59,7 +59,7 @@ import jakarta.inject.Inject;
 @ApplicationScoped
 public class TicketBlocks {
 
-  @Inject TicketCommentService tickets;
+  @Inject EntityCommentService tickets;
 
   @Inject WorkEntityService entities;
 

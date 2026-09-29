@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -184,7 +184,7 @@ public class PhaseAdvance {
 
   private static final Logger LOG = Logger.getLogger(PhaseAdvance.class);
 
-  @Inject TicketCommentService tickets;
+  @Inject EntityCommentService tickets;
 
   @Inject EntityWorkspaces workspaces;
 

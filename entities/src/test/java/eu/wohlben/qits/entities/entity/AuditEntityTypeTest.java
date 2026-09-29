@@ -51,19 +51,20 @@ class AuditEntityTypeTest {
             .filter(word -> !archetypes.contains(word))
             .collect(Collectors.toSet());
 
-    assertEquals(Set.of("TICKET_COMMENT", "DOSSIER_PAGE"), extra);
+    assertEquals(Set.of("COMMENT", "DOSSIER_PAGE"), extra);
   }
 
   /**
    * The database's half of the same vocabulary. {@code ck_audit_entity_type} (V17, V13's six words
-   * plus {@code CAMPAIGN}) permits exactly these seven words, so a constant added here without the
+   * plus {@code CAMPAIGN}; V20 renamed {@code TICKET_COMMENT} to {@code COMMENT} when every
+   * archetype got a thread) permits exactly these seven words, so a constant added here without the
    * migration would be a row the column refuses.
    */
   @Test
   void theEnumIsExactlyWhatTheCheckConstraintPermits() {
     assertEquals(
         Set.of(
-            "CAMPAIGN", "EPIC", "FEATURE", "TASK", "TICKET", "TICKET_COMMENT", "DOSSIER_PAGE"),
+            "CAMPAIGN", "EPIC", "FEATURE", "TASK", "TICKET", "COMMENT", "DOSSIER_PAGE"),
         Arrays.stream(AuditEntityType.values()).map(Enum::name).collect(Collectors.toSet()));
     assertTrue(
         Archetype.values().length == 5,

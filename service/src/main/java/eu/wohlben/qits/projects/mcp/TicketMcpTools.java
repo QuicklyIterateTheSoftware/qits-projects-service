@@ -1,11 +1,11 @@
 package eu.wohlben.qits.projects.mcp;
 
 import eu.wohlben.qits.entities.control.EntityWrite;
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.entity.TicketComment;
+import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
@@ -85,7 +85,7 @@ public class TicketMcpTools {
 
   @Inject WorkEntityService entities;
 
-  @Inject TicketCommentService thread;
+  @Inject EntityCommentService thread;
 
   /** Every ticket move goes through here, so a resolving one discards the ticket's refinement. */
   @Inject eu.wohlben.qits.projects.refinementhost.EntityResolutions resolutions;
@@ -440,6 +440,10 @@ public class TicketMcpTools {
     return summarize(unblocked, projectSlug());
   }
 
+  // The two ticket comment tools predate the thread every entity has (qits-551) and stay as
+  // delegates onto the same service, names and shapes unchanged: both names are pre-approved in
+  // other repositories. add_comment / update_comment on CommentMcpTools are the general pair.
+
   @McpServer("repository")
   @Tool(
       name = "add_ticket_comment",
@@ -451,7 +455,7 @@ public class TicketMcpTools {
       @ToolArg(description = "id of a ticket in this project") String ticketId,
       @ToolArg(description = "the remark, Markdown") String body) {
     requireTicketInProject(ticketId);
-    TicketComment comment = thread.addComment(ticketId, body, changedBy());
+    EntityComment comment = thread.addComment(ticketId, body, changedBy());
     announce();
     return new CommentDetail(comment.id, comment.author, comment.body, comment.createdAt);
   }
@@ -472,7 +476,7 @@ public class TicketMcpTools {
       @ToolArg(description = "the remark as it should now read, Markdown; it replaces the old body")
           String body) {
     requireCommentInProject(id);
-    TicketComment comment = thread.updateComment(id, body, changedBy());
+    EntityComment comment = thread.updateComment(id, body, changedBy());
     announce();
     return new CommentDetail(comment.id, comment.author, comment.body, comment.createdAt);
   }
@@ -497,9 +501,15 @@ public class TicketMcpTools {
    * under, because that is the id the caller supplied and the only one it should learn anything
    * about.
    */
-  private TicketComment requireCommentInProject(String commentId) {
-    TicketComment comment = thread.getComment(commentId);
-    if (!scope.requireProjectId().equals(entities.get(Archetype.TICKET, comment.ticketId).projectId)) {
+  private EntityComment requireCommentInProject(String commentId) {
+    EntityComment comment;
+    try {
+      comment = thread.getComment(commentId);
+    } catch (NotFoundException e) {
+      // The ticket-era wording, kept: this tool's refusals are part of the shape it keeps.
+      throw new NotFoundException("Ticket comment not found: " + commentId);
+    }
+    if (!scope.requireProjectId().equals(entities.find(comment.entityId).projectId)) {
       throw new NotFoundException("Ticket comment not found in this project: " + commentId);
     }
     return comment;

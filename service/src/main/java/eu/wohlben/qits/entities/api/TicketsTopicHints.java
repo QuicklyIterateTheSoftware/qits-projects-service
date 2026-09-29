@@ -1,8 +1,10 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityComment;
+import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -30,7 +32,7 @@ class TicketsTopicHints {
 
   @Inject WorkEntityService entities;
 
-  @Inject TicketCommentService comments;
+  @Inject EntityCommentService comments;
 
   /** Announce that the project's tickets changed. */
   void fire(String projectId) {
@@ -41,7 +43,22 @@ class TicketsTopicHints {
     return entities.get(Archetype.TICKET, ticketId).projectId;
   }
 
+  /**
+   * The project of the entity a comment hangs on, of whatever archetype — the thread outlives a
+   * re-archetype. The comment's own 404 keeps the ticket-era wording the delegate routes answered.
+   */
   String projectOfComment(String commentId) {
-    return projectOfTicket(comments.getComment(commentId).ticketId);
+    EntityComment comment;
+    try {
+      comment = comments.getComment(commentId);
+    } catch (NotFoundException e) {
+      throw new NotFoundException("Ticket comment not found: " + commentId);
+    }
+    return projectOfEntity(comment.entityId);
+  }
+
+  /** The project of an entity of any archetype, or a 404. */
+  String projectOfEntity(String entityId) {
+    return entities.find(entityId).projectId;
   }
 }

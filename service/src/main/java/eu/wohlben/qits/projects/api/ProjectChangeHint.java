@@ -1,5 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.entity.Archetype;
+
 /**
  * A payload-free "something changed, re-read it" signal for one project's live channel — the
  * projects flavour of qits-workspaces' {@code WorkspaceChangeHint}. Fired at every epic mutation
@@ -20,7 +22,7 @@ public record ProjectChangeHint(String projectId, Topic topic) {
     /** An epic, feature or task of this project was created, changed, moved or removed. */
     EPICS,
     /**
-     * A ticket of this project, or one of its comments, was created, changed, transitioned or
+     * A ticket of this project, or a comment on one, was created, changed, transitioned or
      * removed. A topic of its own rather than a second producer on {@link #EPICS}: tickets and
      * epics are sibling roots on separate screens, so one channel would redraw a board because
      * somebody commented on a bug.
@@ -31,6 +33,16 @@ public record ProjectChangeHint(String projectId, Topic topic) {
      * wire contract from the start so the frontend can subscribe to it before the agent registry
      * exists, rather than needing a second protocol change later.
      */
-    AGENT_ACTIVITY
+    AGENT_ACTIVITY;
+
+    /**
+     * <b>The topic a write about an entity of {@code archetype} redraws</b> — {@link #TICKETS} for a
+     * ticket, {@link #EPICS} for every other archetype (an epic, a feature, a task, a campaign).
+     * Read by the writers that address an entity of any kind, a comment above all (qits-551), so
+     * the rule the two topics split on is stated once.
+     */
+    public static Topic of(Archetype archetype) {
+      return archetype == Archetype.TICKET ? TICKETS : EPICS;
+    }
   }
 }

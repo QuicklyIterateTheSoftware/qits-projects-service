@@ -951,4 +951,51 @@
   "response" : {
     "message" : "Campaign not found: no-such-campaign"
   }
+}, {
+  "request" : "POST /projects/api/entities/<project>-4/comments",
+  "body" : {
+    "body" : "Step 2 waits on the approval"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:16>",
+      "entityId" : "<id:5>",
+      "author" : "dev",
+      "body" : "Step 2 waits on the approval",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "PATCH /projects/api/comments/<id:16>",
+  "body" : {
+    "body" : "Step 2 was approved"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:16>",
+      "entityId" : "<id:5>",
+      "author" : "dev",
+      "body" : "Step 2 was approved",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "GET /projects/api/entities/<id:5>/comments",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "comment" : {
+        "id" : "<id:16>",
+        "entityId" : "<id:5>",
+        "author" : "dev",
+        "body" : "Step 2 was approved",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
 } ]

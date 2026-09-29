@@ -476,6 +476,214 @@
     "message" : "dependsOnTaskId would create a dependency cycle"
   }
 }, {
+  "request" : "POST /projects/api/entities/<project>-1/comments",
+  "body" : {
+    "body" : "Why the spine is one table"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:8>",
+      "entityId" : "<id:2>",
+      "author" : "dev",
+      "body" : "Why the spine is one table",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:3>/comments",
+  "body" : {
+    "body" : "Part A needs the index first"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:9>",
+      "entityId" : "<id:3>",
+      "author" : "dev",
+      "body" : "Part A needs the index first",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:6>/comments",
+  "body" : {
+    "body" : "Task one found a race"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:10>",
+      "entityId" : "<id:6>",
+      "author" : "dev",
+      "body" : "Task one found a race",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:2>/comments",
+  "body" : {
+    "body" : " "
+  },
+  "status" : 400,
+  "response" : {
+    "title" : "Constraint Violation",
+    "status" : 400,
+    "violations" : [ {
+      "field" : "create.request.body",
+      "message" : "must not be blank"
+    } ]
+  }
+}, {
+  "request" : "POST /projects/api/entities/no-such-entity/comments",
+  "body" : {
+    "body" : "x"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Entity not found: no-such-entity"
+  }
+}, {
+  "request" : "POST /projects/api/entities/<project>-1999/comments",
+  "body" : {
+    "body" : "x"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Entity not found: <project>-1999"
+  }
+}, {
+  "request" : "GET /projects/api/entities/<project>-1/comments",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "comment" : {
+        "id" : "<id:8>",
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Why the spine is one table",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/entities/<id:3>/comments",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "comment" : {
+        "id" : "<id:9>",
+        "entityId" : "<id:3>",
+        "author" : "dev",
+        "body" : "Part A needs the index first",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/entities/<id:6>/comments",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "comment" : {
+        "id" : "<id:10>",
+        "entityId" : "<id:6>",
+        "author" : "dev",
+        "body" : "Task one found a race",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/entities/no-such-entity/comments",
+  "status" : 404,
+  "response" : {
+    "message" : "Entity not found: no-such-entity"
+  }
+}, {
+  "request" : "PATCH /projects/api/comments/<id:8>",
+  "body" : {
+    "body" : "Why the spine is one table, reworded"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:8>",
+      "entityId" : "<id:2>",
+      "author" : "dev",
+      "body" : "Why the spine is one table, reworded",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "PATCH /projects/api/comments/<id:8>",
+  "body" : { },
+  "status" : 400,
+  "response" : {
+    "message" : "a merge patch must name at least one property"
+  }
+}, {
+  "request" : "PATCH /projects/api/comments/<id:8>",
+  "body" : {
+    "body" : null
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "body cannot be cleared — delete the comment instead"
+  }
+}, {
+  "request" : "PATCH /projects/api/comments/<id:8>",
+  "body" : {
+    "author" : "mallory"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "author is server-owned and never written"
+  }
+}, {
+  "request" : "PATCH /projects/api/comments/no-such-comment",
+  "body" : {
+    "body" : "x"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Comment not found: no-such-comment"
+  }
+}, {
+  "request" : "DELETE /projects/api/comments/<id:9>",
+  "status" : 200,
+  "response" : {
+    "success" : true
+  }
+}, {
+  "request" : "DELETE /projects/api/comments/no-such-comment",
+  "status" : 404,
+  "response" : {
+    "message" : "Comment not found: no-such-comment"
+  }
+}, {
+  "request" : "GET /projects/api/entities/<id:2>/comments",
+  "status" : 200,
+  "response" : {
+    "entries" : [ {
+      "comment" : {
+        "id" : "<id:8>",
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Why the spine is one table, reworded",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    } ]
+  }
+}, {
   "request" : "POST /projects/api/entities/transition",
   "body" : {
     "<id:2>" : {
@@ -751,14 +959,14 @@
       "title" : "The plan, restated",
       "slug" : "the-plan",
       "status" : "DROPPED",
-      "supersededByEpicId" : "<id:8>",
+      "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
     },
     "successor" : {
-      "id" : "<id:8>",
+      "id" : "<id:11>",
       "projectId" : "<id:1>",
       "number" : 6,
       "qualifiedId" : "<project>-6",
@@ -784,7 +992,7 @@
       "title" : "The plan, restated",
       "slug" : "the-plan",
       "status" : "DROPPED",
-      "supersededByEpicId" : "<id:8>",
+      "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
@@ -792,11 +1000,11 @@
     }
   }
 }, {
-  "request" : "GET /projects/api/epics/<id:8>",
+  "request" : "GET /projects/api/epics/<id:11>",
   "status" : 200,
   "response" : {
     "epic" : {
-      "id" : "<id:8>",
+      "id" : "<id:11>",
       "projectId" : "<id:1>",
       "number" : 6,
       "qualifiedId" : "<project>-6",
@@ -823,7 +1031,7 @@
         "title" : "The plan, restated",
         "slug" : "the-plan",
         "status" : "DROPPED",
-        "supersededByEpicId" : "<id:8>",
+        "supersededByEpicId" : "<id:11>",
         "description" : "The spine, restated",
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
@@ -831,7 +1039,7 @@
       }
     }, {
       "epic" : {
-        "id" : "<id:8>",
+        "id" : "<id:11>",
         "projectId" : "<id:1>",
         "number" : 6,
         "qualifiedId" : "<project>-6",
@@ -847,13 +1055,13 @@
     } ]
   }
 }, {
-  "request" : "GET /projects/api/epics/<id:8>/features",
+  "request" : "GET /projects/api/epics/<id:11>/features",
   "status" : 200,
   "response" : {
     "entries" : [ {
       "feature" : {
-        "id" : "<id:9>",
-        "epicId" : "<id:8>",
+        "id" : "<id:12>",
+        "epicId" : "<id:11>",
         "projectId" : "<id:1>",
         "number" : 7,
         "qualifiedId" : "<project>-7",
@@ -867,8 +1075,8 @@
       }
     }, {
       "feature" : {
-        "id" : "<id:10>",
-        "epicId" : "<id:8>",
+        "id" : "<id:13>",
+        "epicId" : "<id:11>",
         "projectId" : "<id:1>",
         "number" : 10,
         "qualifiedId" : "<project>-10",
@@ -883,13 +1091,13 @@
     } ]
   }
 }, {
-  "request" : "GET /projects/api/features/<id:9>/tasks",
+  "request" : "GET /projects/api/features/<id:12>/tasks",
   "status" : 200,
   "response" : {
     "entries" : [ {
       "task" : {
-        "id" : "<id:11>",
-        "featureId" : "<id:9>",
+        "id" : "<id:14>",
+        "featureId" : "<id:12>",
         "projectId" : "<id:1>",
         "number" : 8,
         "qualifiedId" : "<project>-8",
@@ -904,8 +1112,8 @@
       }
     }, {
       "task" : {
-        "id" : "<id:12>",
-        "featureId" : "<id:9>",
+        "id" : "<id:15>",
+        "featureId" : "<id:12>",
         "projectId" : "<id:1>",
         "number" : 9,
         "qualifiedId" : "<project>-9",
@@ -913,7 +1121,7 @@
         "title" : "Task two, renamed",
         "slug" : "task-two",
         "description" : null,
-        "dependsOnTaskId" : "<id:11>",
+        "dependsOnTaskId" : "<id:14>",
         "implementedAt" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -921,13 +1129,13 @@
     } ]
   }
 }, {
-  "request" : "GET /projects/api/features/<id:9>/tasks",
+  "request" : "GET /projects/api/features/<id:12>/tasks",
   "status" : 200,
   "response" : {
     "entries" : [ {
       "task" : {
-        "id" : "<id:11>",
-        "featureId" : "<id:9>",
+        "id" : "<id:14>",
+        "featureId" : "<id:12>",
         "projectId" : "<id:1>",
         "number" : 8,
         "qualifiedId" : "<project>-8",
@@ -942,8 +1150,8 @@
       }
     }, {
       "task" : {
-        "id" : "<id:12>",
-        "featureId" : "<id:9>",
+        "id" : "<id:15>",
+        "featureId" : "<id:12>",
         "projectId" : "<id:1>",
         "number" : 9,
         "qualifiedId" : "<project>-9",
@@ -951,7 +1159,7 @@
         "title" : "Task two, renamed",
         "slug" : "task-two",
         "description" : null,
-        "dependsOnTaskId" : "<id:11>",
+        "dependsOnTaskId" : "<id:14>",
         "implementedAt" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -959,7 +1167,39 @@
     } ]
   }
 }, {
-  "request" : "DELETE /projects/api/tasks/<id:12>",
+  "request" : "POST /projects/api/entities/<id:12>/comments",
+  "body" : {
+    "body" : "On the copied feature"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:16>",
+      "entityId" : "<id:12>",
+      "author" : "dev",
+      "body" : "On the copied feature",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:14>/comments",
+  "body" : {
+    "body" : "On the copied task"
+  },
+  "status" : 200,
+  "response" : {
+    "comment" : {
+      "id" : "<id:17>",
+      "entityId" : "<id:14>",
+      "author" : "dev",
+      "body" : "On the copied task",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>"
+    }
+  }
+}, {
+  "request" : "DELETE /projects/api/tasks/<id:15>",
   "status" : 200,
   "response" : {
     "success" : true
@@ -971,13 +1211,13 @@
     "message" : "Task not found: no-such-task"
   }
 }, {
-  "request" : "GET /projects/api/features/<id:9>/tasks",
+  "request" : "GET /projects/api/features/<id:12>/tasks",
   "status" : 200,
   "response" : {
     "entries" : [ {
       "task" : {
-        "id" : "<id:11>",
-        "featureId" : "<id:9>",
+        "id" : "<id:14>",
+        "featureId" : "<id:12>",
         "projectId" : "<id:1>",
         "number" : 8,
         "qualifiedId" : "<project>-8",
@@ -993,7 +1233,7 @@
     } ]
   }
 }, {
-  "request" : "DELETE /projects/api/features/<id:10>",
+  "request" : "DELETE /projects/api/features/<id:13>",
   "status" : 200,
   "response" : {
     "success" : true
@@ -1005,13 +1245,13 @@
     "message" : "Feature not found: no-such-feature"
   }
 }, {
-  "request" : "GET /projects/api/epics/<id:8>/features",
+  "request" : "GET /projects/api/epics/<id:11>/features",
   "status" : 200,
   "response" : {
     "entries" : [ {
       "feature" : {
-        "id" : "<id:9>",
-        "epicId" : "<id:8>",
+        "id" : "<id:12>",
+        "epicId" : "<id:11>",
         "projectId" : "<id:1>",
         "number" : 7,
         "qualifiedId" : "<project>-7",
@@ -1026,7 +1266,7 @@
     } ]
   }
 }, {
-  "request" : "DELETE /projects/api/epics/<id:8>",
+  "request" : "DELETE /projects/api/epics/<id:11>",
   "status" : 200,
   "response" : {
     "success" : true
@@ -1038,16 +1278,101 @@
     "message" : "Epic not found: no-such-epic"
   }
 }, {
-  "request" : "GET /projects/api/epics/<id:8>",
+  "request" : "GET /projects/api/epics/<id:11>",
   "status" : 404,
   "response" : {
-    "message" : "Epic not found: <id:8>"
+    "message" : "Epic not found: <id:11>"
   }
 }, {
   "request" : "GET /projects/api/epics/<id:2>/audit",
   "status" : 200,
   "response" : {
     "entries" : [ {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:10>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:10>",
+        "causationId" : null,
+        "entityId" : "<id:6>",
+        "author" : "dev",
+        "body" : "Task one found a race",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:8>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:8>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Why the spine is one table",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:8>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:8>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Why the spine is one table, reworded",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:9>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:9>",
+        "causationId" : null,
+        "entityId" : "<id:3>",
+        "author" : "dev",
+        "body" : "Part A needs the index first",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:9>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:9>",
+        "causationId" : null,
+        "entityId" : "<id:3>",
+        "author" : "dev",
+        "body" : "Part A needs the index first",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
       "id" : "<audit-id>",
       "entityType" : "EPIC",
       "entityId" : "<id:2>",
@@ -1104,7 +1429,7 @@
         "impetus" : null,
         "assignee" : null,
         "createdBy" : null,
-        "supersededByEntityId" : "<id:8>",
+        "supersededByEntityId" : "<id:11>",
         "repositoryId" : null,
         "implementedAt" : null,
         "dependsOnEntityId" : null,
@@ -1562,19 +1887,87 @@
     } ]
   }
 }, {
-  "request" : "GET /projects/api/epics/<id:8>/audit",
+  "request" : "GET /projects/api/epics/<id:11>/audit",
   "status" : 200,
   "response" : {
     "entries" : [ {
       "id" : "<audit-id>",
-      "entityType" : "EPIC",
-      "entityId" : "<id:8>",
-      "epicId" : "<id:8>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:16>",
+      "epicId" : "<id:11>",
       "operation" : "CREATE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:8>",
+        "id" : "<id:16>",
+        "causationId" : null,
+        "entityId" : "<id:12>",
+        "author" : "dev",
+        "body" : "On the copied feature",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:16>",
+      "epicId" : "<id:11>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:16>",
+        "causationId" : null,
+        "entityId" : "<id:12>",
+        "author" : "dev",
+        "body" : "On the copied feature",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:17>",
+      "epicId" : "<id:11>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:17>",
+        "causationId" : null,
+        "entityId" : "<id:14>",
+        "author" : "dev",
+        "body" : "On the copied task",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:17>",
+      "epicId" : "<id:11>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:17>",
+        "causationId" : null,
+        "entityId" : "<id:14>",
+        "author" : "dev",
+        "body" : "On the copied task",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:11>",
+      "epicId" : "<id:11>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:11>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "EPIC",
@@ -1600,13 +1993,13 @@
     }, {
       "id" : "<audit-id>",
       "entityType" : "EPIC",
-      "entityId" : "<id:8>",
-      "epicId" : "<id:8>",
+      "entityId" : "<id:11>",
+      "epicId" : "<id:11>",
       "operation" : "DELETE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:8>",
+        "id" : "<id:11>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "EPIC",
@@ -1632,84 +2025,20 @@
     }, {
       "id" : "<audit-id>",
       "entityType" : "FEATURE",
-      "entityId" : "<id:10>",
-      "epicId" : "<id:8>",
+      "entityId" : "<id:12>",
+      "epicId" : "<id:11>",
       "operation" : "CREATE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:10>",
-        "causationId" : null,
-        "projectId" : "<id:1>",
-        "archetype" : "FEATURE",
-        "number" : 10,
-        "title" : "Part B, renamed",
-        "slug" : "part-b",
-        "slugScope" : "<id:8>",
-        "description" : "Now described",
-        "status" : null,
-        "blocked" : false,
-        "dispatchContinues" : true,
-        "ticketType" : null,
-        "impetus" : null,
-        "assignee" : null,
-        "createdBy" : null,
-        "supersededByEntityId" : null,
-        "repositoryId" : null,
-        "implementedAt" : null,
-        "dependsOnEntityId" : null,
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "FEATURE",
-      "entityId" : "<id:10>",
-      "epicId" : "<id:8>",
-      "operation" : "DELETE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:10>",
-        "causationId" : null,
-        "projectId" : "<id:1>",
-        "archetype" : "FEATURE",
-        "number" : 10,
-        "title" : "Part B, renamed",
-        "slug" : "part-b",
-        "slugScope" : "<id:8>",
-        "description" : "Now described",
-        "status" : null,
-        "blocked" : false,
-        "dispatchContinues" : true,
-        "ticketType" : null,
-        "impetus" : null,
-        "assignee" : null,
-        "createdBy" : null,
-        "supersededByEntityId" : null,
-        "repositoryId" : null,
-        "implementedAt" : null,
-        "dependsOnEntityId" : null,
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "FEATURE",
-      "entityId" : "<id:9>",
-      "epicId" : "<id:8>",
-      "operation" : "CREATE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:9>",
+        "id" : "<id:12>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "FEATURE",
         "number" : 7,
         "title" : "Part A",
         "slug" : "part-a",
-        "slugScope" : "<id:8>",
+        "slugScope" : "<id:11>",
         "description" : "First part",
         "status" : null,
         "blocked" : false,
@@ -1728,20 +2057,20 @@
     }, {
       "id" : "<audit-id>",
       "entityType" : "FEATURE",
-      "entityId" : "<id:9>",
-      "epicId" : "<id:8>",
+      "entityId" : "<id:12>",
+      "epicId" : "<id:11>",
       "operation" : "DELETE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:9>",
+        "id" : "<id:12>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "FEATURE",
         "number" : 7,
         "title" : "Part A",
         "slug" : "part-a",
-        "slugScope" : "<id:8>",
+        "slugScope" : "<id:11>",
         "description" : "First part",
         "status" : null,
         "blocked" : false,
@@ -1759,21 +2088,85 @@
       }
     }, {
       "id" : "<audit-id>",
-      "entityType" : "TASK",
-      "entityId" : "<id:11>",
-      "epicId" : "<id:8>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:13>",
+      "epicId" : "<id:11>",
       "operation" : "CREATE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:11>",
+        "id" : "<id:13>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 10,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:11>",
+        "description" : "Now described",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:13>",
+      "epicId" : "<id:11>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:13>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 10,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:11>",
+        "description" : "Now described",
+        "status" : null,
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:14>",
+      "epicId" : "<id:11>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:14>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "TASK",
         "number" : 8,
         "title" : "Task one",
         "slug" : "task-one",
-        "slugScope" : "<id:9>",
+        "slugScope" : "<id:12>",
         "description" : "Do the thing",
         "status" : null,
         "blocked" : false,
@@ -1792,20 +2185,20 @@
     }, {
       "id" : "<audit-id>",
       "entityType" : "TASK",
-      "entityId" : "<id:11>",
-      "epicId" : "<id:8>",
+      "entityId" : "<id:14>",
+      "epicId" : "<id:11>",
       "operation" : "DELETE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:11>",
+        "id" : "<id:14>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "TASK",
         "number" : 8,
         "title" : "Task one",
         "slug" : "task-one",
-        "slugScope" : "<id:9>",
+        "slugScope" : "<id:12>",
         "description" : "Do the thing",
         "status" : null,
         "blocked" : false,
@@ -1824,20 +2217,20 @@
     }, {
       "id" : "<audit-id>",
       "entityType" : "TASK",
-      "entityId" : "<id:12>",
-      "epicId" : "<id:8>",
+      "entityId" : "<id:15>",
+      "epicId" : "<id:11>",
       "operation" : "CREATE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:12>",
+        "id" : "<id:15>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "TASK",
         "number" : 9,
         "title" : "Task two, renamed",
         "slug" : "task-two",
-        "slugScope" : "<id:9>",
+        "slugScope" : "<id:12>",
         "description" : null,
         "status" : null,
         "blocked" : false,
@@ -1849,27 +2242,27 @@
         "supersededByEntityId" : null,
         "repositoryId" : "<id:5>",
         "implementedAt" : null,
-        "dependsOnEntityId" : "<id:11>",
+        "dependsOnEntityId" : "<id:14>",
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
     }, {
       "id" : "<audit-id>",
       "entityType" : "TASK",
-      "entityId" : "<id:12>",
-      "epicId" : "<id:8>",
+      "entityId" : "<id:15>",
+      "epicId" : "<id:11>",
       "operation" : "DELETE",
       "changedBy" : "dev",
       "changedAt" : "<instant>",
       "snapshot" : {
-        "id" : "<id:12>",
+        "id" : "<id:15>",
         "causationId" : null,
         "projectId" : "<id:1>",
         "archetype" : "TASK",
         "number" : 9,
         "title" : "Task two, renamed",
         "slug" : "task-two",
-        "slugScope" : "<id:9>",
+        "slugScope" : "<id:12>",
         "description" : null,
         "status" : null,
         "blocked" : false,
@@ -1881,7 +2274,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : "<id:5>",
         "implementedAt" : null,
-        "dependsOnEntityId" : "<id:11>",
+        "dependsOnEntityId" : "<id:14>",
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }

@@ -171,6 +171,47 @@ class EntityRoutesGoldenTest {
     r.call("PUT", "/projects/api/tasks/" + task2, map("title", "Task two, renamed"));
     r.call("PUT", "/projects/api/tasks/" + task1, map("dependsOnTaskId", task2)); // 400: cycle
 
+    // The thread every entity has (qits-551): the epic named by its qualified id, the feature and
+    // the task by their UUIDs, the one PATCH and its refusals, and the admin's delete.
+    String epicQualified = given().get("/projects/api/epics/" + epicId).path("epic.qualifiedId");
+    String epicComment =
+        r.call(
+                "POST",
+                "/projects/api/entities/" + epicQualified + "/comments",
+                map("body", "Why the spine is one table"))
+            .path("comment.id");
+    String featureComment =
+        r.call(
+                "POST",
+                "/projects/api/entities/" + featureA + "/comments",
+                map("body", "Part A needs the index first"))
+            .path("comment.id");
+    r.call(
+        "POST",
+        "/projects/api/entities/" + task1 + "/comments",
+        map("body", "Task one found a race"));
+    r.call("POST", "/projects/api/entities/" + epicId + "/comments", map("body", " ")); // 400
+    r.call("POST", "/projects/api/entities/no-such-entity/comments", map("body", "x")); // 404
+    r.call(
+        "POST",
+        "/projects/api/entities/" + epicQualified + "999/comments",
+        map("body", "x")); // 404: a qualified id naming no entity
+    r.call("GET", "/projects/api/entities/" + epicQualified + "/comments", null);
+    r.call("GET", "/projects/api/entities/" + featureA + "/comments", null);
+    r.call("GET", "/projects/api/entities/" + task1 + "/comments", null);
+    r.call("GET", "/projects/api/entities/no-such-entity/comments", null); // 404
+    r.call(
+        "PATCH",
+        "/projects/api/comments/" + epicComment,
+        map("body", "Why the spine is one table, reworded"));
+    r.call("PATCH", "/projects/api/comments/" + epicComment, map()); // 400: names nothing
+    r.call("PATCH", "/projects/api/comments/" + epicComment, map("body", null)); // 400
+    r.call("PATCH", "/projects/api/comments/" + epicComment, map("author", "mallory")); // 400
+    r.call("PATCH", "/projects/api/comments/no-such-comment", map("body", "x")); // 404
+    r.call("DELETE", "/projects/api/comments/" + featureComment, null);
+    r.call("DELETE", "/projects/api/comments/no-such-comment", null); // 404
+    r.call("GET", "/projects/api/entities/" + epicId + "/comments", null);
+
     // The whole-row edit the SPA makes, on the epic.
     Map<String, Object> epicRow = new LinkedHashMap<>();
     epicRow.put("archetype", "EPIC");
@@ -221,6 +262,16 @@ class EntityRoutesGoldenTest {
     List<String> copiedTasks =
         r.call("GET", "/projects/api/features/" + copies.get(0) + "/tasks", null)
             .path("entries.task.id");
+    // Remarks on the successor's descendants: its delete below must take them with it, each with
+    // a DELETE audit row under the successor's key (qits-551).
+    r.call(
+        "POST",
+        "/projects/api/entities/" + copies.get(0) + "/comments",
+        map("body", "On the copied feature"));
+    r.call(
+        "POST",
+        "/projects/api/entities/" + copiedTasks.get(0) + "/comments",
+        map("body", "On the copied task"));
     r.call("DELETE", "/projects/api/tasks/" + copiedTasks.get(1), null);
     r.call("DELETE", "/projects/api/tasks/no-such-task", null); // 404
     r.call("GET", "/projects/api/features/" + copies.get(0) + "/tasks", null);
@@ -360,9 +411,10 @@ class EntityRoutesGoldenTest {
               .path("ticket.id");
     }
 
-    String campaignId =
-        r.call("POST", p + "/campaigns", map("title", "Rename qits-x", "description", "in order"))
-            .path("campaign.id");
+    Response createdCampaign =
+        r.call("POST", p + "/campaigns", map("title", "Rename qits-x", "description", "in order"));
+    String campaignId = createdCampaign.path("campaign.id");
+    String campaignQualified = createdCampaign.path("campaign.qualifiedId");
     r.call("POST", p + "/campaigns", map("title", " ")); // blank title: 400
     String c = "/projects/api/campaigns/" + campaignId;
 
@@ -415,6 +467,16 @@ class EntityRoutesGoldenTest {
     r.call("GET", c + "/progress", null); // qits-418
     r.call("GET", "/projects/api/campaigns/no-such-campaign", null); // 404
     r.call("GET", "/projects/api/campaigns/no-such-campaign/progress", null); // 404
+
+    // A campaign's thread (qits-551), named by its qualified id and edited once.
+    String remark =
+        r.call(
+                "POST",
+                "/projects/api/entities/" + campaignQualified + "/comments",
+                map("body", "Step 2 waits on the approval"))
+            .path("comment.id");
+    r.call("PATCH", "/projects/api/comments/" + remark, map("body", "Step 2 was approved"));
+    r.call("GET", "/projects/api/entities/" + campaignId + "/comments", null);
     r.assertGolden("campaign.json");
   }
 

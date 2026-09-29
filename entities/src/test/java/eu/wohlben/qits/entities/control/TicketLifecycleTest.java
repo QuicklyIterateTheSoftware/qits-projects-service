@@ -58,7 +58,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
 
   @Inject WorkEntityService workEntities;
 
-  @Inject TicketCommentService ticketComments;
+  @Inject EntityCommentService ticketComments;
   @Inject AuditService auditService;
 
   private WorkEntity reported() {

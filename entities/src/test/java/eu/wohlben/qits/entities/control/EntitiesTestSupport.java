@@ -5,7 +5,7 @@ import eu.wohlben.qits.entities.persistence.DossierAssetRepository;
 import eu.wohlben.qits.entities.persistence.DossierPageAssetRepository;
 import eu.wohlben.qits.entities.persistence.DossierPageRepository;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
-import eu.wohlben.qits.entities.persistence.TicketCommentRepository;
+import eu.wohlben.qits.entities.persistence.EntityCommentRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import io.quarkus.hibernate.orm.PersistenceUnit;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -28,14 +28,14 @@ import org.junit.jupiter.api.BeforeEach;
  * constraint violation rather than a wrong answer, which is the failure worth having.
  *
  * <p><b>The four legacy wipes are gone with the four legacy tables</b> (epics V13). {@code
- * TicketCommentRepository} stays and its position does not move: a comment is not an archetype of
- * the merged model, it is written by {@code TicketCommentService}, and its key is {@code entity (id)}
+ * EntityCommentRepository} stays and its position does not move: a comment is not an archetype of
+ * the merged model, it is written by {@code EntityCommentService}, and its key is {@code entity (id)}
  * — which is exactly why it goes before the merged rows and not after them.
  */
 public abstract class EntitiesTestSupport {
 
   @Inject AuditRepository auditRepository;
-  @Inject TicketCommentRepository ticketCommentRepository;
+  @Inject EntityCommentRepository entityCommentRepository;
   @Inject DossierPageRepository dossierPageRepository;
   @Inject DossierAssetRepository dossierAssetRepository;
   @Inject DossierPageAssetRepository dossierPageAssetRepository;
@@ -53,7 +53,7 @@ public abstract class EntitiesTestSupport {
         .run(
             () -> {
               auditRepository.deleteAll();
-              ticketCommentRepository.deleteAll();
+              entityCommentRepository.deleteAll();
               dossierPageAssetRepository.deleteAll();
               dossierAssetRepository.deleteAll();
               dossierPageRepository.deleteAll();
