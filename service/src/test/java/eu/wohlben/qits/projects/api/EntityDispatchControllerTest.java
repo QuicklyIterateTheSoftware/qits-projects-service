@@ -200,6 +200,17 @@ public class EntityDispatchControllerTest {
         .body("message", containsString(says));
   }
 
+  /** The bodies on an entity's thread, oldest first — the thread every archetype has (qits-551). */
+  private List<String> threadOf(String entityId) {
+    return asAdmin("dana")
+        .when()
+        .get("/projects/api/entities/" + entityId + "/comments")
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("entries.comment.body");
+  }
+
   private String wrapperIdOf(String projectId) {
     return projects.findWrapper(projectId).orElseThrow().id;
   }
@@ -259,6 +270,13 @@ public class EntityDispatchControllerTest {
     assertEquals("epic/walk-the-epic", refine.branch());
     assertEquals(epicId, refine.subject().epicId(), "the workspace names the epic it is for");
     assertNull(refine.subject().ticketId());
+    // The press is recorded on the epic's own thread, as a ticket's always was (qits-551).
+    assertEquals(
+        List.of(
+            "Dispatched a coding agent to workspace `epic/walk-the-epic` for the refine phase."
+                + " This run stops after that phase: the next one starts when somebody presses"
+                + " again."),
+        threadOf(epicId));
 
     transitionEpic(epicId, "REFINED");
     assertEquals("implement", press(epicId, "PHASE"));
@@ -420,6 +438,14 @@ public class EntityDispatchControllerTest {
     assertEquals(1, requests.size(), requests.toString());
     assertTrue(sourceNamesOf(requests.get(0)).contains("epic/released-epic"));
     assertEquals("Epic released-epic: Released epic", requests.get(0).get("summary"));
+    assertTrue(
+        threadOf(epicId).stream()
+            .anyMatch(
+                body ->
+                    body.startsWith(
+                        "Asked for the release of `epic/released-epic`: the epic now waits on"
+                            + " release request ")),
+        "the epic's thread names the request it now waits on: " + threadOf(epicId));
     assertTrue(
         dispatch.lookups().stream().anyMatch(looked -> looked.epicIds().contains(epicId)),
         "the epic is looked up at the workspaces port by epic id");

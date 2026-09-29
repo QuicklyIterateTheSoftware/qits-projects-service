@@ -336,6 +336,11 @@ public class RepositoryMcpToolsTest {
                       "transition_ticket",
                       "add_ticket_comment",
                       "update_ticket_comment",
+                      // The thread every entity has (CommentMcpTools, qits-551): the same two
+                      // writes on any archetype, fenced for the same reason. list_comments is a
+                      // read and stays.
+                      "add_comment",
+                      "update_comment",
                       // The campaign write tools (CampaignMcpTools, qits-414) join for the same
                       // reason: an unattended run must not build, reorder or gate a campaign.
                       "create_campaign",
@@ -358,6 +363,8 @@ public class RepositoryMcpToolsTest {
               assertTrue(
                   names.contains("list_tickets"), "read-only tool wrongly hidden: " + names);
               assertTrue(names.contains("get_ticket"), "read-only tool wrongly hidden: " + names);
+              assertTrue(
+                  names.contains("list_comments"), "read-only tool wrongly hidden: " + names);
             })
         .thenAssertResults();
   }
@@ -436,6 +443,13 @@ public class RepositoryMcpToolsTest {
                       "unblock_ticket",
                       "add_ticket_comment",
                       "update_ticket_comment",
+                      // CommentMcpTools (qits-551) — the thread every entity has, of any archetype;
+                      // the two ticket tools above stay as delegates because their names are
+                      // pre-approved elsewhere. No delete tool, on either: an agent must not erase
+                      // the record of its own mistake.
+                      "list_comments",
+                      "add_comment",
+                      "update_comment",
                       // RefinementDesignMcpTools — the frozen designs of a refinement. No resolve
                       // tool: accepting a proposal is a human act in the Design tab.
                       "list_designs",

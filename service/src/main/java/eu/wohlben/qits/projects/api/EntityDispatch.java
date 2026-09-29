@@ -44,9 +44,10 @@ import org.jboss.logging.Logger;
  *   <li><b>The dispatch</b>, with the entity as the workspace's {@link WorkspaceAgentDispatch.Subject}
  *       and the archetype's own turn. A failure surfaces as the port's 502/503 and nothing is written
  *       on the entity after it.
- *   <li><b>The record</b>: a ticket's thread gets one comment naming the phase and the mode, and the
- *       {@code TICKETS} hint; an epic has no thread — its description is the plan, not a log — so it
- *       gets the {@code EPICS} hint alone.
+ *   <li><b>The record</b>: the entity's thread gets one comment naming the phase and the mode, and
+ *       the hint of its archetype — {@code TICKETS} for a ticket, {@code EPICS} for an epic. Until
+ *       qits-551 an epic had no thread and got the hint alone, so nothing on the epic said an agent
+ *       had been put on it; its description is still the plan and is never written here.
  * </ol>
  *
  * <h2>Steps 1–4 are {@link #precheck}, and nothing after them is a refusal (qits-417)</h2>
@@ -81,8 +82,8 @@ public class EntityDispatch {
 
   @Inject EntityDispatchService entities;
 
-  /** A ticket's thread is written through the comment service, the one writer of comments. */
-  @Inject EntityCommentService tickets;
+  /** The entity's thread is written through the comment service, the one writer of comments. */
+  @Inject EntityCommentService comments;
 
   @Inject EntityWorkspaces workspaces;
 
@@ -204,12 +205,9 @@ public class EntityDispatch {
                 EntityWorkspaces.subjectOf(recorded),
                 started.instruction());
 
-    if (recorded.archetype == Archetype.TICKET) {
-      tickets.addComment(recorded.id, comment(branch, made, started.phase(), mode), changedBy);
-      publisher.fire(recorded.projectId, ProjectChangeHint.Topic.TICKETS);
-    } else {
-      publisher.fire(recorded.projectId, ProjectChangeHint.Topic.EPICS);
-    }
+    comments.addComment(
+        recorded.id, comment(noun(recorded), branch, made, started.phase(), mode), changedBy);
+    publisher.fire(recorded.projectId, ProjectChangeHint.Topic.of(recorded.archetype));
     LOG.infof(
         "Dispatched an agent onto %s %s (%s) for the %s phase (%s) in workspace %s on %s",
         noun(recorded),
@@ -381,14 +379,20 @@ public class EntityDispatch {
   }
 
   /**
-   * What a ticket's thread is told. It names the phase, and for a one-phase run says that it stops
+   * What the entity's thread is told. It names the phase, and for a one-phase run says that it stops
    * there, so a reader can tell a flow from a single step. A re-dispatch that found an agent already
    * working says so and names no phase: that agent was started for whatever the status said then.
    */
   private static String comment(
-      String branch, WorkspaceAgentDispatch.Dispatch made, String phase, DispatchMode mode) {
+      String noun,
+      String branch,
+      WorkspaceAgentDispatch.Dispatch made,
+      String phase,
+      DispatchMode mode) {
     if ("SKIPPED_RUNNING".equals(made.agentLaunch())) {
-      return "An agent is already working on this ticket in workspace `"
+      return "An agent is already working on this "
+          + noun
+          + " in workspace `"
           + branch
           + "`; left it to carry on."
           + (mode == DispatchMode.PHASE

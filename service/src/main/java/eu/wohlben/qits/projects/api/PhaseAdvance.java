@@ -19,7 +19,7 @@ import org.jboss.logging.Logger;
 /**
  * The next phase starts itself: an entity that just moved has the turn its <b>new</b> status begins
  * delivered into the workspace already standing on its branch — <b>when the press that started the
- * run asked for the whole flow</b> — and a ticket's thread is told what happened. It was {@code
+ * run asked for the whole flow</b> — and the entity's thread is told what happened. It was {@code
  * TicketPhaseAdvance} until qits-394; everything below that says "ticket" holds for an epic too,
  * with the three differences the next section names.
  *
@@ -39,9 +39,11 @@ import org.jboss.logging.Logger;
  * transition_ticket} for a ticket, {@code EpicController.transition} and {@code transition_epic} for
  * an epic. The phase and its words come from {@link PhasePrompts}, which is archetype-aware; the
  * address from {@link EntityWorkspaces}, which knows both branch shapes. What differs for an epic:
- * <b>it has no comment thread</b>, so every sentence this class would write on one is a log line
- * instead (and no {@code TICKETS} hint is fired); it is looked up at the workspaces port by epic id;
- * and its release request is titled "Epic &lt;slug&gt;: …". An epic is never blocked.
+ * it is looked up at the workspaces port by epic id, and its release request is titled "Epic
+ * &lt;slug&gt;: …". An epic is never blocked. <b>It has a thread</b> since qits-551, so every
+ * sentence below lands on the epic's thread exactly as on a ticket's, with the {@code EPICS} hint
+ * where a ticket's fires {@code TICKETS} — until then an epic had none and each sentence was a log
+ * line nobody reading the board would ever see.
  *
  * <h2>The transition is the whole trigger</h2>
  *
@@ -184,7 +186,7 @@ public class PhaseAdvance {
 
   private static final Logger LOG = Logger.getLogger(PhaseAdvance.class);
 
-  @Inject EntityCommentService tickets;
+  @Inject EntityCommentService comments;
 
   @Inject EntityWorkspaces workspaces;
 
@@ -372,7 +374,9 @@ public class PhaseAdvance {
           ticket,
           "Asked for the release of `"
               + branch
-              + "`: the ticket now waits on release request "
+              + "`: the "
+              + noun(ticket)
+              + " now waits on release request "
               + request.id()
               + ".",
           changedBy);
@@ -392,7 +396,9 @@ public class PhaseAdvance {
               + branch
               + "`"
               + (detail.isBlank() ? "" : ": " + detail)
-              + ". The ticket is VERIFIED and nothing is running on it.",
+              + ". The "
+              + noun(ticket)
+              + " is VERIFIED and nothing is running on it.",
           changedBy);
     }
   }
@@ -482,6 +488,15 @@ public class PhaseAdvance {
         changedBy);
   }
 
+  /**
+   * How a sentence on the thread names the entity it is on: {@code ticket} or {@code epic}. Since
+   * qits-551 an epic's thread hears these sentences too, and "the ticket is REFINED" on an epic
+   * would be a sentence about something else.
+   */
+  private static String noun(WorkEntity entity) {
+    return entity.archetype.name().toLowerCase(java.util.Locale.ROOT);
+  }
+
   /** The one state word this class reads, and it reads it to drop a row rather than to find one. */
   private static final String FINALIZED = "FINALIZED";
 
@@ -569,30 +584,32 @@ public class PhaseAdvance {
               + phase
               + " phase"
               + (turn.detail().isBlank() ? "" : ": " + turn.detail())
-              + ". The ticket is "
+              + ". The "
+              + noun(ticket)
+              + " is "
               + ticket.status
               + " and nothing is running on it.";
     };
   }
 
   /**
-   * The comment, and the redraw that goes with it. Wrapped for the same reason the port's own call
-   * is: this runs after a recorded transition, and a ticket store that refused a comment must not
-   * reach the caller as a failure of a move that already happened. The hint is fired here and only
-   * here, which is what makes "a hint only where something was written" true by construction.
+   * The comment on the entity's own thread, and the redraw that goes with it — {@code TICKETS} for
+   * a ticket, {@code EPICS} for an epic ({@link ProjectChangeHint.Topic#of}). Wrapped for the same
+   * reason the port's own call is: this runs after a recorded transition, and a store that refused
+   * a comment must not reach the caller as a failure of a move that already happened. The hint is
+   * fired here and only here, which is what makes "a hint only where something was written" true by
+   * construction.
    */
-  private void say(WorkEntity ticket, String body, String changedBy) {
-    if (ticket.archetype != Archetype.TICKET) {
-      // An epic has no thread, and its description is the plan rather than a log — the sentence a
-      // ticket would carry is said where a person debugging a hand-off will look, and nowhere else.
-      LOG.infof("%s %s: %s", ticket.archetype, ticket.id, body);
-      return;
-    }
+  private void say(WorkEntity entity, String body, String changedBy) {
     try {
-      tickets.addComment(ticket.id, body, changedBy);
-      publisher.fire(ticket.projectId, ProjectChangeHint.Topic.TICKETS);
+      comments.addComment(entity.id, body, changedBy);
+      publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
     } catch (RuntimeException e) {
-      LOG.warnf(e, "Could not say on ticket %s's thread what became of its next phase", ticket.id);
+      LOG.warnf(
+          e,
+          "Could not say on %s %s's thread what became of its next phase",
+          entity.archetype,
+          entity.id);
     }
   }
 }

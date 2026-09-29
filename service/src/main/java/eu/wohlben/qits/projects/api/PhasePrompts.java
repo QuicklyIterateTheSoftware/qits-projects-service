@@ -37,8 +37,9 @@ import java.util.Optional;
  *
  * <p>An epic's refine phase and a ticket's want different words: a ticket is refined into its
  * {@code description} and a dossier page at most, an epic into a feature/task tree and a dossier; a
- * ticket's implement phase comments on a thread, an epic's marks tasks with {@code
- * mark_task_implemented} and has no thread; a ticket verifies that what was reported no longer
+ * ticket's implement phase comments on the ticket's thread with {@code add_ticket_comment}, an
+ * epic's marks tasks with {@code mark_task_implemented} and records on the epic's thread (or a
+ * task's own) with {@code add_comment}; a ticket verifies that what was reported no longer
  * occurs, an epic that what it promised now holds. {@link #render} takes the archetype and picks
  * the template, so no template has to read sensibly for both — and a kind with no templates is an
  * {@link IllegalStateException} there rather than a ticket's words handed to something else.
@@ -65,8 +66,10 @@ import java.util.Optional;
  * ({@code WorkEntity.dispatchContinues}), read by {@link PhaseAdvance}.
  *
  * <p><b>The ticket templates name {@code block_ticket} in that same clause, and the epic templates
- * do not</b>: an epic has no block flag and no thread, so its "could not finish" arm says what is
- * missing in the agent's report and leaves the status alone.
+ * do not</b>: an epic has no block flag, so its "could not finish" arm records what is missing on
+ * the epic's thread with {@code add_comment} and leaves the status alone. Until qits-551 an epic
+ * had no thread either and the templates said "say in your report" — a chat reply nobody reads
+ * afterwards, which is exactly where pilot qits-442's findings went missing.
  *
  * <p><b>{@code block_ticket} is not in either daemon's bucket</b>, which puts it with {@code
  * update_ticket} and {@code put_dossier_page} rather than with {@code transition_ticket} — see the
@@ -86,7 +89,10 @@ import java.util.Optional;
  * <p><b>These templates name tools that bucket does <em>not</em> list</b>, and that is stated here
  * rather than left to be discovered: {@code update_ticket}, {@code put_dossier_page}, {@code
  * block_ticket}, {@code transition_epic} (new with qits-394), the epic tree writes the epic refine
- * template names, and the two dossier reads. Every surface ships CLAUDE with {@code
+ * template names, and the two dossier reads. {@code add_comment} and {@code update_comment}, which
+ * the three epic templates name (qits-551), join {@code TICKET_THREAD_TOOLS} in
+ * qits-workspace-daemon's bucket and in {@code AgentSurfaceDefaults}' copy of it on the same day,
+ * beside the two ticket comment tools they generalise. Every surface ships CLAUDE with {@code
  * SKIP_PERMISSIONS} today, so an unlisted tool is still reachable and the sentences are actionable
  * as they stand. A surface moved to <b>kimi</b> needs them added to qits-workspace-daemon's bucket
  * and to {@code AgentSurfaceDefaults}' copy of it on the same day, or the phases have been told to
@@ -485,8 +491,13 @@ final class PhasePrompts {
         + " You are done when somebody else could implement every task from the epic and its"
         + " dossier alone. Then transition_epic to REFINED: it freezes the scope — the description,"
         + " the tree and the dossier stop being editable — and it is your claim that the plan is"
-        + " complete; it is reversible through the same door. If you could not get there, say in"
-        + " your report what is missing and leave the epic REPORTED.";
+        + " complete; it is reversible through the same door."
+        + " Record on the epic's thread with add_comment (entityId "
+        + epic.id
+        + ") what you decided that the plan does not say, what surprised you, and what is still"
+        + " open: the thread is the log beside the plan, and it stays writable after the freeze."
+        + " If you could not get there, record on the thread what is missing and leave the epic"
+        + " REPORTED.";
   }
 
   /**
@@ -521,8 +532,13 @@ final class PhasePrompts {
         + " exact values, examples and figures the description leaves out. List it with"
         + " list_dossier_pages and read a page with get_dossier_page whenever a task's detail is"
         + " unclear, before deciding it yourself. The scope and the dossier are read-only while the"
-        + " epic is REFINED, so if the plan is wrong or silent on something you had to decide, say"
-        + " that in your report rather than trying to correct it."
+        + " epic is REFINED; the epic's thread is not, and it is where a correction goes. Record as"
+        + " the work goes with add_comment — on the epic's thread (entityId "
+        + epic.id
+        + "), or on a task's own thread for a finding about that task: what you decided, what"
+        + " surprised you, what landed and what is still missing — rather than writing one report"
+        + " at the end. If the plan is wrong or silent on something you had to decide, say so on"
+        + " the thread rather than trying to correct the plan."
         + " Work the features and their tasks in order, respecting the dependsOn links between"
         + " them."
         + " Mark each task implemented with mark_task_implemented as it lands, rather than in a"
@@ -535,8 +551,8 @@ final class PhasePrompts {
         + " Once every task is marked and every touched repository is released and deployed,"
         + " transition_epic to IMPLEMENTED: the transition is your claim, it is reversible, and it"
         + " stamps every task still unmarked as implemented — so never make it with a task"
-        + " outstanding. If you could not finish — blocked, refused, or released only in part — say"
-        + " in your report what is missing and leave the epic REFINED.";
+        + " outstanding. If you could not finish — blocked, refused, or released only in part —"
+        + " record on the epic's thread what is missing and leave the epic REFINED.";
   }
 
   /**
@@ -545,7 +561,8 @@ final class PhasePrompts {
    * fail backwards to REFINED — applied to what an epic claims: not that a reported fault is gone,
    * but that what the description promised now holds, feature by feature.
    *
-   * <p>No thread, so "say which" goes in the agent's report. Closing (DONE) stays a person's move,
+   * <p>"Say which" goes on the epic's thread with {@code add_comment} (qits-551), where it used to
+   * go in the agent's report because an epic had no thread. Closing (DONE) stays a person's move,
    * exactly as for a ticket; VERIFIED is as far as this phase goes, and reaching it asks for the
    * release of {@code epic/<slug>} ({@link PhaseAdvance}).
    */
@@ -564,13 +581,14 @@ final class PhasePrompts {
         + " Where a behaviour is conceptually unreproducible on demand — a race that needed a"
         + " particular night, a scheduler window that has passed — verify it instead by READING THE"
         + " RELEVANT CODE CHANGES and stating why they make it hold."
-        + " Say in your report which features you confirmed live and which by reading code, and"
-        + " why."
+        + " Record on the epic's thread with add_comment (entityId "
+        + epic.id
+        + ") which features you confirmed live and which by reading code, and why."
         + " Then transition_epic to VERIFIED: the transition is your claim, and it is reversible in"
         + " both directions through the same door."
-        + " If something does not hold, transition_epic BACK TO REFINED and say in your report what"
-        + " failed — that is how implementation starts again."
+        + " If something does not hold, transition_epic BACK TO REFINED and record on the thread"
+        + " what failed — that is how implementation starts again."
         + " Closing the epic is a person's move and not yours. If you could not establish either"
-        + " answer, say so and leave the epic IMPLEMENTED.";
+        + " answer, say so on the thread and leave the epic IMPLEMENTED.";
   }
 }

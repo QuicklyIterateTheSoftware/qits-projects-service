@@ -196,9 +196,13 @@ public final class AgentSurfaceDefaults {
                   "mcp__repository__get_ticket",
                   "mcp__repository__list_epics",
                   "mcp__repository__get_epic"),
-              // TICKET_THREAD_TOOLS — commenting is additive and a comment stays editable.
+              // TICKET_THREAD_TOOLS — commenting is additive and a comment stays editable. The
+              // general pair joined the ticket pair with qits-551, when every entity got a thread.
               List.of(
-                  "mcp__repository__add_ticket_comment", "mcp__repository__update_ticket_comment"),
+                  "mcp__repository__add_ticket_comment",
+                  "mcp__repository__update_ticket_comment",
+                  "mcp__repository__add_comment",
+                  "mcp__repository__update_comment"),
               // TICKET_RESOLUTION_TOOLS — the dispatch is told to resolve its ticket once released.
               List.of("mcp__repository__transition_ticket"),
               // TASK_IMPLEMENTATION_TOOLS — the epic dispatch marks tasks as the work lands.

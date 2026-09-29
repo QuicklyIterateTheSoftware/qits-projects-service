@@ -121,6 +121,8 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "unblock_ticket",
           "add_ticket_comment",
           "update_ticket_comment",
+          "add_comment",
+          "update_comment",
           "transition_entities",
           "create_campaign",
           "transition_campaign",

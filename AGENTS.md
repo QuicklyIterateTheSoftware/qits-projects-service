@@ -172,10 +172,11 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   between the kinds is data, in two places: the registry (`Archetypes` — what a kind may and must
   carry, its depth, whether it has a lifecycle; the intake 400s such as `impetus is required` are
   read off its `requiredAtCreate`) and `WorkEntityService.Kind` (the noun a refusal names, the parent
-  kind, the kind whose status freezes this one's scope, the dependency's wire name, whether it has a
-  thread). A write's fields are one record, `control/EntityWrite` — a null leaves a property alone,
-  a `clear*` flag empties it — and the registry refuses a property the kind has no slot for. A
-  ticket's thread moved to `control/TicketCommentService`, since a comment is not an archetype.
+  kind, the kind whose status freezes this one's scope, the dependency's wire name). A write's
+  fields are one record, `control/EntityWrite` — a null leaves a property alone, a `clear*` flag
+  empties it — and the registry refuses a property the kind has no slot for. The thread lives in
+  `control/EntityCommentService`, since a comment is not an archetype — and since qits-551 every
+  archetype has one (see "One thread per entity" under "Tickets").
   On the `service` side, `entities/api/EntityRoutes` is the one implementation behind every
   per-archetype route: `EpicController`, `TicketController`, `FeatureController`, `TaskController`,
   `ProjectEpicsController` and `ProjectTicketsController` stay as **thin JAX-RS resources** because
@@ -521,16 +522,17 @@ write** (user ruling, 2026-09-12):
   **before** the write so an id naming nothing still answers 404; `api/EntitiesAgentAccess` is the
   one helper and `entities.error.ForbiddenException` the 403. The granted set is epic create,
   feature create/update/delete, task create/update/delete, ticket create, transition, block and
-  comment create, comment update, both dossiers' four writes each, `inline_figure`'s door, and
+  comment create, comment update, the entity thread's comment create and PATCH (qits-551), both
+  dossiers' four writes each, `inline_figure`'s door, and
   `POST /entities/transition` — which binds **all or nothing** over every id and every parent in the
   batch, resolved in one `EntityCatalogService.byIds` read, with an unresolvable id falling through
   to the write's own 400 rather than becoming a 403. **Still `qits:admin` alone:**
   `EpicController.transition` and `delete` (freezing or resolving a plan from the board is a
   person's door; the agent's claim goes through `transition_epic` on the MCP server, qits-394, and
   the REST grant was not widened with it), `EntityDispatchController.dispatch` (standing a workspace
-  up is a person's press; its GET is a read and admits the agent), `TicketController.delete` and
-  `TicketCommentController.delete` (deleting is on neither surface: an agent that could delete what
-  it disagrees with could erase the record of its own mistake).
+  up is a person's press; its GET is a read and admits the agent), `TicketController.delete`,
+  `TicketCommentController.delete` and `CommentController.delete` (deleting is on neither surface:
+  an agent that could delete what it disagrees with could erase the record of its own mistake).
 - **The campaign build doors take it too (qits-413), bound the same way** — the campaign resolved
   first, its project checked by `EntitiesAgentAccess`: `POST /projects/{projectId}/campaigns`, `POST
   /campaigns/{id}/transition` and the four membership writes (`POST …/members`, `PUT
@@ -1132,13 +1134,16 @@ Five things are rules rather than details:
   in `dependsOn` order, marks each with `mark_task_implemented` as it lands, releases every touched
   repository, does **not** integrate the workspace, and ends with `transition_epic` to IMPLEMENTED
   only once every task is marked; its verify turn confirms live on the platform and ends at VERIFIED
-  or back at REFINED. An epic has no thread and no block flag, so its "could not finish" arm says what
-  is missing in the agent's report and leaves the status alone. Every turn opens with
+  or back at REFINED. All three record decisions, surprises, what landed and what is missing with
+  `add_comment` on the epic's thread (or a task's own), never "in your report" — a chat reply
+  nobody reads again (qits-551). An epic has no block flag, so its "could not finish" arm records
+  what is missing on the thread and leaves the status alone. Every turn opens with
   `PhasePrompts.FLOW_BRIEF_POINTER`, prepended once at the render seam.
-- **An epic's dispatch writes nothing on the epic.** A ticket's thread gets one comment naming the
-  phase (and, for PHASE, that the run stops there); an epic has no thread and its *description is
-  the plan*, so it gets the `EPICS` hint alone, and every sentence `PhaseAdvance` would put on a
-  thread is a log line for an epic.
+- **A dispatch writes one comment on the entity's thread, and nothing else on it.** The comment
+  names the phase (and, for PHASE, that the run stops there), for an epic exactly as for a ticket
+  since qits-551, with the hint of its archetype (`EPICS`/`TICKETS`); every sentence `PhaseAdvance`
+  says lands on the same thread. An epic's *description is the plan* and is never written by
+  either.
 - **The two old doors are gone (qits-399).** `POST /tickets/{id}/dispatch-agent` (a FLOW delegate)
   and `POST /epics/{id}/dispatch-agent` (a PHASE delegate that first froze a REPORTED epic to
   REFINED, because its button read "Start implementation") were removed with their DTOs once the SPA
@@ -1335,7 +1340,7 @@ and each one is a decision rather than a simplification:
   of its own mistake.
 
 **`AuditEntry.epic_id` is the subtree key, not a foreign key**, and tickets are what make that
-visible: a `TICKET` row and every `TICKET_COMMENT` row under it carry the *ticket's* id there, so
+visible: a `TICKET` row and every `COMMENT` row under it carry the *ticket's* id there, so
 "the whole history of this thing" stays one indexed query and still answers after the live rows are
 gone. The column is not renamed — renaming it across an applied lineage and a live log buys a better
 word and nothing else. V4 also widens `auditentry`'s entity-type check constraint, which V1 wrote
@@ -1346,8 +1351,36 @@ replacement is named `ck_audit_entity_type`.
 newest-first, and deliberately: a log is scanned from the top, a conversation is read from the
 start.
 
+**One thread per entity, of every archetype (qits-551).** The ticket's thread was the only one, so
+an agent implementing a REFINED epic — scope and dossier frozen by `requireReported` — had nowhere to
+write but its chat reply. The freeze stays; the thread is the writable log beside it. Epics V20
+renamed `TicketComment` to `entity_comment` (`ticket_id` → `entity_id`, the FK already named
+`entity (id)` since V12) and the audit word `TICKET_COMMENT` to `COMMENT`, rows included; the
+snapshots already written keep their `ticketId`. What rides with it:
+
+- **Doors:** `GET/POST /entities/{id}/comments` (`EntityCommentController`) and `PATCH/DELETE
+  /comments/{commentId}` (`CommentController`). `{id}` is the UUID **or** the qualified id
+  (`qits-551`), resolved by `entitieshost/EntityIdResolver` — the id first, then the grammar,
+  because a UUID whose last group is all digits parses as a qualified id; `CommitSubjectEntities`
+  keeps the grammar and delegates its lookup there. The PATCH is a JSON merge patch read as a
+  `JsonNode`, like `PATCH /entities/{id}`, and `body` is its only property: `{}`, null, blank, a
+  server-owned or unknown property are one 400. It never moves `author`, and there is no author
+  check.
+- **The old doors are delegates** — `GET/POST /tickets/{id}/comments`, `PUT/DELETE
+  /ticket-comments/{id}`, `add_ticket_comment`, `update_ticket_comment` — with their shapes
+  (`ticketId`, the ticket-era 404 wording) unchanged, for the released CLI and SPA and for the tool
+  names pre-approved elsewhere. They retire when both clients are on the new doors.
+- **MCP:** `add_comment`, `update_comment`, `list_comments` (`mcp/CommentMcpTools`); `get_epic` and
+  `get_campaign` carry their own thread. The two writes are in `MUTATING_TOOLS` and in
+  `AgentSurfaceDefaults`' `TICKET_THREAD_TOOLS` copy.
+- **Audit key:** the entity's own id for a root, the epic's for a feature or a task
+  (`WorkEntityService.auditRootOf`). A delete removes every comment in the subtree in-service,
+  **before** any row goes — the audit write flushes, and a row already deleted would have cascaded
+  its comments away with no trace.
+- **Hint:** `ProjectChangeHint.Topic.of(archetype)` — `TICKETS` for a ticket, `EPICS` otherwise.
+
 The SSE topic is its own (`ProjectChangeHint.Topic.TICKETS`, `tickets` on the wire) and every ticket
-and comment mutation fires it, through `TicketsTopicHints` — a sibling bean to `EpicsTopicHints`
+mutation and every write on a ticket's thread fires it, through `TicketsTopicHints` — a sibling bean to `EpicsTopicHints`
 rather than four more methods on it, because the two announce different channels. Firing on `EPICS`
 would redraw a board because somebody commented on a bug.
 
@@ -2429,7 +2462,7 @@ commit and a real rollback the same way). Only the first is retried. Three rules
 
 **`entities` routes every write through one bean, `control/WritePatience`** (`qits.entities.write-deadline`,
 15S) — `WorkEntityService`'s create/update/transition/blocked/delete for every archetype, and
-`TicketCommentService`'s three. Every one is rows and nothing else, and no caller is transactional:
+`EntityCommentService`'s three. Every one is rows and nothing else, and no caller is transactional:
 `EpicMcpTools` is deliberately transaction-free (two persistence units, non-XA) and the controllers
 are too, with their change hints fired *after* the service returns. `AuditService.record` keeps its
 `@Transactional` and joins, exactly as it joined the annotation's.
