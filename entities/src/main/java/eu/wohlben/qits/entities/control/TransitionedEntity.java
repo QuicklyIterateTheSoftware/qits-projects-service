@@ -140,6 +140,45 @@ public record TransitionedEntity(
   }
 
   /**
+   * The row a field edit wrote ({@link WorkEntityService#update}), hung where {@code before} says
+   * it hung — a read's shape, {@link #statusBefore} and {@link #changedBy} null.
+   *
+   * <p>An edit moves no edge, so the membership read before it is still the membership after it,
+   * and this is what spares the edit a second read. That read would be <b>wrong</b>, not merely
+   * redundant: outside a transaction a request keeps one persistence context, the read before the
+   * edit filled it, and the edit's own transaction is a different one — so a re-read in the same
+   * request answers the row as it stood before the edit (measured, through {@code PATCH
+   * /entities/{id}}).
+   */
+  public static TransitionedEntity edited(WorkEntity row, TransitionedEntity before) {
+    return new TransitionedEntity(
+        row.id,
+        row.archetype,
+        row.projectId,
+        row.number,
+        null,
+        row.title,
+        row.slug,
+        row.slugScope,
+        row.description,
+        row.status,
+        null,
+        row.ticketType,
+        row.impetus,
+        row.assignee,
+        row.createdBy,
+        row.supersededByEntityId,
+        row.repositoryId,
+        row.implementedAt,
+        row.dependsOnEntityId,
+        before.parent(),
+        before.position(),
+        row.createdAt,
+        row.updatedAt,
+        null);
+  }
+
+  /**
    * The row and its edge as a transition left them, told the status it moved from and who moved it
    * — the announcement shape. {@code statusBefore} is captured by the caller <em>before</em> it
    * wrote the row, because afterwards the managed entity only knows its new status.

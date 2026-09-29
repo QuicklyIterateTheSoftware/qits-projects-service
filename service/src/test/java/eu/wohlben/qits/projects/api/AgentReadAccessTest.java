@@ -46,10 +46,11 @@ import org.junit.jupiter.api.TestFactory;
  * what it touches.
  *
  * <p><b>The list of classes is explicit, so a controller is only checked if it is here</b>, and
- * every controller on this surface is. Note that two of them declare no read at all ({@code
- * TicketCommentController}, {@code EntityTransitionController}), which is why the per-class sanity
- * check below asks for a <em>route</em> rather than for a read: a class with neither is a name that
- * no longer resolves to a door, and that is the thing worth failing on.
+ * every controller on this surface is. Note that three of them declare no read at all ({@code
+ * TicketCommentController}, {@code EntityTransitionController}, {@code EntityPatchController}),
+ * which is why the per-class sanity check below asks for a <em>route</em> rather than for a read: a
+ * class with neither is a name that no longer resolves to a door, and that is the thing worth
+ * failing on.
  */
 class AgentReadAccessTest {
 
@@ -61,6 +62,7 @@ class AgentReadAccessTest {
           eu.wohlben.qits.entities.api.DossierAssetController.class,
           eu.wohlben.qits.entities.api.DossierController.class,
           eu.wohlben.qits.entities.api.EntityArchetypesController.class,
+          eu.wohlben.qits.entities.api.EntityPatchController.class,
           eu.wohlben.qits.entities.api.EntityTransitionController.class,
           eu.wohlben.qits.entities.api.EpicController.class,
           eu.wohlben.qits.entities.api.FeatureController.class,
@@ -148,7 +150,10 @@ class AgentReadAccessTest {
           "TicketDossierController.move",
           "TicketDossierController.delete",
           "DossierAssetController.inline",
-          "EntityTransitionController.transition");
+          "EntityTransitionController.transition",
+          // The merge-patch field edit: update_ticket, update_epic, update_feature and update_task
+          // perform this same write, through the same WorkEntityService.update, over MCP.
+          "EntityPatchController.patch");
 
   /**
    * <b>The catalogue write an agent reaches: adding a component to a project.</b> Its own group
