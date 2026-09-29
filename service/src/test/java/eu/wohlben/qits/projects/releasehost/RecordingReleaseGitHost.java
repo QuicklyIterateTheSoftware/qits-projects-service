@@ -2,11 +2,15 @@ package eu.wohlben.qits.projects.releasehost;
 
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import jakarta.enterprise.context.ApplicationScoped;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -72,8 +76,23 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
    * Containment by {@code <repoId>@<earlier>-><later>}. Nothing staged is a plain <b>no</b>, for
    * {@link #resolves}' reason one map down: a fake that answered yes to a lineage nobody described
    * would let a test pass on a decision the real host would refuse.
+   *
+   * <p><b>Two writers describe a lineage: a test staging it, and a fold that landed.</b> {@link
+   * RecordingBackingBranchMerger} calls {@link #folded} for every source of a fold it answered as
+   * landed, because a merge commit really does contain what it merged — so main after a
+   * finalization contains the tag that was merged, with nobody having to stage it. Ancestry is
+   * transitive and reflexive in git and it is here: {@link #contains} walks the {@code true} edges,
+   * so a tag a release folded in is contained in whatever later merges that release.
    */
   private final Map<String, Answer<Boolean>> containment =
+      Collections.synchronizedMap(new LinkedHashMap<>());
+
+  /**
+   * Containment reads that fail for one commit whatever it is asked to be in — for the case where
+   * the container is a sha the test cannot know in advance, such as main after a merge the fake
+   * minted a fresh sha for.
+   */
+  private final Map<String, Answer<Boolean>> containmentFailures =
       Collections.synchronizedMap(new LinkedHashMap<>());
 
   public RecordingReleaseGitHost() {
@@ -222,6 +241,22 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     containment.put(repoId + "@" + earlier + "->" + later, answer);
   }
 
+  /**
+   * Stage every containment read of {@code commit} in {@code repoId} to fail outright, whatever it
+   * is asked to be in — "could not ask", which must never be read as "no" nor as "yes".
+   */
+  public void containmentOfUnreadable(String repoId, String commit, Answer<Boolean> answer) {
+    containmentFailures.put(repoId + "@" + commit, answer);
+  }
+
+  /**
+   * A fold landed: {@code into} now contains {@code source}. Called by {@link
+   * RecordingBackingBranchMerger}; never overwrites what a test staged for the same pair.
+   */
+  public void folded(String repoId, String source, String into) {
+    containment.putIfAbsent(repoId + "@" + source + "->" + into, Answer.of(true));
+  }
+
   /** Stage a resolution read that fails outright — neither a yes nor a no. */
   public void resolutionUnreadable(String repoName, String sha, Answer<Boolean> answer) {
     resolvable.put(repoName + "@" + sha, answer);
@@ -260,6 +295,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     pins.clear();
     resolvable.clear();
     containment.clear();
+    containmentFailures.clear();
     commitCounter.set(0);
     tagCollisions.set(0);
     treeFailure.set(null);
@@ -388,11 +424,55 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     return staged != null ? staged : Answer.of(false);
   }
 
-  /** Whether one commit is an ancestor of another. Nothing staged is a plain no. */
+  /**
+   * Whether one commit is an ancestor of another. A staged answer for the exact pair wins, a failure
+   * included; otherwise a commit contains itself, and anything reachable over the {@code true} edges
+   * is contained. Nothing staged and nothing reachable is a plain no.
+   */
   @Override
   public Answer<Boolean> contains(String repoId, String commit, String in) {
+    Answer<Boolean> failure = containmentFailures.get(repoId + "@" + commit);
+    if (failure != null) {
+      return failure;
+    }
     Answer<Boolean> staged = containment.get(repoId + "@" + commit + "->" + in);
-    return staged != null ? staged : Answer.of(false);
+    if (staged != null) {
+      return staged;
+    }
+    if (commit.equals(in)) {
+      return Answer.of(true);
+    }
+    return Answer.of(reachable(repoId, commit, in));
+  }
+
+  /** A walk over the {@code true} edges of one repository, from {@code commit} towards {@code in}. */
+  private boolean reachable(String repoId, String commit, String in) {
+    String prefix = repoId + "@";
+    Map<String, List<String>> edges = new LinkedHashMap<>();
+    synchronized (containment) {
+      containment.forEach(
+          (key, answer) -> {
+            if (key.startsWith(prefix) && answer.ok() && Boolean.TRUE.equals(answer.value())) {
+              String pair = key.substring(prefix.length());
+              int arrow = pair.indexOf("->");
+              edges
+                  .computeIfAbsent(pair.substring(0, arrow), from -> new ArrayList<>())
+                  .add(pair.substring(arrow + 2));
+            }
+          });
+    }
+    Set<String> seen = new HashSet<>();
+    Deque<String> frontier = new ArrayDeque<>(List.of(commit));
+    while (!frontier.isEmpty()) {
+      String at = frontier.pop();
+      if (at.equals(in)) {
+        return true;
+      }
+      if (seen.add(at)) {
+        frontier.addAll(edges.getOrDefault(at, List.of()));
+      }
+    }
+    return false;
   }
 
   @Override
