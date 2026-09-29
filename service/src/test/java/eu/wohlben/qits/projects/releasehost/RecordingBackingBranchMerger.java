@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.releasehost;
 
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -20,6 +21,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * request that is created, or whose sources moved, gets new content and therefore a re-arm. The
  * cases worth staging — {@code unchanged}, a conflict, an unreachable host — are each scripted per
  * test.
+ *
+ * <p><b>A fold that lands is lineage, and the suite's git host is told so.</b> Every source of a
+ * landed fold is recorded as contained in the resulting sha ({@link RecordingReleaseGitHost#folded}),
+ * which is what a merge commit is. That is what lets finalization ask the git host whether {@code
+ * main} now contains a released tag and get the true answer, with no test having to know which sha
+ * the fake minted for {@code main}.
  */
 @ApplicationScoped
 public class RecordingBackingBranchMerger implements BackingBranchMerger {
@@ -38,6 +45,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
       List<Resolution> resolutions) {}
 
   private final List<Fold> folds = Collections.synchronizedList(new ArrayList<>());
+
+  @Inject RecordingReleaseGitHost gitHost;
 
   /** Null means "a fresh merged sha", the default. */
   private final AtomicReference<Outcome> scripted = new AtomicReference<>();
@@ -96,11 +105,17 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
     folds.add(
         new Fold(repoId, target, List.copyOf(sources), message, List.copyOf(resolutions)));
     Outcome once = queued.poll();
-    if (once != null) {
-      return once;
+    Outcome scriptedOutcome = scripted.get();
+    Outcome outcome =
+        once != null
+            ? once
+            : scriptedOutcome != null
+                ? scriptedOutcome
+                : Outcome.merged(freshSha(), List.copyOf(sources));
+    if (outcome.folded() && outcome.sha() != null) {
+      sources.forEach(source -> gitHost.folded(repoId, source, outcome.sha()));
     }
-    Outcome outcome = scripted.get();
-    return outcome != null ? outcome : Outcome.merged(freshSha(), List.copyOf(sources));
+    return outcome;
   }
 
   public static String freshSha() {

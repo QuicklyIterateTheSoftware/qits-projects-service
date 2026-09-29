@@ -90,8 +90,9 @@ import org.jboss.logging.Logger;
  *       SCMPublishCommit});
  *   <li>a sibling release JOINING the implicit set — every open request of that repository re-folds,
  *       and it is a real change;
- *   <li>a pending tag LEAVING the set on reaching {@code main} ({@link #onReleasedTagMerged}) —
- *       content-idempotent, so the fold usually answers {@code unchanged} and nothing is announced.
+ *   <li>pending tags LEAVING the set once {@code main} is found to contain them ({@link
+ *       #onMainMoved}, after a finalization merge or a push to {@code main}) — content-idempotent,
+ *       so the fold usually answers {@code unchanged} and nothing is announced.
  * </ol>
  *
  * <p><b>{@code unchanged} is not a change.</b> The git host answers it when every head is already
@@ -223,7 +224,8 @@ import org.jboss.logging.Logger;
  * <p><b>A request stays open until the release is FINALIZED</b> (ticket b27384a3). RELEASED means
  * the tag is cut, and what it released has still to publish, to deploy and to reach {@code main} —
  * {@link ReleaseFinalization} is where those two gates and that merge live, and {@link
- * #onReleasedTagMerged} is where the request finishes. Three rules follow here:
+ * #onMainMoved} — {@code main} found to contain the tag — is where the request finishes. Three
+ * rules follow here:
  *
  * <ul>
  *   <li><b>RELEASED is in {@link ReleaseRequestRepository#OPEN} and not in {@link
@@ -348,6 +350,9 @@ public class ReleaseRequests {
   @Inject Instance<PipelinePhaseReruns> phaseReruns;
 
   @Inject Instance<DeploymentRedeploys> redeploys;
+
+  /** Asked whether {@code main} contains a pending tag — see {@link #onMainMoved}. */
+  @Inject Instance<ReleaseGitHost> gitHosts;
 
   /**
    * The requesters that are <b>machines</b>, and therefore the requests nobody is waiting on. A
@@ -1795,22 +1800,34 @@ public class ReleaseRequests {
   }
 
   /**
-   * A released tag reached {@code main}, so it LEAVES the implicit source set — the post-deployment
-   * merge's half of the bookkeeping, called by {@link ReleaseFinalization} once the git host has
-   * applied that merge. Every open request of the repository re-folds without it.
+   * {@code main} now stands at {@code mainSha}, so every pending tag it contains LEAVES the implicit
+   * source set — whoever put it there. Called by {@link ReleaseFinalization} once the git host has
+   * applied a post-deployment merge, and off {@code SCMPublishCommit} for a push to the default
+   * branch; every open request of the repository then re-folds without what left.
    *
-   * <p><b>This is the only writer of {@code merged_at}</b>, which is what keeps "the tag is on
-   * {@code main}" and "the open requests no longer fold it in" one step rather than two.
+   * <p><b>This is the only writer of {@code merged_at}, and it asks rather than assumes.</b> It used
+   * to stamp exactly the tag finalization had just merged, which left every tag that reached {@code
+   * main} some other way pending for ever: an OBSOLETE request's tag rides its successor there, and
+   * no merge of <em>that</em> tag ever happens, so ten dead tags stood in every fold of one
+   * repository (2026-09-29). The question is lineage, so lineage answers it: {@link
+   * ReleaseGitHost#contains}, per pending row, abandoned ones included. The git host's merge
+   * primitive announces nothing, which is why finalization calls this directly rather than relying
+   * on the push event.
+   *
+   * <p><b>"Could not ask" is never "no", and neither stamps.</b> A failed answer leaves the row
+   * pending with a WARN, and the next movement of {@code main} asks again; an owed merge whose own
+   * check failed stays owed, so the sweep re-merges it (answering {@code unchanged}) and asks again
+   * too. The asks run outside any transaction — they are HTTP — and the stamp re-checks {@code
+   * mergedAt} inside its own, so two callers racing over one sha stamp once.
    *
    * <p><b>Content-idempotent, and that is the point.</b> A tag on {@code main} is already contained
    * in the fold through {@code main} itself, so dropping it changes nothing the git host can see: the
-   * merge answers {@code unchanged}, no request is re-armed and no event is dispatched. A tag
-   * nothing has a pending row for is a no-op.
+   * merge answers {@code unchanged}, no request is re-armed and no event is dispatched. One re-fold
+   * per call, however many tags left, and none when nothing did.
    *
-   * <p><b>And this is where a request FINISHES</b> (ticket b27384a3). The tag reaching {@code main}
-   * is the last thing that happens to a release, so the request that produced it moves RELEASED →
-   * {@link ReleaseRequest.State#FINALIZED} here and leaves the open set. Two things follow from
-   * doing it at this line rather than at the tag:
+   * <p><b>And this is where a request FINISHES</b> (ticket b27384a3). Its tag reaching {@code main}
+   * is the last thing that happens to a release, so a RELEASED request whose tag is stamped here
+   * moves to {@link ReleaseRequest.State#FINALIZED} and leaves the open set. Two things follow:
    *
    * <ul>
    *   <li><b>The runs are cancelled last, not at the release.</b> They were cancelled when the tag
@@ -1819,50 +1836,106 @@ public class ReleaseRequests {
    *       moment anything could, so it is the honest place for the final ask, and it is the same
    *       best-effort {@link #cancel} every other caller makes.
    *   <li><b>A request in any other state is left exactly as it is.</b> An OBSOLETE one whose tag
-   *       somehow reached {@code main} is not resurrected into FINALIZED: it was superseded, that is
-   *       the record, and the successor is what finished.
+   *       reached {@code main} inside its successor is not resurrected into FINALIZED: it was
+   *       superseded, that is the record, and the successor is what finished. Only its row leaves
+   *       the implicit set.
    * </ul>
    */
-  public void onReleasedTagMerged(String repoId, String tagName) {
-    AtomicReference<String> finalized = new AtomicReference<>();
-    boolean cleared =
+  public void onMainMoved(String repoId, String mainSha) {
+    ReleaseGitHost gitHost = gitHosts.isResolvable() ? gitHosts.get() : null;
+    if (gitHost == null) {
+      LOG.infof(
+          "No git host is configured; cannot ask which pending tags of %s main at %s contains",
+          repoId, shortSha(mainSha));
+      return;
+    }
+    record Pending(String rowId, String tagName, String releasedSha) {}
+    List<Pending> pending =
         QuarkusTransaction.requiringNew()
             .call(
                 () ->
-                    pendingTags
-                        .find(repoId, tagName)
-                        .filter(row -> row.mergedAt == null)
-                        .map(
-                            row -> {
-                              row.mergedAt = Instant.now();
-                              if (row.releaseRequestId != null) {
-                                requests
-                                    .findByIdOptional(row.releaseRequestId)
-                                    .filter(
-                                        request ->
-                                            request.state == ReleaseRequest.State.RELEASED)
-                                    .ifPresent(
-                                        request -> {
-                                          request.state = ReleaseRequest.State.FINALIZED;
-                                          request.detail = null;
-                                          request.retryable = false;
-                                          request.updatedAt = row.mergedAt;
-                                          finalized.set(request.id);
-                                        });
-                              }
-                              return true;
-                            })
-                        .orElse(false));
-    if (!cleared) {
+                    pendingTags.listPending(repoId).stream()
+                        .map(row -> new Pending(row.id, row.tagName, row.releasedSha))
+                        .toList());
+    List<Pending> contained = new ArrayList<>();
+    for (Pending row : pending) {
+      ReleaseGitHost.Answer<Boolean> answer;
+      try {
+        answer = gitHost.contains(repoId, row.releasedSha(), mainSha);
+      } catch (RuntimeException e) {
+        // The port says it must not throw; a throw is a port bug and is "could not ask", never "no".
+        answer = ReleaseGitHost.Answer.failedRetryable("git host error: " + e);
+      }
+      if (!answer.ok()) {
+        LOG.warnf(
+            "Could not ask whether main of %s at %s contains the released tag %s; it stays an"
+                + " implicit source until main moves again: %s",
+            repoId, shortSha(mainSha), row.tagName(), answer.detail());
+      } else if (Boolean.TRUE.equals(answer.value())) {
+        contained.add(row);
+      }
+    }
+    if (contained.isEmpty()) {
       return;
     }
-    if (finalized.get() != null) {
-      estatePinLedger.forget(finalized.get());
-      LOG.infof(
-          "Release request %s is finalized: %s reached main", finalized.get(), tagName);
-      cancel(repoId, finalized.get(), "is finalized: " + tagName + " reached main");
+    record Finalized(String requestId, String tagName) {}
+    List<String> stamped = new ArrayList<>();
+    List<Finalized> finalized = new ArrayList<>();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Instant now = Instant.now();
+              for (Pending candidate : contained) {
+                ReleasedTagPendingMerge row =
+                    pendingTags.findByIdOptional(candidate.rowId()).orElse(null);
+                if (row == null || row.mergedAt != null) {
+                  continue;
+                }
+                row.mergedAt = now;
+                stamped.add(row.tagName);
+                if (row.releaseRequestId == null) {
+                  continue;
+                }
+                requests
+                    .findByIdOptional(row.releaseRequestId)
+                    .filter(request -> request.state == ReleaseRequest.State.RELEASED)
+                    .ifPresent(
+                        request -> {
+                          request.state = ReleaseRequest.State.FINALIZED;
+                          request.detail = null;
+                          request.retryable = false;
+                          request.updatedAt = now;
+                          finalized.add(new Finalized(request.id, row.tagName));
+                        });
+              }
+            });
+    for (Finalized done : finalized) {
+      estatePinLedger.forget(done.requestId());
+      LOG.infof("Release request %s is finalized: %s reached main", done.requestId(), done.tagName());
+      cancel(repoId, done.requestId(), "is finalized: " + done.tagName() + " reached main");
     }
-    remergeOpenOf(repoId, null, "the released tag " + tagName + " reached main");
+    if (stamped.isEmpty()) {
+      return;
+    }
+    remergeOpenOf(
+        repoId,
+        null,
+        (stamped.size() == 1 ? "the released tag " : "the released tags ")
+            + String.join(", ", stamped)
+            + " reached main");
+  }
+
+  /**
+   * Whether {@code branch} is the repository's default branch — the question a push has to answer
+   * before it can be news about {@code main}. The git host names a branch bare; a {@code
+   * refs/heads/} spelling is read as the same branch rather than as a different one.
+   */
+  public boolean isMainBranch(String repoId, String branch) {
+    if (branch == null) {
+      return false;
+    }
+    String bare = branch.startsWith("refs/heads/") ? branch.substring("refs/heads/".length()) : branch;
+    return QuarkusTransaction.requiringNew().call(() -> mainOf(repoId)).equals(bare);
   }
 
   /**

@@ -77,7 +77,12 @@ public class ReleasedTagPendingMerge extends PanacheEntityBase {
   @Column(name = "released_at", nullable = false)
   public Instant releasedAt;
 
-  /** Null while the tag is still in flight; stamped when the post-deployment merge lands it. */
+  /**
+   * Null while the tag is still in flight; stamped when {@code main} is found to contain {@link
+   * #releasedSha} — <b>whoever put it there</b>: this row's own post-deployment merge, a successor
+   * that folded it in, or a hand push. {@code ReleaseRequests.onMainMoved} asks on every movement of
+   * {@code main} it learns of and is the column's only writer.
+   */
   @Column(name = "merged_at")
   public Instant mergedAt;
 
@@ -149,8 +154,10 @@ public class ReleasedTagPendingMerge extends PanacheEntityBase {
    *
    * <p>An abandoned row leaves {@code listOwedMerges} and {@code listUngated} — the sweep must stop
    * trying to merge a tag whose request is OBSOLETE — and deliberately <b>stays</b> in {@code
-   * listPending}: it is still a released tag that is not on {@code main}, so every open request must
-   * still fold it in or it would be a step backwards from what shipped.
+   * listPending} until {@code main} contains it: until then it is a released tag that is not on
+   * {@code main}, so every open request must still fold it in or it would be a step backwards from
+   * what shipped. Once the successor lands, {@link #mergedAt} is stamped like any other row's and it
+   * leaves the set; the column only ever said "nobody will merge this one", never "never merged".
    */
   @Column(name = "abandoned_at")
   public Instant abandonedAt;

@@ -22,9 +22,14 @@ import org.jboss.logging.Logger;
  * nothing but the default branch is withdrawn: there is no work in it any more and the row would
  * otherwise stand open forever (three did, 2026-09-01).
  *
+ * <p>A push to the <b>default branch</b> is also news about {@code main}: every pending released tag
+ * the new head contains leaves the implicit source set ({@code ReleaseRequests#onMainMoved}), which
+ * is how a tag carried there by hand stops being folded in.
+ *
  * <p><b>This is the whole of how a push reaches the release flow.</b> The git host's merge primitive
  * fires no {@code post-receive}, so a backing branch's own movement never comes back here — which is
- * what keeps the loop from feeding itself.
+ * what keeps the loop from feeding itself, and why finalization's own merge to {@code main} asks the
+ * same question directly instead of waiting for an event that never comes.
  *
  * <p>Its own durable consumer beside {@link ScmBackupTriggerListener} rather than a second concern
  * inside it: the backup consumption is total over all four SCM events and must never learn release
@@ -93,6 +98,11 @@ public class ReleaseRequestHeadListener implements QitsDurableEventListener {
       return;
     }
     releaseRequests.onBranchMoved(repoId, branch, sha);
+    if (releaseRequests.isMainBranch(repoId, branch)) {
+      // A push to main may carry released tags onto it; each one it contains leaves the implicit
+      // source set. The new head is the question — never the parents, which say nothing of lineage.
+      releaseRequests.onMainMoved(repoId, sha);
+    }
   }
 
   private static boolean isBlank(String value) {

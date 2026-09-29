@@ -646,10 +646,11 @@ public class ReleaseFinalization {
       return;
     }
     landed(rowId);
-    // The row's own merged_at is stamped THERE and only there — one writer of that column — and the
-    // repository's open requests re-fold without this tag, which is content-idempotent and usually
-    // answers `unchanged`.
-    releaseRequests.onReleasedTagMerged(ask.repoId(), ask.tagName());
+    // merged_at is stamped THERE and only there — one writer of that column — by asking whether main
+    // at its new head contains each pending tag: this one, and any obsoleted tag that rode in with it.
+    // The merge primitive announces nothing, so nothing else would ask. A check that could not be
+    // made leaves this row owed, and the next sweep re-merges (`unchanged`) and asks again.
+    releaseRequests.onMainMoved(ask.repoId(), outcome.sha());
     LOG.infof(
         "The released tag %s of %s reached %s (%s)",
         ask.tagName(), ask.repoId(), ask.target(), outcome.result());

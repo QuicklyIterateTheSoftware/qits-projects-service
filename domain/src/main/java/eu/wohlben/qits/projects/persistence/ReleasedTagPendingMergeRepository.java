@@ -21,10 +21,12 @@ public class ReleasedTagPendingMergeRepository
    * This <b>is</b> the implicit source set: every open request of the repository folds these in, so
    * that a release cannot be a step backwards from one already shipping.
    *
-   * <p><b>An abandoned row is still in flight and is deliberately still here.</b> The successor that
-   * obsoleted its request folds this tag in and supersedes it whole; a later request that dropped it
-   * would be a step backwards from a tag that really was cut. What abandoning stops is the
-   * <em>merge</em> ({@link #listOwedMerges}, {@link #listUngated}), never the fold.
+   * <p><b>An abandoned row is here until {@code main} contains it.</b> The successor that obsoleted
+   * its request folds this tag in and supersedes it whole; a later request that dropped it before
+   * that successor reached {@code main} would be a step backwards from a tag that really was cut.
+   * What abandoning stops is the <em>merge</em> ({@link #listOwedMerges}, {@link #listUngated}),
+   * never the fold. What ends the fold is {@code mergedAt}, stamped for every row — abandoned or
+   * not — once {@code main} is found to contain its {@code releasedSha}, whoever put it there.
    */
   public List<ReleasedTagPendingMerge> listPending(String repoId) {
     return list("repoId = ?1 and mergedAt is null order by releasedAt", repoId);
