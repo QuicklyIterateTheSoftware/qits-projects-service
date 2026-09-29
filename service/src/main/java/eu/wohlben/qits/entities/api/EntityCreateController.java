@@ -123,7 +123,12 @@ public class EntityCreateController {
           String parent,
       @Schema(description = "The label.") String title,
       @Schema(description = "The long-form Markdown body.") String description,
-      @Schema(description = "A ticket's kind, BUG or IMPROVEMENT.") String ticketType,
+      @Schema(
+              description =
+                  "A ticket's kind, BUG or IMPROVEMENT. MAINTENANCE is reserved for the tickets the"
+                      + " platform files about its own stuck release requests, and it closes those"
+                      + " itself.")
+          String ticketType,
       @Schema(description = "Why a ticket came about. Required for a ticket.") String impetus,
       @Schema(description = "A ticket's assignee.") String assignee,
       @Schema(description = "A task's repository, in the task's project.") String repositoryId,

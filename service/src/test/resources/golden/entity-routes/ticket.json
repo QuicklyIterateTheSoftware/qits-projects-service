@@ -1056,7 +1056,7 @@
       "ticketType" : {
         "type" : "string",
         "description" : "A ticket's kind.",
-        "enum" : [ "BUG", "IMPROVEMENT" ]
+        "enum" : [ "BUG", "IMPROVEMENT", "MAINTENANCE" ]
       },
       "impetus" : {
         "type" : "string",
@@ -1097,7 +1097,7 @@
       "ticketType" : {
         "type" : "string",
         "description" : "A ticket's kind.",
-        "enum" : [ "BUG", "IMPROVEMENT" ]
+        "enum" : [ "BUG", "IMPROVEMENT", "MAINTENANCE" ]
       },
       "impetus" : {
         "type" : [ "string", "null" ],
@@ -1139,7 +1139,7 @@
       "ticketType" : {
         "type" : "string",
         "description" : "A ticket's kind.",
-        "enum" : [ "BUG", "IMPROVEMENT" ]
+        "enum" : [ "BUG", "IMPROVEMENT", "MAINTENANCE" ]
       },
       "impetus" : {
         "type" : "string",

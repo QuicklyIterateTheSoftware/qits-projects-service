@@ -211,11 +211,15 @@ final class PhasePrompts {
    * handed a small problem, so the next sentence sends it further than the impetus goes: the ticket
    * is the report, not the investigation.
    *
-   * <p><b>The two shapes, split by type.</b> A BUG is refined by finding the root cause and a
+   * <p><b>The three shapes, split by type.</b> A BUG is refined by finding the root cause and a
    * reproduction; an IMPROVEMENT has no root cause to find and is refined by making the case for the
    * change against what the code does now. Both are named because a template that said only
    * "investigate" would get a bug's treatment applied to an improvement, which produces a page of
-   * description of existing behaviour and no argument at all.
+   * description of existing behaviour and no argument at all. A MAINTENANCE ticket is a bug the
+   * platform filed about its own red gate, so its reproduction is already known — a named run that
+   * came back red — and the arm sends the agent to that run's log instead of asking it to rediscover
+   * one. It also says the ticket closes itself when the release request ends, because an agent that
+   * does not know that will read a ticket going DROPPED under it as somebody overruling its work.
    *
    * <p><b>"INTO THE TICKET'S DESCRIPTION … not a comment, not a new artifact".</b> This is the one
    * sentence the next phase depends on literally: {@code description} is the implement phase's
@@ -260,7 +264,11 @@ final class PhasePrompts {
         + " thread is the rest."
         + " Explore the code further than the impetus goes: it is the report, not the"
         + " investigation. For a BUG, find the root cause and a way to reproduce it; for an"
-        + " IMPROVEMENT, make the case for the change against what the code does now."
+        + " IMPROVEMENT, make the case for the change against what the code does now; for a"
+        + " MAINTENANCE ticket — filed by the platform itself for a release request a machine asked"
+        + " for and whose gate is red — find why the run it names failed (its log is in qits-ci)"
+        + " and what fixes the repository. A MAINTENANCE ticket closes itself when that release"
+        + " request ends."
         + " Write the result INTO THE TICKET'S DESCRIPTION with update_ticket — not a comment, not"
         + " a file in the repository, not a document anywhere else: the description is where the"
         + " next phase reads its brief, and a refinement written somewhere else leaves that brief"

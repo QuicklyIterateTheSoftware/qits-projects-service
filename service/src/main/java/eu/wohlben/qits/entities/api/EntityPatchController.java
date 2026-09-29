@@ -151,7 +151,11 @@ public class EntityPatchController {
       @Schema(nullable = true, description = "The long-form Markdown body; null clears it.")
           String description,
       @Schema(nullable = true, description = "A ticket's impetus; null clears it.") String impetus,
-      @Schema(description = "A ticket's type, BUG or IMPROVEMENT. Cannot be cleared.")
+      @Schema(
+              description =
+                  "A ticket's type, BUG or IMPROVEMENT; MAINTENANCE marks a ticket the platform"
+                      + " filed and will close itself, and retyping one away from it takes it over."
+                      + " Cannot be cleared.")
           String ticketType,
       @Schema(nullable = true, description = "A ticket's assignee; null clears it.")
           String assignee,

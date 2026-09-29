@@ -49,7 +49,8 @@ import java.time.Instant;
  *     transition mints nothing, so an omitted status would clear one under the PUT rule and leave a
  *     status-less epic no lifecycle can read. The word itself is judged by {@code Archetypes}
  *     against the target's vocabulary
- * @param ticketType {@code BUG} or {@code IMPROVEMENT}; a ticket's, and only a ticket's
+ * @param ticketType {@code BUG}, {@code IMPROVEMENT} or the platform-filed {@code MAINTENANCE}; a
+ *     ticket's, and only a ticket's
  * @param impetus why a ticket came about, in the reporter's words
  * @param assignee who is looking at a ticket, as free text
  * @param supersededBy the successor draft a superseded epic spawned

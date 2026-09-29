@@ -228,7 +228,8 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public boolean dispatchContinues = true;
 
   /**
-   * Bug or improvement ({@link TicketType}), on a ticket and on nothing else. Named {@code
+   * Bug, improvement or the platform's own maintenance failure ({@link TicketType}), on a ticket and
+   * on nothing else. Named {@code
    * ticketType} rather than {@code type}, because {@code type} in a row holding four archetypes
    * reads as the archetype, which is the one thing it is not.
    */

@@ -157,7 +157,9 @@ public class TicketMcpTools {
       name = "list_tickets",
       description =
           "List the tickets of the project this session is scoped to, oldest first, without their"
-              + " comments. A ticket is a small-scoped piece of work — a BUG or an IMPROVEMENT —"
+              + " comments. A ticket is a small-scoped piece of work — a BUG or an IMPROVEMENT, or a"
+              + " MAINTENANCE ticket the platform filed itself about a stuck release request and"
+              + " closes itself when that request ends —"
               + " that is not big enough to be an epic. Its status says what has been achieved so"
               + " far: REPORTED (somebody said what is wrong), REFINED (the ticket says what to"
               + " do), IMPLEMENTED (the change is released and deployed), VERIFIED (it no longer"
@@ -223,7 +225,8 @@ public class TicketMcpTools {
   public TicketSummary createTicket(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(description = "BUG for something behaving wrongly, IMPROVEMENT for something that"
-              + " works and could be better")
+              + " works and could be better. MAINTENANCE is reserved for the tickets the platform"
+              + " files itself; a person files BUG or IMPROVEMENT")
           String type,
       @ToolArg(
               description =
@@ -282,7 +285,13 @@ public class TicketMcpTools {
           String impetus,
       @ToolArg(required = false, description = "new description; omit to keep it")
           String description,
-      @ToolArg(required = false, description = "BUG or IMPROVEMENT; omit to keep it") String type,
+      @ToolArg(
+              required = false,
+              description =
+                  "BUG or IMPROVEMENT; omit to keep it. MAINTENANCE is reserved for the tickets the"
+                      + " platform files itself, and retyping one of those to BUG takes it over: the"
+                      + " platform then no longer closes it")
+          String type,
       @ToolArg(required = false, description = "new assignee; omit to keep the current one")
           String assignee) {
     requireTicketInProject(id);

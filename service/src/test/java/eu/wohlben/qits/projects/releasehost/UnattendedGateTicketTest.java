@@ -8,8 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import eu.wohlben.qits.entities.api.EntityPatchController;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.control.BuildStatusLedger;
+import eu.wohlben.qits.projects.control.ReleaseExecutor;
+import eu.wohlben.qits.projects.control.ReleaseGates;
+import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
@@ -20,8 +25,12 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,8 +38,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The half of the loop that puts a red gate in front of a person: a release request <b>nobody is
- * waiting on</b> that a red verdict rejects files a BUG ticket, once, and says so on that same
- * ticket when it eventually releases.
+ * waiting on</b> that a red verdict rejects files a MAINTENANCE ticket, once, says so on that same
+ * ticket when it eventually releases, and <b>drops</b> it when the request ends — FINALIZED,
+ * WITHDRAWN or OBSOLETE — unless a person has retyped it and so taken it over.
  *
  * <p>This drives the shipped adapter rather than a recording double, on purpose: what is actually
  * under test is the crossing between {@code domain}'s gate and the {@code entities} ticket store, which
@@ -58,6 +68,16 @@ public class UnattendedGateTicketTest {
 
   @Inject RecordingReleaseExecutor executor;
 
+  @Inject RecordingReleaseGitHost gitHost;
+
+  @Inject RecordingBackingBranchMerger merger;
+
+  @Inject ReleaseGates gates;
+
+  @Inject BuildStatusLedger ledger;
+
+  @Inject ReleaseRequests releaseRequests;
+
   private String repoId;
   private String projectId;
 
@@ -65,6 +85,8 @@ public class UnattendedGateTicketTest {
   void seed() {
     activeBuilds.reset();
     executor.reset();
+    gitHost.reset();
+    merger.reset();
     repoId = "gate-ticket-repo-" + UUID.randomUUID();
     projectId = "gate-ticket-project-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
@@ -102,7 +124,7 @@ public class UnattendedGateTicketTest {
   }
 
   @Test
-  public void aRedGateOnTheRobotsRequestFilesOneBugTicketNamingTheRunAndTheFold() {
+  public void aRedGateOnTheRobotsRequestFilesOneMaintenanceTicketNamingTheRunAndTheFold() {
     String id = create("maintenance/dependencies", ROBOT);
     String merged = mergedShaOf(id);
 
@@ -116,7 +138,10 @@ public class UnattendedGateTicketTest {
         "a machine asked, so nobody is waiting on this");
 
     var ticket = given().get("/projects/api/tickets/" + ticketId).then().statusCode(200).extract();
-    assertEquals("BUG", ticket.path("ticket.type"));
+    assertEquals(
+        "MAINTENANCE",
+        ticket.path("ticket.type"),
+        "the platform filed it, and the type is what lets the platform close it again");
     assertEquals("REPORTED", ticket.path("ticket.status"));
     assertTrue(
         ((String) ticket.path("ticket.impetus")).contains(REPO_NAME),
@@ -265,8 +290,9 @@ public class UnattendedGateTicketTest {
   }
 
   /**
-   * It healed. The thread is told, and the ticket is <b>left where it is</b> — a green build says
-   * the fold passes now, not that everything said on the thread is handled.
+   * It healed. The thread is told, and the ticket is <b>left where it is</b> for now: a RELEASED
+   * request has not ended — its tag has still to reach main — so there is still a request for the
+   * ticket to be about. The comment says the close comes with the finalization.
    */
   @Test
   public void aReleaseSaysSoOnTheTicketAndLeavesItWhereItIs() {
@@ -281,20 +307,314 @@ public class UnattendedGateTicketTest {
     verdict("BuildSuccessful", mergedShaOf(id), "");
     awaitState(id, "RELEASED");
 
-    awaitComment(ticketId, "released as");
+    String said = awaitComment(ticketId, "released as");
+    assertTrue(
+        said.contains("when the request is finalized"),
+        "the thread is told that the close is coming, and when: " + said);
     assertEquals(
         "REPORTED",
-        given()
-            .get("/projects/api/tickets/" + ticketId)
-            .then()
-            .extract()
-            .path("ticket.status"),
-        "a machine that files is cheaper to be wrong about than a machine that closes");
+        statusOf(ticketId),
+        "released is not ended: the tag has not reached main, so the ticket stays open");
+    assertNull(closedAtOf(id), "and nothing has been closed for this request yet");
     assertFalse(
         commentBodies(ticketId).isEmpty(), "and the healing is on the thread, not just in a log");
   }
 
+  // ---- the request ending closes the ticket (qits-578) ----------------------------------------
+
+  /** A person withdrew the stuck request: nothing is left for the ticket to be about. */
+  @Test
+  public void withdrawingTheRequestDropsItsTicketAndSaysWithdrawn() {
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+
+    withdraw(id, "the bump is not wanted after all");
+
+    awaitStatus(ticketId, "DROPPED");
+    String said = awaitComment(ticketId, "WITHDRAWN");
+    assertTrue(said.contains(id), "the comment names the request: " + said);
+    assertTrue(said.contains("the bump is not wanted after all"), "and why: " + said);
+    assertTrue(awaitClosedAt(id) != null, "and the request records that its ticket is dealt with");
+  }
+
+  /**
+   * The ordinary happy end: the release's tag reaches main in a push, the request is FINALIZED, and
+   * the ticket goes DROPPED with the version on its thread.
+   */
+  @Test
+  public void aPushToMainThatFinalizesTheRequestDropsItsTicketNamingTheVersion() {
+    String version = uniqueVersion();
+    String releasedSha = RecordingBackingBranchMerger.freshSha();
+    Released released = releasedWithTicket(version, releasedSha);
+    awaitComment(released.ticketId(), "released as");
+    assertEquals("REPORTED", statusOf(released.ticketId()), "open while the request is");
+
+    String mainSha = RecordingBackingBranchMerger.freshSha();
+    gitHost.containsCommit(repoId, releasedSha, mainSha);
+    headMovedTo("main", mainSha);
+
+    awaitState(released.requestId(), "FINALIZED");
+    awaitStatus(released.ticketId(), "DROPPED");
+    String said = awaitComment(released.ticketId(), "FINALIZED");
+    assertTrue(said.contains(version), "the comment names the version that reached main: " + said);
+    assertTrue(awaitClosedAt(released.requestId()) != null);
+  }
+
+  /**
+   * <b>The ordering a repository with nothing to deploy produces, pinned.</b> Its tag goes to main
+   * inside the release itself ({@code ReleaseFinalization.onReleased}), so FINALIZED — and with it
+   * the ticket's close — is written BEFORE the "released as" comment would be. That comment is then
+   * skipped, because the ticket it would go on is already closed; the FINALIZED comment names the
+   * version instead, and that is the whole of what the thread needs.
+   */
+  @Test
+  public void aReleaseWithNothingToDeployFinalizesAtOnceAndTheReleasedCommentIsSkipped() {
+    String version = uniqueVersion();
+    // No release.yml and no deployments.yml at the tag: nothing publishes, nothing deploys.
+    gitHost.tree("refs/tags/" + version, Map.of("pom.xml", "irrelevant"));
+    Released released = releasedWithTicket(version, RecordingBackingBranchMerger.freshSha());
+
+    awaitState(released.requestId(), "FINALIZED");
+    awaitStatus(released.ticketId(), "DROPPED");
+    String said = awaitComment(released.ticketId(), "FINALIZED");
+    assertTrue(said.contains(version), said);
+    assertTrue(awaitClosedAt(released.requestId()) != null);
+    // sayItHealed runs after the finalization on the same worker; give it the moment it needs.
+    sleep(500);
+    assertTrue(
+        commentBodies(released.ticketId()).stream().noneMatch(c -> c.contains("released as")),
+        "the released comment found a closed thread and said nothing: "
+            + commentBodies(released.ticketId()));
+  }
+
+  /**
+   * A fresh ask overtakes a RELEASED request that has not finalized; the earlier one goes OBSOLETE
+   * and its ticket is dropped naming the request that superseded it.
+   */
+  @Test
+  public void anObsoletingRequestDropsTheTicketNamingItsSuccessor() {
+    Released released =
+        releasedWithTicket(uniqueVersion(), RecordingBackingBranchMerger.freshSha());
+    awaitComment(released.ticketId(), "released as");
+
+    String successor = create("maintenance/dependencies", ROBOT);
+    assertNotEquals(released.requestId(), successor, "a released request is never converged onto");
+
+    awaitState(released.requestId(), "OBSOLETE");
+    awaitStatus(released.ticketId(), "DROPPED");
+    String said = awaitComment(released.ticketId(), "OBSOLETE");
+    assertTrue(said.contains(successor), "the comment names the successor: " + said);
+    assertTrue(awaitClosedAt(released.requestId()) != null);
+  }
+
+  /** A person retyped the ticket: it is theirs now, so the ending is said and nothing is moved. */
+  @Test
+  public void aTicketRetypedToBugIsToldAndLeftOpen() {
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+    given()
+        .contentType(EntityPatchController.MERGE_PATCH_JSON)
+        .body(Map.of("ticketType", "BUG"))
+        .patch("/projects/api/entities/" + ticketId)
+        .then()
+        .statusCode(200);
+
+    withdraw(id, null);
+
+    String said = awaitComment(ticketId, "no longer MAINTENANCE");
+    assertTrue(said.contains("WITHDRAWN"), said);
+    assertEquals("REPORTED", statusOf(ticketId), "a person's ticket is not the platform's to close");
+    assertTrue(awaitClosedAt(id) != null, "and there is nothing more to retry");
+  }
+
+  /**
+   * A thread a person already closed is not reopened, commented on or moved — whichever of the two
+   * closing words closed it — and the request is stamped all the same, so the sweep never asks.
+   */
+  @Test
+  public void anAlreadyClosedTicketIsLeftAloneAndTheStampIsWritten() {
+    List<List<String>> walks =
+        List.of(List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE"), List.of("DROPPED"));
+    for (List<String> walk : walks) {
+      String id = create("maintenance/dependencies", ROBOT);
+      verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+      awaitState(id, "REJECTED");
+      String ticketId = awaitTicketOn(id);
+      for (String target : walk) {
+        given()
+            .contentType(ContentType.JSON)
+            .body("{\"target\":\"" + target + "\"}")
+            .post("/projects/api/tickets/" + ticketId + "/transition")
+            .then()
+            .statusCode(200);
+      }
+      String closed = walk.get(walk.size() - 1);
+      List<String> before = commentBodies(ticketId);
+
+      withdraw(id, null);
+
+      assertTrue(awaitClosedAt(id) != null, "stamped although nothing was done: " + closed);
+      assertEquals(closed, statusOf(ticketId));
+      assertEquals(before, commentBodies(ticketId), "and nothing was said under a closed thread");
+    }
+  }
+
+  /**
+   * <b>The floor.</b> An ending whose inline close never ran — a process that died between the two,
+   * or every request that ended before this feature existed — is an ended row with a ticket and no
+   * stamp, and the sweep closes it.
+   */
+  @Test
+  public void theSweepClosesATicketWhoseInlineCloseWasSkipped() {
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+    // FINALIZED behind the service's back: exactly the row a skipped inline call leaves.
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleaseRequest.<ReleaseRequest>findByIdOptional(id)
+                    .ifPresent(
+                        row -> {
+                          row.state = ReleaseRequest.State.FINALIZED;
+                          row.version = "2026.929.235959";
+                          row.gateTicketClosedAt = null;
+                        }));
+    assertEquals("REPORTED", statusOf(ticketId), "nothing has closed it yet");
+
+    releaseRequests.sweepGateTickets();
+
+    assertEquals("DROPPED", statusOf(ticketId));
+    String said = awaitComment(ticketId, "FINALIZED");
+    assertTrue(said.contains("2026.929.235959"), said);
+    assertTrue(closedAtOf(id) != null, "and the sweep will not ask about it again");
+  }
+
+  /**
+   * <b>The double filing.</b> One red verdict is heard twice — the bus and the sweep, or two
+   * deliveries — and both evaluations used to read PENDING, both reject and both file. The first
+   * evaluation is held open inside its gate transaction (the gate set's tree read is parked) while
+   * the second arrives; with the row lock the second waits, then reads REJECTED and files nothing.
+   */
+  @Test
+  public void twoConcurrentEvaluationsOfOneRedVerdictFileOneTicket() throws Exception {
+    String id = create("maintenance/dependencies", ROBOT);
+    String merged = mergedShaOf(id);
+    ledger.record(
+        new BuildStatusLedger.Verdict(
+            "run-" + UUID.randomUUID(),
+            repoId,
+            projectId,
+            REPO_NAME,
+            "maintenance/dependencies",
+            merged,
+            "FAILED",
+            Instant.now(),
+            null,
+            null));
+    gates.forget(repoId);
+    RecordingReleaseGitHost.Hold hold = gitHost.holdNextTreeRead(repoId);
+
+    List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+    Thread first = evaluation(merged, failures);
+    first.start();
+    assertTrue(hold.awaitEntered(), "the first evaluation never reached its gate read");
+    Thread second = evaluation(merged, failures);
+    second.start();
+    // Long enough for the second to reach the row (and, without the lock, to get all the way
+    // through); it cannot be observed waiting on a database lock, only given the time to.
+    Thread.sleep(1_000);
+    hold.release();
+    first.join(20_000);
+    second.join(20_000);
+
+    assertEquals(List.of(), failures, "neither evaluation may throw");
+    assertEquals("REJECTED", request(id).getString("state"));
+    assertEquals(1, ticketsOnProject().size(), "one red verdict, one ticket: " + ticketsOnProject());
+  }
+
   // ---- the harness -----------------------------------------------------------------------------
+
+  /** A request and its ticket, carried out of a staging helper. */
+  private record Released(String requestId, String ticketId) {}
+
+  /**
+   * A robot's request that went red, got a ticket, was re-armed by a push and released as {@code
+   * version} at {@code releasedSha} — the RELEASED request every ending below starts from.
+   */
+  private Released releasedWithTicket(String version, String releasedSha) {
+    activeBuilds.answer(Optional.of(0));
+    executor.answer(ReleaseExecutor.Outcome.released(version, releasedSha));
+    String id = create("maintenance/dependencies", ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+    String ticketId = awaitTicketOn(id);
+    headMoved("maintenance/dependencies");
+    awaitState(id, "PENDING");
+    verdict("BuildSuccessful", mergedShaOf(id), "");
+    return new Released(id, ticketId);
+  }
+
+  /** One evaluation of the request gating {@code sha}, on a thread of its own. */
+  private Thread evaluation(String sha, List<Throwable> failures) {
+    return new Thread(
+        () -> {
+          try {
+            releaseRequests.onVerdict(repoId, sha, Set.of());
+          } catch (Throwable t) {
+            failures.add(t);
+          }
+        });
+  }
+
+  /** A calver no other test in the suite releases, so no staged tag tree of theirs can match it. */
+  private static String uniqueVersion() {
+    return "2026.929." + (100000 + (int) (Math.random() * 800000));
+  }
+
+  private void withdraw(String id, String reason) {
+    given()
+        .contentType(ContentType.JSON)
+        .body(reason == null ? Map.of() : Map.of("reason", reason))
+        .post(base() + "/" + id + "/withdraw")
+        .then()
+        .statusCode(200);
+  }
+
+  private String statusOf(String ticketId) {
+    return given().get("/projects/api/tickets/" + ticketId).then().extract().path("ticket.status");
+  }
+
+  private void awaitStatus(String ticketId, String expected) {
+    await(
+        () -> expected.equals(statusOf(ticketId)) ? expected : null,
+        "ticket " + ticketId + " never reached " + expected + "; last seen " + statusOf(ticketId));
+  }
+
+  private Instant closedAtOf(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                ReleaseRequest.<ReleaseRequest>findByIdOptional(id)
+                    .map(row -> row.gateTicketClosedAt)
+                    .orElse(null));
+  }
+
+  private Instant awaitClosedAt(String id) {
+    String seen =
+        await(
+            () -> {
+              Instant at = closedAtOf(id);
+              return at == null ? null : at.toString();
+            },
+            "release request " + id + " never recorded its ticket as closed");
+    return seen == null ? null : Instant.parse(seen);
+  }
 
   private String base() {
     return "/projects/api/repositories/" + repoId + "/release-requests";
@@ -367,6 +687,11 @@ public class UnattendedGateTicketTest {
 
   /** A push to a participating branch: the re-fold, which is the re-arm. */
   private void headMoved(String branch) {
+    headMovedTo(branch, UUID.randomUUID().toString().replace("-", ""));
+  }
+
+  /** A push that moves {@code branch} to a sha the test chose — main, where lineage is asked. */
+  private void headMovedTo(String branch, String sha) {
     headListener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -377,7 +702,7 @@ public class UnattendedGateTicketTest {
                 + "\",\"repoId\":\""
                 + repoId
                 + "\",\"sha\":\""
-                + UUID.randomUUID().toString().replace("-", "")
+                + sha
                 + "\"}",
             null,
             null,
@@ -420,8 +745,8 @@ public class UnattendedGateTicketTest {
         "release request " + id + " never got a ticket other than " + previous);
   }
 
-  private void awaitComment(String ticketId, String contains) {
-    await(
+  private String awaitComment(String ticketId, String contains) {
+    return await(
         () ->
             commentBodies(ticketId).stream()
                 .filter(body -> body.contains(contains))
@@ -457,8 +782,12 @@ public class UnattendedGateTicketTest {
   }
 
   private static void sleep() {
+    sleep(50);
+  }
+
+  private static void sleep(long millis) {
     try {
-      Thread.sleep(50);
+      Thread.sleep(millis);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       fail("interrupted");

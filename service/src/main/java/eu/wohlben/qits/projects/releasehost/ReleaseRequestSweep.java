@@ -46,4 +46,17 @@ public class ReleaseRequestSweep {
   void sweepFinalizations() {
     finalization.sweep();
   }
+
+  /**
+   * The gate tickets' floor: every ended request whose MAINTENANCE ticket is not closed yet is asked
+   * about again ({@link ReleaseRequests#sweepGateTickets}). Its own method and its own interval —
+   * {@code qits.projects.release-requests.gate-ticket-sweep-every} — because nothing waits on it: the
+   * inline close at the ending is the prompt path, and this only catches what that one missed.
+   */
+  @Scheduled(
+      every = "{qits.projects.release-requests.gate-ticket-sweep-every}",
+      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+  void sweepGateTickets() {
+    releaseRequests.sweepGateTickets();
+  }
 }

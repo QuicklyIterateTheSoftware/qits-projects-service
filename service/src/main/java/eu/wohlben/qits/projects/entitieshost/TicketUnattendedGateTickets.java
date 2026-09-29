@@ -7,19 +7,22 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.TicketType;
+import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.control.UnattendedGateTickets;
+import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkus.arc.DefaultBean;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
 import java.util.Optional;
 import org.jboss.logging.Logger;
 
 /**
  * The shipped {@link UnattendedGateTickets}: a red gate on a request nobody is watching becomes a
- * BUG ticket in this same deployable's entities module.
+ * MAINTENANCE ticket in this same deployable's entities module, and the request ending closes it.
  *
  * <h2>Why it is an adapter at all, when nothing here is a network hop</h2>
  *
@@ -42,6 +45,15 @@ import org.jboss.logging.Logger;
  * <b>comment</b>. Closed (DONE or DROPPED), or deleted, or naming nothing → a fresh ticket. That is
  * what keeps a repository that re-gates red twenty times over to one ticket, on exactly the
  * repository somebody is already trying to fix.
+ *
+ * <h2>Filed as MAINTENANCE, and closed as one</h2>
+ *
+ * <p>The ticket is typed {@link TicketType#MAINTENANCE} rather than BUG, and the word is what lets
+ * {@link #ended} close it: a ticket still carrying it is the platform's own, and when its request
+ * reaches FINALIZED, WITHDRAWN or OBSOLETE it goes DROPPED with a comment saying which. A person who
+ * retypes it has taken it over, and then the ending is only said on the thread. Before this, every
+ * such ticket stayed open after its request had long finished, and the backlog that built up was
+ * made entirely of reports about things that had already stopped being true.
  *
  * <h2>Nothing here throws</h2>
  *
@@ -68,6 +80,8 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
 
   @Inject ProjectChangePublisher publisher;
 
+  @Inject EntityResolutions resolutions;
+
   @Override
   public Optional<String> rejected(Rejection rejection) {
     try {
@@ -93,7 +107,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
                       // these facts — nothing later can reconstruct which run came back red.
                       impetus(rejection),
                       body(rejection),
-                      TicketType.BUG.name(),
+                      TicketType.MAINTENANCE.name(),
                       // No assignee. Nobody was watching this release; inventing an owner for the
                       // ticket would be the same guess one directory over.
                       null),
@@ -101,7 +115,8 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
               .entity();
       redraw(rejection.projectId());
       LOG.warnf(
-          "Release request %s of %s was rejected with nobody watching it; filed BUG ticket %s (%s)",
+          "Release request %s of %s was rejected with nobody watching it; filed MAINTENANCE ticket %s"
+              + " (%s)",
           rejection.requestId(), named(rejection), filed.id, filed.slug);
       return Optional.of(filed.id);
     } catch (RuntimeException e) {
@@ -132,9 +147,10 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
               + " passed its gate and released as **"
               + version
               + "**.\n\n"
-              + "This ticket is deliberately left where it is: a green build says the fold passes"
-              + " now, not that everything said on this thread is handled. Move it on yourself if"
-              + " there is nothing left in it.",
+              + "This ticket stays where it is for now: the request is still open until its tag"
+              + " reaches main, and while it is typed MAINTENANCE the platform closes it itself"
+              + " when the request is finalized. Retype it if there is something on this thread"
+              + " that should outlive the request.",
           REPORTER);
       redraw(ticket.projectId);
       LOG.infof(
@@ -142,6 +158,129 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not say on ticket %s that request %s released", ticketId, requestId);
     }
+  }
+
+  /**
+   * Close the ticket of a request that ended, if it is still the platform's to close — see the port.
+   *
+   * <p><b>Four outcomes and one of them is "try again".</b> A ticket that is already closed (DONE or
+   * DROPPED) or no longer exists has nothing left to do and answers true without a word: somebody
+   * finished with it, and a comment on a closed thread is noise. A ticket a person retyped away from
+   * MAINTENANCE is told the request ended and left open, and answers true too — the platform's part
+   * is over. Otherwise the ending goes on the thread first and the ticket goes DROPPED through
+   * {@link EntityResolutions}, which is the one door that also tears down a refinement the ticket may
+   * hold. Only a failure that could go differently next time — the store unreachable, a write
+   * refused mid-cutover — answers false, and the caller's sweep asks again.
+   *
+   * <p><b>"Not found" and "could not read" are told apart here</b>, where {@link #reusableTicket}
+   * does not need to: the filer's worst case for a misread is a duplicate ticket, while this method's
+   * would be a stamp that stops the sweep from ever closing a ticket that is still there. So only the
+   * entities module's own {@link NotFoundException} reads as gone; any other failure is retried.
+   *
+   * <p>A comment written before a failed transition is written again on the retry. That is accepted:
+   * it takes a failure between two writes to the same database, and a repeated sentence on a thread
+   * costs less than a close that is never attempted again.
+   *
+   * <p>{@link ActivateRequestContext} because the callers are the bus consumers, the release worker
+   * and the scheduler — none with a request scope — and the transition's preview reads the row
+   * outside any transaction, which Panache refuses to do without one.
+   */
+  @Override
+  @ActivateRequestContext
+  public boolean ended(
+      String ticketId, String requestId, String repoName, Ending ending, String detail) {
+    if (ticketId == null || ticketId.isBlank()) {
+      return true;
+    }
+    try {
+      WorkEntity ticket;
+      try {
+        // Its own transaction, for reusableTicket's reason: no caller brings one.
+        ticket =
+            QuarkusTransaction.requiringNew().call(() -> entities.get(Archetype.TICKET, ticketId));
+      } catch (RuntimeException e) {
+        if (!isNotFound(e)) {
+          throw e;
+        }
+        LOG.debugf(
+            "The ticket %s of ended release request %s is gone; nothing to close",
+            ticketId, requestId);
+        return true;
+      }
+      if (EntityStatus.DONE.name().equals(ticket.status)
+          || EntityStatus.DROPPED.name().equals(ticket.status)) {
+        return true;
+      }
+      if (ticket.ticketType != TicketType.MAINTENANCE) {
+        tickets.addComment(
+            ticket.id,
+            endedSentence(requestId, repoName, ending, detail)
+                + "\n\nThis ticket is no longer MAINTENANCE, so it is left open: whoever retyped it"
+                + " has taken it over.",
+            REPORTER);
+        redraw(ticket.projectId);
+        LOG.infof(
+            "Release request %s ended as %s; ticket %s is %s now, so it was only told",
+            requestId, ending, ticket.id, ticket.ticketType);
+        return true;
+      }
+      tickets.addComment(
+          ticket.id,
+          endedSentence(requestId, repoName, ending, detail)
+              + "\n\nThere is no stuck request left for this ticket to be about, so the platform"
+              + " drops it. If the failure comes back, a fresh request's red gate files a fresh"
+              + " ticket.",
+          REPORTER);
+      resolutions.transition(Archetype.TICKET, ticket.id, EntityStatus.DROPPED.name(), REPORTER);
+      redraw(ticket.projectId);
+      LOG.infof(
+          "Release request %s ended as %s; dropped its MAINTENANCE ticket %s",
+          requestId, ending, ticket.id);
+      return true;
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not close ticket %s of release request %s, which ended as %s; the sweep will"
+              + " try again",
+          ticketId,
+          requestId,
+          ending);
+      return false;
+    }
+  }
+
+  /** The entities module's 404, however the transaction wrapper handed it back. */
+  private static boolean isNotFound(Throwable e) {
+    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+      if (cause instanceof NotFoundException) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** What happened to the request, in one sentence that names the version or the successor. */
+  static String endedSentence(String requestId, String repoName, Ending ending, String detail) {
+    String request =
+        "The release request "
+            + code(requestId)
+            + (repoName == null ? "" : " of " + code(repoName));
+    return switch (ending) {
+      case FINALIZED ->
+          request
+              + " is **FINALIZED**: "
+              + (detail == null ? "its release" : code(detail))
+              + " reached main.";
+      case OBSOLETE ->
+          request
+              + " is **OBSOLETE**: "
+              + (detail == null
+                  ? "a later request"
+                  : "release request " + code(detail))
+              + " folds its release in and releases past it.";
+      case WITHDRAWN ->
+          request + " was **WITHDRAWN**" + (detail == null ? "." : ": " + detail);
+    };
   }
 
   // ---- the pieces ------------------------------------------------------------------------------

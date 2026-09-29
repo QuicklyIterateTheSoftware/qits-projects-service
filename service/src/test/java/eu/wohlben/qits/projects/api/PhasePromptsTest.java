@@ -162,6 +162,12 @@ public class PhasePromptsTest {
     assertTrue(
         prompt.contains("For a BUG") && prompt.contains("for an IMPROVEMENT"),
         "and the two types are refined differently: " + prompt);
+    assertTrue(
+        prompt.contains("for a MAINTENANCE ticket") && prompt.contains("its log is in qits-ci"),
+        "and the platform's own filing is sent to the run that came back red: " + prompt);
+    assertTrue(
+        prompt.contains("closes itself when that release request ends"),
+        "and told that it will close itself, so a DROPPED under it is not a surprise: " + prompt);
   }
 
   // ---- IMPLEMENT ------------------------------------------------------------------------------

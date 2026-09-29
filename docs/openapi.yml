@@ -1217,7 +1217,9 @@ components:
           description: The long-form Markdown body.
         ticketType:
           type: string
-          description: "A ticket's kind, BUG or IMPROVEMENT."
+          description: "A ticket's kind, BUG or IMPROVEMENT. MAINTENANCE is reserved\
+            \ for the tickets the platform files about its own stuck release requests,\
+            \ and it closes those itself."
         impetus:
           type: string
           description: Why a ticket came about. Required for a ticket.
@@ -1301,7 +1303,9 @@ components:
           description: A ticket's impetus; null clears it.
         ticketType:
           type: string
-          description: "A ticket's type, BUG or IMPROVEMENT. Cannot be cleared."
+          description: "A ticket's type, BUG or IMPROVEMENT; MAINTENANCE marks a ticket\
+            \ the platform filed and will close itself, and retyping one away from\
+            \ it takes it over. Cannot be cleared."
         assignee:
           type:
           - string
@@ -2721,6 +2725,7 @@ components:
       enum:
       - BUG
       - IMPROVEMENT
+      - MAINTENANCE
     TransitionCampaignRequest:
       type: object
       required:
@@ -7676,4 +7681,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.929.135952
+  version: 2026.929.191709

@@ -49,7 +49,10 @@ public enum EntityProperty {
    */
   STATUS,
 
-  /** {@code entity.ticket_type} — {@code BUG} or {@code IMPROVEMENT}. A ticket's, and only a ticket's. */
+  /**
+   * {@code entity.ticket_type} — {@code BUG}, {@code IMPROVEMENT} or the platform-filed {@code
+   * MAINTENANCE}. A ticket's, and only a ticket's.
+   */
   TICKET_TYPE,
 
   /** {@code entity.impetus} — why a ticket came about, in the reporter's words. */

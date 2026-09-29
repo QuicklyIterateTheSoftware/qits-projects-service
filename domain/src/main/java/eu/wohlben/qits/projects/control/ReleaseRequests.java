@@ -38,6 +38,7 @@ import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -558,13 +559,23 @@ public class ReleaseRequests {
     for (Obsoleted earlier : overtaken) {
       stopFinalizing(earlier);
       cancel(repoId, earlier.requestId(), "was superseded by release request " + id);
+      closeGateTicket(
+          earlier.requestId(),
+          earlier.gateTicketId(),
+          earlier.repoName(),
+          UnattendedGateTickets.Ending.OBSOLETE,
+          id);
     }
     remerge(id, why.get());
     return get(id);
   }
 
-  /** One request this create overtook, carried out of the transaction that marked it. */
-  private record Obsoleted(String requestId, String version) {}
+  /**
+   * One request this create overtook, carried out of the transaction that marked it — with its gate
+   * ticket, which is closed after that transaction commits and never inside it.
+   */
+  private record Obsoleted(
+      String requestId, String version, String gateTicketId, String repoName) {}
 
   /**
    * <b>Mark every release of this repository that never finalized OBSOLETE.</b> Called from the
@@ -613,7 +624,8 @@ public class ReleaseRequests {
           .findByRequest(earlier.id)
           .filter(tag -> tag.mergedAt == null && tag.abandonedAt == null)
           .ifPresent(tag -> tag.abandonedAt = Instant.now());
-      overtaken.add(new Obsoleted(earlier.id, earlier.version));
+      overtaken.add(
+          new Obsoleted(earlier.id, earlier.version, earlier.gateTicketId, earlier.repoName));
       LOG.infof(
           "Release request %s (%s) is obsolete: %s releases past it",
           earlier.id, earlier.version, successor.id);
@@ -769,7 +781,8 @@ public class ReleaseRequests {
    * report to, since the next fold this branch could ever see belongs to a different request.
    */
   public ReleaseRequestDto withdraw(String id, String reason, String actor) {
-    String repoId =
+    record Withdrawn(String repoId, String repoName, String gateTicketId, String detail) {}
+    Withdrawn withdrawn =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
@@ -781,10 +794,16 @@ public class ReleaseRequests {
                           : reason.trim();
                   row.retryable = false;
                   row.updatedAt = Instant.now();
-                  return row.repoId;
+                  return new Withdrawn(row.repoId, row.repoName, row.gateTicketId, row.detail);
                 });
     estatePinLedger.forget(id);
-    cancel(repoId, id, "was withdrawn");
+    cancel(withdrawn.repoId(), id, "was withdrawn");
+    closeGateTicket(
+        id,
+        withdrawn.gateTicketId(),
+        withdrawn.repoName(),
+        UnattendedGateTickets.Ending.WITHDRAWN,
+        withdrawn.detail());
     return get(id);
   }
 
@@ -1761,7 +1780,7 @@ public class ReleaseRequests {
    * reason that has nothing to do with the code under test.
    */
   public void onBranchDeleted(String repoId, String branch) {
-    record Affected(String id, boolean withdrawn) {}
+    record Affected(String id, boolean withdrawn, String gateTicketId, String repoName) {}
     List<Affected> affected =
         QuarkusTransaction.requiringNew()
             .call(
@@ -1786,13 +1805,19 @@ public class ReleaseRequests {
                     } else {
                       open.updatedAt = Instant.now();
                     }
-                    touched.add(new Affected(open.id, empty));
+                    touched.add(new Affected(open.id, empty, open.gateTicketId, open.repoName));
                   }
                   return touched;
                 });
     for (Affected row : affected) {
       if (row.withdrawn()) {
         cancel(repoId, row.id(), "was withdrawn: its branch " + branch + " was deleted");
+        closeGateTicket(
+            row.id(),
+            row.gateTicketId(),
+            row.repoName(),
+            UnattendedGateTickets.Ending.WITHDRAWN,
+            "its branch `" + branch + "` was deleted");
       } else {
         remerge(row.id(), "the source branch " + branch + " was deleted");
       }
@@ -1878,7 +1903,7 @@ public class ReleaseRequests {
     if (contained.isEmpty()) {
       return;
     }
-    record Finalized(String requestId, String tagName) {}
+    record Finalized(String requestId, String tagName, String gateTicketId, String repoName) {}
     List<String> stamped = new ArrayList<>();
     List<Finalized> finalized = new ArrayList<>();
     QuarkusTransaction.requiringNew()
@@ -1905,7 +1930,12 @@ public class ReleaseRequests {
                           request.detail = null;
                           request.retryable = false;
                           request.updatedAt = now;
-                          finalized.add(new Finalized(request.id, row.tagName));
+                          finalized.add(
+                              new Finalized(
+                                  request.id,
+                                  row.tagName,
+                                  request.gateTicketId,
+                                  request.repoName));
                         });
               }
             });
@@ -1913,6 +1943,12 @@ public class ReleaseRequests {
       estatePinLedger.forget(done.requestId());
       LOG.infof("Release request %s is finalized: %s reached main", done.requestId(), done.tagName());
       cancel(repoId, done.requestId(), "is finalized: " + done.tagName() + " reached main");
+      closeGateTicket(
+          done.requestId(),
+          done.gateTicketId(),
+          done.repoName(),
+          UnattendedGateTickets.Ending.FINALIZED,
+          done.tagName());
     }
     if (stamped.isEmpty()) {
       return;
@@ -2556,7 +2592,14 @@ public class ReleaseRequests {
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
-                  ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
+                  // UNDER A ROW LOCK, and that is what keeps a red gate to one ticket. A verdict
+                  // is heard on the bus and again by the sweep, and two evaluations of one PENDING
+                  // request used to both read PENDING, both reject and both file — two tickets for
+                  // one failure, each remembering itself as the dedupe key. With the lock the second
+                  // waits for the first to commit and then reads REJECTED, which is not PENDING, so
+                  // it returns here without building a second Rejection.
+                  ReleaseRequest row =
+                      requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
                   if (row == null || row.state != ReleaseRequest.State.PENDING) {
                     return false;
                   }
@@ -2817,6 +2860,110 @@ public class ReleaseRequests {
         rejection.requestId(), ticketId);
   }
 
+  /**
+   * The request ended, so its gate ticket may close — asked of the port once the ending has
+   * committed, and stamped on the request when the port says there is nothing more to do.
+   *
+   * <p>Every writer of an ending calls this, after its own transaction: {@link #withdraw} and
+   * {@link #onBranchDeleted} for WITHDRAWN, {@link #request}'s obsolescence for OBSOLETE, {@link
+   * #onMainMoved} for FINALIZED. There is no single status hook to hang it on, and the ending itself
+   * must never wait on — or be rolled back by — a write into the other database, which is why it is
+   * a call after the commit rather than a listener inside it.
+   *
+   * <p><b>Wrapped like {@link #fileUnattendedGateTicket}</b>, for its reason: the ending has already
+   * happened and nothing here may fail the door, the bus consumption or the release worker that
+   * wrote it. A false answer, an absent port and a port that threw all leave {@link
+   * ReleaseRequest#gateTicketClosedAt} null, which is exactly what puts the request on {@link
+   * #sweepGateTickets}' worklist — the inline call is the prompt path, the sweep is the floor.
+   */
+  private void closeGateTicket(
+      String requestId,
+      String ticketId,
+      String repoName,
+      UnattendedGateTickets.Ending ending,
+      String detail) {
+    if (ticketId == null || !gateTickets.isResolvable()) {
+      return;
+    }
+    boolean done;
+    try {
+      done = gateTickets.get().ended(ticketId, requestId, repoName, ending, detail);
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug and must not reach the ending.
+      LOG.warnf(
+          e, "Could not close ticket %s of release request %s (%s)", ticketId, requestId, ending);
+      return;
+    }
+    if (!done) {
+      return;
+    }
+    try {
+      QuarkusTransaction.requiringNew()
+          .run(
+              () ->
+                  requests
+                      .findByIdOptional(requestId)
+                      .filter(row -> row.gateTicketClosedAt == null)
+                      .ifPresent(row -> row.gateTicketClosedAt = Instant.now()));
+    } catch (RuntimeException e) {
+      // The ticket is closed; the sweep will find it closed again and stamp then.
+      LOG.warnf(e, "Could not record that ticket %s of request %s is closed", ticketId, requestId);
+    }
+  }
+
+  /** How many ended requests one pass of {@link #sweepGateTickets} visits at most. */
+  static final int GATE_TICKET_SWEEP_BATCH = 50;
+
+  /**
+   * <b>The floor under {@link #closeGateTicket}</b>: every ended request whose gate ticket has not
+   * been dealt with is asked about again. The inline call can be skipped by a process dying between
+   * an ending and its close, and can fail on a ticket store mid-cutover; neither leaves a stamp, so
+   * both land here. It also drains what ended before the platform closed anything at all — every
+   * such request is an ended row with a ticket and no stamp.
+   *
+   * <p>A bounded batch per pass, oldest ending first. A ticket the port cannot reach stays on the
+   * list and costs one call per pass until it can; the rest of the batch is unaffected.
+   */
+  public void sweepGateTickets() {
+    if (!gateTickets.isResolvable()) {
+      return;
+    }
+    record Owed(
+        String requestId,
+        String ticketId,
+        String repoName,
+        ReleaseRequest.State state,
+        String version,
+        String supersededBy,
+        String detail) {}
+    List<Owed> owed =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    requests.listEndedWithOpenGateTicket(GATE_TICKET_SWEEP_BATCH).stream()
+                        .map(
+                            row ->
+                                new Owed(
+                                    row.id,
+                                    row.gateTicketId,
+                                    row.repoName,
+                                    row.state,
+                                    row.version,
+                                    row.supersededBy,
+                                    row.detail))
+                        .toList());
+    for (Owed row : owed) {
+      UnattendedGateTickets.Ending ending = UnattendedGateTickets.Ending.valueOf(row.state().name());
+      String detail =
+          switch (ending) {
+            case FINALIZED -> row.version();
+            case OBSOLETE -> row.supersededBy();
+            case WITHDRAWN -> row.detail();
+          };
+      closeGateTicket(row.requestId(), row.ticketId(), row.repoName(), ending, detail);
+    }
+  }
+
   private void enqueueExecution(String id) {
     worker.submit(() -> execute(id));
   }
@@ -2959,11 +3106,16 @@ public class ReleaseRequests {
    * The request that a ticket was filed about has released after all — said on that ticket's thread,
    * and nothing more.
    *
-   * <p><b>The ticket is deliberately left where it is.</b> A green build says this fold passes now;
-   * it does not say that whatever a person added to the thread in the meantime is handled, and a
-   * machine that files a report is a much cheaper thing to be wrong about than a machine that
-   * closes one. Somebody reading "this released as 2026.910.104616" and moving the ticket on costs
-   * one press; a ticket auto-closed over a discussion nobody finished costs the discussion.
+   * <p><b>The ticket is left where it is at RELEASED</b>, because a RELEASED request has not ended:
+   * its tag has still to reach {@code main}, and a later request can still overtake it. The close
+   * comes with the ending — {@link #closeGateTicket}, from whichever write reaches FINALIZED,
+   * WITHDRAWN or OBSOLETE — and only for a ticket still typed MAINTENANCE.
+   *
+   * <p><b>A repository with nothing to deploy finalizes first.</b> {@link
+   * ReleaseFinalization#onReleased} runs just above this, and where the released tree declares no
+   * publish and no deployment it merges the tag at once, so the request is already FINALIZED and its
+   * ticket already DROPPED when this runs. The port then finds a closed thread and says nothing more,
+   * which is right: the FINALIZED comment already named the version.
    *
    * <p>Last on the release path, after the row is RELEASED, and wrapped like every other call out
    * here: a release that has already happened must never be failed by a ticket store.

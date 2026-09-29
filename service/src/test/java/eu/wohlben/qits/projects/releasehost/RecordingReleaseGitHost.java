@@ -11,6 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -111,6 +113,26 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   private final AtomicReference<Answer<String>> commitFailure = new AtomicReference<>();
 
   private final AtomicReference<TagAnswer> tagFailure = new AtomicReference<>();
+
+  /**
+   * A tree read that parks its caller until the test lets it go — see {@link #holdNextTreeRead}.
+   *
+   * @param entered counted down when the read arrives, so the test knows the caller is parked
+   * @param released what the parked read waits on
+   */
+  public record Hold(String repoId, CountDownLatch entered, CountDownLatch released) {
+
+    /** Wait for the held read to arrive; false if it never did within the bound. */
+    public boolean awaitEntered() throws InterruptedException {
+      return entered.await(10, TimeUnit.SECONDS);
+    }
+
+    public void release() {
+      released.countDown();
+    }
+  }
+
+  private final AtomicReference<Hold> hold = new AtomicReference<>();
 
   // ---------------------------------------------------------------------------------------------
   // Staging
@@ -273,6 +295,22 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     tagCollisions.set(times);
   }
 
+  /**
+   * <b>Park the next tree read of {@code repoId}</b> until {@link Hold#release} — one read, then the
+   * hold is spent and every later read answers at once.
+   *
+   * <p>It exists for the race in {@code ReleaseRequests.evaluate}: the gate set is read from {@code
+   * main}'s tree <em>inside</em> the transaction that decides the gate, so a read held here is a
+   * gate transaction held open, which is what a second concurrent evaluation has to meet for the
+   * race to be reproducible rather than lucky. Pair it with {@code ReleaseGates.forget}, or the
+   * cached gate set answers without reading the tree at all.
+   */
+  public Hold holdNextTreeRead(String repoId) {
+    Hold armed = new Hold(repoId, new CountDownLatch(1), new CountDownLatch(1));
+    hold.set(armed);
+    return armed;
+  }
+
   public void failTreeWith(Answer<List<String>> answer) {
     treeFailure.set(answer);
   }
@@ -301,6 +339,10 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     treeFailure.set(null);
     commitFailure.set(null);
     tagFailure.set(null);
+    Hold armed = hold.getAndSet(null);
+    if (armed != null) {
+      armed.release();
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -348,6 +390,15 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
    */
   @Override
   public Answer<List<String>> tree(String repoId, String rev) {
+    Hold armed = hold.get();
+    if (armed != null && armed.repoId().equals(repoId) && hold.compareAndSet(armed, null)) {
+      armed.entered().countDown();
+      try {
+        armed.released().await(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
     Answer<List<String>> failure = treeFailure.get();
     if (failure != null && !("refs/heads/main".equals(rev) && trees.containsKey(rev))) {
       return failure;

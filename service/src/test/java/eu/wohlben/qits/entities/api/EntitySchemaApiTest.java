@@ -350,7 +350,7 @@ class EntitySchemaApiTest {
           "ticketType" : {
             "type" : "string",
             "description" : "A ticket's kind.",
-            "enum" : [ "BUG", "IMPROVEMENT" ]
+            "enum" : [ "BUG", "IMPROVEMENT", "MAINTENANCE" ]
           },
           "impetus" : {
             "type" : "string",
@@ -392,7 +392,7 @@ class EntitySchemaApiTest {
           "ticketType" : {
             "type" : "string",
             "description" : "A ticket's kind.",
-            "enum" : [ "BUG", "IMPROVEMENT" ]
+            "enum" : [ "BUG", "IMPROVEMENT", "MAINTENANCE" ]
           },
           "impetus" : {
             "type" : [ "string", "null" ],
@@ -435,7 +435,7 @@ class EntitySchemaApiTest {
           "ticketType" : {
             "type" : "string",
             "description" : "A ticket's kind.",
-            "enum" : [ "BUG", "IMPROVEMENT" ]
+            "enum" : [ "BUG", "IMPROVEMENT", "MAINTENANCE" ]
           },
           "impetus" : {
             "type" : "string",

@@ -58,6 +58,17 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
           ReleaseRequest.State.CONFLICTED);
 
   /**
+   * <b>The three states a request never leaves</b> — the complement of {@link #OPEN}. What a gate
+   * ticket's close waits on: once a request is in one of these, nothing will ever happen to it
+   * again, so a ticket about it being stuck has nothing left to track.
+   */
+  public static final List<ReleaseRequest.State> ENDED =
+      List.of(
+          ReleaseRequest.State.FINALIZED,
+          ReleaseRequest.State.WITHDRAWN,
+          ReleaseRequest.State.OBSOLETE);
+
+  /**
    * The unreleased request of this repository that already names {@code branch} as a source, if any
    * — what the converge-on-create rule converges on, and what a push to that branch re-merges.
    *
@@ -154,6 +165,21 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
   public List<ReleaseRequest> listReleasedUnfinalized(String repoId) {
     return list(
         "repoId = ?1 and state = ?2 order by createdAt", repoId, ReleaseRequest.State.RELEASED);
+  }
+
+  /**
+   * Ended requests whose gate ticket has not been dealt with yet — the gate-ticket sweep's worklist,
+   * oldest ending first and at most {@code limit} of them. An inline close that failed, or a process
+   * that died between an ending and its close, leaves a row here; so does every request that ended
+   * before the platform closed anything, which is how the backlog drains.
+   */
+  public List<ReleaseRequest> listEndedWithOpenGateTicket(int limit) {
+    return find(
+            "state in ?1 and gateTicketId is not null and gateTicketClosedAt is null"
+                + " order by updatedAt",
+            ENDED)
+        .page(0, limit)
+        .list();
   }
 
   /**

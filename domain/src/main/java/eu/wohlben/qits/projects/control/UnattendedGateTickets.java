@@ -99,12 +99,58 @@ public interface UnattendedGateTickets {
   /**
    * The request that carried {@code ticketId} has released after all — said on the ticket's thread.
    *
-   * <p><b>It does not resolve the ticket</b>, and that is the caller's decision rather than an
-   * implementation's: a green build says the fold passes now, not that whatever a person added to
-   * the thread in the meantime is handled. A machine that files and a machine that closes are two
-   * different amounts of confidence, and only the first one is cheap to be wrong about.
+   * <p><b>It does not resolve the ticket</b>, and RELEASED is the wrong moment to: a RELEASED request
+   * is still open — its tag has yet to reach {@code main}, it may still be owed a publish run or a
+   * deployment, and a later release can still overtake it — so there is still a request for the
+   * ticket to be about. What closes the ticket is {@link #ended}, when the request does. The comment
+   * says as much, so a reader of the thread knows the close is coming rather than owed by them.
    *
    * <p>Never throws.
    */
   void released(String ticketId, String requestId, String repoName, String version);
+
+  /**
+   * How a release request ended — the three states after which nothing more will ever happen to it.
+   *
+   * <p>REJECTED, CONFLICTED and FAILED are deliberately not here: each of them re-arms on the next
+   * push to a participating branch, so a request in any of them is still the stuck request the
+   * ticket is about.
+   */
+  enum Ending {
+    /** Its tag reached {@code main}: the release is finished and the repository moved. */
+    FINALIZED,
+    /** A person withdrew it, or the branch it was releasing was deleted. */
+    WITHDRAWN,
+    /** A later request of the same repository folds its tag in and releases past it. */
+    OBSOLETE
+  }
+
+  /**
+   * The request that carried {@code ticketId} has <b>ended</b> — close the ticket if it is still the
+   * platform's to close.
+   *
+   * <p><b>The division with {@link #released}, and why this one may close.</b> A ticket filed for a
+   * stuck request is about that request, and once the request can never move again there is nothing
+   * left for the ticket to track: a FINALIZED release shipped, a WITHDRAWN one was given up on, an
+   * OBSOLETE one lives on inside its successor, which files its own ticket if its own gate goes red.
+   * Leaving the ticket open past that point is the backlog this method exists to prevent — every
+   * red night the maintenance robot had left a ticket nobody would ever move.
+   *
+   * <p><b>The ticket type is the consent.</b> Only a ticket still typed {@code MAINTENANCE} is
+   * closed, and it is moved to DROPPED rather than DONE: nothing was verified, the request simply
+   * stopped needing anything. A ticket a person retyped (to BUG, say) has been taken over; the
+   * implementation says on its thread that the request ended and leaves it where it is.
+   *
+   * <p>Never throws. The caller runs it after the ending has committed, outside every transaction of
+   * this service's database, and records the answer on the request so its reconcile sweep can
+   * retry what failed.
+   *
+   * @param ending how the request ended
+   * @param detail what the ending names: the version (the tag) for FINALIZED, the successor request's
+   *     id for OBSOLETE, and null or a short reason for WITHDRAWN
+   * @return true when there is nothing more to do — the ticket is now closed, was already closed, is
+   *     gone, or is no longer the platform's to close; false on a failure worth retrying, which
+   *     leaves the request unstamped for the sweep to visit again
+   */
+  boolean ended(String ticketId, String requestId, String repoName, Ending ending, String detail);
 }
