@@ -2280,4 +2280,450 @@
       }
     } ]
   }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/epic/schemas/create",
+  "status" : 200,
+  "response" : {
+    "$schema" : "https://json-schema.org/draft/2020-12/schema",
+    "title" : "EPIC create",
+    "description" : "The body of POST /projects/api/entities, less its archetype (\"archetype\": \"EPIC\" is added beside these). The status is minted REPORTED by the writer.",
+    "type" : "object",
+    "properties" : {
+      "title" : {
+        "type" : "string",
+        "description" : "The label.",
+        "pattern" : "\\S"
+      },
+      "description" : {
+        "type" : "string",
+        "description" : "The long-form Markdown body."
+      },
+      "project" : {
+        "type" : "string",
+        "pattern" : "\\S",
+        "description" : "The project the new EPIC goes in: its id or its slug."
+      }
+    },
+    "required" : [ "title", "project" ],
+    "additionalProperties" : false
+  }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/FEATURE/schemas/update",
+  "status" : 200,
+  "response" : {
+    "$schema" : "https://json-schema.org/draft/2020-12/schema",
+    "title" : "FEATURE update",
+    "description" : "A JSON merge patch (RFC 7396) of one FEATURE, sent to PATCH /projects/api/entities/{id}: an absent property is left unchanged, null clears it. The status is moved through POST /projects/api/entities/{id}/status.",
+    "type" : "object",
+    "properties" : {
+      "title" : {
+        "type" : "string",
+        "description" : "The label.",
+        "pattern" : "\\S"
+      },
+      "description" : {
+        "type" : [ "string", "null" ],
+        "description" : "The long-form Markdown body."
+      },
+      "implementedAt" : {
+        "type" : [ "string", "null" ],
+        "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED.",
+        "format" : "date-time"
+      },
+      "dependsOn" : {
+        "type" : [ "string", "null" ],
+        "description" : "The id of the sibling this one waits for — ordering, never nesting."
+      }
+    },
+    "required" : [ ],
+    "minProperties" : 1,
+    "additionalProperties" : false
+  }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/TASK/schemas/transition",
+  "status" : 200,
+  "response" : {
+    "$schema" : "https://json-schema.org/draft/2020-12/schema",
+    "title" : "TASK transition",
+    "description" : "The full post-state of one row turned into a TASK, one entry of POST /projects/api/entities/transition (keyed by the row's id, with \"archetype\": \"TASK\" beside these). An absent property is CLEARED, and an absent membership means a root.",
+    "type" : "object",
+    "properties" : {
+      "title" : {
+        "type" : "string",
+        "description" : "The label.",
+        "pattern" : "\\S"
+      },
+      "description" : {
+        "type" : "string",
+        "description" : "The long-form Markdown body."
+      },
+      "repositoryId" : {
+        "type" : "string",
+        "description" : "The id of the one repository a task works in; it must be in the task's project.",
+        "pattern" : "\\S"
+      },
+      "implementedAt" : {
+        "type" : "string",
+        "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED.",
+        "format" : "date-time"
+      },
+      "dependsOn" : {
+        "type" : "string",
+        "description" : "The id of the sibling this one waits for — ordering, never nesting."
+      },
+      "membership" : {
+        "type" : "object",
+        "description" : "Where the row hangs: its parent, and its place among siblings.",
+        "properties" : {
+          "parent" : {
+            "type" : "string",
+            "pattern" : "\\S",
+            "description" : "The id of a FEATURE (its UUID)."
+          },
+          "position" : {
+            "type" : "integer",
+            "minimum" : 0,
+            "description" : "Zero-based place among the parent's children; absent appends it last."
+          }
+        },
+        "required" : [ "parent" ],
+        "additionalProperties" : false
+      }
+    },
+    "required" : [ "title", "repositoryId", "membership" ],
+    "additionalProperties" : false
+  }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/STORY/schemas/create",
+  "status" : 404,
+  "response" : {
+    "message" : "No such archetype: STORY"
+  }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/EPIC/schemas/delete",
+  "status" : 404,
+  "response" : {
+    "message" : "No schema for door delete: it is create, update or transition"
+  }
+}, {
+  "request" : "POST /projects/api/entities",
+  "body" : {
+    "archetype" : "EPIC",
+    "project" : "<id:1>",
+    "title" : "The generic plan"
+  },
+  "status" : 201,
+  "response" : {
+    "id" : "<id:18>",
+    "archetype" : "EPIC",
+    "projectId" : "<id:1>",
+    "number" : 11,
+    "qualifiedId" : "<project>-11",
+    "title" : "The generic plan",
+    "slug" : "the-generic-plan",
+    "slugScope" : "<id:1>",
+    "description" : null,
+    "status" : "REPORTED",
+    "statusBefore" : null,
+    "ticketType" : null,
+    "impetus" : null,
+    "assignee" : null,
+    "createdBy" : null,
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : null,
+    "position" : null,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : null
+  }
+}, {
+  "request" : "POST /projects/api/entities",
+  "body" : {
+    "archetype" : "FEATURE",
+    "parent" : "<project>-11",
+    "title" : "The generic part"
+  },
+  "status" : 201,
+  "response" : {
+    "id" : "<id:19>",
+    "archetype" : "FEATURE",
+    "projectId" : "<id:1>",
+    "number" : 12,
+    "qualifiedId" : "<project>-12",
+    "title" : "The generic part",
+    "slug" : "the-generic-part",
+    "slugScope" : "<id:18>",
+    "description" : null,
+    "status" : null,
+    "statusBefore" : null,
+    "ticketType" : null,
+    "impetus" : null,
+    "assignee" : null,
+    "createdBy" : null,
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : "<id:18>",
+    "position" : 0,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : null
+  }
+}, {
+  "request" : "POST /projects/api/entities",
+  "body" : {
+    "archetype" : "TASK",
+    "parent" : "<id:19>",
+    "title" : "The generic step",
+    "repositoryId" : "<id:5>"
+  },
+  "status" : 201,
+  "response" : {
+    "id" : "<id:20>",
+    "archetype" : "TASK",
+    "projectId" : "<id:1>",
+    "number" : 13,
+    "qualifiedId" : "<project>-13",
+    "title" : "The generic step",
+    "slug" : "the-generic-step",
+    "slugScope" : "<id:19>",
+    "description" : null,
+    "status" : null,
+    "statusBefore" : null,
+    "ticketType" : null,
+    "impetus" : null,
+    "assignee" : null,
+    "createdBy" : null,
+    "supersededBy" : null,
+    "repositoryId" : "<id:5>",
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : "<id:19>",
+    "position" : 0,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : null
+  }
+}, {
+  "request" : "POST /projects/api/entities",
+  "body" : {
+    "archetype" : "FEATURE",
+    "parent" : "<id:19>",
+    "title" : "Misplaced"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "a FEATURE's parent must be an EPIC: <id:19> is a FEATURE"
+  }
+}, {
+  "request" : "POST /projects/api/entities",
+  "body" : {
+    "archetype" : "EPIC",
+    "title" : " "
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "title must not be blank; project is required"
+  }
+}, {
+  "request" : "GET /projects/api/entities/<id:19>",
+  "status" : 200,
+  "response" : {
+    "id" : "<id:19>",
+    "archetype" : "FEATURE",
+    "projectId" : "<id:1>",
+    "number" : 12,
+    "qualifiedId" : "<project>-12",
+    "title" : "The generic part",
+    "slug" : "the-generic-part",
+    "slugScope" : "<id:18>",
+    "description" : null,
+    "status" : null,
+    "statusBefore" : null,
+    "ticketType" : null,
+    "impetus" : null,
+    "assignee" : null,
+    "createdBy" : null,
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : "<id:18>",
+    "position" : 0,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : null
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/entities?parent=<id:18>",
+  "status" : 200,
+  "response" : {
+    "entities" : [ {
+      "id" : "<id:19>",
+      "archetype" : "FEATURE",
+      "projectId" : "<id:1>",
+      "number" : 12,
+      "qualifiedId" : "<project>-12",
+      "title" : "The generic part",
+      "slug" : "the-generic-part",
+      "slugScope" : "<id:18>",
+      "description" : null,
+      "status" : null,
+      "statusBefore" : null,
+      "ticketType" : null,
+      "impetus" : null,
+      "assignee" : null,
+      "createdBy" : null,
+      "supersededBy" : null,
+      "repositoryId" : null,
+      "implementedAt" : null,
+      "dependsOn" : null,
+      "parent" : "<id:18>",
+      "position" : 0,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "changedBy" : null
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/entities?archetype=TASK",
+  "status" : 200,
+  "response" : {
+    "entities" : [ {
+      "id" : "<id:6>",
+      "archetype" : "TASK",
+      "projectId" : "<id:1>",
+      "number" : 4,
+      "qualifiedId" : "<project>-4",
+      "title" : "Task one",
+      "slug" : "task-one",
+      "slugScope" : "<id:3>",
+      "description" : "Do the thing",
+      "status" : null,
+      "statusBefore" : null,
+      "ticketType" : null,
+      "impetus" : null,
+      "assignee" : null,
+      "createdBy" : null,
+      "supersededBy" : null,
+      "repositoryId" : "<id:5>",
+      "implementedAt" : "<instant>",
+      "dependsOn" : null,
+      "parent" : "<id:3>",
+      "position" : 0,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "changedBy" : null
+    }, {
+      "id" : "<id:7>",
+      "archetype" : "TASK",
+      "projectId" : "<id:1>",
+      "number" : 5,
+      "qualifiedId" : "<project>-5",
+      "title" : "Task two, renamed",
+      "slug" : "task-two",
+      "slugScope" : "<id:3>",
+      "description" : null,
+      "status" : null,
+      "statusBefore" : null,
+      "ticketType" : null,
+      "impetus" : null,
+      "assignee" : null,
+      "createdBy" : null,
+      "supersededBy" : null,
+      "repositoryId" : "<id:5>",
+      "implementedAt" : "<instant>",
+      "dependsOn" : "<id:6>",
+      "parent" : "<id:3>",
+      "position" : 1,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "changedBy" : null
+    }, {
+      "id" : "<id:20>",
+      "archetype" : "TASK",
+      "projectId" : "<id:1>",
+      "number" : 13,
+      "qualifiedId" : "<project>-13",
+      "title" : "The generic step",
+      "slug" : "the-generic-step",
+      "slugScope" : "<id:19>",
+      "description" : null,
+      "status" : null,
+      "statusBefore" : null,
+      "ticketType" : null,
+      "impetus" : null,
+      "assignee" : null,
+      "createdBy" : null,
+      "supersededBy" : null,
+      "repositoryId" : "<id:5>",
+      "implementedAt" : null,
+      "dependsOn" : null,
+      "parent" : "<id:19>",
+      "position" : 0,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "changedBy" : null
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/entities?archetype=STORY",
+  "status" : 400,
+  "response" : {
+    "message" : "Unknown archetype: STORY"
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:19>/status",
+  "body" : {
+    "target" : "REFINED"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "a FEATURE has no status: its phase is its epic's, so there is nothing to move"
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:18>/status",
+  "body" : {
+    "target" : "REFINED"
+  },
+  "status" : 200,
+  "response" : {
+    "id" : "<id:18>",
+    "archetype" : "EPIC",
+    "projectId" : "<id:1>",
+    "number" : 11,
+    "qualifiedId" : "<project>-11",
+    "title" : "The generic plan",
+    "slug" : "the-generic-plan",
+    "slugScope" : "<id:1>",
+    "description" : null,
+    "status" : "REFINED",
+    "statusBefore" : "REPORTED",
+    "ticketType" : null,
+    "impetus" : null,
+    "assignee" : null,
+    "createdBy" : null,
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : null,
+    "position" : null,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : "dev"
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:18>/status",
+  "body" : {
+    "target" : "DONE"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "An epic cannot move from REFINED to DONE"
+  }
 } ]

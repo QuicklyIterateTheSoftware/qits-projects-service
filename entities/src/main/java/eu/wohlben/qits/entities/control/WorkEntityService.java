@@ -243,6 +243,16 @@ public class WorkEntityService {
   }
 
   /**
+   * The kind a row of {@code archetype} is created under — an EPIC for a feature, a FEATURE for a
+   * task — or null for a root. {@link Kind#parent} read from outside, so the generic create door and
+   * the schema it publishes name the parent this service will look the id up as (qits-548), rather
+   * than a second copy of the tree's shape.
+   */
+  public static Archetype parentKindOf(Archetype archetype) {
+    return kind(archetype).parent();
+  }
+
+  /**
    * <b>The order intake refuses in</b>, over the registry's {@code requiredAtCreate}. The registry
    * says <em>which</em> properties a birth demands; this says which one a caller missing several is
    * told about first, and how the property is spelled on the wire. {@link EntityProperty#STATUS} is

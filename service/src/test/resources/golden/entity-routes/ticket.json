@@ -265,7 +265,8 @@
       "position" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
-      "changedBy" : "dev"
+      "changedBy" : "dev",
+      "blocked" : false
     }
   }
 }, {
@@ -1033,5 +1034,373 @@
         "updatedAt" : "<instant>"
       }
     } ]
+  }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/TICKET/schemas/create",
+  "status" : 200,
+  "response" : {
+    "$schema" : "https://json-schema.org/draft/2020-12/schema",
+    "title" : "TICKET create",
+    "description" : "The body of POST /projects/api/entities, less its archetype (\"archetype\": \"TICKET\" is added beside these). The status is minted REPORTED by the writer.",
+    "type" : "object",
+    "properties" : {
+      "title" : {
+        "type" : "string",
+        "description" : "The label.",
+        "pattern" : "\\S"
+      },
+      "description" : {
+        "type" : "string",
+        "description" : "The long-form Markdown body."
+      },
+      "ticketType" : {
+        "type" : "string",
+        "description" : "A ticket's kind.",
+        "enum" : [ "BUG", "IMPROVEMENT" ]
+      },
+      "impetus" : {
+        "type" : "string",
+        "description" : "Why a ticket came about, in the reporter's words; usually one sentence.",
+        "pattern" : "\\S"
+      },
+      "assignee" : {
+        "type" : "string",
+        "description" : "Who is looking at it; free text."
+      },
+      "project" : {
+        "type" : "string",
+        "pattern" : "\\S",
+        "description" : "The project the new TICKET goes in: its id or its slug."
+      }
+    },
+    "required" : [ "title", "ticketType", "impetus", "project" ],
+    "additionalProperties" : false
+  }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/ticket/schemas/update",
+  "status" : 200,
+  "response" : {
+    "$schema" : "https://json-schema.org/draft/2020-12/schema",
+    "title" : "TICKET update",
+    "description" : "A JSON merge patch (RFC 7396) of one TICKET, sent to PATCH /projects/api/entities/{id}: an absent property is left unchanged, null clears it. The status is moved through POST /projects/api/entities/{id}/status.",
+    "type" : "object",
+    "properties" : {
+      "title" : {
+        "type" : "string",
+        "description" : "The label.",
+        "pattern" : "\\S"
+      },
+      "description" : {
+        "type" : [ "string", "null" ],
+        "description" : "The long-form Markdown body."
+      },
+      "ticketType" : {
+        "type" : "string",
+        "description" : "A ticket's kind.",
+        "enum" : [ "BUG", "IMPROVEMENT" ]
+      },
+      "impetus" : {
+        "type" : [ "string", "null" ],
+        "description" : "Why a ticket came about, in the reporter's words; usually one sentence.",
+        "pattern" : "\\S"
+      },
+      "assignee" : {
+        "type" : [ "string", "null" ],
+        "description" : "Who is looking at it; free text."
+      }
+    },
+    "required" : [ ],
+    "minProperties" : 1,
+    "additionalProperties" : false
+  }
+}, {
+  "request" : "GET /projects/api/entities/archetypes/Ticket/schemas/transition",
+  "status" : 200,
+  "response" : {
+    "$schema" : "https://json-schema.org/draft/2020-12/schema",
+    "title" : "TICKET transition",
+    "description" : "The full post-state of one row turned into a TICKET, one entry of POST /projects/api/entities/transition (keyed by the row's id, with \"archetype\": \"TICKET\" beside these). An absent property is CLEARED, and an absent membership means a root.",
+    "type" : "object",
+    "properties" : {
+      "title" : {
+        "type" : "string",
+        "description" : "The label.",
+        "pattern" : "\\S"
+      },
+      "description" : {
+        "type" : "string",
+        "description" : "The long-form Markdown body."
+      },
+      "status" : {
+        "type" : "string",
+        "description" : "The lifecycle status.",
+        "enum" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+      },
+      "ticketType" : {
+        "type" : "string",
+        "description" : "A ticket's kind.",
+        "enum" : [ "BUG", "IMPROVEMENT" ]
+      },
+      "impetus" : {
+        "type" : "string",
+        "description" : "Why a ticket came about, in the reporter's words; usually one sentence.",
+        "pattern" : "\\S"
+      },
+      "assignee" : {
+        "type" : "string",
+        "description" : "Who is looking at it; free text."
+      },
+      "membership" : {
+        "type" : "object",
+        "description" : "Where the row hangs. A TICKET is a root, so this may be left out.",
+        "properties" : {
+          "parent" : {
+            "type" : "null",
+            "description" : "A TICKET is a root: it has no parent."
+          },
+          "position" : {
+            "type" : "integer",
+            "minimum" : 0,
+            "description" : "Zero-based place among the parent's children; absent appends it last."
+          }
+        },
+        "required" : [ ],
+        "additionalProperties" : false
+      }
+    },
+    "required" : [ "title", "status", "ticketType" ],
+    "additionalProperties" : false
+  }
+}, {
+  "request" : "POST /projects/api/entities",
+  "body" : {
+    "archetype" : "TICKET",
+    "project" : "<id:1>",
+    "title" : "Filed generically",
+    "ticketType" : "IMPROVEMENT",
+    "impetus" : "the generic door should file a ticket"
+  },
+  "status" : 201,
+  "response" : {
+    "id" : "<id:7>",
+    "archetype" : "TICKET",
+    "projectId" : "<id:1>",
+    "number" : 3,
+    "qualifiedId" : "<project>-3",
+    "title" : "Filed generically",
+    "slug" : "filed-generically",
+    "slugScope" : "<id:1>",
+    "description" : null,
+    "status" : "REPORTED",
+    "statusBefore" : null,
+    "ticketType" : "IMPROVEMENT",
+    "impetus" : "the generic door should file a ticket",
+    "assignee" : null,
+    "createdBy" : "dev",
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : null,
+    "position" : null,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : null,
+    "blocked" : false
+  }
+}, {
+  "request" : "POST /projects/api/entities",
+  "body" : {
+    "archetype" : "TICKET",
+    "project" : "<id:1>",
+    "title" : "No impetus",
+    "type" : "BUG"
+  },
+  "status" : 400,
+  "response" : {
+    "message" : "unknown property: type; ticketType is required; impetus is required"
+  }
+}, {
+  "request" : "GET /projects/api/entities/<project>-3",
+  "status" : 200,
+  "response" : {
+    "id" : "<id:7>",
+    "archetype" : "TICKET",
+    "projectId" : "<id:1>",
+    "number" : 3,
+    "qualifiedId" : "<project>-3",
+    "title" : "Filed generically",
+    "slug" : "filed-generically",
+    "slugScope" : "<id:1>",
+    "description" : null,
+    "status" : "REPORTED",
+    "statusBefore" : null,
+    "ticketType" : "IMPROVEMENT",
+    "impetus" : "the generic door should file a ticket",
+    "assignee" : null,
+    "createdBy" : "dev",
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : null,
+    "position" : null,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : null,
+    "blocked" : false
+  }
+}, {
+  "request" : "GET /projects/api/entities/no-such-entity",
+  "status" : 404,
+  "response" : {
+    "message" : "Entity not found: no-such-entity"
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/entities",
+  "status" : 200,
+  "response" : {
+    "entities" : [ {
+      "id" : "<id:3>",
+      "archetype" : "TICKET",
+      "projectId" : "<id:1>",
+      "number" : 2,
+      "qualifiedId" : "<project>-2",
+      "title" : "Faster board",
+      "slug" : "faster-board",
+      "slugScope" : "<id:1>",
+      "description" : null,
+      "status" : "DROPPED",
+      "statusBefore" : null,
+      "ticketType" : "IMPROVEMENT",
+      "impetus" : "the board should load faster",
+      "assignee" : null,
+      "createdBy" : "dev",
+      "supersededBy" : null,
+      "repositoryId" : null,
+      "implementedAt" : null,
+      "dependsOn" : null,
+      "parent" : null,
+      "position" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "changedBy" : null,
+      "blocked" : false
+    }, {
+      "id" : "<id:7>",
+      "archetype" : "TICKET",
+      "projectId" : "<id:1>",
+      "number" : 3,
+      "qualifiedId" : "<project>-3",
+      "title" : "Filed generically",
+      "slug" : "filed-generically",
+      "slugScope" : "<id:1>",
+      "description" : null,
+      "status" : "REPORTED",
+      "statusBefore" : null,
+      "ticketType" : "IMPROVEMENT",
+      "impetus" : "the generic door should file a ticket",
+      "assignee" : null,
+      "createdBy" : "dev",
+      "supersededBy" : null,
+      "repositoryId" : null,
+      "implementedAt" : null,
+      "dependsOn" : null,
+      "parent" : null,
+      "position" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "changedBy" : null,
+      "blocked" : false
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/entities?archetype=ticket&status=DROPPED",
+  "status" : 200,
+  "response" : {
+    "entities" : [ {
+      "id" : "<id:3>",
+      "archetype" : "TICKET",
+      "projectId" : "<id:1>",
+      "number" : 2,
+      "qualifiedId" : "<project>-2",
+      "title" : "Faster board",
+      "slug" : "faster-board",
+      "slugScope" : "<id:1>",
+      "description" : null,
+      "status" : "DROPPED",
+      "statusBefore" : null,
+      "ticketType" : "IMPROVEMENT",
+      "impetus" : "the board should load faster",
+      "assignee" : null,
+      "createdBy" : "dev",
+      "supersededBy" : null,
+      "repositoryId" : null,
+      "implementedAt" : null,
+      "dependsOn" : null,
+      "parent" : null,
+      "position" : null,
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "changedBy" : null,
+      "blocked" : false
+    } ]
+  }
+}, {
+  "request" : "GET /projects/api/projects/<id:1>/entities?status=NOPE",
+  "status" : 400,
+  "response" : {
+    "message" : "Unknown status: NOPE"
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:7>/status",
+  "body" : {
+    "target" : "REFINED"
+  },
+  "status" : 200,
+  "response" : {
+    "id" : "<id:7>",
+    "archetype" : "TICKET",
+    "projectId" : "<id:1>",
+    "number" : 3,
+    "qualifiedId" : "<project>-3",
+    "title" : "Filed generically",
+    "slug" : "filed-generically",
+    "slugScope" : "<id:1>",
+    "description" : null,
+    "status" : "REFINED",
+    "statusBefore" : "REPORTED",
+    "ticketType" : "IMPROVEMENT",
+    "impetus" : "the generic door should file a ticket",
+    "assignee" : null,
+    "createdBy" : "dev",
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "dependsOn" : null,
+    "parent" : null,
+    "position" : null,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : "dev",
+    "blocked" : false
+  }
+}, {
+  "request" : "POST /projects/api/entities/<id:7>/status",
+  "body" : {
+    "target" : "DONE"
+  },
+  "status" : 409,
+  "response" : {
+    "message" : "A ticket cannot move from REFINED to DONE"
+  }
+}, {
+  "request" : "POST /projects/api/entities/no-such-entity/status",
+  "body" : {
+    "target" : "DONE"
+  },
+  "status" : 404,
+  "response" : {
+    "message" : "Entity not found: no-such-entity"
   }
 } ]

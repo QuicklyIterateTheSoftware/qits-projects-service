@@ -286,6 +286,59 @@ class EntityRoutesGoldenTest {
     r.audit("/projects/api/epics/" + epicId + "/audit");
     r.audit("/projects/api/epics/" + successorId + "/audit");
 
+    // The archetype-agnostic doors (qits-548): the schemas, a plan filed through the generic
+    // create — the node by its parent's qualified id — read back, listed, and moved.
+    r.call("GET", "/projects/api/entities/archetypes/epic/schemas/create", null);
+    r.call("GET", "/projects/api/entities/archetypes/FEATURE/schemas/update", null);
+    r.call("GET", "/projects/api/entities/archetypes/TASK/schemas/transition", null);
+    r.call("GET", "/projects/api/entities/archetypes/STORY/schemas/create", null); // 404
+    r.call("GET", "/projects/api/entities/archetypes/EPIC/schemas/delete", null); // 404
+    Response generic =
+        r.call(
+            "POST",
+            "/projects/api/entities",
+            map("archetype", "EPIC", "project", projectId, "title", "The generic plan"));
+    String genericEpic = generic.path("id");
+    String genericFeature =
+        r.call(
+                "POST",
+                "/projects/api/entities",
+                map(
+                    "archetype",
+                    "FEATURE",
+                    "parent",
+                    generic.path("qualifiedId"),
+                    "title",
+                    "The generic part"))
+            .path("id");
+    r.call(
+        "POST",
+        "/projects/api/entities",
+        map(
+            "archetype",
+            "TASK",
+            "parent",
+            genericFeature,
+            "title",
+            "The generic step",
+            "repositoryId",
+            repositoryId));
+    r.call(
+        "POST",
+        "/projects/api/entities",
+        map("archetype", "FEATURE", "parent", genericFeature, "title", "Misplaced")); // 400
+    r.call("POST", "/projects/api/entities", map("archetype", "EPIC", "title", " ")); // 400
+    r.call("GET", "/projects/api/entities/" + genericFeature, null);
+    r.call("GET", p + "/entities?parent=" + genericEpic, null);
+    r.call("GET", p + "/entities?archetype=TASK", null);
+    r.call("GET", p + "/entities?archetype=STORY", null); // 400
+    r.call(
+        "POST",
+        "/projects/api/entities/" + genericFeature + "/status",
+        map("target", "REFINED")); // 400: no lifecycle
+    r.call("POST", "/projects/api/entities/" + genericEpic + "/status", map("target", "REFINED"));
+    r.call("POST", "/projects/api/entities/" + genericEpic + "/status", map("target", "DONE")); // 409
+
     r.assertGolden("epic-feature-task.json");
   }
 
@@ -388,6 +441,39 @@ class EntityRoutesGoldenTest {
     r.audit("/projects/api/epics/" + ticketId + "/audit");
     r.audit("/projects/api/epics/" + second + "/audit");
 
+    // The archetype-agnostic doors (qits-548): a ticket filed, read, listed and moved through them.
+    r.call("GET", "/projects/api/entities/archetypes/TICKET/schemas/create", null);
+    r.call("GET", "/projects/api/entities/archetypes/ticket/schemas/update", null);
+    r.call("GET", "/projects/api/entities/archetypes/Ticket/schemas/transition", null);
+    Response generic =
+        r.call(
+            "POST",
+            "/projects/api/entities",
+            map(
+                "archetype",
+                "TICKET",
+                "project",
+                projectId,
+                "title",
+                "Filed generically",
+                "ticketType",
+                "IMPROVEMENT",
+                "impetus",
+                "the generic door should file a ticket"));
+    String genericTicket = generic.path("id");
+    r.call(
+        "POST",
+        "/projects/api/entities",
+        map("archetype", "TICKET", "project", projectId, "title", "No impetus", "type", "BUG"));
+    r.call("GET", "/projects/api/entities/" + generic.path("qualifiedId"), null);
+    r.call("GET", "/projects/api/entities/no-such-entity", null); // 404
+    r.call("GET", p + "/entities", null);
+    r.call("GET", p + "/entities?archetype=ticket&status=DROPPED", null);
+    r.call("GET", p + "/entities?status=NOPE", null); // 400
+    r.call("POST", "/projects/api/entities/" + genericTicket + "/status", map("target", "REFINED"));
+    r.call("POST", "/projects/api/entities/" + genericTicket + "/status", map("target", "DONE"));
+    r.call("POST", "/projects/api/entities/no-such-entity/status", map("target", "DONE")); // 404
+
     r.assertGolden("ticket.json");
   }
 
@@ -477,6 +563,17 @@ class EntityRoutesGoldenTest {
             .path("comment.id");
     r.call("PATCH", "/projects/api/comments/" + remark, map("body", "Step 2 was approved"));
     r.call("GET", "/projects/api/entities/" + campaignId + "/comments", null);
+
+    // The archetype-agnostic doors (qits-548) on a campaign: filed, read and moved through them.
+    String generic =
+        r.call(
+                "POST",
+                "/projects/api/entities",
+                map("archetype", "CAMPAIGN", "project", projectId, "title", "A generic order"))
+            .path("id");
+    r.call("GET", "/projects/api/entities/" + campaignQualified, null);
+    r.call("POST", "/projects/api/entities/" + generic + "/status", map("target", "REFINED"));
+    r.call("GET", p + "/entities?archetype=CAMPAIGN", null);
     r.assertGolden("campaign.json");
   }
 

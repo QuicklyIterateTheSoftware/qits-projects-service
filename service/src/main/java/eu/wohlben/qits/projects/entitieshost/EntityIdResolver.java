@@ -70,6 +70,22 @@ public class EntityIdResolver {
   }
 
   /**
+   * <b>The project a person named, by its id or by its slug</b> (qits-548) — the {@code project} of
+   * {@code POST /entities} and the {@code {projectId}} of {@code GET /projects/{projectId}/entities},
+   * where {@code qits} is what a person types and the id is what a program holds. The slug first:
+   * slugs are unique (V6) and never UUID-shaped by derivation, and a miss falls through to the id,
+   * whose absence is {@code ProjectService.get}'s 404 naming what was asked for.
+   */
+  public Project resolveProject(String idOrSlug) {
+    if (idOrSlug == null || idOrSlug.isBlank()) {
+      throw new NotFoundException("Project not found: " + idOrSlug);
+    }
+    String named = idOrSlug.trim();
+    return QuarkusTransaction.requiringNew()
+        .call(() -> projects.findBySlug(named).orElseGet(() -> projects.get(named)));
+  }
+
+  /**
    * <b>A qualified id looked up</b>: the project slug, then the {@code (project_id, number)} pair
    * against {@code uq_entity_project_number}. A project or an entity that does not exist is
    * {@link Optional#empty()}, never a complaint — for a commit subject that is the ordinary case

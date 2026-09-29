@@ -1,11 +1,21 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
+import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.error.NotFoundException;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import java.util.Locale;
+import java.util.Map;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * <b>The archetype registry, served: {@code GET /projects/api/entities/archetypes}.</b>
@@ -66,5 +76,49 @@ public class EntityArchetypesController {
   @Path("/archetypes")
   public ArchetypeRegistryDocument archetypes() {
     return ArchetypeRegistryDocument.describe();
+  }
+
+  /**
+   * <b>The JSON Schema (2020-12) of one write door's payload for one archetype</b> (qits-548) — what
+   * {@code qits work create --archetype ticket} prints when nothing is piped, and what the generic
+   * create door validates against. {@code archetype} is case-insensitive; {@code door} is {@code
+   * create}, {@code update} or {@code transition}. Anything else names no schema: a 404.
+   */
+  @GET
+  @Path("/archetypes/{archetype}/schemas/{door}")
+  @Operation(
+      summary = "The JSON Schema of an entity write door's payload, per archetype",
+      description =
+          "A JSON Schema (2020-12) object for the body of one write door and one archetype: create"
+              + " (POST /projects/api/entities, less the archetype), update (the merge patch of"
+              + " PATCH /projects/api/entities/{id}) or transition (one entry of POST"
+              + " /projects/api/entities/transition). Built from the archetype registry and the same"
+              + " property table the doors validate with. The archetype is case-insensitive.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The schema",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(type = SchemaType.OBJECT)))
+  @APIResponse(responseCode = "404", description = "No such archetype, or no such door")
+  public Map<String, Object> schema(
+      @PathParam("archetype") String archetype, @PathParam("door") String door) {
+    Archetype kind = archetype(archetype);
+    EntitySchemas.Door named =
+        EntitySchemas.Door.parse(door)
+            .orElseThrow(
+                () ->
+                    new NotFoundException(
+                        "No schema for door " + door + ": it is create, update or transition"));
+    return EntitySchemas.of(kind, named);
+  }
+
+  private static Archetype archetype(String word) {
+    try {
+      return Archetype.valueOf(word.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new NotFoundException("No such archetype: " + word);
+    }
   }
 }

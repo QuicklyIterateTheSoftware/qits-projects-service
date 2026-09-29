@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.control;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.TicketType;
@@ -67,6 +68,10 @@ import java.time.Instant;
  * @param updatedAt when the transition committed
  * @param changedBy who made the transition — the audit principal the write was recorded under.
  *     <b>Null on every read</b>, for {@link #statusBefore}'s reason
+ * @param blocked whether the phase a ticket's status starts is stuck — {@code entity.blocked}, which
+ *     only a ticket's door sets (qits-548). <b>Null, and left off the wire, for every other
+ *     archetype</b>: a {@code false} on an epic would claim a flag nothing can raise, and an absent
+ *     key keeps every answer that predates it byte for byte what it was
  */
 public record TransitionedEntity(
     String id,
@@ -92,7 +97,8 @@ public record TransitionedEntity(
     Integer position,
     Instant createdAt,
     Instant updatedAt,
-    String changedBy) {
+    String changedBy,
+    @JsonInclude(JsonInclude.Include.NON_NULL) Boolean blocked) {
 
   /**
    * The same entity, told what it is called in a commit subject. {@code EpicDto.withWorkspaces}'
@@ -123,7 +129,8 @@ public record TransitionedEntity(
         position,
         createdAt,
         updatedAt,
-        changedBy);
+        changedBy,
+        blocked);
   }
 
   /**
@@ -175,7 +182,45 @@ public record TransitionedEntity(
         before.position(),
         row.createdAt,
         row.updatedAt,
-        null);
+        null,
+        blockedOf(row));
+  }
+
+  /**
+   * The row a lifecycle move wrote ({@link WorkEntityService#transition}), hung where {@code before}
+   * says it hung, told the status it moved from and who moved it — the answer of {@code POST
+   * /entities/{id}/status} (qits-548). A move changes no edge, so {@link #edited}'s reasoning about
+   * the membership and about a re-read holds here unchanged.
+   */
+  public static TransitionedEntity moved(
+      WorkEntity row, TransitionedEntity before, String statusBefore, String changedBy) {
+    TransitionedEntity read = edited(row, before);
+    return new TransitionedEntity(
+        read.id(),
+        read.archetype(),
+        read.projectId(),
+        read.number(),
+        null,
+        read.title(),
+        read.slug(),
+        read.slugScope(),
+        read.description(),
+        read.status(),
+        statusBefore,
+        read.ticketType(),
+        read.impetus(),
+        read.assignee(),
+        read.createdBy(),
+        read.supersededBy(),
+        read.repositoryId(),
+        read.implementedAt(),
+        read.dependsOn(),
+        read.parent(),
+        read.position(),
+        read.createdAt(),
+        read.updatedAt(),
+        changedBy,
+        read.blocked());
   }
 
   /**
@@ -209,6 +254,12 @@ public record TransitionedEntity(
         edge == null ? null : edge.position,
         row.createdAt,
         row.updatedAt,
-        changedBy);
+        changedBy,
+        blockedOf(row));
+  }
+
+  /** A ticket's flag, and null for a kind whose door never raises it — see {@link #blocked}. */
+  private static Boolean blockedOf(WorkEntity row) {
+    return row.archetype == Archetype.TICKET ? row.blocked : null;
   }
 }

@@ -13,6 +13,7 @@ import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -365,7 +366,53 @@ class EntityAgentBoundsTest {
     return door;
   }
 
+  private EntityCreateController creates(SecurityIdentity caller) {
+    EntityCreateController door = new EntityCreateController();
+    door.entities = workEntities;
+    door.catalog = catalogService;
+    door.ids = entityIds;
+    door.repositories = repositoryService;
+    door.identity = caller;
+    door.publisher = publisher;
+    door.qualifiedIds = qualifiedIds;
+    return door;
+  }
+
+  private EntityStatusController statuses(SecurityIdentity caller) {
+    EntityStatusController door = new EntityStatusController();
+    door.ids = entityIds;
+    door.catalog = catalogService;
+    door.routes = routes;
+    door.identity = caller;
+    door.qualifiedIds = qualifiedIds;
+    return door;
+  }
+
   // ---- the request bodies ----------------------------------------------------------------------
+
+  /** The generic create's body for a ticket filed in {@code project} (qits-548). */
+  private static JsonNode filedTicket(String project, String title) {
+    return JsonNodeFactory.instance
+        .objectNode()
+        .put("archetype", "TICKET")
+        .put("project", project)
+        .put("title", title)
+        .put("ticketType", "BUG")
+        .put("impetus", "it occurs");
+  }
+
+  /** The generic create's body for a feature under {@code parent}. */
+  private static JsonNode partUnder(String parent, String title) {
+    return JsonNodeFactory.instance
+        .objectNode()
+        .put("archetype", "FEATURE")
+        .put("parent", parent)
+        .put("title", title);
+  }
+
+  private static EntityStatusController.EntityStatusMove to(String target) {
+    return new EntityStatusController.EntityStatusMove(target);
+  }
 
   private static EpicController.CreateFeatureRequest newFeature(String title) {
     return new EpicController.CreateFeatureRequest(title, null, null);
@@ -521,6 +568,33 @@ class EntityAgentBoundsTest {
     assertEquals(
         "Patched by the agent",
         patches(AGENT).patch(rows.ticketId(), retitle("Patched by the agent")).title());
+
+    // The generic create and lifecycle move (qits-548).
+    var filed =
+        (TransitionedEntity)
+            creates(AGENT).create(filedTicket(OWN_PROJECT, "Filed generically")).getEntity();
+    assertEquals("TICKET", filed.archetype().name());
+    var part =
+        (TransitionedEntity)
+            creates(AGENT).create(partUnder(rows.epicQualifiedId(), "A generic part")).getEntity();
+    assertEquals(rows.epicId(), part.parent());
+    assertEquals("REFINED", statuses(AGENT).move(filed.id(), to("REFINED")).status());
+  }
+
+  /**
+   * <b>The generic status door keeps the epic a person's</b> (qits-548): an agent bound to the
+   * epic's own project — the binding would let it through — is refused by the epic's rule, exactly
+   * as {@code POST /epics/{id}/transition}'s role list refuses it, and the epic does not move.
+   */
+  @Test
+  void anAgentMovingItsOwnEpicThroughTheGenericDoorIsRefused() {
+    ForbiddenException refusal =
+        assertThrows(
+            ForbiddenException.class,
+            () -> statuses(AGENT).move(rows.epicQualifiedId(), to("REFINED")));
+    assertEquals(403, refusal.statusCode());
+    assertEquals("REPORTED", workEntities.get(Archetype.EPIC, rows.epicId()).status);
+    assertEquals("REFINED", statuses(OPERATOR).move(rows.epicId(), to("REFINED")).status());
   }
 
   // ---- and are refused for any other project ----------------------------------------------------
@@ -528,6 +602,7 @@ class EntityAgentBoundsTest {
   /** The same calls, by an agent whose token names the other project. */
   @Test
   void anAgentIsRefusedAnotherProjectsEntities() {
+    int ticketsBefore = workEntities.listByProject(Archetype.TICKET, OWN_PROJECT).size();
     refused(() -> epics(FOREIGN_AGENT).createFeature(rows.epicId(), newFeature("Not yours")));
     refused(() -> features(FOREIGN_AGENT).update(rows.featureId(), featureEdit("Not yours")));
     refused(() -> features(FOREIGN_AGENT).createTask(rows.featureId(), newTask("Not yours")));
@@ -570,12 +645,22 @@ class EntityAgentBoundsTest {
     refused(() -> threads(FOREIGN_AGENT).create(rows.taskId(), remark("not yours")));
     refused(() -> commentDoor(FOREIGN_AGENT).patch(rows.epicCommentId(), rewording("not yours")));
     refused(() -> commentDoor(FOREIGN_AGENT).patch(rows.taskCommentId(), rewording("not yours")));
+    refused(() -> creates(FOREIGN_AGENT).create(filedTicket(OWN_PROJECT, "Not yours")));
+    refused(() -> creates(FOREIGN_AGENT).create(partUnder(rows.epicId(), "Not yours")));
+    refused(() -> statuses(FOREIGN_AGENT).move(rows.ticketId(), to("REFINED")));
 
     // Nothing moved: every refusal ran before its write.
     assertCommentsUntouched();
     assertEquals("The own plan", workEntities.get(Archetype.EPIC, rows.epicId()).title);
     assertEquals("The own ticket", workEntities.get(Archetype.TICKET, rows.ticketId()).title);
     assertEquals("body", dossierService.get(rows.epicPageId()).body);
+    assertEquals("REPORTED", workEntities.get(Archetype.TICKET, rows.ticketId()).status);
+    assertEquals(
+        ticketsBefore,
+        workEntities.listByProject(Archetype.TICKET, OWN_PROJECT).size(),
+        "no ticket was filed");
+    assertEquals(
+        1, workEntities.listChildren(Archetype.FEATURE, rows.epicId()).size(), "no part was added");
   }
 
   /**
@@ -624,6 +709,8 @@ class EntityAgentBoundsTest {
     refused(() -> threads(CLAIMLESS_AGENT).create(rows.taskId(), remark("no claim")));
     refused(() -> commentDoor(CLAIMLESS_AGENT).patch(rows.epicCommentId(), rewording("no claim")));
     refused(() -> commentDoor(CLAIMLESS_AGENT).patch(rows.taskCommentId(), rewording("no claim")));
+    refused(() -> creates(CLAIMLESS_AGENT).create(filedTicket(OWN_PROJECT, "No claim")));
+    refused(() -> statuses(CLAIMLESS_AGENT).move(rows.ticketId(), to("REFINED")));
     assertCommentsUntouched();
   }
 

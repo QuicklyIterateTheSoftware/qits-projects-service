@@ -1189,6 +1189,47 @@ components:
       properties:
         draft:
           $ref: "#/components/schemas/DraftDto"
+    EntityCreate:
+      type: object
+      required:
+      - archetype
+      description: "A new entity of any archetype: the archetype, plus exactly the\
+        \ body GET /projects/api/entities/archetypes/{archetype}/schemas/create describes\
+        \ for it. A root (EPIC, TICKET, CAMPAIGN) names its project, a node (FEATURE,\
+        \ TASK) its parent."
+      properties:
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+          type: string
+          description: "EPIC, TICKET, FEATURE, TASK or CAMPAIGN"
+        project:
+          type: string
+          description: "A root's project: its id or its slug."
+        parent:
+          type: string
+          description: "A node's parent — an EPIC for a FEATURE, a FEATURE for a TASK\
+            \ — by UUID or qualified id."
+        title:
+          type: string
+          description: The label.
+        description:
+          type: string
+          description: The long-form Markdown body.
+        ticketType:
+          type: string
+          description: "A ticket's kind, BUG or IMPROVEMENT."
+        impetus:
+          type: string
+          description: Why a ticket came about. Required for a ticket.
+        assignee:
+          type: string
+          description: A ticket's assignee.
+        repositoryId:
+          type: string
+          description: "A task's repository, in the task's project."
+        dependsOn:
+          type: string
+          description: A feature's or task's sibling dependency.
     EntityDispatchDto:
       type: object
       properties:
@@ -1228,6 +1269,14 @@ components:
           type: boolean
         mode:
           $ref: "#/components/schemas/DispatchMode"
+    EntityList:
+      type: object
+      description: "A project's entities, in tree order."
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransitionedEntity"
     EntityPatch:
       type: object
       description: "A JSON merge patch (RFC 7396) of one entity. An absent property\
@@ -1295,6 +1344,16 @@ components:
       properties:
         refinement:
           $ref: "#/components/schemas/RefinementDto"
+    EntityStatusMove:
+      type: object
+      required:
+      - target
+      description: "A lifecycle move: the status to move to."
+      properties:
+        target:
+          type: string
+          description: "REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or DROPPED\
+            \ — one the entity's current status may move to"
     EntityTransition:
       type: object
       properties:
@@ -2740,6 +2799,8 @@ components:
           $ref: "#/components/schemas/Instant"
         changedBy:
           type: string
+        blocked:
+          type: boolean
     UpdateDesign:
       type: object
       required:
@@ -3459,6 +3520,48 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+  /projects/api/entities:
+    post:
+      summary: Create an entity of any archetype
+      description: "Files a new epic, ticket, campaign, feature or task from one body\
+        \ shape: the archetype plus the archetype's create schema (GET /projects/api/entities/archetypes/{archetype}/schemas/create).\
+        \ A root names its project (id or slug), a node its parent (UUID or qualified\
+        \ id): a feature's parent is an EPIC, a task's a FEATURE. The status starts\
+        \ REPORTED. Answers the entity in the merged shape, with its qualified id."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntityCreate"
+        required: true
+      responses:
+        "201":
+          description: The entity as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "Every complaint about the body in one message: not an object,\
+            \ no or an unknown archetype, a property the create schema does not list,\
+            \ a missing required one, a value of the wrong shape, a parent of the\
+            \ wrong kind, or a repository outside the project"
+        "403":
+          description: An agent creating in a project other than its own; nothing
+            is written
+        "404":
+          description: "The project, the parent or the repository names nothing"
+        "409":
+          description: "The owning epic's status freezes its scope: a node needs the\
+            \ epic REPORTED"
+        "401":
+          description: Not Authorized
+      tags:
+      - Entity Create Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
   /projects/api/entities/archetypes:
     get:
       responses:
@@ -3473,6 +3576,45 @@ paths:
         "403":
           description: Not Allowed
       summary: Archetypes
+      tags:
+      - Entity Archetypes Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/entities/archetypes/{archetype}/schemas/{door}:
+    get:
+      summary: "The JSON Schema of an entity write door's payload, per archetype"
+      description: "A JSON Schema (2020-12) object for the body of one write door\
+        \ and one archetype: create (POST /projects/api/entities, less the archetype),\
+        \ update (the merge patch of PATCH /projects/api/entities/{id}) or transition\
+        \ (one entry of POST /projects/api/entities/transition). Built from the archetype\
+        \ registry and the same property table the doors validate with. The archetype\
+        \ is case-insensitive."
+      parameters:
+      - name: archetype
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: door
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The schema
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: "No such archetype, or no such door"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
       tags:
       - Entity Archetypes Controller
       security:
@@ -3559,6 +3701,36 @@ paths:
           description: Not Authorized
       tags:
       - Entity Patch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    get:
+      summary: Read one entity of any archetype
+      description: "The entity in the merged shape, with its qualified id, its parent\
+        \ and position, and for a ticket whether it is blocked. The id is the UUID\
+        \ or the qualified id (<projectSlug>-<n>)."
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Entity Read Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -3738,6 +3910,52 @@ paths:
       summary: Find
       tags:
       - Entity Refinement Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/entities/{id}/status:
+    post:
+      summary: Move an entity through its lifecycle
+      description: "Moves an epic, ticket or campaign to the target status, by the\
+        \ same path as the archetype's own /{id}/transition door and under its roles:\
+        \ an agent may move a ticket or a campaign of its own project, and an epic\
+        \ is qits:admin alone. A feature or a task has no status. The id is the UUID\
+        \ or the qualified id. Answers the entity in the merged shape, with statusBefore."
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntityStatusMove"
+        required: true
+      responses:
+        "200":
+          description: The entity as the move left it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "No target, or an archetype with no lifecycle (a feature or\
+            \ a task)"
+        "403":
+          description: "An agent moving an epic, or an entity outside its own project;\
+            \ nothing is written"
+        "404":
+          description: No entity with this id
+        "409":
+          description: "A move the lifecycle does not allow, or a target naming no\
+            \ status"
+        "401":
+          description: Not Authorized
+      tags:
+      - Entity Status Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -4598,6 +4816,52 @@ paths:
       summary: Create
       tags:
       - Project Campaigns Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/projects/{projectId}/entities:
+    get:
+      summary: List a project's entities of every archetype
+      description: "The project's whole planning tree, flat: each root oldest first,\
+        \ its descendants depth-first in position order — the order of the MCP list_entities.\
+        \ Optionally narrowed to one archetype, one status, and the direct children\
+        \ of one parent (UUID or qualified id). The project is its id or its slug."
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: archetype
+        in: query
+        schema:
+          type: string
+      - name: parent
+        in: query
+        schema:
+          type: string
+      - name: status
+        in: query
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The entities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityList"
+        "400":
+          description: An archetype or a status naming none
+        "404":
+          description: "No such project, or no such parent"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Entities Controller
       security:
       - SecurityScheme:
         - qits:admin

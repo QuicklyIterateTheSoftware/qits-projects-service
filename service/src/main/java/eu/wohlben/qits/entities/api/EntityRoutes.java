@@ -130,11 +130,6 @@ public class EntityRoutes {
     D render(Nested nested) {
       return toDto.apply(nested.entity(), nested.parentId());
     }
-
-    /** {@code "epic"} — how a log line names a row of it. */
-    String word() {
-      return archetype.name().toLowerCase(Locale.ROOT);
-    }
   }
 
   private View<EpicDto> epics;
@@ -329,25 +324,44 @@ public class EntityRoutes {
    */
   public <D> Moved<D> transition(
       View<D> view, String id, String target, boolean bound, SecurityIdentity identity) {
-    if (bound) {
-      EntitiesAgentAccess.requireProject(identity, projectOf(view, id));
-    }
-    String changedBy = EntitiesPrincipal.changedBy(identity);
-    WorkEntityService.Transition moved =
-        resolutions.transition(view.archetype(), id, target, changedBy);
-    // A supersede spawns a second row in the same project, so one hint covers both.
-    publisher.fire(moved.entity().projectId, view.topic());
-    try {
-      phaseAdvance.afterTransition(moved.entity(), changedBy);
-    } catch (RuntimeException e) {
-      // It says it must not throw; a throw is a bug in it and must not touch a recorded move.
-      LOG.warnf(e, "Could not start the phase %s %s just moved into", view.word(), moved.entity().id);
-    }
+    WorkEntityService.Transition moved = move(view.archetype(), id, target, bound, identity);
     return new Moved<>(
         view.qualify().apply(view.render(moved.entity(), null)),
         moved.successor() == null
             ? null
             : view.qualify().apply(view.render(moved.successor(), null)));
+  }
+
+  /**
+   * <b>The lifecycle move itself, for any archetype that has one</b> — what {@link #transition}
+   * renders for its per-archetype door, and what {@code POST /entities/{id}/status} answers in the
+   * merged shape (qits-548). One body for both, so the generic door is the same move and not a
+   * second one: {@link EntityResolutions} first, the archetype's hint ({@link
+   * ProjectChangeHint.Topic#of}, which is what every {@link View#topic} is), then {@link
+   * PhaseAdvance} outside the move's transaction. {@code PhaseAdvance} returns at once for a
+   * campaign, whose own door never calls it, so a campaign moved here is moved exactly as {@code
+   * CampaignController.transition} moves it.
+   */
+  public WorkEntityService.Transition move(
+      Archetype archetype, String id, String target, boolean bound, SecurityIdentity identity) {
+    if (bound) {
+      EntitiesAgentAccess.requireProject(identity, entities.get(archetype, id).projectId);
+    }
+    String changedBy = EntitiesPrincipal.changedBy(identity);
+    WorkEntityService.Transition moved = resolutions.transition(archetype, id, target, changedBy);
+    // A supersede spawns a second row in the same project, so one hint covers both.
+    publisher.fire(moved.entity().projectId, ProjectChangeHint.Topic.of(archetype));
+    try {
+      phaseAdvance.afterTransition(moved.entity(), changedBy);
+    } catch (RuntimeException e) {
+      // It says it must not throw; a throw is a bug in it and must not touch a recorded move.
+      LOG.warnf(
+          e,
+          "Could not start the phase %s %s just moved into",
+          archetype.name().toLowerCase(Locale.ROOT),
+          moved.entity().id);
+    }
+    return moved;
   }
 
   /** The project a row of the view's kind belongs to — every row carries it — or that kind's 404. */
