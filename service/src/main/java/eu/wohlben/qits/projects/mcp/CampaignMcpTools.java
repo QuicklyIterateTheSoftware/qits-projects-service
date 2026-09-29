@@ -80,6 +80,9 @@ public class CampaignMcpTools {
 
   @Inject WorkEntityService workEntities;
 
+  /** The campaign's own thread, embedded in {@code get_campaign} (qits-551). */
+  @Inject eu.wohlben.qits.entities.control.EntityCommentService thread;
+
   @Inject CampaignService campaigns;
 
   @Inject CampaignViews views;
@@ -113,10 +116,47 @@ public class CampaignMcpTools {
               + " never run), and every member in position order — the entity it gathers, whether it"
               + " joined already in flight, and its condition (the OR'd groups of AND'd criteria it"
               + " waits on, each with its satisfied marker). Read it before building on a campaign, so"
-              + " the order and conditions you extend are the ones that exist.")
-  public CampaignDto getCampaign(@ToolArg(description = "id of a campaign in this project") String id) {
+              + " the order and conditions you extend are the ones that exist. It also carries the"
+              + " campaign's own comment thread, oldest first.")
+  public CampaignDetail getCampaign(
+      @ToolArg(description = "id of a campaign in this project") String id) {
     requireCampaignInProject(id);
-    return views.campaign(campaigns.get(id));
+    return CampaignDetail.of(
+        views.campaign(campaigns.get(id)), CommentMcpTools.threadOf(thread, id));
+  }
+
+  /**
+   * {@code get_campaign}'s answer: the campaign as the REST door draws it ({@link CampaignDto}),
+   * flat, plus its own comment thread, oldest first (qits-551). A record of its own rather than a
+   * field on {@link CampaignDto}, because that one is the REST wire and the goldens pin it.
+   */
+  public record CampaignDetail(
+      String id,
+      long number,
+      String qualifiedId,
+      String projectId,
+      String slug,
+      String title,
+      String description,
+      String status,
+      eu.wohlben.qits.entities.api.CampaignDtos.CampaignStartDto start,
+      List<CampaignMemberDto> members,
+      List<CommentMcpTools.CommentDetail> comments) {
+
+    static CampaignDetail of(CampaignDto campaign, List<CommentMcpTools.CommentDetail> comments) {
+      return new CampaignDetail(
+          campaign.id(),
+          campaign.number(),
+          campaign.qualifiedId(),
+          campaign.projectId(),
+          campaign.slug(),
+          campaign.title(),
+          campaign.description(),
+          campaign.status(),
+          campaign.start(),
+          campaign.members(),
+          comments);
+    }
   }
 
   @McpServer("repository")

@@ -514,6 +514,11 @@ public class PhasePromptsTest {
     assertTrue(turn.contains("get_epic (id epc-9)"), turn);
     assertTrue(turn.contains("get_dossier_page"), turn);
     assertTrue(turn.contains("read-only while the epic is REFINED"), turn);
+    assertTrue(
+        turn.contains("the epic's thread is not, and it is where a correction goes"),
+        "the freeze stays, and the thread is named as the writable place beside it: " + turn);
+    assertTrue(turn.contains("add_comment — on the epic's thread (entityId epc-9)"), turn);
+    assertTrue(turn.contains("or on a task's own thread"), turn);
     assertTrue(turn.contains("respecting the dependsOn links"), turn);
     assertTrue(turn.contains("mark_task_implemented as it lands"), turn);
     assertTrue(turn.contains("Release every repository you touched"), turn);
@@ -538,5 +543,32 @@ public class PhasePromptsTest {
     assertTrue(turn.contains("transition_epic to VERIFIED"), turn);
     assertTrue(turn.contains("transition_epic BACK TO REFINED"), turn);
     assertTrue(turn.contains("Closing the epic is a person's move"), turn);
+    assertTrue(turn.contains("add_comment (entityId epc-9)"), turn);
+  }
+
+  /**
+   * <b>An epic's findings go on its thread, never into a report</b> (qits-551). Until the epic had a
+   * thread, all three templates said "say in your report" — a chat reply nobody reads afterwards,
+   * which is where pilot qits-442's findings went missing. Every epic phase now names {@code
+   * add_comment} against the epic's own id, and none of them sends anything to a report.
+   */
+  @Test
+  public void everyEpicTemplateRecordsOnTheThreadAndNeverInAReport() {
+    for (EntityStatus status :
+        new EntityStatus[] {
+          EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED
+        }) {
+      String turn = epicPromptFor(status);
+      assertTrue(
+          turn.contains("add_comment (entityId epc-9)")
+              || turn.contains("add_comment — on the epic's thread (entityId epc-9)"),
+          status + " must name add_comment on the epic's own thread: " + turn);
+      assertFalse(
+          turn.contains("in your report"),
+          status + " still sends a finding to a report nobody reads: " + turn);
+      assertTrue(
+          turn.contains("on the thread") || turn.contains("on the epic's thread"),
+          status + " must say where what is missing goes: " + turn);
+    }
   }
 }

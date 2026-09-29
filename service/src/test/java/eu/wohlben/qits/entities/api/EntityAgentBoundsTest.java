@@ -13,18 +13,20 @@ import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.EntityWrite;
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.entities.mapper.DossierPageMapper;
-import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
+import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
+import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.security.AgentTokens;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -100,13 +102,15 @@ class EntityAgentBoundsTest {
   private static final String REFUSAL = "An agent may write only the entities of its own project.";
 
   @Inject WorkEntityService workEntities;
-  @Inject TicketCommentService ticketComments;
+  @Inject EntityCommentService ticketComments;
   @Inject DossierService dossierService;
   @Inject EntityTransitionService transitionService;
   @Inject EntityCatalogService catalogService;
   @Inject RepositoryService repositoryService;
 
-  @Inject TicketCommentMapper ticketCommentMapper;
+  @Inject EntityCommentMapper ticketCommentMapper;
+  @Inject EntityIdResolver entityIds;
+  @Inject ProjectChangePublisher publisher;
   @Inject DossierPageMapper dossierPageMapper;
 
   @Inject EpicsTopicHints epicHints;
@@ -120,6 +124,9 @@ class EntityAgentBoundsTest {
       String taskId,
       String ticketId,
       String commentId,
+      String epicCommentId,
+      String taskCommentId,
+      String epicQualifiedId,
       String epicPageId,
       String ticketPageId,
       String foreignEpicId,
@@ -142,12 +149,12 @@ class EntityAgentBoundsTest {
     // DbRetry.inNewTx) and therefore must not be called from inside one. Fresh rows per test: the
     // most valuable assertion in this class is that a refused batch wrote NOTHING, and that is only
     // readable against state this test put there.
-    String epicId =
+    var epic =
         workEntities
             .create(
                 Archetype.EPIC, OWN_PROJECT, EntityWrite.epic("The own plan", "as filed"), "seed")
-            .entity()
-            .id;
+            .entity();
+    String epicId = epic.id;
     String featureId =
         workEntities
             .create(
@@ -173,6 +180,8 @@ class EntityAgentBoundsTest {
             .entity()
             .id;
     String commentId = ticketComments.addComment(ticketId, "a note", "seed").id;
+    String epicCommentId = ticketComments.addComment(epicId, "an epic note", "seed").id;
+    String taskCommentId = ticketComments.addComment(taskId, "a task note", "seed").id;
     String epicPageId =
         dossierService.create(DossierOwner.epic(epicId), "Epic page", "body", "seed").id;
     String ticketPageId =
@@ -204,6 +213,9 @@ class EntityAgentBoundsTest {
             taskId,
             ticketId,
             commentId,
+            epicCommentId,
+            taskCommentId,
+            QualifiedEntityIds.render(OWN_PROJECT, epic.number),
             epicPageId,
             ticketPageId,
             foreignEpicId,
@@ -273,6 +285,26 @@ class EntityAgentBoundsTest {
     door.commentMapper = ticketCommentMapper;
     door.identity = caller;
     door.hints = ticketHints;
+    return door;
+  }
+
+  private EntityCommentController threads(SecurityIdentity caller) {
+    EntityCommentController door = new EntityCommentController();
+    door.ids = entityIds;
+    door.comments = ticketComments;
+    door.mapper = ticketCommentMapper;
+    door.identity = caller;
+    door.publisher = publisher;
+    return door;
+  }
+
+  private CommentController commentDoor(SecurityIdentity caller) {
+    CommentController door = new CommentController();
+    door.comments = ticketComments;
+    door.entities = workEntities;
+    door.mapper = ticketCommentMapper;
+    door.identity = caller;
+    door.publisher = publisher;
     return door;
   }
 
@@ -363,6 +395,15 @@ class EntityAgentBoundsTest {
     return new DossierController.WritePage(null, body, version);
   }
 
+  private static EntityCommentController.CreateEntityCommentRequest remark(String body) {
+    return new EntityCommentController.CreateEntityCommentRequest(body);
+  }
+
+  /** A comment's merge patch: the new text, and nothing else it could name. */
+  private static JsonNode rewording(String body) {
+    return JsonNodeFactory.instance.objectNode().put("body", body);
+  }
+
   /** The smallest merge patch: a new title, everything else left alone. */
   private static JsonNode retitle(String title) {
     return JsonNodeFactory.instance.objectNode().put("title", title);
@@ -448,6 +489,19 @@ class EntityAgentBoundsTest {
             .comment()
             .body());
 
+    // The thread every entity has (qits-551): an epic named by its qualified id, a task by its
+    // UUID, and both remarks edited through the one comment door.
+    String onEpic = threads(AGENT).create(rows.epicQualifiedId(), remark("on the epic")).comment().id();
+    String onTask = threads(AGENT).create(rows.taskId(), remark("on the task")).comment().id();
+    assertEquals(rows.epicId(), ticketComments.getComment(onEpic).entityId);
+    assertEquals(rows.taskId(), ticketComments.getComment(onTask).entityId);
+    assertEquals(
+        "epic, corrected",
+        commentDoor(AGENT).patch(rows.epicCommentId(), rewording("epic, corrected")).comment().body());
+    assertEquals(
+        "task, corrected",
+        commentDoor(AGENT).patch(rows.taskCommentId(), rewording("task, corrected")).comment().body());
+
     assertNotNull(projectEpics(AGENT).create(OWN_PROJECT, newEpic("A filed plan")).epic().id());
     assertNotNull(projectTickets(AGENT).create(OWN_PROJECT, newTicket("A filed ticket")).ticket().id());
 
@@ -511,8 +565,14 @@ class EntityAgentBoundsTest {
                 .transition(Map.of(rows.epicId(), epicRenamedTo("Not yours"))));
     refused(() -> patches(FOREIGN_AGENT).patch(rows.ticketId(), retitle("Not yours")));
     refused(() -> patches(FOREIGN_AGENT).patch(rows.epicId(), retitle("Not yours")));
+    refused(() -> threads(FOREIGN_AGENT).create(rows.epicId(), remark("not yours")));
+    refused(() -> threads(FOREIGN_AGENT).create(rows.epicQualifiedId(), remark("not yours")));
+    refused(() -> threads(FOREIGN_AGENT).create(rows.taskId(), remark("not yours")));
+    refused(() -> commentDoor(FOREIGN_AGENT).patch(rows.epicCommentId(), rewording("not yours")));
+    refused(() -> commentDoor(FOREIGN_AGENT).patch(rows.taskCommentId(), rewording("not yours")));
 
     // Nothing moved: every refusal ran before its write.
+    assertCommentsUntouched();
     assertEquals("The own plan", workEntities.get(Archetype.EPIC, rows.epicId()).title);
     assertEquals("The own ticket", workEntities.get(Archetype.TICKET, rows.ticketId()).title);
     assertEquals("body", dossierService.get(rows.epicPageId()).body);
@@ -560,6 +620,19 @@ class EntityAgentBoundsTest {
         () ->
             entities(CLAIMLESS_AGENT).transition(Map.of(rows.epicId(), epicRenamedTo("No claim"))));
     refused(() -> patches(CLAIMLESS_AGENT).patch(rows.ticketId(), retitle("No claim")));
+    refused(() -> threads(CLAIMLESS_AGENT).create(rows.epicId(), remark("no claim")));
+    refused(() -> threads(CLAIMLESS_AGENT).create(rows.taskId(), remark("no claim")));
+    refused(() -> commentDoor(CLAIMLESS_AGENT).patch(rows.epicCommentId(), rewording("no claim")));
+    refused(() -> commentDoor(CLAIMLESS_AGENT).patch(rows.taskCommentId(), rewording("no claim")));
+    assertCommentsUntouched();
+  }
+
+  /** The seeded threads, exactly as {@link #seed} wrote them: one remark each, text unchanged. */
+  private void assertCommentsUntouched() {
+    assertEquals(1, ticketComments.listComments(rows.epicId()).size(), "nothing added to the epic");
+    assertEquals(1, ticketComments.listComments(rows.taskId()).size(), "nothing added to the task");
+    assertEquals("an epic note", ticketComments.getComment(rows.epicCommentId()).body);
+    assertEquals("a task note", ticketComments.getComment(rows.taskCommentId()).body);
   }
 
   // ---- a person pays no binding ----------------------------------------------------------------
@@ -677,6 +750,10 @@ class EntityAgentBoundsTest {
     asForwardedAgent().delete("/projects/api/epics/no-such-entity").then().statusCode(403);
     asForwardedAgent().delete("/projects/api/tickets/no-such-entity").then().statusCode(403);
     asForwardedAgent().delete("/projects/api/ticket-comments/no-such-entity").then().statusCode(403);
+    asForwardedAgent().delete("/projects/api/comments/no-such-entity").then().statusCode(403);
+    // And on a real comment: the door refuses before any body runs, so the remark stays.
+    asForwardedAgent().delete("/projects/api/comments/" + rows.epicCommentId()).then().statusCode(403);
+    assertEquals("an epic note", ticketComments.getComment(rows.epicCommentId()).body);
   }
 
   /**
@@ -704,6 +781,16 @@ class EntityAgentBoundsTest {
     asForwardedAgent()
         .body(Map.of("title", "no such entity"))
         .patch("/projects/api/entities/no-such-entity")
+        .then()
+        .statusCode(404);
+    asForwardedAgent()
+        .body(Map.of("body", "no such entity"))
+        .post("/projects/api/entities/no-such-entity/comments")
+        .then()
+        .statusCode(404);
+    asForwardedAgent()
+        .body(Map.of("body", "no such comment"))
+        .patch("/projects/api/comments/no-such-comment")
         .then()
         .statusCode(404);
 

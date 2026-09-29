@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.entitieshost;
 
 import eu.wohlben.qits.entities.control.EntityWrite;
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
@@ -64,7 +64,7 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
 
   @Inject WorkEntityService entities;
 
-  @Inject TicketCommentService tickets;
+  @Inject EntityCommentService tickets;
 
   @Inject ProjectChangePublisher publisher;
 

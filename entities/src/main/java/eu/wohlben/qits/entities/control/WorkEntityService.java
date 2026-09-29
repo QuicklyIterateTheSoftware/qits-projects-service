@@ -7,14 +7,14 @@ import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.MembershipKind;
 import eu.wohlben.qits.entities.entity.EntityStatus;
-import eu.wohlben.qits.entities.entity.TicketComment;
+import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.entities.persistence.EntityMembershipRepository;
-import eu.wohlben.qits.entities.persistence.TicketCommentRepository;
+import eu.wohlben.qits.entities.persistence.EntityCommentRepository;
 import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -49,8 +49,9 @@ import java.util.stream.Collectors;
  *       refusals ({@code "impetus is required"}) are read off its {@code requiredAtCreate}, so the
  *       registry and the 400 a caller reads cannot drift apart.
  *   <li>{@link Kind}, below, answers the rest — the words a refusal is phrased in, what a kind hangs
- *       under, which kind's phase freezes its scope, what its dependency is called on the wire and
- *       whether it has a thread. One row per archetype, in {@link #KINDS}.
+ *       under, which kind's phase freezes its scope and what its dependency is called on the wire.
+ *       One row per archetype, in {@link #KINDS}. (It also said whether a kind had a comment thread,
+ *       until qits-551 gave every kind one.)
  * </ul>
  *
  * <h2>The rules, each stated once</h2>
@@ -76,7 +77,8 @@ import java.util.stream.Collectors;
  *       plus {@code listByIds} per level, never one query per node. That is the performance mistake a
  *       merged table makes easy, and the stamp, the supersede and the cascade delete are the deepest
  *       reads the module has.
- *   <li><b>Every removed row gets its own DELETE audit row</b> — descendants and a ticket's comments
+ *   <li><b>Every removed row gets its own DELETE audit row</b> — descendants and every comment in the
+ *       subtree
  *       are removed in-service rather than by the database cascade, because the audit log is the git
  *       replacement and a row that vanished silently never happened.
  * </ul>
@@ -92,7 +94,7 @@ public class WorkEntityService {
 
   @Inject EntityMembershipRepository memberships;
 
-  @Inject TicketCommentRepository comments;
+  @Inject EntityCommentRepository comments;
 
   /** The nesting rule's view of the two tables — see {@link #attach}. */
   @Inject StoredEntityFacts facts;
@@ -171,15 +173,13 @@ public class WorkEntityService {
    *     above for a feature and a task, nobody for a ticket
    * @param dependencyField what the sibling dependency is called on the wire, for its refusals; null
    *     for a kind with none
-   * @param thread whether rows of it carry a comment thread, removed with them
    */
   record Kind(
       Archetype archetype,
       String noun,
       Archetype parent,
       Archetype freezeOwner,
-      String dependencyField,
-      boolean thread) {
+      String dependencyField) {
 
     boolean isRoot() {
       return parent == null;
@@ -213,12 +213,11 @@ public class WorkEntityService {
 
   private static Map<Archetype, Kind> declare() {
     Map<Archetype, Kind> kinds = new EnumMap<>(Archetype.class);
-    kinds.put(Archetype.EPIC, new Kind(Archetype.EPIC, "Epic", null, Archetype.EPIC, null, false));
-    kinds.put(Archetype.TICKET, new Kind(Archetype.TICKET, "Ticket", null, null, null, true));
+    kinds.put(Archetype.EPIC, new Kind(Archetype.EPIC, "Epic", null, Archetype.EPIC, null));
+    kinds.put(Archetype.TICKET, new Kind(Archetype.TICKET, "Ticket", null, null, null));
     // A root with no freeze owner — its title and description stay editable at every status, as a
-    // ticket's do — no sibling dependency and no thread. It is the fifth kind (qits-411).
-    kinds.put(
-        Archetype.CAMPAIGN, new Kind(Archetype.CAMPAIGN, "Campaign", null, null, null, false));
+    // ticket's do — and no sibling dependency. It is the fifth kind (qits-411).
+    kinds.put(Archetype.CAMPAIGN, new Kind(Archetype.CAMPAIGN, "Campaign", null, null, null));
     kinds.put(
         Archetype.FEATURE,
         new Kind(
@@ -226,12 +225,11 @@ public class WorkEntityService {
             "Feature",
             Archetype.EPIC,
             Archetype.EPIC,
-            "dependsOnFeatureId",
-            false));
+            "dependsOnFeatureId"));
     kinds.put(
         Archetype.TASK,
         new Kind(
-            Archetype.TASK, "Task", Archetype.FEATURE, Archetype.EPIC, "dependsOnTaskId", false));
+            Archetype.TASK, "Task", Archetype.FEATURE, Archetype.EPIC, "dependsOnTaskId"));
     for (Archetype archetype : Archetype.values()) {
       if (!kinds.containsKey(archetype)) {
         throw new IllegalStateException("No WorkEntityService.Kind declared for " + archetype);
@@ -266,6 +264,32 @@ public class WorkEntityService {
   /** The row of {@code archetype} this id names, or a 404 — and a row of another kind is a 404 too. */
   public WorkEntity get(Archetype archetype, String id) {
     return lookup(archetype, id);
+  }
+
+  /**
+   * The row this id names, <b>of whatever archetype</b>, or a 404. For the callers to whom the kind
+   * is not the question — a comment thread belongs to the row, not to the kind it is today.
+   */
+  public WorkEntity find(String id) {
+    WorkEntity row = id == null ? null : entities.findById(id);
+    if (row == null) {
+      throw new NotFoundException("Entity not found: " + id);
+    }
+    return row;
+  }
+
+  /**
+   * <b>The audit subtree key of a row</b>: its own id for a root (an epic, a ticket, a campaign), its
+   * epic's for a feature or a task. The key the rows' own audit entries carry, offered to the
+   * writers beside this service — a comment — so what is said about a node lands in its root's
+   * history too.
+   */
+  public String auditRootOf(WorkEntity row) {
+    Kind kind = kind(row.archetype);
+    if (kind.isRoot()) {
+      return row.id;
+    }
+    return rootOf(kind, row, owner(kind, row, parentOf(row.id)));
   }
 
   /** The row and, beside it, the parent its membership edge names (null for a root). */
@@ -813,9 +837,12 @@ public class WorkEntityService {
    *       campaign it was gathered into stays dense — the FK would cascade the edges away but leave
    *       the holes. The subtree is the <em>structural</em> one: a campaign's own members are not
    *       below it, so deleting a campaign removes its edges (by the cascade) and none of its work;
+   *   <li>every comment on the row or a descendant goes, each with a DELETE audit row under the
+   *       root's key — <em>before</em> any row does, because the audit write flushes, and a row
+   *       already gone would have cascaded its comments away with no trace (qits-551: every kind has
+   *       a thread now, so a deleted epic's tasks carry comments too);
    *   <li>its descendants go, each with a DELETE audit row, oldest first — the subtree read a level
    *       at a time, their edges with them by the FK's cascade;
-   *   <li>a kind with a thread loses its comments, each with a DELETE audit row;
    *   <li>its own edge goes and the gap it leaves is closed, so the siblings stay dense and
    *       zero-based;
    *   <li>the row goes, audited.
@@ -851,22 +878,22 @@ public class WorkEntityService {
           // Before any row goes: a query here auto-flushes, and a row already deleted would have
           // cascaded its campaign edges away and left their gaps behind.
           leaveCampaigns(id, subtree);
+          List<String> threaded = new ArrayList<>();
+          threaded.add(id);
+          threaded.addAll(subtree.rows().keySet());
+          for (EntityComment comment : comments.listByEntities(threaded)) {
+            comments.delete(comment);
+            auditService.record(
+                AuditEntityType.COMMENT,
+                comment.id,
+                rootId,
+                AuditOperation.DELETE,
+                changedBy,
+                comment);
+          }
           for (WorkEntity descendant : subtree.oldestFirst()) {
             entities.delete(descendant);
             audit(descendant, rootId, AuditOperation.DELETE, changedBy);
-          }
-
-          if (kind.thread()) {
-            for (TicketComment comment : comments.listByTicket(id)) {
-              comments.delete(comment);
-              auditService.record(
-                  AuditEntityType.TICKET_COMMENT,
-                  comment.id,
-                  id,
-                  AuditOperation.DELETE,
-                  changedBy,
-                  comment);
-            }
           }
 
           if (edge != null) {

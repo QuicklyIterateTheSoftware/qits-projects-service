@@ -1,8 +1,8 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.dto.TicketCommentDto;
-import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
+import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -16,10 +16,11 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 
 /**
- * A single ticket comment, addressed on its own. Its own root path rather than a tail of {@code
- * /tickets/{id}/comments/{commentId}} for the reason {@code /features} and {@code /tasks} carry: a
- * comment id is unique on its own, so a client holding one should not have to also remember which
- * ticket it hung under. Creating and listing stay under the ticket, where the parent is the point.
+ * A single ticket comment, addressed on its own — <b>the ticket-only predecessor of {@link
+ * CommentController}</b> ({@code PATCH}/{@code DELETE /comments/{commentId}}, qits-551), kept as a
+ * thin delegate onto the one comment service because the released CLI and SPA call it. Its shape
+ * does not move: a {@code PUT} of the whole body, answered with {@code ticketId}, and the refusals
+ * it always gave. It retires once both clients are on the new routes.
  */
 @Path("/ticket-comments")
 @Produces(MediaType.APPLICATION_JSON)
@@ -27,9 +28,9 @@ import jakarta.ws.rs.core.MediaType;
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class TicketCommentController {
 
-  @Inject TicketCommentService comments;
+  @Inject EntityCommentService comments;
 
-  @Inject TicketCommentMapper commentMapper;
+  @Inject EntityCommentMapper commentMapper;
 
   @Inject SecurityIdentity identity;
 
@@ -56,8 +57,8 @@ public class TicketCommentController {
     EntitiesAgentAccess.requireProject(identity, hints.projectOfComment(id));
     var comment =
         comments.updateComment(id, request.body(), EntitiesPrincipal.changedBy(identity));
-    hints.fire(hints.projectOfTicket(comment.ticketId));
-    return new UpdateTicketCommentRequest.Response(commentMapper.toDto(comment));
+    hints.fire(hints.projectOfEntity(comment.entityId));
+    return new UpdateTicketCommentRequest.Response(commentMapper.toTicketDto(comment));
   }
 
   public record DeleteTicketCommentRequest() {

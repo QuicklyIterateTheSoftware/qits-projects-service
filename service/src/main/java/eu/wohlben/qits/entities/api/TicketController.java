@@ -1,11 +1,11 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.TicketCommentService;
+import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.dto.TicketCommentDto;
 import eu.wohlben.qits.entities.dto.TicketDto;
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
+import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -39,9 +39,9 @@ public class TicketController {
 
   @Inject WorkEntityService entities;
 
-  @Inject TicketCommentService comments;
+  @Inject EntityCommentService comments;
 
-  @Inject TicketCommentMapper commentMapper;
+  @Inject EntityCommentMapper commentMapper;
 
   @Inject SecurityIdentity identity;
 
@@ -154,6 +154,11 @@ public class TicketController {
   }
 
   // --- Comments under a ticket ---
+  //
+  // The ticket-only predecessors of /entities/{id}/comments (qits-551), kept as thin delegates onto
+  // the one comment service because the released CLI (`qits ticket comment`) and SPA call them. Their
+  // shapes do not move — `ticketId`, the ticket's 404 — and they retire once both clients are on the
+  // entity routes, pinned the way RetiredEntityDoorsTest pins every retired door.
 
   public record ListTicketCommentsRequest() {
     public record Response(List<Entry> entries) {
@@ -169,7 +174,7 @@ public class TicketController {
     entities.get(Archetype.TICKET, ticketId); // 404 if the ticket does not exist
     var entries =
         comments.listComments(ticketId).stream()
-            .map(c -> new ListTicketCommentsRequest.Response.Entry(commentMapper.toDto(c)))
+            .map(c -> new ListTicketCommentsRequest.Response.Entry(commentMapper.toTicketDto(c)))
             .toList();
     return new ListTicketCommentsRequest.Response(entries);
   }
@@ -194,6 +199,6 @@ public class TicketController {
     var comment =
         comments.addComment(ticketId, request.body(), EntitiesPrincipal.changedBy(identity));
     hints.fire(projectId);
-    return new CreateTicketCommentRequest.Response(commentMapper.toDto(comment));
+    return new CreateTicketCommentRequest.Response(commentMapper.toTicketDto(comment));
   }
 }

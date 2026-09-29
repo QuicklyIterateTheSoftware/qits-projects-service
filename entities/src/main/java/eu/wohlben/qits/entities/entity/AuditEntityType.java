@@ -3,7 +3,8 @@ package eu.wohlben.qits.entities.entity;
 /**
  * Which thing an {@link AuditEntry} concerns. A closed vocabulary, pinned by {@code
  * ck_audit_entity_type} on {@code auditentry.entity_type} — changing it is a migration (V4 added the
- * two ticket words, V5 the dossier one, V13 re-stated the set) as well as a value here.
+ * two ticket words, V5 the dossier one, V13 re-stated the set, V20 renamed {@code TICKET_COMMENT} to
+ * {@link #COMMENT}) as well as a value here.
  *
  * <h2>The four planning words are {@link Archetype}'s, and are no longer written down twice</h2>
  *
@@ -14,7 +15,7 @@ package eu.wohlben.qits.entities.entity;
  *
  * <p><b>The enum stays, because the column is typed.</b> {@code auditentry.entity_type} is
  * {@code @Enumerated(STRING)} behind a check constraint and carries two words no archetype will ever
- * spell, so it cannot simply <em>be</em> {@code Archetype}: {@link #TICKET_COMMENT} and {@link
+ * spell, so it cannot simply <em>be</em> {@code Archetype}: {@link #COMMENT} and {@link
  * #DOSSIER_PAGE} are not archetypes of the merged model and are not rows in {@code entity} at all.
  * What {@link #of} removes is the second <em>decision</em>, not the second type: a fifth archetype
  * now fails {@code AuditEntityTypeTest} until the word is added here too, where before it would have
@@ -46,19 +47,25 @@ public enum AuditEntityType {
   CAMPAIGN,
 
   /**
-   * A {@link TicketComment}. Its rows carry the owning ticket's id as the subtree key.
+   * An {@link EntityComment}, on an entity of any archetype. Its rows carry the subtree key of the
+   * entity it is on: that entity's own id for a root (a ticket, an epic, a campaign), the epic's for
+   * a feature or a task — so an epic's history includes what was said on its tasks' threads.
+   *
+   * <p>It was {@code TICKET_COMMENT} until V20, which rewrote the rows already written; a comment on
+   * an epic is not a ticket comment, and one kind of row spelled two ways is a history nobody can
+   * query in one go.
    *
    * <p><b>Not an archetype</b>, and it must not become one: a comment is a remark on a row rather
    * than a node of the plan, it has no slug, no number and no membership, and it lives in its own
    * table.
    */
-  TICKET_COMMENT,
+  COMMENT,
 
   /**
    * A {@link DossierPage}. Unlike a ticket, it is not a root: its rows carry the OWNING entity's id
    * in {@link AuditEntry#epicId}, so an epic's history keeps including what its pages did.
    *
-   * <p><b>Not an archetype</b>, for {@link #TICKET_COMMENT}'s reason.
+   * <p><b>Not an archetype</b>, for {@link #COMMENT}'s reason.
    */
   DOSSIER_PAGE;
 

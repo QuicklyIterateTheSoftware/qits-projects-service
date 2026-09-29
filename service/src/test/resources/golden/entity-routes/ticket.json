@@ -653,6 +653,125 @@
   "response" : {
     "entries" : [ {
       "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "I can reproduce it",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "I can reproduce it, in dev",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "I can reproduce it, in dev",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:5>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:5>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Blocked: waiting on the idp",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:5>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:5>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Blocked: waiting on the idp",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:6>",
+      "epicId" : "<id:2>",
+      "operation" : "CREATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:6>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Unblocked.",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "COMMENT",
+      "entityId" : "<id:6>",
+      "epicId" : "<id:2>",
+      "operation" : "DELETE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:6>",
+        "causationId" : null,
+        "entityId" : "<id:2>",
+        "author" : "dev",
+        "body" : "Unblocked.",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
       "entityType" : "TICKET",
       "entityId" : "<id:2>",
       "epicId" : "<id:2>",
@@ -840,125 +959,6 @@
         "repositoryId" : null,
         "implementedAt" : null,
         "dependsOnEntityId" : null,
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "TICKET_COMMENT",
-      "entityId" : "<id:4>",
-      "epicId" : "<id:2>",
-      "operation" : "CREATE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:4>",
-        "causationId" : null,
-        "ticketId" : "<id:2>",
-        "author" : "dev",
-        "body" : "I can reproduce it",
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "TICKET_COMMENT",
-      "entityId" : "<id:4>",
-      "epicId" : "<id:2>",
-      "operation" : "DELETE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:4>",
-        "causationId" : null,
-        "ticketId" : "<id:2>",
-        "author" : "dev",
-        "body" : "I can reproduce it, in dev",
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "TICKET_COMMENT",
-      "entityId" : "<id:4>",
-      "epicId" : "<id:2>",
-      "operation" : "UPDATE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:4>",
-        "causationId" : null,
-        "ticketId" : "<id:2>",
-        "author" : "dev",
-        "body" : "I can reproduce it, in dev",
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "TICKET_COMMENT",
-      "entityId" : "<id:5>",
-      "epicId" : "<id:2>",
-      "operation" : "CREATE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:5>",
-        "causationId" : null,
-        "ticketId" : "<id:2>",
-        "author" : "dev",
-        "body" : "Blocked: waiting on the idp",
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "TICKET_COMMENT",
-      "entityId" : "<id:5>",
-      "epicId" : "<id:2>",
-      "operation" : "DELETE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:5>",
-        "causationId" : null,
-        "ticketId" : "<id:2>",
-        "author" : "dev",
-        "body" : "Blocked: waiting on the idp",
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "TICKET_COMMENT",
-      "entityId" : "<id:6>",
-      "epicId" : "<id:2>",
-      "operation" : "CREATE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:6>",
-        "causationId" : null,
-        "ticketId" : "<id:2>",
-        "author" : "dev",
-        "body" : "Unblocked.",
-        "createdAt" : "<instant>",
-        "updatedAt" : "<instant>"
-      }
-    }, {
-      "id" : "<audit-id>",
-      "entityType" : "TICKET_COMMENT",
-      "entityId" : "<id:6>",
-      "epicId" : "<id:2>",
-      "operation" : "DELETE",
-      "changedBy" : "dev",
-      "changedAt" : "<instant>",
-      "snapshot" : {
-        "id" : "<id:6>",
-        "causationId" : null,
-        "ticketId" : "<id:2>",
-        "author" : "dev",
-        "body" : "Unblocked.",
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }

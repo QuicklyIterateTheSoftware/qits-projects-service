@@ -604,6 +604,92 @@ public class EpicMcpToolsTest {
         .body("task.implementedAt", org.hamcrest.Matchers.notNullValue());
   }
 
+  /**
+   * <b>The thread every entity has (qits-551), from the agent's side.</b> A REFINED epic's scope is
+   * frozen and its thread is not: a finding goes on the epic by its qualified id, a task-level one
+   * on the task's own thread, {@code get_epic} carries the epic's thread and {@code list_comments}
+   * reads the task's, and an edit replaces the text and keeps the author.
+   */
+  @Test
+  public void aFrozenEpicAndItsTaskTakeRemarksOnTheirOwnThreads() {
+    String projectId = createProject("Threads");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Threaded");
+    String taskId = addTask(projectId, epicId, repoId, "Find the race");
+    freeze(epicId);
+    String qualified =
+        authenticated()
+            .when()
+            .get("/projects/api/epics/" + epicId)
+            .then()
+            .statusCode(Response.Status.OK.getStatusCode())
+            .extract()
+            .path("epic.qualifiedId");
+
+    String[] remark = new String[1];
+    call(
+        projectId,
+        "add_comment",
+        Map.of("entityId", qualified, "body", "The plan misses the index"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"entityId\":\"" + epicId + "\""), text(response));
+          remark[0] = idIn(text(response));
+        });
+    call(
+        projectId,
+        "add_comment",
+        Map.of("entityId", taskId, "body", "The race is in the claim loop"),
+        response -> assertFalse(response.isError(), text(response)));
+    call(
+        projectId,
+        "update_comment",
+        Map.of("id", remark[0], "body", "The plan misses the index; added it"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"author\":\"dev\""), text(response));
+        });
+
+    call(
+        projectId,
+        "get_epic",
+        Map.of("id", epicId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains("The plan misses the index; added it"), body);
+          assertFalse(
+              body.contains("The race is in the claim loop"),
+              "get_epic carries the epic's own thread, not its tasks': " + body);
+        });
+    call(
+        projectId,
+        "list_comments",
+        Map.of("entityId", taskId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("The race is in the claim loop"), text(response));
+        });
+
+    String stranger = createProject("Threads Stranger");
+    call(
+        stranger,
+        "add_comment",
+        Map.of("entityId", epicId, "body", "not yours"),
+        response -> {
+          assertTrue(response.isError(), "another project's entity must read as not found");
+          assertTrue(text(response).contains("not found in this project"), text(response));
+        });
+    call(
+        stranger,
+        "update_comment",
+        Map.of("id", remark[0], "body", "not yours"),
+        response -> {
+          assertTrue(response.isError(), "another project's comment must read as not found");
+          assertTrue(text(response).contains("not found in this project"), text(response));
+        });
+  }
+
   @Test
   public void refusesToMarkATaskOfAnEpicThatIsStillADraft() {
     String projectId = createProject("MarkingTooSoon");

@@ -95,6 +95,8 @@ public class AgentSurfaceDefaultsTest {
           "mcp__repository__get_epic",
           "mcp__repository__add_ticket_comment",
           "mcp__repository__update_ticket_comment",
+          "mcp__repository__add_comment",
+          "mcp__repository__update_comment",
           "mcp__repository__transition_ticket",
           "mcp__repository__mark_task_implemented");
 

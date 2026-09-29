@@ -80,6 +80,9 @@ public class EpicMcpTools {
 
   @Inject WorkEntityService entities;
 
+  /** The epic's own thread, embedded in {@code get_epic} (qits-551). */
+  @Inject eu.wohlben.qits.entities.control.EntityCommentService thread;
+
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
@@ -140,7 +143,10 @@ public class EpicMcpTools {
       Instant implementedOn,
       List<TaskDetail> tasks) {}
 
-  /** One epic with its whole feature/task tree. */
+  /**
+   * One epic with its whole feature/task tree, and its own comment thread, oldest first (qits-551)
+   * — a feature's or a task's thread is read with {@code list_comments}.
+   */
   public record EpicDetail(
       String id,
       String qualifiedId,
@@ -149,7 +155,8 @@ public class EpicMcpTools {
       String status,
       String description,
       String supersededByEpicId,
-      List<FeatureDetail> features) {}
+      List<FeatureDetail> features,
+      List<CommentMcpTools.CommentDetail> comments) {}
 
   /** A feature on its own, as returned by the feature write tools. */
   public record FeatureSummary(
@@ -217,8 +224,8 @@ public class EpicMcpTools {
       name = "get_epic",
       description =
           "Read one epic of this project in full: its description plus every feature and, under"
-              + " each, every task. Use it before editing a draft, so the tree you extend is the"
-              + " one that exists. The implemented markers it reports are set as work ships and are"
+              + " each, every task, and the epic's own comment thread, oldest first. Use it before"
+              + " editing a draft, so the tree you extend is the one that exists. The implemented markers it reports are set as work ships and are"
               + " not part of a draft; if you are the agent implementing this epic, record one with"
               + " mark_task_implemented.")
   public EpicDetail getEpic(
@@ -262,7 +269,8 @@ public class EpicMcpTools {
         epic.status,
         epic.description,
         epic.supersededByEntityId,
-        features);
+        features,
+        CommentMcpTools.threadOf(thread, epic.id));
   }
 
   @McpServer("repository")

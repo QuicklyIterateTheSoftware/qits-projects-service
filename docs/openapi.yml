@@ -298,7 +298,7 @@ components:
       - TASK
       - TICKET
       - CAMPAIGN
-      - TICKET_COMMENT
+      - COMMENT
       - DOSSIER_PAGE
     AuditEntryDto:
       type: object
@@ -663,6 +663,57 @@ components:
           description: "The qits-configuration application every credentialKey lives\
             \ under. Reserved: nothing deploys under it, so these keys are never rendered\
             \ into any application's environment."
+    CommentAnswer:
+      type: object
+      description: One comment on an entity's thread.
+      properties:
+        comment:
+          $ref: "#/components/schemas/CommentDto"
+    CommentDeleted:
+      type: object
+      properties:
+        success:
+          type: boolean
+    CommentDto:
+      type: object
+      properties:
+        id:
+          type: string
+        entityId:
+          type: string
+        author:
+          type: string
+        body:
+          type: string
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+    CommentList:
+      type: object
+      description: "An entity's thread, oldest first."
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentListEntry"
+    CommentListEntry:
+      type: object
+      properties:
+        comment:
+          $ref: "#/components/schemas/CommentDto"
+    CommentPatch:
+      type: object
+      required:
+      - body
+      description: "A JSON merge patch (RFC 7396) of one comment. body is the only\
+        \ property and is required: it replaces the text, and may not be null or blank.\
+        \ id, entityId, author, createdAt and updatedAt are server-owned; any other\
+        \ property is refused as unknown."
+      properties:
+        body:
+          type: string
+          description: "The remark as it should now read, Markdown."
     CommitBuildStatusDto:
       type: object
       properties:
@@ -804,6 +855,14 @@ components:
           pattern: \S
         description:
           type: string
+    CreateEntityCommentRequest:
+      type: object
+      required:
+      - body
+      properties:
+        body:
+          type: string
+          pattern: \S
     CreateEpicRequest:
       type: object
       required:
@@ -3329,6 +3388,77 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/comments/{commentId}:
+    patch:
+      summary: Edit a comment's text (JSON merge patch)
+      description: "Replaces the body of a comment on an entity of any archetype.\
+        \ Only body is written; the author stays who wrote it, and updatedAt moves."
+      parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/CommentPatch"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentPatch"
+        required: true
+      responses:
+        "200":
+          description: The comment as it stands after the edit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentAnswer"
+        "400":
+          description: "Every complaint about the body in one message: not an object,\
+            \ empty, body null or blank or not a string, a server-owned or unknown\
+            \ property"
+        "403":
+          description: An agent editing a comment outside its own project; nothing
+            is written
+        "404":
+          description: No comment with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Comment Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    delete:
+      summary: Delete a comment
+      description: Removes a comment; audited. Admin only.
+      parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The comment is gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentDeleted"
+        "404":
+          description: No comment with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Comment Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
   /projects/api/entities/archetypes:
     get:
       responses:
@@ -3429,6 +3559,74 @@ paths:
           description: Not Authorized
       tags:
       - Entity Patch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/entities/{id}/comments:
+    get:
+      summary: Read an entity's comment thread
+      description: "The thread of an entity of any archetype, oldest first. The id\
+        \ is the entity's UUID or its qualified id (<projectSlug>-<n>)."
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The thread, oldest first"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentList"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Entity Comment Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      summary: Comment on an entity
+      description: Adds a remark to the thread of an entity of any archetype. The
+        id is the entity's UUID or its qualified id (<projectSlug>-<n>). The author
+        is stamped from the caller.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntityCommentRequest"
+        required: true
+      responses:
+        "200":
+          description: The comment as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentAnswer"
+        "400":
+          description: A blank body
+        "403":
+          description: An agent commenting outside its own project; nothing is written
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Entity Comment Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -7214,4 +7412,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.928.215936
+  version: 2026.929.135952

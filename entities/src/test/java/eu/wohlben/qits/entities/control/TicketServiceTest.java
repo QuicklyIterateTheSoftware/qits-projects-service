@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
-import eu.wohlben.qits.entities.entity.TicketComment;
+import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -26,7 +26,7 @@ class TicketServiceTest extends EntitiesTestSupport {
 
   @Inject WorkEntityService workEntities;
 
-  @Inject TicketCommentService ticketComments;
+  @Inject EntityCommentService ticketComments;
   @Inject AuditService auditService;
 
   private WorkEntity bug(String title) {
@@ -519,9 +519,9 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void commentsAreReadOldestFirst() {
     WorkEntity ticket = bug("Threaded");
-    TicketComment first = ticketComments.addComment(ticket.id, "I can reproduce it", "alice");
-    TicketComment second = ticketComments.addComment(ticket.id, "It is the cache", "bob");
-    TicketComment third = ticketComments.addComment(ticket.id, "Fixed on main", "alice");
+    EntityComment first = ticketComments.addComment(ticket.id, "I can reproduce it", "alice");
+    EntityComment second = ticketComments.addComment(ticket.id, "It is the cache", "bob");
+    EntityComment third = ticketComments.addComment(ticket.id, "Fixed on main", "alice");
 
     // A thread is a sequence: reading it backwards is reading a different thread.
     assertEquals(
@@ -543,10 +543,10 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void theAuthorIsStampedAndAnEditDoesNotRewriteIt() {
     WorkEntity ticket = bug("Attributed");
-    TicketComment comment = ticketComments.addComment(ticket.id, "mine", "alice");
+    EntityComment comment = ticketComments.addComment(ticket.id, "mine", "alice");
     assertEquals("alice", comment.author);
 
-    TicketComment edited = ticketComments.updateComment(comment.id, "mine, corrected", "bob");
+    EntityComment edited = ticketComments.updateComment(comment.id, "mine, corrected", "bob");
     assertEquals("mine, corrected", edited.body);
     // Who wrote it and who last changed it are different facts; the second one is the audit log's.
     assertEquals("alice", edited.author);
@@ -561,7 +561,7 @@ class TicketServiceTest extends EntitiesTestSupport {
   void blankCommentBodiesAreRejected() {
     WorkEntity ticket = bug("T");
     assertThrows(BadRequestException.class, () -> ticketComments.addComment(ticket.id, "  ", "t"));
-    TicketComment comment = ticketComments.addComment(ticket.id, "real", "t");
+    EntityComment comment = ticketComments.addComment(ticket.id, "real", "t");
     assertThrows(
         BadRequestException.class, () -> ticketComments.updateComment(comment.id, "", "t"));
   }
@@ -569,8 +569,8 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void deletingACommentLeavesTheTicketAndItsSiblings() {
     WorkEntity ticket = bug("T");
-    TicketComment kept = ticketComments.addComment(ticket.id, "kept", "t");
-    TicketComment gone = ticketComments.addComment(ticket.id, "gone", "t");
+    EntityComment kept = ticketComments.addComment(ticket.id, "kept", "t");
+    EntityComment gone = ticketComments.addComment(ticket.id, "gone", "t");
 
     ticketComments.deleteComment(gone.id, "t");
 
@@ -587,7 +587,7 @@ class TicketServiceTest extends EntitiesTestSupport {
   @Test
   void deletingATicketCascadesToItsComments() {
     WorkEntity ticket = bug("Doomed");
-    TicketComment comment = ticketComments.addComment(ticket.id, "still here", "t");
+    EntityComment comment = ticketComments.addComment(ticket.id, "still here", "t");
 
     workEntities.delete(Archetype.TICKET, ticket.id, "t");
 
@@ -628,7 +628,7 @@ class TicketServiceTest extends EntitiesTestSupport {
     // rows and its comments' rows carry the TICKET's id, so one indexed query answers "the whole
     // history of this thing" — and still answers after the live rows are gone.
     WorkEntity ticket = bug("Rooted");
-    TicketComment comment = ticketComments.addComment(ticket.id, "a remark", "alice");
+    EntityComment comment = ticketComments.addComment(ticket.id, "a remark", "alice");
     ticketComments.updateComment(comment.id, "a better remark", "alice");
 
     var history = auditService.listForEpic(ticket.id);
@@ -636,13 +636,13 @@ class TicketServiceTest extends EntitiesTestSupport {
     assertTrue(history.stream().allMatch(e -> ticket.id.equals(e.epicId)));
     assertEquals(
         2,
-        history.stream().filter(e -> e.entityType == AuditEntityType.TICKET_COMMENT).count());
+        history.stream().filter(e -> e.entityType == AuditEntityType.COMMENT).count());
   }
 
   @Test
   void deleteAuditsEveryRemovedRowAndSurvivesTheDeletion() {
     WorkEntity ticket = bug("Doomed");
-    TicketComment comment = ticketComments.addComment(ticket.id, "goes with it", "carol");
+    EntityComment comment = ticketComments.addComment(ticket.id, "goes with it", "carol");
 
     workEntities.delete(Archetype.TICKET, ticket.id, "carol");
 
@@ -654,7 +654,7 @@ class TicketServiceTest extends EntitiesTestSupport {
             .anyMatch(
                 e ->
                     e.operation == AuditOperation.DELETE
-                        && e.entityType == AuditEntityType.TICKET_COMMENT
+                        && e.entityType == AuditEntityType.COMMENT
                         && comment.id.equals(e.entityId)));
     assertTrue(
         history.stream()

@@ -1,11 +1,6 @@
 package eu.wohlben.qits.projects.entitieshost;
 
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.persistence.WorkEntityRepository;
-import eu.wohlben.qits.projects.control.ProjectService;
-import eu.wohlben.qits.projects.entity.Project;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.Optional;
@@ -91,9 +86,8 @@ public class CommitSubjectEntities {
   private static final Pattern SCOPE =
       Pattern.compile("^([A-Za-z0-9][A-Za-z0-9-]*)-([0-9]{1,18})$");
 
-  @Inject ProjectService projects;
-
-  @Inject WorkEntityRepository entities;
+  /** The two-database lookup, shared with every door that takes a qualified id (qits-551). */
+  @Inject EntityIdResolver resolver;
 
   /**
    * <b>The grammar, pure and side-effect free.</b> No database, no injection, no logging — the
@@ -114,7 +108,25 @@ public class CommitSubjectEntities {
     if (!head.find()) {
       return Optional.empty();
     }
-    Matcher scope = SCOPE.matcher(head.group(2).trim());
+    return parse(head.group(2));
+  }
+
+  /**
+   * <b>The scope half of the grammar on its own</b>: {@code qits-1337} as it appears in a commit
+   * subject's parentheses, in a path segment or in a tool argument, split on the LAST
+   * hyphen-then-digits. Pure like {@link #reference}; empty for anything that is not that shape.
+   * <b>A UUID whose last group happens to be all digits does match</b> ({@code
+   * …-4e1f-123456789012} reads as entity 123456789012 of a project slugged by the rest), which is
+   * why {@link EntityIdResolver} tries a string as an entity id before it tries it as this.
+   *
+   * @param qualifiedId {@code <project-slug>-<number>}, surrounding whitespace ignored
+   * @return the slug and the number it names, or empty
+   */
+  public static Optional<QualifiedId> parse(String qualifiedId) {
+    if (qualifiedId == null) {
+      return Optional.empty();
+    }
+    Matcher scope = SCOPE.matcher(qualifiedId.trim());
     if (!scope.matches()) {
       return Optional.empty();
     }
@@ -129,45 +141,14 @@ public class CommitSubjectEntities {
    * the subject, an id that will not parse, and a well-formed id naming a project or an entity that
    * does not exist. Nothing is logged for any of them.
    *
-   * <p>The two reads are in <b>two separate transactions</b>, deliberately: they are two local
-   * (non-XA) datasources and Narayana enlists only one such resource per transaction — the rule
-   * {@code EpicMcpTools} states for the MCP tools and for the same reason. Each is
-   * {@code requiringNew} so this is callable from a plain worker thread with no request scope on
-   * it, which is where its first consumer runs.
+   * <p>The lookup is {@link EntityIdResolver#lookup}'s — two reads in two transactions, callable
+   * from a plain worker thread — since qits-551 made the REST and MCP comment doors its second and
+   * third readers.
    *
    * @return the entity the subject names, with its archetype and its status, from one lookup
    */
   public Optional<NamedEntity> resolve(String subject) {
-    Optional<QualifiedId> reference = reference(subject);
-    if (reference.isEmpty()) {
-      return Optional.empty();
-    }
-    QualifiedId id = reference.get();
-
-    Optional<Project> project =
-        QuarkusTransaction.requiringNew().call(() -> projects.findBySlug(id.projectSlug()));
-    if (project.isEmpty()) {
-      return Optional.empty();
-    }
-    String projectId = project.get().id;
-
-    Optional<WorkEntity> row =
-        QuarkusTransaction.requiringNew()
-            .call(() -> entities.findByProjectAndNumber(projectId, id.number()));
-    if (row.isEmpty()) {
-      return Optional.empty();
-    }
-    WorkEntity entity = row.get();
-    return Optional.of(
-        new NamedEntity(
-            entity.id,
-            id.rendered(),
-            projectId,
-            id.projectSlug(),
-            entity.number,
-            entity.archetype,
-            entity.status,
-            entity.title));
+    return reference(subject).flatMap(resolver::lookup);
   }
 
   /**
