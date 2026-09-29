@@ -105,20 +105,18 @@ public class EntityPatchController {
   /** What the server writes and a caller never does. */
   private static final List<String> SERVER_OWNED = List.of("slug", "createdBy");
 
-  /** The editable properties, as {@code EntityTransition} spells them, and their registry slot. */
-  private static final Map<String, EntityProperty> EDITABLE =
-      Map.of(
-          "title", EntityProperty.TITLE,
-          "description", EntityProperty.DESCRIPTION,
-          "impetus", EntityProperty.IMPETUS,
-          "ticketType", EntityProperty.TICKET_TYPE,
-          "assignee", EntityProperty.ASSIGNEE,
-          "repositoryId", EntityProperty.REPOSITORY_ID,
-          "dependsOn", EntityProperty.DEPENDS_ON,
-          "implementedAt", EntityProperty.IMPLEMENTED_AT);
+  /**
+   * The editable properties, as {@code EntityTransition} spells them, and their registry slot — read
+   * off {@link EntityWireProperties}, the table the published update schema is built from, so the
+   * schema a client is handed and the names this door accepts are one list (qits-548).
+   */
+  private static final Map<String, EntityProperty> EDITABLE = EntityWireProperties.editable();
 
-  /** Editable, but with no clear flag behind them: every kind that permits one requires it. */
-  private static final List<String> NOT_CLEARABLE = List.of("title", "ticketType", "repositoryId");
+  /**
+   * Editable, but with no clear flag behind them: every kind that permits one requires it. The
+   * table's {@code clearable} column, which is also what types these as non-nullable in the schema.
+   */
+  private static final List<String> NOT_CLEARABLE = EntityWireProperties.notClearable();
 
   @Inject WorkEntityService entities;
 
