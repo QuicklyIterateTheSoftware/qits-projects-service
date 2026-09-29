@@ -57,6 +57,10 @@ public class ReleaseRequestFlowTest {
 
   @Inject FakeActiveBuilds activeBuilds;
 
+  @Inject FakeCiRunLineage lineage;
+
+  @Inject eu.wohlben.qits.projects.control.BuildStatusLedger ledger;
+
   @Inject RecordingReleaseExecutor executor;
 
   @Inject RecordingBackingBranchMerger merger;
@@ -73,6 +77,7 @@ public class ReleaseRequestFlowTest {
   @BeforeEach
   void seed() {
     activeBuilds.reset();
+    lineage.reset();
     executor.reset();
     merger.reset();
     announcer.reset();
@@ -486,6 +491,93 @@ public class ReleaseRequestFlowTest {
 
     verdict("BuildSuccessful", merged, third, second, "");
     awaitState(id, "RELEASED");
+  }
+
+  /**
+   * <b>A gap in the chain is walked across, not stopped at</b> (ticket qits-556). qits-ci publishes
+   * no verdict for a run it auto-retried, so red A → auto-retried B → green C reaches this service
+   * as A and C alone, with C naming B. The ledger has no row for B and asks qits-ci (faked here)
+   * which run B re-fired — A — so A is superseded and the rejection it wrote is answered. Release
+   * request c8ac72bf sat REJECTED behind runs 63b7b182 → 7a55ddac → 02d0f7ec exactly this way.
+   */
+  @Test
+  public void aGreenRetryAcrossAnUnpublishedAutoRetryReArmsTheRequest() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("red");
+    String unpublished = run("auto-retried");
+    String green = run("green");
+    lineage.retried(unpublished, red);
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    verdict("BuildSuccessful", merged, green, unpublished, "");
+    awaitState(id, "RELEASED");
+
+    assertEquals(merged, mergedShaOf(id), "the retry is not a re-arm: the fold never moved");
+    assertTrue(lineage.asked().contains(unpublished), "the gap was asked of qits-ci");
+  }
+
+  /**
+   * <b>The same gap, answered by the sweep</b>: the green verdict lands in the ledger without the
+   * event path's re-evaluation (this service was down, the claim rolled back), and the belt must
+   * find that the rejecting run no longer stands — which it can only do if the ledger write walked
+   * the gap and deleted A.
+   */
+  @Test
+  public void theSweepReArmsARequestWhoseRejectingRunWasAnsweredAcrossAGap() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("red");
+    String unpublished = run("auto-retried");
+    String green = run("green");
+    lineage.retried(unpublished, red);
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    java.util.Set<String> superseded =
+        ledger.record(
+            new eu.wohlben.qits.projects.control.BuildStatusLedger.Verdict(
+                green, repoId, projectId, null, "work", merged, "SUCCESS", Instant.now(), null,
+                unpublished));
+    assertTrue(superseded.contains(red), "the ledger walked past the gap to " + red);
+    assertEquals("REJECTED", stateOf(id), "nothing re-evaluated it yet: only the sweep is left");
+
+    releaseRequests.sweep();
+    awaitState(id, "RELEASED");
+  }
+
+  /**
+   * <b>A lookup that fails costs the re-arm and nothing else.</b> qits-ci unreachable (here: a port
+   * that throws in spite of its contract) stops the walk at the gap, exactly where it stopped
+   * before qits-556 — the green verdict is still recorded, no exception reaches the consumption,
+   * and the request stays REJECTED naming the run that rejected it.
+   */
+  @Test
+  public void aLookupThatFailsLeavesTheRequestRejectedAndThrowsNothing() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    String red = run("red");
+    String unpublished = run("auto-retried");
+    String green = run("green");
+    lineage.retried(unpublished, red);
+    lineage.failing(true);
+
+    verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    verdict("BuildSuccessful", merged, green, unpublished, "");
+    releaseRequests.sweep();
+
+    assertEquals("REJECTED", stateOf(id), "the gap could not be crossed");
+    assertTrue(detailOf(id).contains(red), detailOf(id));
+    assertEquals(0, executor.calls().size());
+    assertTrue(lineage.asked().contains(unpublished), "it was asked, and it failed");
+    assertTrue(
+        ledger.verdictsOf(repoId, merged).stream().anyMatch(v -> green.equals(v.runId())),
+        "the green verdict itself was recorded all the same");
   }
 
   /**

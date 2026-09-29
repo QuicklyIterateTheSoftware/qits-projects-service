@@ -5,6 +5,7 @@ import eu.wohlben.qits.projects.entity.CommitBuildStatus;
 import eu.wohlben.qits.projects.persistence.CommitBuildStatusRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -12,8 +13,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.jboss.logging.Logger;
 
 /**
  * The per-commit build-status ledger: what qits-ci has said about each commit, recorded from the
@@ -37,7 +40,16 @@ import java.util.UUID;
 @ApplicationScoped
 public class BuildStatusLedger {
 
+  private static final Logger LOG = Logger.getLogger(BuildStatusLedger.class);
+
   @Inject CommitBuildStatusRepository statuses;
+
+  /**
+   * qits-ci's answer for a run this table holds no row for — see {@link #supersede}. Absent
+   * supported, the house port shape: with no implementation the walk stops at the first gap, which
+   * is exactly what it did before qits-556.
+   */
+  @Inject Instance<CiRunLineage> lineage;
 
   /**
    * One run's terminal verdict, as the listener hands it over — plain values, no wire types.
@@ -65,6 +77,14 @@ public class BuildStatusLedger {
    * returns. The {@code visited} set below is the real cycle guard; this is the belt under it.
    */
   private static final int ANCESTRY_LIMIT = 64;
+
+  /**
+   * How many runs with no row one walk may ask qits-ci about (ticket qits-556). Each is an HTTP
+   * read inside this class's write transaction, so the number is a cost bound rather than a policy:
+   * qits-ci's own auto-retry stops at a handful of attempts, and an ordinary chain asks once — for
+   * the run whose row an earlier retry already cleared, where qits-ci answers "not a retry".
+   */
+  static final int GAP_LOOKUP_LIMIT = 10;
 
   /**
    * Record one verdict, in a transaction of this datasource's own. Idempotent per run id, and
@@ -131,23 +151,59 @@ public class BuildStatusLedger {
   }
 
   /**
-   * Delete the run named and everything it in turn superseded, answering the ids walked. A missing
-   * row is not a stop-and-fail: it is either a run this ledger never saw or one an earlier retry
-   * already cleared, and both mean "nothing left to remove here" — but the walk cannot follow a link
-   * it has no row to read, which is the gap the {@code isSuperseded} check exists to make harmless.
+   * Delete the run named and everything it in turn superseded, answering the ids walked.
+   *
+   * <p><b>A missing row is a gap, and a gap is walked across rather than stopped at</b> (ticket
+   * qits-556). It is one of three things: a run an earlier retry already cleared, a run whose
+   * verdict this service has not seen yet, or a run qits-ci auto-retried — which publishes no
+   * verdict at all and so never has a row. The last is the one that matters: red A (it rejected a
+   * release request) → auto-retried B → green C reaches this table as A and C only, and a walk that
+   * stopped at B left A standing and the request REJECTED behind a passing build, with neither
+   * {@code onVerdict} nor the sweep able to see the rejection had been answered. So the link the
+   * table cannot supply is asked of qits-ci ({@link CiRunLineage}), at most {@link
+   * #GAP_LOOKUP_LIMIT} times per walk, and any non-answer — not a retry, 404, unreachable, a port
+   * that throws in spite of its contract — ends the walk exactly where it used to end. The verdict
+   * being recorded is never put at risk by the lookup.
    */
   private Set<String> supersede(String retryOfRunId) {
     Set<String> walked = new LinkedHashSet<>();
+    int lookups = 0;
     String runId = retryOfRunId;
     while (runId != null && walked.size() < ANCESTRY_LIMIT && walked.add(runId)) {
       CommitBuildStatus ancestor = statuses.findById(runId);
       if (ancestor == null) {
-        return walked;
+        if (lookups++ >= GAP_LOOKUP_LIMIT) {
+          LOG.warnf(
+              "Stopped walking a retry chain at run %s: %d runs with no verdict asked of qits-ci"
+                  + " already",
+              runId,
+              GAP_LOOKUP_LIMIT);
+          return walked;
+        }
+        runId = askedOfCi(runId).orElse(null);
+        continue;
       }
       runId = ancestor.retryOfRunId;
       statuses.delete(ancestor);
     }
     return walked;
+  }
+
+  /** The gap's parent, per qits-ci — empty for every non-answer, and never a throw. */
+  private Optional<String> askedOfCi(String runId) {
+    if (lineage == null || !lineage.isResolvable()) {
+      return Optional.empty();
+    }
+    try {
+      Optional<String> parent = lineage.get().retryOfRunId(runId);
+      return parent == null ? Optional.empty() : parent.filter(id -> !id.isBlank());
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not ask qits-ci which run %s re-fired; the retry chain stops there: %s",
+          runId,
+          e.toString());
+      return Optional.empty();
+    }
   }
 
   /**
