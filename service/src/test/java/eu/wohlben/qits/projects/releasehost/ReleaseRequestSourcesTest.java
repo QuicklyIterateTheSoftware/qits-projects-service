@@ -873,7 +873,8 @@ public class ReleaseRequestSourcesTest {
     // The post-deployment merge puts the tag on main. It is already contained in the fold through
     // main itself, so the re-fold answers `unchanged` — a real trigger with no content behind it.
     merger.answer(BackingBranchMerger.Outcome.unchanged(foldedWith));
-    releaseRequests.onReleasedTagMerged(repoId, "2026.831.90000");
+    gitHost.containsCommit(repoId, "released-sha-0", "main-with-the-tag");
+    releaseRequests.onMainMoved(repoId, "main-with-the-tag");
 
     assertEquals(
         foldsBefore + 1,
@@ -889,9 +890,9 @@ public class ReleaseRequestSourcesTest {
         .then()
         .body("request.sources.name", not(hasItem("2026.831.90000")));
 
-    // Clearing a tag nothing has a pending row for is a no-op, not a fold.
+    // Main moving again with nothing pending left to contain is a no-op, not a fold.
     int settled = merger.folds().size();
-    releaseRequests.onReleasedTagMerged(repoId, "2026.831.90000");
+    releaseRequests.onMainMoved(repoId, "main-with-the-tag");
     assertEquals(settled, merger.folds().size(), "a tag already merged is cleared once");
   }
 }

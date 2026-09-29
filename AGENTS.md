@@ -388,7 +388,9 @@ merely its only occupant. Six things about it are rules:
   decision behind that sits — the correlation (by tag name, because `DeploymentActive` names an
   *application* and the application `qits-ci` is built from the repository `qits-ci-service`), the
   merge through `BackingBranchMerger` onto `refs/heads/main`, and the bookkeeping that follows
-  (`ReleaseRequests.onReleasedTagMerged`, still the only writer of `merged_at`). Three things travel
+  (`ReleaseRequests.onMainMoved`, the only writer of `merged_at`: it asks the git host whether
+  main's new head contains each pending tag, so an obsoleted tag that rode in inside its successor
+  leaves the implicit set too; a push to main asks the same question). Three things travel
   with it: the payload is a **local record** because the platform's Maven registry serves nothing
   under `qits-platform-deployments-events` (measured 2026-09-03) and a jar it does not serve is a
   release pipeline that cannot build; `consumerId()` is `projects-main-finalization` and initializes
@@ -888,8 +890,8 @@ timeout ever passes the gate** — a publish that never reports holds `main` for
 
 `ReleaseFinalization.advance` is the whole state machine and the only writer of `merge_requested_at`:
 one tree listing, both gates, and the merge to `main` when every configured one has passed.
-`onReleasedTagMerged` is what moves the request to `FINALIZED` and cancels whatever is still queued
-for it. Three consequences worth stating:
+`ReleaseRequests.onMainMoved` — main found to contain the tag — is what moves the request to
+`FINALIZED` and cancels whatever is still queued for it. Three consequences worth stating:
 
 - **A red publish verdict never moves the request out of RELEASED.** The tag cannot be un-cut, so it
   is a failed gate on an open request — the run id is on `released_tag_pending_merge` and the fix is

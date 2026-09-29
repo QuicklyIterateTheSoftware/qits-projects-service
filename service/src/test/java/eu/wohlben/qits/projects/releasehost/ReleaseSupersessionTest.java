@@ -156,6 +156,68 @@ public class ReleaseSupersessionTest {
   }
 
   /**
+   * <b>A superseded tag leaves the implicit set when its successor reaches main</b> — the half of
+   * "it reaches main inside its successor" that the bookkeeping has to notice. Nothing ever merges
+   * the obsoleted tag itself, so a stamp that only named the tag just merged left it pending for
+   * ever, and every later request went on folding a tag main already held.
+   *
+   * <p>The lineage is the real one: B's release folded A's tag in, and finalization merges B into
+   * main — so main contains A through B, and the fake's containment answers exactly that.
+   */
+  @Test
+  public void aSupersededTagLeavesTheImplicitSetWhenItsSuccessorReachesMain() {
+    String tagA = releaseOf("work-a");
+    String requestA = firstRequest();
+    String tagB = releaseOf("work-b");
+    String requestB = rowOf(tagB).releaseRequestId;
+    assertEquals("OBSOLETE", stateOf(requestA), "the premise: B overtook A");
+    gitHost.containsCommit(repoId, rowOf(tagA).releasedSha, rowOf(tagB).releasedSha);
+
+    deploymentActive(tagB);
+    finalization.sweep();
+
+    assertNotNull(rowOf(tagB).mergedAt, "the successor's own tag reached main");
+    assertNotNull(rowOf(tagA).mergedAt, "and the tag it superseded reached main inside it");
+    assertEquals("FINALIZED", stateOf(requestB));
+    assertEquals("OBSOLETE", stateOf(requestA), "a superseded request is not resurrected");
+
+    String requestC = create("work-c");
+    List<String> sources = merger.foldsOf("refs/heads/release/" + requestC).get(0).sources();
+    assertTrue(
+        sources.stream().noneMatch(source -> source.startsWith("refs/tags/")),
+        "nothing main already holds is folded in again: " + sources);
+  }
+
+  /**
+   * <b>"Could not ask" is not "yes"</b>: where the git host cannot say whether main contains the
+   * superseded tag, the tag stays pending and keeps being folded in — the safe direction, since
+   * dropping a tag that is not on main would be a step backwards from what shipped.
+   */
+  @Test
+  public void aSupersededTagWhoseContainmentCannotBeAskedStaysAnImplicitSource() {
+    String tagA = releaseOf("work-a");
+    String tagB = releaseOf("work-b");
+    gitHost.containmentOfUnreadable(
+        repoId,
+        rowOf(tagA).releasedSha,
+        eu.wohlben.qits.projects.control.ReleaseGitHost.Answer.failedRetryable(
+            "git host unreachable"));
+
+    deploymentActive(tagB);
+    finalization.sweep();
+
+    assertNotNull(rowOf(tagB).mergedAt, "the successor itself still finalizes");
+    assertEquals("FINALIZED", stateOf(rowOf(tagB).releaseRequestId));
+    assertNull(rowOf(tagA).mergedAt, "an unanswered question stamps nothing");
+
+    String requestC = create("work-c");
+    List<String> sources = merger.foldsOf("refs/heads/release/" + requestC).get(0).sources();
+    assertTrue(
+        sources.contains("refs/tags/" + tagA),
+        "so it is still an implicit source of what comes next: " + sources);
+  }
+
+  /**
    * <b>Convergence and obsolescence never fight, because they cannot see the same rows.</b> Every
    * convergence read is over the unreleased states and every obsolescence read is over RELEASED, so
    * asking again about a branch that already participates in an open, untagged request answers that
