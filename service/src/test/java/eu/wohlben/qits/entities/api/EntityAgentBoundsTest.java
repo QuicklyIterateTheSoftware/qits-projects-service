@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import eu.wohlben.qits.entities.control.DossierService;
 import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityTransition;
@@ -20,6 +22,7 @@ import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.entities.mapper.DossierPageMapper;
 import eu.wohlben.qits.entities.mapper.TicketCommentMapper;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.security.AgentTokens;
@@ -101,6 +104,7 @@ class EntityAgentBoundsTest {
   @Inject DossierService dossierService;
   @Inject EntityTransitionService transitionService;
   @Inject EntityCatalogService catalogService;
+  @Inject RepositoryService repositoryService;
 
   @Inject TicketCommentMapper ticketCommentMapper;
   @Inject DossierPageMapper dossierPageMapper;
@@ -317,6 +321,18 @@ class EntityAgentBoundsTest {
     return door;
   }
 
+  private EntityPatchController patches(SecurityIdentity caller) {
+    EntityPatchController door = new EntityPatchController();
+    door.entities = workEntities;
+    door.catalog = catalogService;
+    door.repositories = repositoryService;
+    door.identity = caller;
+    door.epicHints = epicHints;
+    door.ticketHints = ticketHints;
+    door.qualifiedIds = qualifiedIds;
+    return door;
+  }
+
   // ---- the request bodies ----------------------------------------------------------------------
 
   private static EpicController.CreateFeatureRequest newFeature(String title) {
@@ -345,6 +361,11 @@ class EntityAgentBoundsTest {
 
   private static DossierController.WritePage pageWrite(String body, long version) {
     return new DossierController.WritePage(null, body, version);
+  }
+
+  /** The smallest merge patch: a new title, everything else left alone. */
+  private static JsonNode retitle(String title) {
+    return JsonNodeFactory.instance.objectNode().put("title", title);
   }
 
   /** An epic restated as itself, with a new title — the smallest legal whole post-state. */
@@ -442,6 +463,10 @@ class EntityAgentBoundsTest {
     var written =
         entities(AGENT).transition(Map.of(rows.epicId(), epicRenamedTo("Restated by the batch")));
     assertEquals("Restated by the batch", written.get(rows.epicId()).title());
+
+    assertEquals(
+        "Patched by the agent",
+        patches(AGENT).patch(rows.ticketId(), retitle("Patched by the agent")).title());
   }
 
   // ---- and are refused for any other project ----------------------------------------------------
@@ -484,9 +509,12 @@ class EntityAgentBoundsTest {
         () ->
             entities(FOREIGN_AGENT)
                 .transition(Map.of(rows.epicId(), epicRenamedTo("Not yours"))));
+    refused(() -> patches(FOREIGN_AGENT).patch(rows.ticketId(), retitle("Not yours")));
+    refused(() -> patches(FOREIGN_AGENT).patch(rows.epicId(), retitle("Not yours")));
 
     // Nothing moved: every refusal ran before its write.
     assertEquals("The own plan", workEntities.get(Archetype.EPIC, rows.epicId()).title);
+    assertEquals("The own ticket", workEntities.get(Archetype.TICKET, rows.ticketId()).title);
     assertEquals("body", dossierService.get(rows.epicPageId()).body);
   }
 
@@ -531,6 +559,7 @@ class EntityAgentBoundsTest {
     refused(
         () ->
             entities(CLAIMLESS_AGENT).transition(Map.of(rows.epicId(), epicRenamedTo("No claim"))));
+    refused(() -> patches(CLAIMLESS_AGENT).patch(rows.ticketId(), retitle("No claim")));
   }
 
   // ---- a person pays no binding ----------------------------------------------------------------
@@ -670,6 +699,11 @@ class EntityAgentBoundsTest {
     asForwardedAgent()
         .body(Map.of("body", "no such comment"))
         .put("/projects/api/ticket-comments/no-such-entity")
+        .then()
+        .statusCode(404);
+    asForwardedAgent()
+        .body(Map.of("title", "no such entity"))
+        .patch("/projects/api/entities/no-such-entity")
         .then()
         .statusCode(404);
 

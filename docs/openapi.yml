@@ -1169,6 +1169,53 @@ components:
           type: boolean
         mode:
           $ref: "#/components/schemas/DispatchMode"
+    EntityPatch:
+      type: object
+      description: "A JSON merge patch (RFC 7396) of one entity. An absent property\
+        \ is left as it is; an explicit null clears it. At least one property must\
+        \ be named. status, archetype, membership, supersededBy and blocked are refused\
+        \ with the door that moves them; slug and createdBy are server-owned; any\
+        \ other property is refused as unknown. A property the entity's archetype\
+        \ has no slot for is refused (impetus on an epic)."
+      properties:
+        title:
+          type: string
+          description: The label. Cannot be cleared.
+        description:
+          type:
+          - string
+          - "null"
+          description: The long-form Markdown body; null clears it.
+        impetus:
+          type:
+          - string
+          - "null"
+          description: A ticket's impetus; null clears it.
+        ticketType:
+          type: string
+          description: "A ticket's type, BUG or IMPROVEMENT. Cannot be cleared."
+        assignee:
+          type:
+          - string
+          - "null"
+          description: A ticket's assignee; null clears it.
+        repositoryId:
+          type: string
+          description: "A task's repository, in the task's project. Cannot be cleared."
+        dependsOn:
+          type:
+          - string
+          - "null"
+          description: A feature's or task's sibling dependency; null clears it.
+        implementedAt:
+          type:
+          - string
+          - "null"
+          description: A feature's or task's implemented marker (ISO-8601 instant);
+            null clears it. Moves only while the owning epic is REFINED.
+          anyOf:
+          - $ref: "#/components/schemas/Instant"
+          - type: "null"
     EntityProperty:
       type: string
       enum:
@@ -3330,6 +3377,58 @@ paths:
       summary: Transition
       tags:
       - Entity Transition Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/entities/{id}:
+    patch:
+      summary: Edit an entity's fields (JSON merge patch)
+      description: "Partial update of one entity of any archetype. An absent property\
+        \ is left unchanged and an explicit null clears it. The status is never written\
+        \ here — a lifecycle move goes through the archetype's /{id}/transition, and\
+        \ a reshape, reparent or supersede through POST /projects/api/entities/transition.\
+        \ An epic's, feature's or task's scope follows the epic's freeze: scope edits\
+        \ need the epic REPORTED, the implemented marker needs it REFINED. Answers\
+        \ the entity in the merged shape."
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/EntityPatch"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntityPatch"
+        required: true
+      responses:
+        "200":
+          description: The entity as it stands after the edit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "Every complaint about the body in one message: not an object,\
+            \ empty, a property that is a move or server-owned or unknown, one the\
+            \ archetype has no slot for, a null where the property cannot be cleared,\
+            \ or a value of the wrong shape"
+        "403":
+          description: An agent writing an entity outside its own project; nothing
+            is written
+        "404":
+          description: No entity with this id
+        "409":
+          description: The owning epic's status freezes what the patch touches
+        "401":
+          description: Not Authorized
+      tags:
+      - Entity Patch Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -7115,4 +7214,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.927.154433
+  version: 2026.928.215936
