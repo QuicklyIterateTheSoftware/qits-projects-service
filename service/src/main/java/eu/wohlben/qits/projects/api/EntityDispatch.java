@@ -29,9 +29,10 @@ import org.jboss.logging.Logger;
  * <ol>
  *   <li><b>The row, of any archetype</b> (404). A kind with no lifecycle — a feature, a task — is a
  *       <b>409</b>: nothing stands an agent on one, and there is no status to read a phase from.
- *   <li><b>A block</b> (409, tickets only), before the status, for the reason the ticket door always
- *       gave: the status there is one a phase runs under, so "no phase left" would be false, and the
- *       answer that sends a reader to the thread comes first.
+ *   <li><b>A block</b> (409, a ticket's or an epic's alike since qits-592), before the status, for
+ *       the reason the ticket door always gave: the status there is one a phase runs under, so "no
+ *       phase left" would be false, and the answer that sends a reader to the thread comes first.
+ *       A campaign's block is its start's business ({@code CampaignStarter}) and its executor's.
  *   <li><b>The phase</b>, from {@link PhasePrompts#startedBy} — VERIFIED, DONE and DROPPED start
  *       none and are a <b>409</b> naming the status. Decided before anything is asked of anybody.
  *   <li><b>The port</b> (503 when absent) and <b>the address</b> ({@link EntityWorkspaces#require},
@@ -239,10 +240,11 @@ public class EntityDispatch {
   }
 
   /**
-   * <b>A campaign's read</b> (qits-417): a press is accepted whenever it is REFINED — while it runs
-   * too, since a press re-checks every waiting member — and what it would do is start it, or, once a
-   * start is active, re-check it. A campaign has no block and no phase of its own; the mode is FLOW
-   * once it has ever been started (a campaign presses dispatch only) and null before.
+   * <b>A campaign's read</b> (qits-417): a press is accepted whenever it is REFINED and not blocked —
+   * while it runs too, since a press re-checks every waiting member — and what it would do is start
+   * it, or, once a start is active, re-check it. A campaign has no phase of its own; its block
+   * (qits-592) is reported as it stands and refuses the press, as {@code CampaignStarter} does. The
+   * mode is FLOW once it has ever been started (a campaign presses dispatch only) and null before.
    */
   private EntityDispatchStateDto campaignState(WorkEntity campaign) {
     Optional<CampaignStartRecord> start =
@@ -255,8 +257,8 @@ public class EntityDispatch {
         campaign.archetype.name(),
         campaign.status,
         active ? "recheck" : "start",
-        false,
-        EntityStatus.REFINED.name().equals(campaign.status),
+        campaign.blocked,
+        EntityStatus.REFINED.name().equals(campaign.status) && !campaign.blocked,
         start.isPresent() ? DispatchMode.FLOW : null);
   }
 
@@ -340,9 +342,9 @@ public class EntityDispatch {
   }
 
   /**
-   * The phase this entity's status starts, or the 409 that says there is none. The ticket door's
-   * two sentences, kept word for word for a ticket — a person reads them — and said of an epic in
-   * the same words with its own noun.
+   * The phase this entity's status starts, or the 409 that says there is none — or that it is
+   * blocked. The ticket door's two sentences, kept word for word for a ticket — a person reads them
+   * — and said of an epic in the same words with its own noun.
    */
   private static PhasePrompts.Started phaseOrRefuse(WorkEntity entity) {
     if (!nextPhaseAware(entity)) {
@@ -356,12 +358,14 @@ public class EntityDispatch {
     if (entity.blocked) {
       throw new DispatchRefused(
           409,
-          "Ticket "
+          capitalised(noun(entity))
+              + " "
               + entity.id
               + " is blocked, so its "
               + entity.status
-              + " phase is not started — something is in the way and the ticket's thread says"
-              + " what. Clear the block once that is resolved, then dispatch.");
+              + " phase is not started — something is in the way and the "
+              + noun(entity)
+              + "'s thread says what. Clear the block once that is resolved, then dispatch.");
     }
     return PhasePrompts.startedBy(entity)
         .orElseThrow(

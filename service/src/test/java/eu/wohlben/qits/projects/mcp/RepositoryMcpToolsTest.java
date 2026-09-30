@@ -435,10 +435,10 @@ public class RepositoryMcpToolsTest {
                       "update_ticket",
                       "transition_ticket",
                       // Two verbs for one flag, and the pair is deliberate: a tool's description
-                      // is where an agent learns WHEN to reach for it, and blocking has to be
-                      // talked out of being the exit for a phase that is merely hard while
-                      // unblocking has to be talked into being used at all. One tool taking a
-                      // boolean would carry both arguments in one paragraph.
+                      // is where an agent learns WHEN to reach for it, and blocking says what an
+                      // agent that stops stopped on while unblocking has to be talked into being
+                      // used at all. One tool taking a boolean would carry both arguments in one
+                      // paragraph.
                       "block_ticket",
                       "unblock_ticket",
                       "add_ticket_comment",
@@ -450,6 +450,10 @@ public class RepositoryMcpToolsTest {
                       "list_comments",
                       "add_comment",
                       "update_comment",
+                      // ... and the block of any lifecycle archetype (qits-592): a flag plus a
+                      // remark on this same thread; the ticket pair above stays as delegates.
+                      "block_entity",
+                      "unblock_entity",
                       // RefinementDesignMcpTools — the frozen designs of a refinement. No resolve
                       // tool: accepting a proposal is a human act in the Design tab.
                       "list_designs",

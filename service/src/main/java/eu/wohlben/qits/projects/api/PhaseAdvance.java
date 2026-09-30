@@ -40,7 +40,8 @@ import org.jboss.logging.Logger;
  * an epic. The phase and its words come from {@link PhasePrompts}, which is archetype-aware; the
  * address from {@link EntityWorkspaces}, which knows both branch shapes. What differs for an epic:
  * it is looked up at the workspaces port by epic id, and its release request is titled "Epic
- * &lt;slug&gt;: …". An epic is never blocked. <b>It has a thread</b> since qits-551, so every
+ * &lt;slug&gt;: …". An epic is blocked as a ticket is (qits-592, {@link EntityBlocks}), and a
+ * blocked one is delivered no turn either. <b>It has a thread</b> since qits-551, so every
  * sentence below lands on the epic's thread exactly as on a ticket's, with the {@code EPICS} hint
  * where a ticket's fires {@code TICKETS} — until then an epic had none and each sentence was a log
  * line nobody reading the board would ever see.
@@ -242,38 +243,39 @@ public class PhaseAdvance {
    * string the transition's audit row carries, whichever door it came through, and it keeps this bean
    * out of the request context entirely.
    *
-   * @param ticket the ticket or epic <b>as it is after the move</b> — the new status is the only
+   * @param entity the ticket or epic <b>as it is after the move</b> — the new status is the only
    *     input to which phase starts, and its {@code dispatchContinues} is whether it starts at all
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
-  public void afterTransition(WorkEntity ticket, String changedBy) {
-    if (ticket.archetype == Archetype.CAMPAIGN) {
+  public void afterTransition(WorkEntity entity, String changedBy) {
+    if (entity.archetype == Archetype.CAMPAIGN) {
       // A campaign stands in no workspace: its moves deliver no turn and release no branch. What a
       // campaign's move does do — pause or resume its executor — belongs to its own door (qits-411).
       return;
     }
     // The merged row stores the status word; VERIFIED is compared against it by name, which is what
     // the column holds. See PhasePrompts.phaseOf for the same reading made one call down.
-    if (EntityStatus.VERIFIED.name().equals(ticket.status)) {
+    if (EntityStatus.VERIFIED.name().equals(entity.status)) {
       // The one move that starts no phase and is still not nothing: the work is good, so the branch
       // it was done on is asked to be released. See the class javadoc.
-      releaseWorkspace(ticket, changedBy);
+      releaseWorkspace(entity, changedBy);
       return;
     }
-    if (ticket.blocked) {
-      // A blocked ticket's phase is not started, and the ORDER against the clearing rule is the
-      // whole of what this arm means. WorkEntityService.transition clears the flag unconditionally, so
-      // the ticket handed here by either transition surface is never blocked and the phase it just
-      // entered DOES start — which is right: a block is about the phase that was running, and the
-      // one beginning now has not been tried. What this catches is the other caller and the other
-      // state: a ticket blocked in the phase it is already standing in, for which delivering a turn
-      // would tell an agent to start work somebody has already written down the obstacle to.
+    if (entity.blocked) {
+      // A blocked entity's phase is not started — a ticket's or an epic's alike (qits-592) — and the
+      // ORDER against the clearing rule is the whole of what this arm means.
+      // WorkEntityService.transition clears the flag unconditionally, so the entity handed here by
+      // any transition surface is never blocked and the phase it just entered DOES start — which is
+      // right: a block is about the phase that was running, and the one beginning now has not been
+      // tried. What this catches is the other caller and the other state: an entity blocked in the
+      // phase it is already standing in, for which delivering a turn would tell an agent to start
+      // work somebody has already written down the obstacle to.
       LOG.debugf(
-          "Ticket %s is blocked, so no turn is delivered for the phase its status (%s) starts",
-          ticket.id, ticket.status);
+          "%s %s is blocked, so no turn is delivered for the phase its status (%s) starts",
+          entity.archetype, entity.id, entity.status);
       return;
     }
-    Optional<PhasePrompts.Started> started = PhasePrompts.startedBy(ticket);
+    Optional<PhasePrompts.Started> started = PhasePrompts.startedBy(entity);
     if (started.isEmpty()) {
       // DONE and DROPPED, now that VERIFIED is answered above: the work is over, or it was decided
       // against. Nothing to do either way, and nothing to say about having done nothing.
@@ -282,16 +284,16 @@ public class PhaseAdvance {
     if (turns.isUnsatisfied()) {
       return;
     }
-    Optional<EntityWorkspaces.Target> target = workspaces.find(ticket);
+    Optional<EntityWorkspaces.Target> target = workspaces.find(entity);
     if (target.isEmpty()) {
       LOG.warnf(
           "Ticket %s moved to %s but its project (%s) has no wrapper repository, so there is no"
               + " branch to start the %s phase on",
-          ticket.id, ticket.status, ticket.projectId, started.get().phase());
+          entity.id, entity.status, entity.projectId, started.get().phase());
       return;
     }
-    if (ticket.dispatchContinues) {
-      deliver(ticket, started.get(), target.get(), changedBy);
+    if (entity.dispatchContinues) {
+      deliver(entity, started.get(), target.get(), changedBy);
     } else {
       // The continue-or-stop bit, read at its one place: the press that started this run asked for
       // one phase, so the next one waits for somebody to press again. Nothing is said on a thread —
@@ -300,10 +302,10 @@ public class PhaseAdvance {
       LOG.infof(
           "%s %s moved to %s; its run was dispatched for one phase, so the %s phase is not started"
               + " until somebody presses again",
-          ticket.archetype, ticket.id, ticket.status, started.get().phase());
+          entity.archetype, entity.id, entity.status, started.get().phase());
     }
-    if (EntityStatus.IMPLEMENTED.name().equals(ticket.status)) {
-      noteTheReleaseThatStandsOpen(ticket, target.get(), changedBy);
+    if (EntityStatus.IMPLEMENTED.name().equals(entity.status)) {
+      noteTheReleaseThatStandsOpen(entity, target.get(), changedBy);
     }
   }
 

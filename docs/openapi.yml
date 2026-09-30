@@ -399,6 +399,8 @@ components:
           type: string
         status:
           type: string
+        blocked:
+          type: boolean
         start:
           $ref: "#/components/schemas/CampaignStartDto"
         members:
@@ -535,6 +537,8 @@ components:
           type: string
         status:
           type: string
+        blocked:
+          type: boolean
         start:
           $ref: "#/components/schemas/CampaignStartDto"
     CampaignProgressDto:
@@ -585,6 +589,8 @@ components:
           type: string
         status:
           type: string
+        blocked:
+          type: boolean
         started:
           type: boolean
         active:
@@ -1189,6 +1195,38 @@ components:
       properties:
         draft:
           $ref: "#/components/schemas/DraftDto"
+    EntityBlock:
+      type: object
+      description: "An entity's block flag as the write left it, with its archetype\
+        \ and status."
+      properties:
+        entityId:
+          type: string
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        status:
+          type: string
+        blocked:
+          type: boolean
+    EntityBlockAnswer:
+      type: object
+      description: An entity's block flag as the write left it.
+      properties:
+        block:
+          $ref: "#/components/schemas/EntityBlock"
+    EntityBlockRequest:
+      type: object
+      required:
+      - blocked
+      description: "What the block flag should become, and why."
+      properties:
+        blocked:
+          type: boolean
+          description: "true to block, false to unblock"
+        reason:
+          type: string
+          description: what is in the way — required when blocking; lands on the entity's
+            thread
     EntityCreate:
       type: object
       required:
@@ -1467,6 +1505,8 @@ components:
           type: string
         status:
           type: string
+        blocked:
+          type: boolean
         supersededByEpicId:
           type: string
         description:
@@ -3736,6 +3776,50 @@ paths:
           description: Not Allowed
       tags:
       - Entity Read Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/entities/{id}/blocked:
+    post:
+      summary: Block or unblock an entity
+      description: "Says the phase an epic's, ticket's or campaign's status starts\
+        \ cannot finish right now (or can again). The status does not move — it is\
+        \ the phase to resume — and the next transition clears the block. The reason\
+        \ is required to block and lands on the entity's thread. The id is the UUID\
+        \ or the qualified id."
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntityBlockRequest"
+        required: true
+      responses:
+        "200":
+          description: The flag as the write left it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityBlockAnswer"
+        "400":
+          description: Blocking with no reason
+        "403":
+          description: An agent blocking outside its own project; nothing is written
+        "404":
+          description: No entity with this id
+        "409":
+          description: "A feature or a task (no lifecycle), or a status that starts\
+            \ no phase (VERIFIED, DONE, DROPPED)"
+        "401":
+          description: Not Authorized
+      tags:
+      - Entity Block Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -7681,4 +7765,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.929.191709
+  version: 2026.930.184422

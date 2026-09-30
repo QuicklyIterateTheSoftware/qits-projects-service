@@ -48,11 +48,11 @@ public class TicketController {
   @Inject TicketsTopicHints hints;
 
   /**
-   * The block door's whole rule — the refusal, the row and the remark — shared with the two MCP
-   * tools over the same write. It is in {@code projects.api} because what a status means for the
-   * work — whether a phase runs — is decided there.
+   * The block door's whole rule — the refusal, the row and the remark — shared with {@link
+   * EntityBlockController} and the MCP tools over the same write. It is in {@code projects.api}
+   * because what a status means for the work — whether a phase runs — is decided there.
    */
-  @Inject eu.wohlben.qits.projects.api.TicketBlocks blocks;
+  @Inject eu.wohlben.qits.projects.api.EntityBlocks blocks;
 
   // --- Ticket ---
 
@@ -110,10 +110,14 @@ public class TicketController {
    * <p>{@code reason} is <b>required when blocking</b> (400 if blank) and optional when
    * unblocking: a block with no stated blocker is one nobody can clear. It is recorded on the
    * ticket's thread as a comment rather than stored on the row — see {@link
-   * eu.wohlben.qits.projects.api.TicketBlocks}.
+   * eu.wohlben.qits.projects.api.EntityBlocks}.
    *
    * <p>Blocking a ticket whose status starts no phase — VERIFIED, DONE or DROPPED — is a <b>409</b>
    * saying there is no phase to block.
+   *
+   * <p>The ticket-only predecessor of {@code POST /entities/{id}/blocked} ({@link
+   * EntityBlockController}, qits-592), kept with its {@code {"ticket": …}} answer for the released
+   * CLI and SPA; both land on the one rule.
    */
   public record SetTicketBlockedRequest(boolean blocked, String reason) {
     public record Response(TicketDto ticket) {}

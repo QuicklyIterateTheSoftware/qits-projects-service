@@ -57,6 +57,7 @@ public class CampaignViews {
                   row.projectId,
                   row.title,
                   row.status,
+                  row.blocked,
                   start != null,
                   start != null && start.active,
                   summary.members());
@@ -78,6 +79,7 @@ public class CampaignViews {
         row.title,
         row.description,
         row.status,
+        row.blocked,
         start == null
             ? null
             : new CampaignStartDto(

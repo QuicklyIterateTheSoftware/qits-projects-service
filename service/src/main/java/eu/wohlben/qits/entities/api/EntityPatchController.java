@@ -60,7 +60,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * <p><b>What this door does not write, and says so.</b> The status, the archetype, the membership
  * and a supersede are moves, not edits, and each has its door: the archetype's {@code
  * …/{id}/transition} for a lifecycle move, {@code POST /entities/transition} for a reshape, a
- * reparent or a supersede, and {@code POST /tickets/{id}/blocked} for the block. {@code slug} and
+ * reparent or a supersede, and {@code POST /entities/{id}/blocked} for the block. {@code slug} and
  * {@code createdBy} are the server's. Naming any of those, or a property nobody has heard of, is a
  * 400 rather than a silent drop — a caller that thinks it moved a status and did not is worse off
  * than one that was told. Every such complaint comes back in <b>one</b> 400, joined with {@code "; "}
@@ -100,7 +100,7 @@ public class EntityPatchController {
           "archetype", "a reshape — state it through POST /projects/api/entities/transition",
           "membership", "a reparent — state it through POST /projects/api/entities/transition",
           "supersededBy", "a supersede — state it through POST /projects/api/entities/transition",
-          "blocked", "the block — set it through POST /projects/api/tickets/{id}/blocked");
+          "blocked", "the block — set it through POST /projects/api/entities/{id}/blocked");
 
   /** What the server writes and a caller never does. */
   private static final List<String> SERVER_OWNED = List.of("slug", "createdBy");

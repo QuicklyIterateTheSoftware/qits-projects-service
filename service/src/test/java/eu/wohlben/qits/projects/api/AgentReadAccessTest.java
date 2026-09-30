@@ -64,6 +64,7 @@ class AgentReadAccessTest {
           eu.wohlben.qits.entities.api.DossierAssetController.class,
           eu.wohlben.qits.entities.api.DossierController.class,
           eu.wohlben.qits.entities.api.EntityArchetypesController.class,
+          eu.wohlben.qits.entities.api.EntityBlockController.class,
           eu.wohlben.qits.entities.api.EntityCommentController.class,
           eu.wohlben.qits.entities.api.EntityCreateController.class,
           eu.wohlben.qits.entities.api.EntityPatchController.class,
@@ -171,7 +172,11 @@ class AgentReadAccessTest {
           // doors do; for an EPIC it refuses the agent in its body, as EpicController.transition's
           // role list does — EntityStatusApiTest pins that 403.
           "EntityCreateController.create",
-          "EntityStatusController.move");
+          "EntityStatusController.move",
+          // The block of any lifecycle archetype (qits-592): block_entity and unblock_entity
+          // perform this same write over MCP, and the ticket-only door above always admitted the
+          // agent. EntityAgentBoundsTest drives its binding.
+          "EntityBlockController.setBlocked");
 
   /**
    * <b>The catalogue write an agent reaches: adding a component to a project.</b> Its own group

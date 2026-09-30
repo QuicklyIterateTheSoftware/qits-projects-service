@@ -18,7 +18,11 @@ import jakarta.inject.Inject;
  *
  * <ol>
  *   <li>{@code PHASE} is a 409 — a campaign presses dispatch only; a status other than REFINED is a
- *       409 (decided again under the campaign row's lock, in {@link CampaignService#start}).
+ *       409 (decided again under the campaign row's lock, in {@link CampaignService#start}); and so
+ *       is a <b>blocked</b> campaign (qits-592) — somebody wrote down why it must wait, and a start
+ *       press would be a sweep {@link CampaignExecutor} refuses member by member anyway. The block
+ *       is decided here only, unlocked: a block landing after this check starts a campaign whose
+ *       executor still claims nothing until it is cleared, which is the promise that matters.
  *   <li>Upsert {@code campaign_start} ({@link CampaignService#start}): {@code first_started_at} on the
  *       first press only; {@code started_at}, {@code started_by} and {@code active = true} on every
  *       one. That commits.
@@ -64,6 +68,14 @@ public class CampaignStarter {
               + " is "
               + campaign.status
               + ". Move it to REFINED first.");
+    }
+    if (campaign.blocked) {
+      throw new DomainException(
+          409,
+          "Campaign "
+              + campaign.id
+              + " is blocked, so it is not started — something is in the way and the campaign's"
+              + " thread says what. Clear the block once that is resolved, then dispatch.");
     }
     campaigns.start(campaign.id, actor == null || actor.isBlank() ? "unknown" : actor);
     publisher.fire(campaign.projectId, ProjectChangeHint.Topic.EPICS);

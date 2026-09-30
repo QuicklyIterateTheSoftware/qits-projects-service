@@ -75,6 +75,8 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * message must not be able to make it. An <em>unblock</em> is the sharper half rather than the
    * harmless one: it takes away somebody else's stated blocker and puts the ticket back in front of
    * whoever picks up the work next, with nothing on the thread that a person said had cleared.
+   * {@code block_entity} and {@code unblock_entity} (qits-592) are the same pair for any lifecycle
+   * archetype, on the same reading — and an unblocked campaign resumes claiming members.
    *
    * <p>{@code transition_entities} is the sharpest of all of them and belongs here on the strongest
    * reading in this list: it restates part of the plan <em>in full</em> in one transaction, so an
@@ -123,6 +125,8 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "update_ticket_comment",
           "add_comment",
           "update_comment",
+          "block_entity",
+          "unblock_entity",
           "transition_entities",
           "create_campaign",
           "transition_campaign",

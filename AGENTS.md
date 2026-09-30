@@ -524,7 +524,8 @@ write** (user ruling, 2026-09-12):
   **before** the write so an id naming nothing still answers 404; `api/EntitiesAgentAccess` is the
   one helper and `entities.error.ForbiddenException` the 403. The granted set is epic create,
   feature create/update/delete, task create/update/delete, ticket create, transition, block and
-  comment create, comment update, the entity thread's comment create and PATCH (qits-551), both
+  comment create, comment update, the entity thread's comment create and PATCH (qits-551), the
+  block of any lifecycle archetype (`POST /entities/{id}/blocked`, qits-592), both
   dossiers' four writes each, `inline_figure`'s door, and
   `POST /entities/transition` — which binds **all or nothing** over every id and every parent in the
   batch, resolved in one `EntityCatalogService.byIds` read, with an unresolvable id falling through
@@ -1092,8 +1093,18 @@ mode, and the mode is the only difference between the two actions the UI offers:
 
 The GET is how the SPA learns which phase a press would start (`nextPhase`, or null) without
 re-implementing the status→phase rule, which lives only in `api/PhasePrompts.phaseOf`. A missing or
-unknown mode is a 400; a feature or a task is a 409 (no lifecycle); a blocked ticket is a 409 naming
-the block; no workspaces context is a 503; a project with no wrapper is a 409.
+unknown mode is a 400; a feature or a task is a 409 (no lifecycle); a blocked ticket or epic is a
+409 naming the block, and a blocked campaign's start press is too; no workspaces context is a 503; a
+project with no wrapper is a 409.
+
+**Blocking is for every archetype with a lifecycle (qits-592)** — a ticket, an epic, a campaign —
+through one rule, `api/EntityBlocks` (reason required to block, 409 where `PhasePrompts.phaseOf`
+starts no phase or the kind has no lifecycle, the reason on the entity's own thread), behind `POST
+/entities/{id}/blocked` (UUID or qualified id), `block_entity`/`unblock_entity` (`CommentMcpTools`),
+and the ticket-only `POST /tickets/{id}/blocked`/`block_ticket`/`unblock_ticket`, kept as delegates.
+Every transition clears the flag. A blocked campaign's executor claims no new member (running ones
+are untouched) and its unblock runs the campaign's sweep straight after; `blocked` is on the epic and
+campaign DTOs and on the merged shape for every lifecycle kind.
 
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
@@ -1138,8 +1149,9 @@ Five things are rules rather than details:
   only once every task is marked; its verify turn confirms live on the platform and ends at VERIFIED
   or back at REFINED. All three record decisions, surprises, what landed and what is missing with
   `add_comment` on the epic's thread (or a task's own), never "in your report" — a chat reply
-  nobody reads again (qits-551). An epic has no block flag, so its "could not finish" arm records
-  what is missing on the thread and leaves the status alone. Every turn opens with
+  nobody reads again (qits-551). The epic templates' "could not finish" arm records what is
+  missing on the thread and leaves the status alone; they do not name `block_entity` yet, though an
+  epic can be blocked since qits-592. Every turn opens with
   `PhasePrompts.FLOW_BRIEF_POINTER`, prepended once at the render seam.
 - **A dispatch writes one comment on the entity's thread, and nothing else on it.** The comment
   names the phase (and, for PHASE, that the run stops there), for an epic exactly as for a ticket

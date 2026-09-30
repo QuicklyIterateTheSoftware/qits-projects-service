@@ -69,9 +69,12 @@ class EntityReadApiTest {
         });
   }
 
-  /** The edge is on the row, and only a ticket carries {@code blocked}. */
+  /**
+   * The edge is on the row, and every kind with a lifecycle carries {@code blocked} — a ticket, and
+   * since qits-592 an epic — while a feature or a task, with no phase of its own, does not.
+   */
   @Test
-  void aNodeCarriesItsEdgeAndATicketItsBlock() {
+  void aNodeCarriesItsEdgeAndALifecycleKindItsBlock() {
     given()
         .get("/projects/api/entities/" + task)
         .then()
@@ -82,6 +85,10 @@ class EntityReadApiTest {
         .get("/projects/api/entities/" + epic)
         .then()
         .body("parent", nullValue())
+        .body("blocked", equalTo(false));
+    given()
+        .get("/projects/api/entities/" + feature)
+        .then()
         .body("$", not(org.hamcrest.Matchers.hasKey("blocked")));
 
     given().get("/projects/api/entities/" + ticket).then().body("blocked", equalTo(false));

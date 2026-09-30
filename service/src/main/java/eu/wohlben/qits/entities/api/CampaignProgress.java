@@ -89,6 +89,7 @@ public final class CampaignProgress {
             qualified.apply(row),
             row.title,
             row.status,
+            row.blocked,
             start == null
                 ? null
                 : new CampaignStartDto(

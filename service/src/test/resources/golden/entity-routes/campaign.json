@@ -99,6 +99,7 @@
       "title" : "Rename qits-x",
       "description" : "in order",
       "status" : "REPORTED",
+      "blocked" : false,
       "start" : null,
       "members" : [ ]
     }
@@ -418,6 +419,7 @@
       "title" : "Rename qits-x",
       "description" : "in order",
       "status" : "REPORTED",
+      "blocked" : false,
       "start" : null,
       "members" : [ {
         "membershipId" : "<id:7>",
@@ -546,6 +548,7 @@
       "title" : "Rename qits-x",
       "description" : "in order",
       "status" : "REFINED",
+      "blocked" : false,
       "start" : null,
       "members" : [ {
         "membershipId" : "<id:7>",
@@ -669,6 +672,7 @@
       "projectId" : "<id:1>",
       "title" : "Rename qits-x",
       "status" : "REFINED",
+      "blocked" : false,
       "started" : false,
       "active" : false,
       "members" : 3
@@ -687,6 +691,7 @@
       "title" : "Rename qits-x",
       "description" : "in order",
       "status" : "REFINED",
+      "blocked" : false,
       "start" : null,
       "members" : [ {
         "membershipId" : "<id:7>",
@@ -809,6 +814,7 @@
         "qualifiedId" : "<project>-4",
         "title" : "Rename qits-x",
         "status" : "REFINED",
+        "blocked" : false,
         "start" : null
       },
       "evaluator" : {
@@ -1030,7 +1036,8 @@
     "position" : null,
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
-    "changedBy" : null
+    "changedBy" : null,
+    "blocked" : false
   }
 }, {
   "request" : "GET /projects/api/entities/<project>-4",
@@ -1059,7 +1066,8 @@
     "position" : null,
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
-    "changedBy" : null
+    "changedBy" : null,
+    "blocked" : false
   }
 }, {
   "request" : "POST /projects/api/entities/<id:17>/status",
@@ -1091,7 +1099,8 @@
     "position" : null,
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
-    "changedBy" : "dev"
+    "changedBy" : "dev",
+    "blocked" : false
   }
 }, {
   "request" : "GET /projects/api/projects/<id:1>/entities?archetype=CAMPAIGN",
@@ -1121,7 +1130,8 @@
       "position" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
-      "changedBy" : null
+      "changedBy" : null,
+      "blocked" : false
     }, {
       "id" : "<id:17>",
       "archetype" : "CAMPAIGN",
@@ -1146,7 +1156,8 @@
       "position" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
-      "changedBy" : null
+      "changedBy" : null,
+      "blocked" : false
     } ]
   }
 } ]

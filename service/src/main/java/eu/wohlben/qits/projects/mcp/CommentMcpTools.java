@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.NotFoundException;
+import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
@@ -47,6 +48,13 @@ import java.util.List;
  * mistake. Every write fires the hint of the entity's archetype ({@link
  * ProjectChangeHint.Topic#of}) after the service returns.
  *
+ * <p><strong>The block lives here too</strong> (qits-592): {@code block_entity} and {@code
+ * unblock_entity}, for a ticket, an epic or a campaign. A block is a flag plus a remark on this same
+ * thread — the reason is the comment, {@link EntityBlocks} writes it — and it takes the same id in
+ * the same two forms, so it sits beside the other two thread writes rather than on a surface of its
+ * own. {@code block_ticket} and {@code unblock_ticket} stay on {@link TicketMcpTools} as delegates,
+ * names and shapes unchanged. Both are in the mutating set.
+ *
  * <p><strong>No {@code @Transactional} here</strong>, for the reason {@link EpicMcpTools} states.
  */
 @ApplicationScoped
@@ -67,6 +75,9 @@ public class CommentMcpTools {
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
+
+  /** The block's whole rule — see {@link EntityBlocks}. */
+  @Inject EntityBlocks blocks;
 
   /**
    * One remark on an entity's thread. Also what {@code get_epic} and {@code get_campaign} embed for
@@ -149,6 +160,54 @@ public class CommentMcpTools {
     EntityComment comment = thread.updateComment(id, body, changedBy());
     announce(entity);
     return CommentDetail.of(comment);
+  }
+
+  // --- The block (qits-592) -------------------------------------------------
+
+  @McpServer("repository")
+  @Tool(
+      name = "block_entity",
+      description =
+          "Block a ticket, an epic or a campaign of this project when you are stopping and cannot"
+              + " take the phase further: say what is in the way or what is missing. The status stays"
+              + " where it is, because that is the phase to resume, and the next transition clears"
+              + " the block. The reason lands on the entity's thread. Refused (409) on an entity"
+              + " that is VERIFIED, DONE or DROPPED, and on a feature or a task, which have no phase"
+              + " of their own — block their epic.")
+  public EntityBlocks.Blocked blockEntity(
+      @ToolArg(
+              description =
+                  "id of a ticket, epic or campaign in this project: its UUID or its qualified id"
+                      + " (<project>-<n>)")
+          String id,
+      @ToolArg(
+              description =
+                  "what is in the way or what is missing, concretely enough that somebody else could"
+                      + " act on it")
+          String reason) {
+    return block(requireEntityInProject(id), true, reason);
+  }
+
+  @McpServer("repository")
+  @Tool(
+      name = "unblock_entity",
+      description =
+          "Say that what was in the way of a ticket, epic or campaign is gone and its phase can run"
+              + " again — as soon as you know, whoever blocked it. It moves no status. A blocked"
+              + " campaign claims no new member until it is unblocked.")
+  public EntityBlocks.Blocked unblockEntity(
+      @ToolArg(
+              description =
+                  "id of a ticket, epic or campaign in this project: its UUID or its qualified id"
+                      + " (<project>-<n>)")
+          String id) {
+    return block(requireEntityInProject(id), false, null);
+  }
+
+  private EntityBlocks.Blocked block(WorkEntity entity, boolean blocked, String reason) {
+    WorkEntity written = blocks.apply(entity, blocked, reason, changedBy());
+    announce(written);
+    return EntityBlocks.Blocked.of(written);
   }
 
   // --- Scoping --------------------------------------------------------------

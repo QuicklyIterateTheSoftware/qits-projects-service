@@ -14,6 +14,10 @@ import java.util.List;
  *     and {@code entities} depends on {@code domain} nowhere. {@code projects/api/QualifiedEntityIds}
  *     is the one place it is filled, at the DTO boundary in the {@code service} module, exactly as
  *     {@code DispatchedWorkspaces} fills {@link #workspaces}.
+ * @param blocked whether the phase this epic's status starts cannot finish right now — {@link
+ *     TicketDto#blocked}'s flag, rule for rule, since the block door stopped being a ticket's alone
+ *     (qits-592). An epic that reads REFINED while its implementer is stuck is the wrong one to
+ *     press next.
  * @param workspaces the workspaces cut for this epic, <b>live or resolved</b>, each carrying its own
  *     {@code status} — {@link TicketDto#workspaces}' field, rule for rule. An epic leaves no other
  *     trace of a dispatch: its door writes nothing on the row, by design, so this is also the only
@@ -30,6 +34,7 @@ public record EpicDto(
     String title,
     String slug,
     String status,
+    boolean blocked,
     String supersededByEpicId,
     String description,
     Instant createdAt,
@@ -46,6 +51,7 @@ public record EpicDto(
         title,
         slug,
         status,
+        blocked,
         supersededByEpicId,
         description,
         createdAt,
@@ -63,6 +69,7 @@ public record EpicDto(
         title,
         slug,
         status,
+        blocked,
         supersededByEpicId,
         description,
         createdAt,

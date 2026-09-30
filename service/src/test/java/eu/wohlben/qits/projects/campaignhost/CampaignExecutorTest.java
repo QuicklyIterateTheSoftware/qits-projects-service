@@ -19,6 +19,7 @@ import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.api.DispatchMode;
 import eu.wohlben.qits.projects.api.DispatchRefused;
+import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.api.EntityDispatch;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
@@ -73,6 +74,7 @@ class CampaignExecutorTest {
   @Inject EntityDispatch entityDispatch;
   @Inject RecordingWorkspaceAgentDispatch port;
   @Inject CampaignCriteriaListener listener;
+  @Inject EntityBlocks blocks;
 
   @Inject
   @PersistenceUnit("epics")
@@ -362,6 +364,56 @@ class CampaignExecutorTest {
 
     assertEquals(1, port.calls().size());
     assertNotNull(membership(f, 0).dispatchedAt);
+  }
+
+  // --- 8b. a blocked campaign claims nothing new (qits-592) --------------------------------------
+
+  /**
+   * A started campaign that is blocked claims none of its satisfied members — not by an attempt,
+   * not by its own sweep, not by the global one — and writes no refusal on them, since a block is a
+   * wait and not something wrong with the member. The unblock is itself the trigger: {@code
+   * EntityBlocks} runs the campaign's sweep straight after, so the member is dispatched without
+   * waiting for the periodic one.
+   */
+  @Test
+  void aBlockedCampaignClaimsNoMemberAndItsUnblockDispatches() {
+    Fixture f = campaignOf(refined("Held back"));
+    campaigns.start(f.campaign.id, "dana");
+    workEntities.setBlocked(Archetype.CAMPAIGN, f.campaign.id, true, "dana");
+
+    assertEquals(
+        CampaignExecutor.Attempt.NOT_READY, executor.tryDispatch(f.membershipIds.get(0), null));
+    assertEquals(0, executor.sweep(f.campaign.id));
+    assertEquals(0, executor.sweep());
+    assertEquals(0, port.calls().size());
+    EntityMembership waiting = membership(f, 0);
+    assertNull(waiting.claimedAt);
+    assertNull(waiting.dispatchRefusal, "a block is a wait, not a refusal of the member");
+
+    blocks.apply(
+        workEntities.get(Archetype.CAMPAIGN, f.campaign.id), false, "the pilot finished", "dana");
+
+    assertEquals(1, port.calls().size(), "the unblock runs the campaign's sweep");
+    assertNotNull(membership(f, 0).dispatchedAt);
+  }
+
+  /**
+   * The claim (step 3) reads the flag again: a block landing after the cheap read and the precheck
+   * still stops the claim, so nothing is claimed and nothing is dispatched.
+   */
+  @Test
+  void aBlockLandingBeforeTheClaimClaimsNothing() {
+    Fixture f = campaignOf(refined("Blocked under me"));
+    campaigns.start(f.campaign.id, "dana");
+    CountingDispatch counting = countingDispatch();
+    counting.onFirstPrecheckPerThread =
+        seen -> workEntities.setBlocked(Archetype.CAMPAIGN, f.campaign.id, true, "someone");
+
+    assertEquals(
+        CampaignExecutor.Attempt.NOT_READY, executor.tryDispatch(f.membershipIds.get(0), null));
+
+    assertEquals(0, counting.dispatches.get());
+    assertNull(membership(f, 0).claimedAt);
   }
 
   // --- 9. the port failing, and a refusal after the claim --------------------------------------

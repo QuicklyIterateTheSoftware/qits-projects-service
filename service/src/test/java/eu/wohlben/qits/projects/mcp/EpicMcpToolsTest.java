@@ -690,6 +690,126 @@ public class EpicMcpToolsTest {
         });
   }
 
+  /**
+   * {@code block_entity} and {@code unblock_entity} (qits-592): an epic named by its qualified id and
+   * a campaign by its UUID are blocked with the reason on their own thread, the detail and listing
+   * tools carry the flag, and the refusals — no reason, a task, another project — arrive as readable
+   * tool errors.
+   */
+  @Test
+  public void anEpicAndACampaignAreBlockedAndUnblockedThroughTheTools() {
+    String projectId = createProject("Blocking Tools");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Stuck plan");
+    String taskId = addTask(projectId, epicId, repoId, "A step");
+    String qualified =
+        authenticated()
+            .when()
+            .get("/projects/api/epics/" + epicId)
+            .then()
+            .statusCode(Response.Status.OK.getStatusCode())
+            .extract()
+            .path("epic.qualifiedId");
+
+    call(
+        projectId,
+        "block_entity",
+        Map.of("id", qualified, "reason", "the idp has to release its audience first"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains("\"entityId\":\"" + epicId + "\""), body);
+          assertTrue(body.contains("\"blocked\":true"), body);
+          assertTrue(body.contains("\"REPORTED\""), "a block moves no status: " + body);
+        });
+    call(
+        projectId,
+        "get_epic",
+        Map.of("id", epicId),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains("\"blocked\":true"), body);
+          assertTrue(body.contains("Blocked: the idp has to release its audience first"), body);
+        });
+    call(
+        projectId,
+        "list_epics",
+        Map.of(),
+        response -> assertTrue(text(response).contains("\"blocked\":true"), text(response)));
+    call(
+        projectId,
+        "unblock_entity",
+        Map.of("id", epicId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"blocked\":false"), text(response));
+        });
+
+    String campaignId =
+        authenticated()
+            .contentType(ContentType.JSON)
+            .body(Map.of("title", "The order"))
+            .when()
+            .post("/projects/api/projects/" + projectId + "/campaigns")
+            .then()
+            .statusCode(Response.Status.OK.getStatusCode())
+            .extract()
+            .path("campaign.id");
+    call(
+        projectId,
+        "block_entity",
+        Map.of("id", campaignId, "reason", "the pilot has to finish first"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"archetype\":\"CAMPAIGN\""), text(response));
+        });
+    call(
+        projectId,
+        "get_campaign",
+        Map.of("id", campaignId),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains("\"blocked\":true"), body);
+          assertTrue(body.contains("Blocked: the pilot has to finish first"), body);
+        });
+    call(
+        projectId,
+        "list_campaigns",
+        Map.of(),
+        response -> assertTrue(text(response).contains("\"blocked\":true"), text(response)));
+    call(
+        projectId,
+        "unblock_entity",
+        Map.of("id", campaignId),
+        response -> assertTrue(text(response).contains("\"blocked\":false"), text(response)));
+
+    call(
+        projectId,
+        "block_entity",
+        Map.of("id", epicId, "reason", "   "),
+        response -> {
+          assertTrue(response.isError(), "a block with no stated blocker must be refused");
+          assertTrue(text(response).contains("stated blocker"), text(response));
+        });
+    call(
+        projectId,
+        "block_entity",
+        Map.of("id", taskId, "reason", "waiting on somebody"),
+        response -> {
+          assertTrue(response.isError(), "a task has no phase of its own to block");
+          assertTrue(text(response).contains("no lifecycle of its own"), text(response));
+        });
+    String stranger = createProject("Blocking Tools Stranger");
+    call(
+        stranger,
+        "block_entity",
+        Map.of("id", epicId, "reason", "not yours"),
+        response -> {
+          assertTrue(response.isError(), "another project's entity must read as not found");
+          assertTrue(text(response).contains("not found in this project"), text(response));
+        });
+  }
+
   @Test
   public void refusesToMarkATaskOfAnEpicThatIsStillADraft() {
     String projectId = createProject("MarkingTooSoon");

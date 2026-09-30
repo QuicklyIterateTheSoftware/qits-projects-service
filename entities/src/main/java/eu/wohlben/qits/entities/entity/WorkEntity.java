@@ -176,9 +176,10 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String status;
 
   /**
-   * <b>The phase this ticket's status starts cannot finish right now.</b> On a {@link
-   * Archetype#TICKET} and on nothing else, and false on every other kind because nothing else has a
-   * phase to block.
+   * <b>The phase this entity's status starts cannot finish right now.</b> On every kind with a
+   * lifecycle — a {@link Archetype#TICKET}, and since qits-592 an {@link Archetype#EPIC} and a
+   * {@link Archetype#CAMPAIGN} — and false on a feature and a task, which have no phase of their own
+   * to block.
    *
    * <p><b>It is a flag and not a status, and that is the decision rather than a shortcut.</b>
    * {@link EntityStatus} forbids a word for what is being <em>done</em> — there is no {@code

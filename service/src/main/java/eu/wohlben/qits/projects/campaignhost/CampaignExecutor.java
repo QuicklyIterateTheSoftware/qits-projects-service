@@ -76,6 +76,18 @@ import org.jboss.logging.Logger;
  * <p><b>Only step 3 decides.</b> Under the two row locks one caller sees {@code claimed_at is null}
  * and updates one row, and every other caller sees it claimed.
  *
+ * <h2>A blocked campaign claims nothing new (qits-592)</h2>
+ *
+ * <p>Steps 1 and 3 both read the campaign row's {@code blocked} beside its status, and a blocked
+ * campaign is {@link Attempt#NOT_READY} — no claim, no refusal written, since a block is a wait and
+ * not something wrong with the member. The sweep skips it too. Members already claimed are not
+ * touched: their agents run on. The flag is read and never locked: it guards no at-most-once
+ * property, so a block racing a claim either wins or lands one claim late, and taking the campaign
+ * row here would break the lock order below. Claiming resumes after an unblock ({@code
+ * EntityBlocks} runs {@link #sweep(String)} straight after, and the periodic sweep is the belt) or
+ * after the next transition clears the flag — a move off REFINED pauses the start, so that one
+ * resumes at the next start press.
+ *
  * <h2>Locks, and why they cannot deadlock with {@code CampaignService}</h2>
  *
  * <p>Step 3 takes {@code campaign_start FOR SHARE}, then the membership {@code FOR UPDATE}, and
@@ -107,7 +119,10 @@ public class CampaignExecutor {
 
   /** What one {@link #tryDispatch} came to — for the sweep's count, the log and the tests. */
   public enum Attempt {
-    /** Nothing to do: not a campaign member, claimed, not started, not REFINED, not satisfied. */
+    /**
+     * Nothing to do: not a campaign member, claimed, not started, not REFINED, blocked, not
+     * satisfied.
+     */
     NOT_READY,
     /** The member is VERIFIED or DONE already: skipped silently; progress shows it done. */
     ARRIVED,
@@ -336,7 +351,7 @@ public class CampaignExecutor {
       return Look.stop(Attempt.NOT_READY);
     }
     WorkEntity campaign = em.find(WorkEntity.class, edge.parentId);
-    if (campaign == null || !EntityStatus.REFINED.name().equals(campaign.status)) {
+    if (campaign == null || !EntityStatus.REFINED.name().equals(campaign.status) || campaign.blocked) {
       return Look.stop(Attempt.NOT_READY);
     }
     if (!startActive(edge.parentId, false).active()) {
@@ -376,6 +391,7 @@ public class CampaignExecutor {
     }
     if (campaign == null
         || !EntityStatus.REFINED.name().equals(campaign.status)
+        || campaign.blocked
         || !start.active()
         || !satisfied(edge.id)) {
       return new Claim(Attempt.NOT_READY, null, null, false);
@@ -556,7 +572,7 @@ public class CampaignExecutor {
     }
   }
 
-  /** Every active REFINED campaign; answers how many members it dispatched. */
+  /** Every active, unblocked REFINED campaign; answers how many members it dispatched. */
   @ActivateRequestContext
   public int sweep() {
     @SuppressWarnings("unchecked")
@@ -569,7 +585,7 @@ public class CampaignExecutor {
                             select s.campaign_id
                               from campaign_start s
                               join entity e on e.id = s.campaign_id
-                             where s.active and e.status = 'REFINED'
+                             where s.active and e.status = 'REFINED' and not e.blocked
                              order by s.campaign_id
                             """)
                         .getResultList());

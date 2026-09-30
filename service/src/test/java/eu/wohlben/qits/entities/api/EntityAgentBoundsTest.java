@@ -388,6 +388,18 @@ class EntityAgentBoundsTest {
     return door;
   }
 
+  /** The block of any lifecycle archetype (qits-592). */
+  @Inject eu.wohlben.qits.projects.api.EntityBlocks entityBlocks;
+
+  private EntityBlockController blocks(SecurityIdentity caller) {
+    EntityBlockController door = new EntityBlockController();
+    door.ids = entityIds;
+    door.blocks = entityBlocks;
+    door.identity = caller;
+    door.publisher = publisher;
+    return door;
+  }
+
   // ---- the request bodies ----------------------------------------------------------------------
 
   /** The generic create's body for a ticket filed in {@code project} (qits-548). */
@@ -720,6 +732,38 @@ class EntityAgentBoundsTest {
     assertEquals(1, ticketComments.listComments(rows.taskId()).size(), "nothing added to the task");
     assertEquals("an epic note", ticketComments.getComment(rows.epicCommentId()).body);
     assertEquals("a task note", ticketComments.getComment(rows.taskCommentId()).body);
+  }
+
+  // ---- the block of any lifecycle archetype (qits-592) ------------------------------------------
+
+  /**
+   * The generic block door binds like every other granted write: an agent blocks and unblocks an
+   * epic of its own project, named by its qualified id, and one of another project — or with no
+   * claim at all — is refused before the flag or the thread is touched.
+   */
+  @Test
+  void theBlockDoorBindsToTheAgentsOwnProject() {
+    var blocking = new EntityBlockController.EntityBlockRequest(true, "not yours to stop");
+    refused(() -> blocks(FOREIGN_AGENT).setBlocked(rows.epicId(), blocking));
+    refused(() -> blocks(FOREIGN_AGENT).setBlocked(rows.epicQualifiedId(), blocking));
+    refused(() -> blocks(CLAIMLESS_AGENT).setBlocked(rows.epicId(), blocking));
+    assertCommentsUntouched();
+    assertEquals(false, workEntities.get(Archetype.EPIC, rows.epicId()).blocked);
+
+    var own =
+        blocks(AGENT)
+            .setBlocked(
+                rows.epicQualifiedId(),
+                new EntityBlockController.EntityBlockRequest(true, "the idp has to release first"))
+            .block();
+    assertEquals(rows.epicId(), own.entityId());
+    assertTrue(own.blocked());
+    assertEquals(
+        false,
+        blocks(AGENT)
+            .setBlocked(rows.epicId(), new EntityBlockController.EntityBlockRequest(false, null))
+            .block()
+            .blocked());
   }
 
   // ---- a person pays no binding ----------------------------------------------------------------

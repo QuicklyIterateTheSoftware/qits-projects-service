@@ -119,6 +119,7 @@ public class EpicMcpTools {
       String slug,
       String title,
       String status,
+      boolean blocked,
       String description) {}
 
   /** A task inside {@link EpicDetail}. {@code qualifiedId} only — see {@link EpicSummary}. */
@@ -153,6 +154,7 @@ public class EpicMcpTools {
       String slug,
       String title,
       String status,
+      boolean blocked,
       String description,
       String supersededByEpicId,
       List<FeatureDetail> features,
@@ -267,6 +269,7 @@ public class EpicMcpTools {
         epic.slug,
         epic.title,
         epic.status,
+        epic.blocked,
         epic.description,
         epic.supersededByEntityId,
         features,
@@ -639,6 +642,7 @@ public class EpicMcpTools {
         epic.title,
         // The merged column holds the enum's own name(), which is what the old status.name() was.
         epic.status,
+        epic.blocked,
         epic.description);
   }
 

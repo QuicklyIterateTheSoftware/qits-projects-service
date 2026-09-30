@@ -68,10 +68,11 @@ import java.time.Instant;
  * @param updatedAt when the transition committed
  * @param changedBy who made the transition — the audit principal the write was recorded under.
  *     <b>Null on every read</b>, for {@link #statusBefore}'s reason
- * @param blocked whether the phase a ticket's status starts is stuck — {@code entity.blocked}, which
- *     only a ticket's door sets (qits-548). <b>Null, and left off the wire, for every other
- *     archetype</b>: a {@code false} on an epic would claim a flag nothing can raise, and an absent
- *     key keeps every answer that predates it byte for byte what it was
+ * @param blocked whether the phase the entity's status starts is stuck — {@code entity.blocked}, on
+ *     every archetype with a lifecycle (a ticket since qits-548, an epic and a campaign since
+ *     qits-592, when the block door stopped being a ticket's alone). <b>Null, and left off the wire,
+ *     for a feature and a task</b>: they have no phase of their own, so a {@code false} there would
+ *     claim a flag nothing can raise
  */
 public record TransitionedEntity(
     String id,
@@ -258,8 +259,8 @@ public record TransitionedEntity(
         blockedOf(row));
   }
 
-  /** A ticket's flag, and null for a kind whose door never raises it — see {@link #blocked}. */
+  /** A lifecycle kind's flag, and null for a kind no door raises it on — see {@link #blocked}. */
   private static Boolean blockedOf(WorkEntity row) {
-    return row.archetype == Archetype.TICKET ? row.blocked : null;
+    return Archetypes.legalStatuses(row.archetype).isEmpty() ? null : row.blocked;
   }
 }

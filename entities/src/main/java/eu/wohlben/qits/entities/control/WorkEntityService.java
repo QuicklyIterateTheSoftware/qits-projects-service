@@ -253,6 +253,16 @@ public class WorkEntityService {
   }
 
   /**
+   * {@code "Epic"} — the noun a refusal about a row of {@code archetype} names it by. {@link
+   * Kind#noun} read from outside, so a door one module up that refuses in this service's words
+   * (the block door, qits-592) spells the kind the way every refusal here does rather than keeping
+   * a second list.
+   */
+  public static String nounOf(Archetype archetype) {
+    return kind(archetype).noun();
+  }
+
+  /**
    * <b>The order intake refuses in</b>, over the registry's {@code requiredAtCreate}. The registry
    * says <em>which</em> properties a birth demands; this says which one a caller missing several is
    * told about first, and how the property is spelled on the wire. {@link EntityProperty#STATUS} is

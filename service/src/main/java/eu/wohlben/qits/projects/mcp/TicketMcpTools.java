@@ -10,7 +10,7 @@ import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.api.TicketBlocks;
+import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.api.PhaseAdvance;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
@@ -105,7 +105,7 @@ public class TicketMcpTools {
    * The block door's whole rule, shared with {@code TicketController}'s route over the same write.
    * The same crossing into {@code projects.api} the field above declares.
    */
-  @Inject TicketBlocks blocks;
+  @Inject EntityBlocks blocks;
 
   // --- Result shapes --------------------------------------------------------
 
@@ -384,32 +384,26 @@ public class TicketMcpTools {
   /**
    * <b>Two verbs and not one boolean argument</b>, which is the only shape decision in this pair.
    * A tool's description is where an agent learns <em>when</em> to reach for it, and the two cases
-   * want opposite sentences: blocking has to be talked out of being the exit for a phase that is
-   * merely hard, and unblocking has to be talked into being used at all rather than left for
-   * somebody else to notice. One tool with {@code blocked=true|false} would carry both arguments in
+   * want opposite sentences: blocking is how an agent that stops says what it stopped on, and
+   * unblocking has to be talked into being used at all rather than left for somebody else to
+   * notice. One tool with {@code blocked=true|false} would carry both arguments in
    * one paragraph, where each half is advice about the other half's mistake.
    *
-   * <p>Both land on {@code TicketBlocks}, which is the same write the REST door makes and holds the
-   * whole rule — see that class.
+   * <p>Both land on {@code EntityBlocks}, which is the same write the REST door makes and holds the
+   * whole rule — see that class. Since qits-592 {@code block_entity} and {@code unblock_entity}
+   * ({@link CommentMcpTools}) are the general pair; these two stay with their names and their {@code
+   * TicketSummary} answer, for the names pre-approved elsewhere.
    */
   @McpServer("repository")
   @Tool(
       name = "block_ticket",
       description =
-          "Say that the phase running on this ticket cannot finish right now, and why. BLOCKED IS"
-              + " NOT A STATUS: the ticket keeps the status it has, because that status is the"
-              + " phase to resume, and the next transition clears the block. Block a ticket when"
-              + " something outside this ticket is in the way and the work genuinely cannot"
-              + " proceed — a change owed by another repository that has not released, a decision"
-              + " only a person can take, credentials or access you do not have, a dependency that"
-              + " is broken on the platform. Do NOT block a ticket because the work is hard, large"
-              + " or half done: that is a phase in progress, and saying what is left with"
-              + " add_ticket_comment is the honest answer. Do NOT block instead of dropping"
-              + " either — a ticket that should not be done at all is transition_ticket to DROPPED,"
-              + " which is a decision, where a block is a wait. The reason is required: a blocked"
-              + " ticket with no stated blocker is one nobody can clear. It is refused with a 409"
-              + " on a ticket that is VERIFIED, DONE or DROPPED, because no phase is running while"
-              + " those hold and there is nothing to block.")
+          "Block this ticket when you are stopping and cannot take the phase further: say what is in"
+              + " the way or what is missing. The status stays where it is, because that is the"
+              + " phase to resume, and the next transition clears the block. A ticket that should"
+              + " not be done at all is transition_ticket to DROPPED instead. Refused (409) on a"
+              + " ticket that is VERIFIED, DONE or DROPPED. block_entity does the same for an epic"
+              + " or a campaign.")
   public TicketSummary blockTicket(
       @ToolArg(description = "id of a ticket in this project") String ticketId,
       @ToolArg(

@@ -102,7 +102,8 @@ public class CampaignMcpTools {
       name = "list_campaigns",
       description =
           "List the campaigns of the project this session is scoped to, oldest first: each with its"
-              + " status, whether it has ever been started and is currently running, and how many"
+              + " status, whether it is blocked, whether it has ever been started and is currently"
+              + " running, and how many"
               + " members it gathers. Use get_campaign to read one campaign's membership and order.")
   public List<CampaignSummaryDto> listCampaigns() {
     return views.summaries(campaigns.listByProject(scope.requireProjectId()));
@@ -139,6 +140,7 @@ public class CampaignMcpTools {
       String title,
       String description,
       String status,
+      boolean blocked,
       eu.wohlben.qits.entities.api.CampaignDtos.CampaignStartDto start,
       List<CampaignMemberDto> members,
       List<CommentMcpTools.CommentDetail> comments) {
@@ -153,6 +155,7 @@ public class CampaignMcpTools {
           campaign.title(),
           campaign.description(),
           campaign.status(),
+          campaign.blocked(),
           campaign.start(),
           campaign.members(),
           comments);

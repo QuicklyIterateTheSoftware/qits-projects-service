@@ -13,7 +13,11 @@ public final class CampaignDtos {
 
   private CampaignDtos() {}
 
-  /** A campaign in a project's listing. */
+  /**
+   * A campaign in a project's listing. {@code blocked} here and on {@link CampaignDto} and {@link
+   * CampaignProgressCampaignDto} is the campaign's own flag (qits-592): while it holds, the executor
+   * claims no new member.
+   */
   public record CampaignSummaryDto(
       String id,
       long number,
@@ -21,6 +25,7 @@ public final class CampaignDtos {
       String projectId,
       String title,
       String status,
+      boolean blocked,
       boolean started,
       boolean active,
       int members) {}
@@ -35,6 +40,7 @@ public final class CampaignDtos {
       String title,
       String description,
       String status,
+      boolean blocked,
       CampaignStartDto start,
       List<CampaignMemberDto> members) {}
 
@@ -101,7 +107,12 @@ public final class CampaignDtos {
 
   /** The campaign a progress read is of. */
   public record CampaignProgressCampaignDto(
-      String id, String qualifiedId, String title, String status, CampaignStartDto start) {}
+      String id,
+      String qualifiedId,
+      String title,
+      String status,
+      boolean blocked,
+      CampaignStartDto start) {}
 
   /**
    * The criteria evaluator's health — what tells a correct wait from nothing listening.
