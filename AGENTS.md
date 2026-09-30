@@ -831,7 +831,7 @@ released, while any configured gate is unmet. One file at `main` turns on each g
 
 | file at `main` | gate |
 | --- | --- |
-| `.config/qits/release.yml` declaring a QA pipeline — an `archetype:`, **or** a non-empty `release-request:` slot of the repository's own | CI — a `BuildSuccessful` for the fold. qits-ci composes the QA pipeline from the wrapper's `release-archetypes/*.yml`, or from the repository's own slot when it declares one, and its verdict gates the same way a hand-written recipe's used to (fixed 2026-09-13: this repository used to read only the recipe, so a migrated repository released before its QA run even started; the recipe reading itself went on 2026-09-18 when the last of those files left the estate; **2026-09-22**: only the `archetype:` key was read, so a repository that inlines its slots got no gate at all — see below) |
+| `.config/qits/release.yml` declaring a QA pipeline — an `archetype:`, **or** a non-empty `release-request:` slot of the repository's own | CI — a `BuildSuccessful` for the fold. qits-ci composes the QA pipeline from its own `release-archetypes/*.yml` — shipped in qits-ci-service, or shadowed by the repository's own copy — or from the repository's own slot when it declares one, and its verdict gates the same way a hand-written recipe's used to (fixed 2026-09-13: this repository used to read only the recipe, so a migrated repository released before its QA run even started; the recipe reading itself went on 2026-09-18 when the last of those files left the estate; **2026-09-22**: only the `archetype:` key was read, so a repository that inlines its slots got no gate at all — see below) |
 | `.config/qits/deployments.yml` | deployment — the release is not finished until the deployment is live |
 | `.config/qits/release-requests.yml` with `manual-review: true` | approval — a person's yes |
 
@@ -2790,7 +2790,7 @@ Anything that puts this route behind a poll faster than the window is polling th
 separately before committing — the story classes share `domain`'s fixtures). `skipITs` stays `true`
 in the root pom because `PackagedSurfaceIT` is heavyweight, so the opt-in is per-run and per-class.
 The list itself no longer lives in a step. It is `.config/qits/userflow-stories`, one class per line,
-which the QA phase composed from the wrapper's `release-archetypes/java-service.yml` reads and turns
+which the QA phase composed from qits-ci's `release-archetypes/java-service.yml` reads and turns
 back into `-Dit.test` before publishing the bundle as the docs site `@userflows/qits-projects` —
 the site being spelled out in `.config/qits/release.yml`, because it is not this repository's name.
 What that step does *not* pass is the `-Dtest=SKIPNONE -Dsurefire.failIfNoSpecifiedTests=false` pair

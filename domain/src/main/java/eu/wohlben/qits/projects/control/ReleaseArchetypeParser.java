@@ -12,10 +12,12 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * release-request:} slot of the repository's own.
  *
  * <p><b>A presence rule, not a second parser of the slot schema.</b> qits-ci is the reader that
- * matters — it composes the per-release-request QA pipeline either from the named entry of the
- * wrapper's {@code .config/qits/release-archetypes/*.yml}, each of which declares a {@code
- * release-request:} slot (checked by hand across all six shipped archetypes on 2026-09-13; none
- * lacks one), or from the repository's <em>own</em> {@code release-request:} slot, which wins
+ * matters — it composes the per-release-request QA pipeline either from the named entry of
+ * qits-ci's own {@code .config/qits/release-archetypes/*.yml} — shipped inside qits-ci-service, or
+ * shadowed by a repository's own copy at the same path — each of which declares a {@code
+ * release-request:} slot (asserted for all eight shipped archetypes by qits-ci-service's own test
+ * suite; a repository-local archetype is not covered by that and must declare one too), or from the
+ * repository's <em>own</em> {@code release-request:} slot, which wins
  * outright when it is there ({@code CiReleaseComposer.choose}: the repository's slot is taken when
  * present, archetype or not). Reading either document's steps here, to confirm what is composed,
  * would make this service a second owner of a schema qits-ci already owns, and a second place that
@@ -31,8 +33,8 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * and {@code cli} deliberately declare none — an SPA publishes nothing, since the consuming service
  * carries it as a submodule and builds the bundle into its own image — so "names an archetype"
  * stamped a gate for releases no run would ever answer and their {@code main} stopped moving. The
- * publish gate asks qits-ci itself now ({@code control/PublishRuns}), because the archetype is in the
- * wrapper repository and a repository's own file may override the slot wholesale, which puts the
+ * publish gate asks qits-ci itself now ({@code control/PublishRuns}), because the archetype is
+ * qits-ci's own and a repository's own file may override the slot wholesale, which puts the
  * answer out of this service's reach entirely. <b>Do not widen this class towards that question</b>:
  * the presence rule is right for the gate it serves and only for that gate.
  *

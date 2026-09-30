@@ -92,8 +92,9 @@ import org.jboss.logging.Logger;
  * <h2>The CI gate is composed, not local</h2>
  *
  * <p>{@link ReleaseArtifacts#SLOT_CONFIG} is the whole of what turns this gate on. A repository
- * carries no QA <em>recipe</em> of its own any more; qits-ci composes one, either from the wrapper's
- * {@code .config/qits/release-archetypes/<archetype>.yml} or from the {@code release-request:} slot
+ * carries no QA <em>recipe</em> of its own any more; qits-ci composes one, either from its own
+ * {@code .config/qits/release-archetypes/<archetype>.yml} (shipped in qits-ci-service, or shadowed
+ * by a repository's own copy) or from the {@code release-request:} slot
  * the repository declares in that same file, and the composed pipeline reports its verdict exactly
  * as an in-repository recipe used to.
  *
