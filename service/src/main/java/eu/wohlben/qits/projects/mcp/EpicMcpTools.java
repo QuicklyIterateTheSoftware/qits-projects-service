@@ -350,10 +350,11 @@ public class EpicMcpTools {
               + " to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or"
               + " back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED -> DONE, one step at a"
               + " time. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
-              + " epic (propose_epic). A verification that fails is the move back from IMPLEMENTED to REFINED;"
-              + " reopening a frozen scope is the move back from REFINED to REPORTED. Do NOT drop an"
-              + " epic merely because it is hard or you could not finish it: leave it where it is"
-              + " and say what is missing.")
+              + " epic (propose_epic). Reopening a frozen scope is the move back from REFINED to"
+              + " REPORTED. Moving back corrects a claim that turned out wrong. It is not how a phase"
+              + " reports failure: a phase that cannot finish, or a verification that fails, is"
+              + " block_entity. Do NOT drop an epic merely because it is hard or you could not"
+              + " finish it: block_entity with what is missing instead.")
   public EpicSummary transitionEpic(
       @ToolArg(description = "id of an epic in this project") String id,
       @ToolArg(

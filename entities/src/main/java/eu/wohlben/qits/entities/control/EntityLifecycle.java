@@ -83,10 +83,9 @@ final class EntityLifecycle {
    * {@link EntityStateMachine}'s to say and is argued there, because a rule written twice is a rule
    * that drifts; this adds only the subject of the sentence.
    *
-   * <p>That is also why there is no reject verb: a verification that fails is the ordinary backward
-   * move IMPLEMENTED → REFINED, because what a failed verification establishes is that the ticket
-   * needs deciding again — which is the same state as a ticket that has just been refined for the
-   * first time, and a second vocabulary for it would only have to be mapped back onto this one.
+   * <p>There is no reject verb either. A move back corrects a claim that turned out wrong; a
+   * verification that fails is not one — it blocks the entity at IMPLEMENTED with what still occurs,
+   * and a person decides what follows (qits-592).
    */
   static void requireTransition(Archetype archetype, EntityStatus from, EntityStatus target) {
     EntityStateMachine.refusal(from, target)

@@ -67,11 +67,12 @@ import org.jboss.logging.Logger;
  * second table and no second switch: it reads that one, and everything else follows from it.
  *
  * <p><b>Direction is deliberately not consulted.</b> The ticket's new status is the entire input, so
- * a failed verification moving IMPLEMENTED → REFINED gets the <em>implement</em> turn — which is
- * precisely right, because REFINED means the ticket says what to do and implementing is what runs
- * next — and a person closing a VERIFIED ticket to DONE gets nothing, which is also right, because
- * DONE starts no phase at all (and, being final, never moves again). A rule that asked "forward or back?" would need a second table to
- * answer from, and the second table is the thing that goes wrong.
+ * a move back from IMPLEMENTED to REFINED — a correction of a claim, not a failure path — gets the
+ * <em>implement</em> turn, which is precisely right, because REFINED means the ticket says what to
+ * do and implementing is what runs next — and a person closing a VERIFIED ticket to DONE gets
+ * nothing, which is also right, because DONE starts no phase at all (and, being final, never moves
+ * again). A rule that asked "forward or back?" would need a second table to answer from, and the
+ * second table is the thing that goes wrong.
  *
  * <p>{@link EntityStatus#VERIFIED}, {@link EntityStatus#DONE} and {@link EntityStatus#DROPPED}
  * therefore start no phase and deliver no turn, and that is where the one remaining human decision

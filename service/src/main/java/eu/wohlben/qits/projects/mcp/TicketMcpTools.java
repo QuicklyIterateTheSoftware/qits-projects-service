@@ -344,13 +344,13 @@ public class TicketMcpTools {
               + " describes something that turned out not to be a problem, or that the platform"
               + " has since made meaningless, or that was deliberately decided against — say which"
               + " on the thread before you move it. Do NOT drop a ticket merely because it is hard,"
-              + " stale or you could not finish it: leaving it where it is and saying what is"
-              + " missing is the honest answer, and DROPPED claims a decision that nobody took."
-              + " Do not drop one that is DONE either; that move does not exist, because DONE is"
-              + " final. There is no reject verb: a verification that fails is the ordinary move"
-              + " back from IMPLEMENTED to REFINED, because what it establishes is that the ticket"
-              + " needs deciding again. Below DONE every move is reversible, and DROPPED reopens to"
-              + " REPORTED, so a wrong answer costs one more call.")
+              + " stale or you could not finish it: block_entity with what is missing instead, and"
+              + " DROPPED claims a decision that nobody took. Do not drop one that is DONE either;"
+              + " that move does not exist, because DONE is final. Moving back corrects a claim"
+              + " that turned out wrong. It is not how a phase reports failure: a phase that cannot"
+              + " finish, or a verification that fails, is block_entity. Below DONE every move is"
+              + " reversible, and DROPPED reopens to REPORTED, so a wrong answer costs one more"
+              + " call.")
   public TicketSummary transitionTicket(
       @ToolArg(
               description =

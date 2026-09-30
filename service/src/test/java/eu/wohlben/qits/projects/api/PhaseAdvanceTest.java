@@ -352,14 +352,15 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>Direction is not consulted, and this is the case that proves it.</b> A failed verification is
-   * the ordinary backward move IMPLEMENTED → REFINED, and what has to start from it is
-   * <em>implementation</em> — because REFINED means the ticket says what to do. A rule that asked
+   * <b>Direction is not consulted, and this is the case that proves it.</b> A move back from
+   * IMPLEMENTED to REFINED corrects a claim that turned out wrong — it is not how a failed
+   * verification reports, which is a block (qits-592) — and what has to start from it is
+   * <em>implementation</em>, because REFINED means the ticket says what to do. A rule that asked
    * "forward or back?" would need a second table to answer from, and that table is the thing that
    * goes wrong.
    */
   @Test
-  public void aFailedVerificationMovesBackAndStartsTheImplementPhase() {
+  public void aMoveBackToRefinedStartsTheImplementPhase() {
     String projectId = createProject("Advance Backward");
     String ticketId = createTicket(projectId, "Still broken after all");
     transition(ticketId, "REFINED");

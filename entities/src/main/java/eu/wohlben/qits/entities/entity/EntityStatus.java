@@ -38,9 +38,10 @@ package eu.wohlben.qits.entities.entity;
  *
  * <p><b>{@link #DONE} is the one terminal status, and it has no exits</b> — not back to {@link
  * #VERIFIED}, not to {@link #DROPPED}. A done development that later turns out wrong is a new
- * ticket or epic, which may refer to the done one. Below DONE every move is reversible, and there
- * is no reject verb anywhere in the lifecycle: a verification that fails is the ordinary backward
- * move {@link #IMPLEMENTED} → {@link #REFINED}. {@link #DROPPED} reopens, to {@link #REPORTED}. The
+ * ticket or epic, which may refer to the done one. Below DONE every move is reversible, and a move
+ * back corrects a claim that turned out wrong; it is not how a phase reports failure — a phase that
+ * cannot finish, a failed verification included, blocks the entity where it stands (qits-592).
+ * {@link #DROPPED} reopens, to {@link #REPORTED}. The
  * states and every legal move between them are declared once, as a state machine, in {@code
  * EntityStateMachine}.
  *
@@ -66,7 +67,7 @@ public enum EntityStatus {
 
   /**
    * It no longer occurs on the platform. What runs is a person's judgement that there is nothing
-   * left on the thread; a failed verification never lands here, it goes back to {@link #REFINED}.
+   * left on the thread; a failed verification never lands here, it blocks at {@link #IMPLEMENTED}.
    */
   VERIFIED,
 

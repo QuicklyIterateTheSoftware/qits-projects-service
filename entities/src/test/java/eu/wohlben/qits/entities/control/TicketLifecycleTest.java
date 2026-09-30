@@ -125,9 +125,9 @@ class TicketLifecycleTest extends EntitiesTestSupport {
   }
 
   @Test
-  void aFailedVerificationIsTheOrdinaryMoveBackToRefined() {
-    // There is no reject verb: what a failed verification establishes is that the ticket needs
-    // deciding again, which is the state a just-refined ticket is in.
+  void anImplementedTicketMovesBackToRefinedAndForwardAgain() {
+    // A move back corrects a claim that turned out wrong. It is not how a failed verification
+    // reports — that is a block at IMPLEMENTED (qits-592) — but the move itself stays legal.
     WorkEntity ticket = at(EntityStatus.IMPLEMENTED);
     assertEquals(
         EntityStatus.REFINED.name(),

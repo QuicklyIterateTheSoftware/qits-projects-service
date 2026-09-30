@@ -33,9 +33,10 @@ import java.util.Set;
  * </pre>
  *
  * <p><b>The walk</b> — REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE — is taken one step at a
- * time: forward as each phase finishes, back when one has to be redone. Asking for the status an
- * entity already has is refused rather than read as a no-op, and there is no reject verb: a failed
- * verification is the ordinary BACK move IMPLEMENTED → REFINED.
+ * time: forward as each phase finishes, back when a claim turns out wrong. Asking for the status an
+ * entity already has is refused rather than read as a no-op. A BACK move is a correction, not how a
+ * phase reports failure: a phase that cannot finish, a failed verification included, blocks the
+ * entity where it stands (qits-592).
  *
  * <p><b>DONE is final: it has no exits</b> — not back to VERIFIED, not to DROPPED, not anywhere.
  * Acceptance could only ever throw a done item further back than VERIFIED, which is not a flow to

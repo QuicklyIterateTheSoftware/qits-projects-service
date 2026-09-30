@@ -12,8 +12,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * The three phase templates, asserted <b>sentence by sentence</b>, plus the mapping that picks
- * between them.
+ * The six phase templates — three per archetype — asserted <b>sentence by sentence</b>, plus the
+ * mapping that picks between them, the one ending they share and their length budget.
  *
  * <p>This reads like an unusual thing to test and is deliberate: these words are the entire
  * specification handed to an unattended agent, they are the only correction it will ever get, and
@@ -107,7 +107,7 @@ public class PhasePromptsTest {
           EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED
         }) {
       String prompt = promptFor(status);
-      assertTrue(prompt.contains("get_ticket (id tkt-123)"), status + ": " + prompt);
+      assertTrue(prompt.contains("id tkt-123)") && prompt.contains("get_ticket"), status + ": " + prompt);
       assertTrue(prompt.contains("Login button is the wrong colour"), status + ": " + prompt);
       assertTrue(prompt.contains("login-button-is-the-wrong-colour"), status + ": " + prompt);
     }
@@ -116,182 +116,142 @@ public class PhasePromptsTest {
   // ---- REFINE ---------------------------------------------------------------------------------
 
   /**
-   * The hardest job this template has. An agent that has just found the bug wants to fix it, and
-   * the fix is usually small — so the prohibition is stated as the phase's boundary and carries its
-   * reason, and an edit that softened it into a preference would fail here.
+   * The hardest job this template has. An agent that has just found the bug wants to fix it, so the
+   * prohibition carries its reason: the work is handed over, not refused.
    */
   @Test
   public void refineRefusesToImplementAndSaysWhy() {
     String prompt = promptFor(EntityStatus.REPORTED);
+    assertTrue(prompt.contains("Do not implement anything"), prompt);
     assertTrue(
-        prompt.contains("DO NOT IMPLEMENT ANYTHING"),
-        "the boundary of the refine phase, in the imperative: " + prompt);
-    assertTrue(
-        prompt.contains("no fix, no refactor, no commit"),
-        "spelled out, because 'implement' is a word an agent can read narrowly");
-    assertTrue(
-        prompt.contains("lifecycle exists to stop"),
-        "with its reason: implementing from an unwritten understanding is what this stops");
+        prompt.contains("the implement phase is a separate session that starts from what you write"),
+        "with its reason: " + prompt);
   }
 
   /**
-   * The one sentence the next phase depends on literally. A refinement that lands as a comment or a
-   * file in the tree leaves a REFINED ticket whose description is still empty, and the implement
-   * phase then starts from nothing.
+   * The one sentence the next phase depends on literally: the description is the implement phase's
+   * brief, and the dossier is the bounded exception for what prose cannot hold.
    */
   @Test
-  public void refineWritesItsResultIntoTheDescriptionAndNowhereElse() {
+  public void refineWritesItsResultIntoTheDescription() {
     String prompt = promptFor(EntityStatus.REPORTED);
     assertTrue(
-        prompt.contains("INTO THE TICKET'S DESCRIPTION with update_ticket"),
+        prompt.contains("into the ticket's description with update_ticket"),
         "the field and the tool that writes it: " + prompt);
     assertTrue(
-        prompt.contains("not a comment, not a file in the repository"),
-        "and the tidy-looking alternatives, refused by name");
-    assertTrue(
-        prompt.contains("put_dossier_page"),
-        "with the dossier as the bounded exception for what prose cannot hold");
+        prompt.contains("put_dossier_page (ticketId tkt-123) only for what prose cannot hold"),
+        "with the dossier as the bounded exception: " + prompt);
   }
 
-  /** The impetus is the report, not the investigation, and the template says both halves. */
+  /** The impetus is the report, not the investigation, and the three types are refined apart. */
   @Test
   public void refineReadsTheImpetusAsTheReportAndGoesFurtherThanIt() {
     String prompt = promptFor(EntityStatus.REPORTED);
-    assertTrue(prompt.contains("the impetus is what was asked for"), prompt);
-    assertTrue(prompt.contains("Explore the code further than the impetus goes"), prompt);
-    assertTrue(
-        prompt.contains("For a BUG") && prompt.contains("for an IMPROVEMENT"),
-        "and the two types are refined differently: " + prompt);
-    assertTrue(
-        prompt.contains("for a MAINTENANCE ticket") && prompt.contains("its log is in qits-ci"),
-        "and the platform's own filing is sent to the run that came back red: " + prompt);
-    assertTrue(
-        prompt.contains("closes itself when that release request ends"),
-        "and told that it will close itself, so a DROPPED under it is not a surprise: " + prompt);
+    assertTrue(prompt.contains("the impetus is the report"), prompt);
+    assertTrue(prompt.contains("Investigate past the impetus"), prompt);
+    assertTrue(prompt.contains("For a BUG") && prompt.contains("For an IMPROVEMENT"), prompt);
+    assertTrue(prompt.contains("For a MAINTENANCE ticket"), prompt);
   }
 
   // ---- IMPLEMENT ------------------------------------------------------------------------------
 
-  /**
-   * The platform's own definition of done, and the one an agent left to itself gets wrong. The
-   * negatives are asserted too: merged and green are the two answers that read like done.
-   */
+  /** The platform's definition of done, with the two answers that read like done and are not. */
   @Test
   public void implementSaysReleasedAndDeployedRatherThanMergedOrBuilt() {
     String prompt = promptFor(EntityStatus.REFINED);
-    assertTrue(prompt.contains("RELEASING IS THE GOAL"), prompt);
-    assertTrue(prompt.contains("released and deployed to the platform"), prompt);
     assertTrue(
-        prompt.contains("not when it is merged, and not when the build is green"),
-        "the two answers that read like done and are not: " + prompt);
+        prompt.contains("Done means released and deployed, not merged and not green"), prompt);
   }
 
   /**
    * <b>The assertion this class exists for.</b> Verification happens in this workspace after the
-   * release, so an implement phase that integrates destroys its own successor's ground — and the
-   * instruction this template replaced said the opposite, so the sentence has to be there in the
-   * imperative and with its reason.
+   * release, so an implement phase that integrates destroys its own successor's ground.
    */
   @Test
   public void implementForbidsIntegratingTheWorkspace() {
     String prompt = promptFor(EntityStatus.REFINED);
     assertTrue(
-        prompt.contains("DO NOT INTEGRATE THE WORKSPACE"),
+        prompt.contains("Do not integrate the workspace, because verification runs here next"),
         "a phase that integrates destroys the workspace the verify phase needs: " + prompt);
-    assertTrue(
-        prompt.contains("integrating it ends the workspace the next phase needs"),
-        "with the reason, since the previous instruction on this door said the opposite");
     assertFalse(
         prompt.contains("integrate the workspace and see the release through"),
-        "the sentence this replaces must not survive anywhere in the template");
+        "the sentence this replaced must not survive anywhere in the template");
   }
 
-  /**
-   * A thread and not a scratchpad — deliberately replacing "keep one comment current". A running
-   * commentary is the record of how the work was done; one comment rewritten in place keeps only the
-   * last state.
-   */
+  /** A thread and not a scratchpad; a contradiction goes on it, not into the brief. */
   @Test
-  public void implementCommentsAsTheWorkGoesRatherThanAtTheEnd() {
+  public void implementCommentsAsTheWorkGoesAndKeepsTheBrief() {
     String prompt = promptFor(EntityStatus.REFINED);
-    assertTrue(prompt.contains("Comment as the work goes with add_ticket_comment"), prompt);
+    assertTrue(prompt.contains("Comment with add_ticket_comment as the work goes"), prompt);
+    assertFalse(prompt.contains("update_ticket_comment"), prompt);
     assertTrue(
-        prompt.contains("rather than writing one report at the end"),
-        "the habit it replaces, named: " + prompt);
-    assertFalse(
-        prompt.contains("update_ticket_comment"),
-        "keeping one comment current is exactly what this phase stopped doing");
-    assertTrue(
-        prompt.contains("say so on the thread rather than rewriting the description"),
-        "and a contradiction goes on the thread, not into the brief it disagrees with");
+        prompt.contains("say so on the thread and do not rewrite it"),
+        "a contradiction goes on the thread, not into the brief it disagrees with: " + prompt);
   }
 
   // ---- VERIFY ---------------------------------------------------------------------------------
 
   /**
-   * <b>The order of the two arms is part of the design.</b> Reproduce where reproducing is
-   * possible; read the code only where the situation is conceptually unreproducible. An agent given
-   * both in either order takes the one it can finish in a single turn, so the fallback must come
-   * second — that is what this assertion pins, by index and not merely by presence.
+   * <b>The order of the two arms is part of the design.</b> An agent given both takes the one it
+   * can finish in a single turn, so the code-reading fallback comes second — pinned by index.
    */
   @Test
   public void verifyPutsReproductionBeforeCodeReadingAndNamesBoth() {
     String prompt = promptFor(EntityStatus.IMPLEMENTED);
-    int onThePlatform = prompt.indexOf("Verify ON THE PLATFORM");
-    int byReading = prompt.indexOf("READING THE RELEVANT CODE CHANGES");
-    assertTrue(onThePlatform >= 0, "the live platform is the subject: " + prompt);
-    assertTrue(byReading >= 0, "and the fallback is named rather than left to be invented: " + prompt);
+    int onThePlatform = prompt.indexOf("check on the live platform");
+    int byReading = prompt.indexOf("Fall back to reading the change");
+    assertTrue(onThePlatform >= 0, prompt);
+    assertTrue(byReading >= 0, prompt);
+    assertTrue(onThePlatform < byReading, "the fallback comes second: " + prompt);
+    assertTrue(prompt.contains("cannot be reproduced on demand"), prompt);
     assertTrue(
-        onThePlatform < byReading,
-        "the fallback must not be offered as the easy path, so it comes second");
-    assertTrue(
-        prompt.contains("conceptually unreproducible"),
-        "and it is bounded by a test rather than a mood: " + prompt);
-    assertTrue(
-        prompt.contains("a passing test suite is not the claim being made"),
-        "the negative, because the suite is the nearest thing to hand");
-    assertTrue(
-        prompt.contains("which of the two you did and why"),
-        "and the thread has to say which arm was used, since they are different evidence");
+        prompt.contains("Say on the thread with add_ticket_comment which of the two you did"),
+        "the thread says which arm was used, since they are different evidence: " + prompt);
   }
 
   /**
-   * The failure arm is a backward transition and the only one in these three templates: there is no
-   * reject verb in this lifecycle, so IMPLEMENTED → REFINED is how implementation starts again.
-   * Closing stays a person's move.
+   * <b>A failed verification blocks; it never moves back</b> (qits-592). The ticket stays
+   * IMPLEMENTED with what still occurs on its thread, and what happens next is a person's call —
+   * as is closing.
    */
   @Test
-  public void verifyFallsBackToRefinedAndLeavesClosingToAPerson() {
+  public void verifyBlocksOnFailureAndLeavesClosingToAPerson() {
     String prompt = promptFor(EntityStatus.IMPLEMENTED);
-    assertTrue(prompt.contains("transition_ticket BACK TO REFINED"), prompt);
     assertTrue(
-        prompt.contains("that is how implementation starts again"),
-        "the backward move is the whole failure path, and is said to be: " + prompt);
-    assertTrue(
-        prompt.contains("Closing the ticket is a person's move and not yours"),
-        "VERIFIED is as far as this phase goes: " + prompt);
+        prompt.contains("If it still occurs, or you could not check, block_entity with what you"
+            + " found"),
+        prompt);
+    assertTrue(prompt.contains("closing is a person's move"), prompt);
     assertFalse(prompt.contains("transition_ticket to DONE"), "an agent never closes a ticket");
+    assertFalse(prompt.contains("REFINED"), "no route back to REFINED at all: " + prompt);
   }
 
   // ---- the shared ending ----------------------------------------------------------------------
 
   /**
-   * Each template names <b>one</b> forward transition target and it is its own phase's. The check is
-   * on the {@code transition_ticket to X} form rather than on the status word, because every
-   * template also names the status it should be <em>left</em> at — and the verify template names
-   * REFINED a second time as its explicit backward move, which is asserted above as the load-bearing
-   * sentence it is.
+   * Each template names exactly <b>one</b> transition, and it is its own phase's forward claim. The
+   * check is on the {@code transition_ticket to X} form, so a second transition of any kind —
+   * backward included — fails it.
    */
   @Test
   public void eachTemplateClaimsItsOwnPhaseAndNoOther() {
-    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REPORTED), "REFINED");
-    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REFINED), "IMPLEMENTED");
-    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.IMPLEMENTED), "VERIFIED");
+    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REPORTED), "ticket", "REFINED");
+    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REFINED), "ticket", "IMPLEMENTED");
+    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.IMPLEMENTED), "ticket", "VERIFIED");
+    assertNamesExactlyOneForwardTarget(epicPromptFor(EntityStatus.REPORTED), "epic", "REFINED");
+    assertNamesExactlyOneForwardTarget(epicPromptFor(EntityStatus.REFINED), "epic", "IMPLEMENTED");
+    assertNamesExactlyOneForwardTarget(epicPromptFor(EntityStatus.IMPLEMENTED), "epic", "VERIFIED");
   }
 
-  private static void assertNamesExactlyOneForwardTarget(String prompt, String target) {
+  private static void assertNamesExactlyOneForwardTarget(
+      String prompt, String noun, String target) {
+    String tool = "transition_" + noun;
+    assertEquals(
+        1,
+        occurrences(prompt, tool),
+        "exactly one transition, the forward claim: " + prompt);
     for (EntityStatus status : EntityStatus.values()) {
-      String claim = "transition_ticket to " + status.name();
+      String claim = tool + " to " + status.name();
       boolean isOwn = status.name().equals(target);
       assertEquals(
           isOwn,
@@ -302,37 +262,114 @@ public class PhasePromptsTest {
   }
 
   /**
-   * The ending every template shares, and the reason it is worth asserting three times: the
-   * transition is the agent's claim, it is reversible, and an agent that could not finish says so on
-   * the thread and <b>leaves the status where it is</b>. That is the cheap correct answer for an
-   * unsure agent, and it matters more with five statuses than it did with two — a wrong forward move
-   * now skips the phase that would have caught it.
+   * <b>One ending for every phase of both archetypes</b> (qits-592): the forward transition, or
+   * {@code block_entity}. There is no "leave the status where it is" arm and no comment-only arm —
+   * a comment is invisible to everything that hands out work, so a phase that only commented went on
+   * advertising itself as ready.
    */
   @Test
-  public void everyTemplateEndsWithAReversibleClaimAndAWayToNotMakeIt() {
-    for (EntityStatus status :
-        new EntityStatus[] {
-          EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED
-        }) {
-      String prompt = promptFor(status);
+  public void everyTurnEndsWithTheForwardClaimOrABlock() {
+    for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
+      String turn = PhasePrompts.promptFor(entity).orElseThrow();
+      String noun = entity.archetype == Archetype.TICKET ? "ticket" : "epic";
+      assertTrue(turn.contains("block_entity with what"), entity.status + " " + noun + ": " + turn);
       assertTrue(
-          prompt.contains("the transition is your claim"),
-          status + " must say the transition is the agent's own claim: " + prompt);
-      assertTrue(
-          prompt.contains("reversible in both directions through the same door"),
-          status + " must say the claim is reversible: " + prompt);
-      assertTrue(
-          prompt.contains("leave the ticket " + leftAt(status)),
-          status + " must leave the status where it is when it could not finish: " + prompt);
-      assertTrue(
-          prompt.contains("say on the thread") || prompt.contains("say so on the thread"),
-          status + " must say what is missing on the thread: " + prompt);
+          turn.contains("transition_" + noun + " to " + forwardOf(entity.status)),
+          entity.status + " " + noun + ": " + turn);
+      assertFalse(turn.contains("block_ticket"), "the generic door, for both archetypes: " + turn);
+      assertFalse(turn.contains("leave the " + noun), "no leave-it-where-it-is arm: " + turn);
+      assertFalse(turn.contains("reversible"), "reversibility is the tool's to say: " + turn);
     }
   }
 
-  /** The status an unfinished phase leaves behind: the one it was started from. */
-  private static String leftAt(EntityStatus status) {
-    return status.name();
+  /** <b>No template routes anything backwards</b> — a move back is a correction, not a failure path. */
+  @Test
+  public void noTemplateMovesBack() {
+    for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
+      String turn = PhasePrompts.promptFor(entity).orElseThrow();
+      String lower = turn.toLowerCase(java.util.Locale.ROOT);
+      assertFalse(turn.contains("BACK TO"), turn);
+      for (EntityStatus status : EntityStatus.values()) {
+        assertFalse(
+            lower.contains("back to " + status.name().toLowerCase(java.util.Locale.ROOT)),
+            "a backward move to " + status + ": " + turn);
+      }
+      assertFalse(lower.contains("move back") || lower.contains("backward"), turn);
+    }
+  }
+
+  /**
+   * <b>The length budget</b> (qits-592): each phase turn is at most 900 characters, not counting the
+   * flow-brief pointer and its separating space, and not counting the substituted title, type, slug
+   * and id — each occurrence of each. Realistic values, so a long title cannot hide in the budget.
+   */
+  @Test
+  public void everyPhaseTurnFitsTheBudget() {
+    String pointer = PhasePrompts.FLOW_BRIEF_POINTER;
+    StringBuilder report = new StringBuilder();
+    boolean over = false;
+    for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
+      entity.id = "0f9c2e1a-7b3d-4c55-9e21-3a8b6d4f1c07";
+      entity.title =
+          entity.archetype == Archetype.TICKET
+              ? "Phase prompts are too long and route failures through backward transitions"
+              : "Retire the in-process executor: the platform host is a runner like any other";
+      entity.slug = "phase-prompts-are-too-long-and-route-failures-through-b";
+      String turn = PhasePrompts.promptFor(entity).orElseThrow();
+      assertTrue(turn.startsWith(pointer + " "), turn);
+      String phaseTurn = turn.substring(pointer.length() + 1);
+      int substituted =
+          occurrences(phaseTurn, entity.title) * entity.title.length()
+              + occurrences(phaseTurn, entity.slug) * entity.slug.length()
+              + occurrences(phaseTurn, entity.id) * entity.id.length();
+      if (entity.ticketType != null) {
+        String type = "(" + entity.ticketType.name() + ", slug ";
+        substituted += occurrences(phaseTurn, type) * entity.ticketType.name().length();
+      }
+      int counted = turn.length() - pointer.length() - 1 - substituted;
+      report
+          .append(entity.archetype)
+          .append(' ')
+          .append(entity.status)
+          .append(": ")
+          .append(counted)
+          .append(" counted, ")
+          .append(phaseTurn.length())
+          .append(" raw\n")
+          .append(phaseTurn)
+          .append("\n\n");
+      over |= counted > 900;
+    }
+    System.out.println("PHASE PROMPT BUDGET\n" + report);
+    assertFalse(over, "a phase turn is over 900 characters:\n" + report);
+  }
+
+  private static WorkEntity[] everyPhaseOfBothArchetypes() {
+    return new WorkEntity[] {
+      ticket(EntityStatus.REPORTED),
+      ticket(EntityStatus.REFINED),
+      ticket(EntityStatus.IMPLEMENTED),
+      epic(EntityStatus.REPORTED),
+      epic(EntityStatus.REFINED),
+      epic(EntityStatus.IMPLEMENTED)
+    };
+  }
+
+  private static String forwardOf(String status) {
+    return switch (EntityStatus.valueOf(status)) {
+      case REPORTED -> "REFINED";
+      case REFINED -> "IMPLEMENTED";
+      case IMPLEMENTED -> "VERIFIED";
+      default -> throw new AssertionError(status + " starts no phase");
+    };
+  }
+
+  private static int occurrences(String haystack, String needle) {
+    int count = 0;
+    for (int at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + 1)) {
+      count++;
+    }
+    return count;
   }
 
   // ---- the flow-brief pointer ------------------------------------------------------------------
@@ -383,50 +420,6 @@ public class PhasePromptsTest {
                   turn.startsWith(pointer + " "),
                   "and so does every epic phase, from the same seam and the same constant: "
                       + turn));
-    }
-  }
-
-  /**
-   * <b>Every phase that runs tells the agent what to do when it cannot finish, and names both
-   * halves of the answer.</b> The status stays where it is — which is the instruction that was
-   * always there and is still the first thing said — and {@code block_ticket} is how the obstacle
-   * becomes visible to anything other than a reader of the thread.
-   *
-   * <p>It sweeps the templates rather than asserting three literals, because the failure worth
-   * catching is a template that was rewritten and lost one half. That is not hypothetical here: the
-   * implement template's clause used to read "If you are blocked, or released only part of it, say
-   * on the thread what is missing and leave the ticket REFINED" — a comment and nothing else, so
-   * "blocked" was a word on a thread no surface reads, the ticket went on advertising itself as
-   * REFINED, and the next agent picked up the one thing already known to be stuck. A fourth phase
-   * added beside these three is caught by the same sweep.
-   */
-  @Test
-  public void everyPhaseThatRunsOffersBothTheStatusAndTheFlagWhenItCannotFinish() {
-    for (EntityStatus status : EntityStatus.values()) {
-      Optional<String> prompt = PhasePrompts.promptFor(ticket(status));
-      if (prompt.isEmpty()) {
-        continue; // VERIFIED, DONE and DROPPED start no phase, so there is no phase to block.
-      }
-      String turn = prompt.get();
-      assertTrue(
-          turn.contains("block_ticket"),
-          status
-              + " starts a phase, so its turn has to name the tool that says the phase cannot"
-              + " proceed — a thread comment alone is invisible to every surface that hands out"
-              + " work: "
-              + turn);
-      assertTrue(
-          turn.contains("leave the ticket " + status.name()),
-          status
-              + " must still be told to leave the status where it is: the status is the phase to"
-              + " resume, and a block is a second fact beside it rather than a replacement for it: "
-              + turn);
-      assertTrue(
-          turn.contains("outside this ticket"),
-          status
-              + " must bound the block by what is outside the ticket — an agent offered a way to"
-              + " stop that costs one call takes it, so \"this is hard\" must not qualify: "
-              + turn);
     }
   }
 
@@ -488,7 +481,7 @@ public class PhasePromptsTest {
   }
 
   /**
-   * The epic refine turn: the plan is three things — description, tree, dossier — written INTO the
+   * The epic refine turn: the plan is three things — description, tree, dossier — written into the
    * epic, nothing implemented, and the freeze is the agent's claim.
    */
   @Test
@@ -496,67 +489,53 @@ public class PhasePromptsTest {
     String turn = epicPromptFor(EntityStatus.REPORTED);
     assertTrue(turn.contains("Refine epic \"Planning domain\""), turn);
     for (String tool :
-        new String[] {"update_epic", "add_feature", "add_task", "put_dossier_page (epicId epc-9)"}) {
+        new String[] {"update_epic", "add_feature", "add_task", "put_dossier_page, epicId epc-9"}) {
       assertTrue(turn.contains(tool), "the refine phase is told to write with " + tool + ": " + turn);
     }
-    assertTrue(turn.contains("dependsOn"), turn);
-    assertTrue(turn.contains("INTO THE EPIC"), turn);
-    assertTrue(turn.contains("DO NOT IMPLEMENT ANYTHING"), turn);
-    assertTrue(turn.contains("transition_epic to REFINED"), turn);
-    assertTrue(turn.contains("freezes the scope"), turn);
-    assertTrue(turn.contains("leave the epic REPORTED"), turn);
+    assertTrue(turn.contains("each task naming one repository and its dependsOn links"), turn);
+    assertTrue(turn.contains("Do not implement anything"), turn);
+    assertTrue(turn.contains("transition_epic to REFINED, which freezes the scope"), turn);
   }
 
   /**
-   * The epic implement turn: what the retired single-shot instruction said (dependsOn order,
-   * mark_task_implemented as each lands, released is done, the dossier read-only), plus release
-   * every touched repository, do not integrate, and the claim to IMPLEMENTED — conditional, because
-   * it stamps every unmarked task.
+   * The epic implement turn: the frozen brief with corrections on the thread, dependsOn order,
+   * mark_task_implemented as each lands, released per repository, no integration, and the claim to
+   * IMPLEMENTED — which stamps every unmarked task.
    */
   @Test
   public void theEpicImplementTurnMarksReleasesAndClaimsImplemented() {
     String turn = epicPromptFor(EntityStatus.REFINED);
     assertTrue(turn.contains("Implement epic \"Planning domain\""), turn);
-    assertTrue(turn.contains("get_epic (id epc-9)"), turn);
-    assertTrue(turn.contains("get_dossier_page"), turn);
-    assertTrue(turn.contains("read-only while the epic is REFINED"), turn);
-    assertTrue(
-        turn.contains("the epic's thread is not, and it is where a correction goes"),
-        "the freeze stays, and the thread is named as the writable place beside it: " + turn);
-    assertTrue(turn.contains("add_comment — on the epic's thread (entityId epc-9)"), turn);
-    assertTrue(turn.contains("or on a task's own thread"), turn);
-    assertTrue(turn.contains("respecting the dependsOn links"), turn);
+    assertTrue(turn.contains("get_epic: its tree and dossier are the brief"), turn);
+    assertTrue(turn.contains("Both are read-only now"), turn);
+    assertTrue(turn.contains("add_comment (entityId epc-9) as the work goes"), turn);
+    assertTrue(turn.contains("in dependsOn order"), turn);
     assertTrue(turn.contains("mark_task_implemented as it lands"), turn);
-    assertTrue(turn.contains("Release every repository you touched"), turn);
-    assertTrue(turn.contains("DO NOT INTEGRATE THE WORKSPACE"), turn);
-    assertFalse(
-        turn.contains("integrate the workspace and see the release through"),
-        "the retired sentence would destroy the verify phase's ground: " + turn);
-    assertTrue(turn.contains("transition_epic to IMPLEMENTED"), turn);
-    assertTrue(turn.contains("never make it with a task outstanding"), turn);
-    assertTrue(turn.contains("leave the epic REFINED"), turn);
+    assertTrue(turn.contains("released and deployed, through a release request per repository"), turn);
+    assertTrue(turn.contains("not merged and not green"), turn);
+    assertTrue(turn.contains("Do not integrate the workspace"), turn);
+    assertTrue(turn.contains("When every task is marked, transition_epic to IMPLEMENTED"), turn);
+    assertTrue(turn.contains("stamps any unmarked task"), turn);
   }
 
-  /** The epic verify turn: the live platform, the code-reading fallback second, VERIFIED or back. */
+  /** The epic verify turn: the live platform first, the code second, VERIFIED or a block. */
   @Test
-  public void theEpicVerifyTurnConfirmsLiveAndClaimsVerifiedOrFailsBack() {
+  public void theEpicVerifyTurnConfirmsLiveAndClaimsVerifiedOrBlocks() {
     String turn = epicPromptFor(EntityStatus.IMPLEMENTED);
     assertTrue(turn.contains("Verify epic \"Planning domain\""), turn);
-    assertTrue(turn.contains("ON THE PLATFORM"), turn);
     assertTrue(
-        turn.indexOf("ON THE PLATFORM") < turn.indexOf("READING THE RELEVANT CODE CHANGES"),
+        turn.indexOf("check on the live platform, feature by feature")
+            < turn.indexOf("Fall back to reading the change"),
         "reproducing comes first and the fallback second: " + turn);
-    assertTrue(turn.contains("transition_epic to VERIFIED"), turn);
-    assertTrue(turn.contains("transition_epic BACK TO REFINED"), turn);
-    assertTrue(turn.contains("Closing the epic is a person's move"), turn);
+    assertTrue(turn.contains("transition_epic to VERIFIED; closing is a person's move"), turn);
+    assertTrue(turn.contains("If something does not hold, or you could not check, block_entity"), turn);
     assertTrue(turn.contains("add_comment (entityId epc-9)"), turn);
+    assertFalse(turn.contains("REFINED"), "no route back to REFINED: " + turn);
   }
 
   /**
-   * <b>An epic's findings go on its thread, never into a report</b> (qits-551). Until the epic had a
-   * thread, all three templates said "say in your report" — a chat reply nobody reads afterwards,
-   * which is where pilot qits-442's findings went missing. Every epic phase now names {@code
-   * add_comment} against the epic's own id, and none of them sends anything to a report.
+   * <b>An epic's findings go on its thread, never into a report</b> (qits-551): every epic phase
+   * names {@code add_comment} against the epic's own id.
    */
   @Test
   public void everyEpicTemplateRecordsOnTheThreadAndNeverInAReport() {
@@ -566,15 +545,9 @@ public class PhasePromptsTest {
         }) {
       String turn = epicPromptFor(status);
       assertTrue(
-          turn.contains("add_comment (entityId epc-9)")
-              || turn.contains("add_comment — on the epic's thread (entityId epc-9)"),
+          turn.contains("add_comment (entityId epc-9)"),
           status + " must name add_comment on the epic's own thread: " + turn);
-      assertFalse(
-          turn.contains("in your report"),
-          status + " still sends a finding to a report nobody reads: " + turn);
-      assertTrue(
-          turn.contains("on the thread") || turn.contains("on the epic's thread"),
-          status + " must say where what is missing goes: " + turn);
+      assertFalse(turn.contains("in your report"), status + ": " + turn);
     }
   }
 }

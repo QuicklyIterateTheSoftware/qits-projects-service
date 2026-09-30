@@ -1146,12 +1146,13 @@ Five things are rules rather than details:
   dossier and ends with `transition_epic` to REFINED (the freeze); its implement turn works the tasks
   in `dependsOn` order, marks each with `mark_task_implemented` as it lands, releases every touched
   repository, does **not** integrate the workspace, and ends with `transition_epic` to IMPLEMENTED
-  only once every task is marked; its verify turn confirms live on the platform and ends at VERIFIED
-  or back at REFINED. All three record decisions, surprises, what landed and what is missing with
-  `add_comment` on the epic's thread (or a task's own), never "in your report" — a chat reply
-  nobody reads again (qits-551). The epic templates' "could not finish" arm records what is
-  missing on the thread and leaves the status alone; they do not name `block_entity` yet, though an
-  epic can be blocked since qits-592. Every turn opens with
+  only once every task is marked; its verify turn confirms live on the platform and ends at
+  VERIFIED. All three record on the epic's thread with `add_comment`, never "in your report" — a
+  chat reply nobody reads again (qits-551). Every turn of both archetypes ends the same way
+  (qits-592): the forward transition as the claim, or `block_entity` with what is missing or what
+  was found — no "leave the status alone" arm, and no backward move, a failed verification
+  included. Each turn is at most 900 characters (`PhasePromptsTest` enforces it) and copies nothing
+  from the tool descriptions or the flow brief. Every turn opens with
   `PhasePrompts.FLOW_BRIEF_POINTER`, prepended once at the render seam.
 - **A dispatch writes one comment on the entity's thread, and nothing else on it.** The comment
   names the phase (and, for PHASE, that the run stops there), for an epic exactly as for a ticket
@@ -1305,8 +1306,9 @@ and each one is a decision rather than a simplification:
   released and deployed (verify runs), VERIFIED means it no longer occurs on the platform (a person
   closes it), DONE means closed. So no status names work in flight and there must never be an
   `IN_PROGRESS`. Moves along that pipeline are **adjacent-only in either direction**, asking for the
-  status a ticket already has stays refused, there is no reject verb — a failed verification is the
-  ordinary backward move `IMPLEMENTED → REFINED` — and **DONE is the one terminal status**: it has
+  status a ticket already has stays refused, a move back corrects a claim that turned out wrong and
+  is not how a phase reports failure — a failed verification blocks the ticket at IMPLEMENTED
+  (qits-592) — and **DONE is the one terminal status**: it has
   no exits, not back to VERIFIED and not to DROPPED (owner decision, qits-310 follow-up). Acceptance
   could only ever throw a done item further back than VERIFIED, which is not a flow to support.
 
@@ -1441,24 +1443,24 @@ Three things travel with it:
     release and today's threads still carry the opposite sentence.
   - **Verify verifies ON THE PLATFORM**, and reads the relevant code changes only where the
     situation is conceptually unreproducible — the order of those two is the design, so the fallback
-    is never the easy path. A failure transitions **back to REFINED**; closing stays a person's move.
-  - **Each ends the same way**: the transition is the agent's claim, it is reversible in both
-    directions, and a phase that could not finish says what is missing on the thread and leaves the
-    status where it is. That is the cheap correct answer for an unsure agent, and it matters more
-    with six statuses than it did with two — and `DROPPED` is **not** that answer: a phase that
-    could not finish leaves the status where it is, because dropping asserts a decision nobody
-    took.
+    is never the easy path. A failure is `block_entity` with what still occurs — the ticket stays
+    IMPLEMENTED, nothing moves back — and closing stays a person's move.
+  - **Each ends the same way** (qits-592): `transition_ticket to <next>` as the agent's claim, or
+    `block_entity` with what is missing or what was found. There is no comment-only arm — a
+    comment is invisible to everything that hands out work — and `DROPPED` is **not** the answer
+    either, because dropping asserts a decision nobody took. Each turn stays within 900
+    characters and copies no rule from a tool description or the flow brief.
 
   Two seams make all three instructions rather than dead letters, and both are stated in
   `PhasePrompts`' javadoc (they **moved there** from the instruction it replaces):
   qits-workspace-daemon lists `transition_ticket` in its own `TICKET_RESOLUTION_TOOLS` bucket (on the
   kimi path `enabledTools` is the whole tool surface, so an unlisted tool does not exist), and a
   dispatch keeps connecting **without** `agentReadOnly=true`, so `ReadOnlyRepositoryToolFilter` still
-  fences all five ticket writes off every unattended run. **`update_ticket` and `put_dossier_page`
-  are in neither daemon's bucket** — reachable today because every surface ships CLAUDE with
-  `SKIP_PERMISSIONS`, and a surface moved to kimi needs both added there and in
-  `AgentSurfaceDefaults`' copy on the same day, or the refine phase has been told to write into a
-  field it cannot write.
+  fences all five ticket writes off every unattended run. **`update_ticket`, `put_dossier_page` and
+  `block_entity` are in neither daemon's bucket** — reachable today because every surface ships
+  CLAUDE with `SKIP_PERMISSIONS`, and a surface moved to kimi needs them added there and in
+  `AgentSurfaceDefaults`' copy on the same day, or the phases have been told to write — and to
+  block — with tools they cannot call.
 - **A dispatch that succeeded stamps the thread, naming the phase it started (and, for a PHASE-mode
   press, that the run stops after it); one that failed writes nothing.** The comment is
   stamped from the caller's identity like any other, and a re-dispatch that qits-workspaces answered
@@ -1476,7 +1478,7 @@ transaction, exactly where each already fires its hint. It delivers the next tur
 entity's `dispatch_continues` says the last press asked for the whole flow; a PHASE run stops there,
 silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
 and no second switch**: the prompt for a status is the work that starts from it, so a
-failed verification moving IMPLEMENTED → REFINED gets the *implement* turn and a close to DONE
+move back from IMPLEMENTED to REFINED — a correction, not a failure path — gets the *implement* turn and a close to DONE
 gets nothing. Direction is never consulted. It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
 
