@@ -6,6 +6,11 @@ artifacts:
   # it announces, and a release that published nothing announces nothing. No `sbom:` — the jar has
   # no dependencies, and the postlude runs in the builder step, where this jar does not exist.
   - { type: maven, name: "eu.wohlben.qits:qits-projects-golden-masters", announce: if-published }
+  # THE SAME TREE AS AN NPM PACKAGE (qits-574), under the SAME decision as the jar — both at the
+  # release version or neither (`.config/qits/golden-masters.sh decide`), so a consumer's maven and
+  # npm coordinates never name two versions of one tree. `announce: if-published` for the same
+  # reason as the jar's. No `sbom:` — no dependencies, and no build step produces one.
+  - { type: npm, name: "@qits/projects-golden-masters", announce: if-published }
   # THE TWO DOCS SITES, published on every release. No `sbom:` on either: a bundle of documents has no
   # bill of materials. Both are submitted by the second release step below.
   - { type: docs, name: "@apidocs/qits-projects" }
@@ -13,9 +18,9 @@ artifacts:
 userflows: qits-projects
 
 # THE RELEASE SLOT IS OVERRIDDEN because java-service pushes one image and publishes nothing else,
-# and this release also publishes a jar and two docs sites. The QA slot is NOT overridden: the
-# archetype's `release-request:` (with `-Dit.test` composed from `.config/qits/userflow-stories`) is
-# exactly what this repository needs.
+# and this release also publishes a jar, an npm package and two docs sites. The QA slot is NOT
+# overridden: the archetype's `release-request:` (with `-Dit.test` composed from
+# `.config/qits/userflow-stories`) is exactly what this repository needs.
 #
 # STEP ONE IS THE ARCHETYPE'S RELEASE STEP, VERBATIM — copied from qits-ci-service's packaged
 # `.config/qits/release-archetypes/java-service.yml` (at ae82936), comments and guards included: the
@@ -26,7 +31,8 @@ userflows: qits-projects
 # When the archetype's step changes, re-copy it here.
 #
 # STEP TWO IS EVERYTHING ELSE, on maven-base because it needs maven + a JDK and the builder image
-# has neither (node-docker-base is node + buildctl). The qits CLI is fetched into every release step
+# has neither (node-docker-base is node + buildctl). It also publishes the npm package, without npm:
+# see the npm half at its end for why that is a hand-built tarball rather than a third step. The qits CLI is fetched into every release step
 # by the composed prelude, so the docs submits run here too. It runs after the image is pushed.
 release:
   # The same image and the same build as the QA half, plus the two exports. The composer has already
@@ -148,20 +154,22 @@ release:
         --meta git.commit.hash="$QITS_CI_SHA" \
         --meta git.repository.name=qits-projects
 
-      # --- the golden-masters jar, only when the tree changed -----------------------------------
-      # THE GATE COMPARES AGAINST THE NEWEST PUBLISHED JAR, not the previous tag (see the script's
-      # header): a publish that failed once is retried by the next release, and a re-run of this one
-      # reads its own version back and skips. It prints one word and exits 0, or fails the step — a
-      # registry error is never read as "unchanged".
+      # --- the golden masters, jar AND npm package, under ONE decision ------------------------
+      # `decide` is taken once for both artifacts (read .config/qits/golden-masters.sh's header):
+      # `publish` when the jar's change gate says first/changed, when @qits/projects-golden-masters
+      # does not exist yet (the first npm publish happens even with the jar unchanged — the jar then
+      # gets a new, identical version, which keeps the two aligned), or when either already carries
+      # $QITS_VERSION (a re-run completing a half-landed publish). Otherwise `skip`, for both. THE
+      # GATE COMPARES AGAINST THE NEWEST PUBLISHED JAR, not the previous tag, and every registry
+      # error fails the step — an error is never read as "unchanged" or "absent".
       coordinate="eu.wohlben.qits:qits-projects-golden-masters"
-      decision=$(sh .config/qits/published-tree-changed.sh "$coordinate" golden-masters)
+      decision=$(sh .config/qits/golden-masters.sh decide)
       case "$decision" in
-        first)       echo "publishing $coordinate at $QITS_VERSION: first publish" ;;
-        "changed "*) echo "publishing $coordinate at $QITS_VERSION: changed since ${decision#changed }" ;;
-        "unchanged "*)
-          echo "$coordinate: unchanged since ${decision#unchanged } — not publishing at $QITS_VERSION"
+        "publish "*) echo "publishing the golden masters (jar + npm) at $QITS_VERSION: ${decision#publish }" ;;
+        "skip "*)
+          echo "the golden masters: ${decision#skip } — publishing neither at $QITS_VERSION"
           exit 0 ;;
-        *) echo "the change gate answered '$decision'" >&2; exit 1 ;;
+        *) echo "the golden-masters gate answered '$decision'" >&2; exit 1 ;;
       esac
 
       # THE DEPLOY CREDENTIAL, maven-library.yml's mechanism verbatim (read its comments): a bearer
@@ -206,10 +214,15 @@ release:
       # ONLY THE GOLDEN-MASTERS MODULE, and as a standalone build: `-f` its own pom, which has no
       # parent, so no other reactor module (the service, its Quarkus extension, its BOM imports) is
       # even loaded. The release commit already moved its <version> to $QITS_VERSION.
-      ./mvnw -B -ntp -s .qits-maven-settings.xml $deploy_settings -f golden-masters-jar/pom.xml \
-        deploy -DskipTests \
-        -Dqits.maven.repository.url="$QITS_MAVEN_REGISTRY_URL" \
-        -DaltDeploymentRepository="qits::default::$QITS_MAVEN_REGISTRY_URL"
+      # A version is immutable in the store, so a re-run whose jar half already landed skips it.
+      if [ "$(sh .config/qits/golden-masters.sh jar-published)" = yes ]; then
+        echo "$coordinate:$QITS_VERSION is already published — not deploying it again"
+      else
+        ./mvnw -B -ntp -s .qits-maven-settings.xml $deploy_settings -f golden-masters-jar/pom.xml \
+          deploy -DskipTests \
+          -Dqits.maven.repository.url="$QITS_MAVEN_REGISTRY_URL" \
+          -DaltDeploymentRepository="qits::default::$QITS_MAVEN_REGISTRY_URL"
+      fi
       rm -f /tmp/qits-recipe-deploy-settings.xml
 
       # AND THE VERSION PUBLISHED IS THE VERSION THIS BUILD IS — maven-library.yml's check: the pom
@@ -225,3 +238,12 @@ release:
         exit 1
       fi
       echo "published $coordinate:$QITS_VERSION"
+
+      # THE NPM HALF, HAND-PACKED AND PUT, because this image has no node/npm (maven-base: maven, a
+      # JDK, bash/curl/git/jq) and release steps share no filesystem — a node step could not be
+      # handed this decision, and recomputing it after the jar deployed would read `unchanged`. The
+      # script builds the tarball npm would (package/package.json with version = $QITS_VERSION and
+      # files: ["golden-masters/"], the tree under package/golden-masters/), PUTs npm's publish
+      # document to $QITS_NPM_REGISTRY_URL with a bearer minted from $QITS_PUBLISH_TOKEN_COMMAND
+      # (npm-library.yml's credential), skips a version already there, and asserts it is there after.
+      sh .config/qits/golden-masters.sh npm-publish
