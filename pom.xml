@@ -206,12 +206,14 @@
              qits-db-core above — so the same-string policy applies the day this repo consumes a
              newer reactor, and until then it names the release the mock idp actually shipped in. -->
         <qits.service-mock.version>2026.929.140626</qits.service-mock.version>
-        <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer, each
-             carrying `pacts/<consumer>-qits-projects.json`, and ConsumerPactVerificationTest loads
-             every such resource off the test classpath. Test scope at the declaration site; a pin
-             in <properties> like every other qits jar, so qits-maintenance bumps it when the
-             consumer releases a changed pact (its PomParser reads pins regardless of scope). -->
+        <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer
+             (workspaces, landing), each carrying `pacts/<consumer>-qits-projects.json`, and
+             ConsumerPactVerificationTest loads every such resource off the test classpath. Test
+             scope at the declaration site; a pin in <properties> like every other qits jar, so
+             qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
+             reads pins regardless of scope). -->
         <qits.workspaces-pacts-qits-projects.version>2026.1001.140052</qits.workspaces-pacts-qits-projects.version>
+        <qits.landing-pacts-qits-projects.version>2026.1001.160037</qits.landing-pacts-qits-projects.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
@@ -345,6 +347,13 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-workspaces-pacts-qits-projects</artifactId>
                 <version>${qits.workspaces-pacts-qits-projects.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-landing-pacts-qits-projects</artifactId>
+                <version>${qits.landing-pacts-qits-projects.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site. -->

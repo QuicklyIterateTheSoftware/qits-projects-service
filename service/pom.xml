@@ -271,6 +271,14 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- The consumer pacts ConsumerPactVerificationTest verifies: each jar carries one
+                 `pacts/<consumer>-qits-projects.json`, and the test reads them off the classpath.
+                 The pinned jar IS the source of the pact; nothing is copied into this tree. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-landing-pacts-qits-projects</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>au.com.dius.pact.provider</groupId>
             <artifactId>junit5</artifactId>
             <scope>test</scope>
