@@ -470,9 +470,15 @@ public class RepositoryService {
   }
 
   /**
-   * Mirrors every branch and tag the git host holds onto the repository's <b>backup twin</b> — the
-   * whole of what "backed up" means here, and the operation the git host's post-receive now triggers
-   * on every accepted push.
+   * Carries the repository's main branch and every tag the git host holds onto the repository's
+   * <b>backup twin</b> — the whole of what "backed up" means here, and the operation the git host's
+   * post-receive now triggers on every accepted push.
+   *
+   * <p>Not every branch: a platform branch is deleted once it releases, and the name gets reused for
+   * unrelated work afterward. A twin that still held the old branch under that name would reject the
+   * reused name as non-fast-forward and fail the whole backup over a branch nobody on the platform
+   * can even see anymore. Main is never deleted and tags are never reused, so those are the only refs
+   * safe to push unconditionally.
    *
    * <p>Not {@code pushRepository}, which is a different verb with a different job: that one
    * publishes <em>one</em> branch and reconciles a divergence, because a person asked it to. This
@@ -502,7 +508,7 @@ public class RepositoryService {
             .call(
                 () -> {
                   Repository repo = get(repoId);
-                  return new BackupSpec(repo.url, repoLabel(repo));
+                  return new BackupSpec(repo.url, repoLabel(repo), repo.mainBranch);
                 });
     if (spec.url() == null || spec.url().isBlank()) {
       throw new BadRequestException("No backup target configured — nothing to back up to");
@@ -513,16 +519,20 @@ public class RepositoryService {
     } catch (GitMirrorException e) {
       throw new InternalServerErrorException("Backup failed: " + e.getMessage());
     }
+    String branch = resolveMainBranch(spec.mainBranch(), mirror.gitDir());
     try {
-      // Explicit wildcard refspecs rather than --mirror, which also implies force and would push
-      // deletions the twin should never take from us.
+      // An explicit refspec for main plus a wildcard for tags, rather than --mirror or a wildcard
+      // over refs/heads/*: --mirror also implies force and would push deletions the twin should
+      // never take from us, and every non-main branch is liable to have its name reused once the
+      // platform deletes it at release, which a kept-around twin copy would then reject as
+      // non-fast-forward.
       return git.exec(
           mirror.gitDir().toFile(),
           remoteAuth.gitWithCredentials(
               "push",
               "--end-of-options",
               spec.url(),
-              "refs/heads/*:refs/heads/*",
+              "refs/heads/" + branch + ":refs/heads/" + branch,
               "refs/tags/*:refs/tags/*"));
     } catch (Exception e) {
       throw new InternalServerErrorException("Backup of " + spec.label() + " failed: " + e.getMessage());
@@ -530,7 +540,7 @@ public class RepositoryService {
   }
 
   /** The scalars a backup needs, read in one short transaction. */
-  private record BackupSpec(String url, String label) {}
+  private record BackupSpec(String url, String label, String mainBranch) {}
 
   /** Every repository that has a backup twin — the scheduled sweep's worklist. */
   public List<String> repositoryIdsWithBackupTwin() {
@@ -1011,8 +1021,13 @@ public class RepositoryService {
 
   /** The configured main branch, falling back to the remote's default branch. */
   private String resolveMainBranch(Repository repo, Path originPath) {
-    if (repo.mainBranch != null && !repo.mainBranch.isBlank()) {
-      return repo.mainBranch;
+    return resolveMainBranch(repo.mainBranch, originPath);
+  }
+
+  /** The configured main branch, falling back to the remote's default branch. */
+  private String resolveMainBranch(String mainBranch, Path originPath) {
+    if (mainBranch != null && !mainBranch.isBlank()) {
+      return mainBranch;
     }
     return detectDefaultBranch(originPath);
   }

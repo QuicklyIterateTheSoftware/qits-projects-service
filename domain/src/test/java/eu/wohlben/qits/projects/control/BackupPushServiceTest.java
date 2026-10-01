@@ -19,8 +19,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The automatic backup: every branch and tag the git host holds, mirrored onto the repository's
- * forge twin.
+ * The automatic backup: the main branch and every tag the git host holds, mirrored onto the
+ * repository's forge twin.
  *
  * <p>The twin is a real throwaway bare here, and every assertion is made against <em>it</em> — the
  * whole point of a backup is what the other side ends up holding, and a test that only checked this
@@ -80,6 +80,40 @@ public class BackupPushServiceTest {
     git.exec(hostOf(repo.id).toFile(), "git", "update-ref", "refs/heads/" + branch, sha);
   }
 
+  /** The identity env a synthetic {@code commit-tree} needs — it has no working tree to read one from. */
+  private static final Map<String, String> SYNTHETIC_IDENTITY =
+      Map.of(
+          "GIT_AUTHOR_NAME", "test",
+          "GIT_AUTHOR_EMAIL", "test@test",
+          "GIT_COMMITTER_NAME", "test",
+          "GIT_COMMITTER_EMAIL", "test@test");
+
+  /**
+   * Advances {@code repo.mainBranch} on the GIT HOST by one synthetic commit — a real history
+   * change, as opposed to {@link #branchOnHost}, which only points a new name at main's existing
+   * sha. The twin starts out equal to the host (both are clones of the same fixture), so proving a
+   * backup carries main requires moving main somewhere the twin has never seen.
+   */
+  private String advanceMainOnHost(Repository repo) throws Exception {
+    Path host = hostOf(repo.id);
+    String base = in(host, "git", "rev-parse", repo.mainBranch);
+    String tree = in(host, "git", "rev-parse", repo.mainBranch + "^{tree}");
+    String sha =
+        git.exec(
+                host.toFile(),
+                SYNTHETIC_IDENTITY,
+                "git",
+                "commit-tree",
+                tree,
+                "-p",
+                base,
+                "-m",
+                "advance main on the host")
+            .trim();
+    git.exec(host.toFile(), "git", "update-ref", "refs/heads/" + repo.mainBranch, sha);
+    return sha;
+  }
+
   private void awaitRuns(String repoId, long atLeast) throws Exception {
     long deadline = System.currentTimeMillis() + 15_000;
     while (backupPushService.completedRuns(repoId) < atLeast
@@ -89,18 +123,85 @@ public class BackupPushServiceTest {
   }
 
   @Test
-  public void aBackupCarriesEveryBranchTheHostHoldsOntoTheTwin() throws Exception {
+  public void aBackupCarriesMainButNoOtherBranch() throws Exception {
     var project = projectService.create("Backup Basic", "backup-basic", null);
     Path twin = twin("testing-repo");
     var repo = repositoryBackedUpTo(project, twin);
+    advanceMainOnHost(repo);
     branchOnHost(repo, "only-on-the-platform");
 
     backupPushService.backupNow(repo.id);
 
     assertEquals(
-        in(hostOf(repo.id), "git", "rev-parse", "only-on-the-platform"),
-        in(twin, "git", "rev-parse", "only-on-the-platform"),
-        "the branch the platform gained is now on the twin");
+        in(hostOf(repo.id), "git", "rev-parse", repo.mainBranch),
+        in(twin, "git", "rev-parse", repo.mainBranch),
+        "the advanced main reached the twin");
+    assertEquals(
+        "",
+        in(twin, "git", "for-each-ref", "refs/heads/only-on-the-platform"),
+        "a branch that exists only on the platform must not reach the twin");
+  }
+
+  /**
+   * The failure the old wildcard refspec produced: a branch name the platform deleted and reused
+   * for unrelated later work. The twin, having kept its own copy under that name, rejected the
+   * reused name as non-fast-forward and failed the whole backup — including main.
+   */
+  @Test
+  public void aReusedBranchNameOnTheTwinNoLongerFailsTheBackup() throws Exception {
+    var project = projectService.create("Backup Reused Branch", "backup-reused", null);
+    Path twin = twin("testing-repo");
+    var repo = repositoryBackedUpTo(project, twin);
+
+    // A branch on the TWIN, pointing at a commit only the twin ever held under this name.
+    String twinBase = in(twin, "git", "rev-parse", repo.mainBranch);
+    String twinTree = in(twin, "git", "rev-parse", repo.mainBranch + "^{tree}");
+    String twinOnlyCommit =
+        git.exec(
+                twin.toFile(),
+                SYNTHETIC_IDENTITY,
+                "git",
+                "commit-tree",
+                twinTree,
+                "-p",
+                twinBase,
+                "-m",
+                "a commit only the twin ever held under this branch name")
+            .trim();
+    git.exec(twin.toFile(), "git", "update-ref", "refs/heads/reused", twinOnlyCommit);
+
+    // The platform later reuses the same name for unrelated work, and main moves too.
+    branchOnHost(repo, "reused");
+    advanceMainOnHost(repo);
+
+    backupPushService.backupNow(repo.id);
+
+    assertEquals(
+        eu.wohlben.qits.projects.entity.BackupOutcome.SUCCEEDED,
+        outcomeOf(repo.id),
+        "a reused branch name on the twin must not fail the backup");
+    assertEquals(null, detailOf(repo.id), "there is nothing to explain about a success");
+    assertEquals(
+        in(hostOf(repo.id), "git", "rev-parse", repo.mainBranch),
+        in(twin, "git", "rev-parse", repo.mainBranch),
+        "main still reached the twin");
+  }
+
+  /** A tag is never reused on the platform the way a branch name is, so it is always carried. */
+  @Test
+  public void aTagCreatedOnTheHostReachesTheTwin() throws Exception {
+    var project = projectService.create("Backup Tag", "backup-tag", null);
+    Path twin = twin("testing-repo");
+    var repo = repositoryBackedUpTo(project, twin);
+    String mainSha = in(hostOf(repo.id), "git", "rev-parse", repo.mainBranch);
+    git.exec(hostOf(repo.id).toFile(), "git", "tag", "a-backup-tag", mainSha);
+
+    backupPushService.backupNow(repo.id);
+
+    assertEquals(
+        in(hostOf(repo.id), "git", "rev-parse", "a-backup-tag"),
+        in(twin, "git", "rev-parse", "a-backup-tag"),
+        "the tag reached the twin");
   }
 
   /**
@@ -112,9 +213,7 @@ public class BackupPushServiceTest {
     var project = projectService.create("Backup Debounce", "backup-debounce", null);
     Path twin = twin("testing-repo");
     var repo = repositoryBackedUpTo(project, twin);
-    branchOnHost(repo, "one");
-    branchOnHost(repo, "two");
-    branchOnHost(repo, "three");
+    advanceMainOnHost(repo);
     long before = backupPushService.completedRuns(repo.id);
 
     backupPushService.onPush(repo.id);
@@ -124,13 +223,11 @@ public class BackupPushServiceTest {
     awaitRuns(repo.id, before + 1);
     Thread.sleep(DEBOUNCE_MS * 2); // long enough for a second run to have shown up
     assertEquals(before + 1, backupPushService.completedRuns(repo.id), "three events, one run");
-    // And the one run carried all three branches, which is why collapsing them is safe.
-    for (String branch : new String[] {"one", "two", "three"}) {
-      assertEquals(
-          in(hostOf(repo.id), "git", "rev-parse", branch),
-          in(twin, "git", "rev-parse", branch),
-          branch + " reached the twin");
-    }
+    // And the one run carried the advanced main, which is why collapsing them is safe.
+    assertEquals(
+        in(hostOf(repo.id), "git", "rev-parse", repo.mainBranch),
+        in(twin, "git", "rev-parse", repo.mainBranch),
+        "main reached the twin");
   }
 
   /** An event that arrives after a run has started gets a run of its own — it may have missed it. */
@@ -143,13 +240,15 @@ public class BackupPushServiceTest {
 
     backupPushService.onPush(repo.id);
     awaitRuns(repo.id, before + 1);
-    branchOnHost(repo, "late");
+    advanceMainOnHost(repo);
     backupPushService.onPush(repo.id);
     awaitRuns(repo.id, before + 2);
 
     assertEquals(before + 2, backupPushService.completedRuns(repo.id));
     assertEquals(
-        in(hostOf(repo.id), "git", "rev-parse", "late"), in(twin, "git", "rev-parse", "late"));
+        in(hostOf(repo.id), "git", "rev-parse", repo.mainBranch),
+        in(twin, "git", "rev-parse", repo.mainBranch),
+        "the second run is what carried the advanced main");
   }
 
   /**
@@ -179,6 +278,7 @@ public class BackupPushServiceTest {
     assertTrue(
         !Files.isDirectory(gitMirrors.of(adopted.id).gitDir()),
         "an adopted repository starts with no mirror at all");
+    advanceMainOnHost(adopted);
 
     backupPushService.backupNow(adopted.id);
 
@@ -186,9 +286,9 @@ public class BackupPushServiceTest {
         Files.isDirectory(gitMirrors.of(adopted.id).gitDir()),
         "the backup cloned the mirror it needed");
     assertEquals(
-        in(hostOf(adopted.id), "git", "rev-parse", "feature"),
-        in(twin, "git", "rev-parse", "feature"),
-        "and carried the host's refs to the twin");
+        in(hostOf(adopted.id), "git", "rev-parse", adopted.mainBranch),
+        in(twin, "git", "rev-parse", adopted.mainBranch),
+        "and carried the host's main to the twin");
   }
 
   @Test
@@ -217,14 +317,14 @@ public class BackupPushServiceTest {
     var project = projectService.create("Backup Sweep", "backup-sweep", null);
     Path twin = twin("testing-repo");
     var repo = repositoryBackedUpTo(project, twin);
-    branchOnHost(repo, "swept");
-    assertNotEquals(
-        "", in(hostOf(repo.id), "git", "rev-parse", "swept"), "the fixture really did branch");
+    advanceMainOnHost(repo);
 
     backupPushService.backupAll();
 
     assertEquals(
-        in(hostOf(repo.id), "git", "rev-parse", "swept"), in(twin, "git", "rev-parse", "swept"));
+        in(hostOf(repo.id), "git", "rev-parse", repo.mainBranch),
+        in(twin, "git", "rev-parse", repo.mainBranch),
+        "the sweep carried the advanced main");
   }
 
   // -------------------------------------------------------------------------------------------
