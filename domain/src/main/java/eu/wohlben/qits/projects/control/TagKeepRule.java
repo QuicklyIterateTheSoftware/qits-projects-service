@@ -9,7 +9,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -263,7 +262,8 @@ public final class TagKeepRule {
    *
    * @param repoId the row id
    * @param name the repository's name, for the report
-   * @param wrapper whether it is a project's wrapper — whose gitlinks keep tags everywhere else
+   * @param wrapper whether it is a project's wrapper — which keeps the most elsewhere; a failure
+   *     to read any repository stops the sweep all the same
    * @param tags every tag the host holds, calver or not
    * @param mainGitlinks every gitlink in {@code main}'s tree
    */
@@ -279,8 +279,9 @@ public final class TagKeepRule {
   /**
    * The decision across every readable repository.
    *
-   * @param sweep false when nothing may be deleted anywhere — a wrapper's gitlinks were unreadable
-   * @param verdicts per repository id, for every repository that may be swept
+   * @param sweep false when nothing may be deleted anywhere — some repository's gitlinks were
+   *     unreadable
+   * @param verdicts per repository id; empty when {@code sweep} is false
    * @param facts the facts the verdicts were reached under, gitlinks complete
    * @param errors what was skipped, and why
    */
@@ -295,24 +296,19 @@ public final class TagKeepRule {
    * recomputed until a pass adds no gitlink — which terminates, because the set only grows and is
    * bounded by the tags there are.
    *
-   * <p><b>Fails closed.</b> A repository whose kept tags' gitlinks cannot be read is dropped from
-   * the sweep and named in {@link Plan#errors}; when that repository is a wrapper, nothing anywhere
-   * is swept, because a wrapper release's gitlinks are what keeps the estate it names.
+   * <p><b>Fails closed, globally.</b> When the gitlinks of any kept tag cannot be read, nothing
+   * anywhere is swept and the repository is named in {@link Plan#errors}. Gitlink keeps are global:
+   * the unread tree may be the only thing keeping a release in some other repository, and skipping
+   * just the one repository would delete that release.
    */
   public static Plan plan(List<RepositoryRead> repositories, Facts base, GitlinkReader reader) {
     Set<String> gitlinks = new HashSet<>(base.gitlinks());
     repositories.forEach(repo -> gitlinks.addAll(repo.mainGitlinks()));
     Map<String, Set<String>> read = new HashMap<>();
-    Set<String> failed = new LinkedHashSet<>();
-    List<String> errors = new ArrayList<>();
-    boolean sweep = true;
     while (true) {
       Facts facts = base.withGitlinks(gitlinks);
       Set<String> found = new HashSet<>();
       for (RepositoryRead repo : repositories) {
-        if (failed.contains(repo.repoId())) {
-          continue;
-        }
         Verdicts verdicts = judgeHost(repo.tags(), facts);
         for (HostTag tag : repo.tags()) {
           if (!verdicts.kept().containsKey(tag.name()) || tag.commitSha() == null) {
@@ -324,10 +320,11 @@ public final class TagKeepRule {
             try {
               links = reader.gitlinksOf(repo.repoId(), tag.commitSha());
             } catch (Exception e) {
-              failed.add(repo.repoId());
-              errors.add(unreadableGitlinks(repo, tag.name(), e));
-              sweep &= !repo.wrapper();
-              break;
+              return new Plan(
+                  false,
+                  Map.of(),
+                  base.withGitlinks(gitlinks),
+                  List.of(unreadableGitlinks(repo, tag.name(), e)));
             }
             read.put(key, links);
           }
@@ -341,23 +338,17 @@ public final class TagKeepRule {
     }
     Facts facts = base.withGitlinks(gitlinks);
     Map<String, Verdicts> verdicts = new LinkedHashMap<>();
-    if (sweep) {
-      for (RepositoryRead repo : repositories) {
-        if (!failed.contains(repo.repoId())) {
-          verdicts.put(repo.repoId(), judgeHost(repo.tags(), facts));
-        }
-      }
+    for (RepositoryRead repo : repositories) {
+      verdicts.put(repo.repoId(), judgeHost(repo.tags(), facts));
     }
-    return new Plan(sweep, verdicts, facts, errors);
+    return new Plan(true, verdicts, facts, List.of());
   }
 
   private static String unreadableGitlinks(RepositoryRead repo, String tag, Exception e) {
     return repo.name()
         + ": could not read the gitlinks of "
         + tag
-        + ", so none of its tags were judged"
-        + (repo.wrapper() ? " and nothing was swept anywhere, because it is a wrapper" : "")
-        + ": "
+        + ", so nothing was swept anywhere — its gitlinks may be what keeps a release elsewhere: "
         + oneLine(e.getMessage());
   }
 

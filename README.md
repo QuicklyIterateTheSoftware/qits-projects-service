@@ -279,8 +279,10 @@ Everything else goes: on the host as a receive-pack delete (`SCMDeleteTag` fires
 as a `git push --force-with-lease=refs/tags/<tag>:<sha seen> :refs/tags/<tag>` after an `ls-remote`.
 A twin tag the host still holds stays; a tag only the twin holds (a release from before the platform,
 or an earlier twin deletion that failed) is kept only by rules 2–4. Each repository is swept under its
-backup lock. A repository that cannot be read is skipped and named in `errors`; a **wrapper** that
-cannot be read sweeps nothing anywhere, because its gitlinks are what keep the estate it names. A
+backup lock. A repository whose tags or gitlinks cannot be read sweeps **nothing anywhere** and is named in
+`errors`, because gitlink keeps are global: a wrapper's keep the estate it names, and a service's
+`main` keeps the frontend release it mounts. A twin that cannot be read or pushed to is only an
+error line for that repository. A
 dry run judges identically and deletes nothing.
 
     qits.projects.gc.tags.keep-newest=5   # newest calver tags per repository always kept

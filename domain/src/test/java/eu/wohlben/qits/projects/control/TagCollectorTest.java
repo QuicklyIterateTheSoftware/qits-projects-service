@@ -181,6 +181,30 @@ public class TagCollectorTest {
   }
 
   /**
+   * A component that cannot be read stops the sweep as a wrapper does: its {@code main} may mount
+   * the only thing keeping a release in another repository.
+   */
+  @Test
+  public void anUnreadableComponentSweepsNothing() throws Exception {
+    Estate estate = estate("tags-blind-component");
+    List<CatalogueRow> catalogue = new java.util.ArrayList<>(estate.catalogue("svc"));
+    catalogue.add(new CatalogueRow("no-such-service", "lost-service", null, "main", false));
+
+    TagCollectionReportDto report =
+        collector.collect(catalogue, Set.of(), Set.of(), Instant.now(), false);
+
+    assertEquals(List.of(), report.deleted());
+    assertEquals(0, report.examined());
+    assertEquals(1, report.errors().size());
+    assertTrue(report.errors().get(0).startsWith("lost-service:"), report.errors().get(0));
+    assertTrue(
+        report.errors().get(0).contains("nothing was swept anywhere"), report.errors().get(0));
+    assertTrue(has(estate.host(), "2026.101.2"), "svc's old release stays on the host");
+    assertTrue(has(estate.twin(), "2026.101.2"));
+    assertTrue(has(estate.twin(), "2025.101.1"));
+  }
+
+  /**
    * The wrapper's {@code main} mounts the commit every one of these releases points at, so its
    * gitlink keeps them all — on the host and, for the two only the twin holds, on the twin.
    */

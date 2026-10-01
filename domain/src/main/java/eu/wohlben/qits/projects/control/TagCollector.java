@@ -74,12 +74,14 @@ import org.jboss.logging.Logger;
  * a release from before the platform, or a deletion whose twin half failed last time — is judged
  * by {@link TagKeepRule#judgeTwin}.
  *
- * <h2>Failure closes, per repository</h2>
+ * <h2>Failure closes, globally</h2>
  *
- * <p>A repository whose mirror cannot be refreshed, or whose gitlinks cannot be read, is skipped
- * and named in {@code errors}. A <b>wrapper</b> that cannot be read stops the whole sweep: its
- * gitlinks are what keep the releases a project is pinned at, in every other repository. A twin that
- * cannot be listed or pushed to is an error line and never stops the next repository.
+ * <p>A repository whose mirror cannot be refreshed, or whose tags or gitlinks cannot be read, stops
+ * the whole sweep and is named in {@code errors}. Gitlink keeps are global — a wrapper's gitlinks
+ * keep the releases a project is pinned at, and a service's {@code main} keeps the frontend release
+ * it mounts — so an unread repository may be the only thing keeping a release somewhere else. A twin
+ * that cannot be listed or pushed to is different: it is an error line and never stops the next
+ * repository, because a twin holds no gitlink the keep set reads.
  */
 @ApplicationScoped
 public class TagCollector {
@@ -171,7 +173,7 @@ public class TagCollector {
     List<String> errors = new ArrayList<>();
     List<RepositoryRead> reads = new ArrayList<>();
     Map<String, CatalogueRow> byId = new LinkedHashMap<>();
-    boolean wrapperUnreadable = false;
+    boolean unreadable = false;
     for (CatalogueRow row : catalogue) {
       byId.put(row.repoId(), row);
       try {
@@ -179,15 +181,14 @@ public class TagCollector {
       } catch (RuntimeException e) {
         errors.add(
             row.name()
-                + ": could not read its tags or gitlinks, so none of them were judged"
-                + (row.wrapper() ? " and nothing was swept anywhere, because it is a wrapper" : "")
-                + ": "
+                + ": could not read its tags or gitlinks, so nothing was swept anywhere — its"
+                + " gitlinks may be what keeps a release elsewhere: "
                 + TagKeepRule.oneLine(e.getMessage()));
-        wrapperUnreadable |= row.wrapper();
+        unreadable = true;
       }
     }
-    if (wrapperUnreadable) {
-      LOG.warnf("Tag collection swept nothing: a wrapper could not be read. %s", errors);
+    if (unreadable) {
+      LOG.warnf("Tag collection swept nothing: a repository could not be read. %s", errors);
       return new TagCollectionReportDto(
           dryRun, reads.size(), 0, List.of(), new KeptTags(0, 0, 0, 0, 0), errors);
     }
@@ -197,7 +198,7 @@ public class TagCollector {
     Plan plan = TagKeepRule.plan(reads, base, this::gitlinksOf);
     errors.addAll(plan.errors());
     if (!plan.sweep()) {
-      LOG.warnf("Tag collection swept nothing: a wrapper's gitlinks could not be read. %s", errors);
+      LOG.warnf("Tag collection swept nothing: a repository's gitlinks could not be read. %s", errors);
       return new TagCollectionReportDto(
           dryRun, reads.size(), 0, List.of(), new KeptTags(0, 0, 0, 0, 0), errors);
     }

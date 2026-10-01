@@ -289,9 +289,12 @@ class TagKeepRuleTest {
     assertTrue(plan.errors().get(0).contains("nothing was swept anywhere"), plan.errors().get(0));
   }
 
-  /** A component that cannot be read is skipped alone; the rest of the estate is still swept. */
+  /**
+   * A component that cannot be read stops the sweep too: its gitlinks may be the only thing keeping
+   * a release elsewhere, so the estate's deletable set is unknown until it is read.
+   */
   @Test
-  void anUnreadableComponentIsSkippedAlone() {
+  void anUnreadableComponentSweepsNothingEither() {
     RepositoryRead broken =
         new RepositoryRead("b", "broken", false, List.of(tag("2026.901.1")), Set.of());
     RepositoryRead fine =
@@ -305,9 +308,10 @@ class TagKeepRuleTest {
               throw new IllegalStateException("boom");
             });
 
-    assertTrue(plan.sweep());
-    assertFalse(plan.verdicts().containsKey("b"));
-    assertEquals(List.of("2026.801.1"), plan.verdicts().get("s").deleted());
+    assertFalse(plan.sweep());
+    assertTrue(plan.verdicts().isEmpty(), "svc's old release is not deleted either");
     assertEquals(1, plan.errors().size());
+    assertTrue(plan.errors().get(0).startsWith("broken:"), plan.errors().get(0));
+    assertTrue(plan.errors().get(0).contains("nothing was swept anywhere"), plan.errors().get(0));
   }
 }
