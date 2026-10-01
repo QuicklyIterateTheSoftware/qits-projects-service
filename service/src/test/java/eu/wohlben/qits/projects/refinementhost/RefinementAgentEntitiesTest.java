@@ -44,6 +44,13 @@ class RefinementAgentEntitiesTest {
   /** A route suffix this daemon does not serve: 404 there, whatever {@link #status} says. */
   private final List<String> unserved = new CopyOnWriteArrayList<>();
 
+  /**
+   * A route suffix this daemon's router rejects the method for: 405 there, whatever {@link #status}
+   * says. Plays an older daemon whose {@code /agents/*} router answers 405 rather than 404 for a
+   * sub-path it does not know (qits-617).
+   */
+  private final List<String> methodNotAllowed = new CopyOnWriteArrayList<>();
+
   @BeforeEach
   void start() throws Exception {
     vertx = Vertx.vertx();
@@ -65,10 +72,11 @@ class RefinementAgentEntitiesTest {
                                       body.toString()));
                               boolean served =
                                   unserved.stream().noneMatch(request.uri()::endsWith);
-                              request
-                                  .response()
-                                  .setStatusCode(served ? status.get() : 404)
-                                  .end();
+                              boolean rejectedMethod =
+                                  methodNotAllowed.stream().anyMatch(request.uri()::endsWith);
+                              int code =
+                                  !served ? 404 : rejectedMethod ? 405 : status.get();
+                              request.response().setStatusCode(code).end();
                             }))
             .listen(0, "127.0.0.1")
             .toCompletionStage()
@@ -164,10 +172,41 @@ class RefinementAgentEntitiesTest {
     assertEquals("{\"blocked\":true}", received.get(1).body());
   }
 
+  /**
+   * The 405 sibling: a daemon whose {@code /agents/*} router rejects the method for a sub-path it
+   * does not know, answering 405 rather than 404, is told the flag on the route it does have
+   * (qits-617; measured live against 2026.1001.72420).
+   */
+  @Test
+  void aDaemonThatAnswers405OnEntityIsToldTheFlagOnTheBlockedRoute() throws Exception {
+    methodNotAllowed.add("/agents/entity");
+    RefinementAgentEntities blocks = blocks(refinement(7), true);
+
+    onAWorker(
+        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
+
+    assertEquals(2, received.size(), "the entity route, then the blocked route: " + received);
+    assertEquals("/projects/refinement-container/7/agents/entity", received.get(0).uri());
+    assertEquals("/projects/refinement-container/7/agents/blocked", received.get(1).uri());
+    assertEquals("{\"blocked\":true}", received.get(1).body());
+  }
+
   /** A daemon older than both routes answers 404 twice: one WARN, never a throw, no third ask. */
   @Test
   void aDaemonOlderThanBothRoutesIsNeverAThrow() throws Exception {
     status.set(404);
+    RefinementAgentEntities blocks = blocks(refinement(7), true);
+
+    onAWorker(
+        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
+
+    assertEquals(2, received.size());
+  }
+
+  /** A daemon older than both routes, both 405: the same no-throw, no-third-ask shape as 404. */
+  @Test
+  void aDaemonThatAnswers405OnBothRoutesIsNeverAThrow() throws Exception {
+    status.set(405);
     RefinementAgentEntities blocks = blocks(refinement(7), true);
 
     onAWorker(

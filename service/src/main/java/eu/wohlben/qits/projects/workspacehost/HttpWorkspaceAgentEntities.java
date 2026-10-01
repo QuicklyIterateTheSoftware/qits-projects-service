@@ -38,15 +38,20 @@ import org.jboss.logging.Logger;
  * reason one door over: no workspace stands on that branch, so there is no session to rename, and
  * the door never creates one. It is a DEBUG line.
  *
- * <h2>A 404 on {@code /entity} is retried once, on {@code /blocked}</h2>
+ * <h2>A 404 OR A 405 on {@code /entity} is retried once, on {@code /blocked}</h2>
  *
  * <p>qits-workspaces releases before this service and serves {@code /entity} by then, so on a
  * converged estate the fallback never runs. It is here because the two release independently and a
  * rollback of the far side is still a far side without the door: then {@code /entity} answers 404,
  * and the same exchange goes to {@code /blocked} with {@code {"repositoryId", "branch", "blocked"}}
- * — the flag, which is the half of the name that door ever knew. The title and status are lost on
- * that path and only that path, and the next signal against a current far side restores them. A 404
- * on {@code /blocked} too is a far side older than both, and is the one WARN.
+ * — the flag, which is the half of the name that door ever knew. <b>405 counts the same as 404</b>:
+ * measured live 2026-10-01 against a workspace-daemon container on 2026.1001.72420, a daemon older
+ * than {@code /agents/entity} answers a method it does not recognise for that sub-path with 405
+ * rather than 404, because its router rejects the method before it ever resolves the path
+ * (qits-617) — treating only 404 as "the far side predates this door" left that answer falling
+ * through to the generic non-2xx WARN below instead of the fallback. The title and status are lost
+ * on that path and only that path, and the next signal against a current far side restores them. A
+ * 404 or 405 on {@code /blocked} too is a far side older than both, and is the one WARN.
  *
  * <p><b>The path sits under {@code agent-dispatches}</b>, beside {@code delivery}, for the reason
  * that class gives and paid a release to learn: that is where the far side's {@code qits:system}
@@ -97,7 +102,11 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
   /** The door this adapter speaks to, relative to the address. */
   static final String ENTITY_PATH = "/workspaces/api/agent-dispatches/entity";
 
-  /** The qits-614 door {@link #ENTITY_PATH} replaced, asked only when the far side 404s the new one. */
+  /**
+   * The qits-614 door {@link #ENTITY_PATH} replaced, asked only when the far side 404s or 405s the
+   * new one (qits-617: 405 is the same "does not know this door" answer, from a router that rejects
+   * the method before it resolves the path).
+   */
   static final String BLOCKED_PATH = "/workspaces/api/agent-dispatches/blocked";
 
   @Override
@@ -122,15 +131,17 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
       body.put("status", status);
       body.put("blocked", blocked);
       HttpResponse<String> response = post(base.get() + ENTITY_PATH, authorization.get(), body);
-      if (response.statusCode() == 404) {
-        // A qits-workspaces older than the entity door: tell it the one value it knows.
+      if (response.statusCode() == 404 || response.statusCode() == 405) {
+        // A qits-workspaces older than the entity door: tell it the one value it knows. 405 is the
+        // same absence read a different way — an older router rejecting the method before it
+        // resolves the path (qits-617).
         Map<String, Object> flag = new LinkedHashMap<>();
         flag.put("repositoryId", repositoryId);
         flag.put("branch", branch);
         flag.put("blocked", blocked);
         LOG.debugf(
-            "qits-workspaces has no %s yet; telling %s only that it is blocked=%s",
-            ENTITY_PATH, branch, blocked);
+            "qits-workspaces has no %s yet (status %s); telling %s only that it is blocked=%s",
+            ENTITY_PATH, response.statusCode(), branch, blocked);
         response = post(base.get() + BLOCKED_PATH, authorization.get(), flag);
       }
       if (response.statusCode() / 100 != 2) {
@@ -139,7 +150,7 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
             what,
             "qits-workspaces answered "
                 + response.statusCode()
-                + (response.statusCode() == 404
+                + (response.statusCode() == 404 || response.statusCode() == 405
                     ? " (a qits-workspaces older than both the entity and the blocked door)"
                     : "")
                 + ": "

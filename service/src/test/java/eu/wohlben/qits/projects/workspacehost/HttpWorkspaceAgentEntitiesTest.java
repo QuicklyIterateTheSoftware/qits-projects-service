@@ -40,6 +40,12 @@ class HttpWorkspaceAgentEntitiesTest {
   private final AtomicInteger status = new AtomicInteger(200);
   /** A path this far side does not serve: it answers 404 there, whatever {@link #status} says. */
   private final List<String> unserved = new CopyOnWriteArrayList<>();
+  /**
+   * A path whose method this far side's router rejects: it answers 405 there, whatever
+   * {@link #status} says. Plays an older qits-workspaces whose {@code /agents/*} router answers 405
+   * rather than 404 for a sub-path it does not know (qits-617).
+   */
+  private final List<String> methodNotAllowed = new CopyOnWriteArrayList<>();
   private final AtomicReference<String> responseBody =
       new AtomicReference<>("{\"workspaceId\":41,\"applied\":true}");
 
@@ -64,7 +70,11 @@ class HttpWorkspaceAgentEntitiesTest {
                   exchange.getRequestHeaders().getFirst("Authorization")));
           byte[] responseBytes = responseBody.get().getBytes(StandardCharsets.UTF_8);
           exchange.getResponseHeaders().add("Content-Type", "application/json");
-          int answer = unserved.contains(exchange.getRequestURI().getPath()) ? 404 : status.get();
+          String path = exchange.getRequestURI().getPath();
+          int answer =
+              unserved.contains(path)
+                  ? 404
+                  : methodNotAllowed.contains(path) ? 405 : status.get();
           exchange.sendResponseHeaders(
               answer, responseBytes.length == 0 ? -1 : responseBytes.length);
           try (OutputStream out = exchange.getResponseBody()) {
@@ -140,6 +150,27 @@ class HttpWorkspaceAgentEntitiesTest {
         MAPPER.readValue(fallback.body(), Map.class));
   }
 
+  /**
+   * The 405 sibling: a far side whose {@code /agents/*} router rejects the method for
+   * {@code /entity} answers 405 rather than 404, and still gets the flag on {@code /blocked}
+   * (qits-617; measured live against a workspace-daemon on 2026.1001.72420).
+   */
+  @Test
+  void aFarSideThatAnswers405OnEntityIsToldTheFlagOnTheBlockedDoor() throws Exception {
+    String base = startServer();
+    methodNotAllowed.add("/workspaces/api/agent-dispatches/entity");
+
+    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+
+    assertEquals(2, received.size(), "the entity door, then the blocked door: " + received);
+    assertEquals("/workspaces/api/agent-dispatches/entity", received.get(0).path());
+    Received fallback = received.get(1);
+    assertEquals("/workspaces/api/agent-dispatches/blocked", fallback.path());
+    assertEquals(
+        Map.of("repositoryId", "repo-1", "branch", "ticket/x", "blocked", true),
+        MAPPER.readValue(fallback.body(), Map.class));
+  }
+
   /** Only a 404 is "an older far side"; any other refusal is not retried on the old door. */
   @Test
   void aRefusalOtherThan404IsNotRetriedOnTheBlockedDoor() throws Exception {
@@ -170,6 +201,17 @@ class HttpWorkspaceAgentEntitiesTest {
     String base = startServer();
     status.set(404);
     responseBody.set("{\"message\":\"not found\"}");
+
+    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertEquals(2, received.size(), "the entity door, then the blocked door, and no third ask");
+  }
+
+  /** The 405 sibling of the above: both doors 405, same no-throw, no-third-ask shape. */
+  @Test
+  void aWorkspacesThatAnswers405OnBothDoorsIsNeverAThrow() throws Exception {
+    String base = startServer();
+    status.set(405);
+    responseBody.set("{\"message\":\"method not allowed\"}");
 
     assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
     assertEquals(2, received.size(), "the entity door, then the blocked door, and no third ask");
