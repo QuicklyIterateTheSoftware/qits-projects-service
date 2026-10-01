@@ -2635,6 +2635,44 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   (`-f golden-masters-jar/pom.xml`, never the reactor). A recipe change cannot gate itself: the first
   release carrying an edit to either step is the one that proves it, so read that release's step-two
   output for the gate's decision line.
+- **`contracts/ConsumerPactVerificationTest` verifies every consumer's pact against this provider**
+  (epic qits-546) — a `@QuarkusTest` on the default profile, one `@TestTemplate` invocation per
+  interaction, over real HTTP at the test port as the `%test` dev user (plain pact-jvm
+  `HttpTestTarget`; the Quarkiverse `quarkus-pact-provider` extension was passed over because its
+  newest release is built against Quarkus 3.14.1, pins pact-jvm 4.6.17 against the consumers'
+  4.6.21, and drags `quarkus-kotlin` into the test application). Five things are the rule:
+  - **A consumer pact arrives as a pinned jar, never as a file in this tree.** Each consumer
+    publishes `eu.wohlben.qits:<consumer>-pacts-qits-projects` carrying
+    `pacts/<consumer>-qits-projects.json`; it is a test-scope dependency with its version in a root
+    pom property (`qits.workspaces-pacts-qits-projects.version` is the first), so qits-maintenance
+    bumps it when the consumer releases a changed pact. `contracts/ClasspathPactLoader` reads every
+    `pacts/*-qits-projects.json` on the test classpath, inside jars included. **No pact on the
+    classpath fails the run**; a new consumer is one more dependency, no code.
+  - **Red means a consumer relies on an answer this provider no longer gives.** The failure names
+    the consumer and the interaction (`captureWorkspace: getRepository`) and diffs the body. The fix
+    is either to keep giving that answer, or to agree the change with that consumer and let its
+    re-released pact arrive as a bump. Loosening this side is never the fix.
+  - **Every `@State` is one line into `contracts/ProviderStates`** and returns its parameter map,
+    which pact-jvm feeds the pact's `ProviderState` generators (`${repositoryId}` becomes the id this
+    run created). pact-jvm cannot route every name to one generic handler, so a new state is a
+    registry entry **plus** its one-line method here. A state a pact names that the registry does not
+    answer for fails before pact-jvm runs, naming the state and the consumer. `PlatformStateReset`
+    still truncates first — it is a before-each callback and pact-jvm sets states up in the
+    before-test-execution phase — but no state relies on it.
+  - **`comments.references` is not verified, and it is required.** Every interaction must carry
+    `qits-call` and `qits-trigger`; one without them fails here, so a consumer that drops them is
+    caught at the provider too.
+  - **The gate runs it with no list to edit**: the archetype's QA verify is a plain `./mvnw verify`
+    whose `-Dit.test` selects only `*IT`s, so a surefire `*Test` runs unselected.
+- **The chain of pacts — the rule for the first provider state that depends on another service.**
+  Every service is a provider and a consumer at once. When a state's answer here needs a call
+  downstream, that call is mocked with **the downstream's golden masters, never a hand-written
+  answer**. Such a state declares what it depends on in `golden-masters/index.json`'s `dependsOn` —
+  `[{provider, state}]`, empty for every state today. A downstream state that does not exist yet is
+  **added downstream, together with its golden master**, and released there first; it is never
+  stubbed up here. **Only what some pact names is binding**: an answer no consumer's pact asks for
+  stays free to change, and a state or field nobody names is not a contract. No code implements
+  this yet; the first downstream-dependent state is what builds it, to this rule.
 - **`mvn verify` passing does not mean the app starts.** Augmentation runs per `@QuarkusTest`
   regardless of packaging, so a missing `quarkus-maven-plugin` goal is invisible to the suite — it
   was in fact missed here once, an `<executions>` block under a `<build>` whose `<testResources>`

@@ -206,6 +206,20 @@
              qits-db-core above — so the same-string policy applies the day this repo consumes a
              newer reactor, and until then it names the release the mock idp actually shipped in. -->
         <qits.service-mock.version>2026.929.140626</qits.service-mock.version>
+        <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer, each
+             carrying `pacts/<consumer>-qits-projects.json`, and ConsumerPactVerificationTest loads
+             every such resource off the test classpath. Test scope at the declaration site; a pin
+             in <properties> like every other qits jar, so qits-maintenance bumps it when the
+             consumer releases a changed pact (its PomParser reads pins regardless of scope). -->
+        <!-- TODO(orchestrator): real version -->
+        <qits.workspaces-pacts-qits-projects.version>0.0.0-LOCAL</qits.workspaces-pacts-qits-projects.version>
+        <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
+             pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
+             model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
+             at the @QuarkusTest port, not the Quarkiverse quarkus-pact-provider extension: its newest
+             release (1.6.1) is built against Quarkus 3.14.1 and pins pact-jvm 4.6.17, and it would
+             put quarkus-kotlin into the test application — see ConsumerPactVerificationTest. -->
+        <pact.version>4.6.21</pact.version>
         <qits.maven.repository.url>http://registry.dev.localhost:8080/artifacts/maven/maven</qits.maven.repository.url>
 
         <!-- The container ITs need docker and a built qits/workspace image, which a fresh clone has
@@ -325,6 +339,19 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-workspace-daemon-protocol</artifactId>
                 <version>${qits.workspace-daemon-protocol.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-workspaces-pacts-qits-projects</artifactId>
+                <version>${qits.workspaces-pacts-qits-projects.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site. -->
+                <groupId>au.com.dius.pact.provider</groupId>
+                <artifactId>junit5</artifactId>
+                <version>${pact.version}</version>
             </dependency>
             <!-- The reactor's own modules, so children depend on them version-less. -->
             <dependency>
