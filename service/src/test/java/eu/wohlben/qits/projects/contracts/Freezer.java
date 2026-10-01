@@ -33,10 +33,11 @@ import java.util.regex.Pattern;
  *       numbered by first appearance.
  * </ul>
  *
- * <p>Every value it changes is recorded as a JSONPath — {@code $.a.b}, array elements as {@code
- * [*]} — in order of first appearance, de-duplicated: {@link #idPaths}, {@link #instantPaths},
- * {@link #stringPaths}. Those are the index's {@code frozen.ids}, {@code frozen.instants} and
- * {@code frozen.strings}.
+ * <p>Every value it changes is recorded as a JSONPath, by what the WHOLE value was: a UUID goes in
+ * {@link #idPaths}, an instant in {@link #instantPaths}, and a string that merely contains a frozen
+ * id or token (a message, a url, a slug) in {@link #stringPaths}. Paths are {@code $.a.b}, array
+ * elements as {@code [*]}, in order of first appearance and de-duplicated — the index's {@code
+ * frozen.ids}, {@code frozen.instants} and {@code frozen.strings}.
  */
 public final class Freezer {
 
@@ -142,15 +143,18 @@ public final class Freezer {
       instantPaths.add(path);
       return FROZEN_INSTANT;
     }
-    String result = freezeIds(value);
-    if (!result.equals(value)) {
-      idPaths.add(path);
+    String result = freezeTokens(freezeIds(value));
+    if (result.equals(value)) {
+      return result;
     }
-    String tokenised = freezeTokens(result);
-    if (!tokenised.equals(result)) {
+    // A consumer puts a uuid matcher on every frozen.ids path, so only a value that IS a UUID goes
+    // there; a string that merely contains a frozen id or token is type-matched, in frozen.strings.
+    if (UUID.matcher(value).matches()) {
+      idPaths.add(path);
+    } else {
       stringPaths.add(path);
     }
-    return tokenised;
+    return result;
   }
 
   private String freezeIds(String value) {

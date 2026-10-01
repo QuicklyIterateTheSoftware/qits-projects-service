@@ -118,11 +118,11 @@
           "status": 404,
           "file": "no-project-with-the-given-id/getProject.json",
           "frozen": {
-            "ids": [
+            "ids": [],
+            "instants": [],
+            "strings": [
               "$.message"
             ],
-            "instants": [],
-            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -143,11 +143,11 @@
           "status": 404,
           "file": "no-repository-with-the-given-id/getRepository.json",
           "frozen": {
-            "ids": [
+            "ids": [],
+            "instants": [],
+            "strings": [
               "$.message"
             ],
-            "instants": [],
-            "strings": [],
             "listFilteredTo": null
           }
         }

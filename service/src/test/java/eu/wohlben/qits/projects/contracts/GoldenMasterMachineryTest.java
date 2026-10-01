@@ -56,9 +56,29 @@ class GoldenMasterMachineryTest {
             + "\"url\":\"/git/00000000-0000-4000-8000-000000000002.git\"}]}",
         frozen.toString());
     assertEquals("00000000-0000-4000-8000-000000000001", freezer.freezeParam(project));
+    assertEquals(List.of("$.entries[*].id", "$.entries[*].projectId"), freezer.idPaths());
+    assertEquals(List.of("$.entries[*].url"), freezer.stringPaths());
+  }
+
+  @Test
+  void onlyAWholeUuidIsAnIdPathAndAStringContainingOneIsAStringPath() throws Exception {
+    String missing = UUID.randomUUID().toString();
+    Freezer freezer = new Freezer().seed(List.of(missing));
+    JsonNode frozen =
+        freezer.freeze(
+            json(
+                "{\"id\":\""
+                    + missing
+                    + "\",\"message\":\"Project not found: "
+                    + missing
+                    + "\"}"));
     assertEquals(
-        List.of("$.entries[*].id", "$.entries[*].projectId", "$.entries[*].url"),
-        freezer.idPaths());
+        "{\"id\":\"00000000-0000-4000-8000-000000000001\","
+            + "\"message\":\"Project not found: 00000000-0000-4000-8000-000000000001\"}",
+        frozen.toString());
+    assertEquals(List.of("$.id"), freezer.idPaths());
+    assertEquals(List.of("$.message"), freezer.stringPaths());
+    assertEquals(List.of(), freezer.instantPaths());
   }
 
   @Test
