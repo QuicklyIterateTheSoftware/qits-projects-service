@@ -273,21 +273,40 @@ public class RefinementContainerFactory {
     return volumePrefix + refinementId;
   }
 
-  /** The fresh arm — commissions a credential of the container's own. */
+  /**
+   * The fresh arm — commissions a credential of the container's own.
+   *
+   * @param qualifiedEntityId the refined entity's {@code <project-slug>-<number>}, or {@code null}
+   *     when the caller could not render it — see {@code QITS_WORKSPACE_DAEMON_ENTITY_ID} below
+   */
   public EnsureRequest forFreshContainer(
-      Refinement refinement, String projectSlug, String slug, String wrapperName) {
-    return request(
-        refinement, projectSlug, slug, wrapperName, commissions.forFreshContainer(refinement));
-  }
-
-  /** The wake arm — reads the row's pair back and sends it unchanged. */
-  public EnsureRequest forExistingContainer(
-      Refinement refinement, String projectSlug, String slug, String wrapperName) {
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId) {
     return request(
         refinement,
         projectSlug,
         slug,
         wrapperName,
+        qualifiedEntityId,
+        commissions.forFreshContainer(refinement));
+  }
+
+  /** The wake arm — reads the row's pair back and sends it unchanged. */
+  public EnsureRequest forExistingContainer(
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId) {
+    return request(
+        refinement,
+        projectSlug,
+        slug,
+        wrapperName,
+        qualifiedEntityId,
         commissions.forExistingContainer(refinement));
   }
 
@@ -296,6 +315,7 @@ public class RefinementContainerFactory {
       String projectSlug,
       String slug,
       String wrapperName,
+      String qualifiedEntityId,
       Optional<RefinementCredentials.Commissioned> credential) {
     Map<String, String> env = new LinkedHashMap<>();
     env.put("TZ", timezone());
@@ -310,6 +330,14 @@ public class RefinementContainerFactory {
     env.put("QITS_WORKSPACE_DAEMON_REPOSITORY_ID", refinement.repositoryId);
     env.put("QITS_WORKSPACE_DAEMON_BRANCH", refinement.branch);
     env.put("QITS_WORKSPACE_DAEMON_PARENT", refinement.parent);
+    // The refined entity as a person names it — `qits-614` — so the daemon names its sessions
+    // `qits-614: refining/<slug>` rather than after a uuid (qits-614). A label, never an address:
+    // unset rather than blank when the caller could not render it, the way every optional name here
+    // is left off. Adding it moves the spec hash, so a standing container is replaced once at its
+    // next wake (Recreate.ifChanged), its /workspace volume reattached — the cost of any env change.
+    if (qualifiedEntityId != null && !qualifiedEntityId.isBlank()) {
+      env.put("QITS_WORKSPACE_DAEMON_ENTITY_ID", qualifiedEntityId);
+    }
     // Both halves of the name-addressed clone: relative submodule urls resolve only against
     // <gitBase>/<projectId>/<repoName>.
     env.put("QITS_WORKSPACE_DAEMON_PROJECT_ID", refinement.projectId);

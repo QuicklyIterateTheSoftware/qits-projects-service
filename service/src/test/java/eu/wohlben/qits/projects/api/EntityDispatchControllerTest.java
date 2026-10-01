@@ -50,6 +50,9 @@ public class EntityDispatchControllerTest {
 
   @Inject eu.wohlben.qits.entities.control.WorkEntityService workEntities;
 
+  /** The row read the dispatch path itself uses, fresh and patient — for reading a number back. */
+  @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
+
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
 
@@ -319,6 +322,13 @@ public class EntityDispatchControllerTest {
     assertEquals("epic/same-path-epic", epicRun.branch());
     assertEquals(ticketId, ticketRun.subject().ticketId());
     assertEquals(epicId, epicRun.subject().epicId());
+    // Each also named as a person names it, <project-slug>-<number> (qits-614): the label the far
+    // side's daemon names the agent's sessions by, resolved here from the project row and the number.
+    assertEquals(qualifiedIdOf(projectId, ticketId), ticketRun.subject().qualifiedId());
+    assertEquals(qualifiedIdOf(projectId, epicId), epicRun.subject().qualifiedId());
+    assertTrue(
+        ticketRun.subject().qualifiedId().matches(".+-[1-9][0-9]*"),
+        ticketRun.subject().qualifiedId());
     assertNotEquals(ticketRun.instruction(), epicRun.instruction(), "the words are per archetype");
     assertTrue(ticketRun.instruction().contains("update_ticket"), ticketRun.instruction());
     assertTrue(epicRun.instruction().contains("add_feature"), epicRun.instruction());
@@ -553,5 +563,11 @@ public class EntityDispatchControllerTest {
         .statusCode(200)
         .body("state.nextPhase", equalTo("refine"));
     assertTrue(dispatch.calls().isEmpty());
+  }
+
+  /** {@code <project-slug>-<number>}, read back from the two rows rather than trusted. */
+  private String qualifiedIdOf(String projectId, String entityId) {
+    String slug = QuarkusTransaction.requiringNew().call(() -> projects.get(projectId).slug);
+    return slug + "-" + dispatchEntities.fresh(entityId).number;
   }
 }

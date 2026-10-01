@@ -47,7 +47,7 @@ public class RefinementContainerFactoryTest {
   @Test
   public void theSpecCarriesTheWholeDialHomeContract() {
     EnsureRequest request =
-        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo");
+        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null);
     Map<String, String> env = request.spec().env();
 
     assertEquals("ws://dev-qits-projects:8080/projects/refinement-daemon/7", env.get("QITS_WORKSPACE_DAEMON_URL"));
@@ -82,6 +82,41 @@ public class RefinementContainerFactoryTest {
   }
 
   /**
+   * The refined entity's qualified id reaches the daemon as {@code QITS_WORKSPACE_DAEMON_ENTITY_ID}
+   * (qits-614), on both arms, and is left off — not blank — when the caller could not render it.
+   */
+  @Test
+  public void theQualifiedEntityIdIsInjectedWhenKnownAndOmittedWhenNot() {
+    assertEquals(
+        "demo-614",
+        factory
+            .forExistingContainer(
+                refinement(), "demo", "sharper-onboarding", "demo-demo", "demo-614")
+            .spec()
+            .env()
+            .get("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
+    assertEquals(
+        "demo-614",
+        factory
+            .forFreshContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", "demo-614")
+            .spec()
+            .env()
+            .get("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
+    assertFalse(
+        factory
+            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null)
+            .spec()
+            .env()
+            .containsKey("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
+    assertFalse(
+        factory
+            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", " ")
+            .spec()
+            .env()
+            .containsKey("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
+  }
+
+  /**
    * The git address is the shared {@code qits.projects.container-git-url} now — the same key the
    * agent harness reads, carrying no path, with each factory appending qits-githost's own {@code
    * /git}. The retired {@code qits.projects.refinement-git-url} is read by nobody; that half is
@@ -94,7 +129,7 @@ public class RefinementContainerFactoryTest {
   public void theGitAddressIsTheSharedInternalAlias() {
     Map<String, String> env =
         factory
-            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo")
+            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null)
             .spec()
             .env();
 
@@ -108,7 +143,7 @@ public class RefinementContainerFactoryTest {
   @Test
   public void noIdpMeansNoCredentialBlockAtAll() {
     EnsureRequest request =
-        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo");
+        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null);
     Map<String, String> env = request.spec().env();
     assertFalse(env.containsKey("QITS_COMMISSIONED_CLIENT_ID"));
     assertFalse(env.containsKey("QITS_COMMISSIONED_CLIENT_SECRET"));
@@ -123,7 +158,7 @@ public class RefinementContainerFactoryTest {
     refinement.commissionedClientId = "dyn-refinement-7-1";
     refinement.commissionedClientSecret = "secret-dyn-refinement-7-1";
     EnsureRequest request =
-        factory.forExistingContainer(refinement, "demo", "sharper-onboarding", "demo-demo");
+        factory.forExistingContainer(refinement, "demo", "sharper-onboarding", "demo-demo", null);
     Map<String, String> env = request.spec().env();
     assertEquals("dyn-refinement-7-1", env.get("QITS_COMMISSIONED_CLIENT_ID"));
     assertEquals("secret-dyn-refinement-7-1", env.get("QITS_COMMISSIONED_CLIENT_SECRET"));

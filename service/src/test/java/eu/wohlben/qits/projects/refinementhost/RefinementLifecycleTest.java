@@ -33,6 +33,8 @@ public class RefinementLifecycleTest {
   @Inject RefinementCommissions commissions;
   @Inject RefinementService service;
   @Inject eu.wohlben.qits.projects.control.TechnicalProcessRegistry processes;
+  @Inject eu.wohlben.qits.projects.control.ProjectService projects;
+  @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
 
   @BeforeEach
   void reset() {
@@ -150,6 +152,14 @@ public class RefinementLifecycleTest {
 
     awaitStatus(id.longValue(), "RUNNING");
     assertTrue(runtime.calls().contains("provision:" + id.longValue()));
+    // The container is told what the entity is called, <project-slug>-<number> (qits-614), resolved
+    // by the service from the project row and the entity's number — read back here, not trusted.
+    String expected =
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+                .call(() -> projects.get(projectId).slug)
+            + "-"
+            + dispatchEntities.fresh(epicId).number;
+    assertEquals(expected, runtime.qualifiedEntityIdOf(id.longValue()));
 
     // The narration is subscribable while the daemon would still be dialling home. Asserted at the
     // registry rather than by GETting the SSE route: the stream stays open until the process

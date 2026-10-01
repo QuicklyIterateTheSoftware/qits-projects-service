@@ -73,24 +73,35 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
 
   @Override
   public void provision(
-      Refinement refinement, String projectSlug, String slug, String wrapperName) {
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId) {
     String name = factory.containerName(projectSlug, slug);
     requireNameFree(refinement.id, name);
     ensureVolume(refinement.id);
     bringUp(
         refinement.id,
         name,
-        factory.forFreshContainer(refinement, projectSlug, slug, wrapperName));
+        factory.forFreshContainer(
+            refinement, projectSlug, slug, wrapperName, qualifiedEntityId));
   }
 
   @Override
-  public void wake(Refinement refinement, String projectSlug, String slug, String wrapperName) {
+  public void wake(
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId) {
     String name = factory.containerName(projectSlug, slug);
     ensureVolume(refinement.id);
     bringUp(
         refinement.id,
         name,
-        factory.forExistingContainer(refinement, projectSlug, slug, wrapperName));
+        factory.forExistingContainer(
+            refinement, projectSlug, slug, wrapperName, qualifiedEntityId));
   }
 
   @Override

@@ -32,6 +32,14 @@ public class FakeRefinementRuntime implements RefinementRuntime {
     return calls;
   }
 
+  /** The qualified entity id the last provision or wake of each refinement was handed (qits-614). */
+  private final Map<Long, String> qualifiedEntityIds = new LinkedHashMap<>();
+
+  /** What the last bring-up of {@code refinementId} was told the entity is called, or null. */
+  public synchronized String qualifiedEntityIdOf(long refinementId) {
+    return qualifiedEntityIds.get(refinementId);
+  }
+
   @Override
   public synchronized Optional<ContainerInfo> inspect(long refinementId) {
     return Optional.ofNullable(places.get(refinementId));
@@ -39,16 +47,26 @@ public class FakeRefinementRuntime implements RefinementRuntime {
 
   @Override
   public synchronized void provision(
-      Refinement refinement, String projectSlug, String slug, String wrapperName) {
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId) {
     calls.add("provision:" + refinement.id);
+    qualifiedEntityIds.put(refinement.id, qualifiedEntityId);
     places.put(
         refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
   }
 
   @Override
   public synchronized void wake(
-      Refinement refinement, String projectSlug, String slug, String wrapperName) {
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId) {
     calls.add("wake:" + refinement.id);
+    qualifiedEntityIds.put(refinement.id, qualifiedEntityId);
     places.put(
         refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
   }
@@ -86,5 +104,6 @@ public class FakeRefinementRuntime implements RefinementRuntime {
   public synchronized void reset() {
     places.clear();
     calls.clear();
+    qualifiedEntityIds.clear();
   }
 }

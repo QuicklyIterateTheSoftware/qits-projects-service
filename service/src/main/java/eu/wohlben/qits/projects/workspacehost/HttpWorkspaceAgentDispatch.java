@@ -165,6 +165,12 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     if (subject != null && subject.epicId() != null) {
       body.put("epicId", subject.epicId());
     }
+    // The row as a person names it — `qits-614` — for the far side's session names (qits-614). Under
+    // `entityId`, the wire name qits-workspaces reads; omitted, never null, when it was not rendered.
+    // A label only: an older qits-workspaces ignores it and the dispatch is the same dispatch.
+    if (subject != null && subject.qualifiedId() != null) {
+      body.put("entityId", subject.qualifiedId());
+    }
     body.put("instruction", instruction);
 
     HttpResponse<String> response;

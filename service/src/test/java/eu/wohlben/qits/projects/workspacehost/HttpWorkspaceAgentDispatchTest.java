@@ -133,6 +133,44 @@ class HttpWorkspaceAgentDispatchTest {
     // and no `epicId: null`, because an explicit null is this hop stating a subject it has not got.
     assertFalse(body.containsKey("preamble"), "a dispatch states a goal nobody authored");
     assertFalse(body.containsKey("epicId"), "the member that is unset is left off the body");
+    assertFalse(
+        body.containsKey("entityId"),
+        "a subject with no qualified id sends none, rather than an explicit null");
+  }
+
+  /**
+   * The qualified id travels as {@code entityId} beside the row id (qits-614) — the label the far
+   * side's daemon names the agent's sessions by. Checked for an epic too, because the member is the
+   * subject's and not either archetype's.
+   */
+  @Test
+  void theQualifiedIdTravelsAsEntityId() throws Exception {
+    String base = startServer();
+
+    against(base)
+        .dispatchAgent(
+            "repo-1",
+            "ticket/x",
+            null,
+            true,
+            WorkspaceAgentDispatch.Subject.ticket("t-7").withQualifiedId("qits-614"),
+            "i");
+    against(base)
+        .dispatchAgent(
+            "repo-1",
+            "epic/y",
+            null,
+            true,
+            WorkspaceAgentDispatch.Subject.epic("e-9").withQualifiedId("qits-615"),
+            "i");
+
+    Map<?, ?> ticket = MAPPER.readValue(received.get(0).body(), Map.class);
+    assertEquals("t-7", ticket.get("ticketId"));
+    assertEquals("qits-614", ticket.get("entityId"));
+    Map<?, ?> epic = MAPPER.readValue(received.get(1).body(), Map.class);
+    assertEquals("e-9", epic.get("epicId"));
+    assertEquals("qits-615", epic.get("entityId"));
+    assertFalse(epic.containsKey("ticketId"));
   }
 
   /** No refs given: the member is left off, and qits-workspaces allows the workspace's own branch. */

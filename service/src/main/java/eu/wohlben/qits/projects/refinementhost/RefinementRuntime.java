@@ -30,11 +30,28 @@ public interface RefinementRuntime {
   /**
    * Bring a fresh container up — the arm that commissions. Throws when no running container could
    * be produced; a 2xx whose observed state is MISSING/GONE is a failed launch, not a retry case.
+   *
+   * <p>{@code qualifiedEntityId} is the refined entity's {@code <project-slug>-<number>} — {@code
+   * qits-614} — or {@code null} when it could not be rendered; a label for the daemon's session
+   * names (qits-614), never an address, so null costs the container nothing but that name.
    */
-  void provision(Refinement refinement, String projectSlug, String slug, String wrapperName);
+  void provision(
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId);
 
-  /** Wake a stopped container — a start in place, a replacement only if the spec really changed. */
-  void wake(Refinement refinement, String projectSlug, String slug, String wrapperName);
+  /**
+   * Wake a stopped container — a start in place, a replacement only if the spec really changed.
+   * {@code qualifiedEntityId} as {@link #provision}.
+   */
+  void wake(
+      Refinement refinement,
+      String projectSlug,
+      String slug,
+      String wrapperName,
+      String qualifiedEntityId);
 
   /** Stop the container gracefully, leaving it and its volume in place. Best-effort. */
   void stop(long refinementId);

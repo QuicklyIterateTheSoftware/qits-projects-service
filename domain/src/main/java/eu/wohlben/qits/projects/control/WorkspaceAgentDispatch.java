@@ -82,19 +82,41 @@ public interface WorkspaceAgentDispatch {
    * <p>Two static factories rather than a public constructor: the members are same-typed and
    * adjacent, and a dispatch filed under the wrong one is a link that opens somebody else's work.
    *
+   * <h2>The qualified id rides beside the row id, and is the one member a person reads (qits-614)</h2>
+   *
+   * <p>{@code qualifiedId} is the same row named the way a commit subject and a person name it —
+   * {@code <project-slug>-<number>}, {@code qits-614} — rendered by {@code QualifiedEntityIds} and
+   * nowhere else. The far side hands it to the workspace daemon, which names the agent's sessions
+   * {@code qits-614: ticket/<slug>} rather than after a UUID nobody can read. It is a <b>label</b>
+   * and never a key: nothing resolves it, so a dispatch that could not render it (a project row gone
+   * between two reads, a row with no number) sends the two ids alone and loses nothing but the name.
+   * {@code null} therefore means "not known here", and the wire leaves the field off rather than
+   * stating an absence.
+   *
    * @param ticketId the ticket this dispatch is about, or {@code null}
    * @param epicId the epic this dispatch is about, or {@code null}
+   * @param qualifiedId the row's {@code <project-slug>-<number>}, or {@code null} when it could not
+   *     be rendered
    */
-  record Subject(String ticketId, String epicId) {
+  record Subject(String ticketId, String epicId, String qualifiedId) {
 
-    /** A ticket dispatch. */
+    /** A ticket dispatch, its qualified id not (yet) known. */
     public static Subject ticket(String ticketId) {
-      return new Subject(ticketId, null);
+      return new Subject(ticketId, null, null);
     }
 
-    /** An epic dispatch. */
+    /** An epic dispatch, its qualified id not (yet) known. */
     public static Subject epic(String epicId) {
-      return new Subject(null, epicId);
+      return new Subject(null, epicId, null);
+    }
+
+    /**
+     * The same subject, also named by its qualified id. A wither rather than a third argument on the
+     * factories, so the two same-typed row ids still cannot be swapped by position and a caller with
+     * no slug to hand simply does not call it.
+     */
+    public Subject withQualifiedId(String qualifiedId) {
+      return new Subject(ticketId, epicId, qualifiedId);
     }
   }
 

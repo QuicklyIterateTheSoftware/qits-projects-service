@@ -14,6 +14,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import org.jboss.logging.Logger;
 
 /**
  * Where an entity's agent stands: the repository a workspace is made on, the branch it works from
@@ -53,6 +55,8 @@ import java.util.Optional;
  */
 @ApplicationScoped
 class EntityWorkspaces {
+
+  private static final Logger LOG = Logger.getLogger(EntityWorkspaces.class);
 
   @Inject ProjectService projects;
 
@@ -122,8 +126,42 @@ class EntityWorkspaces {
     };
   }
 
-  /** What a workspace names this entity as — see {@link WorkspaceAgentDispatch.Subject}. */
-  static WorkspaceAgentDispatch.Subject subjectOf(WorkEntity entity) {
+  /**
+   * What a workspace names this entity as — see {@link WorkspaceAgentDispatch.Subject} — <b>with its
+   * qualified id</b>, {@code <project-slug>-<number>}, so the agent's sessions read {@code qits-614:
+   * ticket/<slug>} (qits-614).
+   *
+   * <p><b>Degrades, never throws.</b> The qualified id is a label on a dispatch somebody is waiting
+   * for, and a label is not worth a refused press: a project row that does not resolve, a row with
+   * no number, or a slug read that fails outright each leave the subject naming the row by id alone,
+   * which is exactly what it said before the field existed. The rendering is {@link
+   * QualifiedEntityIds#render}'s — the separator is decided there and nowhere else.
+   */
+  WorkspaceAgentDispatch.Subject subjectOf(WorkEntity entity) {
+    WorkspaceAgentDispatch.Subject subject = bareSubjectOf(entity);
+    String qualifiedId = qualifiedIdOf(entity);
+    return qualifiedId == null ? subject : subject.withQualifiedId(qualifiedId);
+  }
+
+  /** {@code <project-slug>-<number>}, or {@code null} where either half cannot be had. */
+  private String qualifiedIdOf(WorkEntity entity) {
+    // A number is minted from 1 per project; anything below is a row that never got one.
+    if (entity.projectId == null || entity.number < 1) {
+      return null;
+    }
+    try {
+      String slug = projects.slugsByIds(Set.of(entity.projectId)).get(entity.projectId);
+      return slug == null || slug.isBlank() ? null : QualifiedEntityIds.render(slug, entity.number);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not resolve the qualified id of %s %s; dispatching it by id alone: %s",
+          entity.archetype, entity.id, e.toString());
+      return null;
+    }
+  }
+
+  /** The row ids alone, by archetype. */
+  private static WorkspaceAgentDispatch.Subject bareSubjectOf(WorkEntity entity) {
     return switch (entity.archetype) {
       case TICKET -> WorkspaceAgentDispatch.Subject.ticket(entity.id);
       case EPIC -> WorkspaceAgentDispatch.Subject.epic(entity.id);

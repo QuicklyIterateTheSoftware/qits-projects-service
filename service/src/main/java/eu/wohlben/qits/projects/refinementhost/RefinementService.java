@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.GitMirrorRegistry;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.control.RepositoryService;
@@ -463,6 +464,7 @@ public class RefinementService {
           QuarkusTransaction.requiringNew().call(() -> repositories.get(refinement.repositoryId));
       String wrapperName = ProjectService.wrapperName(project);
       String slug = slugOf(refinement);
+      String qualifiedEntityId = qualifiedIdOf(refinement, project);
       process.openSegment("container");
       if (!branchStillExists(refinement)) {
         // The branch is gone from under the refinement — somebody resolved it out-of-band. The
@@ -488,13 +490,13 @@ public class RefinementService {
       }
       if (existing == null) {
         process.appendLine("container", "Provisioning a fresh refinement container.");
-        runtime.provision(refinement, project.slug, slug, wrapperName);
+        runtime.provision(refinement, project.slug, slug, wrapperName, qualifiedEntityId);
         process.settleSegment("container", true);
         // Not settled here: the daemon's Provisioned/ProvisionFailed settles the narration, via
         // the registry. The idle reaper is the backstop for a daemon that never dials home.
       } else if (!existing.running()) {
         process.appendLine("container", "Waking the stopped container.");
-        runtime.wake(refinement, project.slug, slug, wrapperName);
+        runtime.wake(refinement, project.slug, slug, wrapperName, qualifiedEntityId);
         process.settleSegment("container", true);
       } else {
         runtime.touch(id);
@@ -692,6 +694,34 @@ public class RefinementService {
    * grammar. Two readings of one convention is exactly how a sweep comes to match nothing on the
    * day the branch prefix changes, with everything still compiling and every test still green.
    */
+  /**
+   * The refined entity's {@code <project-slug>-<number>} — {@code qits-614} — for the container's
+   * {@code QITS_WORKSPACE_DAEMON_ENTITY_ID} (qits-614), rendered by {@link QualifiedEntityIds#render}
+   * and nowhere else. The number lives on the entity row, which the refinement names by uuid only,
+   * so it is one fresh read of that row.
+   *
+   * <p><b>Degrades to {@code null}, never throws.</b> It is a label on a container somebody is
+   * waiting for: an entity gone between the open and this read, a project with no slug, or a read
+   * that fails outright each start the container without it — named by its uuid, as before.
+   */
+  private String qualifiedIdOf(Refinement refinement, Project project) {
+    if (project == null || project.slug == null || project.slug.isBlank()) {
+      return null;
+    }
+    try {
+      WorkEntity entity = entities.fresh(refinement.entityId);
+      return entity == null || entity.number < 1
+          ? null
+          : QualifiedEntityIds.render(project.slug, entity.number);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not resolve the qualified id of entity %s for refinement %s; starting its"
+              + " container without one: %s",
+          refinement.entityId, refinement.id, e.toString());
+      return null;
+    }
+  }
+
   static String slugOf(Refinement refinement) {
     return refinement.branch.startsWith("refining/")
         ? refinement.branch.substring("refining/".length())

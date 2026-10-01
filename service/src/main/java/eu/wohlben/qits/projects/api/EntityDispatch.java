@@ -203,7 +203,7 @@ public class EntityDispatch {
                 branch,
                 target.scope().gitRefs(),
                 true,
-                EntityWorkspaces.subjectOf(recorded),
+                workspaces.subjectOf(recorded),
                 started.instruction());
 
     comments.addComment(
