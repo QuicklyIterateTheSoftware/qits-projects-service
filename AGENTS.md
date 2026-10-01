@@ -120,16 +120,25 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     dispatch door's job one path over. The path sits under `agent-dispatches` for the 403 reason
     above; do not tidy it.
 
-  - `control/WorkspaceAgentBlocks` → `HttpWorkspaceAgentBlocks` (qits-614): the POST that tells the
-    workspace on a branch its ticket or epic was blocked or unblocked —
-    `POST /workspaces/api/agent-dispatches/blocked` with `{repositoryId, branch, blocked}`,
-    answering `{workspaceId, applied}` — so the far side marks its session names with `❗ `.
-    `WorkspaceAgentTurns`' failure contract (never throws, one WARN, a 404 from an older far side
-    included) with no return value, and a 5s bound because the caller is a person's block press.
-    `api/AgentBlockSignals` is its one caller — from `EntityBlocks.apply` when the flag changes and
-    from `EntityResolutions.transition` when a move cleared one, both after the write — and also asks
-    the entity's refinement through `refinementhost/RefinementAgentBlocks` (`POST <proxy base>
-    agents/blocked` down the tunnel).
+  - `control/WorkspaceAgentEntities` → `HttpWorkspaceAgentEntities` (qits-614, widened by
+    qits-617): the POST that tells the workspace on a branch its ticket's or epic's title, status
+    and block flag — `POST /workspaces/api/agent-dispatches/entity` with
+    `{repositoryId, branch, title, status, blocked}`, answering `{workspaceId, applied}` — so the
+    far side names its sessions `<status square> <id> <title>`, the square pale while blocked. A
+    404 there is retried once on the qits-614 door, `/blocked` with `{repositoryId, branch,
+    blocked}`, for a far side older than `/entity`. `WorkspaceAgentTurns`' failure contract (never
+    throws, one WARN) with no return value, and a 5s bound per exchange because the caller is a
+    person's press. `api/AgentEntitySignals` is its one caller, always sending all three values as
+    the row holds them, from three triggers each wired once and each after the write: a flag change
+    (`EntityBlocks.apply`), **every** transition (`bus/EntityTransitionAnnouncer`, the single
+    `TransitionAnnouncer` implementation — so the bulk `POST /entities/transition` and
+    `transition_entities` are covered, and a move signals exactly once), and a retitle (the
+    `entities` port `RetitleAnnouncer`, told by `WorkEntityService.update` only when the title
+    changed). It also asks the entity's refinement through `refinementhost/RefinementAgentEntities`
+    (`POST <proxy base> agents/entity` down the tunnel, falling back to `agents/blocked` on a 404).
+    The dispatch seeds the same three values (`entityTitle`, `entityStatus`, `entityBlocked`), and
+    a refinement container is given them as `QITS_WORKSPACE_DAEMON_ENTITY_TITLE` / `_STATUS` /
+    `_BLOCKED` at every bring-up.
 
   That is why the second and third are new classes and not further methods on the first: two verbs
   with opposite failure contracts do not share a class, and the standing rule stays — do not grow a

@@ -136,6 +136,35 @@ class HttpWorkspaceAgentDispatchTest {
     assertFalse(
         body.containsKey("entityId"),
         "a subject with no qualified id sends none, rather than an explicit null");
+    assertFalse(body.containsKey("entityTitle"), "an unknown title is left off, never null");
+    assertFalse(body.containsKey("entityStatus"), "an unknown status is left off, never null");
+    assertEquals(Boolean.FALSE, body.get("entityBlocked"), "the flag always travels");
+  }
+
+  /**
+   * The rest of the session name travels beside the qualified id (qits-617): {@code entityTitle},
+   * {@code entityStatus} as the status enum's name, and {@code entityBlocked}.
+   */
+  @Test
+  void theTitleStatusAndFlagTravelAsEntityFields() throws Exception {
+    String base = startServer();
+
+    against(base)
+        .dispatchAgent(
+            "repo-1",
+            "ticket/x",
+            null,
+            true,
+            WorkspaceAgentDispatch.Subject.ticket("t-7")
+                .withQualifiedId("qits-617")
+                .withEntityState("Session names carry the status", "REFINED", true),
+            "i");
+
+    Map<?, ?> body = MAPPER.readValue(received.get(0).body(), Map.class);
+    assertEquals("qits-617", body.get("entityId"));
+    assertEquals("Session names carry the status", body.get("entityTitle"));
+    assertEquals("REFINED", body.get("entityStatus"));
+    assertEquals(Boolean.TRUE, body.get("entityBlocked"));
   }
 
   /**

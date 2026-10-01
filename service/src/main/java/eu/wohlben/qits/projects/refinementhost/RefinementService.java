@@ -483,9 +483,13 @@ public class RefinementService {
       String wrapperName = ProjectService.wrapperName(project);
       String slug = slugOf(refinement);
       WorkEntity entity = entityOf(refinement);
-      String qualifiedEntityId = qualifiedIdOf(entity, project);
-      // Read at every bring-up, so a block that changed while the container slept is right at wake.
-      boolean entityBlocked = entity != null && entity.blocked;
+      // Read at every bring-up, so a block, a retitle or a transition that happened while the
+      // container slept is right at its wake (qits-614, qits-617).
+      RefinementRuntime.RefinedEntity named =
+          entity == null
+              ? RefinementRuntime.RefinedEntity.UNKNOWN
+              : new RefinementRuntime.RefinedEntity(
+                  qualifiedIdOf(entity, project), entity.title, entity.status, entity.blocked);
       process.openSegment("container");
       if (!branchStillExists(refinement)) {
         // The branch is gone from under the refinement — somebody resolved it out-of-band. The
@@ -516,15 +520,13 @@ public class RefinementService {
       }
       if (existing == null) {
         process.appendLine("container", "Provisioning a fresh refinement container.");
-        runtime.provision(
-            refinement, project.slug, slug, wrapperName, qualifiedEntityId, entityBlocked);
+        runtime.provision(refinement, project.slug, slug, wrapperName, named);
         process.settleSegment("container", true);
         // Not settled here: the daemon's Provisioned/ProvisionFailed settles the narration, via
         // the registry. The idle reaper is the backstop for a daemon that never dials home.
       } else if (!existing.running()) {
         process.appendLine("container", "Waking the stopped container.");
-        runtime.wake(
-            refinement, project.slug, slug, wrapperName, qualifiedEntityId, entityBlocked);
+        runtime.wake(refinement, project.slug, slug, wrapperName, named);
         process.settleSegment("container", true);
       } else {
         runtime.touch(id);
@@ -715,13 +717,13 @@ public class RefinementService {
   }
 
   /**
-   * The refined entity, read fresh for the two labels its container carries — its qualified id and
-   * its block flag (qits-614). The refinement names the entity by uuid only, so both live one read
-   * away, and one read serves both.
+   * The refined entity, read fresh for the labels its container carries — its qualified id, title,
+   * status and block flag (qits-614, qits-617). The refinement names the entity by uuid only, so all
+   * of them live one read away, and one read serves them all.
    *
-   * <p><b>Degrades to {@code null}, never throws.</b> Both are labels on a container somebody is
+   * <p><b>Degrades to {@code null}, never throws.</b> They are labels on a container somebody is
    * waiting for: an entity gone between the open and this read, or a read that fails outright,
-   * start the container without either — named by its uuid and unmarked, as before.
+   * start the container without any — named by its uuid and unmarked, as before.
    */
   private WorkEntity entityOf(Refinement refinement) {
     try {
@@ -729,7 +731,7 @@ public class RefinementService {
     } catch (RuntimeException e) {
       LOG.warnf(
           "Could not read entity %s for refinement %s; starting its container without its"
-              + " qualified id or block flag: %s",
+              + " qualified id, title, status or block flag: %s",
           refinement.entityId, refinement.id, e.toString());
       return null;
     }

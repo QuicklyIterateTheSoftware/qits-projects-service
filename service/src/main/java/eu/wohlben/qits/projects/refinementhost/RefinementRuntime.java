@@ -21,6 +21,25 @@ import java.util.Optional;
  */
 public interface RefinementRuntime {
 
+  /**
+   * The refined entity as its container's daemon names its sessions — {@code <status square>
+   * <qualified id> <title>}, the square pale while blocked — read off the row at every bring-up, so a
+   * container that slept through a change is right at its next wake (qits-614, qits-617). Labels,
+   * never addresses: any of them may be unknown, and an unknown one costs the session name that part
+   * and the container nothing else.
+   *
+   * @param qualifiedId {@code <project-slug>-<number>}, {@code qits-614}, or {@code null} when it
+   *     could not be rendered
+   * @param title the entity's title, or {@code null} when the row could not be read
+   * @param status the status as stored — the {@code EntityStatus} name — or {@code null}
+   * @param blocked the block flag; {@code false} also when the row could not be read
+   */
+  record RefinedEntity(String qualifiedId, String title, String status, boolean blocked) {
+
+    /** Nothing known: the container starts named by its uuid, as before qits-614. */
+    public static final RefinedEntity UNKNOWN = new RefinedEntity(null, null, null, false);
+  }
+
   /** One container as this lifecycle reads it. */
   record ContainerInfo(String containerName, boolean running) {}
 
@@ -31,31 +50,26 @@ public interface RefinementRuntime {
    * Bring a fresh container up — the arm that commissions. Throws when no running container could
    * be produced; a 2xx whose observed state is MISSING/GONE is a failed launch, not a retry case.
    *
-   * <p>{@code qualifiedEntityId} is the refined entity's {@code <project-slug>-<number>} — {@code
-   * qits-614} — or {@code null} when it could not be rendered; a label for the daemon's session
-   * names (qits-614), never an address, so null costs the container nothing but that name. {@code
-   * entityBlocked} is the refined entity's block flag as the row stands, for the {@code ❗ } marker
-   * on those names; false is also the answer when it could not be read.
+   * <p>{@code entity} is the refined entity as the row stands — see {@link RefinedEntity}; never
+   * {@code null}, {@link RefinedEntity#UNKNOWN} when nothing could be read.
    */
   void provision(
       Refinement refinement,
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId,
-      boolean entityBlocked);
+      RefinedEntity entity);
 
   /**
    * Wake a stopped container — a start in place, a replacement only if the spec really changed.
-   * {@code qualifiedEntityId} and {@code entityBlocked} as {@link #provision}.
+   * {@code entity} as {@link #provision}.
    */
   void wake(
       Refinement refinement,
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId,
-      boolean entityBlocked);
+      RefinedEntity entity);
 
   /** Stop the container gracefully, leaving it and its volume in place. Best-effort. */
   void stop(long refinementId);

@@ -148,6 +148,12 @@ public class WorkEntityService {
   @Inject Instance<TransitionAnnouncer> announcer;
 
   /**
+   * The retitle seam (qits-617), optional for the same reason: with no implementation an edit still
+   * edits and announces nothing. Told by {@link #update}, after the hold, only when the title moved.
+   */
+  @Inject Instance<RetitleAnnouncer> retitles;
+
+  /**
    * What a {@link #transition} to {@code target} would be: the row as it stands, the status it would
    * move to, and whether that status {@linkplain EntityLifecycle#resolves resolves} it.
    *
@@ -488,69 +494,96 @@ public class WorkEntityService {
    * <p><b>The freeze is applied per field</b>, against the owner's phase: whatever this call touches
    * must be allowed by it, so an edit supplying both scope and the marker always fails — no status
    * allows both. A kind with no owner (a ticket) is never frozen: a DONE ticket is still editable.
+   *
+   * <p><b>A changed title is announced once, after the hold returns</b> ({@link RetitleAnnouncer}),
+   * never inside it — the body re-runs on a retry, which is also why "changed" is decided afresh on
+   * every attempt rather than carried over from one that rolled back. An edit that restates the
+   * title it already had announces nothing.
    */
   public Nested update(Archetype archetype, String id, EntityWrite write, String changedBy) {
     Kind kind = kind(archetype);
-    return writes.hold(
-        kind.label("update"),
-        () -> {
-          WorkEntity row = lookup(archetype, id);
-          String parentId = kind.isRoot() ? null : parentOf(id);
-          WorkEntity owner = owner(kind, row, parentId);
-          if (owner != null) {
-            if (write.touchesScope()) {
-              EntityLifecycle.requireReported(owner);
-            }
-            if (write.touchesMarker()) {
-              EntityLifecycle.requireRefined(owner);
-            }
-          }
-          if (write.title() != null) {
-            Validations.requireText(write.title(), "title");
-            row.title = write.title();
-          }
-          if (write.clearImpetus()) {
-            row.impetus = null;
-          } else if (write.impetus() != null) {
-            row.impetus = write.impetus();
-          }
-          if (write.clearDescription()) {
-            row.description = null;
-          } else if (write.description() != null) {
-            row.description = write.description();
-          }
-          TicketType type = parseType(write.type());
-          if (type != null) {
-            row.ticketType = type;
-          }
-          if (write.clearAssignee()) {
-            row.assignee = null;
-          } else if (write.assignee() != null) {
-            row.assignee = blankToNull(write.assignee());
-          }
-          if (write.repositoryId() != null) {
-            row.repositoryId = write.repositoryId();
-          }
-          if (write.clearDependsOn()) {
-            row.dependsOnEntityId = null;
-          } else if (write.dependsOn() != null) {
-            if (write.dependsOn().equals(id)) {
-              throw new BadRequestException("A " + kind.word() + " cannot depend on itself");
-            }
-            requireDependencyUnder(kind, write.dependsOn(), parentId);
-            requireNoCycle(kind, id, write.dependsOn());
-            row.dependsOnEntityId = write.dependsOn();
-          }
-          if (write.clearImplementedAt()) {
-            row.implementedAt = null;
-          } else if (write.implementedAt() != null) {
-            row.implementedAt = write.implementedAt();
-          }
-          requireArchetypeValid(row, Demand.ON_UPDATE);
-          WorkEntity updated = settled(row);
-          audit(updated, rootOf(kind, updated, owner), AuditOperation.UPDATE, changedBy);
-          return new Nested(updated, parentId);
-        });
+    boolean[] retitled = {false};
+    Nested updated =
+        writes.hold(
+            kind.label("update"),
+            () -> {
+              retitled[0] = false;
+              return edit(kind, archetype, id, write, changedBy, retitled);
+            });
+    if (retitled[0] && !retitles.isUnsatisfied()) {
+      retitles.get().onRetitled(updated.entity());
+    }
+    return updated;
+  }
+
+  /**
+   * The body of {@link #update}: database-only, so a retry may run it again. {@code retitled[0]} is
+   * set when the write changes the title.
+   */
+  private Nested edit(
+      Kind kind,
+      Archetype archetype,
+      String id,
+      EntityWrite write,
+      String changedBy,
+      boolean[] retitled) {
+    WorkEntity row = lookup(archetype, id);
+    String parentId = kind.isRoot() ? null : parentOf(id);
+    WorkEntity owner = owner(kind, row, parentId);
+    if (owner != null) {
+      if (write.touchesScope()) {
+        EntityLifecycle.requireReported(owner);
+      }
+      if (write.touchesMarker()) {
+        EntityLifecycle.requireRefined(owner);
+      }
+    }
+    if (write.title() != null) {
+      Validations.requireText(write.title(), "title");
+      retitled[0] = !write.title().equals(row.title);
+      row.title = write.title();
+    }
+    if (write.clearImpetus()) {
+      row.impetus = null;
+    } else if (write.impetus() != null) {
+      row.impetus = write.impetus();
+    }
+    if (write.clearDescription()) {
+      row.description = null;
+    } else if (write.description() != null) {
+      row.description = write.description();
+    }
+    TicketType type = parseType(write.type());
+    if (type != null) {
+      row.ticketType = type;
+    }
+    if (write.clearAssignee()) {
+      row.assignee = null;
+    } else if (write.assignee() != null) {
+      row.assignee = blankToNull(write.assignee());
+    }
+    if (write.repositoryId() != null) {
+      row.repositoryId = write.repositoryId();
+    }
+    if (write.clearDependsOn()) {
+      row.dependsOnEntityId = null;
+    } else if (write.dependsOn() != null) {
+      if (write.dependsOn().equals(id)) {
+        throw new BadRequestException("A " + kind.word() + " cannot depend on itself");
+      }
+      requireDependencyUnder(kind, write.dependsOn(), parentId);
+      requireNoCycle(kind, id, write.dependsOn());
+      row.dependsOnEntityId = write.dependsOn();
+    }
+    if (write.clearImplementedAt()) {
+      row.implementedAt = null;
+    } else if (write.implementedAt() != null) {
+      row.implementedAt = write.implementedAt();
+    }
+    requireArchetypeValid(row, Demand.ON_UPDATE);
+    WorkEntity updated = settled(row);
+    audit(updated, rootOf(kind, updated, owner), AuditOperation.UPDATE, changedBy);
+    return new Nested(updated, parentId);
   }
 
   // --- lifecycle ------------------------------------------------------------------------------------

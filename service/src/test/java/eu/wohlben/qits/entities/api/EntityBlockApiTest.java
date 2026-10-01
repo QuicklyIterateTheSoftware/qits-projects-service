@@ -10,8 +10,8 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import eu.wohlben.qits.projects.control.ProjectService;
-import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentBlocks;
-import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentBlocks.Told;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities.Told;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
@@ -31,8 +31,8 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class EntityBlockApiTest {
 
-  /** What the agents working an entity were told about its block (qits-614). */
-  @Inject RecordingWorkspaceAgentBlocks agents;
+  /** What the agents working an entity were told about it (qits-614, qits-617). */
+  @Inject RecordingWorkspaceAgentEntities agents;
 
   @Inject ProjectService projects;
 
@@ -41,10 +41,15 @@ class EntityBlockApiTest {
     agents.reset();
   }
 
-  /** {@code epic/<slug>} on the project's wrapper — the address the workspace port is told at. */
-  private Told told(String projectId, String epicId, boolean blocked) {
+  /**
+   * {@code epic/<slug>} on the project's wrapper — the address the workspace port is told at — with
+   * the epic's title ({@link EntityFixtures#epic} names every epic "The plan") and the given status.
+   */
+  private Told told(String projectId, String epicId, String status, boolean blocked) {
     String slug = given().get("/projects/api/epics/" + epicId).then().extract().path("epic.slug");
-    return new Told(projects.findWrapper(projectId).orElseThrow().id, "epic/" + slug, blocked);
+    return new Told(
+        projects.findWrapper(projectId).orElseThrow().id, "epic/" + slug, "The plan", status,
+        blocked);
   }
 
   private static ValidatableResponse setBlocked(String id, boolean blocked, String reason) {
@@ -251,16 +256,19 @@ class EntityBlockApiTest {
     EntityFixtures.Project project = EntityFixtures.project("Block Tells Epic");
     String epic = EntityFixtures.epic(project.id());
     walk(epic, "REFINED");
+    agents.reset(); // the walk told them too; that is the transition test's business
 
     setBlocked(epic, true, "the sibling library has not released").statusCode(200);
-    assertEquals(List.of(told(project.id(), epic, true)), agents.calls());
+    assertEquals(List.of(told(project.id(), epic, "REFINED", true)), agents.calls());
 
     setBlocked(epic, true, "and still has not").statusCode(200);
     assertEquals(1, agents.calls().size(), "a block that changed nothing renames nothing");
 
     setBlocked(epic, false, null).statusCode(200);
     assertEquals(
-        List.of(told(project.id(), epic, true), told(project.id(), epic, false)), agents.calls());
+        List.of(
+            told(project.id(), epic, "REFINED", true), told(project.id(), epic, "REFINED", false)),
+        agents.calls());
 
     setBlocked(epic, false, null).statusCode(200);
     assertEquals(2, agents.calls().size());
@@ -278,6 +286,8 @@ class EntityBlockApiTest {
     Told only = agents.calls().get(0);
     assertEquals(projects.findWrapper(project.id()).orElseThrow().id, only.repositoryId());
     assertEquals(true, only.branch().startsWith("ticket/"), only.branch());
+    assertEquals("The ticket", only.title());
+    assertEquals("REPORTED", only.status());
     assertEquals(true, only.blocked());
   }
 
@@ -303,6 +313,7 @@ class EntityBlockApiTest {
     EntityFixtures.Project project = EntityFixtures.project("Block Tells Throwing");
     String epic = EntityFixtures.epic(project.id());
     walk(epic, "REFINED");
+    agents.reset();
     agents.willThrow(new IllegalStateException("a port bug"));
 
     setBlocked(epic, true, "waiting on somebody").statusCode(200).body("block.blocked", equalTo(true));
@@ -314,22 +325,94 @@ class EntityBlockApiTest {
   }
 
   /**
-   * A transition clears the flag, so a move off a blocked entity tells its agents {@code false};
-   * a move of an entity that was not blocked tells nobody anything (qits-614).
+   * <b>Every</b> transition tells the agents, exactly once, with the status it moved to — and since a
+   * transition clears the flag, a move off a block is how they learn it was lifted (qits-617). The
+   * count is the "once": the signal is wired at the transition announcement and nowhere else, so a
+   * door that also signalled would show up here as a second entry per move.
    */
   @Test
-  void aTransitionTellsTheAgentsOnlyWhenItClearedABlock() {
+  void everyTransitionTellsTheAgentsOnce() {
     EntityFixtures.Project project = EntityFixtures.project("Block Tells Transition");
     String epic = EntityFixtures.epic(project.id());
+
     walk(epic, "REFINED");
-    assertEquals(List.of(), agents.calls(), "an unblocked move tells nobody");
+    assertEquals(List.of(told(project.id(), epic, "REFINED", false)), agents.calls());
 
     setBlocked(epic, true, "the dossier owes a decision").statusCode(200);
     walk(epic, "IMPLEMENTED");
+    walk(epic, "VERIFIED");
 
     assertEquals(
-        List.of(told(project.id(), epic, true), told(project.id(), epic, false)), agents.calls());
-    walk(epic, "VERIFIED");
-    assertEquals(2, agents.calls().size(), "the next move had no block to clear");
+        List.of(
+            told(project.id(), epic, "REFINED", false),
+            told(project.id(), epic, "REFINED", true),
+            told(project.id(), epic, "IMPLEMENTED", false),
+            told(project.id(), epic, "VERIFIED", false)),
+        agents.calls());
+  }
+
+  /**
+   * {@code POST /entities/transition} — the bulk door {@code transition_entities} shares — reaches
+   * the agents too, carrying the row as the restatement left it (qits-617). Before, it wrote
+   * statuses and titles past every signal.
+   */
+  @Test
+  void theBulkTransitionDoorTellsTheAgents() {
+    EntityFixtures.Project project = EntityFixtures.project("Block Tells Bulk");
+    String ticket = EntityFixtures.ticket(project.id());
+    agents.reset();
+
+    java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+    row.put("archetype", "TICKET");
+    row.put("title", "The ticket, restated");
+    row.put("impetus", "it occurs");
+    row.put("ticketType", "BUG");
+    row.put("status", "REPORTED");
+    row.put("membership", java.util.Collections.singletonMap("parent", null));
+    given()
+        .contentType(ContentType.JSON)
+        .body(java.util.Map.of(ticket, row))
+        .when()
+        .post("/projects/api/entities/transition")
+        .then()
+        .statusCode(200);
+
+    assertEquals(1, agents.calls().size(), "one signal for the one ticket: " + agents.calls());
+    Told only = agents.calls().get(0);
+    assertEquals(true, only.branch().startsWith("ticket/"), only.branch());
+    assertEquals("The ticket, restated", only.title());
+    assertEquals("REPORTED", only.status());
+    assertEquals(false, only.blocked());
+  }
+
+  /**
+   * A retitle through the merge-patch door tells the agents the new title, once; an edit that
+   * leaves the title alone — another field, or the same title restated — tells nobody (qits-617).
+   */
+  @Test
+  void aRetitleTellsTheAgentsAndOtherEditsDoNot() {
+    EntityFixtures.Project project = EntityFixtures.project("Block Tells Retitle");
+    String epic = EntityFixtures.epic(project.id());
+    agents.reset();
+
+    patch(epic, java.util.Map.of("title", "The sharper plan"));
+    patch(epic, java.util.Map.of("title", "The sharper plan"));
+    patch(epic, java.util.Map.of("description", "what the plan now says"));
+
+    assertEquals(1, agents.calls().size(), "only the edit that changed the title: " + agents.calls());
+    Told only = agents.calls().get(0);
+    assertEquals(true, only.branch().startsWith("epic/"), only.branch());
+    assertEquals("The sharper plan", only.title());
+    assertEquals("REPORTED", only.status());
+  }
+
+  private static void patch(String id, java.util.Map<String, Object> body) {
+    given()
+        .contentType(EntityPatchController.MERGE_PATCH_JSON)
+        .body(body)
+        .when()
+        .patch("/projects/api/entities/" + id)
+        .then()
+        .statusCode(200);
   }
 }
