@@ -25,9 +25,10 @@
 # A version directory with no jar in it (a deploy that died between files) is `changed`: that
 # version is not a published artifact, so the tree has not been published.
 #
-# Deciding only — the deploy stays in the release step that calls this. Slice two (the same tree as
-# an npm tarball) adds an npm arm to "resolve and unpack the newest artifact"; the comparison below
-# is shared and does not care where the unpacked tree came from.
+# Deciding only — the deploy stays in the release step that calls this. The same tree also ships as
+# the npm package @qits/projects-golden-masters (qits-574), and that needed no npm arm here: the two
+# artifacts are published together or not at all, so the jar is the one baseline, and
+# .config/qits/golden-masters.sh wraps this answer into the single decision both publishes obey.
 #
 # ENVIRONMENT
 #   QITS_MAVEN_REGISTRY_URL  the maven repository root, as every release step already has it
