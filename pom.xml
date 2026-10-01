@@ -211,8 +211,7 @@
              every such resource off the test classpath. Test scope at the declaration site; a pin
              in <properties> like every other qits jar, so qits-maintenance bumps it when the
              consumer releases a changed pact (its PomParser reads pins regardless of scope). -->
-        <!-- TODO(orchestrator): real version -->
-        <qits.workspaces-pacts-qits-projects.version>0.0.0-LOCAL</qits.workspaces-pacts-qits-projects.version>
+        <qits.workspaces-pacts-qits-projects.version>2026.1001.140052</qits.workspaces-pacts-qits-projects.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
