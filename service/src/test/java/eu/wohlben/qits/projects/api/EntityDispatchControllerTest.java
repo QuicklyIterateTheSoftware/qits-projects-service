@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -329,6 +330,14 @@ public class EntityDispatchControllerTest {
     assertTrue(
         ticketRun.subject().qualifiedId().matches(".+-[1-9][0-9]*"),
         ticketRun.subject().qualifiedId());
+    // And the rest of the session name, `<status square> <id> <title>` (qits-617): the row's title,
+    // its status as the enum's name and its block flag, as they stand at the press.
+    assertEquals("Same path ticket", ticketRun.subject().title());
+    assertEquals("Same path epic", epicRun.subject().title());
+    assertEquals("REPORTED", ticketRun.subject().status());
+    assertEquals("REPORTED", epicRun.subject().status());
+    assertFalse(ticketRun.subject().blocked());
+    assertFalse(epicRun.subject().blocked());
     assertNotEquals(ticketRun.instruction(), epicRun.instruction(), "the words are per archetype");
     assertTrue(ticketRun.instruction().contains("update_ticket"), ticketRun.instruction());
     assertTrue(epicRun.instruction().contains("add_feature"), epicRun.instruction());

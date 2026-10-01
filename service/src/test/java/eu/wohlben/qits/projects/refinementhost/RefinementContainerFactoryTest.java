@@ -31,6 +31,11 @@ public class RefinementContainerFactoryTest {
     credentials.reset();
   }
 
+  /** The entity a bring-up is handed, with no title and no status — the pre-qits-617 shape. */
+  private static RefinementRuntime.RefinedEntity entity(String qualifiedId, boolean blocked) {
+    return new RefinementRuntime.RefinedEntity(qualifiedId, null, null, blocked);
+  }
+
   private Refinement refinement() {
     Refinement refinement = new Refinement();
     refinement.id = 7L;
@@ -47,7 +52,7 @@ public class RefinementContainerFactoryTest {
   @Test
   public void theSpecCarriesTheWholeDialHomeContract() {
     EnsureRequest request =
-        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null, false);
+        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", entity(null, false));
     Map<String, String> env = request.spec().env();
 
     assertEquals("ws://dev-qits-projects:8080/projects/refinement-daemon/7", env.get("QITS_WORKSPACE_DAEMON_URL"));
@@ -91,26 +96,26 @@ public class RefinementContainerFactoryTest {
         "demo-614",
         factory
             .forExistingContainer(
-                refinement(), "demo", "sharper-onboarding", "demo-demo", "demo-614", false)
+                refinement(), "demo", "sharper-onboarding", "demo-demo", entity("demo-614", false))
             .spec()
             .env()
             .get("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
     assertEquals(
         "demo-614",
         factory
-            .forFreshContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", "demo-614", false)
+            .forFreshContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", entity("demo-614", false))
             .spec()
             .env()
             .get("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
     assertFalse(
         factory
-            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null, false)
+            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", entity(null, false))
             .spec()
             .env()
             .containsKey("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
     assertFalse(
         factory
-            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", " ", false)
+            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", entity(" ", false))
             .spec()
             .env()
             .containsKey("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
@@ -127,7 +132,7 @@ public class RefinementContainerFactoryTest {
     Map<String, String> blocked =
         factory
             .forExistingContainer(
-                refinement(), "demo", "sharper-onboarding", "demo-demo", "demo-614", true)
+                refinement(), "demo", "sharper-onboarding", "demo-demo", entity("demo-614", true))
             .spec()
             .env();
     assertEquals("true", blocked.get("QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED"));
@@ -135,7 +140,7 @@ public class RefinementContainerFactoryTest {
         "true",
         factory
             .forFreshContainer(
-                refinement(), "demo", "sharper-onboarding", "demo-demo", "demo-614", true)
+                refinement(), "demo", "sharper-onboarding", "demo-demo", entity("demo-614", true))
             .spec()
             .env()
             .get("QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED"));
@@ -143,13 +148,64 @@ public class RefinementContainerFactoryTest {
     Map<String, String> unblocked =
         factory
             .forExistingContainer(
-                refinement(), "demo", "sharper-onboarding", "demo-demo", "demo-614", false)
+                refinement(), "demo", "sharper-onboarding", "demo-demo", entity("demo-614", false))
             .spec()
             .env();
     assertFalse(unblocked.containsKey("QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED"));
     Map<String, String> withoutTheFlag = new java.util.LinkedHashMap<>(blocked);
     withoutTheFlag.remove("QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED");
     assertEquals(unblocked, withoutTheFlag);
+  }
+
+  /**
+   * The rest of the session name (qits-617): the entity's title and status reach the daemon as
+   * {@code QITS_WORKSPACE_DAEMON_ENTITY_TITLE} and {@code _STATUS} beside the id and the flag, on
+   * both arms, the status as the enum's name — and each is left off, not blank, when unknown.
+   */
+  @Test
+  public void theTitleAndStatusAreInjectedWhenKnownAndOmittedWhenNot() {
+    RefinementRuntime.RefinedEntity known =
+        new RefinementRuntime.RefinedEntity("demo-617", "Sharper onboarding", "REPORTED", true);
+    for (Map<String, String> env :
+        java.util.List.of(
+            factory
+                .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", known)
+                .spec()
+                .env(),
+            factory
+                .forFreshContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", known)
+                .spec()
+                .env())) {
+      assertEquals("demo-617", env.get("QITS_WORKSPACE_DAEMON_ENTITY_ID"));
+      assertEquals("Sharper onboarding", env.get("QITS_WORKSPACE_DAEMON_ENTITY_TITLE"));
+      assertEquals("REPORTED", env.get("QITS_WORKSPACE_DAEMON_ENTITY_STATUS"));
+      assertEquals("true", env.get("QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED"));
+    }
+
+    Map<String, String> unknown =
+        factory
+            .forExistingContainer(
+                refinement(),
+                "demo",
+                "sharper-onboarding",
+                "demo-demo",
+                RefinementRuntime.RefinedEntity.UNKNOWN)
+            .spec()
+            .env();
+    assertFalse(unknown.containsKey("QITS_WORKSPACE_DAEMON_ENTITY_TITLE"));
+    assertFalse(unknown.containsKey("QITS_WORKSPACE_DAEMON_ENTITY_STATUS"));
+    Map<String, String> blank =
+        factory
+            .forExistingContainer(
+                refinement(),
+                "demo",
+                "sharper-onboarding",
+                "demo-demo",
+                new RefinementRuntime.RefinedEntity(null, " ", "", false))
+            .spec()
+            .env();
+    assertFalse(blank.containsKey("QITS_WORKSPACE_DAEMON_ENTITY_TITLE"));
+    assertFalse(blank.containsKey("QITS_WORKSPACE_DAEMON_ENTITY_STATUS"));
   }
 
   /**
@@ -165,7 +221,7 @@ public class RefinementContainerFactoryTest {
   public void theGitAddressIsTheSharedInternalAlias() {
     Map<String, String> env =
         factory
-            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null, false)
+            .forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", entity(null, false))
             .spec()
             .env();
 
@@ -179,7 +235,7 @@ public class RefinementContainerFactoryTest {
   @Test
   public void noIdpMeansNoCredentialBlockAtAll() {
     EnsureRequest request =
-        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", null, false);
+        factory.forExistingContainer(refinement(), "demo", "sharper-onboarding", "demo-demo", entity(null, false));
     Map<String, String> env = request.spec().env();
     assertFalse(env.containsKey("QITS_COMMISSIONED_CLIENT_ID"));
     assertFalse(env.containsKey("QITS_COMMISSIONED_CLIENT_SECRET"));
@@ -194,7 +250,7 @@ public class RefinementContainerFactoryTest {
     refinement.commissionedClientId = "dyn-refinement-7-1";
     refinement.commissionedClientSecret = "secret-dyn-refinement-7-1";
     EnsureRequest request =
-        factory.forExistingContainer(refinement, "demo", "sharper-onboarding", "demo-demo", null, false);
+        factory.forExistingContainer(refinement, "demo", "sharper-onboarding", "demo-demo", entity(null, false));
     Map<String, String> env = request.spec().env();
     assertEquals("dyn-refinement-7-1", env.get("QITS_COMMISSIONED_CLIENT_ID"));
     assertEquals("secret-dyn-refinement-7-1", env.get("QITS_COMMISSIONED_CLIENT_SECRET"));

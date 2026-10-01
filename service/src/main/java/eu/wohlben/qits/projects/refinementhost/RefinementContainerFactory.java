@@ -276,25 +276,21 @@ public class RefinementContainerFactory {
   /**
    * The fresh arm — commissions a credential of the container's own.
    *
-   * @param qualifiedEntityId the refined entity's {@code <project-slug>-<number>}, or {@code null}
-   *     when the caller could not render it — see {@code QITS_WORKSPACE_DAEMON_ENTITY_ID} below
-   * @param entityBlocked whether the refined entity is blocked as the row stands now — see {@code
-   *     QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED} below
+   * @param entity the refined entity as the row stands now — its qualified id, title, status and
+   *     block flag; see the {@code QITS_WORKSPACE_DAEMON_ENTITY_*} names below
    */
   public EnsureRequest forFreshContainer(
       Refinement refinement,
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId,
-      boolean entityBlocked) {
+      RefinementRuntime.RefinedEntity entity) {
     return request(
         refinement,
         projectSlug,
         slug,
         wrapperName,
-        qualifiedEntityId,
-        entityBlocked,
+        entity,
         commissions.forFreshContainer(refinement));
   }
 
@@ -304,15 +300,13 @@ public class RefinementContainerFactory {
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId,
-      boolean entityBlocked) {
+      RefinementRuntime.RefinedEntity entity) {
     return request(
         refinement,
         projectSlug,
         slug,
         wrapperName,
-        qualifiedEntityId,
-        entityBlocked,
+        entity,
         commissions.forExistingContainer(refinement));
   }
 
@@ -321,9 +315,9 @@ public class RefinementContainerFactory {
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId,
-      boolean entityBlocked,
+      RefinementRuntime.RefinedEntity entity,
       Optional<RefinementCredentials.Commissioned> credential) {
+    String qualifiedEntityId = entity == null ? null : entity.qualifiedId();
     Map<String, String> env = new LinkedHashMap<>();
     env.put("TZ", timezone());
     // The dial-home url, dialled verbatim; the daemon parses no path out of it.
@@ -338,20 +332,33 @@ public class RefinementContainerFactory {
     env.put("QITS_WORKSPACE_DAEMON_BRANCH", refinement.branch);
     env.put("QITS_WORKSPACE_DAEMON_PARENT", refinement.parent);
     // The refined entity as a person names it — `qits-614` — so the daemon names its sessions
-    // `qits-614: refining/<slug>` rather than after a uuid (qits-614). A label, never an address:
+    // `<status square> qits-614 <title>` rather than after a uuid (qits-614, qits-617). A label, never an address:
     // unset rather than blank when the caller could not render it, the way every optional name here
     // is left off. Adding it moves the spec hash, so a standing container is replaced once at its
     // next wake (Recreate.ifChanged), its /workspace volume reattached — the cost of any env change.
     if (qualifiedEntityId != null && !qualifiedEntityId.isBlank()) {
       env.put("QITS_WORKSPACE_DAEMON_ENTITY_ID", qualifiedEntityId);
     }
-    // The entity's block flag at creation, so the daemon's session names start with the `❗ ` marker
-    // a blocked entity carries (qits-614); a change while the container runs arrives through
-    // RefinementAgentBlocks instead. Set only when TRUE, never as "false": an unblocked entity's spec
-    // stays byte-identical to the one every standing container was created with, so this costs no
-    // replacement except for a container whose entity is blocked when it next wakes — which is the
-    // one container whose name is wrong without it.
-    if (entityBlocked) {
+    // The rest of the session name, `<status square> <id> <title>` (qits-617): the entity's title
+    // and its status as stored (the EntityStatus name the daemon maps to the square's colour), each
+    // left off rather than blank when unknown. Read off the row at every bring-up, so a container
+    // that slept through a retitle or a transition is right at its next wake; a change while it runs
+    // arrives through RefinementAgentEntities instead. The cost is the one ENTITY_ID already pays,
+    // and more often: either value moving moves the spec hash, so the container is replaced at its
+    // next wake (Recreate.ifChanged) with its /workspace volume reattached — once now, as these two
+    // names first appear, and again after any retitle or transition it slept through.
+    if (entity != null && entity.title() != null && !entity.title().isBlank()) {
+      env.put("QITS_WORKSPACE_DAEMON_ENTITY_TITLE", entity.title());
+    }
+    if (entity != null && entity.status() != null && !entity.status().isBlank()) {
+      env.put("QITS_WORKSPACE_DAEMON_ENTITY_STATUS", entity.status());
+    }
+    // The entity's block flag at creation, which pales the session name's status square (qits-614,
+    // qits-617); a change while the container runs arrives through RefinementAgentEntities instead.
+    // Set only when TRUE, never as "false": an unblocked entity's spec carries no line for it, so the
+    // flag alone replaces only a container whose entity is blocked when it next wakes — the one
+    // container whose name is wrong without it.
+    if (entity != null && entity.blocked()) {
       env.put("QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED", "true");
     }
     // Both halves of the name-addressed clone: relative submodule urls resolve only against

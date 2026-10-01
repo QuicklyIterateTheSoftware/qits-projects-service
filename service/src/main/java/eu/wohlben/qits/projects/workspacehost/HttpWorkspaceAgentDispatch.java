@@ -38,7 +38,9 @@ import org.jboss.logging.Logger;
  *
  *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;",
  *    "gitRefs": ["refs/heads/ticket/&lt;slug&gt;"], "branchTree": true,
- *    "ticketId": "…", "instruction": "&lt;the agent's first turn&gt;"}
+ *    "ticketId": "…", "entityId": "qits-617", "entityTitle": "…",
+ *    "entityStatus": "REFINED", "entityBlocked": false,
+ *    "instruction": "&lt;the agent's first turn&gt;"}
  *
  *   -&gt; 200 {"workspace": {"id": 41, …}, "fresh": true,
  *           "agentLaunch": "SCHEDULED"|"SKIPPED_RUNNING", "technicalProcessId": "…"|null}
@@ -170,6 +172,19 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     // A label only: an older qits-workspaces ignores it and the dispatch is the same dispatch.
     if (subject != null && subject.qualifiedId() != null) {
       body.put("entityId", subject.qualifiedId());
+    }
+    // The rest of the session name, `<status square> <id> <title>` (qits-617): the title and the
+    // status enum's name, each omitted when unknown, and the blocked flag that pales the square. The
+    // dispatch seeds them; every later change reaches the standing workspace through
+    // HttpWorkspaceAgentEntities. Labels only, and an older qits-workspaces ignores all three.
+    if (subject != null && subject.title() != null) {
+      body.put("entityTitle", subject.title());
+    }
+    if (subject != null && subject.status() != null) {
+      body.put("entityStatus", subject.status());
+    }
+    if (subject != null) {
+      body.put("entityBlocked", subject.blocked());
     }
     body.put("instruction", instruction);
 

@@ -1,37 +1,40 @@
 package eu.wohlben.qits.projects.testsupport;
 
-import eu.wohlben.qits.projects.control.WorkspaceAgentBlocks;
+import eu.wohlben.qits.projects.control.WorkspaceAgentEntities;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A TEST-SCOPE implementation of the {@link WorkspaceAgentBlocks} port that records which workspace
- * was told its work is blocked or unblocked instead of dialling qits-workspaces (qits-614).
+ * A TEST-SCOPE implementation of the {@link WorkspaceAgentEntities} port that records which workspace
+ * was told its work's title, status and blocked flag instead of dialling qits-workspaces (qits-614,
+ * qits-617).
  *
  * <p>No {@code @Alternative}: the port is {@code void}, so there is no answer for a second
  * implementation to make a caller report — the rule this package states for {@link
- * RecordingWorkspaceLifecycle}. The shipped adapter ({@code workspacehost/HttpWorkspaceAgentBlocks})
+ * RecordingWorkspaceLifecycle}. The shipped adapter ({@code workspacehost/HttpWorkspaceAgentEntities})
  * is a {@code @DefaultBean}, which any other bean displaces.
  *
  * <p>{@link #willThrow} scripts the one thing the port promises never to do, for {@link
- * RecordingWorkspaceAgentTurns}' reason: the signal follows a block or a transition already
+ * RecordingWorkspaceAgentTurns}' reason: the signal follows a block, a transition or a retitle already
  * recorded, and the only way to assert a port bug cannot undo either is to have one break its own
  * contract on purpose.
  */
 @ApplicationScoped
-public class RecordingWorkspaceAgentBlocks implements WorkspaceAgentBlocks {
+public class RecordingWorkspaceAgentEntities implements WorkspaceAgentEntities {
 
   /** One signal, exactly as the caller sent it. */
-  public record Told(String repositoryId, String branch, boolean blocked) {}
+  public record Told(
+      String repositoryId, String branch, String title, String status, boolean blocked) {}
 
   private final List<Told> calls = new ArrayList<>();
 
   private RuntimeException failure;
 
   @Override
-  public synchronized void blocked(String repositoryId, String branch, boolean blocked) {
-    calls.add(new Told(repositoryId, branch, blocked));
+  public synchronized void changed(
+      String repositoryId, String branch, String title, String status, boolean blocked) {
+    calls.add(new Told(repositoryId, branch, title, status, blocked));
     if (failure != null) {
       throw failure;
     }

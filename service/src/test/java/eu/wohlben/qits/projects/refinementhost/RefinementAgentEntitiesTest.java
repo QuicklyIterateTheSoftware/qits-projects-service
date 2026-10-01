@@ -18,20 +18,21 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link RefinementAgentBlocks} — plain JUnit over a directly-constructed bean, a Vert.x server
- * standing in for the far end of the tunnel (qits-614).
+ * {@link RefinementAgentEntities} — plain JUnit over a directly-constructed bean, a Vert.x server
+ * standing in for the far end of the tunnel (qits-614, qits-617).
  *
  * <p>What is pinned is what the proxy would otherwise have done for this hop and nothing does now:
  * the path keeps the proxy prefix (the daemon refuses anything outside the base it was told), the
  * bearer is the daemon api token, the {@code Host} is the daemon's own authority, and the body is
- * {@code {"blocked": …}}. And that nothing — no refinement, no tunnel, a 404 from an older daemon, a
- * lookup that throws — escapes as an exception.
+ * {@code {"title": …, "status": …, "blocked": …}}; that a daemon older than {@code agents/entity}
+ * is told the flag on {@code agents/blocked}; and that nothing — no refinement, no tunnel, a daemon
+ * older than both routes, a lookup that throws — escapes as an exception.
  *
  * <p><b>Every request is issued from a Vert.x worker</b> ({@code executeBlocking}), never from the
  * JUnit thread: a client driven from a thread with no context mints a new context per call and can
  * leave a request unwritten under load. In production the callers are request workers too.
  */
-class RefinementAgentBlocksTest {
+class RefinementAgentEntitiesTest {
 
   private record Received(String method, String uri, String auth, String host, String body) {}
 
@@ -40,6 +41,8 @@ class RefinementAgentBlocksTest {
   private HttpClient client;
   private final List<Received> received = new CopyOnWriteArrayList<>();
   private final AtomicInteger status = new AtomicInteger(200);
+  /** A route suffix this daemon does not serve: 404 there, whatever {@link #status} says. */
+  private final List<String> unserved = new CopyOnWriteArrayList<>();
 
   @BeforeEach
   void start() throws Exception {
@@ -60,7 +63,12 @@ class RefinementAgentBlocksTest {
                                       request.getHeader("Authorization"),
                                       request.getHeader("Host"),
                                       body.toString()));
-                              request.response().setStatusCode(status.get()).end();
+                              boolean served =
+                                  unserved.stream().noneMatch(request.uri()::endsWith);
+                              request
+                                  .response()
+                                  .setStatusCode(served ? status.get() : 404)
+                                  .end();
                             }))
             .listen(0, "127.0.0.1")
             .toCompletionStage()
@@ -74,8 +82,8 @@ class RefinementAgentBlocksTest {
     vertx.close().toCompletionStage().toCompletableFuture().get(10, TimeUnit.SECONDS);
   }
 
-  private RefinementAgentBlocks blocks(Optional<Refinement> refinement, boolean tunnelUp) {
-    RefinementAgentBlocks blocks = new RefinementAgentBlocks();
+  private RefinementAgentEntities blocks(Optional<Refinement> refinement, boolean tunnelUp) {
+    RefinementAgentEntities blocks = new RefinementAgentEntities();
     blocks.daemonApiToken = "daemon-token";
     blocks.daemonApiPort = 13338;
     blocks.timeoutMs = 5000;
@@ -119,29 +127,63 @@ class RefinementAgentBlocksTest {
   }
 
   @Test
-  void theFlagIsPostedToTheDaemonUnderItsProxiedBase() throws Exception {
-    RefinementAgentBlocks blocks = blocks(refinement(7), true);
+  void theEntityIsPostedToTheDaemonUnderItsProxiedBase() throws Exception {
+    RefinementAgentEntities blocks = blocks(refinement(7), true);
 
-    onAWorker(() -> blocks.blocked("epic-1", true));
-    onAWorker(() -> blocks.blocked("epic-1", false));
+    onAWorker(() -> blocks.changed("epic-1", "Onboarding \"v2\"", "REPORTED", true));
+    onAWorker(() -> blocks.changed("epic-1", "Onboarding", "REFINED", false));
 
-    assertEquals(2, received.size(), "one POST per signal: " + received);
+    assertEquals(2, received.size(), "one POST per signal, no fallback on a 200: " + received);
     Received first = received.get(0);
     assertEquals("POST", first.method());
-    assertEquals("/projects/refinement-container/7/agents/blocked", first.uri());
+    assertEquals("/projects/refinement-container/7/agents/entity", first.uri());
     assertEquals("Bearer daemon-token", first.auth());
     assertEquals("localhost:13338", first.host());
-    assertEquals("{\"blocked\":true}", first.body());
-    assertEquals("{\"blocked\":false}", received.get(1).body());
+    // A title is a person's text: it is JSON-encoded, never concatenated.
+    assertEquals(
+        "{\"title\":\"Onboarding \\\"v2\\\"\",\"status\":\"REPORTED\",\"blocked\":true}",
+        first.body());
+    assertEquals(
+        "{\"title\":\"Onboarding\",\"status\":\"REFINED\",\"blocked\":false}",
+        received.get(1).body());
   }
 
-  /** A daemon older than the route answers 404: one WARN, and the caller never hears of it. */
+  /** A daemon older than {@code agents/entity} is told the flag on the route it does have. */
   @Test
-  void anOlderDaemonWithoutTheRouteIsNeverAThrow() throws Exception {
-    status.set(404);
-    RefinementAgentBlocks blocks = blocks(refinement(7), true);
+  void anOlderDaemonIsToldTheFlagOnTheBlockedRoute() throws Exception {
+    unserved.add("/agents/entity");
+    RefinementAgentEntities blocks = blocks(refinement(7), true);
 
-    onAWorker(() -> assertDoesNotThrow(() -> blocks.blocked("epic-1", true)));
+    onAWorker(
+        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
+
+    assertEquals(2, received.size(), "the entity route, then the blocked route: " + received);
+    assertEquals("/projects/refinement-container/7/agents/entity", received.get(0).uri());
+    assertEquals("/projects/refinement-container/7/agents/blocked", received.get(1).uri());
+    assertEquals("Bearer daemon-token", received.get(1).auth());
+    assertEquals("{\"blocked\":true}", received.get(1).body());
+  }
+
+  /** A daemon older than both routes answers 404 twice: one WARN, never a throw, no third ask. */
+  @Test
+  void aDaemonOlderThanBothRoutesIsNeverAThrow() throws Exception {
+    status.set(404);
+    RefinementAgentEntities blocks = blocks(refinement(7), true);
+
+    onAWorker(
+        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
+
+    assertEquals(2, received.size());
+  }
+
+  /** Any refusal other than a 404 is not an older daemon, and is not retried on the old route. */
+  @Test
+  void aRefusalOtherThan404IsNotRetried() throws Exception {
+    status.set(500);
+    RefinementAgentEntities blocks = blocks(refinement(7), true);
+
+    onAWorker(
+        () -> assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true)));
 
     assertEquals(1, received.size());
   }
@@ -149,8 +191,8 @@ class RefinementAgentBlocksTest {
   /** No room, or a room whose daemon is not connected: nothing is dialled and nothing thrown. */
   @Test
   void noRefinementOrNoTunnelDialsNothing() throws Exception {
-    onAWorker(() -> blocks(Optional.empty(), true).blocked("epic-1", true));
-    onAWorker(() -> blocks(refinement(7), false).blocked("epic-1", true));
+    onAWorker(() -> blocks(Optional.empty(), true).changed("epic-1", "Onboarding", "REFINED", true));
+    onAWorker(() -> blocks(refinement(7), false).changed("epic-1", "Onboarding", "REFINED", true));
 
     assertTrue(received.isEmpty(), "nothing standing, nothing asked: " + received);
   }
@@ -158,7 +200,7 @@ class RefinementAgentBlocksTest {
   /** The lookup failing is the caller's problem never: the block is already recorded. */
   @Test
   void aLookupThatThrowsIsSwallowed() {
-    RefinementAgentBlocks blocks = blocks(Optional.empty(), false);
+    RefinementAgentEntities blocks = blocks(Optional.empty(), false);
     blocks.refinements =
         new RefinementService() {
           @Override
@@ -167,6 +209,6 @@ class RefinementAgentBlocksTest {
           }
         };
 
-    assertDoesNotThrow(() -> blocks.blocked("epic-1", true));
+    assertDoesNotThrow(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true));
   }
 }

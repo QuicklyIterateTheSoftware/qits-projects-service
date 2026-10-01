@@ -128,8 +128,10 @@ class EntityWorkspaces {
 
   /**
    * What a workspace names this entity as — see {@link WorkspaceAgentDispatch.Subject} — <b>with its
-   * qualified id</b>, {@code <project-slug>-<number>}, so the agent's sessions read {@code qits-614:
-   * ticket/<slug>} (qits-614).
+   * qualified id</b>, {@code <project-slug>-<number>}, and the row's title, status name and blocked
+   * flag as they stand now, so the agent's sessions read {@code <status square> qits-617 <title>}
+   * from the first one (qits-614, qits-617). The three are read off {@code entity} with no further
+   * read; every later change of them is {@link AgentEntitySignals}' to push.
    *
    * <p><b>Degrades, never throws.</b> The qualified id is a label on a dispatch somebody is waiting
    * for, and a label is not worth a refused press: a project row that does not resolve, a row with
@@ -138,7 +140,10 @@ class EntityWorkspaces {
    * QualifiedEntityIds#render}'s — the separator is decided there and nowhere else.
    */
   WorkspaceAgentDispatch.Subject subjectOf(WorkEntity entity) {
-    WorkspaceAgentDispatch.Subject subject = bareSubjectOf(entity);
+    WorkspaceAgentDispatch.Subject subject =
+        bareSubjectOf(entity)
+            .withEntityState(
+                entity.title, entity.status, entity.blocked);
     String qualifiedId = qualifiedIdOf(entity);
     return qualifiedId == null ? subject : subject.withQualifiedId(qualifiedId);
   }

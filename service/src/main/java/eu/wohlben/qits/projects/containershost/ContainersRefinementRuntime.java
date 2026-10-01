@@ -77,16 +77,14 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId,
-      boolean entityBlocked) {
+      RefinedEntity entity) {
     String name = factory.containerName(projectSlug, slug);
     requireNameFree(refinement.id, name);
     ensureVolume(refinement.id);
     bringUp(
         refinement.id,
         name,
-        factory.forFreshContainer(
-            refinement, projectSlug, slug, wrapperName, qualifiedEntityId, entityBlocked));
+        factory.forFreshContainer(refinement, projectSlug, slug, wrapperName, entity));
   }
 
   @Override
@@ -95,15 +93,13 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId,
-      boolean entityBlocked) {
+      RefinedEntity entity) {
     String name = factory.containerName(projectSlug, slug);
     ensureVolume(refinement.id);
     bringUp(
         refinement.id,
         name,
-        factory.forExistingContainer(
-            refinement, projectSlug, slug, wrapperName, qualifiedEntityId, entityBlocked));
+        factory.forExistingContainer(refinement, projectSlug, slug, wrapperName, entity));
   }
 
   @Override

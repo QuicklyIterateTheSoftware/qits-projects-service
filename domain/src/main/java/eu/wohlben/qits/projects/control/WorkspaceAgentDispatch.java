@@ -87,27 +87,48 @@ public interface WorkspaceAgentDispatch {
    * <p>{@code qualifiedId} is the same row named the way a commit subject and a person name it —
    * {@code <project-slug>-<number>}, {@code qits-614} — rendered by {@code QualifiedEntityIds} and
    * nowhere else. The far side hands it to the workspace daemon, which names the agent's sessions
-   * {@code qits-614: ticket/<slug>} rather than after a UUID nobody can read. It is a <b>label</b>
+   * {@code <status square> qits-614 <title>} (qits-617; it was {@code qits-614: ticket/<slug>}
+   * before) rather than after a UUID nobody can read. It is a <b>label</b>
    * and never a key: nothing resolves it, so a dispatch that could not render it (a project row gone
    * between two reads, a row with no number) sends the two ids alone and loses nothing but the name.
    * {@code null} therefore means "not known here", and the wire leaves the field off rather than
    * stating an absence.
    *
+   * <h2>Title, status and the blocked flag ride too, as the session name's other three parts (qits-617)</h2>
+   *
+   * <p>The far side names the agent's sessions {@code <status square> <qualified id> <title>} — the
+   * square a colour for the entity's status, pale while it is blocked — so a person scanning a list
+   * of sessions reads what each one is working on and whether it is waiting on them without opening
+   * any. This is the value <b>at dispatch</b>; every later change of any of the three is pushed to
+   * the standing workspace by {@code WorkspaceAgentEntities}, so this is the seed and not the only
+   * copy. Like the qualified id they are labels and never keys: {@code entityTitle} and {@code
+   * entityStatus} are left off the wire when unknown, and {@code entityStatus} is the status enum's
+   * <em>name</em> ({@code REFINED}), the far side's word to map to a colour, never a rendered label.
+   *
    * @param ticketId the ticket this dispatch is about, or {@code null}
    * @param epicId the epic this dispatch is about, or {@code null}
    * @param qualifiedId the row's {@code <project-slug>-<number>}, or {@code null} when it could not
    *     be rendered
+   * @param title the row's title as it stands at dispatch, or {@code null} when not known
+   * @param status the row's status enum name at dispatch, or {@code null} when not known
+   * @param blocked whether the row is blocked at dispatch; {@code false} when not known
    */
-  record Subject(String ticketId, String epicId, String qualifiedId) {
+  record Subject(
+      String ticketId,
+      String epicId,
+      String qualifiedId,
+      String title,
+      String status,
+      boolean blocked) {
 
-    /** A ticket dispatch, its qualified id not (yet) known. */
+    /** A ticket dispatch, its qualified id and entity state not (yet) known. */
     public static Subject ticket(String ticketId) {
-      return new Subject(ticketId, null, null);
+      return new Subject(ticketId, null, null, null, null, false);
     }
 
-    /** An epic dispatch, its qualified id not (yet) known. */
+    /** An epic dispatch, its qualified id and entity state not (yet) known. */
     public static Subject epic(String epicId) {
-      return new Subject(null, epicId, null);
+      return new Subject(null, epicId, null, null, null, false);
     }
 
     /**
@@ -116,7 +137,15 @@ public interface WorkspaceAgentDispatch {
      * no slug to hand simply does not call it.
      */
     public Subject withQualifiedId(String qualifiedId) {
-      return new Subject(ticketId, epicId, qualifiedId);
+      return new Subject(ticketId, epicId, qualifiedId, title, status, blocked);
+    }
+
+    /**
+     * The same subject, also carrying the row's title, status name and blocked flag as they stand
+     * now — the rest of the session name. A wither for {@link #withQualifiedId}'s reason.
+     */
+    public Subject withEntityState(String title, String status, boolean blocked) {
+      return new Subject(ticketId, epicId, qualifiedId, title, status, blocked);
     }
   }
 
