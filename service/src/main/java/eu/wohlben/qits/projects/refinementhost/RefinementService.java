@@ -396,6 +396,23 @@ public class RefinementService {
   }
 
   /**
+   * Best-effort graceful stop ahead of {@link RefinementRuntime#delete}, at every call site that
+   * tears a refinement container down. {@code runtime.stop} is itself documented never-throw, but a
+   * failure here must never block the removal that follows, so any {@link RuntimeException} is
+   * logged and swallowed. The point: the refinement container runs the same workspace daemon a
+   * workspace container does, and a coding agent inside it (started with {@code claude
+   * --remote-control}) only archives its claude.ai session on SIGTERM — a bare delete (docker rm
+   * -f) SIGKILLs it instead and leaves the session dangling.
+   */
+  private void stopBeforeDelete(long id) {
+    try {
+      runtime.stop(id);
+    } catch (RuntimeException e) {
+      LOG.debugf(e, "Graceful stop before removal failed for refinement %s; removing anyway", id);
+    }
+  }
+
+  /**
    * The end of a refinement: container, volume, credential, branch, row — in that order, so a
    * failure leaves nothing orphaned ahead of it. The entity's DROPPED transition is its own call on
    * its archetype's surface; this tears down only what this service hosts.
@@ -405,6 +422,7 @@ public class RefinementService {
     tunnels.closeTunnel(id);
     registry.forget(id);
     activeProcesses.remove(id);
+    stopBeforeDelete(id);
     runtime.delete(id);
     commissions.handBack(refinement);
     deleteBranchQuietly(refinement);
@@ -476,6 +494,7 @@ public class RefinementService {
         process.appendLine(
             "container",
             "The branch " + refinement.branch + " no longer exists on " + ProjectService.wrapperName(project) + ".");
+        stopBeforeDelete(id);
         runtime.delete(id);
         commissions.handBack(refinement);
         QuarkusTransaction.requiringNew().run(() -> store.deleteById(id));
@@ -488,6 +507,10 @@ public class RefinementService {
       RefinementRuntime.ContainerInfo existing = runtime.inspect(id).orElse(null);
       if (replace && existing != null) {
         process.appendLine("container", "Removing the container (the checkout volume survives).");
+        // A stopped container has nothing to SIGTERM; only stop it first when it is known running.
+        if (existing.running()) {
+          stopBeforeDelete(id);
+        }
         runtime.delete(id);
         existing = null;
       }

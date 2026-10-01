@@ -7,6 +7,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -83,9 +85,19 @@ public class FakeRefinementRuntime implements RefinementRuntime {
         refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
   }
 
+  /** Test hook: the next {@link #stop} call against this refinement throws instead of pausing it. */
+  private final Set<Long> throwOnStop = ConcurrentHashMap.newKeySet();
+
+  public void throwOnNextStop(long refinementId) {
+    throwOnStop.add(refinementId);
+  }
+
   @Override
   public synchronized void stop(long refinementId) {
     calls.add("stop:" + refinementId);
+    if (throwOnStop.remove(refinementId)) {
+      throw new RuntimeException("fake stop failure for refinement " + refinementId);
+    }
     ContainerInfo existing = places.get(refinementId);
     if (existing != null) {
       places.put(refinementId, new ContainerInfo(existing.containerName(), false));
@@ -113,10 +125,16 @@ public class FakeRefinementRuntime implements RefinementRuntime {
     places.put(refinementId, new ContainerInfo(name, running));
   }
 
+  /** Forget the recorded verbs only, keeping every place as it stands. */
+  public void clearCalls() {
+    calls.clear();
+  }
+
   public synchronized void reset() {
     places.clear();
     calls.clear();
     qualifiedEntityIds.clear();
     blockedFlags.clear();
+    throwOnStop.clear();
   }
 }
