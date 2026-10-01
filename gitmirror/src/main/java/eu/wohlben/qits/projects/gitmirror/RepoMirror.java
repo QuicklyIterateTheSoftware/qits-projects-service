@@ -693,6 +693,16 @@ public final class RepoMirror {
   }
 
   /**
+   * Delete a tag on the git host — a push like {@link #deleteBranch}, never a write to anybody's ref
+   * store, so the host announces it. Several tags are one {@link #push} of several {@link
+   * PushSpec.Ref#deleteTag} refspecs; this is the one-tag spelling.
+   */
+  public PushOutcome deleteTag(String tag) {
+    requireRefName("tag", tag);
+    return push(PushSpec.of(PushSpec.Ref.deleteTag(tag)));
+  }
+
+  /**
    * The {@code -c http.extraHeader=…} value for this push, or empty when nothing caused it.
    *
    * <p><b>The id has to parse as a UUID or no header is sent.</b> That is not a formality: the value

@@ -279,6 +279,25 @@ class RepoMirrorTest {
   }
 
   @Test
+  void deletingTagsIsAPushAndSeveralGoInOne() throws Exception {
+    TestBare.output(bare.toFile(), "git", "tag", "2026.930.1", "main");
+    TestBare.output(bare.toFile(), "git", "tag", "2026.930.2", "main");
+    TestBare.output(bare.toFile(), "git", "tag", "2026.930.3", "main");
+    RepoMirror mirror = mirrors.of(repoId);
+    mirror.refreshNow();
+
+    assertTrue(mirror.deleteTag("2026.930.1").accepted());
+    assertFalse(TestBare.refs(bare).contains("refs/tags/2026.930.1"));
+
+    PushOutcome batch =
+        mirror.push(
+            PushSpec.of(PushSpec.Ref.deleteTag("2026.930.2"), PushSpec.Ref.deleteTag("2026.930.3")));
+    assertTrue(batch.accepted());
+    assertFalse(TestBare.refs(bare).contains("refs/tags/"), "both tags left in one receive-pack");
+    assertTrue(TestBare.refs(bare).contains("refs/heads/main"), "and nothing else moved");
+  }
+
+  @Test
   void aPushTheHookRejectsIsAnAnswerNotAnException() throws Exception {
     // The protection hook is qits-githost's job in production; this fixture stands in for its
     // refusal shape by rejecting a delete of the checked-out branch some servers guard the same

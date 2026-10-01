@@ -77,6 +77,7 @@ machine surface keeps the segment `/projects`:
 | `/projects/api/…` | the REST surface (`quarkus.rest.path`) |
 | `/projects/api/projects/{projectId}/repositories/by-name/{repoName}` | `(project, name) → repositoryId`, what the git host resolves its name-addressed route `/git/<projectId>/<repoName>` through. Requires `qits:system` — the only route the git host calls, now that the post-receive intake has become a domain event |
 | `/projects/api/pins` | the images a container launch by this process would pull — `{generatedAt, pins:[{image, version, launches}]}`, one row per configured pair (`agent`, `refinement`), the image registry-relative and a blank version omitted. A pin source for qits-artifacts' registry GC, read by qits-platform-orchestrator; `qits:admin` \| `qits:system`. It answers the **effective** version — what this process resolved at boot — where qits-configuration answers the configured one, and the two differ until this service is deployed again; a launch pulls cold, so the lagging value is the one the GC must keep. Read from the container factories themselves, dialling nobody — the agent row's version is the pom pin `eu.wohlben.qits:qits-projects-daemon-protocol` carries into the process, the refinement row's is still a configuration key |
+| `POST /projects/api/gc/tags` | the GC's `tags.sweep`, called by qits-platform-orchestrator with `{dryRun, pins:{deployments, ciDaemon, dependencies, configuredImages, workspaceLaunches, projectLaunches}}` — each member the verbatim answer of that source's pins door; `qits:admin` \| `qits:system`. Deletes old calver release tags on the git host and on every backup twin and answers `{dryRun, repositories, examined, deleted:[{repository, tag, host, twin}], kept:{newest, pinnedVersion, gitlink, inFlight, young}, errors}`. A missing or non-document pin member is a 400 that judges nothing. See "The backup twin" |
 | `/projects/api/repositories/{repoId}/remote-login` | the sign-in websocket — a literal `@WebSocket` path, which does **not** follow `quarkus.rest.path` |
 | `/projects/mcp` | the MCP server, still *named* `repository` |
 | `/projects/q/openapi`, `/projects/q/swagger-ui` | the API document and its UI (`quarkus.http.non-application-root-path`) |
@@ -258,6 +259,32 @@ drift a failed backup leaves is what `syncStatus` already reports on the reposit
     qits.projects.backup.enabled=true     # the kill switch, honoured by BOTH triggers
     qits.projects.backup.interval=1h      # how often the sweep runs
     qits.projects.backup.debounce-ms=2000 # how long a push-triggered backup waits to collect its siblings
+
+**The backup never pushes a deletion**, whatever event scheduled it: it pushes `refs/heads/*` and
+`refs/tags/*` without `--prune`, because a twin that mirrored every deletion would mirror a mistaken
+one too. So a deleted branch stays on the twin, and release tags are decommissioned on both sides by
+the GC's `tags.sweep` instead — `POST /projects/api/gc/tags`, `control/TagCollector` over the rule in
+`control/TagKeepRule`. Only calver tags (`YYYY.MDD.HHMMSS`, ordered numerically per segment) are
+judged, per catalogued repository, and one is **kept** when any of these holds:
+
+1. it is among the repository's newest `qits.projects.gc.tags.keep-newest` (5) calver tags on the host;
+2. its name is a version some pin source names — every calver string anywhere in the six embedded
+   answers, across all repositories;
+3. its commit is a gitlink in a kept tree: any repository's `main`, or any kept tag (transitively —
+   a pinned wrapper release keeps the service release it mounts, which keeps its frontend's);
+4. it is in flight: a `released_tag_pending_merge` row not merged yet, or a `RELEASED` request;
+5. it is younger than `qits.projects.gc.tags.min-age` (`PT24H`).
+
+Everything else goes: on the host as a receive-pack delete (`SCMDeleteTag` fires), then on the twin
+as a `git push --force-with-lease=refs/tags/<tag>:<sha seen> :refs/tags/<tag>` after an `ls-remote`.
+A twin tag the host still holds stays; a tag only the twin holds (a release from before the platform,
+or an earlier twin deletion that failed) is kept only by rules 2–4. Each repository is swept under its
+backup lock. A repository that cannot be read is skipped and named in `errors`; a **wrapper** that
+cannot be read sweeps nothing anywhere, because its gitlinks are what keep the estate it names. A
+dry run judges identically and deletes nothing.
+
+    qits.projects.gc.tags.keep-newest=5   # newest calver tags per repository always kept
+    qits.projects.gc.tags.min-age=PT24H   # younger tags always kept
 
 ## Persistence
 

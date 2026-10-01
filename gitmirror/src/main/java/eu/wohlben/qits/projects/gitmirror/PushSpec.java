@@ -14,9 +14,10 @@ public record PushSpec(List<Ref> refs, List<String> options, boolean atomic) {
 
   /**
    * One refspec. A null {@code source} is a <b>deletion</b> — {@code :refs/heads/x} — which is how a
-   * branch is removed now that nothing writes the ref store by hand. {@code source} may be a branch
-   * name or a bare commit sha: a commit this module just built with {@link RepoMirror#commitTree}
-   * has no ref of its own, and pushing it by sha needs no local ref update first.
+   * branch or a tag is removed now that nothing writes the ref store by hand. {@code source} may be
+   * a branch name or a bare commit sha: a commit this module just built with {@link
+   * RepoMirror#commitTree} has no ref of its own, and pushing it by sha needs no local ref update
+   * first.
    */
   public record Ref(String source, String destination) {
 
@@ -30,6 +31,14 @@ public record PushSpec(List<Ref> refs, List<String> options, boolean atomic) {
 
     public static Ref deleteBranch(String branch) {
       return new Ref(null, "refs/heads/" + branch);
+    }
+
+    /**
+     * {@code :refs/tags/<tag>} — a tag removed the way a branch is, through receive-pack, so the git
+     * host's hooks see it and announce it ({@code SCMDeleteTag}).
+     */
+    public static Ref deleteTag(String tag) {
+      return new Ref(null, "refs/tags/" + tag);
     }
 
     String refspec() {

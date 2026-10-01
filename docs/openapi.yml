@@ -669,6 +669,16 @@ components:
           description: "The qits-configuration application every credentialKey lives\
             \ under. Reserved: nothing deploys under it, so these keys are never rendered\
             \ into any application's environment."
+    CollectTagsRequest:
+      type: object
+      required:
+      - pins
+      properties:
+        dryRun:
+          type: boolean
+        pins:
+          $ref: "#/components/schemas/TagCollectionPinSources"
+          type: object
     CommentAnswer:
       type: object
       description: One comment on an entity's thread.
@@ -1083,6 +1093,17 @@ components:
       type: object
       properties:
         success:
+          type: boolean
+    DeletedTag:
+      type: object
+      properties:
+        repository:
+          type: string
+        tag:
+          type: string
+        host:
+          type: boolean
+        twin:
           type: boolean
     DesignDto:
       type: object
@@ -1622,6 +1643,24 @@ components:
       format: date-time
       examples:
       - 2022-03-10T16:15:50Z
+    KeptTags:
+      type: object
+      properties:
+        newest:
+          type: integer
+          format: int32
+        pinnedVersion:
+          type: integer
+          format: int32
+        gitlink:
+          type: integer
+          format: int32
+        inFlight:
+          type: integer
+          format: int32
+        young:
+          type: integer
+          format: int32
     LastBackupDto:
       type: object
       properties:
@@ -2659,6 +2698,49 @@ components:
         behind:
           type: integer
           format: int32
+    TagCollectionPinSources:
+      type: object
+      required:
+      - deployments
+      - ciDaemon
+      - dependencies
+      - configuredImages
+      - workspaceLaunches
+      - projectLaunches
+      properties:
+        deployments:
+          description: GET /deployments/api/pins
+        ciDaemon:
+          description: GET /ci/api/daemon
+        dependencies:
+          description: GET /maintenance/api/pins
+        configuredImages:
+          description: GET /configuration/api/pins
+        workspaceLaunches:
+          description: GET /workspaces/api/pins
+        projectLaunches:
+          description: GET /projects/api/pins
+    TagCollectionReportDto:
+      type: object
+      properties:
+        dryRun:
+          type: boolean
+        repositories:
+          type: integer
+          format: int32
+        examined:
+          type: integer
+          format: int32
+        deleted:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeletedTag"
+        kept:
+          $ref: "#/components/schemas/KeptTags"
+        errors:
+          type: array
+          items:
+            type: string
     TaskDto:
       type: object
       properties:
@@ -4621,6 +4703,34 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/gc/tags:
+    post:
+      summary: "Decommission release tags no pin, gitlink or release in flight keeps"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectTagsRequest"
+        required: true
+      responses:
+        "200":
+          description: "What was judged, deleted, kept and failed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagCollectionReportDto"
+        "400":
+          description: A pin source is missing or malformed
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Gc Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:system
   /projects/api/pins:
     get:
       summary: The container images a launch by this service would pull right now
@@ -7765,4 +7875,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.930.184422
+  version: 2026.930.214434

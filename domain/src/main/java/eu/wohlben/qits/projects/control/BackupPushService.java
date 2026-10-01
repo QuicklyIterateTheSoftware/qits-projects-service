@@ -198,6 +198,22 @@ public class BackupPushService {
     return unreachable ? BackupOutcome.UNREACHABLE : BackupOutcome.FAILED;
   }
 
+  /**
+   * Runs {@code work} under {@code repoId}'s backup lock, so no backup of that repository overlaps
+   * it — the tag collection's seam. A backup pushes {@code refs/tags/*} from the mirror; one that
+   * read its refs before a tag was deleted and pushed them after would put the tag straight back on
+   * the twin. Not counted in {@link #completedRuns}: it is not a backup.
+   */
+  public <T> T exclusively(String repoId, java.util.function.Supplier<T> work) {
+    RepoBackup state = perRepo.computeIfAbsent(repoId, id -> new RepoBackup());
+    state.running.lock();
+    try {
+      return work.get();
+    } finally {
+      state.running.unlock();
+    }
+  }
+
   /** {@link #backupQuietly} for a repository the caller names — the suite's and the sweep's seam. */
   public void backupNow(String repoId) {
     backupQuietly(repoId, perRepo.computeIfAbsent(repoId, id -> new RepoBackup()));

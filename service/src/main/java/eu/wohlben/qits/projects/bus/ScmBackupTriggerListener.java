@@ -31,10 +31,14 @@ import org.jboss.logging.Logger;
  * So all four map to the one call, and the mapping is deliberately total rather than clever.
  *
  * <p><b>Deletions and tags now trigger a backup, and they never did before</b> — that is a fix, not
- * a side effect of the migration. The old hook fanned out branch <em>updates</em> only, so deleting a
- * branch or pushing a tag left the twin holding refs the platform no longer had, until the hourly
- * sweep happened to notice. {@code git push --prune} is what the backup runs, so the delete really
- * does propagate once it is asked for.
+ * a side effect of the migration. The old hook fanned out branch <em>updates</em> only, so pushing a
+ * tag left the twin without it until the hourly sweep happened to notice. <b>A deletion does not
+ * reach the twin through here, though:</b> the backup pushes {@code refs/heads/*} and {@code
+ * refs/tags/*} without {@code --prune} and never pushes a deletion at all — a twin that mirrored
+ * every deletion would mirror a mistaken one too. A deletion event still schedules a backup, which
+ * then carries nothing new. Release tags are decommissioned on the host and the twin together by
+ * the GC's {@code tags.sweep} ({@code control/TagCollector}, behind {@code POST
+ * /projects/api/gc/tags}); a deleted branch stays on the twin.
  *
  * <p><b>{@code suppressCi} is ignored, deliberately.</b> That flag on {@link SCMPublishCommit}
  * carries {@code -o qits.no-ci} — a statement about whether a <em>build</em> should run, which is
