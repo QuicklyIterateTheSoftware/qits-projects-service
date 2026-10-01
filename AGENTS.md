@@ -2587,15 +2587,20 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   one reads `X-Qits-User` and no roles at all; which of them wins varies between builds, so the same
   working tree is green in one run and red in the next. A `clean` is not a ritual here — it is the
   difference between testing this repository and testing what it used to be.
-- `OpenApiSchemaExportTest` writes `docs/openapi.yml`. Regenerate and commit whenever the REST
-  surface changes:
+- `OpenApiSchemaExportTest` pins `docs/openapi.yml`: it **compares** the served document against
+  the committed one and fails with a unified diff when the REST surface moved. Rewrite it with the
+  golden switch and commit the result:
 
-      ./mvnw -pl service -am test -Dtest=OpenApiSchemaExportTest -Dsurefire.failIfNoSpecifiedTests=false
+      ./mvnw -pl service -am test -Dtest=OpenApiSchemaExportTest -Dsurefire.failIfNoSpecifiedTests=false -Dgolden.update=true
 
-  Both extra flags are load-bearing on a fresh clone, which is the only state this repo promises:
+  `-Dgolden.update=true` (or `QITS_GOLDEN_UPDATE=true` in the environment) is the one switch every
+  golden in this module reads — `contracts/GoldenFiles`, shared with `EntityRoutesGoldenTest` and
+  the provider golden masters below; without it a run only compares. `info.version` is left out of
+  the comparison, because every release bumps it and no API change moves it. The other two extra
+  flags are load-bearing on a fresh clone, which is the only state this repo promises:
   `-am` because `domain` and `entities` are 1.0.0-SNAPSHOTs published nowhere, so `-pl service` alone
   cannot resolve them, and `failIfNoSpecifiedTests=false` because `-am` then walks those two modules,
-  which have no test by that name. (A plain `./mvnw verify` regenerates it too — the export is a test.)
+  which have no test by that name. (A plain `./mvnw verify` compares it too — the export is a test.)
   Note also that renaming a class the document names needs a `clean`: a stale nested-record `.class`
   in `target/` fails augmentation with `disagree on InnerClasses attribute`, which reads like a
   dependency conflict and is not one. This is the largest
@@ -2603,6 +2608,17 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   review. It runs as a `@QuarkusTest` and indexes the test classpath, so any `@Path` resource under
   `src/test` lands in the document unless it is `@Operation(hidden = true)` — hence the annotation
   on `IdentityEchoResource`.
+- **`golden-masters/` (repository root) is this provider's published contract**, the source of the
+  golden-master artifact consumers write their pacts against (epic qits-546). `contracts/
+  GoldenMasterRecordingTest` runs each `(state, operation)` pair in its table — the state from
+  `contracts/ProviderStates`, an injectable bean a pact `@State` method can delegate to — calls the
+  route as the `%test` dev user, keeps only the list entries the state created, freezes ids,
+  instants and the states' random slug tokens (`contracts/Freezer`), and compares
+  `golden-masters/<state-slug>/<operationId>.json` plus `index.json`; the same switch rewrites them.
+  A state assumes nothing about the database and is safe to run beside any other, so a slug carries
+  a random token and the index lists it under `frozen.strings`. A committed `.json` no interaction
+  records any more fails the compare. The four `operationId`s it names are `@Operation`s on the
+  controllers, so renaming one is a contract change, not a refactor.
 - **`mvn verify` passing does not mean the app starts.** Augmentation runs per `@QuarkusTest`
   regardless of packaging, so a missing `quarkus-maven-plugin` goal is invisible to the suite — it
   was in fact missed here once, an `<executions>` block under a `<build>` whose `<testResources>`

@@ -1,0 +1,157 @@
+{
+  "formatVersion": 1,
+  "provider": "qits-projects",
+  "states": [
+    {
+      "name": "a project exists",
+      "slug": "a-project-exists",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getProject",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}",
+          "status": 200,
+          "file": "a-project-exists/getProject.json",
+          "frozen": {
+            "ids": [
+              "$.project.id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.project.slug"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjects",
+          "method": "GET",
+          "path": "/projects/api/projects",
+          "status": 200,
+          "file": "a-project-exists/listProjects.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].project.id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.entries[*].project.slug"
+            ],
+            "listFilteredTo": "$.entries"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a project with 3 repositories",
+      "slug": "a-project-with-3-repositories",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectRepositories",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/repositories",
+          "status": 200,
+          "file": "a-project-with-3-repositories/listProjectRepositories.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].repository.id",
+              "$.entries[*].repository.projectId",
+              "$.wrapper.repositoryId",
+              "$.wrapper.entries[*].repositoryId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.entries[*].repository.name"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository exists",
+      "slug": "a-repository-exists",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getRepository",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}",
+          "status": 200,
+          "file": "a-repository-exists/getRepository.json",
+          "frozen": {
+            "ids": [
+              "$.repository.id",
+              "$.repository.projectId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "no project with the given id",
+      "slug": "no-project-with-the-given-id",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getProject",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}",
+          "status": 404,
+          "file": "no-project-with-the-given-id/getProject.json",
+          "frozen": {
+            "ids": [
+              "$.message"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "no repository with the given id",
+      "slug": "no-repository-with-the-given-id",
+      "params": {
+        "repositoryId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getRepository",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}",
+          "status": 404,
+          "file": "no-repository-with-the-given-id/getRepository.json",
+          "frozen": {
+            "ids": [
+              "$.message"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "entries": [
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "name": "contract-00000001-contract-00000001",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "PROJECT",
+        "component": null,
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "name": "contract-daemon",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "DAEMON",
+        "component": "contract-daemon",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "name": "contract-frontend",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "FRONTEND",
+        "component": "contract-frontend",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "name": "contract-service",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "SERVICE",
+        "component": "contract-service",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null
+      },
+      "declared": true
+    }
+  ],
+  "wrapper": {
+    "repositoryId": "00000000-0000-4000-8000-000000000002",
+    "branch": "main",
+    "entries": [
+      {
+        "path": "components/contract-service/contract-service",
+        "name": "contract-service",
+        "repositoryId": "00000000-0000-4000-8000-000000000005"
+      },
+      {
+        "path": "components/contract-frontend/contract-frontend",
+        "name": "contract-frontend",
+        "repositoryId": "00000000-0000-4000-8000-000000000004"
+      },
+      {
+        "path": "components/contract-daemon/contract-daemon",
+        "name": "contract-daemon",
+        "repositoryId": "00000000-0000-4000-8000-000000000003"
+      }
+    ]
+  }
+}

@@ -2,7 +2,6 @@ package eu.wohlben.qits.entities.api;
 
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.projects.contracts.GoldenFiles;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
@@ -21,7 +21,6 @@ import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -756,22 +755,8 @@ class EntityRoutesGoldenTest {
 
     void assertGolden(String name) throws IOException {
       String actual = JSON.writeValueAsString(calls) + "\n";
-      Path golden = GOLDEN_DIR.resolve(name);
-      boolean update =
-          "true".equalsIgnoreCase(System.getenv("QITS_GOLDEN_UPDATE"))
-              || Boolean.getBoolean("golden.update");
-      if (update) {
-        Files.createDirectories(golden.getParent());
-        Files.writeString(golden, actual);
-        return;
-      }
-      if (!Files.exists(golden)) {
-        fail(
-            "No golden at "
-                + golden.toAbsolutePath()
-                + " — run once with QITS_GOLDEN_UPDATE=true and review what it wrote.");
-      }
-      assertEquals(Files.readString(golden), actual, "the wire of " + name + " moved");
+      // The compare-or-rewrite switch every golden in this module shares — see GoldenFiles.
+      GoldenFiles.compareOrWrite(GOLDEN_DIR.resolve(name), actual);
     }
   }
 }

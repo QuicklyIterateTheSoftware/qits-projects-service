@@ -117,6 +117,7 @@ public class RepositoryController {
   @GET
   @Path("/{repoId}")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @Operation(operationId = "getRepository")
   public GetRepositoryRequest.Response get(@PathParam("repoId") String repoId) {
     var repo = repositoryService.get(repoId);
     return new GetRepositoryRequest.Response(repositoryMapper.toDto(repo));

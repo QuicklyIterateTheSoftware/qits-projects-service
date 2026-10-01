@@ -147,6 +147,7 @@ public class ProjectController {
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}")
+  @Operation(operationId = "getProject")
   public GetProjectRequest.Response get(@PathParam("id") String id) {
     var project = projectService.get(id);
     return new GetProjectRequest.Response(projectMapper.toDto(project));
@@ -166,6 +167,7 @@ public class ProjectController {
    */
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @Operation(operationId = "listProjects")
   public ListProjectsRequest.Response list() {
     var projects = projectService.list();
     var entries =
@@ -288,6 +290,7 @@ public class ProjectController {
   @GET
   @Path("/{projectId}/repositories")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @Operation(operationId = "listProjectRepositories")
   public ListProjectRepositoriesRequest.Response listRepositories(
       @PathParam("projectId") String projectId) {
     var repos = projectService.getRepositories(projectId);
