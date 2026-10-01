@@ -11,6 +11,7 @@ import static org.hamcrest.Matchers.nullValue;
 
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
+import eu.wohlben.qits.workspacedaemon.protocol.GitStatus;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
@@ -31,6 +32,7 @@ public class RefinementLifecycleTest {
   @Inject FakeRefinementRuntime runtime;
   @Inject FakeRefinementCredentials credentials;
   @Inject RefinementCommissions commissions;
+  @Inject RefinementDaemonRegistry registry;
   @Inject RefinementService service;
   @Inject eu.wohlben.qits.projects.control.TechnicalProcessRegistry processes;
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
@@ -306,6 +308,100 @@ public class RefinementLifecycleTest {
     // The next open starts afresh rather than finding a ghost.
     Number again = open(epicId).then().statusCode(200).extract().path("refinement.id");
     assertNotEquals(id.longValue(), again.longValue());
+  }
+
+  /**
+   * Discard gives the container a graceful stop (SIGTERM, so an agent inside — started with
+   * {@code claude --remote-control} — can archive its claude.ai session) before the delete that
+   * would otherwise SIGKILL it. The fake runtime records both verbs in call order.
+   */
+  @Test
+  public void discardStopsTheContainerBeforeDeletingIt() {
+    String projectId = createProject("Refine Discard Stop Order");
+    String epicId = createEpic(projectId, "Discard Stop Order Epic");
+    Number id = open(epicId).then().statusCode(200).extract().path("refinement.id");
+    runtime.place(id.longValue(), "qits-ref-x", true);
+    runtime.clearCalls();
+
+    given()
+        .when()
+        .post("/projects/api/refinements/" + id + "/discard")
+        .then()
+        .statusCode(200)
+        .body("success", equalTo(true));
+
+    assertEquals(
+        java.util.List.of("stop:" + id.longValue(), "delete:" + id.longValue()),
+        runtime.calls(),
+        "discard stops the container before it removes it");
+  }
+
+  /** A failed graceful stop must never block the delete that follows. */
+  @Test
+  public void discardDeletesTheContainerEvenWhenTheGracefulStopFails() {
+    String projectId = createProject("Refine Discard Stop Failure");
+    String epicId = createEpic(projectId, "Discard Stop Failure Epic");
+    Number id = open(epicId).then().statusCode(200).extract().path("refinement.id");
+    runtime.place(id.longValue(), "qits-ref-x", true);
+    runtime.throwOnNextStop(id.longValue());
+
+    given()
+        .when()
+        .post("/projects/api/refinements/" + id + "/discard")
+        .then()
+        .statusCode(200)
+        .body("success", equalTo(true));
+
+    assertTrue(runtime.calls().contains("delete:" + id.longValue()));
+    given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
+  }
+
+  /**
+   * recreate-container replaces a RUNNING container, and it gets the same graceful-stop courtesy
+   * discard does, for the same reason: an agent inside only archives its claude.ai remote-control
+   * session on SIGTERM.
+   */
+  @Test
+  public void recreateStopsTheRunningContainerBeforeReplacingIt() {
+    String projectId = createProject("Refine Recreate Stop Order");
+    String epicId = createEpic(projectId, "Recreate Stop Order Epic");
+    Number id = open(epicId).then().statusCode(200).extract().path("refinement.id");
+    runtime.place(id.longValue(), "qits-ref-x", true);
+    registry.onMessage(id.longValue(), null, new GitStatus("refinement-" + id, true, "abc1234"));
+    runtime.clearCalls();
+
+    given()
+        .when()
+        .post("/projects/api/refinements/" + id + "/recreate-container")
+        .then()
+        .statusCode(200);
+
+    awaitStatus(id.longValue(), "RUNNING");
+    assertEquals(
+        java.util.List.of(
+            "stop:" + id.longValue(), "delete:" + id.longValue(), "provision:" + id.longValue()),
+        runtime.calls(),
+        "recreate stops the running container before replacing it");
+  }
+
+  /** A stopped container has nothing to SIGTERM, so recreate must not try to stop one. */
+  @Test
+  public void recreateDoesNotStopAnAlreadyStoppedContainer() {
+    String projectId = createProject("Refine Recreate Stopped Already");
+    String epicId = createEpic(projectId, "Recreate Stopped Already Epic");
+    Number id = open(epicId).then().statusCode(200).extract().path("refinement.id");
+    runtime.place(id.longValue(), "qits-ref-x", false);
+    registry.onMessage(id.longValue(), null, new GitStatus("refinement-" + id, true, "abc1234"));
+    runtime.clearCalls();
+
+    given()
+        .when()
+        .post("/projects/api/refinements/" + id + "/recreate-container")
+        .then()
+        .statusCode(200);
+
+    awaitStatus(id.longValue(), "RUNNING");
+    assertFalse(runtime.calls().contains("stop:" + id.longValue()));
   }
 
   @Test
