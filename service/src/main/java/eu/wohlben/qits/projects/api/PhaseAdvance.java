@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.EntityCommentService;
+import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -63,8 +64,9 @@ import org.jboss.logging.Logger;
  * <h2>One rule, and it is {@link PhasePrompts} unchanged</h2>
  *
  * <p><b>The prompt for a status is the work that starts from it</b>, which is exactly what {@link
- * PhasePrompts#startedBy(WorkEntity)} already computes for the dispatch door. This class adds no
- * second table and no second switch: it reads that one, and everything else follows from it.
+ * PhasePrompts#phaseOf(WorkEntity)} and {@link PhasePrompts#start} already compute for the dispatch
+ * door. This class adds no second table and no second switch: it reads that one, and everything
+ * else follows from it.
  *
  * <p><b>Direction is deliberately not consulted.</b> The ticket's new status is the entire input, so
  * a move back from IMPLEMENTED to REFINED — a correction of a claim, not a failure path — gets the
@@ -165,7 +167,7 @@ import org.jboss.logging.Logger;
  *
  * <p>Every failure is a WARN and a sentence on the thread, because <b>that comment is the only place
  * a reader learns whether an agent is now working</b>. The sentence names the phase that was started
- * — from {@link PhasePrompts#startedBy}, so the words and the naming come from one switch —
+ * — from {@link PhasePrompts#start}, so the words and the naming come from one switch —
  * and where nothing was delivered it says so with the reason and <b>claims nothing about an
  * agent</b>: a thread saying work resumed when it did not is worse than a thread saying nothing.
  *
@@ -276,8 +278,8 @@ public class PhaseAdvance {
           entity.archetype, entity.id, entity.status);
       return;
     }
-    Optional<PhasePrompts.Started> started = PhasePrompts.startedBy(entity);
-    if (started.isEmpty()) {
+    Optional<Phase> phase = PhasePrompts.phaseOf(entity);
+    if (phase.isEmpty()) {
       // DONE and DROPPED, now that VERIFIED is answered above: the work is over, or it was decided
       // against. Nothing to do either way, and nothing to say about having done nothing.
       return;
@@ -290,11 +292,15 @@ public class PhaseAdvance {
       LOG.warnf(
           "Ticket %s moved to %s but its project (%s) has no wrapper repository, so there is no"
               + " branch to start the %s phase on",
-          entity.id, entity.status, entity.projectId, started.get().phase());
+          entity.id, entity.status, entity.projectId, phase.get().word());
       return;
     }
     if (entity.dispatchContinues) {
-      deliver(entity, started.get(), target.get(), changedBy);
+      // The turn is rendered here, once a workspace could stand on the branch, with the same
+      // qualified id the dispatch named that workspace with (qits-301).
+      PhasePrompts.Started started =
+          PhasePrompts.start(entity, phase.get(), workspaces.qualifiedIdOf(entity));
+      deliver(entity, started, target.get(), changedBy);
     } else {
       // The continue-or-stop bit, read at its one place: the press that started this run asked for
       // one phase, so the next one waits for somebody to press again. Nothing is said on a thread —
@@ -303,7 +309,7 @@ public class PhaseAdvance {
       LOG.infof(
           "%s %s moved to %s; its run was dispatched for one phase, so the %s phase is not started"
               + " until somebody presses again",
-          entity.archetype, entity.id, entity.status, started.get().phase());
+          entity.archetype, entity.id, entity.status, phase.get().word());
     }
     if (EntityStatus.IMPLEMENTED.name().equals(entity.status)) {
       noteTheReleaseThatStandsOpen(entity, target.get(), changedBy);

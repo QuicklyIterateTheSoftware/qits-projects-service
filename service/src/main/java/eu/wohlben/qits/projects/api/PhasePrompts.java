@@ -55,8 +55,8 @@ import java.util.Optional;
  *       how a phase reports failure. A verification that fails blocks the entity at IMPLEMENTED with
  *       what still occurs; a person decides what happens next, and closing is a person's move too.
  *   <li><b>At most 900 characters per phase turn</b>, not counting {@link #FLOW_BRIEF_POINTER} and
- *       the substituted title, type, slug and id. {@code PhasePromptsTest} renders all six and
- *       enforces it.
+ *       the substituted title, type, qualified id, slug and id. {@code PhasePromptsTest} renders
+ *       all six and enforces it.
  * </ol>
  *
  * <p>What each template still says is what the phase gets wrong without it. Refine: <em>do not
@@ -72,6 +72,13 @@ import java.util.Optional;
  * an agent can finish in one turn — and the thread says which was done. An epic's implement turn
  * also makes the move to IMPLEMENTED conditional on every task being marked, because that move
  * stamps every unmarked task.
+ *
+ * <p>Every turn names its entity by <b>qualified id</b> ({@code qits-297}) beside the slug and the
+ * row id, and both implement turns give the commit-subject convention with that id written in
+ * (qits-301): a subject of the form {@code term(qits-297): message} is what ties a commit back to the
+ * work it was made for, and the one place an agent learns the id is here. Every caller passes it —
+ * the dispatch door the same value it names the workspace with, the phase advance the same read —
+ * and a row with no number or no project slug passes null, which drops both cleanly.
  *
  * <p>Whether the <em>next</em> phase then starts by itself is not these templates' business: that is
  * the continue-or-stop bit the press recorded ({@code WorkEntity.dispatchContinues}), read by {@link
@@ -154,34 +161,47 @@ final class PhasePrompts {
    * none. Empty is an answer and not a failure — the dispatch path refuses on it, and the advance
    * delivers nothing on it.
    */
-  static Optional<Started> startedBy(WorkEntity entity) {
-    return phaseOf(entity)
-        .map(phase -> new Started(phase.word(), render(entity.archetype, phase, entity)));
+  static Optional<Started> startedBy(WorkEntity entity, String qualifiedId) {
+    return phaseOf(entity).map(phase -> start(entity, phase, qualifiedId));
+  }
+
+  /**
+   * {@code phase}'s turn for {@code entity}, for a caller that has already decided the phase (the
+   * dispatch door decides it before its refusals, and renders once it holds the qualified id it
+   * names the workspace with, so the two cannot disagree).
+   */
+  static Started start(WorkEntity entity, Phase phase, String qualifiedId) {
+    return new Started(phase.word(), render(entity.archetype, phase, entity, qualifiedId));
   }
 
   /** The agent's first turn alone, which is what every assertion about the words reads. */
-  static Optional<String> promptFor(WorkEntity entity) {
-    return startedBy(entity).map(Started::instruction);
+  static Optional<String> promptFor(WorkEntity entity, String qualifiedId) {
+    return startedBy(entity, qualifiedId).map(Started::instruction);
   }
 
   /**
    * <b>The archetype-aware lookup</b>, and the single seam every template comes through — which is
    * why the flow-brief pointer is prepended here and nowhere else.
+   *
+   * @param qualifiedId the entity's {@code <project-slug>-<number>} ({@code qits-297}), or null where
+   *     it cannot be had — the turn then names the row by slug and id alone and carries no
+   *     commit-subject sentence, since there is no id to put in one (qits-301)
    */
-  static String render(Archetype archetype, Phase phase, WorkEntity entity) {
+  static String render(Archetype archetype, Phase phase, WorkEntity entity, String qualifiedId) {
+    String q = qualifiedId == null || qualifiedId.isBlank() ? null : qualifiedId;
     String phaseTurn =
         switch (archetype) {
           case TICKET ->
               switch (phase) {
-                case REFINE -> refineTicket(entity);
-                case IMPLEMENT -> implementTicket(entity);
-                case VERIFY -> verifyTicket(entity);
+                case REFINE -> refineTicket(entity, q);
+                case IMPLEMENT -> implementTicket(entity, q);
+                case VERIFY -> verifyTicket(entity, q);
               };
           case EPIC ->
               switch (phase) {
-                case REFINE -> refineEpic(entity);
-                case IMPLEMENT -> implementEpic(entity);
-                case VERIFY -> verifyEpic(entity);
+                case REFINE -> refineEpic(entity, q);
+                case IMPLEMENT -> implementEpic(entity, q);
+                case VERIFY -> verifyEpic(entity, q);
               };
           case FEATURE, TASK ->
               throw new IllegalStateException(
@@ -191,6 +211,28 @@ final class PhasePrompts {
                   "A CAMPAIGN starts through its executor, so it has no phase prompts");
         };
     return FLOW_BRIEF_POINTER + " " + phaseTurn;
+  }
+
+  /** {@code "qits-297, "} for the header's parenthesis, or nothing where there is no id. */
+  private static String named(String qualifiedId) {
+    return qualifiedId == null ? "" : qualifiedId + ", ";
+  }
+
+  /**
+   * <b>The commit-subject convention</b> (qits-301, epic qits-297), given literally with the real id
+   * so the agent copies a form rather than reconstructing one. Worded as the convention and not as a
+   * rule, because only a repository that opts into qits-githost's receive guard refuses a commit
+   * without it. Nothing where there is no id: a sentence telling the agent to write {@code
+   * feat(null): …} is worse than none.
+   */
+  private static String commitSubjects(String qualifiedId) {
+    return qualifiedId == null
+        ? ""
+        : " Each commit subject names the work: term("
+            + qualifiedId
+            + "): message, e.g. feat("
+            + qualifiedId
+            + "): add the export.";
   }
 
   // ---- the three ticket templates -----------------------------------------------------------
@@ -204,12 +246,14 @@ final class PhasePrompts {
    * names. The result goes into the description because that is the implement phase's brief. "Do
    * not implement" carries its reason, since an agent that has just found the bug wants to fix it.
    */
-  private static String refineTicket(WorkEntity ticket) {
+  private static String refineTicket(WorkEntity ticket, String q) {
     return "Refine ticket \""
         + ticket.title
         + "\" ("
         + ticket.ticketType
-        + ", slug "
+        + ", "
+        + named(q)
+        + "slug "
         + ticket.slug
         + ", id "
         + ticket.id
@@ -232,19 +276,23 @@ final class PhasePrompts {
    * against. Released and deployed, because the next phase verifies the live platform. And no
    * integration, because verification runs in this same workspace next.
    */
-  private static String implementTicket(WorkEntity ticket) {
+  private static String implementTicket(WorkEntity ticket, String q) {
     return "Implement ticket \""
         + ticket.title
         + "\" ("
         + ticket.ticketType
-        + ", slug "
+        + ", "
+        + named(q)
+        + "slug "
         + ticket.slug
         + ", id "
         + ticket.id
         + "). Read it with get_ticket: its description, plus any dossier page it points at, is the"
         + " brief. Comment with add_ticket_comment as the work goes. If the brief turns out wrong,"
         + " say so on the thread and do not rewrite it. Done means released and deployed, not"
-        + " merged and not green. Do not integrate the workspace, because verification runs here"
+        + " merged and not green."
+        + commitSubjects(q)
+        + " Do not integrate the workspace, because verification runs here"
         + " next. Once the change is live, transition_ticket to IMPLEMENTED. If you cannot get"
         + " there, block_entity with what is missing.";
   }
@@ -256,12 +304,14 @@ final class PhasePrompts {
    * that fails — or could not be made — blocks the ticket where it stands with what was found; it
    * does not move it back, and VERIFIED is as far as an agent goes.
    */
-  private static String verifyTicket(WorkEntity ticket) {
+  private static String verifyTicket(WorkEntity ticket, String q) {
     return "Verify ticket \""
         + ticket.title
         + "\" ("
         + ticket.ticketType
-        + ", slug "
+        + ", "
+        + named(q)
+        + "slug "
         + ticket.slug
         + ", id "
         + ticket.id
@@ -282,10 +332,12 @@ final class PhasePrompts {
    * EntityLifecycle.requireReported}), which the turn says because the claim is bigger than a
    * ticket's; the thread stays writable after the freeze.
    */
-  private static String refineEpic(WorkEntity epic) {
+  private static String refineEpic(WorkEntity epic, String q) {
     return "Refine epic \""
         + epic.title
-        + "\" (slug "
+        + "\" ("
+        + named(q)
+        + "slug "
         + epic.slug
         + ", id "
         + epic.id
@@ -309,10 +361,12 @@ final class PhasePrompts {
    * means released and deployed, one release request per repository. The claim to IMPLEMENTED is
    * conditional on every task being marked because the move stamps any task still unmarked.
    */
-  private static String implementEpic(WorkEntity epic) {
+  private static String implementEpic(WorkEntity epic, String q) {
     return "Implement epic \""
         + epic.title
-        + "\" (slug "
+        + "\" ("
+        + named(q)
+        + "slug "
         + epic.slug
         + ", id "
         + epic.id
@@ -321,7 +375,9 @@ final class PhasePrompts {
         + epic.id
         + ") as the work goes. Work the tasks in dependsOn order and mark each one with"
         + " mark_task_implemented as it lands. Landed means released and deployed, through a"
-        + " release request per repository, not merged and not green. Do not integrate the"
+        + " release request per repository, not merged and not green."
+        + commitSubjects(q)
+        + " Do not integrate the"
         + " workspace, because verification runs here next. When every task is marked,"
         + " transition_epic to IMPLEMENTED; that move stamps any unmarked task. If you cannot get"
         + " there, block_entity with what is missing.";
@@ -334,10 +390,12 @@ final class PhasePrompts {
    * Reaching VERIFIED asks for the release of {@code epic/<slug>} ({@link PhaseAdvance}); closing
    * stays a person's move.
    */
-  private static String verifyEpic(WorkEntity epic) {
+  private static String verifyEpic(WorkEntity epic, String q) {
     return "Verify epic \""
         + epic.title
-        + "\" (slug "
+        + "\" ("
+        + named(q)
+        + "slug "
         + epic.slug
         + ", id "
         + epic.id

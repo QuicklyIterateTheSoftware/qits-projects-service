@@ -43,8 +43,21 @@ public class PhasePromptsTest {
     return ticket;
   }
 
+  /** The qualified id each fixture is rendered with — as a caller resolves it, per archetype. */
+  private static String qualifiedOf(WorkEntity entity) {
+    return entity.archetype == Archetype.TICKET ? "qits-123" : "qits-9";
+  }
+
+  private static Optional<String> prompt(WorkEntity entity) {
+    return PhasePrompts.promptFor(entity, qualifiedOf(entity));
+  }
+
+  private static Optional<PhasePrompts.Started> started(WorkEntity entity) {
+    return PhasePrompts.startedBy(entity, qualifiedOf(entity));
+  }
+
   private static String promptFor(EntityStatus status) {
-    return PhasePrompts.promptFor(ticket(status))
+    return prompt(ticket(status))
         .orElseThrow(() -> new AssertionError(status + " rendered no prompt"));
   }
 
@@ -64,15 +77,15 @@ public class PhasePromptsTest {
 
     assertEquals(
         Optional.empty(),
-        PhasePrompts.promptFor(ticket(EntityStatus.VERIFIED)),
+        prompt(ticket(EntityStatus.VERIFIED)),
         "VERIFIED has no phase left to run: a person closes it");
     assertEquals(
         Optional.empty(),
-        PhasePrompts.promptFor(ticket(EntityStatus.DONE)),
+        prompt(ticket(EntityStatus.DONE)),
         "DONE is closed, and reopening it is a person's move too");
     assertEquals(
         Optional.empty(),
-        PhasePrompts.promptFor(ticket(EntityStatus.DROPPED)),
+        prompt(ticket(EntityStatus.DROPPED)),
         "DROPPED is work somebody decided against: no phase renders, and dispatching an agent onto"
             + " it would start the very work the decision was not to do");
   }
@@ -81,20 +94,20 @@ public class PhasePromptsTest {
   @Test
   public void thePhaseIsNamedFromTheSameMappingThatRendersIt() {
     assertEquals(
-        "refine", PhasePrompts.startedBy(ticket(EntityStatus.REPORTED)).orElseThrow().phase());
+        "refine", started(ticket(EntityStatus.REPORTED)).orElseThrow().phase());
     assertEquals(
         "implement",
-        PhasePrompts.startedBy(ticket(EntityStatus.REFINED)).orElseThrow().phase());
+        started(ticket(EntityStatus.REFINED)).orElseThrow().phase());
     assertEquals(
         "verify",
-        PhasePrompts.startedBy(ticket(EntityStatus.IMPLEMENTED)).orElseThrow().phase());
+        started(ticket(EntityStatus.IMPLEMENTED)).orElseThrow().phase());
     assertEquals(
         Optional.empty(),
-        PhasePrompts.startedBy(ticket(EntityStatus.VERIFIED)),
+        started(ticket(EntityStatus.VERIFIED)),
         "no phase, so nothing to name either");
     assertEquals(
         Optional.empty(),
-        PhasePrompts.startedBy(ticket(EntityStatus.DROPPED)),
+        started(ticket(EntityStatus.DROPPED)),
         "and a dropped ticket names no phase either, which is what leaves the dispatch door and the"
             + " phase hand-off both silent without either growing a rule of its own");
   }
@@ -270,7 +283,7 @@ public class PhasePromptsTest {
   @Test
   public void everyTurnEndsWithTheForwardClaimOrABlock() {
     for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
-      String turn = PhasePrompts.promptFor(entity).orElseThrow();
+      String turn = prompt(entity).orElseThrow();
       String noun = entity.archetype == Archetype.TICKET ? "ticket" : "epic";
       assertTrue(turn.contains("block_entity with what"), entity.status + " " + noun + ": " + turn);
       assertTrue(
@@ -286,7 +299,7 @@ public class PhasePromptsTest {
   @Test
   public void noTemplateMovesBack() {
     for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
-      String turn = PhasePrompts.promptFor(entity).orElseThrow();
+      String turn = prompt(entity).orElseThrow();
       String lower = turn.toLowerCase(java.util.Locale.ROOT);
       assertFalse(turn.contains("BACK TO"), turn);
       for (EntityStatus status : EntityStatus.values()) {
@@ -300,8 +313,9 @@ public class PhasePromptsTest {
 
   /**
    * <b>The length budget</b> (qits-592): each phase turn is at most 900 characters, not counting the
-   * flow-brief pointer and its separating space, and not counting the substituted title, type, slug
-   * and id — each occurrence of each. Realistic values, so a long title cannot hide in the budget.
+   * flow-brief pointer and its separating space, and not counting the substituted title, type,
+   * qualified id, slug and id — each occurrence of each. Realistic values, so a long title cannot
+   * hide in the budget.
    */
   @Test
   public void everyPhaseTurnFitsTheBudget() {
@@ -315,15 +329,17 @@ public class PhasePromptsTest {
               ? "Phase prompts are too long and route failures through backward transitions"
               : "Retire the in-process executor: the platform host is a runner like any other";
       entity.slug = "phase-prompts-are-too-long-and-route-failures-through-b";
-      String turn = PhasePrompts.promptFor(entity).orElseThrow();
+      String turn = prompt(entity).orElseThrow();
       assertTrue(turn.startsWith(pointer + " "), turn);
       String phaseTurn = turn.substring(pointer.length() + 1);
+      String qualified = qualifiedOf(entity);
       int substituted =
-          occurrences(phaseTurn, entity.title) * entity.title.length()
+          occurrences(phaseTurn, qualified) * qualified.length()
+              + occurrences(phaseTurn, entity.title) * entity.title.length()
               + occurrences(phaseTurn, entity.slug) * entity.slug.length()
               + occurrences(phaseTurn, entity.id) * entity.id.length();
       if (entity.ticketType != null) {
-        String type = "(" + entity.ticketType.name() + ", slug ";
+        String type = "(" + entity.ticketType.name() + ", ";
         substituted += occurrences(phaseTurn, type) * entity.ticketType.name().length();
       }
       int counted = turn.length() - pointer.length() - 1 - substituted;
@@ -400,7 +416,7 @@ public class PhasePromptsTest {
         "and a project carrying no brief must not read as a broken instruction: " + pointer);
 
     for (EntityStatus status : EntityStatus.values()) {
-      Optional<String> prompt = PhasePrompts.promptFor(ticket(status));
+      Optional<String> prompt = prompt(ticket(status));
       if (prompt.isEmpty()) {
         continue; // VERIFIED, DONE and DROPPED start no phase at all, which is asserted above.
       }
@@ -413,7 +429,7 @@ public class PhasePromptsTest {
     }
 
     for (EntityStatus status : EntityStatus.values()) {
-      Optional<String> prompt = PhasePrompts.promptFor(epic(status));
+      Optional<String> prompt = prompt(epic(status));
       prompt.ifPresent(
           turn ->
               assertTrue(
@@ -435,7 +451,7 @@ public class PhasePromptsTest {
   }
 
   private static String epicPromptFor(EntityStatus status) {
-    return PhasePrompts.promptFor(epic(status))
+    return prompt(epic(status))
         .orElseThrow(() -> new AssertionError("epic at " + status + " rendered no prompt"));
   }
 
@@ -450,8 +466,8 @@ public class PhasePromptsTest {
   public void anEpicAndATicketAtTheSameStatusStartTheSamePhaseWithDifferentWords() {
     for (EntityStatus status :
         new EntityStatus[] {EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED}) {
-      PhasePrompts.Started ticketRun = PhasePrompts.startedBy(ticket(status)).orElseThrow();
-      PhasePrompts.Started epicRun = PhasePrompts.startedBy(epic(status)).orElseThrow();
+      PhasePrompts.Started ticketRun = started(ticket(status)).orElseThrow();
+      PhasePrompts.Started epicRun = started(epic(status)).orElseThrow();
       assertEquals(ticketRun.phase(), epicRun.phase(), status + " starts one phase for both");
       assertEquals(
           PhasePrompts.nextPhase(ticket(status)),
@@ -471,7 +487,7 @@ public class PhasePromptsTest {
   public void anEpicPastTheWorkAndAFeatureStartNoPhase() {
     for (EntityStatus status :
         new EntityStatus[] {EntityStatus.VERIFIED, EntityStatus.DONE, EntityStatus.DROPPED}) {
-      assertEquals(Optional.empty(), PhasePrompts.promptFor(epic(status)), status.name());
+      assertEquals(Optional.empty(), prompt(epic(status)), status.name());
       assertEquals(Optional.empty(), PhasePrompts.nextPhase(epic(status)), status.name());
     }
     WorkEntity feature = epic(EntityStatus.REPORTED);
@@ -548,6 +564,76 @@ public class PhasePromptsTest {
           turn.contains("add_comment (entityId epc-9)"),
           status + " must name add_comment on the epic's own thread: " + turn);
       assertFalse(turn.contains("in your report"), status + ": " + turn);
+    }
+  }
+
+  // ---- qits-301: the qualified id and the commit-subject convention ----------------------------
+
+  /**
+   * <b>Every phase of both archetypes names its entity by qualified id</b>, beside the slug and the
+   * row id, in the header's parenthesis — the one place the agent learns the id it is to put in its
+   * commit subjects.
+   */
+  @Test
+  public void everyTurnNamesTheEntityByItsQualifiedIdBesideSlugAndId() {
+    for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
+      String turn = prompt(entity).orElseThrow();
+      String header =
+          entity.archetype == Archetype.TICKET
+              ? "(BUG, qits-123, slug login-button-is-the-wrong-colour, id tkt-123)"
+              : "(qits-9, slug planning-domain, id epc-9)";
+      assertTrue(turn.contains(header), entity.archetype + " " + entity.status + ": " + turn);
+    }
+  }
+
+  /**
+   * <b>Both implement turns give the commit-subject form literally, with the real id</b>, worded as
+   * the convention rather than as a rule: most repositories refuse nothing yet, and an agent told it
+   * will be refused looks for the refusal instead of writing the subject.
+   */
+  @Test
+  public void bothImplementTurnsGiveTheCommitSubjectFormWithTheRealId() {
+    String ticketTurn = promptFor(EntityStatus.REFINED);
+    assertTrue(
+        ticketTurn.contains(
+            "Each commit subject names the work: term(qits-123): message, e.g. feat(qits-123): add"
+                + " the export."),
+        ticketTurn);
+    String epicTurn = epicPromptFor(EntityStatus.REFINED);
+    assertTrue(
+        epicTurn.contains(
+            "Each commit subject names the work: term(qits-9): message, e.g. feat(qits-9): add the"
+                + " export."),
+        epicTurn);
+    for (String turn : new String[] {ticketTurn, epicTurn}) {
+      String lower = turn.toLowerCase(java.util.Locale.ROOT);
+      assertFalse(
+          lower.contains("refuse") || lower.contains("rejected") || lower.contains("must name"),
+          "the convention, not an enforced rule: " + turn);
+    }
+  }
+
+  /**
+   * <b>No qualified id degrades cleanly</b>: a row with no number or no project slug is named by
+   * slug and id exactly as before qits-301 — no {@code null} in the words, and no commit-subject
+   * sentence, since there is no id to put in one.
+   */
+  @Test
+  public void aRowWithNoQualifiedIdIsNamedAsBeforeAndGetsNoCommitSentence() {
+    for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
+      for (String missing : new String[] {null, "", "  "}) {
+        String turn = PhasePrompts.promptFor(entity, missing).orElseThrow();
+        String where = entity.archetype + " " + entity.status + " [" + missing + "]: " + turn;
+        assertFalse(turn.contains("null"), where);
+        assertFalse(turn.contains("term("), where);
+        assertFalse(turn.contains("commit subject"), where);
+        assertFalse(turn.contains(", , "), where);
+        String header =
+            entity.archetype == Archetype.TICKET
+                ? "(BUG, slug login-button-is-the-wrong-colour, id tkt-123)"
+                : "(slug planning-domain, id epc-9)";
+        assertTrue(turn.contains(header), where);
+      }
     }
   }
 }

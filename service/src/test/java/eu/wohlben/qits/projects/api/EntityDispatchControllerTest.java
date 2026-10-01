@@ -341,6 +341,14 @@ public class EntityDispatchControllerTest {
     assertNotEquals(ticketRun.instruction(), epicRun.instruction(), "the words are per archetype");
     assertTrue(ticketRun.instruction().contains("update_ticket"), ticketRun.instruction());
     assertTrue(epicRun.instruction().contains("add_feature"), epicRun.instruction());
+    // The first turn names the entity by the same qualified id the workspace is named by (qits-301),
+    // so the commit subjects it asks for and the session label cannot disagree.
+    assertTrue(
+        ticketRun.instruction().contains("(BUG, " + ticketRun.subject().qualifiedId() + ", slug "),
+        ticketRun.instruction());
+    assertTrue(
+        epicRun.instruction().contains("(" + epicRun.subject().qualifiedId() + ", slug "),
+        epicRun.instruction());
   }
 
   // ---- the continue-or-stop bit ----------------------------------------------------------------
@@ -359,12 +367,25 @@ public class EntityDispatchControllerTest {
     assertEquals(1, turns.calls().size(), "the flow carried the ticket on");
     assertEquals("ticket/flow-ticket", turns.lastCall().branch());
     assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    // A later phase's turn carries the qualified id and the commit-subject form too (qits-301): the
+    // advance renders it, not the press, so it is pinned on the advance's own delivery.
+    String ticketQualified = qualifiedIdOf(projectId, ticketId);
+    assertTrue(
+        turns.lastCall().text().contains("e.g. feat(" + ticketQualified + "): "),
+        turns.lastCall().text());
 
     transitionEpic(epicId, "REFINED");
     assertEquals(2, turns.calls().size(), "and the epic, through the epic's own transition door");
     assertEquals("epic/flow-epic", turns.lastCall().branch());
     assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
     assertTrue(turns.lastCall().text().contains("Implement epic \""), turns.lastCall().text());
+    String epicQualified = qualifiedIdOf(projectId, epicId);
+    assertTrue(
+        turns.lastCall().text().contains("(" + epicQualified + ", slug flow-epic, id " + epicId),
+        turns.lastCall().text());
+    assertTrue(
+        turns.lastCall().text().contains("term(" + epicQualified + "): message"),
+        turns.lastCall().text());
   }
 
   /** PHASE: the same claim delivers nothing — the bit survived the round trip on the row. */

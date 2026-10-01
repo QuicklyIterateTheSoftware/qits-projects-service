@@ -148,8 +148,12 @@ class EntityWorkspaces {
     return qualifiedId == null ? subject : subject.withQualifiedId(qualifiedId);
   }
 
-  /** {@code <project-slug>-<number>}, or {@code null} where either half cannot be had. */
-  private String qualifiedIdOf(WorkEntity entity) {
+  /**
+   * {@code <project-slug>-<number>}, or {@code null} where either half cannot be had — what the
+   * subject is named by, and what the phase turns name the entity by and put in its commit subjects
+   * ({@link PhasePrompts}, qits-301). Degrades as {@link #subjectOf} does.
+   */
+  String qualifiedIdOf(WorkEntity entity) {
     // A number is minted from 1 per project; anything below is a row that never got one.
     if (entity.projectId == null || entity.number < 1) {
       return null;

@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
 import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.EntityCommentService;
+import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -33,7 +34,7 @@ import org.jboss.logging.Logger;
  *       the reason the ticket door always gave: the status there is one a phase runs under, so "no
  *       phase left" would be false, and the answer that sends a reader to the thread comes first.
  *       A campaign's block is its start's business ({@code CampaignStarter}) and its executor's.
- *   <li><b>The phase</b>, from {@link PhasePrompts#startedBy} — VERIFIED, DONE and DROPPED start
+ *   <li><b>The phase</b>, from {@link PhasePrompts#phaseOf} — VERIFIED, DONE and DROPPED start
  *       none and are a <b>409</b> naming the status. Decided before anything is asked of anybody.
  *   <li><b>The port</b> (503 when absent) and <b>the address</b> ({@link EntityWorkspaces#require},
  *       409 for a project with no wrapper). Knowable without attempting anything.
@@ -170,7 +171,7 @@ public class EntityDispatch {
    * @return the phase a press would start now
    */
   public String precheck(WorkEntity entity) {
-    return checked(entity).started().phase();
+    return checked(entity).phase().word();
   }
 
   /** {@link #precheck}, and a {@link DispatchRefused} unless that phase is {@code requiredPhase}. */
@@ -189,11 +190,15 @@ public class EntityDispatch {
     // Every refusal first, with no side effect (a DispatchRefused); everything after this line is
     // the part that writes and calls out, so anything it throws means "outcome unknown".
     Checked checked = checked(entity);
-    PhasePrompts.Started started = checked.started();
     EntityWorkspaces.Target target = checked.target();
     String branch = target.branch();
 
     WorkEntity recorded = entities.setDispatchContinues(entity.id, mode.continues(), changedBy);
+    // One qualified-id read names both the workspace and the entity in the agent's first turn, so
+    // the session label and the commit subjects the turn asks for cannot disagree (qits-301).
+    WorkspaceAgentDispatch.Subject subject = workspaces.subjectOf(recorded);
+    PhasePrompts.Started started =
+        PhasePrompts.start(recorded, checked.phase(), subject.qualifiedId());
 
     WorkspaceAgentDispatch.Dispatch made =
         dispatch
@@ -203,7 +208,7 @@ public class EntityDispatch {
                 branch,
                 target.scope().gitRefs(),
                 true,
-                workspaces.subjectOf(recorded),
+                subject,
                 started.instruction());
 
     comments.addComment(
@@ -265,7 +270,7 @@ public class EntityDispatch {
   // ---- the pieces --------------------------------------------------------------------------
 
   /** What {@link #checked} decided: the phase, and where it runs. */
-  private record Checked(PhasePrompts.Started started, EntityWorkspaces.Target target) {}
+  private record Checked(Phase phase, EntityWorkspaces.Target target) {}
 
   /**
    * The refusals, in the order the class javadoc gives them, each a {@link DispatchRefused}. The
@@ -275,7 +280,7 @@ public class EntityDispatch {
    */
   private Checked checked(WorkEntity entity) {
     refuseCampaign(entity);
-    PhasePrompts.Started started = phaseOrRefuse(entity);
+    Phase phase = phaseOrRefuse(entity);
     if (dispatch.isUnsatisfied()) {
       throw new DispatchRefused(
           503,
@@ -293,7 +298,7 @@ public class EntityDispatch {
     } catch (DomainException refused) {
       throw new DispatchRefused(refused.statusCode(), refused.getMessage());
     }
-    return new Checked(started, target);
+    return new Checked(phase, target);
   }
 
   /**
@@ -303,7 +308,7 @@ public class EntityDispatch {
    */
   private static void requirePhase(WorkEntity entity, String requiredPhase) {
     refuseCampaign(entity);
-    String phase = phaseOrRefuse(entity).phase();
+    String phase = phaseOrRefuse(entity).word();
     if (requiredPhase != null && !requiredPhase.equals(phase)) {
       throw new DispatchRefused(
           409,
@@ -346,7 +351,7 @@ public class EntityDispatch {
    * blocked. The ticket door's two sentences, kept word for word for a ticket — a person reads them
    * — and said of an epic in the same words with its own noun.
    */
-  private static PhasePrompts.Started phaseOrRefuse(WorkEntity entity) {
+  private static Phase phaseOrRefuse(WorkEntity entity) {
     if (!nextPhaseAware(entity)) {
       throw new DispatchRefused(
           409,
@@ -367,7 +372,7 @@ public class EntityDispatch {
               + noun(entity)
               + "'s thread says what. Clear the block once that is resolved, then dispatch.");
     }
-    return PhasePrompts.startedBy(entity)
+    return PhasePrompts.phaseOf(entity)
         .orElseThrow(
             () ->
                 new DispatchRefused(
