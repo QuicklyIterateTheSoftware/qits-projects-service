@@ -464,7 +464,10 @@ public class RefinementService {
           QuarkusTransaction.requiringNew().call(() -> repositories.get(refinement.repositoryId));
       String wrapperName = ProjectService.wrapperName(project);
       String slug = slugOf(refinement);
-      String qualifiedEntityId = qualifiedIdOf(refinement, project);
+      WorkEntity entity = entityOf(refinement);
+      String qualifiedEntityId = qualifiedIdOf(entity, project);
+      // Read at every bring-up, so a block that changed while the container slept is right at wake.
+      boolean entityBlocked = entity != null && entity.blocked;
       process.openSegment("container");
       if (!branchStillExists(refinement)) {
         // The branch is gone from under the refinement — somebody resolved it out-of-band. The
@@ -490,13 +493,15 @@ public class RefinementService {
       }
       if (existing == null) {
         process.appendLine("container", "Provisioning a fresh refinement container.");
-        runtime.provision(refinement, project.slug, slug, wrapperName, qualifiedEntityId);
+        runtime.provision(
+            refinement, project.slug, slug, wrapperName, qualifiedEntityId, entityBlocked);
         process.settleSegment("container", true);
         // Not settled here: the daemon's Provisioned/ProvisionFailed settles the narration, via
         // the registry. The idle reaper is the backstop for a daemon that never dials home.
       } else if (!existing.running()) {
         process.appendLine("container", "Waking the stopped container.");
-        runtime.wake(refinement, project.slug, slug, wrapperName, qualifiedEntityId);
+        runtime.wake(
+            refinement, project.slug, slug, wrapperName, qualifiedEntityId, entityBlocked);
         process.settleSegment("container", true);
       } else {
         runtime.touch(id);
@@ -687,6 +692,43 @@ public class RefinementService {
   }
 
   /**
+   * The refined entity, read fresh for the two labels its container carries — its qualified id and
+   * its block flag (qits-614). The refinement names the entity by uuid only, so both live one read
+   * away, and one read serves both.
+   *
+   * <p><b>Degrades to {@code null}, never throws.</b> Both are labels on a container somebody is
+   * waiting for: an entity gone between the open and this read, or a read that fails outright,
+   * start the container without either — named by its uuid and unmarked, as before.
+   */
+  private WorkEntity entityOf(Refinement refinement) {
+    try {
+      return entities.fresh(refinement.entityId);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not read entity %s for refinement %s; starting its container without its"
+              + " qualified id or block flag: %s",
+          refinement.entityId, refinement.id, e.toString());
+      return null;
+    }
+  }
+
+  /**
+   * The refined entity's {@code <project-slug>-<number>} — {@code qits-614} — for the container's
+   * {@code QITS_WORKSPACE_DAEMON_ENTITY_ID} (qits-614), rendered by {@link QualifiedEntityIds#render}
+   * and nowhere else; {@code null} when the entity, its number or the project's slug is missing.
+   */
+  private static String qualifiedIdOf(WorkEntity entity, Project project) {
+    if (entity == null
+        || entity.number < 1
+        || project == null
+        || project.slug == null
+        || project.slug.isBlank()) {
+      return null;
+    }
+    return QualifiedEntityIds.render(project.slug, entity.number);
+  }
+
+  /**
    * The entity slug a refinement's container name is built from, read off the branch it cut.
    *
    * <p>Package-private and static rather than private, so {@link RefinementStaleImageSweep} can
@@ -694,34 +736,6 @@ public class RefinementService {
    * grammar. Two readings of one convention is exactly how a sweep comes to match nothing on the
    * day the branch prefix changes, with everything still compiling and every test still green.
    */
-  /**
-   * The refined entity's {@code <project-slug>-<number>} — {@code qits-614} — for the container's
-   * {@code QITS_WORKSPACE_DAEMON_ENTITY_ID} (qits-614), rendered by {@link QualifiedEntityIds#render}
-   * and nowhere else. The number lives on the entity row, which the refinement names by uuid only,
-   * so it is one fresh read of that row.
-   *
-   * <p><b>Degrades to {@code null}, never throws.</b> It is a label on a container somebody is
-   * waiting for: an entity gone between the open and this read, a project with no slug, or a read
-   * that fails outright each start the container without it — named by its uuid, as before.
-   */
-  private String qualifiedIdOf(Refinement refinement, Project project) {
-    if (project == null || project.slug == null || project.slug.isBlank()) {
-      return null;
-    }
-    try {
-      WorkEntity entity = entities.fresh(refinement.entityId);
-      return entity == null || entity.number < 1
-          ? null
-          : QualifiedEntityIds.render(project.slug, entity.number);
-    } catch (RuntimeException e) {
-      LOG.warnf(
-          "Could not resolve the qualified id of entity %s for refinement %s; starting its"
-              + " container without one: %s",
-          refinement.entityId, refinement.id, e.toString());
-      return null;
-    }
-  }
-
   static String slugOf(Refinement refinement) {
     return refinement.branch.startsWith("refining/")
         ? refinement.branch.substring("refining/".length())

@@ -7,10 +7,18 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import eu.wohlben.qits.projects.control.ProjectService;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentBlocks;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentBlocks.Told;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
+import jakarta.inject.Inject;
 import java.util.Arrays;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -22,6 +30,22 @@ import org.junit.jupiter.api.Test;
  */
 @QuarkusTest
 class EntityBlockApiTest {
+
+  /** What the agents working an entity were told about its block (qits-614). */
+  @Inject RecordingWorkspaceAgentBlocks agents;
+
+  @Inject ProjectService projects;
+
+  @BeforeEach
+  void forgetWhatTheAgentsWereTold() {
+    agents.reset();
+  }
+
+  /** {@code epic/<slug>} on the project's wrapper — the address the workspace port is told at. */
+  private Told told(String projectId, String epicId, boolean blocked) {
+    String slug = given().get("/projects/api/epics/" + epicId).then().extract().path("epic.slug");
+    return new Told(projects.findWrapper(projectId).orElseThrow().id, "epic/" + slug, blocked);
+  }
 
   private static ValidatableResponse setBlocked(String id, boolean blocked, String reason) {
     return given()
@@ -216,5 +240,96 @@ class EntityBlockApiTest {
         .then()
         .body("state.blocked", equalTo(false))
         .body("state.dispatchable", equalTo(true));
+  }
+
+  /**
+   * The agents working an epic are told when — and only when — the door CHANGES the flag
+   * (qits-614): an idempotent re-block or re-unblock still writes its comment and tells nobody.
+   */
+  @Test
+  void anEpicsAgentsAreToldWhenTheFlagChangesAndOnlyThen() {
+    EntityFixtures.Project project = EntityFixtures.project("Block Tells Epic");
+    String epic = EntityFixtures.epic(project.id());
+    walk(epic, "REFINED");
+
+    setBlocked(epic, true, "the sibling library has not released").statusCode(200);
+    assertEquals(List.of(told(project.id(), epic, true)), agents.calls());
+
+    setBlocked(epic, true, "and still has not").statusCode(200);
+    assertEquals(1, agents.calls().size(), "a block that changed nothing renames nothing");
+
+    setBlocked(epic, false, null).statusCode(200);
+    assertEquals(
+        List.of(told(project.id(), epic, true), told(project.id(), epic, false)), agents.calls());
+
+    setBlocked(epic, false, null).statusCode(200);
+    assertEquals(2, agents.calls().size());
+  }
+
+  /** A ticket is told on its own branch, the same way. */
+  @Test
+  void aTicketsAgentsAreTold() {
+    EntityFixtures.Project project = EntityFixtures.project("Block Tells Ticket");
+    String ticket = EntityFixtures.ticket(project.id());
+
+    setBlocked(ticket, true, "the owner has to choose").statusCode(200);
+
+    assertEquals(1, agents.calls().size());
+    Told only = agents.calls().get(0);
+    assertEquals(projects.findWrapper(project.id()).orElseThrow().id, only.repositoryId());
+    assertEquals(true, only.branch().startsWith("ticket/"), only.branch());
+    assertEquals(true, only.blocked());
+  }
+
+  /** No agent session works a campaign, so a campaign's block tells nobody. */
+  @Test
+  void aCampaignsBlockTellsNoAgent() {
+    EntityFixtures.Project project = EntityFixtures.project("Block Tells Campaign");
+    String campaign = EntityFixtures.campaign(project.id());
+    walk(campaign, "REFINED");
+
+    setBlocked(campaign, true, "the pilot has to finish first").statusCode(200);
+    setBlocked(campaign, false, null).statusCode(200);
+
+    assertEquals(List.of(), agents.calls());
+  }
+
+  /**
+   * A port that breaks its own never-throw contract does not fail the block, and the flag is
+   * written regardless — the signal runs after the write, and a bug in it cannot reach the door.
+   */
+  @Test
+  void aThrowingPortNeverFailsTheBlock() {
+    EntityFixtures.Project project = EntityFixtures.project("Block Tells Throwing");
+    String epic = EntityFixtures.epic(project.id());
+    walk(epic, "REFINED");
+    agents.willThrow(new IllegalStateException("a port bug"));
+
+    setBlocked(epic, true, "waiting on somebody").statusCode(200).body("block.blocked", equalTo(true));
+    given().get("/projects/api/epics/" + epic).then().body("epic.blocked", equalTo(true));
+    walk(epic, "IMPLEMENTED");
+    given().get("/projects/api/epics/" + epic).then().body("epic.blocked", equalTo(false));
+
+    assertEquals(2, agents.calls().size(), "both were attempted: " + agents.calls());
+  }
+
+  /**
+   * A transition clears the flag, so a move off a blocked entity tells its agents {@code false};
+   * a move of an entity that was not blocked tells nobody anything (qits-614).
+   */
+  @Test
+  void aTransitionTellsTheAgentsOnlyWhenItClearedABlock() {
+    EntityFixtures.Project project = EntityFixtures.project("Block Tells Transition");
+    String epic = EntityFixtures.epic(project.id());
+    walk(epic, "REFINED");
+    assertEquals(List.of(), agents.calls(), "an unblocked move tells nobody");
+
+    setBlocked(epic, true, "the dossier owes a decision").statusCode(200);
+    walk(epic, "IMPLEMENTED");
+
+    assertEquals(
+        List.of(told(project.id(), epic, true), told(project.id(), epic, false)), agents.calls());
+    walk(epic, "VERIFIED");
+    assertEquals(2, agents.calls().size(), "the next move had no block to clear");
   }
 }

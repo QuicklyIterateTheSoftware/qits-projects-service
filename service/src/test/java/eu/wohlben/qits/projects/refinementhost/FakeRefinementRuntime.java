@@ -40,6 +40,14 @@ public class FakeRefinementRuntime implements RefinementRuntime {
     return qualifiedEntityIds.get(refinementId);
   }
 
+  /** The block flag the last provision or wake of each refinement was handed (qits-614). */
+  private final Map<Long, Boolean> blockedFlags = new LinkedHashMap<>();
+
+  /** Whether the last bring-up of {@code refinementId} was told its entity is blocked, or null. */
+  public synchronized Boolean entityBlockedOf(long refinementId) {
+    return blockedFlags.get(refinementId);
+  }
+
   @Override
   public synchronized Optional<ContainerInfo> inspect(long refinementId) {
     return Optional.ofNullable(places.get(refinementId));
@@ -51,9 +59,11 @@ public class FakeRefinementRuntime implements RefinementRuntime {
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId) {
+      String qualifiedEntityId,
+      boolean entityBlocked) {
     calls.add("provision:" + refinement.id);
     qualifiedEntityIds.put(refinement.id, qualifiedEntityId);
+    blockedFlags.put(refinement.id, entityBlocked);
     places.put(
         refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
   }
@@ -64,9 +74,11 @@ public class FakeRefinementRuntime implements RefinementRuntime {
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId) {
+      String qualifiedEntityId,
+      boolean entityBlocked) {
     calls.add("wake:" + refinement.id);
     qualifiedEntityIds.put(refinement.id, qualifiedEntityId);
+    blockedFlags.put(refinement.id, entityBlocked);
     places.put(
         refinement.id, new ContainerInfo("qits-ref-" + projectSlug + "-" + slug, true));
   }
@@ -105,5 +117,6 @@ public class FakeRefinementRuntime implements RefinementRuntime {
     places.clear();
     calls.clear();
     qualifiedEntityIds.clear();
+    blockedFlags.clear();
   }
 }

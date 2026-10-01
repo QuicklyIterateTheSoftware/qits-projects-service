@@ -33,25 +33,29 @@ public interface RefinementRuntime {
    *
    * <p>{@code qualifiedEntityId} is the refined entity's {@code <project-slug>-<number>} — {@code
    * qits-614} — or {@code null} when it could not be rendered; a label for the daemon's session
-   * names (qits-614), never an address, so null costs the container nothing but that name.
+   * names (qits-614), never an address, so null costs the container nothing but that name. {@code
+   * entityBlocked} is the refined entity's block flag as the row stands, for the {@code ❗ } marker
+   * on those names; false is also the answer when it could not be read.
    */
   void provision(
       Refinement refinement,
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId);
+      String qualifiedEntityId,
+      boolean entityBlocked);
 
   /**
    * Wake a stopped container — a start in place, a replacement only if the spec really changed.
-   * {@code qualifiedEntityId} as {@link #provision}.
+   * {@code qualifiedEntityId} and {@code entityBlocked} as {@link #provision}.
    */
   void wake(
       Refinement refinement,
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId);
+      String qualifiedEntityId,
+      boolean entityBlocked);
 
   /** Stop the container gracefully, leaving it and its volume in place. Best-effort. */
   void stop(long refinementId);

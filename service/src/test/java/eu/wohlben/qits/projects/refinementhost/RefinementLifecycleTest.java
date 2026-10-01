@@ -160,11 +160,43 @@ public class RefinementLifecycleTest {
             + "-"
             + dispatchEntities.fresh(epicId).number;
     assertEquals(expected, runtime.qualifiedEntityIdOf(id.longValue()));
+    // An unblocked entity's container is told nothing about a block (qits-614).
+    assertEquals(Boolean.FALSE, runtime.entityBlockedOf(id.longValue()));
 
     // The narration is subscribable while the daemon would still be dialling home. Asserted at the
     // registry rather than by GETting the SSE route: the stream stays open until the process
     // settles, and a blocking client would sit on it for the whole idle window.
     assertTrue(processes.find(processId).isPresent());
+  }
+
+  /**
+   * An entity blocked before its container comes up is born with the block (qits-614): the flag is
+   * read fresh off the row at the bring-up, so the daemon's session names carry the marker from the
+   * first one. The block itself goes through the real door — which also asks this refinement's
+   * daemon, finds no tunnel and returns without a word, the ordinary answer for a stopped room.
+   */
+  @Test
+  public void aBlockedEntitysContainerIsProvisionedKnowingIt() {
+    String projectId = createProject("Refine Blocked");
+    String epicId = createEpic(projectId, "Blocked Epic");
+    Number id = open(epicId).then().statusCode(200).extract().path("refinement.id");
+    given()
+        .contentType(ContentType.JSON)
+        .body(java.util.Map.of("blocked", true, "reason", "the owner has to decide the scope"))
+        .when()
+        .post("/projects/api/entities/" + epicId + "/blocked")
+        .then()
+        .statusCode(200);
+
+    given()
+        .when()
+        .post("/projects/api/refinements/" + id + "/ensure-container")
+        .then()
+        .statusCode(200);
+
+    awaitStatus(id.longValue(), "RUNNING");
+    assertTrue(runtime.calls().contains("provision:" + id.longValue()));
+    assertEquals(Boolean.TRUE, runtime.entityBlockedOf(id.longValue()));
   }
 
   @Test

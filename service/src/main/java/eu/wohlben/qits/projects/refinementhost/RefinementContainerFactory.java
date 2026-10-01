@@ -278,19 +278,23 @@ public class RefinementContainerFactory {
    *
    * @param qualifiedEntityId the refined entity's {@code <project-slug>-<number>}, or {@code null}
    *     when the caller could not render it — see {@code QITS_WORKSPACE_DAEMON_ENTITY_ID} below
+   * @param entityBlocked whether the refined entity is blocked as the row stands now — see {@code
+   *     QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED} below
    */
   public EnsureRequest forFreshContainer(
       Refinement refinement,
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId) {
+      String qualifiedEntityId,
+      boolean entityBlocked) {
     return request(
         refinement,
         projectSlug,
         slug,
         wrapperName,
         qualifiedEntityId,
+        entityBlocked,
         commissions.forFreshContainer(refinement));
   }
 
@@ -300,13 +304,15 @@ public class RefinementContainerFactory {
       String projectSlug,
       String slug,
       String wrapperName,
-      String qualifiedEntityId) {
+      String qualifiedEntityId,
+      boolean entityBlocked) {
     return request(
         refinement,
         projectSlug,
         slug,
         wrapperName,
         qualifiedEntityId,
+        entityBlocked,
         commissions.forExistingContainer(refinement));
   }
 
@@ -316,6 +322,7 @@ public class RefinementContainerFactory {
       String slug,
       String wrapperName,
       String qualifiedEntityId,
+      boolean entityBlocked,
       Optional<RefinementCredentials.Commissioned> credential) {
     Map<String, String> env = new LinkedHashMap<>();
     env.put("TZ", timezone());
@@ -337,6 +344,15 @@ public class RefinementContainerFactory {
     // next wake (Recreate.ifChanged), its /workspace volume reattached — the cost of any env change.
     if (qualifiedEntityId != null && !qualifiedEntityId.isBlank()) {
       env.put("QITS_WORKSPACE_DAEMON_ENTITY_ID", qualifiedEntityId);
+    }
+    // The entity's block flag at creation, so the daemon's session names start with the `❗ ` marker
+    // a blocked entity carries (qits-614); a change while the container runs arrives through
+    // RefinementAgentBlocks instead. Set only when TRUE, never as "false": an unblocked entity's spec
+    // stays byte-identical to the one every standing container was created with, so this costs no
+    // replacement except for a container whose entity is blocked when it next wakes — which is the
+    // one container whose name is wrong without it.
+    if (entityBlocked) {
+      env.put("QITS_WORKSPACE_DAEMON_ENTITY_BLOCKED", "true");
     }
     // Both halves of the name-addressed clone: relative submodule urls resolve only against
     // <gitBase>/<projectId>/<repoName>.

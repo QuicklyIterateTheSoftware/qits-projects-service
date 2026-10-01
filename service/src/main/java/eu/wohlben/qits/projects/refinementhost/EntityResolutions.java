@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.refinementhost;
 
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.projects.api.AgentBlockSignals;
 import eu.wohlben.qits.projects.entity.Refinement;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -45,6 +46,31 @@ import org.jboss.logging.Logger;
  * DROPPED ({@code EntityLifecycle.resolves}), whichever direction the move comes from, and the rule
  * is the same word for word for both archetypes.
  *
+ * <h2>A move off a block tells the entity's agents, before the next phase starts (qits-614)</h2>
+ *
+ * <p>Every transition clears {@code blocked} ({@code WorkEntityService.transition}), and nothing
+ * else would tell the agent sessions working the entity that their {@code ❗ } marker is stale. So
+ * the flag is read off the <b>plan</b> — the row as it stood before the move — and, only when it was
+ * set, {@link AgentBlockSignals} is told {@code false} once the transition has returned. Three
+ * properties follow from where that line sits:
+ *
+ * <ul>
+ *   <li><b>After the commit.</b> The transition runs in its own {@code WritePatience} transaction
+ *       and this bean is not transactional, so a move that is refused or rolled back has told
+ *       nobody anything, and a target that cannot be reached cannot undo the move.
+ *   <li><b>Before {@code PhaseAdvance}.</b> Every door that delivers the next phase's turn calls
+ *       {@code PhaseAdvance.afterTransition} <em>after</em> this method returns, so the unblock is
+ *       on the far side before a turn is delivered or an agent launched on the same branch — the
+ *       ordering holds by construction, without either door having to remember it.
+ *   <li><b>Not after a resolving move's discard alone.</b> A move that resolves the entity has
+ *       already torn its refinement down, so that half finds no room and asks nothing; the
+ *       workspace is still told, because a resolved entity's workspace may well still stand.
+ * </ul>
+ *
+ * <p>The flag is copied to a local before anything else runs: within an enclosing transaction the
+ * planned row could be the managed instance the move writes, and reading it afterwards would always
+ * answer {@code false}.
+ *
  * <p><b>Not covered, and stated rather than fixed:</b> {@code POST /entities/transition} and the
  * {@code transition_entities} tool write statuses through {@code EntityTransitions}, which does not
  * come through here — for an epic exactly as before qits-395.
@@ -58,14 +84,26 @@ public class EntityResolutions {
 
   @Inject RefinementService refinements;
 
-  /** A move of any lifecycle archetype, with its refinement torn down first when it resolves it. */
+  /** The agents told that a move cleared the block — see the class javadoc. */
+  @Inject AgentBlockSignals agents;
+
+  /**
+   * A move of any lifecycle archetype, with its refinement torn down first when it resolves it, and
+   * the entity's agents told it is no longer blocked when it was.
+   */
   public WorkEntityService.Transition transition(
       Archetype archetype, String id, String target, String changedBy) {
     WorkEntityService.PlannedTransition planned = entities.planTransition(archetype, id, target);
+    boolean wasBlocked = planned.entity().blocked;
     if (planned.resolving()) {
       discardHeldBy(id, noun(archetype), planned.target().name());
     }
-    return entities.transition(archetype, id, target, changedBy);
+    WorkEntityService.Transition moved = entities.transition(archetype, id, target, changedBy);
+    if (wasBlocked) {
+      // Ticket and epic only, never throws — AgentBlockSignals filters and swallows both.
+      agents.blocked(moved.entity(), false);
+    }
+    return moved;
   }
 
   /** "Epic" / "Ticket", for the log line. */

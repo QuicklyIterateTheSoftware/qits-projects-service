@@ -74,6 +74,16 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * {@code NORMAL} launch mode and an unblock is a person saying "go on now", so the unblock asks for
  * the same pass a start press does, {@code CampaignExecutor.sweep(campaignId)}, after the row is
  * written. It never throws; a member it cannot try is the sweep's to retry.
+ *
+ * <h2>A ticket's or an epic's agents are told, after the write (qits-614)</h2>
+ *
+ * <p>The agent sessions working a ticket or an epic carry a {@code ❗ } marker on their names while
+ * it is blocked, so {@link AgentBlockSignals} is told whenever this door actually <b>changes</b> the
+ * flag — compared against the row the door resolved, so an idempotent re-block (which the entities
+ * module records again on purpose, for the comment) does not rename anything twice. It runs after
+ * {@code setBlocked} has returned, i.e. after its own transaction committed, so no target is ever
+ * told about a value a rollback undid; and it never throws, so an unreachable workspace costs a
+ * marker and never the block. A campaign is not told anything: no session works one.
  */
 @ApplicationScoped
 public class EntityBlocks {
@@ -84,6 +94,9 @@ public class EntityBlocks {
 
   /** The pass after a campaign's unblock — see the class javadoc. */
   @Inject CampaignExecutor executor;
+
+  /** The agents working a ticket or an epic, told the flag moved — see the class javadoc. */
+  @Inject AgentBlockSignals agents;
 
   /**
    * What every generic block door answers: the entity as the flag now stands on it, and no more. A
@@ -124,10 +137,16 @@ public class EntityBlocks {
     if (blocked) {
       requireBlockable(entity);
     }
+    // Read before the write: the door's row is the value the flag had, and only a change is told.
+    boolean was = entity.blocked;
     thread.addComment(entity.id, remark(blocked, stated), changedBy);
     WorkEntity written = entities.setBlocked(entity.archetype, entity.id, blocked, changedBy);
     if (!blocked && written.archetype == Archetype.CAMPAIGN) {
       executor.sweep(written.id);
+    }
+    if (was != blocked) {
+      // Ticket and epic only, never throws — AgentBlockSignals filters and swallows both.
+      agents.blocked(written, blocked);
     }
     return written;
   }

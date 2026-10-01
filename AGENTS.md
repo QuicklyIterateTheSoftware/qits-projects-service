@@ -120,6 +120,17 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     dispatch door's job one path over. The path sits under `agent-dispatches` for the 403 reason
     above; do not tidy it.
 
+  - `control/WorkspaceAgentBlocks` → `HttpWorkspaceAgentBlocks` (qits-614): the POST that tells the
+    workspace on a branch its ticket or epic was blocked or unblocked —
+    `POST /workspaces/api/agent-dispatches/blocked` with `{repositoryId, branch, blocked}`,
+    answering `{workspaceId, applied}` — so the far side marks its session names with `❗ `.
+    `WorkspaceAgentTurns`' failure contract (never throws, one WARN, a 404 from an older far side
+    included) with no return value, and a 5s bound because the caller is a person's block press.
+    `api/AgentBlockSignals` is its one caller — from `EntityBlocks.apply` when the flag changes and
+    from `EntityResolutions.transition` when a move cleared one, both after the write — and also asks
+    the entity's refinement through `refinementhost/RefinementAgentBlocks` (`POST <proxy base>
+    agents/blocked` down the tunnel).
+
   That is why the second and third are new classes and not further methods on the first: two verbs
   with opposite failure contracts do not share a class, and the standing rule stays — do not grow a
   verb onto `HttpReleasedBranchWorkspaces` on the grounds that the address is configured again. The
