@@ -16,7 +16,8 @@ import org.jboss.logging.Logger;
 
 /**
  * Keeps every repository's forge twin in step with the git host, without anybody having to remember
- * to push.
+ * to push. "In step" means the main branch and every tag, not every branch — see {@link
+ * RepositoryService#backupToTwin} for why a platform branch is deliberately left out.
  *
  * <p>Two triggers, and they are different jobs. The git host's {@code post-receive} calls {@link
  * #onPush} the moment a push is accepted, which is what makes the twin current within seconds of
