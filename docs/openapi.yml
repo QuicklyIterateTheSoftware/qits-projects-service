@@ -810,6 +810,49 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CommitDto"
+    CommitSubjectCounts:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: int32
+        complying:
+          type: integer
+          format: int32
+        nonComplying:
+          type: integer
+          format: int32
+        exempt:
+          type: integer
+          format: int32
+        exemptMerge:
+          type: integer
+          format: int32
+        exemptMachine:
+          type: integer
+          format: int32
+    CommitSubjectsDto:
+      type: object
+      properties:
+        repositoryId:
+          type: string
+        branch:
+          type: string
+        limit:
+          type: integer
+          format: int32
+        guardEnabled:
+          type: boolean
+        counts:
+          $ref: "#/components/schemas/CommitSubjectCounts"
+        nonComplying:
+          type: array
+          items:
+            $ref: "#/components/schemas/NonComplyingCommit"
+        qualifiedIds:
+          type: array
+          items:
+            type: string
     ConditionCriterion:
       type: object
       properties:
@@ -1812,6 +1855,21 @@ components:
           type: string
           pattern: \S
         body:
+          type: string
+    NonComplyingCommit:
+      type: object
+      properties:
+        hash:
+          type: string
+        shortHash:
+          type: string
+        subject:
+          type: string
+        authorName:
+          type: string
+        authorEmail:
+          type: string
+        date:
           type: string
     Outcome:
       type: string
@@ -6345,6 +6403,49 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/repositories/{repoId}/commit-subjects:
+    get:
+      summary: Commit-subject compliance of a branch's newest commits
+      description: "Of the newest `limit` commits on `branch` (default: the repository's\
+        \ main branch; limit default 100, at most 1000), how many name their subject\
+        \ as `term(<project>-<n>): message`. Merges and commits by a configured machine\
+        \ author are exempt. Lists every non-complying commit, and says whether the\
+        \ branch opts into the git host's commit-subject guard (`.config/qits/commit-subjects.yml`\
+        \ holding `enforce: true`)."
+      operationId: measureCommitSubjects
+      parameters:
+      - name: repoId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: branch
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommitSubjectsDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Repository Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+        - qits:system
   /projects/api/repositories/{repoId}/commits:
     get:
       parameters:

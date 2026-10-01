@@ -153,7 +153,7 @@ public final class AgentSurfaceDefaults {
 
   /**
    * The projects daemon's {@code READ_ONLY_REPOSITORY_TOOLS} — its whole {@code repository}
-   * pre-approval, reads only. Eleven ids, and the snake_case half is not a slip: the epic and ticket
+   * pre-approval, reads only. Twelve ids, and the snake_case half is not a slip: the epic and ticket
    * tools declare those names on this service's own MCP server and the id must match character for
    * character or the pre-approval matches nothing.
    */
@@ -164,6 +164,8 @@ public final class AgentSurfaceDefaults {
           "mcp__repository__listCommits",
           "mcp__repository__listCommitChanges",
           "mcp__repository__getCommitFileDiff",
+          // qits-302: a read added on this side; the daemons' own copies do not list it yet.
+          "mcp__repository__measureCommitSubjects",
           "mcp__repository__listActions",
           "mcp__repository__taskPrompt",
           "mcp__repository__list_epics",
@@ -190,6 +192,8 @@ public final class AgentSurfaceDefaults {
                   "mcp__repository__listCommits",
                   "mcp__repository__listCommitChanges",
                   "mcp__repository__getCommitFileDiff",
+                  // qits-302: a read added on this side; the daemons' copies do not list it yet.
+                  "mcp__repository__measureCommitSubjects",
                   "mcp__repository__listActions",
                   "mcp__repository__taskPrompt",
                   "mcp__repository__list_tickets",

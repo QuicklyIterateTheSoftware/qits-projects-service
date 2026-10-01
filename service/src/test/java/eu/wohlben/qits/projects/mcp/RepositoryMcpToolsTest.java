@@ -408,6 +408,9 @@ public class RepositoryMcpToolsTest {
                       "listCommits",
                       "listCommitChanges",
                       "getCommitFileDiff",
+                      // qits-302: the commit-subject compliance read, a git read like the four
+                      // above and fenced the same way.
+                      "measureCommitSubjects",
                       // EpicMcpTools — the refinement surface, deliberately on the same declared
                       // server (a second name would need its own daemon-side contract). No
                       // transition tool: freezing a draft is a human act in the UI.

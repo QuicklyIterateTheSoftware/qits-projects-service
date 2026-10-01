@@ -396,6 +396,34 @@ consumer that cares about the project does is **compare**: `NamedEntity` carries
 than disguised as "no id found". `anIdFromAnotherProjectResolvesToThatProjectsEntity` pins it, over
 two projects whose runs both start at 1.
 
+### Measuring a branch against it (qits-302)
+
+`GET /projects/api/repositories/{repoId}/commit-subjects?branch=&limit=` (`qits:admin`,
+`qits:agent`, `qits:system`) and the MCP tool `measureCommitSubjects` answer "of the newest `limit`
+commits on this branch (default the repository's main branch, 100, at most 1000), how many name a
+subject, and which do not". `service/…/entitieshost/CommitSubjectCompliance` asks `reference` above
+and nothing else, and puts each commit in exactly one class, in this order:
+
+| class | when |
+| --- | --- |
+| `EXEMPT` / `MERGE` | more than one parent |
+| `EXEMPT` / `MACHINE` | author email in `qits.projects.commit-subjects.machine-authors` (default `maintenance@qits.local,qits-projects@qits.internal,release-train@qits.local`) |
+| `COMPLYING` | `reference` finds an id — syntax only, no lookup |
+| `NON_COMPLYING` | everything else; each one is listed with hash, subject, author and date |
+
+**"No subject" on a merge or a machine commit is normal and is never counted against the branch.**
+A merge message is machine-written and qits-githost's receive guard does not check it either (only
+the commits it brings in); a qits-maintenance bump or a release-flow fold/`release(<v>)` commit is
+platform automation, which the guard exempts by *pusher* identity (`qits:system`, `qits:ci-run`). A
+commit records no pusher, so the author's address stands in for it here. **`qits@local` is not a
+machine author**: it is `GitIdentity`'s default, which is also the identity every workspace and
+agent container commits as, so listing it would exempt exactly the agents' own work.
+
+`guardEnabled` reports whether `.config/qits/commit-subjects.yml` on the branch read holds `enforce:
+true`, parsed the way qits-githost's `CommitSubjectHook.enforceTrue` parses it (top-level key, `" #"`
+comment stripped, last occurrence wins, only exactly `true`); absent is false. The guard itself reads
+the file from the default branch, so on any other branch this is "would opt in once merged".
+
 ## What is left for the SPA
 
 Nothing on the SPA was touched (it is a separate repository). What it will find, all additive:

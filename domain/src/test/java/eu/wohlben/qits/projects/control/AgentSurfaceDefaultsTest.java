@@ -71,6 +71,8 @@ public class AgentSurfaceDefaultsTest {
           "mcp__repository__listCommits",
           "mcp__repository__listCommitChanges",
           "mcp__repository__getCommitFileDiff",
+          // qits-302: a read added on this side; the daemons' own copies do not list it yet.
+          "mcp__repository__measureCommitSubjects",
           "mcp__repository__listActions",
           "mcp__repository__taskPrompt",
           "mcp__repository__list_epics",
@@ -87,6 +89,8 @@ public class AgentSurfaceDefaultsTest {
           "mcp__repository__listCommits",
           "mcp__repository__listCommitChanges",
           "mcp__repository__getCommitFileDiff",
+          // qits-302: a read added on this side; the daemons' own copies do not list it yet.
+          "mcp__repository__measureCommitSubjects",
           "mcp__repository__listActions",
           "mcp__repository__taskPrompt",
           "mcp__repository__list_tickets",

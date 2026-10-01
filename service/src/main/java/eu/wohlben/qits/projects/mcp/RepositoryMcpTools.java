@@ -8,6 +8,8 @@ import eu.wohlben.qits.projects.dto.CommitChangesDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.CommitLogDto;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.entitieshost.CommitSubjectCompliance;
+import eu.wohlben.qits.projects.entitieshost.CommitSubjectsDto;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -67,6 +69,8 @@ public class RepositoryMcpTools {
 
   @Inject CommitService commitService;
 
+  @Inject CommitSubjectCompliance commitSubjectCompliance;
+
   // --- Context (read) -------------------------------------------------------
 
   /**
@@ -88,8 +92,9 @@ public class RepositoryMcpTools {
               + " listed, including when the session is narrowed to one of them: that is the set a"
               + " task may be filed against (add_task), because a plan spans the project. The row"
               + " with thisSession=true is the repository this session is standing on, and it is"
-              + " the ONLY one listBranches, listCommits, listCommitChanges and getCommitFileDiff"
-              + " answer for when the session is narrowed — they refuse any other repoId.")
+              + " the ONLY one listBranches, listCommits, listCommitChanges, getCommitFileDiff and"
+              + " measureCommitSubjects answer for when the session is narrowed — they refuse any"
+              + " other repoId.")
   @Transactional
   public List<RepositorySummary> listRepositories() {
     var scopedRepo = scope.repositoryId();
@@ -164,6 +169,28 @@ public class RepositoryMcpTools {
           String parent) {
     requireRepoInProject(repoId);
     return commitService.getFileDiff(repoId, commitHash, parent, path);
+  }
+
+  @McpServer("repository")
+  @Tool(
+      description =
+          "Measure how many of a branch's newest commits name their subject as"
+              + " term(<project>-<n>): message, e.g. feat(qits-1337): add the export. Each commit"
+              + " is EXEMPT (a merge, or a platform machine author — a subject-less bump or release"
+              + " commit is normal), COMPLYING or NON_COMPLYING; every non-complying commit is"
+              + " listed. guardEnabled says whether the branch opts into the git host's"
+              + " commit-subject guard (.config/qits/commit-subjects.yml holding enforce: true).")
+  @Transactional
+  public CommitSubjectsDto measureCommitSubjects(
+      @ToolArg(description = "id of a repository in this project") String repoId,
+      @ToolArg(required = false, description = "branch to read; omit for the main branch")
+          String branch,
+      @ToolArg(
+              required = false,
+              description = "how many of the newest commits; default 100, max 1000")
+          Integer limit) {
+    requireRepoInProject(repoId);
+    return commitSubjectCompliance.measure(repoId, branch, limit);
   }
 
   // --- Actions (write) ------------------------------------------------------

@@ -13,6 +13,8 @@ import eu.wohlben.qits.projects.dto.CommitLogDto;
 import eu.wohlben.qits.projects.dto.RepositoryCoordinatesDto;
 import eu.wohlben.qits.projects.dto.RepositoryDto;
 import eu.wohlben.qits.projects.dto.SyncStatusDto;
+import eu.wohlben.qits.projects.entitieshost.CommitSubjectCompliance;
+import eu.wohlben.qits.projects.entitieshost.CommitSubjectsDto;
 import eu.wohlben.qits.projects.mapper.RepositoryMapper;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -47,6 +49,9 @@ public class RepositoryController {
   @Inject BackupPushService backupPushService;
 
   @Inject CommitService commitService;
+
+  /** The commit-subject compliance read (qits-302). */
+  @Inject CommitSubjectCompliance commitSubjectCompliance;
 
   /** The per-commit build-status ledger the bus keeps — see {@code bus/BuildStatusListener}. */
   @Inject BuildStatusLedger buildStatusLedger;
@@ -161,6 +166,36 @@ public class RepositoryController {
       @QueryParam("parent") String parent,
       @QueryParam("path") @NotBlank String path) {
     return commitService.getFileDiff(repoId, commitHash, parent, path);
+  }
+
+  /**
+   * <b>How many of a branch's newest commits name their subject</b> (qits-302): each commit is
+   * EXEMPT (a merge, or a configured machine author), COMPLYING ({@code term(<project>-<n>):
+   * message}) or NON_COMPLYING, and the non-complying ones are listed. {@code guardEnabled} says
+   * whether the branch carries qits-githost's opt-in file with {@code enforce: true}. See {@link
+   * CommitSubjectCompliance}.
+   *
+   * <p>A read, so the three readers every repository read admits — a person, an agent, a platform
+   * service. A method-level {@code @RolesAllowed} replaces the class-level {@code qits:admin}.
+   */
+  @GET
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @Path("/{repoId}/commit-subjects")
+  @Operation(
+      operationId = "measureCommitSubjects",
+      summary = "Commit-subject compliance of a branch's newest commits",
+      description =
+          "Of the newest `limit` commits on `branch` (default: the repository's main branch; limit"
+              + " default 100, at most 1000), how many name their subject as"
+              + " `term(<project>-<n>): message`. Merges and commits by a configured machine author"
+              + " are exempt. Lists every non-complying commit, and says whether the branch opts"
+              + " into the git host's commit-subject guard (`.config/qits/commit-subjects.yml`"
+              + " holding `enforce: true`).")
+  public CommitSubjectsDto commitSubjects(
+      @PathParam("repoId") String repoId,
+      @QueryParam("branch") String branch,
+      @QueryParam("limit") Integer limit) {
+    return commitSubjectCompliance.measure(repoId, branch, limit);
   }
 
   public static record ListCommitBuildsRequest() {

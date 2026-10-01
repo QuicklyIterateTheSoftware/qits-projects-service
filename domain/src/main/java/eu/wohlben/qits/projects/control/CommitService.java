@@ -417,6 +417,121 @@ public class CommitService {
   }
 
   /**
+   * {@link #readSubjectLog}'s format: {@link #LOG_FORMAT}'s fields with the <b>parents</b> ({@code
+   * %P}, space-separated) after the short hash, which is what tells a merge from an ordinary commit.
+   * A format of its own rather than a widened {@link #LOG_FORMAT}, because {@link CommitDto} is a
+   * published contract and carries no parents.
+   */
+  private static final String SUBJECT_LOG_FORMAT =
+      "--format=%x1e%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%cI%x1f%s";
+
+  /** The opt-in file qits-githost's commit-subject receive guard reads (qits-297). */
+  public static final String COMMIT_SUBJECTS_CONFIG = ".config/qits/commit-subjects.yml";
+
+  /**
+   * One commit as the subject-compliance read sees it.
+   *
+   * @param parents how many parents it has — more than one is a merge
+   * @param date the committer date, ISO-8601, as {@link CommitDto} carries it
+   * @param subject the first line of the message
+   */
+  public record SubjectLine(
+      String hash,
+      String shortHash,
+      int parents,
+      String authorName,
+      String authorEmail,
+      String date,
+      String subject) {}
+
+  /**
+   * The newest {@code limit} commits on a branch, and the guard file on that same branch.
+   *
+   * @param branch the branch actually read — the repository's main branch when none was asked for
+   * @param commits newest first, at most {@code limit}
+   * @param guardConfig {@link #COMMIT_SUBJECTS_CONFIG}'s bytes at the branch tip, or null when the
+   *     branch holds no such file
+   */
+  public record SubjectLog(String branch, List<SubjectLine> commits, String guardConfig) {}
+
+  /**
+   * The raw material of the commit-subject compliance read (qits-302): the last {@code limit}
+   * commits reachable from {@code branch} — merges included, since telling them apart is the
+   * reader's job — with their parent counts and authors, plus the guard's opt-in file as it stands
+   * on that branch. Classifying is not done here: the grammar lives in the service module ({@code
+   * CommitSubjectEntities}) and is read in one place only.
+   *
+   * <p>{@code branch} null or blank means the repository's main branch. A branch the mirror does not
+   * hold is a 404 rather than the 500 a failed {@code git log} would be.
+   */
+  public SubjectLog readSubjectLog(String repoId, String branch, int limit) {
+    Repository repo =
+        repositoryRepository
+            .findByIdOptional(repoId)
+            .orElseThrow(() -> new NotFoundException("Repository not found: " + repoId));
+    String read = branch == null || branch.isBlank() ? repo.mainBranch : branch;
+    if (read == null || read.isBlank() || read.startsWith("-")) {
+      throw new BadRequestException("Invalid branch name: " + read);
+    }
+    if (limit < 1) {
+      throw new BadRequestException("Invalid limit: " + limit);
+    }
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      GitExecutor.ExecResult tip =
+          git.execAllowNonZero(
+              mirror.gitDir().toFile(),
+              "git",
+              "rev-parse",
+              "--verify",
+              "--quiet",
+              read + "^{commit}");
+      if (tip.exitCode() != 0 || tip.output().isBlank()) {
+        throw new NotFoundException("Branch not found in " + repoId + ": " + read);
+      }
+      String sha = tip.output().trim();
+      // The tip's sha rather than the name from here on, so the log and the blob are one commit.
+      String output =
+          git.exec(
+              mirror.gitDir().toFile(),
+              "git",
+              "log",
+              SUBJECT_LOG_FORMAT,
+              "-n",
+              Integer.toString(limit),
+              sha,
+              "--");
+      GitExecutor.ExecResult guard =
+          git.showFile(mirror.gitDir().toFile(), sha, COMMIT_SUBJECTS_CONFIG);
+      return new SubjectLog(
+          read, parseSubjectLines(output), guard.exitCode() == 0 ? guard.output() : null);
+    } catch (NotFoundException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git log failed: " + e.getMessage());
+    }
+  }
+
+  /** Parses {@link #SUBJECT_LOG_FORMAT}: one {@link #RECORD_SEP}-prefixed line per commit. */
+  private List<SubjectLine> parseSubjectLines(String output) {
+    List<SubjectLine> lines = new ArrayList<>();
+    for (String block : output.split(RECORD_SEP)) {
+      if (block.isBlank()) {
+        continue;
+      }
+      String line = block.endsWith("\n") ? block.substring(0, block.length() - 1) : block;
+      String[] f = line.split(FIELD_SEP, -1);
+      if (f.length != 7) {
+        continue;
+      }
+      String parents = f[2].trim();
+      int parentCount = parents.isEmpty() ? 0 : parents.split(" +").length;
+      lines.add(new SubjectLine(f[0], f[1], parentCount, f[3], f[4], f[5], f[6]));
+    }
+    return lines;
+  }
+
+  /**
    * Whether {@code repoId}'s mirror holds {@code sha} as a commit — the same {@code cat-file -e}
    * probe {@link #listMergeRange} opens with, exposed so a caller holding a pin read out of somebody
    * else's tree can tell "that commit is not here" from "the read broke". A blank or dash-leading
