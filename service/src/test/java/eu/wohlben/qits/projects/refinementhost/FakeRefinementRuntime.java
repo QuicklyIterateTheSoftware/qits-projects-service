@@ -131,10 +131,10 @@ public class FakeRefinementRuntime implements RefinementRuntime {
   }
 
   public synchronized void reset() {
+    throwOnStop.clear();
     places.clear();
     calls.clear();
     qualifiedEntityIds.clear();
     blockedFlags.clear();
-    throwOnStop.clear();
   }
 }
