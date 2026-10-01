@@ -74,6 +74,9 @@ public class RefinementContainerFactoryTest {
     assertEquals("http://dev-qits-projects:8080/projects/mcp", env.get("QITS_REPOSITORY_MCP_URL"));
     assertTrue(env.get("QITS_OBSERVABILITY_MCP_URL").endsWith("/observability/mcp"));
     assertFalse(env.containsKey("QITS_ACTIONS_MCP_URL"));
+    // And the central qits server (qits-630), composed from the environment's `dev` arm under test.
+    assertEquals(
+        "http://dev-qits-platform-access-mcp-service:8080/mcp", env.get("QITS_PLATFORM_MCP_URL"));
     // The shared credential home, under the daemon's own qits.workspace.-prefixed key.
     assertEquals("/claude-home", env.get("QITS_WORKSPACE_CLAUDE_MOUNT"));
 

@@ -297,8 +297,10 @@ public class AgentContainerFactory {
   }
 
   /**
-   * The <b>one</b> MCP server an agent launch attaches — this service's own, at {@code
-   * /projects/mcp}, carrying the epic tools a refinement session drafts through. Absent, it is
+   * The <b>one</b> service-addressed MCP server an agent launch attaches (the central {@code qits}
+   * server, {@link #platformMcpUrl}, is the other, and is scoped by bearer) — this service's own,
+   * at {@code /projects/mcp}, carrying the epic tools a refinement session drafts through. Absent,
+   * it is
    * composed from {@link #ownHost}/{@link #ownPort}, which is the same address the control socket
    * already names, so a deployment needs no configuration for it.
    *
@@ -309,6 +311,25 @@ public class AgentContainerFactory {
    */
   @ConfigProperty(name = "qits.projects.agent-mcp-url")
   Optional<String> agentMcpUrl;
+
+  /**
+   * The central {@code qits} MCP server — the qits CLI served over MCP (qits-630) — injected as
+   * {@code QITS_PLATFORM_MCP_URL}, which the daemon renders as the built-in {@code qits} server on
+   * every surface that has it on. Absent or blank, it is composed from {@link #environment}: {@code
+   * http://<env>-qits-platform-access-mcp-service:8080/mcp}, the same environment {@link #ownHost}'s
+   * shipped default is derived from, so a deployment needs no configuration for it.
+   */
+  @ConfigProperty(name = "qits.projects.platform-mcp-url")
+  Optional<String> platformMcpUrl;
+
+  /**
+   * The environment this service runs in, the source {@code qits.projects.own-host}'s default reads
+   * too ({@code ${QITS_ENVIRONMENT:dev}-qits-projects}). Read here only to compose {@link
+   * #platformMcpUrl()}'s default, because that server is another application and so cannot be
+   * derived from this service's own host.
+   */
+  @ConfigProperty(name = "QITS_ENVIRONMENT", defaultValue = "dev")
+  String environment;
 
   /**
    * The bearer every container's {@code ProjectsApi} requires. Without it the daemon's API does not
@@ -588,12 +609,16 @@ public class AgentContainerFactory {
     // The one MCP server a launch in this container attaches: this service, at /projects/mcp, where
     // the epic tools live. Stated rather than derived — see the field's javadoc.
     //
-    // Exactly one, deliberately. qits-workspace-daemon wires three (actions, repository,
-    // observability); none of the other two is named here or addressable there, because a
+    // One of the workspace daemon's three, deliberately. qits-workspace-daemon wires actions,
+    // repository and observability; none of the other two is named here or addressable there (the
+    // central `qits` server below is a fourth kind, on every surface), because a
     // refinement agent's job is the project's PLAN, not workspace actions or another service's
     // telemetry. The name has no QITS_PROJECTS_DAEMON_ prefix because it is the daemon's existing
     // `qits.repository-mcp.url` key.
     env.put("QITS_REPOSITORY_MCP_URL", agentMcpUrl());
+    // The central qits server (qits-630), which the daemon adds beside `repository` on every surface
+    // that has it on. Scoped by the caller's bearer rather than by its url, so it carries no ids.
+    env.put("QITS_PLATFORM_MCP_URL", platformMcpUrl());
     // The commit identity as container-level env, so every git process in the container inherits it
     // regardless of cwd or .git/config — identity env beats every git config level.
     gitIdentity.envMap().forEach(env::put);
@@ -698,6 +723,17 @@ public class AgentContainerFactory {
     return agentMcpUrl
         .filter(url -> !url.isBlank())
         .orElseGet(() -> "http://" + ownHost + ":" + ownPort + "/projects/mcp");
+  }
+
+  /**
+   * The configured central {@code qits} MCP url, or {@code
+   * http://<env>-qits-platform-access-mcp-service:8080/mcp}. Never blank, for the reason {@link
+   * #agentMcpUrl()} is not.
+   */
+  String platformMcpUrl() {
+    return platformMcpUrl
+        .filter(url -> !url.isBlank())
+        .orElseGet(() -> "http://" + environment + "-qits-platform-access-mcp-service:8080/mcp");
   }
 
   /**

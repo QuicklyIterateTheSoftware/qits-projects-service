@@ -322,11 +322,43 @@ class AgentContainerFactoryTest {
             .getValue("quarkus.mcp.server.repository.http.root-path", String.class),
         java.net.URI.create(env.get("QITS_REPOSITORY_MCP_URL")).getPath(),
         "the url is composed from a literal; this is what notices when the mount moves");
-    // Exactly one. qits-workspace-daemon wires actions/repository/observability; a refinement agent
-    // gets the plan and nothing else, so no second MCP address is injected here on purpose.
+    // One service-addressed server. qits-workspace-daemon wires actions/repository/observability; a
+    // refinement agent gets the plan and nothing else of those. The central qits server (qits-630)
+    // is the one addition, and it is scoped by bearer rather than by a service's ids.
     assertEquals(
-        List.of("QITS_REPOSITORY_MCP_URL"),
+        List.of("QITS_REPOSITORY_MCP_URL", "QITS_PLATFORM_MCP_URL"),
         env.keySet().stream().filter(name -> name.contains("MCP")).toList());
+  }
+
+  /**
+   * qits-630: the central qits server's address, composed from the environment when nothing is
+   * configured — {@code QITS_ENVIRONMENT} is unset under test, so its {@code dev} arm, the same one
+   * {@code own-host}'s default resolves above.
+   */
+  @Test
+  void injectsTheCentralQitsServerComposedFromTheEnvironment() {
+    assertEquals(
+        "http://dev-qits-platform-access-mcp-service:8080/mcp",
+        spec().env().get("QITS_PLATFORM_MCP_URL"));
+  }
+
+  /** Configured wins; blank — what a deployment rendering {@code KEY=} produces — does not. */
+  @Test
+  void theConfiguredPlatformMcpUrlWinsAndBlankComposesTheDefault() {
+    AgentContainerFactory configured = new AgentContainerFactory();
+    configured.environment = "prod";
+    configured.platformMcpUrl = Optional.of("http://elsewhere:9090/mcp");
+    assertEquals("http://elsewhere:9090/mcp", configured.platformMcpUrl());
+
+    AgentContainerFactory blank = new AgentContainerFactory();
+    blank.environment = "prod";
+    blank.platformMcpUrl = Optional.of("  ");
+    assertEquals("http://prod-qits-platform-access-mcp-service:8080/mcp", blank.platformMcpUrl());
+
+    AgentContainerFactory unset = new AgentContainerFactory();
+    unset.environment = "prod";
+    unset.platformMcpUrl = Optional.empty();
+    assertEquals("http://prod-qits-platform-access-mcp-service:8080/mcp", unset.platformMcpUrl());
   }
 
   /**

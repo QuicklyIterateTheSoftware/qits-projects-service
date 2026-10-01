@@ -213,9 +213,27 @@ public class AgentSurfaceDefaultsTest {
   }
 
   @Test
-  public void theReservedServerKeysAreTheThreePlatformServers() {
+  public void theReservedServerKeysAreTheFourPlatformServers() {
     assertEquals(
-        List.of("repository", "observability", "actions"), AgentSurfaceDefaults.BUILT_IN_SERVERS);
+        List.of("repository", "observability", "actions", "qits"),
+        AgentSurfaceDefaults.BUILT_IN_SERVERS);
+  }
+
+  /** The bare attachment every surface carries last: no narrowing, no mark, no tool list. */
+  private static final AgentMcpAttachmentDto QITS =
+      new AgentMcpAttachmentDto("qits", false, false, false, false, List.of());
+
+  /**
+   * qits-630: the central {@code qits} server is on for every shipped surface, last, and bare — the
+   * bearer on each call scopes it, so there is nothing for a narrowing or a read-only mark to say.
+   */
+  @Test
+  public void everyShippedSurfaceAttachesTheQitsServerLastAndBare() {
+    for (String surface : AgentSurfaceDefaults.SURFACES) {
+      List<AgentMcpAttachmentDto> servers = AgentSurfaceDefaults.SHIPPED.get(surface).mcpServers();
+      assertEquals(QITS, servers.get(servers.size() - 1), surface + ": qits is on, and last");
+    }
+    assertEquals(List.of(), AgentSurfaceDefaults.shippedToolsFor("qits"));
   }
 
   // -------------------------------------------------------------------------------------------
@@ -278,9 +296,10 @@ public class AgentSurfaceDefaultsTest {
     assertEquals("", work.initialPrompt());
     assertEquals(
         List.of(
-            new AgentMcpAttachmentDto("repository", true, false, false, false, PROJECTS_REPOSITORY_TOOLS)),
+            new AgentMcpAttachmentDto("repository", true, false, false, false, PROJECTS_REPOSITORY_TOOLS),
+            QITS),
         work.mcpServers(),
-        "the projects daemon attaches exactly one server, project-narrowed, at PROJECT scope");
+        "one project-narrowed repository server at PROJECT scope, then qits");
   }
 
   // -------------------------------------------------------------------------------------------
@@ -298,7 +317,8 @@ public class AgentSurfaceDefaultsTest {
             new AgentMcpAttachmentDto(
                 "repository", true, true, true, false, WORKSPACE_REPOSITORY_TOOLS),
             new AgentMcpAttachmentDto(
-                "observability", false, true, true, false, OBSERVABILITY_TOOLS));
+                "observability", false, true, true, false, OBSERVABILITY_TOOLS),
+            QITS);
     for (String surface : List.of("epic.chat", "epic.agent", "workspace.chat", "workspace.agent")) {
       AgentSurfaceConfigurationDto shipped = AgentSurfaceDefaults.SHIPPED.get(surface);
       assertEquals(expected, shipped.mcpServers(), surface + ": serversFor(REPOSITORY)");
@@ -350,7 +370,8 @@ public class AgentSurfaceDefaultsTest {
     assertEquals(PROJECT_BOOTSTRAP, autonomous.initialPrompt());
     assertEquals(
         List.of(
-            new AgentMcpAttachmentDto("repository", true, true, false, true, PROJECTS_REPOSITORY_TOOLS)),
+            new AgentMcpAttachmentDto("repository", true, true, false, true, PROJECTS_REPOSITORY_TOOLS),
+            QITS),
         autonomous.mcpServers(),
         "launchAutonomous renders at REPOSITORY scope with every url read-only marked");
 
@@ -360,8 +381,11 @@ public class AgentSurfaceDefaultsTest {
         dispatch.initialPrompt(),
         "the workspace daemon's constant says 'workspace' where the projects one says 'project'");
     assertTrue(
-        dispatch.mcpServers().stream().allMatch(AgentMcpAttachmentDto::readOnly),
-        "both of the pair are read-only marked on an autonomous run");
+        dispatch.mcpServers().stream()
+            .filter(a -> !"qits".equals(a.server()))
+            .allMatch(AgentMcpAttachmentDto::readOnly),
+        "both of the pair are read-only marked on an autonomous run; qits takes no mark, the"
+            + " library leaves its url alone and the bearer is the fence");
   }
 
   // -------------------------------------------------------------------------------------------

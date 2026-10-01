@@ -51,7 +51,7 @@ public class AgentSurfaceConfigurationControllerTest {
     assertThat(answer.getList("surfaces.surface", String.class), is(AgentSurfaceDefaults.SURFACES));
     assertThat(
         answer.getList("builtInServers", String.class),
-        is(List.of("repository", "observability", "actions")));
+        is(List.of("repository", "observability", "actions", "qits")));
   }
 
   /**

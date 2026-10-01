@@ -86,7 +86,7 @@ public class AgentMcpCatalogControllerTest {
         is(List.of("mcp__weather__forecast")));
     assertThat(
         answer.getList("reservedKeys", String.class),
-        is(List.of("repository", "observability", "actions")));
+        is(List.of("repository", "observability", "actions", "qits")));
     // The namespace is answered, so the editor can tell an operator where to create the key.
     assertThat(
         answer.getString("credentialApplication"), is(AgentMcpCatalog.CREDENTIAL_APPLICATION));
@@ -99,7 +99,7 @@ public class AgentMcpCatalogControllerTest {
    */
   @Test
   public void aReservedKeyIsRefusedWithTheReasonSpelledOut() {
-    for (String reserved : List.of("repository", "observability", "actions")) {
+    for (String reserved : List.of("repository", "observability", "actions", "qits")) {
       String detail =
           given()
               .contentType(ContentType.JSON)

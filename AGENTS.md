@@ -1612,7 +1612,8 @@ one wrong fails silently: no url leaves the daemon idle, no token leaves its API
     QITS_PROJECTS_DAEMON_API_PORT        13338, also the authority the proxy pins
     QITS_PROJECTS_DAEMON_HOOKS_PORT      13337
     QITS_PROJECTS_DAEMON_CLAUDE_MOUNT    /claude-home
-    QITS_REPOSITORY_MCP_URL              the one MCP server a launch attaches — this service
+    QITS_REPOSITORY_MCP_URL              the one service-addressed MCP server — this service
+    QITS_PLATFORM_MCP_URL                the central `qits` server, on every surface (qits-630)
     QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION       the resolved document — see "Injecting the document"
     QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH  where the daemon writes it before it starts anything
     QITS_COMMISSIONED_CLIENT_ID          this container's OWN idp client — absent with no idp
@@ -1660,6 +1661,18 @@ the other two — its job is the project's plan, not workspace actions or anothe
 Nothing can add them back at runtime: the daemon addresses `repository` alone and refuses any other
 name, and Claude is launched `--strict-mcp-config`, so the shared `/claude-home` volume's own MCP
 entries are ignored.
+
+**The central `qits` server is the one addition, and it is a different kind** (qits-630).
+`QITS_PLATFORM_MCP_URL` names the qits CLI served over MCP — application
+`qits-platform-access-mcp-service`, at `http://<env>-qits-platform-access-mcp-service:8080/mcp`,
+composed from `QITS_ENVIRONMENT` (the source `qits.projects.own-host`'s default reads) unless
+`qits.projects.platform-mcp-url` overrides it. Both container factories inject it — the project
+agent's here and `RefinementContainerFactory`'s — from the one key. It is scoped by the caller's
+bearer, not by its url, so it carries no ids and takes no narrowing; the daemon renders it as the
+built-in `qits` server on every surface whose configuration has it on, and `AgentSurfaceDefaults`
+ships it on for every surface. V33 appended it to every stored surface that predated it, because an
+attachment row *is* a built-in's toggle — absent means off, as it does for `observability` — and
+that absence was ambiguous exactly once, before the store would accept the key.
 
 **The token is not a boundary.** `qits.projects.daemon-api-token` is peer authentication behind a
 loopback bind — it says "qits is calling", never "this user is calling" — so the proxy *sets* it,

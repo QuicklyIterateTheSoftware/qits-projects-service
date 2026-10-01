@@ -140,12 +140,24 @@ public final class AgentSurfaceDefaults {
   public static final String SERVER_ACTIONS = "actions";
 
   /**
-   * The three reserved server keys. An external catalog entry claiming one of these would silently
+   * The central platform-access server — the {@code qits} CLI served over MCP (qits-630), one
+   * process at {@code <env>-qits-platform-access-mcp-service}. Unlike the other three it takes no
+   * narrowing and no read-only mark: it is scoped by the caller's bearer, not by its url, so a
+   * session can do through it exactly what its credential may do and nothing more. That is also why
+   * it is on for <b>every</b> surface, the composed runs included. Its key is mirrored in
+   * qits-coding-agents' {@code AgentConfigurationDocument.RESERVED_SERVER_KEYS}.
+   */
+  public static final String SERVER_QITS = "qits";
+
+  /**
+   * The four reserved server keys. An external catalog entry claiming one of these would silently
    * displace a platform server in the rendered {@code mcpServers} object, which is why it is a
-   * validation and never a merge.
+   * validation and never a merge. The editor draws its built-in toggles from this list too (the
+   * surface listing answers it as {@code builtInServers}), so a key added here shows up there with
+   * no SPA change.
    */
   public static final List<String> BUILT_IN_SERVERS =
-      List.of(SERVER_REPOSITORY, SERVER_OBSERVABILITY, SERVER_ACTIONS);
+      List.of(SERVER_REPOSITORY, SERVER_OBSERVABILITY, SERVER_ACTIONS, SERVER_QITS);
 
   // ---------------------------------------------------------------------------------------------
   // The tool pre-approval lists, copied from the two daemons
@@ -236,12 +248,21 @@ public final class AgentSurfaceDefaults {
           "mcp__actions__listRepositoryActions",
           "mcp__actions__getRepositoryAction");
 
-  /** The shipped pre-approval for a built-in server, or an empty list for a key nobody ships. */
+  /**
+   * The shipped pre-approval for a built-in server, or an empty list for a key nobody ships.
+   *
+   * <p>{@link #SERVER_QITS} ships an empty list on purpose. An empty attachment list defers to the
+   * daemon's own for that server, and on Claude the library pre-approves {@code mcp__qits__*}
+   * wherever {@code qits} is attached regardless of what the attachment carries; a wildcard stored
+   * here would reach Kimi's {@code enabledTools} as a bare {@code *}, a list of tool names in which
+   * nothing says a {@code *} means "all".
+   */
   public static List<String> shippedToolsFor(String serverKey) {
     return switch (serverKey == null ? "" : serverKey) {
       case SERVER_REPOSITORY -> PROJECTS_REPOSITORY_TOOLS;
       case SERVER_OBSERVABILITY -> OBSERVABILITY_TOOLS;
       case SERVER_ACTIONS -> ACTION_TOOLS;
+      case SERVER_QITS -> List.of();
       default -> List.of();
     };
   }
@@ -341,7 +362,17 @@ public final class AgentSurfaceDefaults {
         new AgentMcpAttachmentDto(
             SERVER_REPOSITORY, true, true, true, readOnly, WORKSPACE_REPOSITORY_TOOLS),
         new AgentMcpAttachmentDto(
-            SERVER_OBSERVABILITY, false, true, true, readOnly, OBSERVABILITY_TOOLS));
+            SERVER_OBSERVABILITY, false, true, true, readOnly, OBSERVABILITY_TOOLS),
+        qits());
+  }
+
+  /**
+   * The central {@code qits} server, last on every surface (qits-630): no narrowing and no read-only
+   * mark, because the bearer on each call scopes it — see {@link #SERVER_QITS}. V33 appends the same
+   * attachment to every stored surface that predates it.
+   */
+  private static AgentMcpAttachmentDto qits() {
+    return new AgentMcpAttachmentDto(SERVER_QITS, false, false, false, false, List.of());
   }
 
   private static AgentSurfaceConfigurationDto surface(
@@ -402,7 +433,7 @@ public final class AgentSurfaceDefaults {
     // surface's configuration, and the library's shipped prompt for PROJECT_WORK is empty too.
     map.put(
         PROJECT_WORK,
-        surface(PROJECT_WORK, true, "", "", List.of(projectScopedRepository(false))));
+        surface(PROJECT_WORK, true, "", "", List.of(projectScopedRepository(false), qits())));
     // The four workspace surfaces send byte-identical launch requests today — which is the whole
     // reason the surface had to become a value that travels before any of this could be configured.
     // They are seeded identically here, and that identity is what an editor can now break.
@@ -421,7 +452,7 @@ public final class AgentSurfaceDefaults {
             true,
             COMPOSED_RUN_PROMPT,
             PROJECT_TASK_PROMPT_BOOTSTRAP,
-            List.of(repositoryScopedRepository(true))));
+            List.of(repositoryScopedRepository(true), qits())));
     map.put(
         TICKET_DISPATCH,
         surface(

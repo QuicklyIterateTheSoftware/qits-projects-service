@@ -227,6 +227,18 @@ public class RefinementContainerFactory {
   Optional<String> agentMcpUrl;
 
   /**
+   * The central {@code qits} MCP server (qits-630) — the same key the project agent's factory reads,
+   * because it is the same server. Blank composes {@code
+   * http://<env>-qits-platform-access-mcp-service:8080/mcp} from {@link #environment}.
+   */
+  @ConfigProperty(name = "qits.projects.platform-mcp-url")
+  Optional<String> platformMcpUrl;
+
+  /** The environment {@code qits.projects.own-host}'s default derives from, read for the above. */
+  @ConfigProperty(name = "QITS_ENVIRONMENT", defaultValue = "dev")
+  String environment;
+
+  /**
    * The package registries a refinement's checkout builds against, blank meaning "inject nothing" —
    * the same three keys, same names in the container, and same deliberately-absent defaults as
    * qits-workspaces (the artifacts alias carries the environment name, so a default here would be a
@@ -376,6 +388,9 @@ public class RefinementContainerFactory {
     // No actions server, on purpose: there is no actions surface on this route.
     env.put("QITS_REPOSITORY_MCP_URL", repositoryMcpUrl());
     env.put("QITS_OBSERVABILITY_MCP_URL", observabilityMcpUrl);
+    // And the central qits server (qits-630), which the workspace daemon adds on every surface that
+    // has it on. Scoped by the caller's bearer, so it carries no ids.
+    env.put("QITS_PLATFORM_MCP_URL", platformMcpUrl());
     credential.ifPresent(
         pair -> {
           env.put("QITS_COMMISSIONED_CLIENT_ID", pair.clientId());
@@ -469,6 +484,12 @@ public class RefinementContainerFactory {
     return agentMcpUrl
         .filter(url -> !url.isBlank())
         .orElseGet(() -> "http://" + ownHost + ":" + ownPort + "/projects/mcp");
+  }
+
+  String platformMcpUrl() {
+    return platformMcpUrl
+        .filter(url -> !url.isBlank())
+        .orElseGet(() -> "http://" + environment + "-qits-platform-access-mcp-service:8080/mcp");
   }
 
   private Long pids() {
