@@ -47,6 +47,8 @@ smart-HTTP host that serves these bare origins over the wire is
     domain/   the aggregate, persistence, control, and the ports out (a library jar, no JAX-RS)
     entities/ the planning module, own datasource + own Flyway lineage, no dependency on domain
     service/  the REST + MCP + websocket boundary over both — THE APPLICATION
+    golden-masters/      the provider golden masters (JSON only), written by service's recorder test
+    golden-masters-jar/  packages that tree as eu.wohlben.qits:qits-projects-golden-masters (no code)
 
 `service/` carries `<packaging>quarkus</packaging>` and produces a process, as a JVM fast-jar or as
 a native binary:
@@ -350,3 +352,35 @@ find the native-image … Attempting to fall back to container build` and shells
 way, which is why it is worth grepping the log rather than trusting the exit code.
 
 Released through the new release-request flow on 2026-09-04, verifying the deploy path end to end.
+
+## What a release publishes
+
+`.config/qits/release.yml` declares four artifacts, and overrides java-service's `release:` slot to
+publish the three the archetype does not:
+
+| artifact | when | step |
+| --- | --- | --- |
+| `qits/qits-projects` (docker, + SBOM) | every release | 1 — the archetype's release step, copied verbatim (node-docker-base, buildctl) |
+| `@apidocs/qits-projects` (docs) | every release | 2 — `docs/openapi.yml` as the bundle root |
+| `@contracts/qits-projects` (docs) | every release | 2 — the `golden-masters/` tree, under `golden-masters/` in the bundle |
+| `eu.wohlben.qits:qits-projects-golden-masters` (maven, `announce: if-published`) | only when `golden-masters/` changed | 2 — maven-base, `-f golden-masters-jar/pom.xml deploy` |
+
+**The golden-masters jar** carries the repository-root `golden-masters/` tree as classpath
+resources under `golden-masters/`, so a consumer's pact test reads `golden-masters/index.json` off
+its classpath. Its module, `golden-masters-jar/`, holds a pom and nothing else, and is **parentless**:
+the reactor root is never published, so a child pom naming it would not resolve for a consumer. It is
+a `<module>` of the root only so the release commit's version bump reaches it. The tree itself stays
+outside the module so no `pom.xml` or `target/` ever lands in what is published — the same directory
+is the `@contracts` bundle, and slice two packs it as an npm tarball.
+
+**The change gate** is `.config/qits/published-tree-changed.sh <groupId:artifactId> <tree>`: it
+resolves the newest published version from `maven-metadata.xml` (`<latest>`, else `<release>`, else
+the last `<version>`), downloads that jar, and compares its `<tree>/` with the repository's file by
+file (path + sha256). It prints `first` (metadata 404), `changed <latest>` or `unchanged <latest>` and
+exits 0; any other answer (5xx, 401, unreachable, unreadable metadata) exits non-zero and fails the
+step. The baseline is the published artifact, never the previous tag, so a failed publish is retried
+by the next release and a re-run of a release that already deployed reads its own version back and
+skips. The release step prints the decision as `publishing <coord> at <v>: first publish` /
+`…: changed since <latest>` or `<coord>: unchanged since <latest> — not publishing`. With nothing
+published, qits-ci's `announce: if-published` finds no `.pom` at the release version and announces
+nothing.

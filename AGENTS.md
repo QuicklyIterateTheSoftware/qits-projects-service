@@ -2619,6 +2619,22 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   a random token and the index lists it under `frozen.strings`. A committed `.json` no interaction
   records any more fails the compare. The four `operationId`s it names are `@Operation`s on the
   controllers, so renaming one is a contract change, not a refactor.
+  <br>**It is published three ways, and only one of them is conditional** (qits-565; README "What a
+  release publishes"): the `@contracts/qits-projects` docs bundle on every release, and the jar
+  `eu.wohlben.qits:qits-projects-golden-masters` only when `.config/qits/published-tree-changed.sh`
+  says the tree differs from the newest published jar's — which is why its `release.yml` entry says
+  `announce: if-published`. The jar is built by `golden-masters-jar/`, a **parentless** pom-only
+  module (the root is never published); keep anything that is not a golden master — poms, build
+  output, READMEs — out of `golden-masters/`, because every file there ships in both artifacts and
+  any byte change republishes the jar. Check the jar with
+  `./mvnw -q -f golden-masters-jar/pom.xml package && unzip -l golden-masters-jar/target/*.jar`.
+  <br>**`release:` is overridden, and step one is the java-service archetype's release step copied
+  verbatim** from qits-ci-service's packaged `release-archetypes/java-service.yml`. When that step
+  changes in qits-ci, re-copy it — nothing else will tell you this copy went stale. Step two
+  (maven-base) submits both docs bundles, runs the gate and deploys only the golden-masters module
+  (`-f golden-masters-jar/pom.xml`, never the reactor). A recipe change cannot gate itself: the first
+  release carrying an edit to either step is the one that proves it, so read that release's step-two
+  output for the gate's decision line.
 - **`mvn verify` passing does not mean the app starts.** Augmentation runs per `@QuarkusTest`
   regardless of packaging, so a missing `quarkus-maven-plugin` goal is invisible to the suite — it
   was in fact missed here once, an `<executions>` block under a `<build>` whose `<testResources>`
