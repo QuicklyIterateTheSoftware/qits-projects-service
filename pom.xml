@@ -116,7 +116,7 @@
 
              Do not hand-edit it to chase a release you just made. The train owns it, the release
              request is where it is reviewed, and a hand-written pin asserts a pair nobody gated. -->
-        <qits.projects-daemon-protocol.version>2026.1002.12539</qits.projects-daemon-protocol.version>
+        <qits.projects-daemon-protocol.version>2026.1002.155325</qits.projects-daemon-protocol.version>
 
         <!-- The platform event bus: the outbox, the idempotent PUT, the durable listener and
              CausationScope. Published by libs/qits-eventstream into the platform Maven repository,
@@ -135,7 +135,7 @@
              cached maven layer — so the resolution the pin governs was never actually performed. A
              green build that resolved nothing is not evidence that it could, which is the whole
              reason to name a release here. qits-githost cut one on 2026-08-12 and this is it. -->
-        <qits.eventstream.version>2026.929.142419</qits.eventstream.version>
+        <qits.eventstream.version>2026.1002.104319</qits.eventstream.version>
         <qits.githost-events.version>2026.910.103045</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
@@ -146,7 +146,7 @@
              PINNED AT A RELEASED CALVER, never a snapshot, for the reason spelled out above the
              vocabulary jar: a snapshot that resolves only from a warm docker layer and a
              developer's ~/.m2 is a red release waiting for whoever next edits a file. -->
-        <qits.containers-client.version>2026.930.164812</qits.containers-client.version>
+        <qits.containers-client.version>2026.1002.105409</qits.containers-client.version>
 
         <!-- THE REFINEMENT IMAGE PIN, AS A DEPENDENCY. This is not an ordinary library version: the
              artifact is qits-workspace-daemon's wire contract, and its version IS the tag of the
@@ -165,7 +165,7 @@
              qits-platform-maintenance moves it on `maintenance/dependencies` like any other internal
              pin, and it is gated here. Do not hand-edit it to chase a release you just cut — the
              next bump overwrites the edit, and in between it asserts a pairing nobody proved. -->
-        <qits.workspace-daemon-protocol.version>2026.1002.11614</qits.workspace-daemon-protocol.version>
+        <qits.workspace-daemon-protocol.version>2026.1002.154925</qits.workspace-daemon-protocol.version>
 
         <!-- qits-integrations-quarkus ships two jars this repo consumes, released together, so they
              carry ONE version property rather than drifting apart:
@@ -181,7 +181,7 @@
              The version moves with that repository rather than with the eventstream jar the rules
              judge — deliberately, since the rules name every type they judge as a string and depend
              on neither. -->
-        <qits.integrations-quarkus.version>2026.929.140626</qits.integrations-quarkus.version>
+        <qits.integrations-quarkus.version>2026.1002.70617</qits.integrations-quarkus.version>
 
         <!-- The user-story framework (test scope): every *IT under service/src/test/.../stories/
              is a userflow, plus TokenValidationBootstrapIT, so a run of them regenerates
@@ -195,20 +195,20 @@
              is deleted here rather than kept in step. It carries its OWN version rather than riding
              qits.integrations-quarkus.version above, because it is released out of
              libs/qits-userflows and not out of that reactor. -->
-        <qits.userflows.version>2026.922.190204</qits.userflows.version>
+        <qits.userflows.version>2026.1002.72731</qits.userflows.version>
         <!-- The recording service mocks the same IT boots against (the generic MockService plus
              idp.MockIdp), released out of libs/qits-integrations-quarkus like qits-arch-rules and
              qits-db-core above — so the same-string policy applies the day this repo consumes a
              newer reactor, and until then it names the release the mock idp actually shipped in. -->
-        <qits.service-mock.version>2026.929.140626</qits.service-mock.version>
+        <qits.service-mock.version>2026.1002.70617</qits.service-mock.version>
         <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer
              (workspaces, landing), each carrying `pacts/<consumer>-qits-projects.json`, and
              ConsumerPactVerificationTest loads every such resource off the test classpath. Test
              scope at the declaration site; a pin in <properties> like every other qits jar, so
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
-        <qits.workspaces-pacts-qits-projects.version>2026.1001.140052</qits.workspaces-pacts-qits-projects.version>
-        <qits.landing-pacts-qits-projects.version>2026.1001.160037</qits.landing-pacts-qits-projects.version>
+        <qits.workspaces-pacts-qits-projects.version>2026.1002.74419</qits.workspaces-pacts-qits-projects.version>
+        <qits.landing-pacts-qits-projects.version>2026.1002.72422</qits.landing-pacts-qits-projects.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
