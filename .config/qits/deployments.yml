@@ -134,7 +134,15 @@ navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-config
 # resource name here is what makes those variables exist; rename it and the expression is
 # unresolvable and the process refuses to boot at Flyway. Being dark (`qits.eventstream.enabled`)
 # would not save it — dark stops publishing, sweeping and dialling, never the datasource.
-resources: postgresql:db, postgresql:epics:qits_epics, postgresql:eventstream:qits_projects_eventstream
+#
+# idp:client ASKS QITS-DEPLOYMENTS TO PROVISION THIS APPLICATION'S OWN QITS-IDP SERVICE CLIENT — id
+# `dev-qits-projects` (derived from env + application), roles `qits:system`, fixed in qits-idp code.
+# The deployer stores the secret the way it stores a database password, and injects
+# QITS_RESOURCE_IDP_URL, QITS_RESOURCE_IDP_CLIENT_ID and QITS_RESOURCE_IDP_CLIENT_SECRET, which the
+# `qits` oidc client reads before its old fallback keys.
+#
+# Ticket qits-162, epic qits-540 contract C3.
+resources: postgresql:db, postgresql:epics:qits_epics, postgresql:eventstream:qits_projects_eventstream, idp:client
 
 # Where the browsable API document lives: swagger-ui under this service's non-application
 # root, which sits under the primary route above. The shell's Api Docs viewer reads it off
