@@ -57,6 +57,12 @@ public class UnattendedGateTicketTest {
   /** The default of {@code qits.projects.release-requests.unattended-requesters}. */
   private static final String ROBOT = "qits-platform-maintenance";
 
+  /**
+   * The same robot under the deployer-provisioned idp client it is cut over to (qits-162). Also in
+   * the shipped list, so both names are machines for as long as the transition lasts.
+   */
+  private static final String NEXT_ROBOT = "dev-qits-maintenance";
+
   /** The repository the ticket that started all this was about. */
   private static final String REPO_NAME = "qits-deployments-platform-service";
 
@@ -183,6 +189,26 @@ public class UnattendedGateTicketTest {
     assertTrue(
         comments.stream().anyMatch(c -> c.contains(refolded)),
         "the further failure is a comment naming the new fold: " + comments);
+  }
+
+  /**
+   * qits-maintenance's next client id (qits-162) is as much a machine as its current one: a red gate
+   * on a bump it asks for under {@code dev-qits-maintenance} must reach a person just the same, or the
+   * cut-over silently reopens the 2026-09-10 hole.
+   */
+  @Test
+  public void aRedGateOnTheRobotsNextClientIdIsUnattendedToo() {
+    String id = create("maintenance/dependencies", NEXT_ROBOT);
+    verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
+    awaitState(id, "REJECTED");
+
+    String ticketId = awaitTicketOn(id);
+    assertEquals(
+        true,
+        request(id).getBoolean("unattended"),
+        "dev-qits-maintenance is the same robot under its own client");
+    var ticket = given().get("/projects/api/tickets/" + ticketId).then().statusCode(200).extract();
+    assertEquals("MAINTENANCE", ticket.path("ticket.type"));
   }
 
   /** A person's request is answered by that person; filing them a ticket is noise. */

@@ -370,10 +370,15 @@ public class ReleaseRequests {
    * <p>Configuration rather than a constant because the identity is an OIDC client name and a
    * platform may run a second robot; it is not a switch for turning the behaviour off, which is what
    * leaving the port unimplemented does.
+   *
+   * <p>Two names for one robot while qits-maintenance is cut over to its own deployer-provisioned
+   * idp client (qits-162): {@code qits-platform-maintenance} is the shared client it signs in as
+   * today, {@code dev-qits-maintenance} the one it signs in as after. Drop the first once no
+   * environment signs in with it.
    */
   @ConfigProperty(
       name = "qits.projects.release-requests.unattended-requesters",
-      defaultValue = "qits-platform-maintenance")
+      defaultValue = "qits-platform-maintenance,dev-qits-maintenance")
   List<String> unattendedRequesters;
 
   /**
