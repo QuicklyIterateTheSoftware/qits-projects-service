@@ -1,12 +1,14 @@
 package eu.wohlben.qits.projects.releasehost;
 
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 
+import eu.wohlben.qits.projects.control.ReleaseDecisions;
 import eu.wohlben.qits.projects.control.ReleaseGitHost;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -17,6 +19,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -24,28 +27,30 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>What a release published, read out of the released tag's own tree.</b>
+ * <b>What a release published: qits-ci's decision record, plus the bundle the tag declares.</b>
  *
- * <p>The tree is the source of every answer here, and that is the claim worth pinning: the
- * declaration is a file in the repository at the tag, so this endpoint answers for a release whose
- * CI announced nothing, for one made before the endpoint existed, and for a repository that
- * publishes nothing at all. Nothing about a build's record is consulted, which is why none of these tests stage one.
+ * <p>The first claim is about <b>the source</b> (qits-642). The list is qits-ci's per-release record
+ * ({@link FakeReleaseDecisions} here), and only a {@code published} row is listed: an {@code
+ * unchanged}, {@code absent} or {@code unverified} artifact is not at this version, and a {@code
+ * pending} one is counted on {@code detail}. The {@code artifacts:} block at the tag is no longer read,
+ * and a record that cannot be read is a sentence, never the declaration instead.
  *
  * <p>The second claim is that <b>none of it is an error</b>. Not released, a tag the host cannot
- * read, a declaration that will not parse — each is a 200 carrying a sentence, because the page
- * asking this question is drawing a panel and "we could not ask" is a thing it can say.
+ * read, a declaration that will not parse, a record qits-ci cannot serve — each is a 200 carrying a
+ * sentence, because the page asking this question is drawing a panel and "we could not ask" is a
+ * thing it can say.
  *
- * <p>The third is about <b>which</b> file at the tag is read, and there is one: {@code
- * .config/qits/release.yml}. A tag cut before its repository migrated carries the two retired
- * pipeline files instead and always will, because a tree is immutable — and since 2026-09-18 neither
- * is read, so such a tag answers the empty list rather than what its recipe declared. That is a real
- * loss and it is pinned below rather than left to be discovered, beside the case it was traded for:
- * one reader, of one file, in a repository where the pipeline files no longer exist.
+ * <p>The third is about <b>the tag</b>, which is still read for whether the repository deploys and
+ * for its {@code userflows:} bundle, out of one file: {@code .config/qits/release.yml}. A tag without
+ * it — a repository that publishes nothing, or one cut before its repository migrated off the two
+ * retired pipeline files — answers the empty list and asks qits-ci nothing.
  */
 @QuarkusTest
 public class ReleaseArtifactsTest {
 
   @Inject RecordingReleaseGitHost gitHost;
+
+  @Inject FakeReleaseDecisions decisions;
 
   private static final String VERSION = "2026.904.161524";
   private static final String RELEASED_SHA = "9f1c2b3d4e5f60718293a4b5c6d7e8f901234567";
@@ -69,6 +74,7 @@ public class ReleaseArtifactsTest {
   @BeforeEach
   void seed() {
     gitHost.reset();
+    decisions.reset();
     repoId = "artifacts-repo-" + UUID.randomUUID();
     projectId = "artifacts-project-" + UUID.randomUUID();
     QuarkusTransaction.requiringNew()
@@ -146,6 +152,7 @@ public class ReleaseArtifactsTest {
         .body("artifacts", hasSize(0))
         .body("detail", nullValue())
         .body("deployable", equalTo(false));
+    assertEquals(List.of(), decisions.asked());
   }
 
   /**
@@ -164,6 +171,7 @@ public class ReleaseArtifactsTest {
               - { type: docker, name: qits/qits-thing }
             userflows: false
             """));
+    decisions.decisions(published("docker", "qits/qits-thing"));
 
     given()
         .get(artifactsOf(id))
@@ -174,11 +182,10 @@ public class ReleaseArtifactsTest {
   }
 
   /**
-   * <b>The release configuration is the same declaration in a file that is no longer a pipeline.</b>
-   * Its {@code artifacts:} block is read entry for entry as the recipe's was, and the keys around it
-   * — the archetype it names, the two step slots qits-ci composes from, and a per-artifact {@code
-   * sbom:} path — are passed over rather than refused. This reader owns one question and must not
-   * fail a panel over a key the composer added.
+   * <b>Every published row of the record is listed at the released version</b>, in the record's
+   * order, and the release configuration's other keys — the archetype it names, the two step slots
+   * qits-ci composes from, a per-artifact {@code sbom:} path — are passed over rather than refused.
+   * This reader owns one question and must not fail a panel over a key the composer added.
    *
    * <p>{@code userflows: true} is the other half: it says the bundle is published under this
    * repository's own name, which is what a composed pipeline has to publish to, since the archetype
@@ -206,6 +213,9 @@ public class ReleaseArtifactsTest {
               - { type: maven, name: eu.wohlben.qits:qits-thing-domain }
             userflows: true
             """));
+    decisions.decisions(
+        published("docker", "qits/qits-thing"),
+        published("maven", "eu.wohlben.qits:qits-thing-domain"));
 
     given()
         .get(artifactsOf(id))
@@ -221,6 +231,8 @@ public class ReleaseArtifactsTest {
                 "eu.wohlben.qits:qits-thing-domain",
                 "@userflows/qits-thing-service"))
         .body("artifacts.version", contains(VERSION, VERSION, MERGED_SHA));
+    assertEquals(
+        List.of(new FakeReleaseDecisions.Asked(repoId, VERSION)), decisions.asked());
   }
 
   /**
@@ -240,6 +252,7 @@ public class ReleaseArtifactsTest {
               - { type: docker, name: qits/qits-thing }
             userflows: qits-thing
             """));
+    decisions.decisions(published("docker", "qits/qits-thing"));
 
     given()
         .get(artifactsOf(id))
@@ -251,7 +264,7 @@ public class ReleaseArtifactsTest {
   }
 
   /**
-   * <b>The configuration is the whole answer, and a retired recipe beside it is not consulted.</b> A
+   * <b>A retired recipe beside the configuration is not consulted.</b> A
    * repository migrating in one commit can leave one at a tag — qits-ci skips it with a WARN on the
    * pipeline side — and the two files were never written to agree, so answering out of both would
    * publish an artifact list no release ever produced. That was a precedence rule while both were
@@ -274,6 +287,7 @@ public class ReleaseArtifactsTest {
               - script: |
                   curl -X PUT "$QITS_DOCS_URL/@userflows/qits-thing/-/$QITS_CI_SHA"
             """));
+    decisions.decisions(published("docker", "qits/qits-thing-composed"));
 
     given()
         .get(artifactsOf(id))
@@ -320,6 +334,7 @@ public class ReleaseArtifactsTest {
         .statusCode(200)
         .body("artifacts", hasSize(0))
         .body("detail", nullValue());
+    assertEquals(List.of(), decisions.asked());
   }
 
   /**
@@ -330,7 +345,8 @@ public class ReleaseArtifactsTest {
   @Test
   public void aReleaseConfigurationThatWillNotParseIsASentenceAndNeverAShorterList() {
     String id = release();
-    tree(Map.of(CONFIG, "archetype: java-service\nartifacts: a-string-is-not-a-list\n"));
+    tree(Map.of(CONFIG, "archetype: java-service\nuserflows: [a-list, is-not-a-site]\n"));
+    decisions.decisions(published("docker", "qits/qits-thing"));
 
     given()
         .get(artifactsOf(id))
@@ -379,6 +395,93 @@ public class ReleaseArtifactsTest {
         .body("detail", containsString("503"));
   }
 
+  /**
+   * <b>The record, not the declaration, is the list.</b> The tag declares golden masters that this
+   * release decided not to publish — {@code unchanged}, and so not at this version — and the
+   * declaration over-reporting them is exactly what qits-642 removed. {@code absent} and {@code
+   * unverified} are left out for the same reason: neither is something a consumer can fetch at the
+   * released version. None of them is a sentence; they are decisions, not failures.
+   */
+  @Test
+  public void onlyWhatQitsCiDecidedToPublishIsListed() {
+    String id = release();
+    tree(
+        Map.of(
+            CONFIG,
+            """
+            archetype: java-service
+            artifacts:
+              - { type: docker, name: qits/qits-thing }
+              - { type: docs, name: "@apidocs/qits-thing" }
+              - { type: maven, name: eu.wohlben.qits:qits-thing-pinned }
+            contracts:
+              application: qits-thing
+              golden-masters: { from: golden-masters/, packages: [maven, npm] }
+            """));
+    decisions.decisions(
+        published("docker", "qits/qits-thing"),
+        new ReleaseDecisions.Decision(
+            "maven", "eu.wohlben.qits:qits-thing-golden-masters", "unchanged", "2026.901.1"),
+        new ReleaseDecisions.Decision("npm", "@qits/thing-golden-masters", "unchanged", "2026.901.1"),
+        new ReleaseDecisions.Decision("maven", "eu.wohlben.qits:qits-thing-pinned", "absent", null),
+        new ReleaseDecisions.Decision("docs", "@apidocs/qits-thing", "unverified", null));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("detail", nullValue())
+        .body("artifacts.name", contains("qits/qits-thing"))
+        .body("artifacts.version", contains(VERSION));
+  }
+
+  /**
+   * A release whose join is still open has rows qits-ci has not decided, and they are neither listed
+   * nor silently dropped: the decided ones are listed and {@code detail} counts the rest.
+   */
+  @Test
+  public void undecidedArtifactsAreCountedOnTheDetail() {
+    String id = release();
+    tree(Map.of(CONFIG, "artifacts:\n  - { type: docker, name: qits/qits-thing }\nuserflows: true\n"));
+    decisions.decisions(
+        published("docker", "qits/qits-thing"),
+        new ReleaseDecisions.Decision("maven", "eu.wohlben.qits:qits-thing-a", "pending", null),
+        new ReleaseDecisions.Decision("npm", "@qits/thing-a", "pending", null));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("artifacts.name", contains("qits/qits-thing", "@userflows/qits-thing-service"))
+        .body("detail", equalTo("qits-ci has not decided 2 artifact(s) of this release yet"));
+  }
+
+  /**
+   * <b>A record qits-ci cannot serve is said, and the declaration is never answered instead</b>:
+   * falling back to it would bring back the over-report the record replaced. The list is empty —
+   * userflow bundle included, the class's existing "nothing" answer — and the version still travels.
+   */
+  @Test
+  public void aRecordThatCannotBeReadFailsVisiblyWithoutFallingBackToTheDeclaration() {
+    String id = release();
+    tree(
+        Map.of(
+            DEPLOYMENTS,
+            "resources: []\n",
+            CONFIG,
+            "artifacts:\n  - { type: docker, name: qits/qits-thing }\nuserflows: true\n"));
+    decisions.answer(ReleaseDecisions.Answer.failed("qits-ci answered 503"));
+
+    given()
+        .get(artifactsOf(id))
+        .then()
+        .statusCode(200)
+        .body("version", equalTo(VERSION))
+        .body("deployable", equalTo(true))
+        .body("artifacts", hasSize(0))
+        .body("detail", equalTo("qits-ci's release record could not be read: qits-ci answered 503"));
+  }
+
   /** The scope is part of the address: another repository's route does not answer for this one. */
   @Test
   public void aRequestReadThroughTheWrongRepositoryIsNotFound() {
@@ -393,6 +496,10 @@ public class ReleaseArtifactsTest {
   // -----------------------------------------------------------------------------------------------
   // The fixture
   // -----------------------------------------------------------------------------------------------
+
+  private static ReleaseDecisions.Decision published(String type, String name) {
+    return new ReleaseDecisions.Decision(type, name, "published", null);
+  }
 
   private String artifactsOf(String requestId) {
     return "/projects/api/repositories/" + repoId + "/release-requests/" + requestId + "/artifacts";

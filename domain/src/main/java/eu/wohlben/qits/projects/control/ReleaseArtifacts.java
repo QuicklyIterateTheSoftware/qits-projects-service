@@ -21,42 +21,36 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
- * <b>What a release published, read out of the released tag's own tree.</b> The one answer this
- * service can give to "the release landed — now where is the thing it made".
+ * <b>What a release published</b>: qits-ci's decision record for the released version, plus the
+ * userflow bundle the released tag's own tree declares. The one answer this service can give to
+ * "the release landed — now where is the thing it made".
  *
- * <p><b>The tree is the source, and that is a decision rather than a convenience.</b> qits-ci
- * announces a {@code SoftwareRelease} per published artifact, so a record of what was built exists —
- * somewhere else, for the releases whose repositories publish one at all, and never for the ones
- * that do not. The declaration at the tag is a fact this service can always reach and that cannot go
- * stale: it is what the pipeline itself was composed from. So a release made before this endpoint
- * existed is answerable, and one whose CI announced nothing at all is answerable too.
+ * <p><b>The record is the source, and the declaration no longer is</b> (qits-642). This class used
+ * to list every {@code artifacts:} entry of {@link #SLOT_CONFIG} at the tag, on the argument that the
+ * declaration is a fact that cannot go stale. Content-gated publishing retired the argument: an entry
+ * declared {@code publish: if-changed}, and every contract package, is published at a version only
+ * when its content changed, so the declaration names artifacts at versions that do not exist. qits-ci
+ * records what it decided per artifact ({@link ReleaseDecisions}), and only a {@code published} row is
+ * listed. {@code unchanged}, {@code absent} and {@code unverified} rows are left out; {@code pending}
+ * ones are left out and counted on {@code detail}. <b>There is no fallback to the declaration</b>: a
+ * record that cannot be read is said on {@code detail}, because answering the declaration instead
+ * would be the over-report this replaced.
+ *
+ * <p><b>The tag is still read</b>, for two things the record does not carry: whether the repository
+ * deploys ({@link ReleaseFinalization#DEPLOYMENTS_MANIFEST}), and the {@code userflows:} bundle, which
+ * is published by the release-request pipeline at the fold's sha rather than by the release run.
  *
  * <p><b>Nothing here is an error.</b> The port cannot be asked, the tag cannot be read, the
- * configuration will not parse — each is an answer about the release with a sentence on {@code
- * detail}, exactly the stance {@link ReleaseFinalization#deployability} takes over the same tree
- * read, and for the same reason: a panel that says "we could not ask" is useful and a 500 is not.
- * The only refusal is a request id that names nothing.
+ * configuration will not parse, qits-ci's record cannot be read — each is an answer about the release
+ * with a sentence on {@code detail}, exactly the stance {@link ReleaseFinalization#deployability}
+ * takes over the same tree read, and for the same reason: a panel that says "we could not ask" is
+ * useful and a 500 is not. The only refusal is a request id that names nothing.
  *
- * <p><b>One file is read, and it is {@link #SLOT_CONFIG}.</b> A repository declares its release as
- * configuration — one {@code .config/qits/release.yml} whose {@code artifacts:} block is the
- * declaration and whose {@code userflows:} key states the bundle — and the pipelines it used to
- * spell out are composed by qits-ci from a wrapper-owned archetype, so nothing here has a pipeline
- * to parse.
- *
- * <p><b>The legacy pair is gone, and what that costs is stated rather than hidden.</b> This class
- * read {@code .config/qits/ci-event-release.yml} for the same {@code artifacts:} block and hunted
- * {@code .config/qits/ci-event-release-request.yml} for a {@code @userflows/} substring until
- * 2026-09-18, on the argument that a tag's tree is immutable so the old files answer for old
- * releases for ever. What retired the argument is that no repository in the estate carries either
- * file on its {@code main} any more (checked across every submodule), so the branch was reachable
- * only by a tag cut before its repository migrated — and the price of the removal, which is real, is
- * that such a tag now answers an empty artifact list instead of the one its recipe declared. That is
- * the ordinary "declares nothing" answer below rather than an error, and it is the trade this
- * service takes in exchange for one reader of one file.
- *
- * <p><b>Absent is not empty-with-an-excuse.</b> A repository declaring no {@link #SLOT_CONFIG} at
- * all publishes nothing and gets no {@code detail} — every SPA on this platform was in that case,
- * and putting a sentence there would turn the ordinary answer into a warning.
+ * <p><b>Absent is not empty-with-an-excuse.</b> A repository declaring no {@link #SLOT_CONFIG} at all
+ * has no release run and publishes nothing, so qits-ci is not asked and no {@code detail} is given —
+ * every SPA on this platform is in that case, and putting a sentence there would turn the ordinary
+ * answer into a warning. A tag cut before its repository migrated off the retired
+ * {@code ci-event-release*.yml} pair is in the same case: since 2026-09-18 those files are not read.
  */
 @ApplicationScoped
 public class ReleaseArtifacts {
@@ -67,11 +61,12 @@ public class ReleaseArtifacts {
    * The repository's release configuration, and the only thing looked for at the tag.
    *
    * <p>It is not a pipeline: qits-ci composes the two release triggers from this file and a
-   * wrapper-owned archetype recipe, so what is here is declaration alone. Two keys are read —
-   * {@code artifacts:} and {@code userflows:}. Everything else it may carry ({@code archetype:},
-   * {@code release-request:}, {@code release:}, and a per-artifact {@code sbom:} path) is the
-   * composer's business and is passed over here rather than refused: this reader must not become a
-   * second schema owner that fails a panel over a key it was never told about.
+   * wrapper-owned archetype recipe, so what is here is declaration alone. Its presence says the
+   * repository has a release run worth asking qits-ci about, and one key is read: {@code
+   * userflows:}. Everything else it carries ({@code archetype:}, {@code artifacts:}, {@code
+   * contracts:}, the step slots) is the composer's business and is passed over here rather than
+   * refused: this reader must not become a second schema owner that fails a panel over a key it was
+   * never told about.
    */
   static final String SLOT_CONFIG = ".config/qits/release.yml";
 
@@ -83,6 +78,8 @@ public class ReleaseArtifacts {
   @Inject ReleasedTagPendingMergeRepository pendingTags;
 
   @Inject Instance<ReleaseGitHost> gitHosts;
+
+  @Inject Instance<ReleaseDecisions> decisions;
 
   /** What one release request's tag carries, or why that cannot be said. */
   public ReleaseArtifactsDto of(String repoId, String requestId) {
@@ -160,10 +157,9 @@ public class ReleaseArtifacts {
             "The release configuration could not be read: "
                 + (config == null ? "the git host could not be asked" : config.detail()));
       }
+      Optional<ReleaseArtifactDto> bundle;
       try {
-        Map<String, Object> document = document(config.value());
-        artifacts.addAll(declared(document, released.version()));
-        userflows(document, released).ifPresent(artifacts::add);
+        bundle = userflows(document(config.value()), released);
       } catch (RuntimeException e) {
         LOG.debugf(
             "The release configuration of %s at %s does not parse: %s", repoId, rev, e.toString());
@@ -172,25 +168,59 @@ public class ReleaseArtifacts {
             deployable,
             "The release configuration does not read as a release declaration");
       }
+      ReleaseDecisions.Answer record = record(repoId, released.version());
+      if (!record.ok()) {
+        // No fallback to the declaration: it is exactly the over-report the record replaced.
+        return nothing(
+            released, deployable, "qits-ci's release record could not be read: " + record.failure());
+      }
+      int pending = 0;
+      for (ReleaseDecisions.Decision decision : record.decisions()) {
+        if (ReleaseDecisions.Decision.PUBLISHED.equalsIgnoreCase(decision.decision())) {
+          artifacts.add(
+              new ReleaseArtifactDto(decision.type(), decision.name(), released.version()));
+        } else if (ReleaseDecisions.Decision.PENDING.equalsIgnoreCase(decision.decision())) {
+          pending++;
+        }
+        // unchanged, absent, unverified: not at this version, so not listed.
+      }
+      bundle.ifPresent(artifacts::add);
+      if (pending > 0) {
+        return answer(
+            released,
+            deployable,
+            artifacts,
+            "qits-ci has not decided " + pending + " artifact(s) of this release yet");
+      }
     }
-    // The configured file is the whole declaration, and a tag carrying none declared nothing that
-    // is readable here: the ordinary answer for a repository that publishes nothing, and — since
-    // the legacy recipes were retired — also the answer for a tag whose declaration was one of
-    // them. See the class javadoc's "The legacy pair is gone".
-    return answer(released, deployable, artifacts);
+    // A tag carrying no release configuration has no release run: the ordinary answer for a
+    // repository that publishes nothing, and — since the legacy recipes were retired — also the
+    // answer for a tag whose declaration was one of them. See the class javadoc.
+    return answer(released, deployable, artifacts, null);
   }
 
-  /** What one release published, with nothing to explain. */
+  /** {@link ReleaseDecisions#of} with absence and the port's must-not-throw promise held to. */
+  private ReleaseDecisions.Answer record(String repoId, String version) {
+    if (!decisions.isResolvable()) {
+      return ReleaseDecisions.Answer.failed("no qits-ci is configured");
+    }
+    try {
+      ReleaseDecisions.Answer answer = decisions.get().of(repoId, version);
+      return answer == null ? ReleaseDecisions.Answer.failed("qits-ci gave no answer") : answer;
+    } catch (RuntimeException e) {
+      LOG.debugf(e, "The release decisions port threw for %s at %s", repoId, version);
+      return ReleaseDecisions.Answer.failed("qits-ci could not be asked");
+    }
+  }
+
+  /**
+   * What one release published. {@code detail} is null when there is nothing to explain — a
+   * repository that published nothing gets the empty list and no sentence.
+   */
   private static ReleaseArtifactsDto answer(
-      Released released, boolean deployable, List<ReleaseArtifactDto> artifacts) {
+      Released released, boolean deployable, List<ReleaseArtifactDto> artifacts, String detail) {
     return new ReleaseArtifactsDto(
-        released.version(),
-        released.releasedSha(),
-        deployable,
-        List.copyOf(artifacts),
-        // A repository that declares nothing published nothing, and that is not a problem to
-        // explain. The empty list is the whole answer.
-        null);
+        released.version(), released.releasedSha(), deployable, List.copyOf(artifacts), detail);
   }
 
   /**
@@ -212,8 +242,7 @@ public class ReleaseArtifacts {
    * {@code @userflows/qits-projects}, so its file says {@code userflows: qits-projects}. Absent, and
    * {@code false}, are both "no bundle" — which is most repositories.
    *
-   * <p>Anything else under the key is thrown rather than passed over, the same stance {@link
-   * #declared} takes: a list or a mapping there is a file whose author meant something this reader
+   * <p>Anything else under the key is thrown rather than passed over: a list or a mapping there is a file whose author meant something this reader
    * cannot see, and quietly dropping a bundle is the failure {@code detail} exists to avoid.
    *
    * <p><b>Its version is the fold's sha and not the calver</b>, because the bundle is published by
@@ -257,8 +286,7 @@ public class ReleaseArtifacts {
    *
    * <p>{@link SafeConstructor} — never an arbitrary class out of repository content — the posture
    * {@link QitsConfigParser} states and the reason it is worth restating: this file comes from a
-   * repository and is not trusted input. An empty document is a mapping with nothing in it, which
-   * is what makes "declares no artifacts" and "declares nothing at all" the same answer.
+   * repository and is not trusted input. An empty document is a mapping with nothing in it.
    */
   private static Map<String, Object> document(String yaml) {
     Object root = new Yaml(new SafeConstructor(new LoaderOptions())).load(yaml);
@@ -269,40 +297,6 @@ public class ReleaseArtifacts {
       throw new IllegalArgumentException("the document root is not a mapping");
     }
     return asMap(document);
-  }
-
-  /**
-   * The {@code artifacts:} list of a release configuration, as {@link ReleaseArtifactDto}s at the
-   * released version.
-   *
-   * <p>Anything that is not a list of mappings with a {@code type} and a {@code name} is thrown
-   * rather than skipped, so the caller can say "the configuration does not parse" instead of quietly
-   * answering a shorter list than the repository declares. An entry's <b>other</b> keys are passed
-   * over, not refused — a configuration's {@code sbom:} path is a fact about how the pipeline builds
-   * the artifact and says nothing about where the artifact went, which is the only question here.
-   */
-  private static List<ReleaseArtifactDto> declared(Map<String, Object> document, String version) {
-    Object declared = document.get("artifacts");
-    if (declared == null) {
-      return List.of();
-    }
-    if (!(declared instanceof List<?> entries)) {
-      throw new IllegalArgumentException("artifacts is not a list");
-    }
-    List<ReleaseArtifactDto> out = new ArrayList<>();
-    for (Object entry : entries) {
-      if (!(entry instanceof Map<?, ?> item)) {
-        throw new IllegalArgumentException("an artifacts entry is not a mapping");
-      }
-      Map<String, Object> fields = asMap(item);
-      String type = text(fields.get("type"));
-      String name = text(fields.get("name"));
-      if (type == null || name == null) {
-        throw new IllegalArgumentException("an artifacts entry names no type or no name");
-      }
-      out.add(new ReleaseArtifactDto(type, name, version));
-    }
-    return out;
   }
 
   private static Map<String, Object> asMap(Map<?, ?> raw) {
