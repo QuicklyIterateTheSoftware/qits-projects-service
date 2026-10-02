@@ -52,6 +52,9 @@ public class ProviderStates {
       "a project with pending release requests";
   public static final String A_PROJECT_WITH_NO_RELEASE_REQUESTS =
       "a project with no release requests";
+  public static final String AN_EPIC_WITH_FEATURES_AND_TASKS = "an epic with features and tasks";
+  public static final String A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS =
+      "a campaign with ordered developments";
   public static final String A_PROJECT_WITH_WORK_IN_EVERY_STATUS =
       "a project with work in every status";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
@@ -83,6 +86,8 @@ public class ProviderStates {
 
   @Inject WorkEntityService work;
 
+  @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
+
   private final Map<String, Supplier<Setup>> states = new LinkedHashMap<>();
 
   /** Release requests and CI verdicts the states wrote, removed again by {@link #cleanUp()}. */
@@ -99,6 +104,8 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
     states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
     states.put(A_PROJECT_WITH_WORK_IN_EVERY_STATUS, this::aProjectWithWorkInEveryStatus);
+    states.put(AN_EPIC_WITH_FEATURES_AND_TASKS, this::anEpicWithFeaturesAndTasks);
+    states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -230,6 +237,71 @@ public class ProviderStates {
       }
     }
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * A REFINED epic with two features: one implemented (one of its two tasks implemented too), one
+   * not (with one open task). The implemented feature runs ahead of its epic, so the epic's lane on
+   * a board spans two columns, and so does the feature's. Children are created while the epic is still REPORTED, as the domain demands.
+   */
+  private Setup anEpicWithFeaturesAndTasks() {
+    String token = token();
+    Project project = project(token, AN_EPIC_WITH_FEATURES_AND_TASKS);
+    String repositoryId = repository(project, "contract-service");
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Nested epic", "Seeded work."));
+    String done = node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded.", null));
+    String shippedTask =
+        node(Archetype.TASK, done, EntityWrite.task(repositoryId, "First shipped task", "Seeded.", null));
+    node(Archetype.TASK, done, EntityWrite.task(repositoryId, "Second shipped task", "Seeded.", null));
+    String open = node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded.", null));
+    node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Open task", "Seeded.", null));
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    implemented(shippedTask);
+    implemented(done);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * A REFINED campaign ordering three developments: a VERIFIED epic, a REFINED epic with an open
+   * feature, and a REPORTED ticket; plus one IMPLEMENTED ticket outside any campaign. Recorded for
+   * the entity list and for the campaign itself (its members, in order).
+   */
+  private Setup aCampaignWithOrderedDevelopments() {
+    String token = token();
+    Project project = project(token, A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
+    String campaign =
+        work.createCampaign(project.id, "Ordered campaign", "Seeded work.", SEEDER).id;
+    String shipped = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded."));
+    String running = create(Archetype.EPIC, project, EntityWrite.epic("Running epic", "Seeded."));
+    node(Archetype.FEATURE, running, EntityWrite.feature("Running feature", "Seeded.", null));
+    String waiting = ticket(project, "Waiting ticket");
+    String standalone = ticket(project, "Standalone ticket");
+    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
+      work.transition(Archetype.EPIC, shipped, status, SEEDER);
+    }
+    work.transition(Archetype.EPIC, running, "REFINED", SEEDER);
+    for (String status : List.of("REFINED", "IMPLEMENTED")) {
+      work.transition(Archetype.TICKET, standalone, status, SEEDER);
+    }
+    for (String member : List.of(shipped, running, waiting)) {
+      campaigns.addMember(campaign, member, null, false, SEEDER);
+    }
+    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
+    return new Setup(
+        params("campaignId", campaign, "projectId", project.id), List.of(token));
+  }
+
+  private String repository(Project project, String name) {
+    return projectService.createRepository(project.id, null, name, null).repository().id;
+  }
+
+  private String node(Archetype archetype, String parent, EntityWrite write) {
+    return work.create(archetype, parent, write, SEEDER).entity().id;
+  }
+
+  /** Marks a feature or task implemented now, as an edit of its marker. */
+  private void implemented(String id) {
+    work.update(work.find(id).archetype, id, EntityWrite.implementedAt(Instant.now()), SEEDER);
   }
 
   private Setup aProjectWithNoWork() {

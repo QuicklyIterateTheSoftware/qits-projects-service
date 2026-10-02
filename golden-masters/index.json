@@ -3,6 +3,64 @@
   "provider": "qits-projects",
   "states": [
     {
+      "name": "a campaign with ordered developments",
+      "slug": "a-campaign-with-ordered-developments",
+      "params": {
+        "campaignId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{campaignId}",
+          "status": 200,
+          "file": "a-campaign-with-ordered-developments/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id",
+              "$.campaign.members[*].groups[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-campaign-with-ordered-developments/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project exists",
       "slug": "a-project-exists",
       "params": {
@@ -239,6 +297,41 @@
             ],
             "instants": [],
             "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an epic with features and tasks",
+      "slug": "an-epic-with-features-and-tasks",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "an-epic-with-features-and-tasks/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
             "listFilteredTo": null
           }
         }

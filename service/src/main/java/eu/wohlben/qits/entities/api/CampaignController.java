@@ -74,6 +74,10 @@ public class CampaignController {
 
   @GET
   @Path("/{id}")
+  @org.eclipse.microprofile.openapi.annotations.Operation(
+      operationId = "getCampaign",
+      summary = "Get",
+      description = "One campaign with its members in campaign order.")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CampaignResponse get(@PathParam("id") String id) {
     return new CampaignResponse(views.campaign(campaigns.get(id)));
