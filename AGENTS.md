@@ -2641,30 +2641,14 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   a random token and the index lists it under `frozen.strings`. A committed `.json` no interaction
   records any more fails the compare. The four `operationId`s it names are `@Operation`s on the
   controllers, so renaming one is a contract change, not a refactor.
-  <br>**It is published three ways, and two of them are conditional on ONE decision** (qits-565,
-  qits-574; README "What a release publishes"): the `@contracts/qits-projects` docs bundle on every
-  release, and the jar `eu.wohlben.qits:qits-projects-golden-masters` plus the npm package
-  `@qits/projects-golden-masters` **together or not at all**, at `$QITS_VERSION`, when
-  `.config/qits/golden-masters.sh decide` says `publish` — the jar's tree differs from the newest
-  published jar's (`.config/qits/published-tree-changed.sh`), the npm package does not exist yet, or
-  either already holds this version (a re-run) — which is why both `release.yml` entries say
-  `announce: if-published`. The npm half is a hand-built tarball PUT to the registry from the
-  maven-base step (no node there, and steps share no filesystem to hand a decision across); never
-  split the two publishes into steps that each decide. The script is exercised against a fake
-  maven+npm registry (a python `http.server`) outside the tree; there is no in-repo harness for
-  `.config/qits/*.sh`, so re-run such a check by hand after editing it, and `tar tzf` the tarball
-  `npm-publish` prints. The jar is built by `golden-masters-jar/`, a **parentless** pom-only
-  module (the root is never published); keep anything that is not a golden master — poms, build
-  output, READMEs — out of `golden-masters/`, because every file there ships in every artifact and
-  any byte change republishes the jar and the npm package. Check the jar with
-  `./mvnw -q -f golden-masters-jar/pom.xml package && unzip -l golden-masters-jar/target/*.jar`.
-  <br>**`release:` is overridden, and step one is the java-service archetype's release step copied
-  verbatim** from qits-ci-service's packaged `release-archetypes/java-service.yml`. When that step
-  changes in qits-ci, re-copy it — nothing else will tell you this copy went stale. Step two
-  (maven-base) submits both docs bundles, runs the gate and deploys only the golden-masters module
-  (`-f golden-masters-jar/pom.xml`, never the reactor). A recipe change cannot gate itself: the first
-  release carrying an edit to either step is the one that proves it, so read that release's step-two
-  output for the gate's decision line.
+  <br>**The platform publishes it, from `release.yml`'s `contracts:` declaration** (epic qits-620;
+  README "What a release publishes"): the jar `eu.wohlben.qits:qits-projects-golden-masters`, the
+  npm package `@qits/projects-golden-masters` and the `@contracts/qits-projects` docs bundle, each
+  package only when its content changed since the newest published version. Nothing in this
+  repository packages or uploads it, and there is no `release:` slot: the java-service archetype
+  builds, and qits-ci's composed postlude publishes. Keep anything that is not a golden master —
+  poms, build output, READMEs — out of `golden-masters/`, because every file there ships in every
+  package and any byte change publishes a new version.
 - **`contracts/ConsumerPactVerificationTest` verifies every consumer's pact against this provider**
   (epic qits-546) — a `@QuarkusTest` on the default profile, one `@TestTemplate` invocation per
   interaction, over real HTTP at the test port as the `%test` dev user (plain pact-jvm

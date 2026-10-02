@@ -47,8 +47,7 @@ smart-HTTP host that serves these bare origins over the wire is
     domain/   the aggregate, persistence, control, and the ports out (a library jar, no JAX-RS)
     entities/ the planning module, own datasource + own Flyway lineage, no dependency on domain
     service/  the REST + MCP + websocket boundary over both — THE APPLICATION
-    golden-masters/      the provider golden masters (JSON only), written by service's recorder test
-    golden-masters-jar/  packages that tree as eu.wohlben.qits:qits-projects-golden-masters (no code)
+    golden-masters/ the provider golden masters (JSON only), written by service's recorder test
 
 `service/` carries `<packaging>quarkus</packaging>` and produces a process, as a JVM fast-jar or as
 a native binary:
@@ -355,54 +354,23 @@ Released through the new release-request flow on 2026-09-04, verifying the deplo
 
 ## What a release publishes
 
-`.config/qits/release.yml` declares five artifacts, and overrides java-service's `release:` slot to
-publish the four the archetype does not:
+`.config/qits/release.yml` declares what the repository has and nothing about how it is published:
+there is no `release:` slot, so the release is java-service's archetype step plus qits-ci's composed
+postlude, which runs the `qits` CLI's publishers (epic qits-620).
 
-| artifact | when | step |
+| artifact | when | from |
 | --- | --- | --- |
-| `qits/qits-projects` (docker, + SBOM) | every release | 1 — the archetype's release step, copied verbatim (node-docker-base, buildctl) |
-| `@apidocs/qits-projects` (docs) | every release | 2 — `docs/openapi.yml` as the bundle root |
-| `@contracts/qits-projects` (docs) | every release | 2 — the `golden-masters/` tree, under `golden-masters/` in the bundle |
-| `eu.wohlben.qits:qits-projects-golden-masters` (maven, `announce: if-published`) | when the golden-masters decision says `publish` | 2 — maven-base, `-f golden-masters-jar/pom.xml deploy` |
-| `@qits/projects-golden-masters` (npm, `announce: if-published`) | the same decision, always together with the jar | 2 — maven-base, a hand-built tarball PUT to the npm registry |
+| `qits/qits-projects` (docker, + SBOM) | every release | the archetype's release step (node-docker-base, buildctl) |
+| `@apidocs/qits-projects` (docs) | every release | `docs/openapi.yml`, the docs entry's `path:` |
+| `eu.wohlben.qits:qits-projects-golden-masters` (maven) | only when its content changed | `contracts:` `golden-masters: { from: golden-masters/ }` |
+| `@qits/projects-golden-masters` (npm) | only when its content changed | the same declaration |
+| `@contracts/qits-projects` (docs) | with the contract packages | the same declaration |
 
-**The golden-masters jar** carries the repository-root `golden-masters/` tree as classpath
-resources under `golden-masters/`, so a consumer's pact test reads `golden-masters/index.json` off
-its classpath. Its module, `golden-masters-jar/`, holds a pom and nothing else, and is **parentless**:
-the reactor root is never published, so a child pom naming it would not resolve for a consumer. It is
-a `<module>` of the root only so the release commit's version bump reaches it. The tree itself stays
-outside the module so no `pom.xml` or `target/` ever lands in what is published — the same directory
-is the `@contracts` bundle and the npm package.
-
-**The golden-masters npm package**, `@qits/projects-golden-masters`, is the same tree for a JS/TS
-consumer: the tarball holds `package/package.json` (generated at release — name, `version` =
-`$QITS_VERSION`, `files: ["golden-masters/"]`; nothing in the repository carries a package.json for
-it) and the tree under `package/golden-masters/`, so `require.resolve('@qits/projects-golden-masters/golden-masters/index.json')`
-finds the index. **It is published without npm**: step two runs on maven-base, which has no node, npm
-or python, and release steps share no filesystem, so a node step could not be handed the decision and
-recomputing it there would read `unchanged` once the jar had deployed. `.config/qits/golden-masters.sh
-npm-publish` packs the tarball with tar, builds npm's publish document with jq (`versions[v]`,
-`dist-tags.latest`, the tarball base64 under `_attachments`, the sha1 claimed — qits-artifacts
-recomputes both hashes and fills in `integrity`) and PUTs it to `$QITS_NPM_REGISTRY_URL` with a bearer
-minted from `$QITS_PUBLISH_TOKEN_COMMAND`, as `npm-library.yml` does. It skips a version already
-there and asserts the version is there afterwards.
-
-**The change gate** is `.config/qits/published-tree-changed.sh <groupId:artifactId> <tree>`: it
-resolves the newest published version from `maven-metadata.xml` (`<latest>`, else `<release>`, else
-the last `<version>`), downloads that jar, and compares its `<tree>/` with the repository's file by
-file (path + sha256). It prints `first` (metadata 404), `changed <latest>` or `unchanged <latest>` and
-exits 0; any other answer (5xx, 401, unreachable, unreadable metadata) exits non-zero and fails the
-step. The baseline is the published artifact, never the previous tag, so a failed publish is retried
-by the next release and a re-run of a release that already deployed reads its own version back and
-skips.
-
-**One decision for both artifacts.** `.config/qits/golden-masters.sh decide` wraps that gate and
-prints `publish <reason>` or `skip <reason>`; the release step publishes **both** at `$QITS_VERSION`
-or **neither**, so the maven and npm versions never diverge. It is `publish` when the jar gate says
-`first`/`changed`, when the npm packument is a 404 (the package does not exist yet — the first npm
-publish happens even with the jar unchanged, and the jar then gets a new, identical version), or when
-either artifact already carries `$QITS_VERSION` (a re-run completing a half-landed publish; each half
-skips what is already there). On the packument 200 is present, 404 absent, and anything else fails
-the step. The step prints `publishing the golden masters (jar + npm) at <v>: <reason>` or
-`the golden masters: <reason> — publishing neither at <v>`. With nothing published, qits-ci's
-`announce: if-published` finds neither the `.pom` nor the packument version and announces nothing.
+**The golden masters** are the repository-root `golden-masters/` tree, packaged by the platform under
+`golden-masters/` in the jar and the npm package, so a consumer's pact test reads
+`golden-masters/index.json` off its classpath, or through
+`require.resolve('@qits/projects-golden-masters/golden-masters/index.json')`. Each package is
+published at the release version only when its content hash differs from the newest published
+version's; otherwise the release step prints `unchanged since <v>` and qits-ci records that decision
+and announces nothing. Keep anything that is not a golden master out of `golden-masters/`: every file
+there is in every package, and any byte change publishes a new version.
