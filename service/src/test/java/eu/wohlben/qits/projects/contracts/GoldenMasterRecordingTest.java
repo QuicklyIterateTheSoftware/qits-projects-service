@@ -107,6 +107,14 @@ class GoldenMasterRecordingTest {
               null,
               null),
           new Interaction(
+              ProviderStates.A_PROJECT_WITH_WORK_IN_EVERY_STATUS,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
               ProviderStates.A_PROJECT_WITH_NO_WORK,
               "listProjectEntities",
               "GET",
