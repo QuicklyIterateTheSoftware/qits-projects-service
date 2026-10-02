@@ -56,6 +56,8 @@ public class ProviderStates {
       "a project with no release requests";
   public static final String A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS =
       "a project with repositories in components";
+  public static final String A_PROJECT_WITH_WORK_IN_EVERY_STATUS =
+      "a project with work in every status";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
@@ -102,6 +104,7 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
     states.put(
         A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS, this::aProjectWithRepositoriesInComponents);
+    states.put(A_PROJECT_WITH_WORK_IN_EVERY_STATUS, this::aProjectWithWorkInEveryStatus);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -209,6 +212,32 @@ public class ProviderStates {
   }
 
   /** A project and nothing in it: every work list answers empty. */
+  /**
+   * One epic and one ticket in each status, DROPPED included: the Work page's board, backlog and
+   * archive all have something to show. Each item is moved through the lifecycle to its status.
+   */
+  private Setup aProjectWithWorkInEveryStatus() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_WORK_IN_EVERY_STATUS);
+    Map<String, List<String>> paths = new LinkedHashMap<>();
+    paths.put("Reported", List.of());
+    paths.put("Refined", List.of("REFINED"));
+    paths.put("Implemented", List.of("REFINED", "IMPLEMENTED"));
+    paths.put("Verified", List.of("REFINED", "IMPLEMENTED", "VERIFIED"));
+    paths.put("Done", List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE"));
+    paths.put("Dropped", List.of("DROPPED"));
+    for (Map.Entry<String, List<String>> path : paths.entrySet()) {
+      String epic =
+          create(Archetype.EPIC, project, EntityWrite.epic(path.getKey() + " epic", "Seeded work."));
+      String ticket = ticket(project, path.getKey() + " ticket");
+      for (String status : path.getValue()) {
+        work.transition(Archetype.EPIC, epic, status, SEEDER);
+        work.transition(Archetype.TICKET, ticket, status, SEEDER);
+      }
+    }
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
   private Setup aProjectWithNoWork() {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_NO_WORK);
