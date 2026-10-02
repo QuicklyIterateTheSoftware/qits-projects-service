@@ -26,7 +26,7 @@
          from the newest published jar's (`.config/qits/published-tree-changed.sh`). -->
     <groupId>eu.wohlben.qits</groupId>
     <artifactId>qits-projects-golden-masters</artifactId>
-    <version>2026.1002.4700</version>
+    <version>2026.1002.14837</version>
     <packaging>jar</packaging>
     <name>qits-projects :: golden-masters</name>
     <description>qits-projects provider golden masters (golden-masters/index.json and one JSON per provider state and operation)</description>
