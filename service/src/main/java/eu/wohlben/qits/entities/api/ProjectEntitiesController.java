@@ -61,6 +61,7 @@ public class ProjectEntitiesController {
 
   @GET
   @Operation(
+      operationId = "listProjectEntities",
       summary = "List a project's entities of every archetype",
       description =
           "The project's whole planning tree, flat: each root oldest first, its descendants"

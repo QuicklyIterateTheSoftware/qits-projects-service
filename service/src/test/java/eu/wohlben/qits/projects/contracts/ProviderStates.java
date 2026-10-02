@@ -1,5 +1,8 @@
 package eu.wohlben.qits.projects.contracts;
 
+import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecord;
@@ -37,12 +40,17 @@ public class ProviderStates {
   public static final String A_PROJECT_EXISTS = "a project exists";
   public static final String A_PROJECT_WITH_3_REPOSITORIES = "a project with 3 repositories";
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
+  public static final String A_PROJECT_WITH_REFINED_WORK = "a project with refined work";
+  public static final String A_PROJECT_WITH_NO_WORK = "a project with no work";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
   /** The three component repositories {@link #A_PROJECT_WITH_3_REPOSITORIES} creates. */
   static final List<String> THREE_REPOSITORIES =
       List.of("contract-service", "contract-frontend", "contract-daemon");
+
+  /** Who the seeded work items name as their reporter. */
+  private static final String SEEDER = "contract-seeder";
 
   /** The inert record every seeded project carries — a reserved TLD and a documentation address. */
   private static final ProjectDnsRecord DNS =
@@ -58,12 +66,16 @@ public class ProviderStates {
 
   @Inject ProjectService projectService;
 
+  @Inject WorkEntityService work;
+
   private final Map<String, Supplier<Setup>> states = new LinkedHashMap<>();
 
   public ProviderStates() {
     states.put(A_PROJECT_EXISTS, this::aProjectExists);
     states.put(A_PROJECT_WITH_3_REPOSITORIES, this::aProjectWith3Repositories);
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
+    states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
+    states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -124,6 +136,46 @@ public class ProviderStates {
     var created = projectService.createRepository(project.id, null, "contract-service", null);
     return new Setup(
         params("projectId", project.id, "repositoryId", created.repository().id), List.of(token));
+  }
+
+  /**
+   * Five work items: three REFINED (an epic and two tickets), one ticket still REPORTED and one
+   * DONE, so a status filter has something to leave out on both sides. Created and moved through
+   * the service layer in a fixed order, so their numbers are fixed too.
+   */
+  private Setup aProjectWithRefinedWork() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_REFINED_WORK);
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Refined epic", "Seeded work."));
+    String first = ticket(project, "Refined ticket");
+    String second = ticket(project, "Second refined ticket");
+    ticket(project, "Reported ticket");
+    String done = ticket(project, "Done ticket");
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.TICKET, first, "REFINED", SEEDER);
+    work.transition(Archetype.TICKET, second, "REFINED", SEEDER);
+    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      work.transition(Archetype.TICKET, done, status, SEEDER);
+    }
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /** A project and nothing in it: every work list answers empty. */
+  private Setup aProjectWithNoWork() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_NO_WORK);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  private String ticket(Project project, String title) {
+    return create(
+        Archetype.TICKET,
+        project,
+        EntityWrite.ticket(title, "Seeded work.", null, "BUG", null));
+  }
+
+  private String create(Archetype archetype, Project project, EntityWrite write) {
+    return work.create(archetype, project.id, write, SEEDER).entity().id;
   }
 
   private Setup noProjectWithTheGivenId() {

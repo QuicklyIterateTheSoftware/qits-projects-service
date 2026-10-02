@@ -77,6 +77,61 @@
       ]
     },
     {
+      "name": "a project with no work",
+      "slug": "a-project-with-no-work",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-project-with-no-work/listProjectEntities.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a project with refined work",
+      "slug": "a-project-with-refined-work",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-project-with-refined-work/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a repository exists",
       "slug": "a-repository-exists",
       "params": {

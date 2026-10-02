@@ -96,6 +96,24 @@ class GoldenMasterRecordingTest {
               200,
               null,
               "$.entries:repository.name"),
+          // The whole planning tree, unfiltered: consumers filter and count on their side. Tree
+          // order (roots oldest first) is the provider's own and is fixed by the seed order.
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_REFINED_WORK,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_NO_WORK,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
           new Interaction(
               ProviderStates.A_REPOSITORY_EXISTS,
               "getRepository",

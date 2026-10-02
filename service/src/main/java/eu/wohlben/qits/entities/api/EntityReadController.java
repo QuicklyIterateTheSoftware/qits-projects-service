@@ -49,6 +49,7 @@ public class EntityReadController {
   @GET
   @Path("/{id}")
   @Operation(
+      operationId = "getEntity",
       summary = "Read one entity of any archetype",
       description =
           "The entity in the merged shape, with its qualified id, its parent and position, and"

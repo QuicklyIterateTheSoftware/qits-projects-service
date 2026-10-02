@@ -14,6 +14,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 import java.util.List;
 
 /**
@@ -45,6 +46,7 @@ public class ProjectTicketsController {
    */
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @Operation(operationId = "listProjectTickets")
   public ListTicketsRequest.Response list(
       @PathParam("projectId") String projectId, @QueryParam("status") String status) {
     return new ListTicketsRequest.Response(

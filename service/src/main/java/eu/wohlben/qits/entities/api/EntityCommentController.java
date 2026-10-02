@@ -80,6 +80,7 @@ public class EntityCommentController {
   @Path("/{id}/comments")
   @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
   @Operation(
+      operationId = "listEntityComments",
       summary = "Read an entity's comment thread",
       description =
           "The thread of an entity of any archetype, oldest first. The id is the entity's UUID or"

@@ -3897,6 +3897,7 @@ paths:
       description: "The entity in the merged shape, with its qualified id, its parent\
         \ and position, and for a ticket whether it is blocked. The id is the UUID\
         \ or the qualified id (<projectSlug>-<n>)."
+      operationId: getEntity
       parameters:
       - name: id
         in: path
@@ -3972,6 +3973,7 @@ paths:
       summary: Read an entity's comment thread
       description: "The thread of an entity of any archetype, oldest first. The id\
         \ is the entity's UUID or its qualified id (<projectSlug>-<n>)."
+      operationId: listEntityComments
       parameters:
       - name: id
         in: path
@@ -5029,6 +5031,7 @@ paths:
         - qits:admin
   /projects/api/projects/{projectId}/campaigns:
     get:
+      operationId: listProjectCampaigns
       parameters:
       - name: projectId
         in: path
@@ -5093,6 +5096,7 @@ paths:
         \ its descendants depth-first in position order — the order of the MCP list_entities.\
         \ Optionally narrowed to one archetype, one status, and the direct children\
         \ of one parent (UUID or qualified id). The project is its id or its slug."
+      operationId: listProjectEntities
       parameters:
       - name: projectId
         in: path
@@ -5134,6 +5138,7 @@ paths:
         - qits:agent
   /projects/api/projects/{projectId}/epics:
     get:
+      operationId: listProjectEpics
       parameters:
       - name: projectId
         in: path
@@ -5532,6 +5537,7 @@ paths:
         - qits:admin
   /projects/api/projects/{projectId}/tickets:
     get:
+      operationId: listProjectTickets
       parameters:
       - name: projectId
         in: path
@@ -7987,4 +7993,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1002.80844
+  version: 2026.1002.175558
