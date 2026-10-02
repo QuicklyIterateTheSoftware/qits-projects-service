@@ -152,6 +152,16 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
   }
 
+  @State(ProviderStates.A_VERIFIED_EPIC)
+  Map<String, String> aVerifiedEpic() {
+    return states.params(ProviderStates.A_VERIFIED_EPIC);
+  }
+
+  @State(ProviderStates.A_VERIFIED_TICKET)
+  Map<String, String> aVerifiedTicket() {
+    return states.params(ProviderStates.A_VERIFIED_TICKET);
+  }
+
   @State(ProviderStates.A_PROJECT_WITH_NO_WORK)
   Map<String, String> aProjectWithNoWork() {
     return states.params(ProviderStates.A_PROJECT_WITH_NO_WORK);

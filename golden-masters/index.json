@@ -339,6 +339,76 @@
       ]
     },
     {
+      "name": "a verified epic",
+      "slug": "a-verified-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "transitionEpic",
+          "method": "POST",
+          "path": "/projects/api/epics/{epicId}/transition",
+          "body": {
+            "target": "DONE"
+          },
+          "status": 200,
+          "file": "a-verified-epic/transitionEpic.json",
+          "frozen": {
+            "ids": [
+              "$.epic.id",
+              "$.epic.projectId"
+            ],
+            "instants": [
+              "$.epic.createdAt",
+              "$.epic.updatedAt"
+            ],
+            "strings": [
+              "$.epic.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a verified ticket",
+      "slug": "a-verified-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "transitionTicket",
+          "method": "POST",
+          "path": "/projects/api/tickets/{ticketId}/transition",
+          "body": {
+            "target": "DONE"
+          },
+          "status": 200,
+          "file": "a-verified-ticket/transitionTicket.json",
+          "frozen": {
+            "ids": [
+              "$.ticket.id",
+              "$.ticket.projectId"
+            ],
+            "instants": [
+              "$.ticket.createdAt",
+              "$.ticket.updatedAt"
+            ],
+            "strings": [
+              "$.ticket.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an epic with features and tasks",
       "slug": "an-epic-with-features-and-tasks",
       "params": {

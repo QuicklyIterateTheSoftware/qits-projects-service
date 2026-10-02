@@ -59,6 +59,8 @@ public class ProviderStates {
   public static final String AN_EPIC_WITH_FEATURES_AND_TASKS = "an epic with features and tasks";
   public static final String A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS =
       "a campaign with ordered developments";
+  public static final String A_VERIFIED_EPIC = "a verified epic";
+  public static final String A_VERIFIED_TICKET = "a verified ticket";
   public static final String A_PROJECT_WITH_WORK_IN_EVERY_STATUS =
       "a project with work in every status";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
@@ -111,6 +113,8 @@ public class ProviderStates {
         A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS, this::aProjectWithRepositoriesInComponents);
     states.put(A_PROJECT_WITH_WORK_IN_EVERY_STATUS, this::aProjectWithWorkInEveryStatus);
     states.put(AN_EPIC_WITH_FEATURES_AND_TASKS, this::anEpicWithFeaturesAndTasks);
+    states.put(A_VERIFIED_EPIC, this::aVerifiedEpic);
+    states.put(A_VERIFIED_TICKET, this::aVerifiedTicket);
     states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
@@ -295,6 +299,31 @@ public class ProviderStates {
     work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
     return new Setup(
         params("campaignId", campaign, "projectId", project.id), List.of(token));
+  }
+
+  /** A VERIFIED epic with one feature and one task, ready to be moved to DONE. */
+  private Setup aVerifiedEpic() {
+    String token = token();
+    Project project = project(token, A_VERIFIED_EPIC);
+    String repositoryId = repository(project, "contract-service");
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded."));
+    String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded.", null));
+    node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded.", null));
+    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
+      work.transition(Archetype.EPIC, epic, status, SEEDER);
+    }
+    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+  }
+
+  /** A VERIFIED ticket, ready to be moved to DONE. */
+  private Setup aVerifiedTicket() {
+    String token = token();
+    Project project = project(token, A_VERIFIED_TICKET);
+    String ticket = ticket(project, "Verified ticket");
+    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
+      work.transition(Archetype.TICKET, ticket, status, SEEDER);
+    }
+    return new Setup(params("projectId", project.id, "ticketId", ticket), List.of(token));
   }
 
   private String repository(Project project, String name) {

@@ -1,0 +1,20 @@
+{
+  "ticket": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "projectId": "00000000-0000-4000-8000-000000000001",
+    "number": 1,
+    "qualifiedId": "contract-00000001-1",
+    "title": "Verified ticket",
+    "slug": "verified-ticket",
+    "type": "BUG",
+    "status": "DONE",
+    "blocked": false,
+    "assignee": null,
+    "createdBy": "contract-seeder",
+    "impetus": "Seeded work.",
+    "description": null,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "workspaces": []
+  }
+}

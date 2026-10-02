@@ -4600,6 +4600,10 @@ paths:
         - qits:agent
   /projects/api/epics/{id}/transition:
     post:
+      summary: Transition
+      description: "Moves the epic to the target status; its features and tasks follow\
+        \ it, having no status of their own."
+      operationId: transitionEpic
       parameters:
       - name: id
         in: path
@@ -4625,7 +4629,6 @@ paths:
           description: Not Allowed
         "400":
           description: Bad Request
-      summary: Transition
       tags:
       - Epic Controller
       security:
@@ -7708,6 +7711,9 @@ paths:
         - qits:agent
   /projects/api/tickets/{id}/transition:
     post:
+      summary: Transition
+      description: Moves the ticket to the target status.
+      operationId: transitionTicket
       parameters:
       - name: id
         in: path
@@ -7733,7 +7739,6 @@ paths:
           description: Not Allowed
         "400":
           description: Bad Request
-      summary: Transition
       tags:
       - Ticket Controller
       security:
@@ -7998,4 +8003,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1002.214055
+  version: 2026.1002.215433

@@ -57,6 +57,8 @@ class GoldenMasterRecordingTest {
    *     <$.path-to-array>:<field.path in each entry>}, sorted by that field's (seed-fixed) value
    *     before freezing, so ids are numbered in a stable order. Null when the order is the
    *     provider's own.
+   * @param requestBody the JSON a write sends, recorded into the index as the operation's {@code
+   *     body} so a consumer's pact sends the same; null for a read
    */
   record Interaction(
       String state,
@@ -65,7 +67,21 @@ class GoldenMasterRecordingTest {
       String path,
       int status,
       String listFilteredTo,
-      String sortedBy) {}
+      String sortedBy,
+      String requestBody) {
+
+    /** A read: no request body. */
+    Interaction(
+        String state,
+        String operationId,
+        String method,
+        String path,
+        int status,
+        String listFilteredTo,
+        String sortedBy) {
+      this(state, operationId, method, path, status, listFilteredTo, sortedBy, null);
+    }
+  }
 
   static final List<Interaction> INTERACTIONS =
       List.of(
@@ -148,6 +164,25 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          // Writes: the body is recorded with the answer, and a consumer's pact sends the same.
+          new Interaction(
+              ProviderStates.A_VERIFIED_EPIC,
+              "transitionEpic",
+              "POST",
+              "/projects/api/epics/{epicId}/transition",
+              200,
+              null,
+              null,
+              "{\"target\":\"DONE\"}"),
+          new Interaction(
+              ProviderStates.A_VERIFIED_TICKET,
+              "transitionTicket",
+              "POST",
+              "/projects/api/tickets/{ticketId}/transition",
+              200,
+              null,
+              null,
+              "{\"target\":\"DONE\"}"),
           new Interaction(
               ProviderStates.A_PROJECT_WITH_NO_WORK,
               "listProjectEntities",
@@ -236,6 +271,9 @@ class GoldenMasterRecordingTest {
       operation.put("operationId", interaction.operationId());
       operation.put("method", interaction.method());
       operation.put("path", interaction.path());
+      if (interaction.requestBody() != null) {
+        operation.set("body", JSON.readTree(interaction.requestBody()));
+      }
       operation.put("status", interaction.status());
       operation.put("file", file);
       ObjectNode frozen = operation.putObject("frozen");
@@ -306,7 +344,11 @@ class GoldenMasterRecordingTest {
 
     Response response;
     try {
-      response = given().when().request(interaction.method(), expand(interaction.path(), params));
+      var request = given();
+      if (interaction.requestBody() != null) {
+        request = request.contentType("application/json").body(interaction.requestBody());
+      }
+      response = request.when().request(interaction.method(), expand(interaction.path(), params));
     } finally {
       states.cleanUp();
     }

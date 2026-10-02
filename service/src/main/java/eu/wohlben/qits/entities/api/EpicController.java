@@ -78,6 +78,10 @@ public class EpicController {
 
   @POST
   @Path("/{id}/transition")
+  @org.eclipse.microprofile.openapi.annotations.Operation(
+      operationId = "transitionEpic",
+      summary = "Transition",
+      description = "Moves the epic to the target status; its features and tasks follow it, having no status of their own.")
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
     var moved = routes.transition(routes.epics(), id, request.target(), false, identity);

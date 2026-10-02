@@ -93,6 +93,10 @@ public class TicketController {
    */
   @POST
   @Path("/{id}/transition")
+  @org.eclipse.microprofile.openapi.annotations.Operation(
+      operationId = "transitionTicket",
+      summary = "Transition",
+      description = "Moves the ticket to the target status.")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public TransitionTicketRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionTicketRequest request) {
