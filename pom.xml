@@ -208,7 +208,7 @@
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-pacts-qits-projects.version>2026.1002.74419</qits.workspaces-pacts-qits-projects.version>
-        <qits.landing-pacts-qits-projects.version>2026.1002.72422</qits.landing-pacts-qits-projects.version>
+        <qits.landing-pacts-qits-projects.version>2026.1002.163025</qits.landing-pacts-qits-projects.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
