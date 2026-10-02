@@ -142,6 +142,16 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_WORK_IN_EVERY_STATUS);
   }
 
+  @State(ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS)
+  Map<String, String> anEpicWithFeaturesAndTasks() {
+    return states.params(ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS);
+  }
+
+  @State(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS)
+  Map<String, String> aCampaignWithOrderedDevelopments() {
+    return states.params(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
+  }
+
   @State(ProviderStates.A_PROJECT_WITH_NO_WORK)
   Map<String, String> aProjectWithNoWork() {
     return states.params(ProviderStates.A_PROJECT_WITH_NO_WORK);

@@ -3370,6 +3370,9 @@ paths:
         - qits:agent
   /projects/api/campaigns/{id}:
     get:
+      summary: Get
+      description: One campaign with its members in campaign order.
+      operationId: getCampaign
       parameters:
       - name: id
         in: path
@@ -3387,7 +3390,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Get
       tags:
       - Campaign Controller
       security:
@@ -7996,4 +7998,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1002.210055
+  version: 2026.1002.214055
