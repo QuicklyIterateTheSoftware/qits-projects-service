@@ -2671,10 +2671,12 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   4.6.21, and drags `quarkus-kotlin` into the test application). Five things are the rule:
   - **A consumer pact arrives as a pinned jar, never as a file in this tree.** Each consumer
     publishes `eu.wohlben.qits:<consumer>-pacts-qits-projects` carrying
-    `pacts/<consumer>-qits-projects.json`; it is a test-scope dependency with its version in a root
-    pom property (`qits.workspaces-pacts-qits-projects.version` is the first), so qits-maintenance
-    bumps it when the consumer releases a changed pact. `contracts/ClasspathPactLoader` reads every
-    `pacts/*-qits-projects.json` on the test classpath, inside jars included. **No pact on the
+    `pacts/<consumer>_qits-projects-service.json` (consumer and provider by repository name, e.g.
+    `qits-landing-app_qits-projects-service.json`); it is a test-scope dependency with its version
+    in a root pom property (`qits.workspaces-pacts-qits-projects.version` is the first), so
+    qits-maintenance bumps it when the consumer releases a changed pact.
+    `contracts/ClasspathPactLoader` reads every `pacts/*_qits-projects-service.json` on the test
+    classpath, inside jars included; a pact under any other name is not loaded. **No pact on the
     classpath fails the run**; a new consumer is one more dependency, no code.
   - **Red means a consumer relies on an answer this provider no longer gives.** The failure names
     the consumer and the interaction (`captureWorkspace: getRepository`) and diffs the body. The fix

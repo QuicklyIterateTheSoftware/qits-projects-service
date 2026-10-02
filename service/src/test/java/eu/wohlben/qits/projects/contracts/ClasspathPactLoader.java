@@ -24,8 +24,11 @@ import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 /**
- * <b>Every {@code pacts/*-<provider>.json} resource on the test classpath</b> — inside dependency
- * jars (the pinned consumer pact jars, which is the point) as well as in plain directories.
+ * <b>Every {@code pacts/*_<provider>.json} resource on the test classpath</b> — inside dependency
+ * jars (the pinned consumer pact jars, which is the point) as well as in plain directories. A pact
+ * file is named {@code <consumer>_<provider>.json} with both repository names (e.g. {@code
+ * qits-landing-app_qits-projects-service.json}), so a frontend and a backend of one component stay
+ * apart; a file under any other name is not loaded.
  *
  * <p>It asks the class loader for every {@code pacts/} directory, then lists each one: a {@code jar:}
  * URL by walking the jar's entries, a {@code file:} URL by listing the directory. Finding nothing is
@@ -38,7 +41,7 @@ public class ClasspathPactLoader implements PactLoader {
 
   @Override
   public String description() {
-    return "classpath:" + DIRECTORY + "*-<provider>.json";
+    return "classpath:" + DIRECTORY + "*_<provider>.json";
   }
 
   @Override
@@ -48,7 +51,7 @@ public class ClasspathPactLoader implements PactLoader {
 
   @Override
   public List<Pact> load(String providerName) {
-    String suffix = "-" + providerName + ".json";
+    String suffix = "_" + providerName + ".json";
     TreeMap<String, URL> found = new TreeMap<>();
     try {
       ClassLoader loader = getClass().getClassLoader();
@@ -69,9 +72,7 @@ public class ClasspathPactLoader implements PactLoader {
               + DIRECTORY
               + "*"
               + suffix
-              + ") — the pinned qits-*-pacts-"
-              + providerName
-              + " test dependencies are missing");
+              + ") — the pinned consumer pact test dependencies are missing");
     }
     List<Pact> pacts = new ArrayList<>();
     for (URL url : found.values()) {

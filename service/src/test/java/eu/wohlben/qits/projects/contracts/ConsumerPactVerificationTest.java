@@ -25,10 +25,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * <b>Verifies every consumer's pact against the running provider</b> (epic qits-546).
  *
  * <p>The pacts come off the test classpath, never out of this tree: each consumer publishes its
- * pact against qits-projects as a jar ({@code pacts/<consumer>-qits-projects.json}), this repo pins
- * that jar as a test dependency, and qits-maintenance bumps the pin when the consumer releases a
- * changed pact. {@link ClasspathPactLoader} finds them all; an empty classpath fails rather than
- * skipping.
+ * pact against qits-projects as a jar ({@code pacts/<consumer>_qits-projects-service.json}, both
+ * repository names), this repo pins that jar as a test dependency, and qits-maintenance bumps the
+ * pin when the consumer releases a changed pact. {@link ClasspathPactLoader} finds them all; an
+ * empty classpath fails rather than skipping.
  *
  * <p>Each interaction runs as one {@code @TestTemplate} invocation against this {@code @QuarkusTest}
  * application over real HTTP ({@link HttpTestTarget} at the test port), unauthenticated — the
@@ -56,9 +56,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * it adds is parent-first class loading for pact's classes.
  */
 @QuarkusTest
-@Provider(GoldenMasterRecordingTest.PROVIDER)
+@Provider(ConsumerPactVerificationTest.PROVIDER)
 @PactSource(ClasspathPactLoader.class)
 class ConsumerPactVerificationTest {
+
+  /**
+   * The provider as a consumer pact names it: the repository name. The golden-master index keeps
+   * the application name ({@link GoldenMasterRecordingTest#PROVIDER}).
+   */
+  static final String PROVIDER = "qits-projects-service";
 
   static {
     // pact-jvm reports usage metrics over the network unless told not to; a test never should.
