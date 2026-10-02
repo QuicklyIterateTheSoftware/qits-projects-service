@@ -113,7 +113,11 @@ class ConsumerPactVerificationTest {
   @TestTemplate
   @ExtendWith(PactVerificationInvocationContextProvider.class)
   void consumerPactHolds(PactVerificationContext context) {
-    context.verifyInteraction();
+    try {
+      context.verifyInteraction();
+    } finally {
+      states.cleanUp();
+    }
   }
 
   // --- the states: each one line into the registry -------------------------------------------
@@ -141,6 +145,16 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_REPOSITORY_EXISTS)
   Map<String, String> aRepositoryExists() {
     return states.params(ProviderStates.A_REPOSITORY_EXISTS);
+  }
+
+  @State(ProviderStates.A_PROJECT_WITH_PENDING_RELEASE_REQUESTS)
+  Map<String, String> aProjectWithPendingReleaseRequests() {
+    return states.params(ProviderStates.A_PROJECT_WITH_PENDING_RELEASE_REQUESTS);
+  }
+
+  @State(ProviderStates.A_PROJECT_WITH_NO_RELEASE_REQUESTS)
+  Map<String, String> aProjectWithNoReleaseRequests() {
+    return states.params(ProviderStates.A_PROJECT_WITH_NO_RELEASE_REQUESTS);
   }
 
   @State(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID)

@@ -7,8 +7,14 @@ import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecord;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecordType;
+import eu.wohlben.qits.projects.entity.CommitBuildStatus;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequest.State;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,12 +48,19 @@ public class ProviderStates {
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
   public static final String A_PROJECT_WITH_REFINED_WORK = "a project with refined work";
   public static final String A_PROJECT_WITH_NO_WORK = "a project with no work";
+  public static final String A_PROJECT_WITH_PENDING_RELEASE_REQUESTS =
+      "a project with pending release requests";
+  public static final String A_PROJECT_WITH_NO_RELEASE_REQUESTS =
+      "a project with no release requests";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
   /** The three component repositories {@link #A_PROJECT_WITH_3_REPOSITORIES} creates. */
   static final List<String> THREE_REPOSITORIES =
       List.of("contract-service", "contract-frontend", "contract-daemon");
+
+  /** When the seeded release requests moved: a fixed base, a minute apart per request. */
+  private static final Instant SEEDED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
   /** Who the seeded work items name as their reporter. */
   private static final String SEEDER = "contract-seeder";
@@ -70,12 +83,19 @@ public class ProviderStates {
 
   private final Map<String, Supplier<Setup>> states = new LinkedHashMap<>();
 
+  /** Release requests and CI verdicts the states wrote, removed again by {@link #cleanUp()}. */
+  private final List<String> seededRequests = new ArrayList<>();
+
+  private final List<String> seededVerdicts = new ArrayList<>();
+
   public ProviderStates() {
     states.put(A_PROJECT_EXISTS, this::aProjectExists);
     states.put(A_PROJECT_WITH_3_REPOSITORIES, this::aProjectWith3Repositories);
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
     states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
+    states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
+    states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -93,6 +113,28 @@ public class ProviderStates {
           "No provider state '" + state + "' — this provider answers for " + states.keySet());
     }
     return setup.get();
+  }
+
+  /**
+   * Removes the release requests the states wrote. <b>Open requests must not outlive a test</b>:
+   * {@code ReleaseRequests.sweep()} walks every open row in the database, so one left behind is a
+   * door call inside the next class that sweeps. Callers run this after each recording or
+   * verification.
+   */
+  public void cleanUp() {
+    if (seededRequests.isEmpty() && seededVerdicts.isEmpty()) {
+      return;
+    }
+    List<String> ids = List.copyOf(seededRequests);
+    List<String> runs = List.copyOf(seededVerdicts);
+    seededRequests.clear();
+    seededVerdicts.clear();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              if (!ids.isEmpty()) ReleaseRequest.delete("id in ?1", ids);
+              if (!runs.isEmpty()) CommitBuildStatus.delete("runId in ?1", runs);
+            });
   }
 
   /** {@link #setUp} for a pact {@code @State} method, which returns only the params. */
@@ -165,6 +207,95 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_NO_WORK);
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * Two repositories and six release requests, one per situation the release menu shows: waiting
+   * on its gates (PENDING, CI not answered), folded and ready (READY, CI passed), rejected by CI
+   * (REJECTED, CI failed), unable to fold (CONFLICTED), released and waiting on its deployment
+   * (RELEASED, still open work), and one FINALIZED — which the default list carries as its tail but
+   * which is no longer pending. The CI answers are qits-ci's verdicts in the build-status ledger, at
+   * the request's folded sha. The rows are written straight to the
+   * table, as {@code ProjectReleaseRequestsTest} does for finished ones: driving them through the
+   * gates would make the fixture depend on the state machine's timing. Each moved at its own fixed
+   * minute, so the list's order (most recently moved first) is fixed too.
+   */
+  private Setup aProjectWithPendingReleaseRequests() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_PENDING_RELEASE_REQUESTS);
+    String service =
+        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+    String frontend =
+        projectService.createRepository(project.id, null, "contract-frontend", null).repository().id;
+    request(project, service, "contract-service", "Finalized release", State.FINALIZED, 1, null);
+    request(project, frontend, "contract-frontend", "Cannot fold", State.CONFLICTED, 2, null);
+    request(project, frontend, "contract-frontend", "Rejected by CI", State.REJECTED, 3, "FAILURE");
+    request(project, service, "contract-service", "Folded and ready", State.READY, 4, "SUCCESS");
+    request(project, frontend, "contract-frontend", "Released, deploying", State.RELEASED, 5, null);
+    request(project, service, "contract-service", "Waiting on its gates", State.PENDING, 6, null);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /** A project with a repository and no release request: the menu's empty list. */
+  private Setup aProjectWithNoReleaseRequests() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_NO_RELEASE_REQUESTS);
+    projectService.createRepository(project.id, null, "contract-service", null);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  private void request(
+      Project project,
+      String repoId,
+      String repoName,
+      String summary,
+      ReleaseRequest.State state,
+      int minute,
+      String ciVerdict) {
+    Instant when = SEEDED_AT.plusSeconds(60L * minute);
+    // A folded request has a sha; qits-ci's verdict for it lives in the ledger, keyed by that sha.
+    String sha = ciVerdict == null ? null : String.format("%040d", minute);
+    String id =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  ReleaseRequest row = new ReleaseRequest();
+                  row.id = UUID.randomUUID().toString();
+                  row.repoId = repoId;
+                  row.projectId = project.id;
+                  row.repoName = repoName;
+                  row.summary = summary;
+                  row.requester = SEEDER;
+                  row.state = state;
+                  if (state == ReleaseRequest.State.CONFLICTED) {
+                    row.conflictDetail = "package.json: both branches changed it";
+                    row.detail = "The sources cannot be folded.";
+                  }
+                  if (state == ReleaseRequest.State.RELEASED
+                      || state == ReleaseRequest.State.FINALIZED) {
+                    row.version = "2026.101." + (100000 + minute);
+                  }
+                  row.mergedSha = sha;
+                  row.createdAt = when;
+                  row.armedAt = when;
+                  row.updatedAt = when;
+                  row.persist();
+                  if (ciVerdict != null) {
+                    CommitBuildStatus verdict = new CommitBuildStatus();
+                    verdict.runId = UUID.randomUUID().toString();
+                    verdict.repoId = repoId;
+                    verdict.projectId = project.id;
+                    verdict.repoName = repoName;
+                    verdict.branch = row.backingBranch();
+                    verdict.commitSha = sha;
+                    verdict.status = ciVerdict;
+                    verdict.finishedAt = when;
+                    verdict.persist();
+                    seededVerdicts.add(verdict.runId);
+                  }
+                  return row.id;
+                });
+    seededRequests.add(id);
   }
 
   private String ticket(Project project, String title) {

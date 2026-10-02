@@ -52,6 +52,7 @@ public class ProjectReleaseRequestsController {
    */
   @GET
   @Operation(
+      operationId = "listProjectReleaseRequests",
       summary = "The project's release requests, across all of its repositories",
       description =
           "Most recently moved first. With no state the answer is the open requests — the work"

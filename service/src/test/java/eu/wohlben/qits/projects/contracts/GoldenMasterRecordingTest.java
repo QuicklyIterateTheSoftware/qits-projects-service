@@ -122,6 +122,24 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          // Open requests plus the FINALIZED tail, most recently moved first (fixed by the seed's
+          // minutes); a consumer decides itself which states count as pending.
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_PENDING_RELEASE_REQUESTS,
+              "listProjectReleaseRequests",
+              "GET",
+              "/projects/api/projects/{projectId}/release-requests",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_NO_RELEASE_REQUESTS,
+              "listProjectReleaseRequests",
+              "GET",
+              "/projects/api/projects/{projectId}/release-requests",
+              200,
+              null,
+              null),
           new Interaction(
               ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID,
               "getProject",
@@ -244,8 +262,12 @@ class GoldenMasterRecordingTest {
     ProviderStates.Setup setup = states.setUp(interaction.state());
     Map<String, String> params = setup.params();
 
-    Response response =
-        given().when().request(interaction.method(), expand(interaction.path(), params));
+    Response response;
+    try {
+      response = given().when().request(interaction.method(), expand(interaction.path(), params));
+    } finally {
+      states.cleanUp();
+    }
     String raw = response.asString();
     if (response.statusCode() != interaction.status()) {
       throw new AssertionError(

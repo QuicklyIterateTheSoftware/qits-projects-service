@@ -5297,6 +5297,7 @@ paths:
         \ so that a release does not leave the page the moment it lands. Pass state=all\
         \ for the whole history, or a state name (PENDING, READY, RELEASED, REJECTED,\
         \ FAILED, CONFLICTED, WITHDRAWN) to narrow to one."
+      operationId: listProjectReleaseRequests
       parameters:
       - name: projectId
         in: path
@@ -7993,4 +7994,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1002.175558
+  version: 2026.1002.191915
