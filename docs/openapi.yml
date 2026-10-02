@@ -3747,6 +3747,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+        - qits:system
   /projects/api/entities/archetypes:
     get:
       responses:
@@ -3890,6 +3891,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+        - qits:system
     get:
       summary: Read one entity of any archetype
       description: "The entity in the merged shape, with its qualified id, its parent\
@@ -3920,6 +3922,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+        - qits:system
   /projects/api/entities/{id}/blocked:
     post:
       summary: Block or unblock an entity
@@ -3994,6 +3997,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+        - qits:system
     post:
       summary: Comment on an entity
       description: Adds a remark to the thread of an entity of any archetype. The
@@ -4032,6 +4036,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+        - qits:system
   /projects/api/entities/{id}/dispatch:
     get:
       parameters:
@@ -4148,9 +4153,10 @@ paths:
       summary: Move an entity through its lifecycle
       description: "Moves an epic, ticket or campaign to the target status, by the\
         \ same path as the archetype's own /{id}/transition door and under its roles:\
-        \ an agent may move a ticket or a campaign of its own project, and an epic\
-        \ is qits:admin alone. A feature or a task has no status. The id is the UUID\
-        \ or the qualified id. Answers the entity in the merged shape, with statusBefore."
+        \ an agent may move a ticket or a campaign of its own project, a platform\
+        \ service (qits:system) one of any project, and an epic is qits:admin alone.\
+        \ A feature or a task has no status. The id is the UUID or the qualified id.\
+        \ Answers the entity in the merged shape, with statusBefore."
       parameters:
       - name: id
         in: path
@@ -4189,6 +4195,7 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+        - qits:system
   /projects/api/epics/{epicId}/dossier:
     get:
       parameters:
@@ -7980,4 +7987,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1001.84508
+  version: 2026.1002.80844
