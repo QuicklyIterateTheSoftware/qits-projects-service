@@ -86,13 +86,14 @@ public class EntityStatusController {
 
   @POST
   @Path("/{id}/status")
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
   @Operation(
       summary = "Move an entity through its lifecycle",
       description =
           "Moves an epic, ticket or campaign to the target status, by the same path as the"
               + " archetype's own /{id}/transition door and under its roles: an agent may move a"
-              + " ticket or a campaign of its own project, and an epic is qits:admin alone. A feature"
+              + " ticket or a campaign of its own project, a platform service (qits:system) one of any"
+              + " project, and an epic is qits:admin alone. A feature"
               + " or a task has no status. The id is the UUID or the qualified id. Answers the entity"
               + " in the merged shape, with statusBefore.")
   @APIResponse(

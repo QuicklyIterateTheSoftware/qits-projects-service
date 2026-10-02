@@ -239,6 +239,33 @@ class AgentReadAccessTest {
           // Approving a campaign criterion is the sign-off on a gated member (qits-413).
           "CampaignController.approve");
 
+  /**
+   * <b>The generic entity doors a platform service reaches</b> (qits-667): qits-maintenance files a
+   * MAINTENANCE ticket, reads it back, comments on it, edits it and drops it, with its own client
+   * token — whose one role is {@code qits:system}. Unbound: a machine carries no {@code project}
+   * claim and {@code EntitiesAgentAccess} never asks it for one. Pinned by name so that a narrowing
+   * of any of the five is a red test rather than a silent 403 on the far side.
+   */
+  private static final Set<String> ENTITY_SYSTEM_ROUTES =
+      Set.of(
+          "EntityCreateController.create",
+          "EntityReadController.get",
+          "EntityCommentController.list",
+          "EntityCommentController.create",
+          "EntityPatchController.patch",
+          "EntityStatusController.move");
+
+  @Test
+  void aPlatformServiceReachesTheGenericEntityDoors() {
+    for (String name : ENTITY_SYSTEM_ROUTES) {
+      Method method = declared(name);
+      assertTrue(isRead(method) || isWrite(method), name + " must be a route");
+      assertTrue(
+          roles(method.getDeclaringClass(), method).contains("qits:system"),
+          name + " must admit qits:system");
+    }
+  }
+
   @TestFactory
   Stream<DynamicTest> anAgentReadsEverythingAndWritesOnlyTheDeclaredSet() {
     return CLASSES.stream()

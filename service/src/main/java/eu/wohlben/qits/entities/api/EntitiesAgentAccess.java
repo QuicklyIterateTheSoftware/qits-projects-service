@@ -26,6 +26,9 @@ import io.quarkus.security.identity.SecurityIdentity;
  * <p><b>A person's session is judged exactly as before.</b> {@link AgentAccess#isBoundAgent} answers
  * false for any caller holding {@code qits:admin} or {@code qits:system}, so an admin — and a
  * platform service that also came in as an agent — passes through here untouched and pays no lookup.
+ * That is also what lets the five generic doors that admit {@code qits:system} (qits-667: create,
+ * read, comments, patch, status) serve a machine caller in any project: a platform service client
+ * carries no {@code project} claim, and is never asked for one.
  *
  * <p><b>The claims are read off the token, never through {@code MachineAuth}.</b> {@code MachineAuth}
  * passes every caller while {@code qits.auth.machine.required} is off, and an agent role that

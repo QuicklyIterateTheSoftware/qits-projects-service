@@ -36,6 +36,7 @@ import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -99,6 +100,23 @@ class EntityAgentBoundsTest {
   /** A person whose session also carries the agent role: {@code isBoundAgent} must read it as one. */
   private static final SecurityIdentity OPERATOR_AGENT =
       AgentTokens.token(Map.of("project", FOREIGN_PROJECT), "qits:admin", "qits:agent");
+
+  /**
+   * A platform service's client token (qits-667): the fixed role {@code qits:system}, its {@code
+   * sub} the client id, and no {@code project} claim at all — qits-maintenance filing a MAINTENANCE
+   * ticket wherever a stuck release request belongs.
+   */
+  private static final SecurityIdentity MACHINE =
+      AgentTokens.token(Map.of("sub", "dev-qits-maintenance"), "qits:system");
+
+  /**
+   * A machine caller that also holds the agent role, bound to {@code OWN_PROJECT}: {@code
+   * isBoundAgent} reads {@code qits:system} as a wider role, so it is not bound at all — the
+   * helper's rule since before qits-667, and kept.
+   */
+  private static final SecurityIdentity MACHINE_AGENT =
+      AgentTokens.token(
+          Map.of("sub", "dev-qits-maintenance", "project", OWN_PROJECT), "qits:system", "qits:agent");
 
   private static final String REFUSAL = "An agent may write only the entities of its own project.";
 
@@ -388,6 +406,14 @@ class EntityAgentBoundsTest {
     return door;
   }
 
+  private EntityReadController reads() {
+    EntityReadController door = new EntityReadController();
+    door.ids = entityIds;
+    door.catalog = catalogService;
+    door.qualifiedIds = qualifiedIds;
+    return door;
+  }
+
   /** The block of any lifecycle archetype (qits-592). */
   @Inject eu.wohlben.qits.projects.api.EntityBlocks entityBlocks;
 
@@ -591,6 +617,73 @@ class EntityAgentBoundsTest {
             creates(AGENT).create(partUnder(rows.epicQualifiedId(), "A generic part")).getEntity();
     assertEquals(rows.epicId(), part.parent());
     assertEquals("REFINED", statuses(AGENT).move(filed.id(), to("REFINED")).status());
+  }
+
+  /**
+   * <b>A platform service files, reads, comments on, edits and drops a MAINTENANCE ticket in a
+   * project it has no tie to</b> (qits-667): its token carries no {@code project} claim, and none of
+   * the five generic doors asks it for one. The reporter and the comment's author are the caller's
+   * principal — the client id its token's {@code sub} names — as for every other caller.
+   */
+  @Test
+  void aPlatformServiceWorksAMaintenanceTicketInAnyProject() {
+    JsonNode body =
+        JsonNodeFactory.instance
+            .objectNode()
+            .put("archetype", "TICKET")
+            .put("project", FOREIGN_PROJECT)
+            .put("ticketType", "MAINTENANCE")
+            .put("title", "A stuck release request")
+            .put("impetus", "the gate failed with nobody watching")
+            .put("description", "the long report");
+    var filed = (TransitionedEntity) creates(MACHINE).create(body).getEntity();
+    assertEquals(FOREIGN_PROJECT, filed.projectId());
+    assertEquals("MAINTENANCE", filed.ticketType().name());
+    assertEquals("dev-qits-maintenance", filed.createdBy());
+
+    var read = reads().get(filed.qualifiedId());
+    assertEquals(filed.id(), read.id());
+    assertEquals("dev-qits-maintenance", read.createdBy());
+
+    var comment = threads(MACHINE).create(filed.id(), remark("still stuck")).comment();
+    assertEquals("dev-qits-maintenance", comment.author());
+    assertEquals(
+        List.of("still stuck"),
+        threads(MACHINE).list(filed.qualifiedId()).entries().stream()
+            .map(e -> e.comment().body())
+            .toList());
+
+    assertEquals(
+        "Still stuck", patches(MACHINE).patch(filed.id(), retitle("Still stuck")).title());
+
+    var dropped = statuses(MACHINE).move(filed.qualifiedId(), to("DROPPED"));
+    assertEquals("DROPPED", dropped.status());
+    assertEquals("dev-qits-maintenance", dropped.changedBy());
+  }
+
+  /**
+   * A caller holding both {@code qits:system} and {@code qits:agent} is judged as the platform
+   * service, not as the agent: its own-project claim does not stop it writing another project's
+   * ticket. That is {@code EntitiesAgentAccess}'s wider-role rule, which predates qits-667.
+   */
+  @Test
+  void aPlatformServiceThatAlsoHoldsTheAgentRoleIsNotBound() {
+    assertEquals(
+        "Retitled by the machine",
+        patches(MACHINE_AGENT)
+            .patch(rows.foreignTicketId(), retitle("Retitled by the machine"))
+            .title());
+  }
+
+  /** And an epic stays a person's on the status door, for a machine as for an agent. */
+  @Test
+  void aPlatformServiceMovingAnEpicIsRefused() {
+    ForbiddenException refusal =
+        assertThrows(
+            ForbiddenException.class,
+            () -> statuses(MACHINE).move(rows.foreignEpicId(), to("REFINED")));
+    assertEquals(403, refusal.statusCode());
+    assertEquals("REPORTED", workEntities.get(Archetype.EPIC, rows.foreignEpicId()).status);
   }
 
   /**
@@ -858,6 +951,66 @@ class EntityAgentBoundsTest {
   }
 
   // ---- the roles, over HTTP ---------------------------------------------------------------------
+
+  /**
+   * The five generic doors over HTTP with {@code X-Qits-Roles: qits:system} (qits-667): the role
+   * lists admit the machine, and the whole MAINTENANCE round trip goes through in a project it has
+   * no tie to, the reporter being the asserted user.
+   */
+  @Test
+  void aForwardedPlatformServicePassesTheFiveDoors() {
+    String id =
+        asForwardedMachine()
+            .body(
+                Map.of(
+                    "archetype", "TICKET",
+                    "project", FOREIGN_PROJECT,
+                    "ticketType", "MAINTENANCE",
+                    "title", "Stuck over HTTP",
+                    "impetus", "the gate failed with nobody watching",
+                    "description", "the long report"))
+            .post("/projects/api/entities")
+            .then()
+            .statusCode(201)
+            .body("createdBy", org.hamcrest.Matchers.equalTo("qits-maintenance"))
+            .extract()
+            .path("id");
+    asForwardedMachine()
+        .get("/projects/api/entities/" + id)
+        .then()
+        .statusCode(200)
+        .body("ticketType", org.hamcrest.Matchers.equalTo("MAINTENANCE"));
+    asForwardedMachine()
+        .body(Map.of("body", "still stuck"))
+        .post("/projects/api/entities/" + id + "/comments")
+        .then()
+        .statusCode(200)
+        .body("comment.author", org.hamcrest.Matchers.equalTo("qits-maintenance"));
+    asForwardedMachine()
+        .get("/projects/api/entities/" + id + "/comments")
+        .then()
+        .statusCode(200)
+        .body("entries[0].comment.author", org.hamcrest.Matchers.equalTo("qits-maintenance"));
+    asForwardedMachine()
+        .body(Map.of("title", "Still stuck over HTTP"))
+        .patch("/projects/api/entities/" + id)
+        .then()
+        .statusCode(200)
+        .body("title", org.hamcrest.Matchers.equalTo("Still stuck over HTTP"));
+    asForwardedMachine()
+        .body(Map.of("target", "DROPPED"))
+        .post("/projects/api/entities/" + id + "/status")
+        .then()
+        .statusCode(200)
+        .body("status", org.hamcrest.Matchers.equalTo("DROPPED"));
+  }
+
+  private static RequestSpecification asForwardedMachine() {
+    return given()
+        .header("X-Qits-User", "qits-maintenance")
+        .header("X-Qits-Roles", "qits:system")
+        .contentType(ContentType.JSON);
+  }
 
   private static RequestSpecification asForwardedAgent() {
     return given()

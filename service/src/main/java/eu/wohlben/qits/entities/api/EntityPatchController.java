@@ -183,7 +183,7 @@ public class EntityPatchController {
   @PATCH
   @Path("/{id}")
   @Consumes({MERGE_PATCH_JSON, MediaType.APPLICATION_JSON})
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
   @Operation(
       summary = "Edit an entity's fields (JSON merge patch)",
       description =

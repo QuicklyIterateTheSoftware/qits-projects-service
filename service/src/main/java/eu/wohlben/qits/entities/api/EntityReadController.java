@@ -30,13 +30,14 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <p>{@code {id}} is the UUID or the qualified id ({@code qits-548}), through {@link
  * EntityIdResolver}, the one lookup every door taking a typed id shares. A read, so {@code
- * qits:agent} unbound, like every GET. A class of its own rather than a method on a write
+ * qits:agent} unbound, like every GET, and {@code qits:system} too — a platform service reads back
+ * what it filed through {@code POST /entities} (qits-667). A class of its own rather than a method on a write
  * controller, for {@code EntityArchetypesController}'s reason: a class-level role list that says
  * the honest thing.
  */
 @Path("/entities")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:agent"})
+@RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
 public class EntityReadController {
 
   @Inject EntityIdResolver ids;

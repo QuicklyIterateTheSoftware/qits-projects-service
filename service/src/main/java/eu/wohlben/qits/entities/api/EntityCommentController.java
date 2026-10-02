@@ -78,7 +78,7 @@ public class EntityCommentController {
 
   @GET
   @Path("/{id}/comments")
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
   @Operation(
       summary = "Read an entity's comment thread",
       description =
@@ -105,7 +105,7 @@ public class EntityCommentController {
 
   @POST
   @Path("/{id}/comments")
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
   @Operation(
       summary = "Comment on an entity",
       description =

@@ -556,6 +556,20 @@ write** (user ruling, 2026-09-12):
   up is a person's press; its GET is a read and admits the agent), `TicketController.delete`,
   `TicketCommentController.delete` and `CommentController.delete` (deleting is on neither surface:
   an agent that could delete what it disagrees with could erase the record of its own mistake).
+- **Five of the generic entity doors also take `qits:system`, UNBOUND (qits-621/qits-667):**
+  `POST /entities`, `GET /entities/{id}`, `GET|POST /entities/{id}/comments`, `PATCH
+  /entities/{id}` and `POST /entities/{id}/status`. A platform service client holds the fixed role
+  `qits:system` and no `project` claim, and qits-maintenance files MAINTENANCE tickets in whichever
+  project a stuck release request belongs to, then drops them through the status door — so a
+  machine caller acts in any project (owner decision 2026-10-01). Nothing new binds it:
+  `AgentAccess.isBoundAgent` already reads `qits:system` (like `qits:admin`) as a wider role, so the
+  project binding never applies to it — **including a caller holding both `qits:system` and
+  `qits:agent`**, which was the helper's rule before this grant and is kept. An epic's status move
+  stays `qits:admin` alone on the status door, for a machine as for an agent. The reporter of a
+  ticket and the author of a comment are the caller's principal name, as for every caller — for a
+  qits-idp client token that is its `sub`, the bare client id (e.g. `dev-qits-maintenance`), never
+  blank. `AgentReadAccessTest` pins the five routes' role lists; `EntityAgentBoundsTest` drives a
+  `qits:system` caller through all five in a project it has no tie to.
 - **The campaign build doors take it too (qits-413), bound the same way** — the campaign resolved
   first, its project checked by `EntitiesAgentAccess`: `POST /projects/{projectId}/campaigns`, `POST
   /campaigns/{id}/transition` and the four membership writes (`POST …/members`, `PUT

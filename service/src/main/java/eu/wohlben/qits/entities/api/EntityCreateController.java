@@ -135,7 +135,7 @@ public class EntityCreateController {
       @Schema(description = "A feature's or task's sibling dependency.") String dependsOn) {}
 
   @POST
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
   @Operation(
       summary = "Create an entity of any archetype",
       description =
