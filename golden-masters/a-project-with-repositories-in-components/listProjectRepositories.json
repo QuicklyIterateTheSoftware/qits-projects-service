@@ -1,0 +1,112 @@
+{
+  "entries": [
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "name": "billing-daemon",
+        "backupUrl": "https://forge.example.test/contract/billing-daemon.git",
+        "mainBranch": "main",
+        "archetype": "DAEMON",
+        "component": "billing",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": {
+          "outcome": "AUTH_REQUIRED",
+          "at": "2026-01-01T00:00:00Z",
+          "detail": null
+        },
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/billing-daemon"
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "name": "billing-javalib",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "LIBRARY",
+        "component": "billing",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/billing-javalib"
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "name": "contract-00000001-contract-00000001",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "PROJECT",
+        "component": null,
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-00000001-contract-00000001"
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "name": "contract-frontend",
+        "backupUrl": "https://forge.example.test/contract/contract-frontend.git",
+        "mainBranch": "main",
+        "archetype": "FRONTEND",
+        "component": "contract",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": {
+          "outcome": "FAILED",
+          "at": "2026-01-01T00:00:00Z",
+          "detail": "the forge refused the push"
+        },
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-frontend"
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "name": "contract-service",
+        "backupUrl": "https://forge.example.test/contract/contract-service.git",
+        "mainBranch": "main",
+        "archetype": "SERVICE",
+        "component": "contract",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": {
+          "outcome": "SUCCEEDED",
+          "at": "2026-01-01T00:00:00Z",
+          "detail": null
+        },
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-service"
+      },
+      "declared": true
+    }
+  ],
+  "wrapper": {
+    "repositoryId": "00000000-0000-4000-8000-000000000004",
+    "branch": "main",
+    "entries": [
+      {
+        "path": "components/contract/contract-service",
+        "name": "contract-service",
+        "repositoryId": "00000000-0000-4000-8000-000000000006"
+      },
+      {
+        "path": "components/contract/contract-frontend",
+        "name": "contract-frontend",
+        "repositoryId": "00000000-0000-4000-8000-000000000005"
+      },
+      {
+        "path": "components/billing/billing-daemon",
+        "name": "billing-daemon",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      {
+        "path": "components/billing/billing-javalib",
+        "name": "billing-javalib",
+        "repositoryId": "00000000-0000-4000-8000-000000000003"
+      }
+    ]
+  }
+}

@@ -96,6 +96,16 @@ class GoldenMasterRecordingTest {
               200,
               null,
               "$.entries:repository.name"),
+          // The repositories page's tree: components, forge twins and every backup outcome. Sorted
+          // by name like the listing above.
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS,
+              "listProjectRepositories",
+              "GET",
+              "/projects/api/projects/{projectId}/repositories",
+              200,
+              null,
+              "$.entries:repository.name"),
           // The whole planning tree, unfiltered: consumers filter and count on their side. Tree
           // order (roots oldest first) is the provider's own and is fixed by the seed order.
           new Interaction(

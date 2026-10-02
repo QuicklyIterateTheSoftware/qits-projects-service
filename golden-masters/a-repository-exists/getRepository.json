@@ -7,6 +7,7 @@
     "archetype": "SERVICE",
     "component": "contract-service",
     "projectId": "00000000-0000-4000-8000-000000000001",
-    "lastBackup": null
+    "lastBackup": null,
+    "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-service"
   }
 }

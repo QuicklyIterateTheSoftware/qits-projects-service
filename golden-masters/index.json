@@ -69,7 +69,8 @@
             ],
             "instants": [],
             "strings": [
-              "$.entries[*].repository.name"
+              "$.entries[*].repository.name",
+              "$.entries[*].repository.cloneUrl"
             ],
             "listFilteredTo": null
           }
@@ -186,6 +187,39 @@
       ]
     },
     {
+      "name": "a project with repositories in components",
+      "slug": "a-project-with-repositories-in-components",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectRepositories",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/repositories",
+          "status": 200,
+          "file": "a-project-with-repositories-in-components/listProjectRepositories.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].repository.id",
+              "$.entries[*].repository.projectId",
+              "$.wrapper.repositoryId",
+              "$.wrapper.entries[*].repositoryId"
+            ],
+            "instants": [
+              "$.entries[*].repository.lastBackup.at"
+            ],
+            "strings": [
+              "$.entries[*].repository.cloneUrl",
+              "$.entries[*].repository.name"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a repository exists",
       "slug": "a-repository-exists",
       "params": {
@@ -206,7 +240,9 @@
               "$.repository.projectId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.repository.cloneUrl"
+            ],
             "listFilteredTo": null
           }
         }

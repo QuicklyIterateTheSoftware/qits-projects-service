@@ -4,12 +4,14 @@ import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.control.ProjectService;
+import eu.wohlben.qits.projects.entity.BackupOutcome;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecord;
 import eu.wohlben.qits.projects.entity.ProjectDnsRecordType;
 import eu.wohlben.qits.projects.entity.CommitBuildStatus;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequest.State;
+import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -52,6 +54,8 @@ public class ProviderStates {
       "a project with pending release requests";
   public static final String A_PROJECT_WITH_NO_RELEASE_REQUESTS =
       "a project with no release requests";
+  public static final String A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS =
+      "a project with repositories in components";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
@@ -96,6 +100,8 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
     states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
     states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
+    states.put(
+        A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS, this::aProjectWithRepositoriesInComponents);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -242,6 +248,41 @@ public class ProviderStates {
     Project project = project(token, A_PROJECT_WITH_NO_RELEASE_REQUESTS);
     projectService.createRepository(project.id, null, "contract-service", null);
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * Four repositories in two components, the way a wrapper groups them ({@code
+   * components/<component>/<name>}): {@code contract} holds a service and a frontend, {@code
+   * billing} a daemon and a javalib. Each has a forge twin but the javalib, and their last backups
+   * differ — SUCCEEDED, FAILED (with a detail), AUTH_REQUIRED, and never — so a reader sees every
+   * backup state at once. The outcomes are written straight to the rows at a fixed time: a real
+   * backup is a push to a forge the suite does not have.
+   */
+  private Setup aProjectWithRepositoriesInComponents() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS);
+    backedUp(project, "contract-service", "contract", BackupOutcome.SUCCEEDED, null);
+    backedUp(
+        project, "contract-frontend", "contract", BackupOutcome.FAILED, "the forge refused the push");
+    backedUp(project, "billing-daemon", "billing", BackupOutcome.AUTH_REQUIRED, null);
+    projectService.createRepository(project.id, null, "billing-javalib", null, "billing");
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /** Creates {@code name} under {@code component}, with a forge twin and a last backup. */
+  private void backedUp(
+      Project project, String name, String component, BackupOutcome outcome, String detail) {
+    String id =
+        projectService.createRepository(project.id, null, name, null, component).repository().id;
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Repository row = Repository.findById(id);
+              row.url = "https://forge.example.test/contract/" + name + ".git";
+              row.lastBackupOutcome = outcome;
+              row.lastBackupAt = SEEDED_AT;
+              row.lastBackupDetail = detail;
+            });
   }
 
   private void request(

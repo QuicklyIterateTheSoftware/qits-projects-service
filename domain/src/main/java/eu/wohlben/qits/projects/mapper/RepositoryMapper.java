@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.mapper;
 
+import eu.wohlben.qits.projects.control.PublicCloneUrls;
 import eu.wohlben.qits.projects.dto.LastBackupDto;
 import eu.wohlben.qits.projects.dto.RepositoryDto;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -19,6 +20,8 @@ public abstract class RepositoryMapper {
 
   @Inject RepositoryNameRepository repositoryNames;
 
+  @Inject PublicCloneUrls cloneUrls;
+
   /**
    * The entity's column is still called {@code url}; the DTO's field is {@code backupUrl}, which is
    * what it has always meant. The column keeps its name because renaming it is a migration that buys
@@ -30,7 +33,16 @@ public abstract class RepositoryMapper {
   @Mapping(
       target = "name",
       expression = "java(entity == null ? null : repositoryNames.nameFor(entity).orElse(null))")
+  @Mapping(target = "cloneUrl", expression = "java(cloneUrlOf(entity))")
   public abstract RepositoryDto toDto(Repository entity);
+
+  /** The public clone URL, from the project's slug and the repository's name. */
+  protected String cloneUrlOf(Repository entity) {
+    if (entity == null || entity.project == null) {
+      return null;
+    }
+    return cloneUrls.cloneUrl(entity.project.slug, repositoryNames.nameFor(entity).orElse(null));
+  }
 
   /**
    * The backup status block, or null when this repository has never been backed up. Null rather than

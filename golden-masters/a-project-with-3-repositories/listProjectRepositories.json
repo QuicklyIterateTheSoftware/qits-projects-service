@@ -9,7 +9,8 @@
         "archetype": "PROJECT",
         "component": null,
         "projectId": "00000000-0000-4000-8000-000000000001",
-        "lastBackup": null
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-00000001-contract-00000001"
       },
       "declared": true
     },
@@ -22,7 +23,8 @@
         "archetype": "DAEMON",
         "component": "contract-daemon",
         "projectId": "00000000-0000-4000-8000-000000000001",
-        "lastBackup": null
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-daemon"
       },
       "declared": true
     },
@@ -35,7 +37,8 @@
         "archetype": "FRONTEND",
         "component": "contract-frontend",
         "projectId": "00000000-0000-4000-8000-000000000001",
-        "lastBackup": null
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-frontend"
       },
       "declared": true
     },
@@ -48,7 +51,8 @@
         "archetype": "SERVICE",
         "component": "contract-service",
         "projectId": "00000000-0000-4000-8000-000000000001",
-        "lastBackup": null
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-service"
       },
       "declared": true
     }

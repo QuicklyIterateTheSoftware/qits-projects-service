@@ -21,6 +21,9 @@ import eu.wohlben.qits.projects.entity.RepositoryArchetype;
  *     entry has been read for yet — the chrome groups by it and falls back to the archetype
  *     grouping for a null.
  * @param lastBackup how the last backup onto that twin went, or null when there has never been one
+ * @param cloneUrl the public clone URL, {@code <git host>/git/<project slug>/<name>} (see {@link
+ *     eu.wohlben.qits.projects.control.PublicCloneUrls}); null when the install has no public
+ *     origin or the repository no name
  */
 public record RepositoryDto(
     String id,
@@ -30,4 +33,5 @@ public record RepositoryDto(
     RepositoryArchetype archetype,
     String component,
     String projectId,
-    LastBackupDto lastBackup) {}
+    LastBackupDto lastBackup,
+    String cloneUrl) {}

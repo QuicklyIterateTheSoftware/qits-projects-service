@@ -157,6 +157,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_NO_RELEASE_REQUESTS);
   }
 
+  @State(ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS)
+  Map<String, String> aProjectWithRepositoriesInComponents() {
+    return states.params(ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS);
+  }
+
   @State(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID)
   Map<String, String> noProjectWithTheGivenId() {
     return states.params(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID);
