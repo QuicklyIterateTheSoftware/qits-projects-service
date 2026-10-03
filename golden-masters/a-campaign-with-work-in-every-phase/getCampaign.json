@@ -1,0 +1,166 @@
+{
+  "campaign": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "number": 1,
+    "qualifiedId": "contract-00000001-1",
+    "projectId": "00000000-0000-4000-8000-000000000004",
+    "slug": "card-campaign",
+    "title": "Card campaign",
+    "description": "Seeded work.",
+    "status": "REFINED",
+    "blocked": false,
+    "start": null,
+    "members": [
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000008",
+        "position": 0,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "archetype": "EPIC",
+          "qualifiedId": "contract-00000001-2",
+          "title": "Refined epic",
+          "status": "REFINED",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": []
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000009",
+        "position": 1,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000006",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-3",
+          "title": "Refined ticket",
+          "status": "REFINED",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-00000000000a",
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-00000000000b",
+                "kind": "ENTITY_STATUS",
+                "predicate": {
+                  "entityId": "00000000-0000-4000-8000-000000000005",
+                  "status": "VERIFIED"
+                },
+                "seeded": true,
+                "satisfiedAt": null,
+                "evidence": null,
+                "approval": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-00000000000c",
+        "position": 2,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-4",
+          "title": "Reported ticket",
+          "status": "REPORTED",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-00000000000d",
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-00000000000e",
+                "kind": "ENTITY_STATUS",
+                "predicate": {
+                  "entityId": "00000000-0000-4000-8000-000000000006",
+                  "status": "VERIFIED"
+                },
+                "seeded": true,
+                "satisfiedAt": null,
+                "evidence": null,
+                "approval": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-00000000000f",
+        "position": 3,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-5",
+          "title": "Done ticket",
+          "status": "DONE",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-000000000010",
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-000000000011",
+                "kind": "ENTITY_STATUS",
+                "predicate": {
+                  "entityId": "00000000-0000-4000-8000-000000000007",
+                  "status": "VERIFIED"
+                },
+                "seeded": true,
+                "satisfiedAt": null,
+                "evidence": null,
+                "approval": null
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
