@@ -165,6 +165,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
       workspaceEntities
           .get()
           .changed(
+              entity.id,
               target.get().repositoryId(),
               target.get().branch(),
               entity.title,

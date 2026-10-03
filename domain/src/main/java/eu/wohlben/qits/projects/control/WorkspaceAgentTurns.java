@@ -118,4 +118,16 @@ public interface WorkspaceAgentTurns {
    * @return what happened, {@link Outcome#COULD_NOT} included; advisory, and never null
    */
   Turn deliver(String repositoryId, String branch, String text);
+
+  /**
+   * {@link #deliver(String, String, String)}, naming the work item too (qits-112). qits-workspaces
+   * finds the workspace bound to {@code workId} first and falls back to the branch, so a slug that
+   * changed since the dispatch still reaches the right workspace. A port that knows no work id
+   * ignores it.
+   *
+   * @param workId the work item's entity id, or {@code null}
+   */
+  default Turn deliver(String workId, String repositoryId, String branch, String text) {
+    return deliver(repositoryId, branch, text);
+  }
 }

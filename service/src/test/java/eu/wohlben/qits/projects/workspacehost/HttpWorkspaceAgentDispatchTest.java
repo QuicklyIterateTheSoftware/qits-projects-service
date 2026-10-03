@@ -199,6 +199,9 @@ class HttpWorkspaceAgentDispatchTest {
     Map<?, ?> epic = MAPPER.readValue(received.get(1).body(), Map.class);
     assertEquals("e-9", epic.get("epicId"));
     assertEquals("qits-615", epic.get("entityId"));
+    // One work id whatever the archetype (qits-112): the ticket's or the epic's own id.
+    assertEquals("t-7", ticket.get("workId"));
+    assertEquals("e-9", epic.get("workId"));
     assertFalse(epic.containsKey("ticketId"));
   }
 

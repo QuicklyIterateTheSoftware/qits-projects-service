@@ -167,6 +167,12 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     if (subject != null && subject.epicId() != null) {
       body.put("epicId", subject.epicId());
     }
+    // One id for the work item whatever its archetype (qits-112): qits-workspaces binds the
+    // workspace to it and answers the item's ACTIVE workspace before it looks at the branch. An
+    // older qits-workspaces ignores it and takes the ticket or epic id instead.
+    if (subject != null && (subject.ticketId() != null || subject.epicId() != null)) {
+      body.put("workId", subject.ticketId() != null ? subject.ticketId() : subject.epicId());
+    }
     // The row as a person names it — `qits-614` — for the far side's session names (qits-614). Under
     // `entityId`, the wire name qits-workspaces reads; omitted, never null, when it was not rendered.
     // A label only: an older qits-workspaces ignores it and the dispatch is the same dispatch.

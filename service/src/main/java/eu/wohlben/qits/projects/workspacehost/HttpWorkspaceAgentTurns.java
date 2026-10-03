@@ -116,6 +116,11 @@ public class HttpWorkspaceAgentTurns implements WorkspaceAgentTurns {
 
   @Override
   public Turn deliver(String repositoryId, String branch, String text) {
+    return deliver(null, repositoryId, branch, text);
+  }
+
+  @Override
+  public Turn deliver(String workId, String repositoryId, String branch, String text) {
     Optional<String> base = address();
     if (base.isEmpty()) {
       return couldNot(branch, "no address for qits-workspaces is configured");
@@ -129,6 +134,11 @@ public class HttpWorkspaceAgentTurns implements WorkspaceAgentTurns {
       body.put("repositoryId", repositoryId);
       body.put("branch", branch);
       body.put("text", text);
+      // The work item, which qits-workspaces finds the workspace by before the branch (qits-112).
+      // Omitted when unknown; an older qits-workspaces ignores it.
+      if (workId != null) {
+        body.put("workId", workId);
+      }
       // Whether the far side compacts the session before speaking. False from here: a phase hand-off
       // is told to an agent whose context was just reset anyway, and compaction is the far side's
       // lever, not a decision this port wants an opinion about.
