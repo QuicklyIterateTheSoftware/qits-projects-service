@@ -77,6 +77,13 @@ public enum EntityProperty {
   IMPLEMENTED_AT,
 
   /**
+   * {@code entity.implementing_at} — when the implementation of a feature or a task was started
+   * (qits-749). A feature's {@code implementingOn} and a task's {@code implementingAt} on the wire,
+   * mirroring {@link #IMPLEMENTED_AT}.
+   */
+  IMPLEMENTING_AT,
+
+  /**
    * {@code entity.depends_on_entity_id} — the merge of {@code depends_on_feature_id} and {@code
    * depends_on_task_id}. A <b>sibling ordering</b> edge and never containment; a STRUCTURAL {@code
    * EntityMembership} is the relation that is containment, and {@link Nesting} is what judges it.

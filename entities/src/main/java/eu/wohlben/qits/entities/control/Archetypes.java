@@ -206,7 +206,8 @@ public final class Archetypes {
                 EntityProperty.SLUG,
                 EntityProperty.DESCRIPTION,
                 EntityProperty.DEPENDS_ON,
-                EntityProperty.IMPLEMENTED_AT),
+                EntityProperty.IMPLEMENTED_AT,
+                EntityProperty.IMPLEMENTING_AT),
             Set.of(),
             false));
 
@@ -226,7 +227,8 @@ public final class Archetypes {
                 EntityProperty.DESCRIPTION,
                 EntityProperty.REPOSITORY_ID,
                 EntityProperty.DEPENDS_ON,
-                EntityProperty.IMPLEMENTED_AT),
+                EntityProperty.IMPLEMENTED_AT,
+                EntityProperty.IMPLEMENTING_AT),
             Set.of(),
             false));
 

@@ -84,7 +84,7 @@ class ArchetypeRegistryDocumentTest {
             EntityProperty.STATUS),
         campaign.permitted());
     assertEquals(
-        List.of("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"),
+        List.of("DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"),
         campaign.legalStatuses());
     for (Archetype other : List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(false, declared(other).gathers(), other + " gathers");
@@ -222,7 +222,7 @@ class ArchetypeRegistryDocumentTest {
       List<String> statuses = declared(archetype).legalStatuses();
       assertEquals(statuses.stream().sorted().toList(), statuses, archetype.name());
     }
-    assertEquals(List.of("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"), declared(Archetype.EPIC).legalStatuses());
+    assertEquals(List.of("DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"), declared(Archetype.EPIC).legalStatuses());
     // One vocabulary since qits-392: the epic and the ticket serve the same six words.
     assertEquals(
         declared(Archetype.EPIC).legalStatuses(), declared(Archetype.TICKET).legalStatuses());
@@ -267,21 +267,28 @@ class ArchetypeRegistryDocumentTest {
         declared(Archetype.TICKET).transitions();
     assertEquals(
         List.of(
-            "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
+            "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
         List.copyOf(moves.keySet()));
     assertEquals(
         List.of(move("REFINED", EntityStateMachine.TransitionKind.FORWARD), move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("REPORTED"));
     assertEquals(
         List.of(
-            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTING", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.SKIP),
             move("REPORTED", EntityStateMachine.TransitionKind.BACK),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("REFINED"));
     assertEquals(
         List.of(
-            move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
             move("REFINED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("IMPLEMENTING"));
+    assertEquals(
+        List.of(
+            move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTING", EntityStateMachine.TransitionKind.BACK),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("IMPLEMENTED"));
     assertEquals(

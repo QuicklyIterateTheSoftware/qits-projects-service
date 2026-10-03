@@ -61,6 +61,8 @@ import java.time.Instant;
  * @param supersededBy the successor draft, or null
  * @param repositoryId the task's repository, or null
  * @param implementedAt the implemented marker, or null
+ * @param implementingAt the implementing marker of a feature or a task — when its implementation was
+ *     started (qits-749) — or null. Kept once {@code implementedAt} is set, which ranks over it
  * @param dependsOn the sibling ordering edge, or null. Never nesting
  * @param parent what it is part of now, or null for a root
  * @param position where among its siblings it sits, or null for a root. Dense and zero-based
@@ -93,6 +95,7 @@ public record TransitionedEntity(
     String supersededBy,
     String repositoryId,
     Instant implementedAt,
+    Instant implementingAt,
     String dependsOn,
     String parent,
     Integer position,
@@ -125,6 +128,7 @@ public record TransitionedEntity(
         supersededBy,
         repositoryId,
         implementedAt,
+        implementingAt,
         dependsOn,
         parent,
         position,
@@ -178,6 +182,7 @@ public record TransitionedEntity(
         row.supersededByEntityId,
         row.repositoryId,
         row.implementedAt,
+        row.implementingAt,
         row.dependsOnEntityId,
         before.parent(),
         before.position(),
@@ -215,6 +220,7 @@ public record TransitionedEntity(
         read.supersededBy(),
         read.repositoryId(),
         read.implementedAt(),
+        read.implementingAt(),
         read.dependsOn(),
         read.parent(),
         read.position(),
@@ -250,6 +256,7 @@ public record TransitionedEntity(
         row.supersededByEntityId,
         row.repositoryId,
         row.implementedAt,
+        row.implementingAt,
         row.dependsOnEntityId,
         edge == null ? null : edge.parentId,
         edge == null ? null : edge.position,

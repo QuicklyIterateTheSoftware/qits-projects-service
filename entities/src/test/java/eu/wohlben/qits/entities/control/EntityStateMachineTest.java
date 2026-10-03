@@ -54,8 +54,8 @@ class EntityStateMachineTest {
         assertTrue(reason.startsWith("cannot move from " + from + " to " + to), reason);
       }
     }
-    // 36 ordered pairs, 12 declared moves.
-    assertEquals(36 - 12, refused);
+    // 49 ordered pairs, 16 declared moves.
+    assertEquals(49 - 16, refused);
   }
 
   @Test
@@ -64,17 +64,78 @@ class EntityStateMachineTest {
         List.of(
             new Transition(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
             new Transition(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
             new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
             new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP),
+            new Transition(
+                EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(
+                EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING, TransitionKind.BACK),
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
             new Transition(EntityStatus.VERIFIED, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
             new Transition(EntityStatus.VERIFIED, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN)),
         EntityStateMachine.transitions());
+  }
+
+  // ---- the skip (qits-749) ---------------------------------------------------------------------
+
+  @Test
+  void refinedMayMoveStraightToImplementedAsTheOneSkip() {
+    assertEquals(
+        Optional.of(
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP)),
+        EntityStateMachine.transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED));
+    assertEquals(
+        List.of(
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP)),
+        EntityStateMachine.transitions().stream()
+            .filter(move -> move.kind() == TransitionKind.SKIP)
+            .toList());
+    // No other step can be jumped: IMPLEMENTING -> VERIFIED, REPORTED -> IMPLEMENTING are refused.
+    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.VERIFIED));
+    assertFalse(EntityStateMachine.allows(EntityStatus.REPORTED, EntityStatus.IMPLEMENTING));
+  }
+
+  @Test
+  void theSelfCheckAcceptsTheSkipOnlyAsTwoStepsFromRefined() {
+    assertTrue(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP)));
+    // Two steps, but not from REFINED.
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.VERIFIED, TransitionKind.SKIP)));
+    // From REFINED, but one step or three.
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.SKIP)));
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.REFINED, EntityStatus.VERIFIED, TransitionKind.SKIP)));
+    // FORWARD was not loosened to make room for it.
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD)));
+  }
+
+  @Test
+  void implementingIsLeftForwardBackOrDroppedAndEnteredBackFromImplemented() {
+    assertEquals(
+        List.of(
+            new Transition(
+                EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP)),
+        EntityStateMachine.transitionsFrom(EntityStatus.IMPLEMENTING));
+    // IMPLEMENTED -> REFINED was replaced by IMPLEMENTED -> IMPLEMENTING.
+    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.REFINED));
+    assertTrue(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING));
   }
 
   // ---- DONE is final ---------------------------------------------------------------------------
@@ -128,7 +189,7 @@ class EntityStateMachineTest {
   }
 
   @Test
-  void theMovesOutOfEachStateAreForwardThenBackThenDropOrReopen() {
+  void theMovesOutOfEachStateAreForwardThenSkipThenBackThenDropOrReopen() {
     for (EntityStatus status : EntityStatus.values()) {
       List<TransitionKind> kinds =
           EntityStateMachine.transitionsFrom(status).stream().map(Transition::kind).toList();
@@ -150,6 +211,7 @@ class EntityStateMachineTest {
         List.of(
             EntityStatus.REPORTED,
             EntityStatus.REFINED,
+            EntityStatus.IMPLEMENTING,
             EntityStatus.IMPLEMENTED,
             EntityStatus.VERIFIED,
             EntityStatus.DONE),
@@ -158,6 +220,7 @@ class EntityStateMachineTest {
         List.of(
             EntityStatus.REPORTED,
             EntityStatus.REFINED,
+            EntityStatus.IMPLEMENTING,
             EntityStatus.IMPLEMENTED,
             EntityStatus.VERIFIED,
             EntityStatus.DONE,
@@ -168,10 +231,12 @@ class EntityStateMachineTest {
   // ---- the derived readings --------------------------------------------------------------------
 
   @Test
-  void theFirstThreeStatesStartAPhaseAndTheRestStartNone() {
+  void theFirstFourStatesStartAPhaseAndTheRestStartNone() {
     assertEquals(Optional.of(Phase.REFINE), EntityStateMachine.phaseStartedBy(EntityStatus.REPORTED));
     assertEquals(
         Optional.of(Phase.IMPLEMENT), EntityStateMachine.phaseStartedBy(EntityStatus.REFINED));
+    assertEquals(
+        Optional.of(Phase.IMPLEMENT), EntityStateMachine.phaseStartedBy(EntityStatus.IMPLEMENTING));
     assertEquals(
         Optional.of(Phase.VERIFY), EntityStateMachine.phaseStartedBy(EntityStatus.IMPLEMENTED));
     for (EntityStatus none :

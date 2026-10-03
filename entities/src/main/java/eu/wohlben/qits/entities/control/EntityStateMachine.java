@@ -19,24 +19,32 @@ import java.util.Set;
  * and the phase a status starts ({@code PhasePrompts}) — asks this class and restates nothing.
  *
  * <pre>
- *             FORWARD          FORWARD             FORWARD           FORWARD
- *   REPORTED ─────────▶ REFINED ─────────▶ IMPLEMENTED ─────────▶ VERIFIED ─────────▶ DONE
- *      ▲  │  ◀───────── │  ◀─────────────── │  ◀───────────────── │                (final)
- *      │  │    BACK     │       BACK        │        BACK         │
- *      │  │ DROP        │ DROP              │ DROP                │ DROP
- *      │  ▼             ▼                   ▼                     ▼
- *      └─ DROPPED ◀─────────────────────────────────────────────────
+ *             FORWARD          FORWARD                FORWARD              FORWARD          FORWARD
+ *   REPORTED ───────▶ REFINED ───────▶ IMPLEMENTING ───────▶ IMPLEMENTED ───────▶ VERIFIED ───────▶ DONE
+ *      ▲  │  ◀─────── │  │  ◀─────────── │  ◀──────────────── │  ◀──────────────── │            (final)
+ *      │  │    BACK   │  │     BACK      │       BACK         │        BACK        │
+ *      │  │           │  └───────────────── SKIP ───────────▶ │                    │
+ *      │  │ DROP      │ DROP             │ DROP               │ DROP               │ DROP
+ *      │  ▼           ▼                  ▼                    ▼                    ▼
+ *      └─ DROPPED ◀──────────────────────────────────────────────────────────────────
  *  REOPEN
  *
- *   starts phase:  REPORTED → refine,  REFINED → implement,  IMPLEMENTED → verify;
+ *   starts phase:  REPORTED → refine,  REFINED and IMPLEMENTING → implement,  IMPLEMENTED → verify;
  *                  VERIFIED, DONE and DROPPED start nothing.
  * </pre>
  *
- * <p><b>The walk</b> — REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE — is taken one step at a
- * time: forward as each phase finishes, back when a claim turns out wrong. Asking for the status an
- * entity already has is refused rather than read as a no-op. A BACK move is a correction, not how a
- * phase reports failure: a phase that cannot finish, a failed verification included, blocks the
- * entity where it stands (qits-592).
+ * <p><b>The walk</b> — REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE — is taken
+ * one step at a time: forward as each phase finishes, back when a claim turns out wrong. Asking for
+ * the status an entity already has is refused rather than read as a no-op. A BACK move is a
+ * correction, not how a phase reports failure: a phase that cannot finish, a failed verification
+ * included, blocks the entity where it stands (qits-592).
+ *
+ * <p><b>IMPLEMENTING is the one step that may be skipped</b> (qits-749). The platform enters it at
+ * the dispatch press, so it records a fact rather than a claim kept by hand — but an agent that
+ * finished work nobody moved to IMPLEMENTING first must still be able to say so, so REFINED →
+ * IMPLEMENTED stays legal as a {@link TransitionKind#SKIP}: two steps along the walk, and from
+ * REFINED only. FORWARD stays one step; the skip is its own kind rather than a loosened FORWARD, so
+ * no other step can be jumped.
  *
  * <p><b>DONE is final: it has no exits</b> — not back to VERIFIED, not to DROPPED, not anywhere.
  * Acceptance could only ever throw a done item further back than VERIFIED, which is not a flow to
@@ -44,10 +52,10 @@ import java.util.Set;
  * refer to the done one. Below DONE the walk stays reversible.
  *
  * <p><b>DROPPED is off the walk.</b> It is reachable (DROP) from every state that is still open —
- * REPORTED, REFINED, IMPLEMENTED, VERIFIED — because a decision not to do the work can be taken at
- * any point while the work is open, and from nowhere else. It reopens (REOPEN) to REPORTED and to
- * nothing else: somebody who has changed their mind about abandoned work is asking what it is for
- * again, which is the refine phase.
+ * REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFIED — because a decision not to do the work can
+ * be taken at any point while the work is open, and from nowhere else. It reopens (REOPEN) to
+ * REPORTED and to nothing else: somebody who has changed their mind about abandoned work is asking
+ * what it is for again, which is the refine phase.
  *
  * <p><b>The declaration checks itself.</b> The class initialiser refuses a {@link #TRANSITIONS} entry
  * whose kind does not match its ends (a FORWARD that is not the next step on the walk, a DROP that
@@ -61,6 +69,11 @@ public final class EntityStateMachine {
   public enum TransitionKind {
     /** The next step along the walk. */
     FORWARD,
+    /**
+     * Two steps along the walk, over {@link EntityStatus#IMPLEMENTING}: REFINED → IMPLEMENTED, for
+     * work finished without being marked started. Legal from REFINED only.
+     */
+    SKIP,
     /** A step back along the walk. */
     BACK,
     /** From an open state on the walk to {@link EntityStatus#DROPPED}. */
@@ -98,6 +111,7 @@ public final class EntityStateMachine {
       List.of(
           EntityStatus.REPORTED,
           EntityStatus.REFINED,
+          EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED,
           EntityStatus.VERIFIED,
           EntityStatus.DONE);
@@ -113,18 +127,22 @@ public final class EntityStateMachine {
 
   /**
    * <b>Every legal move, and the one place they are written.</b> Grouped by source state in
-   * lifecycle order, and within a state FORWARD first, then BACK, then DROP/REOPEN — the order the
+   * lifecycle order, and within a state FORWARD first, then SKIP, then BACK, then DROP/REOPEN — the order the
    * registry serves. DONE has no row, because DONE is final.
    */
   private static final List<Transition> TRANSITIONS =
       List.of(
           t(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
           t(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP),
-          t(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+          t(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
+          t(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
           t(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
           t(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP),
+          t(EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+          t(EntityStatus.IMPLEMENTING, EntityStatus.REFINED, TransitionKind.BACK),
+          t(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.FORWARD),
-          t(EntityStatus.IMPLEMENTED, EntityStatus.REFINED, TransitionKind.BACK),
+          t(EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING, TransitionKind.BACK),
           t(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
           t(EntityStatus.VERIFIED, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
@@ -136,6 +154,7 @@ public final class EntityStateMachine {
       Map.of(
           EntityStatus.REPORTED, Phase.REFINE,
           EntityStatus.REFINED, Phase.IMPLEMENT,
+          EntityStatus.IMPLEMENTING, Phase.IMPLEMENT,
           EntityStatus.IMPLEMENTED, Phase.VERIFY);
 
   /** {@link #TRANSITIONS} indexed by source, order kept; every state has an entry. */
@@ -149,12 +168,17 @@ public final class EntityStateMachine {
 
   // --- the operations ---------------------------------------------------------------------------
 
-  /** Every state, in lifecycle order: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE, DROPPED. */
+  /**
+   * Every state, in lifecycle order: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFIED, DONE,
+   * DROPPED.
+   */
   public static List<EntityStatus> states() {
     return STATES;
   }
 
-  /** The walk alone, in order: REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE. */
+  /**
+   * The walk alone, in order: REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE.
+   */
   public static List<EntityStatus> walk() {
     return WALK;
   }
@@ -164,7 +188,7 @@ public final class EntityStateMachine {
     return TRANSITIONS;
   }
 
-  /** The legal moves out of {@code from}, FORWARD first, then BACK, then DROP/REOPEN. */
+  /** The legal moves out of {@code from}, FORWARD first, then SKIP, BACK, then DROP/REOPEN. */
   public static List<Transition> transitionsFrom(EntityStatus from) {
     return OUTGOING.getOrDefault(from, List.of());
   }
@@ -290,17 +314,22 @@ public final class EntityStateMachine {
       }
       for (int i = 1; i < moves.size(); i++) {
         if (rank(moves.get(i - 1).kind()) > rank(moves.get(i).kind())) {
-          throw new IllegalStateException(state + "'s moves are not FORWARD, BACK, DROP/REOPEN");
+          throw new IllegalStateException(state + "'s moves are not FORWARD, SKIP, BACK, DROP/REOPEN");
         }
       }
     }
   }
 
-  private static boolean kindMatches(Transition move) {
+  /**
+   * Whether a move's kind matches its ends — the check {@link #verify} applies to every declared
+   * row. Package-private so the self-check's rules can be tested on rows nobody declared.
+   */
+  static boolean kindMatches(Transition move) {
     int from = WALK.indexOf(move.from());
     int to = WALK.indexOf(move.to());
     return switch (move.kind()) {
       case FORWARD -> from >= 0 && to == from + 1;
+      case SKIP -> move.from() == EntityStatus.REFINED && to == from + 2;
       case BACK -> from >= 0 && to >= 0 && to == from - 1;
       case DROP -> from >= 0 && move.to() == OFF_WALK;
       case REOPEN -> move.from() == OFF_WALK && to >= 0;
@@ -310,8 +339,9 @@ public final class EntityStateMachine {
   private static int rank(TransitionKind kind) {
     return switch (kind) {
       case FORWARD -> 0;
-      case BACK -> 1;
-      case DROP, REOPEN -> 2;
+      case SKIP -> 1;
+      case BACK -> 2;
+      case DROP, REOPEN -> 3;
     };
   }
 }

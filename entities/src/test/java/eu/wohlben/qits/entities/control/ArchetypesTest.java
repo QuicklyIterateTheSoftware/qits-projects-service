@@ -83,7 +83,9 @@ class ArchetypesTest {
   void epicTicketAndCampaignDeclareTheOneLifecycleAndNothingElseHasOne() {
     var six = EnumSet.allOf(EntityStatus.class).stream().map(Enum::name).collect(Collectors.toSet());
     assertEquals(
-        Set.of("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"), six);
+        Set.of(
+            "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
+        six);
     assertEquals(six, Archetypes.legalStatuses(Archetype.EPIC));
     assertEquals(six, Archetypes.legalStatuses(Archetype.TICKET));
     assertEquals(six, Archetypes.legalStatuses(Archetype.CAMPAIGN));

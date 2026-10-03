@@ -12,6 +12,10 @@ import java.time.Instant;
  * @param qualifiedId {@code <project-slug>-<number>} — {@code qits-1337}. Null until the project
  *     slug is resolved, which happens in {@code projects/api/QualifiedEntityIds} and nowhere else;
  *     see {@link EpicDto#qualifiedId}.
+ * @param implementingOn when the implementation of this feature was started, or null — the
+ *     implementing marker (qits-749), stamped by {@code mark_task_implementing} on the first of its
+ *     tasks. Skippable, so an implemented feature may never have had it; kept once {@code
+ *     implementedOn} is set, which ranks over it.
  */
 public record FeatureDto(
     String id,
@@ -24,6 +28,7 @@ public record FeatureDto(
     String description,
     String dependsOnFeatureId,
     Instant implementedOn,
+    Instant implementingOn,
     Instant createdAt,
     Instant updatedAt) {
 
@@ -40,6 +45,7 @@ public record FeatureDto(
         description,
         dependsOnFeatureId,
         implementedOn,
+        implementingOn,
         createdAt,
         updatedAt);
   }

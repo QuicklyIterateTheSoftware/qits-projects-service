@@ -27,8 +27,11 @@ import java.util.Optional;
  *   <li>a structural change — the epic's title or description, and any feature/task create, update
  *       or delete, dependencies included — needs {@link EntityStatus#REPORTED} ({@link
  *       #requireReported});
- *   <li>the implemented markers ({@code implementedOn}/{@code implementedAt}) need {@link
- *       EntityStatus#REFINED} ({@link #requireRefined}).
+ *   <li>the task markers — implemented ({@code implementedOn}/{@code implementedAt}) and, since
+ *       qits-749, implementing ({@code implementingOn}/{@code implementingAt}) — need the epic being
+ *       implemented: {@link EntityStatus#REFINED} or {@link EntityStatus#IMPLEMENTING} ({@link
+ *       #requireBeingImplemented}). IMPLEMENTING is included because an implementing agent marks
+ *       its tasks while its epic is IMPLEMENTING.
  * </ul>
  *
  * The two guards therefore reject everything from IMPLEMENTED on without a rule of their own. The
@@ -141,13 +144,17 @@ final class EntityLifecycle {
   }
 
   /**
-   * Rejects an implemented-marker change to an epic that is not being implemented: the markers move
-   * only at {@link EntityStatus#REFINED}, the status implementation runs in.
+   * Rejects a task-marker change (implemented or implementing) to an epic that is not being
+   * implemented: the markers move only at {@link EntityStatus#REFINED} or {@link
+   * EntityStatus#IMPLEMENTING}, the two statuses the implement phase runs in. (It was {@code
+   * requireRefined} until qits-749 put IMPLEMENTING between REFINED and IMPLEMENTED.)
    */
-  static void requireRefined(WorkEntity epic) {
-    if (!EntityStatus.REFINED.name().equals(epic.status)) {
+  static void requireBeingImplemented(WorkEntity epic) {
+    if (!EntityStatus.REFINED.name().equals(epic.status)
+        && !EntityStatus.IMPLEMENTING.name().equals(epic.status)) {
       throw new ConflictException(
-          "Implemented markers move only while an epic is REFINED (being implemented): epic "
+          "Task markers move only while an epic is REFINED or IMPLEMENTING (being implemented):"
+              + " epic "
               + epic.id
               + " is "
               + epic.status
