@@ -98,9 +98,10 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * <p><b>The asymmetry on {@code STATUS} is deliberate and is worth naming, because it looks like an
- * oversight.</b> A ticket <em>requires</em> a status and an epic merely permits one. The reason is
- * what each column means at the moment of the check: an epic's phase is minted by the writer (every
- * epic starts {@code REPORTED}, set by the service and never by a caller), so demanding it of a
+ * oversight.</b> A ticket <em>requires</em> a status and an epic merely permits one — as do a feature,
+ * a task and a campaign, for the epic's reason. The reason is what each column means at the moment
+ * of the check: an epic's status is minted by the writer (every epic, feature and task starts {@code
+ * REPORTED}, set by the service and never by a caller), so demanding it of a
  * candidate would fail every create before the writer had run — the same reason {@link
  * EntityProperty#SLUG} is required of nobody. A ticket's status, by contrast, is a statement the
  * intake surfaces already make and that the transition API moves; the six words are the ticket's
@@ -117,9 +118,10 @@ import java.util.stream.Collectors;
 public final class Archetypes {
 
   /**
-   * {@link EntityStatus}' six words, as stored — <b>the one vocabulary</b> of every kind with a
-   * lifecycle. There were two sets here, one per enum, until qits-392 deleted {@code EpicStatus};
-   * an epic and a ticket now declare the same set, and the served registry document carries it.
+   * {@link EntityStatus}' eight words, as stored — <b>the one vocabulary</b> of every kind but the
+   * campaign. There were two sets here, one per enum, until qits-392 deleted {@code EpicStatus};
+   * an epic and a ticket declared the same set from then on, a feature and a task joined them at
+   * qits-763, and the served registry document carries it.
    */
   private static final Set<String> STATUSES = names(EntityStatus.values());
 
@@ -129,6 +131,9 @@ public final class Archetypes {
    */
   private static final Set<String> CAMPAIGN_STATUSES =
       names(EntityStateMachine.states(Archetype.CAMPAIGN).toArray(EntityStatus[]::new));
+
+  /** The kinds that hold a status and run no phase — see {@link #isPlanPiece}. */
+  private static final Set<Archetype> PLAN_PIECES = EnumSet.of(Archetype.FEATURE, Archetype.TASK);
 
   private static final Map<Archetype, ArchetypeSpec> REGISTRY = declare();
 
@@ -197,9 +202,12 @@ public final class Archetypes {
             STATUSES,
             false));
 
-    // A piece of a plan. No status of its own — a feature's phase is its epic's, which is why
-    // EntityLifecycle judges a task by the phase of its feature's epic rather than by anything on the
-    // row. What it carries instead is the implemented marker and a sibling dependency.
+    // A piece of a plan. Its status is the one lifecycle (qits-763), the epic's words over the epic's
+    // graph, minted REPORTED by the writer and so permitted rather than required — an epic's reason.
+    // It records where THIS piece stands, which is what lets one task be verified while its siblings
+    // are not; what may be WRITTEN to it is still its epic's phase (EntityLifecycle judges a task by
+    // the status of its feature's epic), and no phase runs on it (see isPlanPiece). Beside the status
+    // it keeps the two markers, as the history of when it got there, and a sibling dependency.
     registry.put(
         Archetype.FEATURE,
         new ArchetypeSpec(
@@ -212,14 +220,16 @@ public final class Archetypes {
                 EntityProperty.TITLE,
                 EntityProperty.SLUG,
                 EntityProperty.DESCRIPTION,
+                EntityProperty.STATUS,
                 EntityProperty.DEPENDS_ON,
                 EntityProperty.IMPLEMENTED_AT,
                 EntityProperty.IMPLEMENTING_AT),
-            Set.of(),
+            STATUSES,
             false));
 
     // Work in one concrete repository — the only kind that names one, and the reason it is required
-    // rather than permitted: a task without a repository is a feature with extra steps.
+    // rather than permitted: a task without a repository is a feature with extra steps. Its status is
+    // a feature's: the one lifecycle, minted REPORTED, no phase of its own (qits-763).
     registry.put(
         Archetype.TASK,
         new ArchetypeSpec(
@@ -232,11 +242,12 @@ public final class Archetypes {
                 EntityProperty.TITLE,
                 EntityProperty.SLUG,
                 EntityProperty.DESCRIPTION,
+                EntityProperty.STATUS,
                 EntityProperty.REPOSITORY_ID,
                 EntityProperty.DEPENDS_ON,
                 EntityProperty.IMPLEMENTED_AT,
                 EntityProperty.IMPLEMENTING_AT),
-            Set.of(),
+            STATUSES,
             false));
 
     // An ordering of existing work (epic f6c67e74). Root, and ABOVE the epic at -1 so that a
@@ -347,12 +358,31 @@ public final class Archetypes {
   }
 
   /**
+   * <b>Whether this kind is a piece of an epic's plan</b> — {@link Archetype#FEATURE} and {@link
+   * Archetype#TASK} — which holds a status and runs no phase (qits-763).
+   *
+   * <p>Until qits-763 the question every phase door asked was "does this kind have status words",
+   * and a feature and a task answered no. They have the one lifecycle now, so that question stopped
+   * telling them apart, and this is the one that does: their status records where the piece stands
+   * (one task VERIFIED while a sibling is still IMPLEMENTED), but nothing is <em>run</em> on one. No
+   * agent is dispatched onto it, no refinement room opens on it, no block is raised on it, no
+   * campaign gathers it and no phase turn follows its moves — all of that is its epic's. A door
+   * that starts or stops work refuses on this, never on {@link #legalStatuses} being empty.
+   *
+   * <p>Declared rather than read off {@link #mayBeRoot}: they agree today, and the class javadoc's
+   * argument against deriving one axis from another holds here too.
+   */
+  public static boolean isPlanPiece(Archetype archetype) {
+    return PLAN_PIECES.contains(archetype);
+  }
+
+  /**
    * <b>Every violation in {@code candidate}, in vocabulary order, or an empty list.</b>
    *
    * <p>Three questions, asked of every candidate and all three always asked: is every required
    * property there, is every property it carries one this kind has a slot for, and — when it carries
-   * a status — is that word in this kind's lifecycle. The database spells the same six words in
-   * {@code ck_entity_status}, but cannot say that a feature or a task holds none.
+   * a status — is that word in this kind's lifecycle. The database spells the same eight words in
+   * {@code ck_entity_status}, but cannot say that a campaign never holds IMPLEMENTING or VERIFYING.
    *
    * <p>{@code demand} is which required set the first question is asked against — see {@link
    * Demand}. It is a parameter and has no default on purpose: a create judged by the update set

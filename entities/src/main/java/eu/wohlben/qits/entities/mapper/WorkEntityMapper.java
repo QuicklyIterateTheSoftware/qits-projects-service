@@ -16,9 +16,9 @@ import org.mapstruct.Named;
  * gone and the four services answer the merged {@link WorkEntity} row, so the four translations are
  * four methods here instead of four files.
  *
- * <p><b>The four DTOs do not move by one byte.</b> Every component of {@link EpicDto}, {@link
- * TicketDto}, {@link FeatureDto} and {@link TaskDto} is populated from exactly the value it was
- * populated from before — which is the whole point of the method list being four rather than one:
+ * <p><b>The four DTOs did not move by one byte in the fold.</b> Every component of {@link EpicDto},
+ * {@link TicketDto}, {@link FeatureDto} and {@link TaskDto} is populated from exactly the value it
+ * was populated from before (a feature's and a task's {@code status} arrived later, with qits-763) — which is the whole point of the method list being four rather than one:
  * the HTTP contract is four shapes and stays four shapes. What moved is only where each value is
  * read from.
  *
@@ -85,6 +85,7 @@ public interface WorkEntityMapper {
    *     entity_membership} edge, which is what the old {@code feature.epic_id} column was
    */
   @Mapping(target = "epicId", source = "epicId")
+  @Mapping(target = "status", source = "entity.status", qualifiedByName = "status")
   @Mapping(target = "dependsOnFeatureId", source = "entity.dependsOnEntityId")
   @Mapping(target = "implementedOn", source = "entity.implementedAt")
   @Mapping(target = "implementingOn", source = "entity.implementingAt")
@@ -97,6 +98,7 @@ public interface WorkEntityMapper {
    * @param featureId {@code Nested.parentId} — what the old {@code task.feature_id} column was
    */
   @Mapping(target = "featureId", source = "featureId")
+  @Mapping(target = "status", source = "entity.status", qualifiedByName = "status")
   @Mapping(target = "dependsOnTaskId", source = "entity.dependsOnEntityId")
   @Mapping(target = "qualifiedId", ignore = true)
   TaskDto toTaskDto(WorkEntity entity, String featureId);
@@ -110,10 +112,12 @@ public interface WorkEntityMapper {
    * the enum keeps the refusal the deleted {@code WorkEntityProjections.epic} made: a word the one
    * lifecycle does not spell is an exception at the boundary rather than a status a client has to
    * guess at. There were two of these, one per enum, until qits-392 made the epic and the ticket
-   * one vocabulary ({@code ck_entity_status}, epics V15, spells exactly the same six words).
+   * one vocabulary; a feature and a task joined it at qits-763, and {@code ck_entity_status} spells
+   * the same eight words.
    *
-   * <p>Null in, null out: a status-less row is an ordinary row here (a feature and a task hold
-   * none), and {@code valueOf(null)} would be a {@code NullPointerException} rather than an answer.
+   * <p>Null in, null out: the column is {@code not null} since epics V24, but a row built in memory
+   * and mapped before it is written may still hold none, and {@code valueOf(null)} would be a
+   * {@code NullPointerException} rather than an answer.
    */
   @Named("status")
   static String status(String stored) {

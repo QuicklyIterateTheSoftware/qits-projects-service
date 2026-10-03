@@ -203,12 +203,15 @@ class ArchetypeRegistryDocumentTest {
   }
 
   @Test
-  void aKindWithNoLifecycleAsksForNoStatusEitherWay() {
+  void aFeatureAndATaskAskForAStatusOnTransitionAsAnEpicDoes() {
+    // qits-763: they hold the one lifecycle now, minted by the writer and permitted rather than
+    // required — so the transition, which mints nothing, must be handed one, exactly as for an epic.
     for (Archetype archetype : List.of(Archetype.FEATURE, Archetype.TASK)) {
       ArchetypeRegistryDocument.DeclaredArchetype served = declared(archetype);
-      assertTrue(served.legalStatuses().isEmpty(), archetype + " has no lifecycle");
-      assertEquals(served.required(), served.requiredOnTransition(), archetype.name());
-      assertFalse(served.requiredOnTransition().contains(EntityProperty.STATUS), archetype.name());
+      assertEquals(
+          declared(Archetype.EPIC).legalStatuses(), served.legalStatuses(), archetype.name());
+      assertFalse(served.required().contains(EntityProperty.STATUS), archetype.name());
+      assertTrue(served.requiredOnTransition().contains(EntityProperty.STATUS), archetype.name());
     }
   }
 
@@ -350,10 +353,13 @@ class ArchetypeRegistryDocumentTest {
   }
 
   @Test
-  void aKindWithNoLifecycleServesNoMovesAndNoLifecycle() {
+  void aFeatureAndATaskServeTheEpicsMovesAndLifecycle() {
+    // One graph, both skips included (qits-763): what a client draws for a task is an epic's walk.
     for (Archetype archetype : List.of(Archetype.FEATURE, Archetype.TASK)) {
-      assertEquals(Map.of(), declared(archetype).transitions(), archetype.name());
-      assertEquals(List.of(), declared(archetype).lifecycle(), archetype.name());
+      assertEquals(
+          declared(Archetype.EPIC).transitions(), declared(archetype).transitions(), archetype.name());
+      assertEquals(
+          declared(Archetype.EPIC).lifecycle(), declared(archetype).lifecycle(), archetype.name());
     }
   }
 

@@ -216,6 +216,9 @@ class WorkEntityPersistenceTest {
     // V11's uq_entity_project_number: every fixture row is in proj-1, so each needs a number of
     // its own. The value is not the subject of any assertion here — only its distinctness is.
     entity.number = NUMBERS.incrementAndGet();
+    // ck_entity_status admits no null since V24 (qits-763): every archetype holds a status, so a
+    // fixture row starts where the writer would mint it. A case about statuses overrides it.
+    entity.status = EntityStatus.REPORTED.name();
     return entity;
   }
 

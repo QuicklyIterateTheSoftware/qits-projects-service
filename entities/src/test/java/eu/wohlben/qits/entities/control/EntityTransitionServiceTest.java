@@ -303,7 +303,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     inFreshTx(() -> assertEquals(EntityStatus.DONE.name(), entities.findById(epic.id).status));
   }
 
-  /** Re-archetyping a DONE entity is refused too, even to a kind with no lifecycle. */
+  /** Re-archetyping a DONE entity is refused too, into any kind. */
   @Test
   void aDoneEntityCannotBeReArchetyped() {
     WorkEntity epic = doneEpic("Shipped");
@@ -458,7 +458,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
           assertNull(row.impetus, "a FEATURE has no impetus");
           assertNull(row.assignee, "a FEATURE has no assignee");
           assertNull(row.ticketType, "a FEATURE has no ticket type");
-          assertNull(row.status, "a FEATURE has no lifecycle at all");
+          assertEquals("REPORTED", row.status, "a FEATURE holds the status its entry stated");
           assertNull(row.createdBy, "server-owned, and cleared because the target has no slot");
           assertEquals(ticket.slug, row.slug, "the slug is the one thing a demotion never touches");
           assertEquals(epic.id, row.slugScope);
@@ -597,7 +597,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             new EntityTransition.Membership(epic.id, null),
                             "The part",
                             null,
-                            "REPORTED", // layer one: a FEATURE has no status
+                            "IN_PROGRESS", // layer one: no lifecycle spells this word
                             null,
                             null,
                             null,
@@ -847,7 +847,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     assertEquals("REPORTED", reshaped.statusBefore(), "reshaped in place: the status did not move");
     assertEquals("REPORTED", reshaped.status());
     TransitionedEntity lifted = batch.get(1);
-    assertNull(lifted.statusBefore(), "a feature has no status to have left");
+    assertEquals("REPORTED", lifted.statusBefore(), "a feature is minted REPORTED (qits-763)");
     assertEquals("REPORTED", lifted.status());
     assertTrue(
         batch.stream().allMatch(entity -> "mover".equals(entity.changedBy())),
@@ -1108,13 +1108,14 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null);
   }
 
+  /** A feature, stated REPORTED — a transition mints nothing, so a status is required (qits-763). */
   private static EntityTransition featureEntry(String parent, Integer position, String title) {
     return new EntityTransition(
         Archetype.FEATURE,
         new EntityTransition.Membership(parent, position),
         title,
         null,
-        null,
+        "REPORTED",
         null,
         null,
         null,
@@ -1124,6 +1125,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null);
   }
 
+  /** A task, stated REPORTED for {@link #featureEntry}'s reason. */
   private static EntityTransition taskEntry(
       String parent, Integer position, String title, String repositoryId) {
     return new EntityTransition(
@@ -1131,7 +1133,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         new EntityTransition.Membership(parent, position),
         title,
         null,
-        null,
+        "REPORTED",
         null,
         null,
         null,

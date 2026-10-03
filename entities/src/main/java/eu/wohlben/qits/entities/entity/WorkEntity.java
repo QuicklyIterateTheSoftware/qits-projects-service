@@ -160,17 +160,18 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String description;
 
   /**
-   * <b>One column for one lifecycle</b>: an {@link Archetype#EPIC} and an {@link Archetype#TICKET}
-   * both hold one of {@link EntityStatus}' six words, and a feature and a task hold none — which is
-   * why this is nullable: an absent status is the ordinary state of most rows here rather than a
-   * gap. (Until qits-392 an epic held words of its own, {@code EpicStatus}; epics V15 backfilled
-   * them.)
+   * <b>One column for one lifecycle</b>: every archetype holds one of {@link EntityStatus}' eight
+   * words — an {@link Archetype#EPIC}, a {@link Archetype#TICKET}, a {@link Archetype#FEATURE} and a
+   * {@link Archetype#TASK} the whole set, a campaign the set less the two "-ING" words. Not null since
+   * epics V24 (qits-763), which gave the features and tasks that held none until then the status
+   * their markers and their epic implied. (Until qits-392 an epic held words of its own, {@code
+   * EpicStatus}; epics V15 backfilled them.)
    *
    * <p><b>It is a String and not an enum</b>, which means a comparison against a word nobody spells
    * any more compiles and fails silently at runtime — compare against {@link EntityStatus#name()},
    * never a literal. The stored word is the enum's own {@code name()}, {@code ck_entity_status}
-   * spells exactly the six, and {@code control/Archetypes} is what refuses a status on a kind with
-   * no lifecycle — a split the database cannot make.
+   * spells exactly the eight, and {@code control/Archetypes} is what refuses a word a kind's
+   * lifecycle does not hold — a split the database cannot make.
    */
   @Column(length = 32)
   public String status;
@@ -178,8 +179,8 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   /**
    * <b>The phase this entity's status starts cannot finish right now.</b> On every kind with a
    * lifecycle — a {@link Archetype#TICKET}, and since qits-592 an {@link Archetype#EPIC} and a
-   * {@link Archetype#CAMPAIGN} — and false on a feature and a task, which have no phase of their own
-   * to block.
+   * {@link Archetype#CAMPAIGN} — and false on a feature and a task, which hold a status (qits-763)
+   * but run no phase of their own to block.
    *
    * <p><b>It is a flag and not a status, and that is the decision rather than a shortcut.</b>
    * {@link EntityStatus} forbids a word for what is being <em>done</em> — there is no {@code
@@ -309,8 +310,8 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   /**
    * <b>The implementing marker</b> (qits-749, epics V22): when the implementation of a feature or a
    * task was started — stamped by {@code mark_task_implementing} on a task, and on its feature by
-   * the first of its tasks so marked. Features and tasks have no status, so this is how they show in
-   * the IMPLEMENTING column. Skippable: a task may be marked implemented without ever being marked
+   * the first of its tasks so marked. Since qits-763 the same press moves the row's status to
+   * IMPLEMENTING, so the status says where it stands and this says when it got there. Skippable: a task may be marked implemented without ever being marked
    * implementing, and then this stays null. Kept as history once {@link #implementedAt} is set;
    * consumers rank that one over this one. Entering IMPLEMENTING on the epic stamps nothing.
    */

@@ -32,7 +32,10 @@ public enum Archetype {
    */
   TICKET,
 
-  /** A coherent piece of an epic's scope. Nests under a root; carries no status of its own. */
+  /**
+   * A coherent piece of an epic's scope. Nests under a root; holds a status of its own (qits-763)
+   * and runs no phase.
+   */
   FEATURE,
 
   /**
