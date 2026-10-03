@@ -824,7 +824,8 @@ public class WorkEntityService {
    * The status a transition {@code target} lands on: the word itself, or {@link EntityStatus#DROPPED}
    * for the {@linkplain #SUPERSEDE supersede} operation of a kind that has it — judged against the
    * lifecycle graph from the row's status. A word naming neither is a 409, and so is asking it of a
-   * kind with no lifecycle, and so is IMPLEMENTING for a campaign, which never enters it.
+   * kind with no lifecycle, and so is IMPLEMENTING or VERIFYING for a campaign, which enters
+   * neither.
    */
   private static EntityStatus targetStatus(Kind kind, WorkEntity row, String target) {
     if (!kind.hasLifecycle()) {
@@ -837,14 +838,17 @@ public class WorkEntityService {
             : EntityLifecycle.parse(target)
                 .orElseThrow(
                     () -> new ConflictException("Unknown " + kind.word() + " status: " + target));
-    if (kind.archetype() == Archetype.CAMPAIGN && to == EntityStatus.IMPLEMENTING) {
-      // A campaign never enters IMPLEMENTING (qits-749): its press starts it and REFINED is what
-      // "running" means, so the status would say nothing a campaign's start does not already say.
-      // Its lifecycle elides the state already; this refusal is here for the sentence it says.
+    if (kind.archetype() == Archetype.CAMPAIGN
+        && !EntityStateMachine.states(Archetype.CAMPAIGN).contains(to)) {
+      // A campaign never enters IMPLEMENTING or VERIFYING (qits-749): its press starts it and
+      // REFINED is what "running" means, so either status would say nothing a campaign's start does
+      // not already say. Its lifecycle elides both already; this refusal is here for the sentence.
       throw new ConflictException(
-          "A campaign never moves to IMPLEMENTING: campaign "
+          "A campaign never moves to "
+              + to
+              + ": campaign "
               + row.id
-              + " runs while it is REFINED, and its members are what is implemented.");
+              + " runs while it is REFINED, and its members are what is implemented and verified.");
     }
     EntityLifecycle.requireTransition(kind.archetype(), EntityStatus.valueOf(row.status), to);
     return to;

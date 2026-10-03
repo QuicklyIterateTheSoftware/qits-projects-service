@@ -16,22 +16,26 @@ package eu.wohlben.qits.entities.entity;
  * #DONE}, which it could not before.
  *
  * <p><b>A status says what has been ACHIEVED, or a fact the platform recorded — never a claim
- * somebody keeps up to date by hand.</b> That is what keeps these seven words from drifting into a
+ * somebody keeps up to date by hand.</b> That is what keeps these eight words from drifting into a
  * task board: there is no {@code IN_PROGRESS} that a person sets and forgets, because "somebody is
- * working on it", kept by hand, is out of date the moment it is written. {@link #IMPLEMENTING} is
- * not that word, and it is the one status that names something under way (qits-749): the platform
- * sets it at the dispatch press (or an agent's first {@code mark_task_implementing}), so nobody
- * keeps it current, and what it records — an implementation was started — does not go stale; the
- * implement phase leaves it by the same transition to {@link #IMPLEMENTED} it always made. It is
- * also skippable: REFINED → IMPLEMENTED stays a legal move (a SKIP in {@code EntityStateMachine}),
- * so work an agent finished without ever being marked started is not stranded.
+ * working on it", kept by hand, is out of date the moment it is written. {@link #IMPLEMENTING} and
+ * {@link #VERIFYING} are not that word, and they are the two statuses that name something under way
+ * (qits-749): <b>the platform sets them</b> — at the dispatch press that starts the implement or the
+ * verify phase, on the FLOW hand-off that delivers that phase's turn, and (IMPLEMENTING only) at an
+ * agent's first {@code mark_task_implementing} — so nobody keeps them current, and what they record
+ * — an implementation, a verification, was started — does not go stale. Each phase leaves its
+ * "-ING" status by the same transition it always made, to {@link #IMPLEMENTED} or to {@link
+ * #VERIFIED}. Both are skippable: REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED stay legal moves
+ * (SKIPs in {@code EntityStateMachine}), so work an agent finished without ever being marked started
+ * is not stranded.
  *
  * <p><b>Entering a status starts the phase that belongs to it.</b> The two halves are the same
  * line read from either end: a status is entered by the phase that produced it, and it is held
  * while the next one runs. {@link #REPORTED} means somebody said what is wrong, so the refine phase
  * runs; {@link #REFINED} means the entity says what to do, so implement runs; {@link #IMPLEMENTING}
  * means that implementation was started, so implement keeps running (a dispatch resumes it); {@link
- * #IMPLEMENTED} means the change is released and deployed, so verify runs; {@link #VERIFIED} means
+ * #IMPLEMENTED} means the change is released and deployed, so verify runs; {@link #VERIFYING} means
+ * that verification was started, so verify keeps running (a dispatch resumes it); {@link #VERIFIED} means
  * it no longer occurs on the platform, so a person closes it; {@link #DONE} means closed. So reading
  * the status tells you both what is true and what happens next.
  *
@@ -78,8 +82,17 @@ public enum EntityStatus {
   IMPLEMENTED,
 
   /**
+   * A verification was started — the platform moved it here at the dispatch press that started the
+   * verify phase, or on the FLOW hand-off that delivered its turn. The verify phase runs, and leaves
+   * it through the move to {@link #VERIFIED}. Skippable: IMPLEMENTED → VERIFIED is still a legal
+   * move. No feature or task marker mirrors it.
+   */
+  VERIFYING,
+
+  /**
    * It no longer occurs on the platform. What runs is a person's judgement that there is nothing
-   * left on the thread; a failed verification never lands here, it blocks at {@link #IMPLEMENTED}.
+   * left on the thread; a failed verification never lands here, it blocks where it stands ({@link #VERIFYING}, or
+   * {@link #IMPLEMENTED} when nobody moved it).
    */
   VERIFIED,
 

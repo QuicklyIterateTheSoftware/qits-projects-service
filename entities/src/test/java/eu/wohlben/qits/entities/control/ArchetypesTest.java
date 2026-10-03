@@ -84,13 +84,21 @@ class ArchetypesTest {
     var six = EnumSet.allOf(EntityStatus.class).stream().map(Enum::name).collect(Collectors.toSet());
     assertEquals(
         Set.of(
-            "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
+            "REPORTED",
+            "REFINED",
+            "IMPLEMENTING",
+            "IMPLEMENTED",
+            "VERIFYING",
+            "VERIFIED",
+            "DONE",
+            "DROPPED"),
         six);
     assertEquals(six, Archetypes.legalStatuses(Archetype.EPIC));
     assertEquals(six, Archetypes.legalStatuses(Archetype.TICKET));
     // A campaign never enters IMPLEMENTING (qits-749): its words are the rest.
     var campaign = new java.util.HashSet<>(six);
     campaign.remove("IMPLEMENTING");
+    campaign.remove("VERIFYING");
     assertEquals(campaign, Archetypes.legalStatuses(Archetype.CAMPAIGN));
     assertTrue(Archetypes.legalStatuses(Archetype.FEATURE).isEmpty());
     assertTrue(Archetypes.legalStatuses(Archetype.TASK).isEmpty());

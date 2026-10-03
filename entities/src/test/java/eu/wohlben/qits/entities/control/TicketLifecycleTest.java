@@ -54,6 +54,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
           EntityStatus.REFINED,
           EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED,
+          EntityStatus.VERIFYING,
           EntityStatus.VERIFIED,
           EntityStatus.DONE);
 
@@ -164,8 +165,9 @@ class TicketLifecycleTest extends EntitiesTestSupport {
             && from != EntityStatus.DONE) {
           continue;
         }
-        if (from == EntityStatus.REFINED && to == EntityStatus.IMPLEMENTED) {
-          continue; // the one skip (qits-749), asserted on its own
+        if ((from == EntityStatus.REFINED && to == EntityStatus.IMPLEMENTED)
+            || (from == EntityStatus.IMPLEMENTED && to == EntityStatus.VERIFIED)) {
+          continue; // the two skips (qits-749), asserted on their own
         }
         WorkEntity ticket = at(from);
         assertThrows(
@@ -187,6 +189,21 @@ class TicketLifecycleTest extends EntitiesTestSupport {
             .transition(Archetype.TICKET, ticket.id, "IMPLEMENTED", "alice")
             .entity()
             .status);
+  }
+
+  @Test
+  void anImplementedTicketMaySkipVerifyingStraightToVerifiedAndAVerifiedOneMovesBackToVerifying() {
+    // qits-749: VERIFYING is the mirror of IMPLEMENTING, skippable and the step back from VERIFIED.
+    WorkEntity ticket = at(EntityStatus.IMPLEMENTED);
+    assertEquals(
+        EntityStatus.VERIFIED.name(),
+        workEntities.transition(Archetype.TICKET, ticket.id, "VERIFIED", "alice").entity().status);
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "IMPLEMENTED", "alice"));
+    assertEquals(
+        EntityStatus.VERIFYING.name(),
+        workEntities.transition(Archetype.TICKET, ticket.id, "VERIFYING", "alice").entity().status);
   }
 
   @Test

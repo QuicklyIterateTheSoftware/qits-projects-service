@@ -20,32 +20,30 @@ import java.util.Set;
  * and the phase a status starts ({@code PhasePrompts}) — asks this class and restates nothing.
  *
  * <pre>
- *             FORWARD          FORWARD                FORWARD              FORWARD          FORWARD
- *   REPORTED ───────▶ REFINED ───────▶ IMPLEMENTING ───────▶ IMPLEMENTED ───────▶ VERIFIED ───────▶ DONE
- *      ▲  │  ◀─────── │  │  ◀─────────── │  ◀──────────────── │  ◀──────────────── │            (final)
- *      │  │    BACK   │  │     BACK      │       BACK         │        BACK        │
- *      │  │           │  └───────────────── SKIP ───────────▶ │                    │
- *      │  │ DROP      │ DROP             │ DROP               │ DROP               │ DROP
- *      │  ▼           ▼                  ▼                    ▼                    ▼
- *      └─ DROPPED ◀──────────────────────────────────────────────────────────────────
- *  REOPEN
+ *   REPORTED ─▶ REFINED ─▶ IMPLEMENTING ─▶ IMPLEMENTED ─▶ VERIFYING ─▶ VERIFIED ─▶ DONE (final)
+ *            ◀─         ◀─              ◀─             ◀─           ◀─
+ *                     └──────── SKIP ────────▶ └──────── SKIP ───────▶
+ *   FORWARD one step right, BACK one step left (below DONE), the two SKIPs over an "-ING" status,
+ *   DROP from every open state to DROPPED, and DROPPED REOPENs to REPORTED.
  *
- *   starts phase:  REPORTED → refine,  REFINED and IMPLEMENTING → implement,  IMPLEMENTED → verify;
- *                  VERIFIED, DONE and DROPPED start nothing.
+ *   starts phase:  REPORTED → refine,  REFINED and IMPLEMENTING → implement,
+ *                  IMPLEMENTED and VERIFYING → verify;  VERIFIED, DONE and DROPPED start nothing.
  * </pre>
  *
- * <p><b>The walk</b> — REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE — is taken
+ * <p><b>The walk</b> — REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED →
+ * DONE — is taken
  * one step at a time: forward as each phase finishes, back when a claim turns out wrong. Asking for
  * the status an entity already has is refused rather than read as a no-op. A BACK move is a
  * correction, not how a phase reports failure: a phase that cannot finish, a failed verification
  * included, blocks the entity where it stands (qits-592).
  *
- * <p><b>IMPLEMENTING is the one step that may be skipped</b> (qits-749). The platform enters it at
- * the dispatch press, so it records a fact rather than a claim kept by hand — but an agent that
- * finished work nobody moved to IMPLEMENTING first must still be able to say so, so REFINED →
- * IMPLEMENTED stays legal as a {@link TransitionKind#SKIP}: two steps along the walk, and from
- * REFINED only. FORWARD stays one step; the skip is its own kind rather than a loosened FORWARD, so
- * no other step can be jumped.
+ * <p><b>IMPLEMENTING and VERIFYING are the two steps that may be skipped</b> (qits-749). The
+ * platform enters each at the press (or the FLOW hand-off) that starts its phase, so each records a
+ * fact rather than a claim kept by hand — but an agent that finished work nobody moved to the "-ING"
+ * status first must still be able to say so, so REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED stay
+ * legal as {@link TransitionKind#SKIP}s: two steps along the walk, and from REFINED or IMPLEMENTED
+ * only. FORWARD stays one step; the skip is its own kind rather than a loosened FORWARD, so no other
+ * step can be jumped.
  *
  * <p><b>DONE is final: it has no exits</b> — not back to VERIFIED, not to DROPPED, not anywhere.
  * Acceptance could only ever throw a done item further back than VERIFIED, which is not a flow to
@@ -53,16 +51,17 @@ import java.util.Set;
  * refer to the done one. Below DONE the walk stays reversible.
  *
  * <p><b>DROPPED is off the walk.</b> It is reachable (DROP) from every state that is still open —
- * REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFIED — because a decision not to do the work can
+ * REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED — because a decision not to do the work can
  * be taken at any point while the work is open, and from nowhere else. It reopens (REOPEN) to
  * REPORTED and to nothing else: somebody who has changed their mind about abandoned work is asking
  * what it is for again, which is the refine phase.
  *
- * <p><b>A campaign walks the same machine with IMPLEMENTING elided</b> (qits-749). A campaign never
- * enters IMPLEMENTING — its press starts it and REFINED is what running means — so for that archetype
- * the state is taken out and the walk closed over the gap: the moves into and out of it go, the
- * SKIP over it is the campaign's one FORWARD step (REFINED → IMPLEMENTED), and the BACK into it
- * lands on the state before it (IMPLEMENTED → REFINED, the campaign's BACK move as it always was).
+ * <p><b>A campaign walks the same machine with IMPLEMENTING and VERIFYING elided</b> (qits-749). A
+ * campaign enters neither — its press starts it and REFINED is what running means — so for that
+ * archetype the two are taken out and the walk closed over each gap: the moves into and out of them
+ * go, each SKIP over one is a FORWARD step (REFINED → IMPLEMENTED, IMPLEMENTED → VERIFIED), and a
+ * BACK into one lands on the state before it (IMPLEMENTED → REFINED, VERIFIED → IMPLEMENTED — the
+ * campaign's BACK moves as they always were).
  * It is derived from {@link #TRANSITIONS}, never declared a second time — see {@link
  * #transitionsFrom(Archetype, EntityStatus)}.
  *
@@ -79,8 +78,8 @@ public final class EntityStateMachine {
     /** The next step along the walk. */
     FORWARD,
     /**
-     * Two steps along the walk, over {@link EntityStatus#IMPLEMENTING}: REFINED → IMPLEMENTED, for
-     * work finished without being marked started. Legal from REFINED only.
+     * Two steps along the walk, over an "-ING" status: REFINED → IMPLEMENTED or IMPLEMENTED →
+     * VERIFIED, for work finished without being marked started. Legal from those two only.
      */
     SKIP,
     /** A step back along the walk. */
@@ -122,6 +121,7 @@ public final class EntityStateMachine {
           EntityStatus.REFINED,
           EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED,
+          EntityStatus.VERIFYING,
           EntityStatus.VERIFIED,
           EntityStatus.DONE);
 
@@ -150,11 +150,15 @@ public final class EntityStateMachine {
           t(EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
           t(EntityStatus.IMPLEMENTING, EntityStatus.REFINED, TransitionKind.BACK),
           t(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
-          t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.FORWARD),
+          t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING, TransitionKind.FORWARD),
+          t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP),
           t(EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING, TransitionKind.BACK),
           t(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP),
+          t(EntityStatus.VERIFYING, EntityStatus.VERIFIED, TransitionKind.FORWARD),
+          t(EntityStatus.VERIFYING, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
+          t(EntityStatus.VERIFYING, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.VERIFIED, EntityStatus.DONE, TransitionKind.FORWARD),
-          t(EntityStatus.VERIFIED, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
+          t(EntityStatus.VERIFIED, EntityStatus.VERIFYING, TransitionKind.BACK),
           t(EntityStatus.VERIFIED, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN));
 
@@ -164,14 +168,25 @@ public final class EntityStateMachine {
           EntityStatus.REPORTED, Phase.REFINE,
           EntityStatus.REFINED, Phase.IMPLEMENT,
           EntityStatus.IMPLEMENTING, Phase.IMPLEMENT,
-          EntityStatus.IMPLEMENTED, Phase.VERIFY);
+          EntityStatus.IMPLEMENTED, Phase.VERIFY,
+          EntityStatus.VERIFYING, Phase.VERIFY);
+
+  /**
+   * The "-ING" status the platform moves an entity into when the phase its status starts is
+   * started (qits-749): REFINED → IMPLEMENTING, IMPLEMENTED → VERIFYING. Checked at load: each is a
+   * FORWARD move into a state that runs the same phase.
+   */
+  private static final Map<EntityStatus, EntityStatus> STARTED =
+      Map.of(
+          EntityStatus.REFINED, EntityStatus.IMPLEMENTING,
+          EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING);
 
   /** {@link #TRANSITIONS} indexed by source, order kept; every state has an entry. */
   private static final Map<EntityStatus, List<Transition>> OUTGOING = index();
 
   /** The states an archetype's lifecycle elides from the walk; absent means none. */
   private static final Map<Archetype, Set<EntityStatus>> ELIDED =
-      Map.of(Archetype.CAMPAIGN, EnumSet.of(EntityStatus.IMPLEMENTING));
+      Map.of(Archetype.CAMPAIGN, EnumSet.of(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
 
   static {
     verify();
@@ -182,15 +197,16 @@ public final class EntityStateMachine {
   // --- the operations ---------------------------------------------------------------------------
 
   /**
-   * Every state, in lifecycle order: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFIED, DONE,
-   * DROPPED.
+   * Every state, in lifecycle order: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,
+   * VERIFIED, DONE, DROPPED.
    */
   public static List<EntityStatus> states() {
     return STATES;
   }
 
   /**
-   * The walk alone, in order: REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE.
+   * The walk alone, in order: REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING →
+   * VERIFIED → DONE.
    */
   public static List<EntityStatus> walk() {
     return WALK;
@@ -286,6 +302,20 @@ public final class EntityStateMachine {
 
   private static Set<EntityStatus> elided(Archetype archetype) {
     return ELIDED.getOrDefault(archetype, Set.of());
+  }
+
+  /**
+   * The status the platform moves {@code status} into when the phase {@code status} starts is
+   * started — IMPLEMENTING from REFINED, VERIFYING from IMPLEMENTED — or empty where there is none
+   * (an "-ING" status itself, which already says its phase was started, among them).
+   */
+  public static Optional<EntityStatus> startedStatusOf(EntityStatus status) {
+    return Optional.ofNullable(STARTED.get(status));
+  }
+
+  /** Whether {@code from → to} is the platform's own "phase started" move — see {@link #STARTED}. */
+  public static boolean isStartedMove(EntityStatus from, EntityStatus to) {
+    return from != null && to != null && STARTED.get(from) == to;
   }
 
   /** Whether {@code status} is final — a state with no exits. Today that is DONE alone. */
@@ -391,6 +421,14 @@ public final class EntityStateMachine {
         }
       }
     }
+    for (Map.Entry<EntityStatus, EntityStatus> started : STARTED.entrySet()) {
+      Optional<Transition> move = transition(started.getKey(), started.getValue());
+      if (move.isEmpty()
+          || move.get().kind() != TransitionKind.FORWARD
+          || PHASES.get(started.getKey()) != PHASES.get(started.getValue())) {
+        throw new IllegalStateException(started + " is not a forward move within one phase");
+      }
+    }
     for (Archetype archetype : ELIDED.keySet()) {
       for (EntityStatus state : states(archetype)) {
         List<Transition> moves = transitionsFrom(archetype, state);
@@ -415,7 +453,9 @@ public final class EntityStateMachine {
     int to = WALK.indexOf(move.to());
     return switch (move.kind()) {
       case FORWARD -> from >= 0 && to == from + 1;
-      case SKIP -> move.from() == EntityStatus.REFINED && to == from + 2;
+      case SKIP ->
+          (move.from() == EntityStatus.REFINED || move.from() == EntityStatus.IMPLEMENTED)
+              && to == from + 2;
       case BACK -> from >= 0 && to >= 0 && to == from - 1;
       case DROP -> from >= 0 && move.to() == OFF_WALK;
       case REOPEN -> move.from() == OFF_WALK && to >= 0;

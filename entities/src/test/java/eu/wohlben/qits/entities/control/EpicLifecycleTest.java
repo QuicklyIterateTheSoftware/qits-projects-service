@@ -761,6 +761,17 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertEquals(
         EntityStatus.REFINED.name(),
         workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REFINED", "t").entity().status);
+    // VERIFYING the same (qits-749), and VERIFIED -> IMPLEMENTED stays its BACK move.
+    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t");
+    ConflictException verifying =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "VERIFYING", "t"));
+    assertTrue(verifying.getMessage().contains("never moves to VERIFYING"), verifying.getMessage());
+    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "VERIFIED", "t");
+    assertEquals(
+        EntityStatus.IMPLEMENTED.name(),
+        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t").entity().status);
   }
 
   @Test
