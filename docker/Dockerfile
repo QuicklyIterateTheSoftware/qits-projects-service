@@ -169,28 +169,16 @@ COPY . .
 # --- the platform's Maven repository, which this stage has to be TOLD ------------------------------
 # `domain` and `epics` depend on qits-eventstream, `service` on qits-githost-events, and the test
 # tree on qits-arch-rules — three jars published nowhere but the platform's own Maven repository.
-# The pom defaults its address to registry.dev.localhost:8080, right for a developer on the
-# deployment host and dead inside this container, where that vhost resolves to nothing. That is how
-# the first CI image build after the causation work died: `Could not transfer artifact …
-# qits-eventstream … Connection refused`. So the address arrives as a build-arg — defaulted to the
-# developer-host one, so a plain host-side `docker build` still works — and the pipeline passes the
-# network address along with `--network qits-net`, which is what makes the repository reachable at
-# all.
+# Both platform hosts are code plus one input, the public domain:
 #
-# ENV as well as ARG, and a settings file, because Maven refuses plain-HTTP repositories that are
-# not on localhost. `.qits-maven-settings.xml` mirrors the `qits-maven` id by exact match, which
-# beats that blocker, and points it at `${env.QITS_MAVEN_REPOSITORY_URL}` — so it permits this one
-# supplied URL rather than reopening HTTP for every repository.
-ARG QITS_MAVEN_REPOSITORY_URL=http://registry.dev.localhost:8080/artifacts/maven/maven
-ENV QITS_MAVEN_REPOSITORY_URL=$QITS_MAVEN_REPOSITORY_URL
+#   https://registry.qits.$QITS_DOMAIN/artifacts/maven/maven   hosted Maven (qits-artifacts)
+#   https://mirror.qits.$QITS_DOMAIN/mirror/maven/central      Maven Central cache (qits-mirror)
 #
-# --- and where Maven Central is mirrored, when it is ----------------------------------------------
-# The pipeline passes the platform's pull-through (qits-platform-mirror's central proxy, the same
-# authority the FROM lines above pull through); EMPTY — the default — means direct Maven Central.
-# `.qits-maven-settings.xml` activates its central-proxy profile only on a non-empty value, so a
-# bootstrap or hand build that passes nothing resolves exactly as it always did.
-ARG QITS_MAVEN_CENTRAL_URL=
-ENV QITS_MAVEN_CENTRAL_URL=$QITS_MAVEN_CENTRAL_URL
+# The RUN below derives both and exports them for that RUN alone; `.qits-maven-settings.xml` reads
+# them as ${env.…}, mirroring the `qits-maven` repository id onto the first and Central onto the
+# second — an exact id match, which is what gets past Maven's external:http:* blocker without
+# weakening it. The CI recipe passes QITS_DOMAIN; the default is the live platform's.
+ARG QITS_DOMAIN=wohlben.eu
 #
 # --- and how Maven authenticates, once that repository stops answering anonymously ----------------
 # The two secret mounts put the CI run's commissioned client into THIS `RUN`'s environment and
@@ -203,13 +191,14 @@ ENV QITS_MAVEN_CENTRAL_URL=$QITS_MAVEN_CENTRAL_URL
 # identically by every frontend version — and under the platform builder the frontend is the
 # builder's, not this file's, to pick.
 #
-# Absent secrets leave both variables empty, which is the state every build is in today and the
-# state a host-side `docker build` is in permanently: Maven sends credentials only when a repository
-# answers 401, and the registry does not yet.
+# Absent secrets leave both variables empty, so a hand build without them still starts and fails at
+# the first 401 with Maven naming the host.
 RUN --mount=type=secret,id=qits-client-id \
     --mount=type=secret,id=qits-client-secret \
     export QITS_MAVEN_AUTH_USR="$(cat /run/secrets/qits-client-id 2>/dev/null || true)"; \
     export QITS_MAVEN_AUTH_PSW="$(cat /run/secrets/qits-client-secret 2>/dev/null || true)"; \
+    export QITS_MAVEN_REPOSITORY_URL="https://registry.qits.$QITS_DOMAIN/artifacts/maven/maven"; \
+    export QITS_MAVEN_CENTRAL_URL="https://mirror.qits.$QITS_DOMAIN/mirror/maven/central"; \
     d=service/src/main/webui/dist/qits-spa-projects/browser; \
     test -f "$d/index.html" || { \
       echo "No built client at $d." >&2; \
