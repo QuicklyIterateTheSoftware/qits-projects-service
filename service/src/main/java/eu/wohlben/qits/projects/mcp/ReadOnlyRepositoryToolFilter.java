@@ -49,7 +49,9 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * {@code mark_task_implementing} (qits-749) sits beside it for the same reason: it says work
    * started, and on a REFINED epic it moves the epic to IMPLEMENTING.
    * {@code transition_epic} (qits-394) joins them on the strongest reading of all: it freezes a
-   * plan or declares it implemented, and an implemented move stamps every unmarked task.
+   * plan or declares it implemented, and an implemented move stamps every unmarked task. {@code
+   * transition_task} (qits-763) is the same statement about one feature or task — that it is
+   * implemented, or verified — and a board reads it as progress just as it reads the markers.
    *
    * <p>{@code put_design} joins them, and the case got stronger rather than weaker when designs
    * stopped being proposals: a write is live in the Design tab the moment it lands, so an unattended
@@ -113,6 +115,7 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "remove_task",
           "mark_task_implementing",
           "mark_task_implemented",
+          "transition_task",
           "transition_epic",
           "put_design",
           "put_dossier_page",

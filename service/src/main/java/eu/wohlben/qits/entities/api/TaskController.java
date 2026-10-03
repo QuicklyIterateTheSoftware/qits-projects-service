@@ -42,7 +42,8 @@ public class TaskController {
    * Partial update: a null {@code title}/{@code description} leaves it unchanged. The nullable
    * dependency and completion marker change only when their {@code clear*} flag is true (→ cleared)
    * or a non-null value is supplied (→ set) — so a title-only edit can't silently un-complete a
-   * task or drop its dependency.
+   * task or drop its dependency. Setting the marker moves the task to IMPLEMENTED and clearing it
+   * takes an IMPLEMENTED task back, in the same write (qits-763).
    */
   public record UpdateTaskRequest(
       @NotBlankIfPresent String title,

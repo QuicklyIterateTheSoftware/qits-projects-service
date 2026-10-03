@@ -169,13 +169,17 @@ public class EntityPatchController {
               nullable = true,
               description =
                   "A feature's or task's implemented marker (ISO-8601 instant); null clears it."
-                      + " Moves only while the owning epic is REFINED or IMPLEMENTING.")
+                      + " Moves only while the owning epic is REFINED or IMPLEMENTING. Setting it"
+                      + " moves the item's status to IMPLEMENTED; clearing it takes an IMPLEMENTED"
+                      + " item back to IMPLEMENTING (or REFINED when it was never marked"
+                      + " implementing).")
           Instant implementedAt,
       @Schema(
               description =
                   "A feature's or task's implementing marker (ISO-8601 instant): when its"
                       + " implementation was started. Cannot be cleared. Moves only while the"
-                      + " owning epic is REFINED or IMPLEMENTING.")
+                      + " owning epic is REFINED or IMPLEMENTING, and moves the item's status to"
+                      + " IMPLEMENTING when it is not already there or further.")
           Instant implementingAt) {}
 
   /**
@@ -195,10 +199,12 @@ public class EntityPatchController {
       description =
           "Partial update of one entity of any archetype. An absent property is left unchanged and"
               + " an explicit null clears it. The status is never written here — a lifecycle move"
-              + " goes through the archetype's /{id}/transition, and a reshape, reparent or"
+              + " goes through POST /projects/api/entities/{id}/status (or the archetype's own"
+              + " /{id}/transition), and a reshape, reparent or"
               + " supersede through POST /projects/api/entities/transition. An epic's, feature's or"
               + " task's scope follows the epic's freeze: scope edits need the epic REPORTED, the"
-              + " implemented marker needs it REFINED. Answers the entity in the merged shape.")
+              + " markers need it REFINED or IMPLEMENTING, and a marker moves the item's status with"
+              + " it. Answers the entity in the merged shape.")
   @APIResponse(
       responseCode = "200",
       description = "The entity as it stands after the edit",
@@ -322,13 +328,16 @@ public class EntityPatchController {
         implementingAt == null ? null : Instant.parse(implementingAt));
   }
 
-  /** The lifecycle door of the archetype, or the registry's word for a kind with no status. */
+  /**
+   * The lifecycle door of the archetype. A feature and a task have no door of their own: since
+   * qits-763 their status moves through the generic one, which is every kind's.
+   */
   private static String statusDoor(Archetype archetype) {
     return switch (archetype) {
       case EPIC -> "a lifecycle move — POST /projects/api/epics/{id}/transition";
       case TICKET -> "a lifecycle move — POST /projects/api/tickets/{id}/transition";
       case CAMPAIGN -> "a lifecycle move — POST /projects/api/campaigns/{id}/transition";
-      default -> "a lifecycle move, and a " + archetype + " has no status";
+      case FEATURE, TASK -> "a lifecycle move — POST /projects/api/entities/{id}/status";
     };
   }
 

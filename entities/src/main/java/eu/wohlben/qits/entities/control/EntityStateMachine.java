@@ -187,7 +187,8 @@ public final class EntityStateMachine {
   /**
    * The archetypes a dispatch runs phases on: the two the dispatch door puts an agent on. A
    * campaign has a lifecycle but its press is its start (its executor dispatches its members), and
-   * a feature or a task has no lifecycle. Read by the dispatch door and the served registry alike.
+   * a feature or a task walks the lifecycle with no phase of its own (qits-763): its work runs in
+   * its epic's dispatch. Read by the dispatch door and the served registry alike.
    */
   private static final Set<Archetype> PHASE_ARCHETYPES = EnumSet.of(Archetype.EPIC, Archetype.TICKET);
 

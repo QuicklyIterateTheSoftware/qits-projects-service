@@ -94,7 +94,7 @@
       "slug": "running-feature",
       "slugScope": "00000000-0000-4000-8000-000000000004",
       "description": "Seeded.",
-      "status": null,
+      "status": "REFINED",
       "statusBefore": null,
       "ticketType": null,
       "impetus": null,

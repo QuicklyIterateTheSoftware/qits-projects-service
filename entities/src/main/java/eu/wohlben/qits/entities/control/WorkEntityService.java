@@ -505,13 +505,18 @@ public class WorkEntityService {
   public Nested update(Archetype archetype, String id, EntityWrite write, String changedBy) {
     Kind kind = kind(archetype);
     boolean[] retitled = {false};
+    List<TransitionedEntity> moved = new ArrayList<>(1);
     Nested updated =
         writes.hold(
             kind.label("update"),
             () -> {
               retitled[0] = false;
-              return edit(kind, archetype, id, write, changedBy, retitled);
+              moved.clear();
+              return edit(kind, archetype, id, write, changedBy, retitled, moved);
             });
+    if (!moved.isEmpty()) {
+      announce(List.copyOf(moved));
+    }
     if (retitled[0] && !retitles.isUnsatisfied()) {
       retitles.get().onRetitled(updated.entity());
     }
@@ -520,7 +525,15 @@ public class WorkEntityService {
 
   /**
    * The body of {@link #update}: database-only, so a retry may run it again. {@code retitled[0]} is
-   * set when the write changes the title.
+   * set when the write changes the title, and {@code moved} receives the row when a marker it wrote
+   * moved its status too — announced by the caller, after the hold, as every move is.
+   *
+   * <p><b>A marker write is a status move (qits-763).</b> Stamping {@code implementedAt} — {@code
+   * mark_task_implemented}, {@code PUT /tasks}, {@code PUT /features}, {@code PATCH /entities} —
+   * moves the feature or task to IMPLEMENTED, and {@code implementingAt} to IMPLEMENTING, in this
+   * same transaction ({@link #advanceTo}); clearing {@code implementedAt} takes an IMPLEMENTED row
+   * back to where its remaining marker says it stood ({@link #retreatFromImplemented}). Only these
+   * doors write a marker, and each moves the status with it, so the two can never disagree.
    */
   private Nested edit(
       Kind kind,
@@ -528,7 +541,8 @@ public class WorkEntityService {
       String id,
       EntityWrite write,
       String changedBy,
-      boolean[] retitled) {
+      boolean[] retitled,
+      List<TransitionedEntity> moved) {
     WorkEntity row = lookup(archetype, id);
     String parentId = kind.isRoot() ? null : parentOf(id);
     WorkEntity owner = owner(kind, row, parentId);
@@ -577,30 +591,90 @@ public class WorkEntityService {
       requireNoCycle(kind, id, write.dependsOn());
       row.dependsOnEntityId = write.dependsOn();
     }
-    if (write.clearImplementedAt()) {
-      row.implementedAt = null;
-    } else if (write.implementedAt() != null) {
-      row.implementedAt = write.implementedAt();
-    }
+    String statusBefore = row.status;
+    boolean piece = Archetypes.isPlanPiece(archetype);
     if (write.implementingAt() != null) {
       row.implementingAt = write.implementingAt();
+      if (piece) {
+        advanceTo(row, EntityStatus.IMPLEMENTING);
+      }
+    }
+    if (write.clearImplementedAt()) {
+      row.implementedAt = null;
+      if (piece) {
+        retreatFromImplemented(row);
+      }
+    } else if (write.implementedAt() != null) {
+      row.implementedAt = write.implementedAt();
+      if (piece) {
+        advanceTo(row, EntityStatus.IMPLEMENTED);
+      }
     }
     requireArchetypeValid(row, Demand.ON_UPDATE);
     WorkEntity updated = settled(row);
     audit(updated, rootOf(kind, updated, owner), AuditOperation.UPDATE, changedBy);
+    if (!java.util.Objects.equals(statusBefore, updated.status)) {
+      moved.add(TransitionedEntity.of(updated, edgeOf(updated.id), statusBefore, changedBy));
+    }
     return new Nested(updated, parentId);
   }
 
   /**
+   * <b>The status half of a marker write</b> (qits-763): a feature or a task still before {@code
+   * target} on the walk moves to it, and one at or past it stays where it is — a second marking does
+   * not move a VERIFIED task back. Before means REPORTED or REFINED for IMPLEMENTING, and those or
+   * IMPLEMENTING for IMPLEMENTED: the forward move and the skip the graph declares, and from
+   * REPORTED (a piece somebody moved back while its epic was being implemented) the marker is the
+   * statement that settles it, so it lands there all the same rather than refusing a fact.
+   *
+   * <p>A DROPPED piece is a 409: it was decided against, and a marker on it would claim work on
+   * something nobody is to do. Reopening it is a move of its own. Answers whether the row moved.
+   */
+  private static boolean advanceTo(WorkEntity row, EntityStatus target) {
+    EntityStatus current = EntityStatus.valueOf(row.status);
+    if (EntityStateMachine.isOffWalk(current)) {
+      throw new ConflictException(
+          kind(row.archetype).noun()
+              + " "
+              + row.id
+              + " is "
+              + current
+              + ": it was decided against, so it takes no marker. Reopen it first if the work is"
+              + " to be done after all.");
+    }
+    if (EntityStateMachine.isAtOrPast(current, target)) {
+      return false;
+    }
+    row.status = target.name();
+    return true;
+  }
+
+  /**
+   * <b>A cleared {@code implementedAt} takes an IMPLEMENTED piece back</b> — to IMPLEMENTING when its
+   * implementing marker says the work was started, else to REFINED — so the status does not go on
+   * claiming what the marker no longer does. A piece past IMPLEMENTED (somebody verified it) keeps
+   * its status: the clear is a correction of the marker's history, not of a verification.
+   */
+  private static void retreatFromImplemented(WorkEntity row) {
+    if (EntityStatus.IMPLEMENTED.name().equals(row.status)) {
+      row.status =
+          (row.implementingAt != null ? EntityStatus.IMPLEMENTING : EntityStatus.REFINED).name();
+    }
+  }
+
+  /**
    * <b>Marks a task's implementation started</b> (qits-749) — what {@code mark_task_implementing}
-   * does, and the one way a feature or a task, which have no status, enters the IMPLEMENTING column.
+   * does, and since qits-763 a status move: the task goes REFINED → IMPLEMENTING with its marker.
    *
    * <ul>
    *   <li>The task's {@code implementingAt} is stamped now if it is unset, and kept if it is set: the
-   *       call is idempotent, and a second press does not rewrite when the work started.
-   *   <li>Its feature is stamped too, the first time one of its tasks is marked: a feature reads as
-   *       implementing once any of its tasks is, and stamping it here puts {@code implementingOn} on
-   *       the wire without every consumer deriving it.
+   *       call is idempotent, and a second press does not rewrite when the work started. Its status
+   *       moves to IMPLEMENTING when it is still before it ({@link #advanceTo}), in the same
+   *       transaction, so marker and status never disagree.
+   *   <li>Its feature is stamped too, the first time one of its tasks is marked, and moved to
+   *       IMPLEMENTING the same way: a feature reads as implementing once any of its tasks is, and
+   *       stamping it here puts {@code implementingOn} and the status on the wire without every
+   *       consumer deriving them. A DROPPED feature is left alone rather than refusing its task.
    *   <li>Legal while the owning epic is REFINED or IMPLEMENTING ({@link
    *       EntityLifecycle#requireBeingImplemented}); <b>a REFINED epic moves to IMPLEMENTING</b>, so
    *       an agent that starts work without a dispatch press still shows on the board. That move is
@@ -609,15 +683,18 @@ public class WorkEntityService {
    * </ul>
    *
    * Skippable: {@code mark_task_implemented} without this before it stays legal and leaves the
-   * marker null. Entering IMPLEMENTING on the epic stamps nothing beneath it.
+   * marker null. Entering IMPLEMENTING on the epic stamps and moves nothing beneath it. The task's
+   * and the feature's moves are announced together, after the hold, and before the epic's own.
    */
   public Nested markImplementing(String taskId, String changedBy) {
     Kind kind = kind(Archetype.TASK);
     WorkEntity[] epic = {null};
+    List<TransitionedEntity> moved = new ArrayList<>(2);
     Nested marked =
         writes.hold(
             kind.label("implementing"),
             () -> {
+              moved.clear();
               WorkEntity row = lookup(Archetype.TASK, taskId);
               String featureId = parentOf(taskId);
               WorkEntity owner = owner(kind, row, featureId);
@@ -625,19 +702,40 @@ public class WorkEntityService {
               epic[0] = owner;
               // Truncated to what the column holds, so the answer handed back equals the row read.
               Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-              if (row.implementingAt == null) {
-                row.implementingAt = now;
+              String taskBefore = row.status;
+              boolean taskMoved = advanceTo(row, EntityStatus.IMPLEMENTING);
+              if (row.implementingAt == null || taskMoved) {
+                if (row.implementingAt == null) {
+                  row.implementingAt = now;
+                }
                 requireArchetypeValid(row, Demand.ON_UPDATE);
                 audit(row, owner.id, AuditOperation.UPDATE, changedBy);
               }
               WorkEntity feature = featureId == null ? null : entities.findById(featureId);
+              String featureBefore = feature == null ? null : feature.status;
+              boolean featureMoved = false;
               if (feature != null && feature.implementingAt == null) {
                 feature.implementingAt = now;
+                featureMoved =
+                    !EntityStatus.DROPPED.name().equals(feature.status)
+                        && advanceTo(feature, EntityStatus.IMPLEMENTING);
                 requireArchetypeValid(feature, Demand.ON_UPDATE);
                 audit(feature, owner.id, AuditOperation.UPDATE, changedBy);
               }
-              return new Nested(settled(row), featureId);
+              WorkEntity settledRow = settled(row);
+              if (taskMoved) {
+                moved.add(
+                    TransitionedEntity.of(settledRow, edgeOf(settledRow.id), taskBefore, changedBy));
+              }
+              if (featureMoved) {
+                moved.add(
+                    TransitionedEntity.of(feature, edgeOf(feature.id), featureBefore, changedBy));
+              }
+              return new Nested(settledRow, featureId);
             });
+    if (!moved.isEmpty()) {
+      announce(List.copyOf(moved));
+    }
     if (EntityStatus.REFINED.name().equals(epic[0].status)) {
       transitionFrom(
           Archetype.EPIC, epic[0].id, EntityStatus.REFINED, EntityStatus.IMPLEMENTING, changedBy);
@@ -669,10 +767,13 @@ public class WorkEntityService {
    * <ul>
    *   <li><b>{@link #SUPERSEDE}</b> lands the row DROPPED, spawns the successor draft ({@link
    *       #supersede}) and points the old row at it.
-   *   <li><b>Moving to {@link EntityStatus#IMPLEMENTED} stamps every descendant still
-   *       unimplemented</b> ({@link #stampImplemented}) — declaring the work done is declaring its
-   *       scope done, and one transaction keeps the stored status and the derived reading from ever
-   *       disagreeing. A row with no descendants stamps nothing.
+   *   <li><b>Three moves carry the descendants</b> ({@link #carryDescendants}, qits-763): an epic
+   *       REPORTED → REFINED and back, and any move to {@link EntityStatus#IMPLEMENTED}, which also
+   *       stamps every descendant still unimplemented ({@link #stampImplemented}) — declaring the
+   *       work done is declaring its scope done. Every carried child joins the announcement. No
+   *       other move touches a child.
+   *   <li><b>A feature's or a task's own move waits for its epic</b>: refused while the epic is
+   *       REPORTED ({@link #requireOwnerPastDraft}).
    *   <li><b>Every move clears {@code blocked}</b>, which is what makes the flag temporary rather
    *       than a second lifecycle: a block says the phase the <em>current</em> status starts cannot
    *       finish, and the moment the status moves that phase is over and the next one has not been
@@ -685,8 +786,8 @@ public class WorkEntityService {
    *
    * <p><b>Announced once, after the hold returns</b> — never inside it, because the body re-runs on
    * a retry. The batch is the moved row, plus the successor draft when there is one (created by this
-   * move, so it left no status: {@code statusBefore} null, status REPORTED). A move is a batch of
-   * one; see {@link TransitionAnnouncer}.
+   * move, so it left no status: {@code statusBefore} null, status REPORTED), plus every descendant
+   * the move carried, each with the status it left. See {@link TransitionAnnouncer}.
    */
   public Transition transition(Archetype archetype, String id, String target, String changedBy) {
     Kind kind = kind(archetype);
@@ -744,12 +845,13 @@ public class WorkEntityService {
     String statusBefore = row.status;
     EntityStatus to = targetStatus(kind, row, target);
     requireSupersedable(kind, row, target);
+    if (Archetypes.isPlanPiece(archetype)) {
+      requireOwnerPastDraft(kind, row);
+    }
 
     WorkEntity successor =
         kind.supersedable() && SUPERSEDE.equals(target) ? supersede(kind, row, changedBy) : null;
-    if (to == EntityStatus.IMPLEMENTED) {
-      stampImplemented(row, changedBy);
-    }
+    List<Carried> carried = carryDescendants(row, statusOf(statusBefore), to, changedBy);
     row.status = to.name();
     row.blocked = false;
     if (archetype == Archetype.CAMPAIGN
@@ -768,12 +870,108 @@ public class WorkEntityService {
     WorkEntity moved = settled(row);
     audit(moved, moved.id, AuditOperation.UPDATE, changedBy);
 
-    List<TransitionedEntity> batch = new ArrayList<>(2);
+    List<TransitionedEntity> batch = new ArrayList<>(2 + carried.size());
     batch.add(TransitionedEntity.of(moved, edgeOf(moved.id), statusBefore, changedBy));
     if (successor != null) {
       batch.add(TransitionedEntity.of(successor, edgeOf(successor.id), null, changedBy));
     }
+    for (Carried child : carried) {
+      batch.add(TransitionedEntity.of(child.row(), child.edge(), child.statusBefore(), changedBy));
+    }
     return new Moved(new Transition(moved, successor, statusBefore), List.copyOf(batch));
+  }
+
+  /** A descendant a move carried with it, the status it left and the edge it hangs by. */
+  private record Carried(WorkEntity row, EntityMembership edge, String statusBefore) {}
+
+  /** The stored word as the enum, or null for none. */
+  private static EntityStatus statusOf(String word) {
+    return word == null ? null : EntityStatus.valueOf(word);
+  }
+
+  /**
+   * <b>A feature's or a task's own move waits for its epic to be refined</b> (qits-763): while the
+   * epic is REPORTED the plan is a draft, and a piece of a draft is edited or removed, not moved —
+   * removing one there is a delete, and its status is carried to REFINED with the epic's. A 409
+   * naming the epic. This is the only phase rule on a piece's move: {@link
+   * EntityLifecycle#requireReported} guards structural writes, and a status move is not one.
+   */
+  private void requireOwnerPastDraft(Kind kind, WorkEntity row) {
+    WorkEntity epic = owner(kind, row, parentOf(row.id));
+    if (epic != null && EntityStatus.REPORTED.name().equals(epic.status)) {
+      throw new ConflictException(
+          kind.noun()
+              + " "
+              + row.id
+              + " does not move on its own while its epic "
+              + epic.id
+              + " is REPORTED: the plan is still a draft — edit the "
+              + kind.word()
+              + " or remove it, and its status moves to REFINED with the epic's.");
+    }
+  }
+
+  /**
+   * <b>The downward cascades of a move</b> (qits-763), in the move's transaction, each child
+   * audited and handed back to join the move's announcement. Three moves carry descendants, and no
+   * other does:
+   *
+   * <ul>
+   *   <li><b>An epic REPORTED → REFINED</b> moves its REPORTED descendants to REFINED. Scope
+   *       freezes at REFINED, so the refinement covers the whole tree: a piece left REPORTED under a
+   *       frozen plan would advertise a draft nobody can edit.
+   *   <li><b>An epic REFINED → REPORTED</b> moves its REFINED descendants back, the same rule read
+   *       the other way: the scope is a draft again, and so are its pieces. A piece already further
+   *       on stays where it is.
+   *   <li><b>Any move to IMPLEMENTED</b> — the epic's, or a feature's own — moves every descendant
+   *       still before IMPLEMENTED on the walk to IMPLEMENTED, and stamps every unimplemented marker
+   *       ({@link #stampImplemented}): declaring the work done is declaring its scope done. A
+   *       DROPPED descendant was decided against and is neither moved nor stamped.
+   * </ul>
+   *
+   * <p><b>Nothing else moves a child.</b> In particular an epic going to VERIFYING or VERIFIED
+   * leaves its tasks where they are — that sibling drag is what qits-763 removed: a task is verified
+   * on its own. The cascades set the word directly rather than through the graph, because they
+   * state where the plan stands (a REPORTED task under an epic declared IMPLEMENTED is not a move
+   * anybody asked to judge). And none of them reads children to decide a parent: that would be
+   * derivation, which the lifecycle deliberately does not do.
+   */
+  private List<Carried> carryDescendants(
+      WorkEntity row, EntityStatus from, EntityStatus to, String changedBy) {
+    boolean epic = row.archetype == Archetype.EPIC;
+    boolean refining = epic && from == EntityStatus.REPORTED && to == EntityStatus.REFINED;
+    boolean reopening = epic && from == EntityStatus.REFINED && to == EntityStatus.REPORTED;
+    boolean implementing = to == EntityStatus.IMPLEMENTED;
+    if (!refining && !reopening && !implementing) {
+      return List.of();
+    }
+    Subtree subtree = subtreeOf(row.id);
+    String rootId = epic ? row.id : auditRootOf(row);
+    if (implementing) {
+      stampImplemented(row, subtree, rootId, changedBy);
+    }
+    List<Carried> carried = new ArrayList<>();
+    for (WorkEntity node : subtree.preOrder(row.id)) {
+      EntityStatus current = statusOf(node.status);
+      EntityStatus next = null;
+      if (refining && current == EntityStatus.REPORTED) {
+        next = EntityStatus.REFINED;
+      } else if (reopening && current == EntityStatus.REFINED) {
+        next = EntityStatus.REPORTED;
+      } else if (implementing
+          && current != null
+          && !EntityStateMachine.isOffWalk(current)
+          && !EntityStateMachine.isAtOrPast(current, EntityStatus.IMPLEMENTED)) {
+        next = EntityStatus.IMPLEMENTED;
+      }
+      if (next == null) {
+        continue;
+      }
+      node.status = next.name();
+      audit(node, rootId, AuditOperation.UPDATE, changedBy);
+      carried.add(new Carried(node, subtree.edgeOf().get(node.id), current.name()));
+    }
+    return List.copyOf(carried);
   }
 
   /** A row's edge, or null for a root — the statement {@code EntityFact.parentId} makes. */
@@ -874,17 +1072,34 @@ public class WorkEntityService {
    * declaration covered the rest, not a rewrite of history.
    *
    * <p>Children before their parent, depth first in membership order — a feature's tasks, then the
-   * feature — over the subtree read a level at a time.
+   * feature — over the subtree read a level at a time. A feature or a task moved to IMPLEMENTED on
+   * its own is stamped too, for the reason its marker doors move its status (qits-763): the marker
+   * and the status say the same thing. A DROPPED descendant is not stamped — nothing of it is to be
+   * implemented. Each stamp is audited here only when {@link #carryDescendants} will not audit the
+   * same node's status move a moment later, so a carried node gets one UPDATE row and not two.
    */
-  private void stampImplemented(WorkEntity root, String changedBy) {
+  private void stampImplemented(
+      WorkEntity root, Subtree subtree, String rootId, String changedBy) {
     Instant now = Instant.now();
-    Subtree subtree = subtreeOf(root.id);
     for (WorkEntity node : subtree.postOrder(root.id)) {
-      if (node.implementedAt == null) {
+      if (node.implementedAt == null && !EntityStatus.DROPPED.name().equals(node.status)) {
         node.implementedAt = now;
-        audit(node, root.id, AuditOperation.UPDATE, changedBy);
+        if (!movesToImplemented(node)) {
+          audit(node, rootId, AuditOperation.UPDATE, changedBy);
+        }
       }
     }
+    if (Archetypes.isPlanPiece(root.archetype) && root.implementedAt == null) {
+      root.implementedAt = now;
+    }
+  }
+
+  /** Whether {@link #carryDescendants} moves this node to IMPLEMENTED (and audits it then). */
+  private static boolean movesToImplemented(WorkEntity node) {
+    EntityStatus current = statusOf(node.status);
+    return current != null
+        && !EntityStateMachine.isOffWalk(current)
+        && !EntityStateMachine.isAtOrPast(current, EntityStatus.IMPLEMENTED);
   }
 
   /**
@@ -895,7 +1110,8 @@ public class WorkEntityService {
    * <p>Copies get fresh ids and keep their slugs — each node's scope is its new parent, so the name
    * is free again. The <em>root's</em> slug is the exception: its scope is the project, where the old
    * row still holds it, so the successor mints the next free one exactly as a hand-created row would.
-   * The implemented markers reset (nothing is implemented in a draft) and {@code dependsOn} is
+   * The markers reset and every copied feature and task is REPORTED (nothing is implemented in a
+   * draft) and {@code dependsOn} is
    * remapped to the new ids — in a second pass, because a dependency may point at a sibling copied
    * after it. The memberships are copied with the rows, in the source's order and re-numbered dense
    * from zero, so the successor's plan is drawn in the order the discarded one was.
@@ -958,8 +1174,9 @@ public class WorkEntityService {
 
   /**
    * A fresh row carrying {@code source}'s content under {@code parentId} at {@code position}, and
-   * the edge that puts it there. The slug is kept, the implemented marker resets and {@code
-   * dependsOn} is left for the second pass. The edge's id is the child's, V10's rule.
+   * the edge that puts it there. The slug is kept, both markers reset, the status is REPORTED — a
+   * piece of a draft, as its new epic is (qits-763) — and {@code dependsOn} is left for the second
+   * pass. The edge's id is the child's, V10's rule.
    */
   private WorkEntity copyUnder(WorkEntity source, String parentId, int position, long number) {
     WorkEntity copy = new WorkEntity();
@@ -972,6 +1189,7 @@ public class WorkEntityService {
     copy.slugScope = parentId;
     copy.description = source.description;
     copy.repositoryId = source.repositoryId;
+    copy.status = EntityStatus.REPORTED.name();
     entities.persist(copy);
 
     EntityMembership edge = new EntityMembership();

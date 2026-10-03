@@ -172,8 +172,8 @@ public class CommentMcpTools {
               + " take the phase further: say what is in the way or what is missing. The status stays"
               + " where it is, because that is the phase to resume, and the next transition clears"
               + " the block. The reason lands on the entity's thread. Refused (409) on an entity"
-              + " that is VERIFIED, DONE or DROPPED, and on a feature or a task, which have no phase"
-              + " of their own — block their epic.")
+              + " that is VERIFIED, DONE or DROPPED, and on a feature or a task, which hold a status"
+              + " but run no phase of their own — block their epic.")
   public EntityBlocks.Blocked blockEntity(
       @ToolArg(
               description =

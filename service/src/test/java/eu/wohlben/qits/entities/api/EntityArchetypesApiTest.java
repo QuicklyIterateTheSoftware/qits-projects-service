@@ -146,13 +146,27 @@ class EntityArchetypesApiTest {
                 "VERIFYING"));
   }
 
+  /**
+   * qits-763: a feature holds the one lifecycle, minted by the writer — so, as for an epic, the
+   * registry permits a status and the transition (which mints nothing) requires one.
+   */
   @Test
-  void aFeatureHasNoLifecycleSoTheTwoRequiredListsAgree() {
+  void aFeatureHoldsTheOneLifecycleAndATransitionMustStateIt() {
     document()
-        .body(at("FEATURE") + "legalStatuses", empty())
+        .body(
+            at("FEATURE") + "legalStatuses",
+            contains(
+                "DONE",
+                "DROPPED",
+                "IMPLEMENTED",
+                "IMPLEMENTING",
+                "REFINED",
+                "REPORTED",
+                "VERIFIED",
+                "VERIFYING"))
         .body(at("FEATURE") + "required", contains("TITLE"))
         .body(at("FEATURE") + "requiredAtCreate", contains("TITLE"))
-        .body(at("FEATURE") + "requiredOnTransition", contains("TITLE"));
+        .body(at("FEATURE") + "requiredOnTransition", contains("TITLE", "STATUS"));
   }
 
   /** A legal move as the wire spells it. */
@@ -248,12 +262,15 @@ class EntityArchetypesApiTest {
                 "VERIFYING"));
   }
 
+  /** qits-763: a feature and a task serve the epic's moves and walk, both skips included. */
   @Test
-  void aKindWithNoLifecycleServesNoMovesAndNoLifecycle() {
+  void aFeatureAndATaskServeTheEpicsMovesAndLifecycle() {
+    Map<String, Object> epicMoves = document().extract().path(at("EPIC") + "transitions");
+    List<String> epicWalk = document().extract().path(at("EPIC") + "lifecycle");
     for (String archetype : List.of("FEATURE", "TASK")) {
       document()
-          .body(at(archetype) + "transitions", equalTo(Map.of()))
-          .body(at(archetype) + "lifecycle", empty());
+          .body(at(archetype) + "transitions", equalTo(epicMoves))
+          .body(at(archetype) + "lifecycle", equalTo(epicWalk));
     }
   }
 

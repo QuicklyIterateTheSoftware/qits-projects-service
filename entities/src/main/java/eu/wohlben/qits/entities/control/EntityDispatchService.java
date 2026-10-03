@@ -19,9 +19,10 @@ import jakarta.inject.Inject;
  * What is here is only what a row can say about itself: which row an id names, and whether the last
  * press on it asked for the whole flow or for one phase ({@link WorkEntity#dispatchContinues}).
  *
- * <p>The bit is refused on an archetype with no lifecycle. That is a registry fact rather than a
- * phase fact — a kind with no legal statuses has no transition to continue from — so it is stated
- * here, through {@link Archetypes#legalStatuses}, and not as a second list of dispatchable kinds.
+ * <p>The bit is refused on a feature and a task. That is a registry fact rather than a phase fact —
+ * they hold a status since qits-763, but no phase runs on a piece of a plan, so there is no run to
+ * continue — and it is stated here through {@link Archetypes#isPlanPiece}, not as a second list of
+ * dispatchable kinds.
  */
 @ApplicationScoped
 public class EntityDispatchService {
@@ -68,11 +69,12 @@ public class EntityDispatchService {
         "entity dispatch mode",
         () -> {
           WorkEntity row = entity(id);
-          if (Archetypes.legalStatuses(row.archetype).isEmpty()) {
+          if (Archetypes.isPlanPiece(row.archetype)) {
             throw new ConflictException(
                 "A "
                     + row.archetype
-                    + " has no lifecycle, so there is no run of phases to continue or stop.");
+                    + " runs no phase of its own, so there is no run of phases to continue or"
+                    + " stop — its epic's run is the one.");
           }
           row.dispatchContinues = continues;
           entities.getEntityManager().flush();

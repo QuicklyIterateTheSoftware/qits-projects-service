@@ -58,7 +58,8 @@ import org.jboss.logging.Logger;
  *
  * <p>A campaign has a status and a block too (qits-592), but no agent session works a campaign — its
  * executor dispatches its members, each into a workspace of its own — so there is nobody whose name
- * to change. A feature and a task have no lifecycle of their own and no session named after them.
+ * to change. A feature and a task hold a status of their own since qits-763, and their moves are
+ * announced like any other, but no session is named after them — their agent works the epic.
  * The filter is here, once, so no trigger has to know it.
  *
  * <h2>Never throws, never slows materially, and runs after the write</h2>

@@ -1093,6 +1093,43 @@
       ]
     },
     {
+      "name": "an epic with tasks in every status",
+      "slug": "an-epic-with-tasks-in-every-status",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "an-epic-with-tasks-in-every-status/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementingAt",
+              "$.entities[*].implementedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an implemented epic",
       "slug": "an-implemented-epic",
       "params": {

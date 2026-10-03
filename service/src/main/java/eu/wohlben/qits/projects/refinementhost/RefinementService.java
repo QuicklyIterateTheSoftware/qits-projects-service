@@ -139,8 +139,9 @@ public class RefinementService {
    * <p><b>The refusals, in order, and all of them on the create path only</b> (qits-395):
    *
    * <ol>
-   *   <li><b>No lifecycle</b> — a feature or a task is a <b>409</b>. It has no status to refine at,
-   *       and its scope is its epic's: the room to open is the epic's.
+   *   <li><b>A piece of a plan</b> — a feature or a task is a <b>409</b>. It holds a status since
+   *       qits-763, but no phase runs on it, and its scope is its epic's: the room to open is the
+   *       epic's.
    *   <li><b>Not REPORTED</b> — a <b>409</b> naming the status. Refinement is the REPORTED phase and
    *       scope is editable only there ({@code EntityLifecycle.requireReported}), for both
    *       archetypes; a room on a frozen scope would be a room whose every write is refused.
@@ -176,7 +177,7 @@ public class RefinementService {
     WorkEntity entity = entities.get(entityId); // 404, of any archetype
     String noun = nounOf(entity);
     if (entity.archetype == Archetype.CAMPAIGN) {
-      // Before the generic refusal, whose words ("has no lifecycle … refine the epic it belongs
+      // Before the generic refusal, whose words ("runs no phase … refine the epic it belongs
       // to") are false of a campaign: it has a lifecycle and belongs to nothing. A refinement room
       // is a workspace on a refining/ branch, and a campaign has neither (qits-411).
       throw new DomainException(
@@ -191,7 +192,7 @@ public class RefinementService {
           409,
           "A "
               + noun
-              + " has no lifecycle, so it is not refined on its own — only an epic or a ticket"
+              + " runs no phase of its own, so it is not refined on its own — only an epic or a ticket"
               + " opens a refinement. Refine the epic it belongs to.");
     }
     // The merged row stores the status word, so REPORTED is compared by name against the column.

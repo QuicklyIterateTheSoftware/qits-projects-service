@@ -107,8 +107,8 @@ public record ArchetypeRegistryDocument(
    *     its subtree: they hang somewhere else as well, and this row only orders them
    * @param phases what a dispatch press runs from each status, keyed by <b>every</b> status in
    *     {@link #lifecycle} order — {@link DispatchPhases}. Empty for a kind a dispatch runs no phases
-   *     on: a feature or a task (no lifecycle) and a campaign (its press is its start). Read off
-   *     {@link EntityStateMachine#phaseRunFrom} and {@link EntityStateMachine#flowFrom}, which the
+   *     on: a feature or a task (a lifecycle, but no phase of its own) and a campaign (its press is
+   *     its start). Read off {@link EntityStateMachine#phaseRunFrom} and {@link EntityStateMachine#flowFrom}, which the
    *     dispatch door and the FLOW hand-off follow, so the served phases and the run ones are one
    *     declaration
    */

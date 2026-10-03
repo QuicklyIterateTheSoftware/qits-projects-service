@@ -48,11 +48,11 @@ import java.time.Instant;
  * @param slugScope what {@link #slug} is unique within — the parent id for a child, the project id
  *     for a root. <b>This is what a move changes</b>
  * @param description the long-form body
- * @param status the status word as stored, or null for a kind with no lifecycle
+ * @param status the status word as stored — every archetype holds one since qits-763
  * @param statusBefore the status word the transition moved the row <em>from</em>: the pre-state's
  *     {@link #status}, which is {@link #status} itself for a row the transition reshaped without
  *     moving its status, and <b>null</b> for a row the transition created (a supersede's successor
- *     draft) or for a kind with no lifecycle. <b>Null on every read</b> — {@code
+ *     draft). <b>Null on every read</b> — {@code
  *     EntityCatalogService} answers a row as it stands, and a read moved nothing
  * @param ticketType a ticket's kind, or null
  * @param impetus why a ticket came about, or null
@@ -73,8 +73,9 @@ import java.time.Instant;
  * @param blocked whether the phase the entity's status starts is stuck — {@code entity.blocked}, on
  *     every archetype with a lifecycle (a ticket since qits-548, an epic and a campaign since
  *     qits-592, when the block door stopped being a ticket's alone). <b>Null, and left off the wire,
- *     for a feature and a task</b>: they have no phase of their own, so a {@code false} there would
- *     claim a flag nothing can raise
+ *     for a feature and a task</b>: they hold a status since qits-763 but run no phase of their own
+ *     ({@code Archetypes.isPlanPiece}), so a {@code false} there would claim a flag nothing can
+ *     raise
  */
 public record TransitionedEntity(
     String id,
@@ -266,8 +267,11 @@ public record TransitionedEntity(
         blockedOf(row));
   }
 
-  /** A lifecycle kind's flag, and null for a kind no door raises it on — see {@link #blocked}. */
+  /**
+   * A phased kind's flag, and null for a kind no door raises it on — a feature and a task, which
+   * hold a status but no phase. See {@link #blocked}.
+   */
   private static Boolean blockedOf(WorkEntity row) {
-    return Archetypes.legalStatuses(row.archetype).isEmpty() ? null : row.blocked;
+    return Archetypes.isPlanPiece(row.archetype) ? null : row.blocked;
   }
 }

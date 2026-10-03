@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
@@ -271,7 +272,8 @@ public class PhaseAdvance {
    * string the transition's audit row carries, whichever door it came through, and it keeps this bean
    * out of the request context entirely.
    *
-   * @param entity the ticket or epic <b>as it is after the move</b> — the new status is the input
+   * @param entity the moved row <b>as it is after the move</b> — a campaign, a feature and a task
+   *     return at once (qits-763); for a ticket or an epic the new status is the input
    *     to which phase starts, and its {@code dispatchContinues} is whether it starts at all
    * @param statusBefore the status it moved from, read only to tell the platform's "phase started"
    *     move (REFINED → IMPLEMENTING, IMPLEMENTED → VERIFYING — it pushes nothing) from any other
@@ -282,6 +284,13 @@ public class PhaseAdvance {
     if (entity.archetype == Archetype.CAMPAIGN) {
       // A campaign stands in no workspace: its moves deliver no turn and release no branch. What a
       // campaign's move does do — pause or resume its executor — belongs to its own door (qits-411).
+      return;
+    }
+    if (Archetypes.isPlanPiece(entity.archetype)) {
+      // A feature or a task holds a status of its own since qits-763 but runs no phase: its moves
+      // record where that piece stands, and the turn, the workspace and the release are its epic's.
+      // Without this return, PhasePrompts.render and EntityWorkspaces would be asked for a phase a
+      // piece does not have and throw on every move, which the doors only log.
       return;
     }
     // The merged row stores the status word; VERIFIED is compared against it by name, which is what

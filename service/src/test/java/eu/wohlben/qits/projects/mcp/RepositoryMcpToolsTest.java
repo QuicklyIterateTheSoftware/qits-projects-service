@@ -327,8 +327,10 @@ public class RepositoryMcpToolsTest {
                       // the plan, it declares one of its tasks shipped — a statement people act
                       // on, and not one an unattended run may make. mark_task_implementing beside
                       // it (qits-749): it says work started, and moves a REFINED epic.
+                      // transition_task (qits-763) says one task is implemented or verified.
                       "mark_task_implementing",
                       "mark_task_implemented",
+                      "transition_task",
                       // The ticket write tools (TicketMcpTools) for the same reason, and
                       // transition_ticket is the one worth naming: an unattended run must not
                       // declare somebody else's bug resolved. update_ticket_comment rewrites a
@@ -428,9 +430,11 @@ public class RepositoryMcpToolsTest {
                       "remove_task",
                       // ... and mark_task_implemented, the write an IMPLEMENTING agent makes as
                       // each task lands, and transition_epic (qits-394), the claim that ends each
-                      // dispatched epic phase.
+                      // dispatched epic phase. transition_task (qits-763) moves one feature or
+                      // task along its own lifecycle — a task is verified on its own.
                       "mark_task_implementing",
                       "mark_task_implemented",
+                      "transition_task",
                       "transition_epic",
                       // TicketMcpTools — the small-scoped work beside the plan. The transition is
                       // here too: resolving a ticket is a statement about work that is done, and

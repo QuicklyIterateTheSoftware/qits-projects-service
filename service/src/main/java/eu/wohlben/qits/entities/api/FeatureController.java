@@ -52,7 +52,8 @@ public class FeatureController {
    * Partial update: a null {@code title}/{@code description} leaves it unchanged. The nullable
    * dependency and ship-date change only when their {@code clear*} flag is true (→ cleared) or a
    * non-null value is supplied (→ set) — so a title-only edit can't silently un-ship a feature or
-   * drop its dependency.
+   * drop its dependency. Setting the ship-date moves the feature to IMPLEMENTED and clearing it
+   * takes an IMPLEMENTED feature back, in the same write (qits-763).
    */
   public record UpdateFeatureRequest(
       @NotBlankIfPresent String title,

@@ -30,9 +30,11 @@ import java.util.Set;
  *     outside this set is <b>refused</b> on a write and never silently dropped: a caller that sent
  *     it meant something by it, and dropping it would lose the meaning and the complaint together
  * @param legalStatuses the exact status words legal on this kind, as stored — {@code EntityStatus}'
- *     six for an epic and for a ticket alike, none at all for a feature or a task. Empty means the kind has no status, which is why {@link EntityProperty#STATUS} is
- *     outside its {@link #permitted} set as well; the two say the same thing from two directions and
- *     {@link Archetypes} checks that they agree
+ *     eight for an epic, a ticket, a feature and a task alike (the last two since qits-763), and
+ *     the same less IMPLEMENTING and VERIFYING for a campaign. Empty would mean the kind has no
+ *     status, and then {@link EntityProperty#STATUS} would be outside its {@link #permitted} set as
+ *     well; the two say the same thing from two directions and {@link Archetypes} checks that they
+ *     agree. No kind declares an empty set today
  * @param gathers whether this kind's children are <b>campaign memberships, never structural</b> —
  *     true for {@link Archetype#CAMPAIGN} alone. A structural child hangs in the tree (epic &gt;
  *     feature &gt; task) and has one parent; a gathered one already hangs somewhere else and is

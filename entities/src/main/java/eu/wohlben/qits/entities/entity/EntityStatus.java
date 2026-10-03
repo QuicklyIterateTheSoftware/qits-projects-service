@@ -1,8 +1,9 @@
 package eu.wohlben.qits.entities.entity;
 
 /**
- * The lifecycle of every archetype that has one — {@link Archetype#EPIC} and {@link
- * Archetype#TICKET} alike. Stored as the enum name in {@link WorkEntity#status}, spelled by {@code
+ * The lifecycle of every archetype — {@link Archetype#EPIC}, {@link Archetype#TICKET}, and since
+ * qits-763 {@link Archetype#FEATURE} and {@link Archetype#TASK} alike (a campaign holds the same
+ * words less the two "-ING" ones). Stored as the enum name in {@link WorkEntity#status}, spelled by {@code
  * ck_entity_status} (epics V15), and moved only through a transition — see {@code EntityLifecycle}
  * for the guards and {@code EntityStateMachine} for which moves are legal.
  *
@@ -58,6 +59,13 @@ package eu.wohlben.qits.entities.entity;
  * {@link #REFINED} on; its task markers (implementing, implemented) move only while it is {@link
  * #REFINED} or {@link #IMPLEMENTING}. Moving the epic back
  * to {@link #REPORTED} is how a frozen scope is reopened. A ticket freezes nothing.
+ *
+ * <p><b>A feature's and a task's word is the same word, and it starts nothing.</b> It records where
+ * that piece of the plan stands — so one task can be VERIFIED while a sibling is still IMPLEMENTED —
+ * but the phase every sentence above speaks of runs on the epic, never on a piece of it. The
+ * markers move a task's status ({@code mark_task_implementing} to IMPLEMENTING, {@code
+ * mark_task_implemented} to IMPLEMENTED), and three of the epic's own moves carry its pieces with
+ * it: REPORTED → REFINED, back again, and the move to IMPLEMENTED (qits-763).
  */
 public enum EntityStatus {
 

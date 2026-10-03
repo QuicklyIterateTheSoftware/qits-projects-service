@@ -140,7 +140,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
   }
 
   @Test
-  void onlyWorkWithALifecycleOfThisProjectJoinsOnce() {
+  void onlyPhasedWorkOfThisProjectJoinsOnce() {
     WorkEntity campaign = campaign();
     WorkEntity epic =
         workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Plan", null), WHO).entity();
@@ -162,8 +162,8 @@ class CampaignServiceTest extends EntitiesTestSupport {
                 WHO)
             .entity();
 
-    conflict(() -> campaigns.addMember(campaign.id, feature.id, null, false, WHO), "no lifecycle");
-    conflict(() -> campaigns.addMember(campaign.id, task.id, null, false, WHO), "no lifecycle");
+    conflict(() -> campaigns.addMember(campaign.id, feature.id, null, false, WHO), "runs no phase");
+    conflict(() -> campaigns.addMember(campaign.id, task.id, null, false, WHO), "runs no phase");
     conflict(() -> campaigns.addMember(campaign.id, other.id, null, false, WHO), "cannot gather");
     conflict(() -> campaigns.addMember(campaign.id, foreign.id, null, false, WHO), OTHER_PROJECT);
 

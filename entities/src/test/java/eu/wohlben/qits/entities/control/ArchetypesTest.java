@@ -95,13 +95,30 @@ class ArchetypesTest {
         six);
     assertEquals(six, Archetypes.legalStatuses(Archetype.EPIC));
     assertEquals(six, Archetypes.legalStatuses(Archetype.TICKET));
+    // A feature and a task hold the same eight since qits-763 — one lifecycle, whatever the kind.
+    assertEquals(six, Archetypes.legalStatuses(Archetype.FEATURE));
+    assertEquals(six, Archetypes.legalStatuses(Archetype.TASK));
     // A campaign never enters IMPLEMENTING (qits-749): its words are the rest.
     var campaign = new java.util.HashSet<>(six);
     campaign.remove("IMPLEMENTING");
     campaign.remove("VERIFYING");
     assertEquals(campaign, Archetypes.legalStatuses(Archetype.CAMPAIGN));
-    assertTrue(Archetypes.legalStatuses(Archetype.FEATURE).isEmpty());
-    assertTrue(Archetypes.legalStatuses(Archetype.TASK).isEmpty());
+  }
+
+  @Test
+  void aFeatureAndATaskAreThePlanPiecesThatRunNoPhase() {
+    // The question the phase doors ask now that every kind has status words (qits-763).
+    assertTrue(Archetypes.isPlanPiece(Archetype.FEATURE));
+    assertTrue(Archetypes.isPlanPiece(Archetype.TASK));
+    assertFalse(Archetypes.isPlanPiece(Archetype.EPIC));
+    assertFalse(Archetypes.isPlanPiece(Archetype.TICKET));
+    assertFalse(Archetypes.isPlanPiece(Archetype.CAMPAIGN));
+    // And they carry the slot, permitted rather than required: the writer mints it, as an epic's.
+    for (Archetype piece : List.of(Archetype.FEATURE, Archetype.TASK)) {
+      assertTrue(Archetypes.spec(piece).permits(EntityProperty.STATUS));
+      assertFalse(Archetypes.spec(piece).required().contains(EntityProperty.STATUS));
+      assertFalse(Archetypes.spec(piece).requiredAtCreate().contains(EntityProperty.STATUS));
+    }
   }
 
   // ---- the campaign (qits-411) -----------------------------------------------------------------
@@ -286,29 +303,43 @@ class ArchetypesTest {
   }
 
   @Test
-  void aFeatureCarryingAStatusAtAllIsRefusedAsAForeignProperty() {
-    // A feature has no lifecycle of its own — its phase is its epic's — so a status on one is not
-    // an illegal word but a property the kind has no slot for.
+  void aFeatureAndATaskTakeEveryWordOfTheLifecycleAndRefuseAWordItDoesNotSpell() {
+    // qits-763: a status on a feature or a task is no longer a foreign property but its own
+    // lifecycle's word — legal when the lifecycle spells it, an ILLEGAL_STATUS when it does not.
+    for (EntityStatus status : EntityStatus.values()) {
+      assertEquals(
+          List.of(),
+          Archetypes.validate(
+              new EntityState(Archetype.FEATURE, status.name(), properties(EntityProperty.TITLE)),
+              Demand.AT_CREATE));
+      assertEquals(
+          List.of(),
+          Archetypes.validate(
+              new EntityState(
+                  Archetype.TASK,
+                  status.name(),
+                  properties(EntityProperty.TITLE, EntityProperty.REPOSITORY_ID)),
+              Demand.ON_UPDATE));
+    }
     List<ArchetypeViolation> violations =
         Archetypes.validate(
-            new EntityState(
-                Archetype.FEATURE, EntityStatus.REPORTED.name(), properties(EntityProperty.TITLE)),
+            new EntityState(Archetype.FEATURE, "IN_PROGRESS", properties(EntityProperty.TITLE)),
             Demand.AT_CREATE);
 
     assertEquals(1, violations.size(), () -> violations.toString());
     assertEquals(EntityProperty.STATUS, violations.get(0).property());
-    assertEquals(ArchetypeViolation.Reason.NOT_PERMITTED, violations.get(0).reason());
+    assertEquals(ArchetypeViolation.Reason.ILLEGAL_STATUS, violations.get(0).reason());
   }
 
   @Test
   void everyViolationComesBackTogetherRatherThanOneRoundTripEachToFix() {
     // The failure mode the API exists to avoid: a caller told about the second missing field only
     // after it has supplied the first. Five problems at once, on one candidate: two required
-    // properties missing and three foreign ones carried.
+    // properties missing, two foreign ones carried and a status word nobody spells.
     EntityState candidate =
         new EntityState(
             Archetype.TASK,
-            EntityStatus.DONE.name(),
+            "IN_PROGRESS",
             properties(EntityProperty.IMPETUS, EntityProperty.ASSIGNEE));
 
     List<ArchetypeViolation> violations = Archetypes.validate(candidate, Demand.AT_CREATE);

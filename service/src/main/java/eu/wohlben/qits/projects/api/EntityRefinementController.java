@@ -28,7 +28,7 @@ import jakarta.ws.rs.core.MediaType;
  * is running on the entity ({@link RefinementService#findOrCreate} says why and how).
  *
  * <p><b>The POST is idempotent</b>: an entity has at most one room, and a second open answers the
- * first. Its refusals: 404 for an unknown id; 409 for a feature or a task (no lifecycle), for an
+ * first. Its refusals: 404 for an unknown id; 409 for a feature or a task (no phase of its own), for an
  * entity not at REPORTED, for one an ACTIVE workspace names, and for a project with no wrapper; 502
  * when the git host would not cut {@code refining/<slug>}. <b>The GET never creates</b> and answers
  * {@code {"refinement": null}} when the entity has no room — 404 is kept for an id that names no

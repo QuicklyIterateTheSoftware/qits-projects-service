@@ -271,9 +271,10 @@ public class CampaignService {
    * claimed_at = now}, {@code joined_running = true}. Whether a member is in flight is decided by the
    * caller — the service layer, which can see workspaces — never here.
    *
-   * <p>Refused with a 409 for a member whose kind has no lifecycle, a kind a campaign may not hold, a
-   * member of another project, a duplicate, and a campaign that is no longer editable. When the
-   * campaign has an active start, the new member's seed is latched from the current state at once.
+   * <p>Refused with a 409 for a feature or a task (a piece of a plan, which runs no phase), a kind a
+   * campaign may not hold, a member of another project, a duplicate, and a campaign that is no
+   * longer editable. When the campaign has an active start, the new member's seed is latched from
+   * the current state at once.
    */
   public Member addMember(
       String campaignId, String entityId, Integer position, boolean inFlight, String changedBy) {
@@ -865,11 +866,11 @@ public class CampaignService {
       throw new ConflictException(
           "A campaign cannot gather a " + kind + ": " + qid(member) + " is not work to be run.");
     }
-    if (Archetypes.legalStatuses(member.archetype).isEmpty()) {
+    if (Archetypes.isPlanPiece(member.archetype)) {
       throw new ConflictException(
           "A "
               + kind
-              + " has no lifecycle of its own, so "
+              + " is a piece of its epic's plan and runs no phase of its own, so "
               + qid(member)
               + " cannot be a campaign member — gather the epic it belongs to instead.");
     }

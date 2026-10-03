@@ -62,6 +62,8 @@ public class ProviderStates {
   public static final String A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS =
       "a project with repositories in components";
   public static final String AN_EPIC_WITH_FEATURES_AND_TASKS = "an epic with features and tasks";
+  public static final String AN_EPIC_WITH_TASKS_IN_EVERY_STATUS =
+      "an epic with tasks in every status";
   public static final String A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS =
       "a campaign with ordered developments";
   public static final String A_VERIFIED_EPIC = "a verified epic";
@@ -170,6 +172,7 @@ public class ProviderStates {
         A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS, this::aProjectWithRepositoriesInComponents);
     states.put(A_PROJECT_WITH_WORK_IN_EVERY_STATUS, this::aProjectWithWorkInEveryStatus);
     states.put(AN_EPIC_WITH_FEATURES_AND_TASKS, this::anEpicWithFeaturesAndTasks);
+    states.put(AN_EPIC_WITH_TASKS_IN_EVERY_STATUS, this::anEpicWithTasksInEveryStatus);
     states.put(A_VERIFIED_EPIC, this::aVerifiedEpic);
     states.put(A_VERIFIED_TICKET, this::aVerifiedTicket);
     states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
@@ -406,6 +409,51 @@ public class ProviderStates {
     implemented(shippedTask);
     implemented(done);
     return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * <b>One epic whose tasks stand in every status</b> (qits-763): a feature and a task hold the one
+   * lifecycle of their own, so a board draws each task in its own column rather than its epic's. One
+   * feature with eight tasks, one per word, each brought there the way the platform moves one:
+   * created while the epic is REPORTED, carried to REFINED by the epic's freeze, then — the REPORTED
+   * one moved back by its own door, the IMPLEMENTING one through {@code mark_task_implementing}
+   * (which also moves its feature and the epic to IMPLEMENTING), the IMPLEMENTED one through its
+   * marker, the three beyond through their marker and then their own moves, and the DROPPED one
+   * dropped. The epic stays IMPLEMENTING: verifying three of its tasks moved nothing above them.
+   */
+  private Setup anEpicWithTasksInEveryStatus() {
+    String token = token();
+    Project project = project(token, AN_EPIC_WITH_TASKS_IN_EVERY_STATUS);
+    String repositoryId = repository(project, "contract-service");
+    String epic =
+        create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work."));
+    String feature =
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Feature in flight", "Seeded.", null));
+    Map<EntityStatus, String> tasks = new LinkedHashMap<>();
+    for (EntityStatus status : EntityStateMachine.states()) {
+      String title = status.name().charAt(0) + status.name().substring(1).toLowerCase(Locale.ROOT);
+      tasks.put(
+          status,
+          node(
+              Archetype.TASK,
+              feature,
+              EntityWrite.task(repositoryId, title + " task", "Seeded.", null)));
+    }
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.TASK, tasks.get(EntityStatus.REPORTED), "REPORTED", SEEDER);
+    work.markImplementing(tasks.get(EntityStatus.IMPLEMENTING), SEEDER);
+    for (EntityStatus status :
+        List.of(
+            EntityStatus.IMPLEMENTED,
+            EntityStatus.VERIFYING,
+            EntityStatus.VERIFIED,
+            EntityStatus.DONE)) {
+      String task = tasks.get(status);
+      implemented(task);
+      walk(Archetype.TASK, task, status);
+    }
+    work.transition(Archetype.TASK, tasks.get(EntityStatus.DROPPED), "DROPPED", SEEDER);
+    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
   }
 
   /**
@@ -668,7 +716,7 @@ public class ProviderStates {
   }
 
   /**
-   * Moves an epic or a ticket forward one step at a time along the walk until it is {@code
+   * Moves an epic, a ticket or a task forward one step at a time along the walk until it is {@code
    * target}, through IMPLEMENTING and VERIFYING (qits-749) rather than over them — the way the
    * platform itself moves work, so a seeded VERIFIED row got there the way a real one does.
    */

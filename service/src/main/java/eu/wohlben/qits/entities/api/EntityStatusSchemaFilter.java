@@ -11,8 +11,8 @@ import org.eclipse.microprofile.openapi.models.OpenAPI;
 import org.eclipse.microprofile.openapi.models.media.Schema;
 
 /**
- * <b>The lifecycle's words as an enum on {@code EpicDto.status} and {@code TicketDto.status}</b>
- * (qits-749), so a client generated from {@code docs/openapi.yml} knows every status, IMPLEMENTING
+ * <b>The lifecycle's words as an enum on {@code EpicDto.status}, {@code TicketDto.status}, and
+ * since qits-763 {@code FeatureDto.status} and {@code TaskDto.status}</b> (qits-749), so a client generated from {@code docs/openapi.yml} knows every status, IMPLEMENTING
  * included, instead of reading a bare {@code type: string}.
  *
  * <p>A filter rather than {@code @Schema(enumeration = …)} on the DTO components, for two reasons.
@@ -25,7 +25,7 @@ import org.eclipse.microprofile.openapi.models.media.Schema;
 public class EntityStatusSchemaFilter implements OASFilter {
 
   /** The component schemas whose {@code status} is the one lifecycle's word. */
-  static final List<String> SCHEMAS = List.of("EpicDto", "TicketDto");
+  static final List<String> SCHEMAS = List.of("EpicDto", "TicketDto", "FeatureDto", "TaskDto");
 
   @Override
   public void filterOpenAPI(OpenAPI openAPI) {
