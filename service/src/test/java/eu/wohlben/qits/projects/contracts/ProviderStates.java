@@ -762,9 +762,10 @@ public class ProviderStates {
    *       last waiting on the epic being VERIFIED and on an approval.
    *   <li>An IMPLEMENTING epic (Markdown description with headings, a list and code; three
    *       comments; a dossier of three pages, one inlining a figure). Its first feature is
-   *       implemented with both tasks implemented; its second depends on the first, is implementing,
-   *       and holds one implementing task and one open task. Each task names a repository; the
-   *       second task of each feature depends on the first.
+   *       IMPLEMENTED with both tasks IMPLEMENTED; its second depends on the first, is IMPLEMENTING,
+   *       and holds one IMPLEMENTING task and one still REFINED. Each holds its own status
+   *       (qits-763), moved by the marker doors. Each task names a repository; the second task of
+   *       each feature depends on the first.
    *   <li>A BUG ticket, IMPLEMENTING, assigned and blocked (the reason lands on its thread), with a
    *       dossier of two pages. An IMPROVEMENT ticket, REFINED, with an empty dossier. A
    *       MAINTENANCE ticket, REPORTED, with one page and no comments.

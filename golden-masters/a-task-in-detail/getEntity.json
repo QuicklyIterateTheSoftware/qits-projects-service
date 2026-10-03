@@ -8,7 +8,7 @@
   "slug": "download-button-on-the-invoice-list",
   "slugScope": "00000000-0000-4000-8000-000000000004",
   "description": "A button above the list that downloads the filtered range as CSV.",
-  "status": null,
+  "status": "IMPLEMENTED",
   "statusBefore": null,
   "ticketType": null,
   "impetus": null,

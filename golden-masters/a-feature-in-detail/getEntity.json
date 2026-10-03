@@ -8,7 +8,7 @@
   "slug": "pdf-export",
   "slugScope": "00000000-0000-4000-8000-000000000006",
   "description": "Render one invoice as an A4 PDF, in the same layout as the printed one.",
-  "status": null,
+  "status": "IMPLEMENTING",
   "statusBefore": null,
   "ticketType": null,
   "impetus": null,
