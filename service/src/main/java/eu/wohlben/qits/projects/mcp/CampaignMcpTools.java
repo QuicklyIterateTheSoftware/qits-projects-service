@@ -242,7 +242,7 @@ public class CampaignMcpTools {
       name = "add_campaign_member",
       description =
           "Add an epic or a ticket of this project to a campaign, at a position (omit to append)."
-              + " Refused with a 409 for a member with no lifecycle, one a campaign may not hold, one"
+              + " Refused with a 409 for a feature or a task, one a campaign may not hold, one"
               + " of another project, a duplicate, or a campaign no longer REPORTED or REFINED. When"
               + " a member already stands at the position just before this one and is not yet"
               + " VERIFIED or DONE, the new member is SEEDED to wait on that predecessor reaching"

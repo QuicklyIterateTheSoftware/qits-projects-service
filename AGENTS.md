@@ -1093,6 +1093,25 @@ on.
 transaction — declaring the epic implemented is declaring its scope implemented. That is why the
 epic implement prompt makes the move conditional on every task already being marked.
 
+**Features and tasks hold the same lifecycle of their own (qits-763, epics V24).** Same eight words,
+same `EntityStateMachine` graph and skips, same registry entry shape (STATUS permitted and minted
+`REPORTED` by the writer, so `requiredOnTransition` carries it), moved through the generic `POST
+/entities/{id}/status` and the `transition_task` MCP tool under a ticket's roles — and refused 409
+while the owning epic is `REPORTED` (a draft is edited, not moved; `requireReported` stays on
+structural writes only). The markers are status moves: `mark_task_implementing` moves the task (and
+its feature, the first time) to IMPLEMENTING, `implementedAt` — `mark_task_implemented`, `PUT
+/tasks`, `PUT /features`, `PATCH /entities` — moves the item to IMPLEMENTED, clearing it moves an
+IMPLEMENTED item back, so marker and status never disagree; the timestamps stay as history. **Three
+epic moves carry the descendants and no other does** (`WorkEntityService.carryDescendants`):
+REPORTED → REFINED refines the REPORTED ones, REFINED → REPORTED returns the REFINED ones, and any
+move to IMPLEMENTED (an epic's or a feature's own) carries everything still before IMPLEMENTED there.
+VERIFYING and VERIFIED leave the tasks alone — a task is verified on its own — and nothing derives a
+parent's status from its children. Each carried child joins the move's one `EntityTransitioned`. **No
+phase machinery**: `Archetypes.isPlanPiece` is the question every phase door asks now that "has
+status words" no longer tells the kinds apart — `PhaseAdvance` returns at once, `PhasePrompts.phaseOf`
+answers empty, and dispatch, refinement rooms, blocks, campaign membership and agent signals refuse
+or skip a feature and a task explicitly; `blocked` stays off their reads.
+
 **The freeze is enforced in the services, per field rather than per endpoint, and it is reversible
 now — below DONE; a DONE epic's scope is frozen for good.** `EntityLifecycle` holds the two guards and all three services obey them — a task's phase is
 the phase of its feature's epic. Structural changes (the epic's title/description, any feature/task
@@ -1131,13 +1150,13 @@ mode, and the mode is the only difference between the two actions the UI offers:
 
 The GET is how the SPA learns which phase a press would start (`nextPhase`, or null) without
 re-implementing the status→phase rule, which lives only in `api/PhasePrompts.phaseOf`. A missing or
-unknown mode is a 400; a feature or a task is a 409 (no lifecycle); a blocked ticket or epic is a
+unknown mode is a 400; a feature or a task is a 409 (no phase of its own); a blocked ticket or epic is a
 409 naming the block, and a blocked campaign's start press is too; no workspaces context is a 503; a
 project with no wrapper is a 409.
 
-**Blocking is for every archetype with a lifecycle (qits-592)** — a ticket, an epic, a campaign —
+**Blocking is for every archetype that runs a phase (qits-592)** — a ticket, an epic, a campaign —
 through one rule, `api/EntityBlocks` (reason required to block, 409 where `PhasePrompts.phaseOf`
-starts no phase or the kind has no lifecycle, the reason on the entity's own thread), behind `POST
+starts no phase or the kind is a feature or a task, the reason on the entity's own thread), behind `POST
 /entities/{id}/blocked` (UUID or qualified id), `block_entity`/`unblock_entity` (`CommentMcpTools`),
 and the ticket-only `POST /tickets/{id}/blocked`/`block_ticket`/`unblock_ticket`, kept as delegates.
 Every transition clears the flag. A blocked campaign's executor claims no new member (running ones
@@ -2352,7 +2371,7 @@ SPA at 072512f still reads `row.entityId ?? row.epicId` for a row from an older 
 nobody new may read costs nothing to carry. Nothing new may read it.
 
 The refusals, all on the **create** path, in order: 404 unknown id; **409 for a feature or a task**
-(no lifecycle — refine its epic); **409 unless REPORTED**, for both archetypes, since refinement is
+(no phase of its own — refine its epic); **409 unless REPORTED**, for both archetypes, since refinement is
 the REPORTED phase (`requireReported` for an epic's scope; a ticket's fields do not freeze, but its
 room opens only where its refine phase runs); **409 while a dispatch runs on it** (below); 409 for a
 project with no wrapper; 502 when the git host will not cut the branch. **The wrapper is the project

@@ -26,8 +26,8 @@ import java.util.Optional;
  * over and closing is a person's move. {@link EntityStatus#DROPPED} starts nothing either: the work
  * was decided against. That mapping is declared once, on the state machine ({@code
  * EntityStateMachine.phaseStartedBy}); {@link #phaseOf} is the <b>only</b> place in this service
- * that asks it, and it does not look at the archetype: an epic and a ticket at the same status run
- * the same phase. Nothing here moves an entity into an "-ING" status — the dispatch press and the FLOW
+ * that asks it, and it looks at the archetype only to answer a feature or a task with nothing: an
+ * epic and a ticket at the same status run the same phase. Nothing here moves an entity into an "-ING" status — the dispatch press and the FLOW
  * hand-off do ({@link EntityDispatch}, {@link PhaseAdvance}); a template only says how to leave it.
  *
  * <p>Because the prompt is derived rather than passed in, pressing dispatch on a half-finished
@@ -35,8 +35,9 @@ import java.util.Optional;
  * start from {@link #nextPhase} (served by {@code GET /entities/{id}/dispatch}) and never re-derives
  * it. The words are per archetype — a ticket is refined into its description, an epic into a
  * feature/task tree and a dossier — so {@link #render} takes the archetype, and a kind with no
- * templates is an {@link IllegalStateException} there rather than a ticket's words handed to
- * something else.
+ * templates (a campaign, and a feature or a task, which hold a status since qits-763 but run no
+ * phase) is an {@link IllegalStateException} there rather than a ticket's words handed to something
+ * else.
  *
  * <h2>The template rule (qits-592)</h2>
  *
@@ -139,7 +140,9 @@ final class PhasePrompts {
 
   /**
    * The one mapping: what has been achieved decides what runs next — or empty where nothing does,
-   * including every row of a kind with no lifecycle (a feature, a task), whose status is null. The
+   * including every feature and task: they hold a status of their own since qits-763, but it records
+   * where that piece of the plan stands and starts nothing — the phase runs on the epic ({@link
+   * Archetypes#isPlanPiece}). The
    * mapping itself is the state machine's ({@link EntityStateMachine#phaseStartedBy}): REPORTED
    * starts refine, REFINED and IMPLEMENTING implement, IMPLEMENTED and VERIFYING verify, and
    * VERIFIED, DONE and DROPPED nothing —
@@ -147,7 +150,7 @@ final class PhasePrompts {
    * was decided against. This method only reads the stored word back into the enum first.
    */
   static Optional<Phase> phaseOf(WorkEntity entity) {
-    if (entity.status == null || Archetypes.legalStatuses(entity.archetype).isEmpty()) {
+    if (entity.status == null || Archetypes.isPlanPiece(entity.archetype)) {
       return Optional.empty();
     }
     return EntityStateMachine.phaseStartedBy(EntityStatus.valueOf(entity.status));
@@ -214,7 +217,7 @@ final class PhasePrompts {
               };
           case FEATURE, TASK ->
               throw new IllegalStateException(
-                  "A " + archetype + " has no lifecycle, so it has no phase prompts");
+                  "A " + archetype + " runs no phase of its own, so it has no phase prompts");
           case CAMPAIGN ->
               throw new IllegalStateException(
                   "A CAMPAIGN starts through its executor, so it has no phase prompts");
@@ -368,9 +371,12 @@ final class PhasePrompts {
    * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#REFINED} or {@link
    * EntityStatus#IMPLEMENTING}. The tree and dossier are frozen, so corrections go on the thread.
    * Tasks in {@code dependsOn} order, each marked with {@code mark_task_implementing} as it starts
-   * and {@code mark_task_implemented} as it lands so a run that dies halfway leaves a true record; landed
-   * means released and deployed, one release request per repository. The claim to IMPLEMENTED is
-   * conditional on every task being marked because the move stamps any task still unmarked.
+   * and {@code mark_task_implemented} as it lands so a run that dies halfway leaves a true record —
+   * since qits-763 each marker moves the task's own status too; landed means released and deployed,
+   * one release request per repository. A task confirmed live may be verified on its own with
+   * {@code transition_task}, which the turn says because the old reading (a task is verified when its
+   * epic is) is the one an agent would otherwise assume. The claim to IMPLEMENTED is conditional on
+   * every task being marked because the move carries any task still unmarked to IMPLEMENTED.
    */
   private static String implementEpic(WorkEntity epic, String q) {
     return "Implement epic \""
@@ -385,13 +391,15 @@ final class PhasePrompts {
         + " record progress and corrections on its thread with add_comment (entityId "
         + epic.id
         + ") as the work goes. Work the tasks in dependsOn order: mark_task_implementing when you"
-        + " start one, mark_task_implemented as it lands. Landed means released and deployed, through a"
-        + " release request per repository, not merged and not green."
+        + " start one, mark_task_implemented as it lands; each moves that task's status. Landed"
+        + " means released and deployed, through a release request per repository, not merged and"
+        + " not green. Verify a task on its own: once it is confirmed live, transition_task it to"
+        + " VERIFIED."
         + commitSubjects(q)
         + " Do not integrate the"
         + " workspace, because verification runs here next. When every task is marked,"
-        + " transition_epic to IMPLEMENTED; that move stamps any unmarked task. If you cannot get"
-        + " there, block_entity with what is missing.";
+        + " transition_epic to IMPLEMENTED; that move carries any unmarked task to IMPLEMENTED. If"
+        + " you cannot get there, block_entity with what is missing.";
   }
 
   /**

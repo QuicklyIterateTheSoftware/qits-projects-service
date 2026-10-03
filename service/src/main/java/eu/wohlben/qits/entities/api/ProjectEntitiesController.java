@@ -36,7 +36,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * <ul>
  *   <li>{@code archetype} — one kind, case-insensitive; a word naming none is a 400.
  *   <li>{@code status} — one status word; a word naming none is a 400, like the per-archetype
- *       listings' filter. A kind with no lifecycle simply matches no status.
+ *       listings' filter. It matches every archetype by its own status — a feature and a task too,
+ *       since qits-763 gave them one — so {@code ?status=VERIFIED} lists the verified tasks beside
+ *       the verified epics; combine it with {@code archetype} for one kind.
  *   <li>{@code parent} — the direct children of one entity, named by UUID or qualified id; one naming
  *       nothing is a 404.
  * </ul>

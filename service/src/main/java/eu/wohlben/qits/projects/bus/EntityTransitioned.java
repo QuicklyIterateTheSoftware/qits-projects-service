@@ -55,10 +55,11 @@ public record EntityTransitioned(UUID eventId, List<Entity> entities, Instant tr
    * @param slug the git-safe path segment. <b>Unchanged by a move</b> — it names branches already
    *     cut — which is exactly why a consumer holding a branch name needs no repair
    * @param title the label
-   * @param status the status word as stored, or absent for a kind with no lifecycle
+   * @param status the status word as stored — on every archetype, a FEATURE and a TASK included
+   *     since qits-763 (an epic's move that carries its pieces lists each of them in the same event)
    * @param statusBefore the status word the entity moved <em>from</em>: equal to {@code status} for
    *     an entity the batch reshaped without moving its status, and absent for one the batch created
-   *     (a supersede's successor draft) or for a kind with no lifecycle
+   *     (a supersede's successor draft)
    * @param changedBy who made the transition — the audit principal the write was recorded under
    * @param number the per-project numeric id, the {@code <n>} of {@code <project-slug>-<n>}. Never
    *     moved by a transition: it names the node, and a node changing kind is the same node

@@ -62,7 +62,8 @@ public class EpicController {
    * A lifecycle move. {@code target} is a status name of the one entity lifecycle — {@code
    * REFINED} (the scope freeze), {@code IMPLEMENTING} (an implementation was started — usually the
    * dispatch press makes this move), {@code IMPLEMENTED} (shipped: stamps every feature and task
-   * still unimplemented; reachable from IMPLEMENTING, or from REFINED by the skip), {@code VERIFIED}, {@code DONE}, {@code DROPPED}, or back along the walk ({@code
+   * still unimplemented and carries each one still before IMPLEMENTED there; reachable from
+   * IMPLEMENTING, or from REFINED by the skip), {@code VERIFIED}, {@code DONE}, {@code DROPPED}, or back along the walk ({@code
    * REPORTED} reopens a frozen scope) — never out of {@code DONE}, which is final — or {@code
    * SUPERSEDED}, which is not a status but the
    * supersede operation: the epic lands {@code DROPPED} pointing at the successor draft it spawned
@@ -82,7 +83,12 @@ public class EpicController {
   @org.eclipse.microprofile.openapi.annotations.Operation(
       operationId = "transitionEpic",
       summary = "Transition",
-      description = "Moves the epic to the target status; its features and tasks follow it, having no status of their own.")
+      description =
+          "Moves the epic to the target status. Its features and tasks hold statuses of their own"
+              + " and follow it on three moves only: REPORTED to REFINED (each REPORTED piece is"
+              + " refined), REFINED back to REPORTED (each REFINED piece returns) and the move to"
+              + " IMPLEMENTED (each piece still before IMPLEMENTED is carried there). No other move"
+              + " touches them: a task is verified on its own.")
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
     var moved = routes.transition(routes.epics(), id, request.target(), false, identity);

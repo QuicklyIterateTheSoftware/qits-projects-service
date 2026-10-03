@@ -1501,7 +1501,8 @@ candidate would fail every create, exactly as for `SLUG`. A ticket's status is a
 intake surfaces already make and the transition API moves; the six words are the ticket's whole
 lifecycle and a ticket without one is not a ticket in any phase.
 
-The column is nullable either way, because features and tasks have no status at all.
+The column was nullable either way, because features and tasks had no status at all — until V24
+(qits-763) gave them the one lifecycle and made it `not null`; see the last section.
 
 ### 9. Position lives on the **edge**, not on the child
 
@@ -2146,6 +2147,22 @@ applies to it with the words moved one phase on:
   back from VERIFIED can land.
 - **No marker.** Features and tasks carry nothing for verifying; V23 widens `ck_entity_status` and
   adds no column.
+
+## Features and tasks hold the lifecycle (V24, qits-763)
+
+**The "keep no status" decision above (V22) is reversed.** A feature and a task now hold the same
+eight words as an epic and a ticket, over the same graph, so a task is verified on its own instead of
+when its epic is — the sibling drag that made every task VERIFIED the moment its epic was. The
+markers stay as history next to the status, and every door that writes one moves the status in the
+same transaction (`mark_task_implementing` → IMPLEMENTING, `implementedAt` → IMPLEMENTED). An epic
+carries its pieces on three moves only — REPORTED → REFINED, back, and to IMPLEMENTED — and a piece's
+own move (`POST /entities/{id}/status`, `transition_task`) is refused while its epic is REPORTED. No
+phase runs on a piece (`Archetypes.isPlanPiece`); nothing derives a parent from its children.
+
+V24 backfilled every existing row — `implemented_at` → IMPLEMENTED, else `implementing_at` →
+IMPLEMENTING, else the nearest structural ancestor's status as it stood before V24, capped at
+REFINED (REPORTED and DROPPED kept), else REPORTED — and redefined `ck_entity_status` with `status is
+not null`.
 
 ## Where the code is
 

@@ -30,8 +30,9 @@ import org.jboss.logging.Logger;
  * <h2>What it is, step by step, and why in this order</h2>
  *
  * <ol>
- *   <li><b>The row, of any archetype</b> (404). A kind with no lifecycle — a feature, a task — is a
- *       <b>409</b>: nothing stands an agent on one, and there is no status to read a phase from.
+ *   <li><b>The row, of any archetype</b> (404). A feature or a task is a <b>409</b>: it holds a
+ *       status of its own since qits-763, but nothing stands an agent on a piece of a plan — its
+ *       phase is its epic's.
  *   <li><b>A block</b> (409, a ticket's or an epic's alike since qits-592), before the status, for
  *       the reason the ticket door always gave: the status there is one a phase runs under, so "no
  *       phase left" would be false, and the answer that sends a reader to the thread comes first.
@@ -179,7 +180,7 @@ public class EntityDispatch {
 
   /**
    * <b>Every refusal {@link #dispatch} would make, with no side effect</b> (qits-417): a campaign, a
-   * kind with no lifecycle, a block, a status that starts no phase, no workspaces context, no
+   * feature or a task, a block, a status that starts no phase, no workspaces context, no
    * wrapper. Nothing is written and nothing is called out to; reads only (the project and its
    * wrapper, and an epic's tree for its refs). Each refusal is a {@link DispatchRefused} carrying the
    * status and the sentence the press would have answered.
@@ -389,7 +390,7 @@ public class EntityDispatch {
           409,
           "A "
               + entity.archetype
-              + " has no lifecycle of its own, so there is no phase to dispatch an agent onto —"
+              + " runs no phase of its own, so there is no phase to dispatch an agent onto —"
               + " dispatch its epic instead.");
     }
     if (entity.blocked) {

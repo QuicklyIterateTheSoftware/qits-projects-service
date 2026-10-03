@@ -10,6 +10,7 @@ import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
+import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
@@ -41,6 +42,11 @@ import org.jboss.logging.Logger;
  * DONE (which is final) and adjacent-only, through {@code EntityResolutions} like every door that moves an epic, and followed by
  * {@code PhaseAdvance}. What stays off the server is supersede, which is an operation on a plan
  * rather than a claim about work.
+ *
+ * <p><strong>{@code transition_task} is here since qits-763</strong>, beside the markers: a feature
+ * and a task hold the one lifecycle of their own now, so the agent implementing an epic verifies
+ * each task as it confirms it rather than waiting for the epic's verification to drag every task
+ * along. No phase follows such a move — a piece of a plan runs none.
  *
  * <p>Scope comes from {@link ProjectScope} (the {@code X-QITS-Project} header), never from a tool
  * argument, and every id a tool is handed is checked back to that project — an epic, feature or
@@ -93,6 +99,9 @@ public class EpicMcpTools {
   /** The next phase after an agent's claim — see {@code PhaseAdvance}. */
   @Inject PhaseAdvance phaseAdvance;
 
+  /** The UUID-or-qualified-id lookup the REST doors share, for {@code transition_task}. */
+  @Inject EntityIdResolver ids;
+
   private static final Logger LOG = Logger.getLogger(EpicMcpTools.class);
 
   // --- Result shapes --------------------------------------------------------
@@ -122,24 +131,29 @@ public class EpicMcpTools {
       boolean blocked,
       String description) {}
 
-  /** A task inside {@link EpicDetail}. {@code qualifiedId} only — see {@link EpicSummary}. */
+  /**
+   * A task inside {@link EpicDetail}. {@code qualifiedId} only — see {@link EpicSummary}. {@code
+   * status} is the task's own (qits-763): where it stands, which may differ from its siblings'.
+   */
   public record TaskDetail(
       String id,
       String qualifiedId,
       String slug,
       String title,
+      String status,
       String description,
       String repositoryId,
       String dependsOnTaskId,
       Instant implementedAt,
       Instant implementingAt) {}
 
-  /** A feature inside {@link EpicDetail}, with its tasks. */
+  /** A feature inside {@link EpicDetail}, with its own status (qits-763) and its tasks. */
   public record FeatureDetail(
       String id,
       String qualifiedId,
       String slug,
       String title,
+      String status,
       String description,
       String dependsOnFeatureId,
       Instant implementedOn,
@@ -168,6 +182,7 @@ public class EpicMcpTools {
       String qualifiedId,
       String slug,
       String title,
+      String status,
       String description,
       String dependsOnFeatureId) {}
 
@@ -177,6 +192,7 @@ public class EpicMcpTools {
       String qualifiedId,
       String slug,
       String title,
+      String status,
       String description,
       String repositoryId,
       String dependsOnTaskId) {}
@@ -196,6 +212,7 @@ public class EpicMcpTools {
       String qualifiedId,
       String slug,
       String title,
+      String status,
       String repositoryId,
       Instant implementedAt) {}
 
@@ -209,8 +226,22 @@ public class EpicMcpTools {
       String qualifiedId,
       String slug,
       String title,
+      String status,
       String repositoryId,
       Instant implementingAt) {}
+
+  /**
+   * What {@link #transitionTask} answers: the feature or the task in its new status, and the status
+   * it left. {@code archetype} says which of the two it was, since the tool takes either.
+   */
+  public record PieceTransitioned(
+      String id,
+      String qualifiedId,
+      String archetype,
+      String slug,
+      String title,
+      String statusBefore,
+      String status) {}
 
   // --- Epics ----------------------------------------------------------------
 
@@ -243,10 +274,12 @@ public class EpicMcpTools {
       description =
           "Read one epic of this project in full: its description plus every feature and, under"
               + " each, every task, and the epic's own comment thread, oldest first. Use it before"
-              + " editing a draft, so the tree you extend is the one that exists. The implementing"
-              + " and implemented markers it reports are set as work starts and ships and are not"
-              + " part of a draft; if you are the agent implementing this epic, record them with"
-              + " mark_task_implementing and mark_task_implemented.")
+              + " editing a draft, so the tree you extend is the one that exists. Every feature and"
+              + " task carries its own status, and the implementing and implemented markers say when"
+              + " it got there; they are set as work starts and ships and are not part of a draft."
+              + " If you are the agent implementing this epic, record them with"
+              + " mark_task_implementing and mark_task_implemented, and move a task further with"
+              + " transition_task.")
   public EpicDetail getEpic(
       @ToolArg(description = "id of an epic in this project") String id) {
     WorkEntity epic = requireEpicInProject(id);
@@ -261,6 +294,7 @@ public class EpicMcpTools {
                       QualifiedEntityIds.render(projectSlug, feature.number),
                       feature.slug,
                       feature.title,
+                      feature.status,
                       feature.description,
                       feature.dependsOnEntityId,
                       feature.implementedAt,
@@ -274,6 +308,7 @@ public class EpicMcpTools {
                                       QualifiedEntityIds.render(projectSlug, task.number),
                                       task.slug,
                                       task.title,
+                                      task.status,
                                       task.description,
                                       task.repositoryId,
                                       task.dependsOnEntityId,
@@ -365,12 +400,15 @@ public class EpicMcpTools {
               + " was started (a dispatch press, or your first mark_task_implementing, moves the"
               + " epic here for you); IMPLEMENTED — every task is"
               + " marked with mark_task_implemented and every touched repository is released AND"
-              + " deployed (moving here stamps any task still unmarked, so never make it with work"
-              + " outstanding); VERIFYING — the verification was started (a dispatch press moves the"
+              + " deployed (moving here carries every feature and task still short of IMPLEMENTED"
+              + " there and stamps its marker, so never make it with work outstanding); VERIFYING — the verification was started (a dispatch press moves the"
               + " epic here for you); VERIFIED — you confirmed on the platform that what the epic promised"
               + " holds; DONE — closed, which is a person's call; DROPPED — a decision was taken not"
-              + " to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or"
-              + " back: REPORTED <-> REFINED <-> IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING <->"
+              + " to do this work at all. Features and tasks hold statuses of their own: moving the"
+              + " epic to REFINED refines its REPORTED ones, moving it back to REPORTED returns its"
+              + " REFINED ones, and moving it to IMPLEMENTED carries them as above — no other move"
+              + " touches them, so verifying the epic verifies no task (use transition_task)."
+              + " ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING <->"
               + " VERIFIED -> DONE, one step at a time, with TWO SKIPS: REFINED -> IMPLEMENTED and"
               + " IMPLEMENTED -> VERIFIED directly are allowed, for work finished without ever"
               + " being moved to IMPLEMENTING or VERIFYING. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
@@ -443,8 +481,9 @@ public class EpicMcpTools {
       name = "update_feature",
       description =
           "Change a feature of a REPORTED epic. Omitted fields keep their current value. Refused"
-              + " once the owning epic leaves REPORTED. The implemented marker is not editable"
-              + " here — that is recorded by people as work ships.")
+              + " once the owning epic leaves REPORTED. Neither the feature's status nor its"
+              + " implemented marker is editable here: the marker is recorded by people as work"
+              + " ships, and the status moves with transition_task once the epic is refined.")
   public FeatureSummary updateFeature(
       @ToolArg(description = "id of a feature in this project") String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
@@ -523,9 +562,10 @@ public class EpicMcpTools {
       name = "update_task",
       description =
           "Change a task of a REPORTED epic. Omitted fields keep their current value. Refused once"
-              + " the owning epic leaves REPORTED. The implemented marker is not editable here —"
-              + " that is recorded by people as work ships, or with mark_task_implemented by the"
-              + " agent implementing the epic.")
+              + " the owning epic leaves REPORTED. Neither the task's status nor its markers are"
+              + " editable here: the agent implementing the epic records them with"
+              + " mark_task_implementing and mark_task_implemented, which move the task's status"
+              + " too, and moves it further with transition_task.")
   public TaskSummary updateTask(
       @ToolArg(description = "id of a task in this project") String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
@@ -584,8 +624,9 @@ public class EpicMcpTools {
               + " implemented — REFINED or IMPLEMENTING; a task of a REPORTED epic has nothing to"
               + " mark yet, and one of a finished epic is already settled. This is the marker a"
               + " dispatched implementing agent sets as it goes: mark each task as its work lands,"
-              + " rather than all of them at the end. Calling mark_task_implementing first is"
-              + " expected but not required.")
+              + " rather than all of them at the end. It moves the task's own status to IMPLEMENTED"
+              + " (a task already further on, say VERIFIED, stays where it is). Calling"
+              + " mark_task_implementing first is expected but not required.")
   public TaskImplemented markTaskImplemented(
       @ToolArg(description = "id of a task in this project") String id) {
     requireTaskInProject(id);
@@ -599,17 +640,18 @@ public class EpicMcpTools {
         QualifiedEntityIds.render(projectSlug(), task.number),
         task.slug,
         task.title,
+        task.status,
         task.repositoryId,
         task.implementedAt);
   }
 
   /**
    * <b>The implementing marker</b> (qits-749): the task's work was started. Its sibling {@link
-   * #markTaskImplemented} records that the work landed; this records that it began, so a feature or
-   * a task — which have no status — shows in the IMPLEMENTING column. It stamps the task's {@code
-   * implementingAt} (and its feature's, the first time) when unset and keeps it when set, so a
-   * second call is harmless; and on an epic still REFINED it moves the epic to IMPLEMENTING, so an
-   * agent that starts without a dispatch press still shows on the board. All three are {@code
+   * #markTaskImplemented} records that the work landed; this records that it began. It stamps the
+   * task's {@code implementingAt} (and its feature's, the first time) when unset and keeps it when
+   * set, so a second call is harmless, and since qits-763 it moves the task — and its feature, the
+   * first time — to IMPLEMENTING; on an epic still REFINED it moves the epic to IMPLEMENTING too, so
+   * an agent that starts without a dispatch press still shows on the board. All of it is {@code
    * WorkEntityService.markImplementing}'s, guarded by {@code
    * EntityLifecycle.requireBeingImplemented} like the sibling. Skippable: a task may be marked
    * implemented without ever being marked implementing.
@@ -620,7 +662,8 @@ public class EpicMcpTools {
       description =
           "Record that you started a task's work. Accepted only while the owning epic is being"
               + " implemented — REFINED or IMPLEMENTING. It stamps the task (and its feature, the"
-              + " first time) as implementing, and an epic still REFINED moves to IMPLEMENTING."
+              + " first time) as implementing and moves its status to IMPLEMENTING, and an epic"
+              + " still REFINED moves to IMPLEMENTING."
               + " Idempotent: a task already marked keeps its first time. Call it as you start each"
               + " task, then mark_task_implemented as its work lands.")
   public TaskImplementing markTaskImplementing(
@@ -633,8 +676,85 @@ public class EpicMcpTools {
         QualifiedEntityIds.render(projectSlug(), task.number),
         task.slug,
         task.title,
+        task.status,
         task.repositoryId,
         task.implementingAt);
+  }
+
+  /**
+   * <b>A feature's or a task's own lifecycle move</b> (qits-763) — {@code transition_ticket}'s shape
+   * for the two kinds that hold a status but run no phase. One tool for both, because they are one
+   * kind of claim: where a piece of the plan stands. It goes through {@link EntityResolutions} like
+   * every door's move, so the rules are the service's and nothing here re-states them: the epic's
+   * graph and both skips, a 409 while the owning epic is REPORTED (the plan is a draft — edit or
+   * remove the piece instead), and a feature's move to IMPLEMENTED carrying its tasks.
+   *
+   * <p>{@code PhaseAdvance} is called after the move exactly as {@code transition_ticket} calls it,
+   * and returns at once: no phase runs on a piece, so no turn is delivered and no branch is
+   * released. Kept rather than skipped so the two tools stay one shape and the "no phase for a
+   * piece" rule stays in one place.
+   *
+   * <p>Not for the markers: starting and landing a task are {@code mark_task_implementing} and
+   * {@code mark_task_implemented}, which stamp when it happened as well as moving the status. This
+   * is for everything after — above all VERIFYING and VERIFIED, which a task now reaches on its own
+   * rather than when its epic does.
+   */
+  @McpServer("repository")
+  @Tool(
+      name = "transition_task",
+      description =
+          "Move a feature or a task of this project along its own lifecycle — the same walk an epic"
+              + " and a ticket take. A status is a claim about what that piece has ACHIEVED, so only"
+              + " move to one you can honestly make: REPORTED — part of a draft plan; REFINED — the"
+              + " plan it belongs to is complete; IMPLEMENTING — its work was started"
+              + " (mark_task_implementing moves a task here for you); IMPLEMENTED — its work is"
+              + " released AND deployed (mark_task_implemented moves a task here for you); VERIFYING"
+              + " — you started checking it on the platform; VERIFIED — you confirmed on the platform"
+              + " that what it promised holds; DONE — closed, which is a person's call; DROPPED — a"
+              + " decision was taken not to do this piece at all. A TASK IS VERIFIED ON ITS OWN:"
+              + " verify each one as you confirm it, without waiting for its siblings or its epic —"
+              + " moving the epic does not move its tasks past IMPLEMENTED. ALONG THE PIPELINE MOVES"
+              + " ARE ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> IMPLEMENTING <->"
+              + " IMPLEMENTED <-> VERIFYING <-> VERIFIED -> DONE, with TWO SKIPS: REFINED ->"
+              + " IMPLEMENTED and IMPLEMENTED -> VERIFIED. DONE IS FINAL. Refused while the owning"
+              + " epic is REPORTED: the plan is still a draft, so edit or remove the piece instead."
+              + " Moving a feature to IMPLEMENTED carries its tasks that are not there yet. Moving"
+              + " back corrects a claim that turned out wrong; it is not how a phase reports"
+              + " failure — block the epic with block_entity for that. Do NOT drop a piece merely"
+              + " because it is hard.")
+  public PieceTransitioned transitionTask(
+      @ToolArg(
+              description =
+                  "id of a feature or a task in this project: its UUID or its qualified id"
+                      + " (<project>-<n>)")
+          String id,
+      @ToolArg(
+              description =
+                  "the status to move to: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,"
+                      + " VERIFIED, DONE or DROPPED. On the pipeline it must be a neighbour of the"
+                      + " current status, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED"
+                      + " (the skips); DROPPED is reachable from any status that is not DONE, and"
+                      + " reopens only to REPORTED; DONE is final and moves nowhere")
+          String target) {
+    WorkEntity piece = requirePieceInProject(id);
+    String changedBy = changedBy();
+    WorkEntityService.Transition moved =
+        resolutions.transition(piece.archetype, piece.id, target, changedBy);
+    WorkEntity row = moved.entity();
+    announce();
+    try {
+      phaseAdvance.afterTransition(row, moved.statusBefore(), changedBy);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not start the phase %s %s just moved into", row.archetype, row.id);
+    }
+    return new PieceTransitioned(
+        row.id,
+        QualifiedEntityIds.render(projectSlug(), row.number),
+        row.archetype.name(),
+        row.slug,
+        row.title,
+        moved.statusBefore(),
+        row.status);
   }
 
   @McpServer("repository")
@@ -674,6 +794,31 @@ public class EpicMcpTools {
     Nested task = entities.nested(Archetype.TASK, taskId);
     requireFeatureInProject(task.parentId());
     return task;
+  }
+
+  /**
+   * A feature or a task of the scoped project, named by UUID or qualified id. Any other kind, or a
+   * row elsewhere, reads as not found — the tool's subject is a piece of a plan and nothing else.
+   */
+  private WorkEntity requirePieceInProject(String id) {
+    WorkEntity row;
+    try {
+      row = ids.resolve(id);
+    } catch (NotFoundException e) {
+      throw new NotFoundException("Feature or task not found in this project: " + id);
+    }
+    if (row.archetype != Archetype.FEATURE && row.archetype != Archetype.TASK) {
+      throw new NotFoundException(
+          "Feature or task not found in this project: "
+              + id
+              + " is a "
+              + row.archetype
+              + " — move a ticket with transition_ticket and an epic with transition_epic.");
+    }
+    if (!scope.requireProjectId().equals(row.projectId)) {
+      throw new NotFoundException("Feature or task not found in this project: " + id);
+    }
+    return row;
   }
 
   // --- Plumbing -------------------------------------------------------------
@@ -723,6 +868,7 @@ public class EpicMcpTools {
         QualifiedEntityIds.render(projectSlug, feature.number),
         feature.slug,
         feature.title,
+        feature.status,
         feature.description,
         feature.dependsOnEntityId);
   }
@@ -734,6 +880,7 @@ public class EpicMcpTools {
         QualifiedEntityIds.render(projectSlug, task.number),
         task.slug,
         task.title,
+        task.status,
         task.description,
         task.repositoryId,
         task.dependsOnEntityId);

@@ -186,8 +186,9 @@ public class CommitSubjectEntities {
    * @param number the bare per-project number
    * @param archetype EPIC, TICKET, FEATURE or TASK. The number names a node, so all four are
    *     reachable through one subject
-   * @param status the status word as stored, or null for a kind with no lifecycle (a FEATURE, a
-   *     TASK). A consumer gating on a status must read the archetype first
+   * @param status the status word as stored — every archetype holds one since qits-763, a FEATURE's
+   *     and a TASK's being where that piece stands rather than its epic's phase. A consumer gating on
+   *     a status must read the archetype first
    * @param title the label, for the message a consumer writes about it
    */
   public record NamedEntity(

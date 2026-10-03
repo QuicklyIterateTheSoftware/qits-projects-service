@@ -153,9 +153,12 @@ public class EntityBlocks {
 
   /**
    * <b>409 unless a phase runs while this entity's status holds.</b> Two questions, one answer: a
-   * kind with no lifecycle — a feature, a task — has no status of its own (its phase is its epic's),
-   * and a status {@link PhasePrompts#phaseOf} answers empty for starts no phase. Either way there is
-   * nothing for a block to be about. The second is VERIFIED and DONE — the work is over and what is
+   * feature or a task holds a status of its own since qits-763 but runs no phase (its phase is its
+   * epic's), and a status {@link PhasePrompts#phaseOf} answers empty for starts no phase. Either way
+   * there is nothing for a block to be about. The first is asked <b>explicitly</b>, by archetype,
+   * and before the second, even though {@code phaseOf} also answers a piece with nothing: the
+   * refusal is about the kind, and it must say so — "a REFINED task starts no phase" would read as a
+   * status a caller could move away from. The second is VERIFIED and DONE — the work is over and what is
    * left is a person's judgement — and DROPPED, where the work was decided against and no phase
    * will ever run again.
    *
@@ -172,12 +175,12 @@ public class EntityBlocks {
    */
   static void requireBlockable(WorkEntity entity) {
     String noun = WorkEntityService.nounOf(entity.archetype);
-    if (Archetypes.legalStatuses(entity.archetype).isEmpty()) {
+    if (Archetypes.isPlanPiece(entity.archetype)) {
       throw new ConflictException(
           noun
               + " "
               + entity.id
-              + " has no lifecycle of its own, so there is nothing to block — its phase is its"
+              + " runs no phase of its own, so there is nothing to block — its phase is its"
               + " epic's; block the epic instead.");
     }
     if (PhasePrompts.phaseOf(entity).isEmpty()) {

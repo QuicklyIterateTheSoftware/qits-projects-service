@@ -99,8 +99,8 @@ public class EntityBlockController {
   @APIResponse(
       responseCode = "409",
       description =
-          "A feature or a task (no lifecycle), or a status that starts no phase (VERIFIED, DONE,"
-              + " DROPPED)")
+          "A feature or a task (which runs no phase of its own), or a status that starts no phase"
+              + " (VERIFIED, DONE, DROPPED)")
   public EntityBlockAnswer setBlocked(@PathParam("id") String id, EntityBlockRequest request) {
     WorkEntity entity = ids.resolve(id);
     EntitiesAgentAccess.requireProject(identity, entity.projectId);

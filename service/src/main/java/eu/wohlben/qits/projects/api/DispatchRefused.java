@@ -4,7 +4,7 @@ import eu.wohlben.qits.projects.error.DomainException;
 
 /**
  * <b>A dispatch refused before anything happened</b> (qits-417): every refusal {@link
- * EntityDispatch#precheck} makes — no lifecycle, a block, no phase left (or not the phase asked for),
+ * EntityDispatch#precheck} makes — a feature or a task, a block, no phase left (or not the phase asked for),
  * no workspaces context, no wrapper — and nothing else. No bit was written, no workspace was asked
  * for, no comment was posted.
  *

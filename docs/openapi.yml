@@ -1427,6 +1427,9 @@ components:
           - "null"
           description: A feature's or task's implemented marker (ISO-8601 instant);
             null clears it. Moves only while the owning epic is REFINED or IMPLEMENTING.
+            Setting it moves the item's status to IMPLEMENTED; clearing it takes an
+            IMPLEMENTED item back to IMPLEMENTING (or REFINED when it was never marked
+            implementing).
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
@@ -1435,7 +1438,8 @@ components:
           type: string
           description: "A feature's or task's implementing marker (ISO-8601 instant):\
             \ when its implementation was started. Cannot be cleared. Moves only while\
-            \ the owning epic is REFINED or IMPLEMENTING."
+            \ the owning epic is REFINED or IMPLEMENTING, and moves the item's status\
+            \ to IMPLEMENTING when it is not already there or further."
     EntityProperty:
       type: string
       enum:
@@ -1621,6 +1625,17 @@ components:
           type: string
         description:
           type: string
+        status:
+          type: string
+          enum:
+          - REPORTED
+          - REFINED
+          - IMPLEMENTING
+          - IMPLEMENTED
+          - VERIFYING
+          - VERIFIED
+          - DONE
+          - DROPPED
         dependsOnFeatureId:
           type: string
         implementedOn:
@@ -2843,6 +2858,17 @@ components:
           type: string
         description:
           type: string
+        status:
+          type: string
+          enum:
+          - REPORTED
+          - REFINED
+          - IMPLEMENTING
+          - IMPLEMENTED
+          - VERIFYING
+          - VERIFIED
+          - DONE
+          - DROPPED
         dependsOnTaskId:
           type: string
         implementedAt:
@@ -3882,11 +3908,12 @@ paths:
       summary: Edit an entity's fields (JSON merge patch)
       description: "Partial update of one entity of any archetype. An absent property\
         \ is left unchanged and an explicit null clears it. The status is never written\
-        \ here — a lifecycle move goes through the archetype's /{id}/transition, and\
-        \ a reshape, reparent or supersede through POST /projects/api/entities/transition.\
-        \ An epic's, feature's or task's scope follows the epic's freeze: scope edits\
-        \ need the epic REPORTED, the implemented marker needs it REFINED. Answers\
-        \ the entity in the merged shape."
+        \ here — a lifecycle move goes through POST /projects/api/entities/{id}/status\
+        \ (or the archetype's own /{id}/transition), and a reshape, reparent or supersede\
+        \ through POST /projects/api/entities/transition. An epic's, feature's or\
+        \ task's scope follows the epic's freeze: scope edits need the epic REPORTED,\
+        \ the markers need it REFINED or IMPLEMENTING, and a marker moves the item's\
+        \ status with it. Answers the entity in the merged shape."
       parameters:
       - name: id
         in: path
@@ -3996,8 +4023,8 @@ paths:
         "404":
           description: No entity with this id
         "409":
-          description: "A feature or a task (no lifecycle), or a status that starts\
-            \ no phase (VERIFIED, DONE, DROPPED)"
+          description: "A feature or a task (which runs no phase of its own), or a\
+            \ status that starts no phase (VERIFIED, DONE, DROPPED)"
         "401":
           description: Not Authorized
       tags:
@@ -4191,12 +4218,14 @@ paths:
   /projects/api/entities/{id}/status:
     post:
       summary: Move an entity through its lifecycle
-      description: "Moves an epic, ticket or campaign to the target status, by the\
-        \ same path as the archetype's own /{id}/transition door and under its roles:\
-        \ an agent may move a ticket or a campaign of its own project, a platform\
-        \ service (qits:system) one of any project, and an epic is qits:admin alone.\
-        \ A feature or a task has no status. The id is the UUID or the qualified id.\
-        \ Answers the entity in the merged shape, with statusBefore."
+      description: "Moves an epic, ticket, campaign, feature or task to the target\
+        \ status, by the same path as the archetype's own /{id}/transition door and\
+        \ under its roles: an agent may move a ticket or a campaign of its own project,\
+        \ a platform service (qits:system) one of any project, and an epic is qits:admin\
+        \ alone. A feature or a task moves under a ticket's roles, and only once its\
+        \ epic is past REPORTED; the epic's moves to REFINED, back to REPORTED and\
+        \ to IMPLEMENTED carry it, no other does. The id is the UUID or the qualified\
+        \ id. Answers the entity in the merged shape, with statusBefore."
       parameters:
       - name: id
         in: path
@@ -4217,16 +4246,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/TransitionedEntity"
         "400":
-          description: "No target, or an archetype with no lifecycle (a feature or\
-            \ a task)"
+          description: No target
         "403":
           description: "An agent moving an epic, or an entity outside its own project;\
             \ nothing is written"
         "404":
           description: No entity with this id
         "409":
-          description: "A move the lifecycle does not allow, or a target naming no\
-            \ status"
+          description: "A move the lifecycle does not allow, a target naming no status,\
+            \ or a feature or a task whose epic is still REPORTED"
         "401":
           description: Not Authorized
       tags:
@@ -4635,8 +4663,12 @@ paths:
   /projects/api/epics/{id}/transition:
     post:
       summary: Transition
-      description: "Moves the epic to the target status; its features and tasks follow\
-        \ it, having no status of their own."
+      description: "Moves the epic to the target status. Its features and tasks hold\
+        \ statuses of their own and follow it on three moves only: REPORTED to REFINED\
+        \ (each REPORTED piece is refined), REFINED back to REPORTED (each REFINED\
+        \ piece returns) and the move to IMPLEMENTED (each piece still before IMPLEMENTED\
+        \ is carried there). No other move touches them: a task is verified on its\
+        \ own."
       operationId: transitionEpic
       parameters:
       - name: id
@@ -8036,4 +8068,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1002.215433
+  version: 2026.1003.104901
