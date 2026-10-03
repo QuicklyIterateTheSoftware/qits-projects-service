@@ -70,6 +70,8 @@ public class ProviderStates {
       "an epic with a verified feature whose tasks are all verified";
   public static final String AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES =
       "an implementing epic with features in mixed statuses";
+  public static final String A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC =
+      "a campaign with a done, a verified and an implementing epic";
   public static final String A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS =
       "a campaign with ordered developments";
   public static final String A_VERIFIED_EPIC = "a verified epic";
@@ -211,6 +213,9 @@ public class ProviderStates {
     states.put(
         AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES,
         this::anImplementingEpicWithFeaturesInMixedStatuses);
+    states.put(
+        A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
+        this::aCampaignWithADoneAVerifiedAndAnImplementingEpic);
     states.put(A_VERIFIED_EPIC, this::aVerifiedEpic);
     states.put(A_VERIFIED_TICKET, this::aVerifiedTicket);
     states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
@@ -587,6 +592,15 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES);
     String repositoryId = repository(project, "contract-service");
+    String epic = epicWithFeaturesInMixedStatuses(project, repositoryId);
+    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+  }
+
+  /**
+   * Seeds the IMPLEMENTING epic of {@link #AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES}
+   * in {@code project} and returns its id.
+   */
+  private String epicWithFeaturesInMixedStatuses(Project project, String repositoryId) {
     String epic =
         create(
             Archetype.EPIC, project, EntityWrite.epic("Epic with mixed features", "Seeded work."));
@@ -636,7 +650,80 @@ public class ProviderStates {
     walk(Archetype.FEATURE, verifiedFeature, EntityStatus.VERIFIED);
     implemented(implementedFeature);
     walk(Archetype.FEATURE, implementedFeature, EntityStatus.IMPLEMENTED);
-    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+    return epic;
+  }
+
+  /**
+   * Seeds an epic with one feature and its tasks, each moved to {@code target} along the walk:
+   * the epic is made REFINED, then the tasks, then the feature, then the epic itself are moved.
+   */
+  private String epicWithEverything(
+      Project project, String repositoryId, String title, String prefix, EntityStatus target) {
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic(title, "Seeded work."));
+    String feature =
+        node(Archetype.FEATURE, epic, EntityWrite.feature(prefix + " feature", "Seeded.", null));
+    List<String> tasks = new ArrayList<>();
+    for (String ordinal : List.of("First", "Second")) {
+      tasks.add(
+          node(
+              Archetype.TASK,
+              feature,
+              EntityWrite.task(
+                  repositoryId,
+                  ordinal + " " + prefix.toLowerCase() + " task",
+                  "Seeded.",
+                  null)));
+    }
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    for (String task : tasks) {
+      implemented(task);
+      walk(Archetype.TASK, task, target);
+    }
+    implemented(feature);
+    walk(Archetype.FEATURE, feature, target);
+    walk(Archetype.EPIC, epic, target);
+    return epic;
+  }
+
+  /**
+   * A REFINED (running) campaign for the landing app's campaign views, with five members in this
+   * order: a DONE ticket; a DONE epic whose feature and two tasks are DONE; a VERIFIED epic whose
+   * feature and two tasks are VERIFIED; the IMPLEMENTING epic of {@link
+   * #AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES}; and a REFINED ticket. Recorded for the
+   * entity list and for the campaign; the params name every member, so both answers give each
+   * member the same frozen id.
+   */
+  private Setup aCampaignWithADoneAVerifiedAndAnImplementingEpic() {
+    String token = token();
+    Project project = project(token, A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC);
+    String repositoryId = repository(project, "contract-service");
+    String campaign =
+        work.createCampaign(project.id, "Campaign in flight", "Seeded work.", SEEDER).id;
+    String doneTicket = ticket(project, "Done ticket");
+    String refinedTicket = ticket(project, "Refined ticket");
+    String doneEpic =
+        epicWithEverything(project, repositoryId, "Done epic", "Done", EntityStatus.DONE);
+    String verifiedEpic =
+        epicWithEverything(
+            project, repositoryId, "Verified epic", "Verified", EntityStatus.VERIFIED);
+    String implementingEpic = epicWithFeaturesInMixedStatuses(project, repositoryId);
+    walk(Archetype.TICKET, doneTicket, EntityStatus.DONE);
+    work.transition(Archetype.TICKET, refinedTicket, "REFINED", SEEDER);
+    for (String member :
+        List.of(doneTicket, doneEpic, verifiedEpic, implementingEpic, refinedTicket)) {
+      campaigns.addMember(campaign, member, null, false, SEEDER);
+    }
+    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
+    return new Setup(
+        params(
+            "campaignId", campaign,
+            "doneEpicId", doneEpic,
+            "doneTicketId", doneTicket,
+            "implementingEpicId", implementingEpic,
+            "projectId", project.id,
+            "refinedTicketId", refinedTicket,
+            "verifiedEpicId", verifiedEpic),
+        List.of(token));
   }
 
   /** A VERIFIED epic with one feature and one task, ready to be moved to DONE. */

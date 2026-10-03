@@ -262,6 +262,72 @@
       ]
     },
     {
+      "name": "a campaign with a done, a verified and an implementing epic",
+      "slug": "a-campaign-with-a-done-a-verified-and-an-implementing-epic",
+      "params": {
+        "campaignId": "00000000-0000-4000-8000-000000000001",
+        "doneEpicId": "00000000-0000-4000-8000-000000000002",
+        "doneTicketId": "00000000-0000-4000-8000-000000000003",
+        "implementingEpicId": "00000000-0000-4000-8000-000000000004",
+        "projectId": "00000000-0000-4000-8000-000000000005",
+        "refinedTicketId": "00000000-0000-4000-8000-000000000006",
+        "verifiedEpicId": "00000000-0000-4000-8000-000000000007"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{campaignId}",
+          "status": 200,
+          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id",
+              "$.campaign.members[*].groups[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a campaign with ordered developments",
       "slug": "a-campaign-with-ordered-developments",
       "params": {
