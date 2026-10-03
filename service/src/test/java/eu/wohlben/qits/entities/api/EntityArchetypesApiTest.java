@@ -91,7 +91,8 @@ class EntityArchetypesApiTest {
         .body(at("TICKET") + "gathers", equalTo(false))
         .body(at("FEATURE") + "gathers", equalTo(false))
         .body(at("TASK") + "gathers", equalTo(false))
-        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(7))
+        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(6))
+        .body(at("CAMPAIGN") + "transitions.IMPLEMENTED.to", contains("VERIFIED", "REFINED", "DROPPED"))
         .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
   }
 

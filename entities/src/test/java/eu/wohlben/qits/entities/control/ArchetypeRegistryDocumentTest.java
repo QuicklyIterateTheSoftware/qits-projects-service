@@ -84,8 +84,25 @@ class ArchetypeRegistryDocumentTest {
             EntityProperty.STATUS),
         campaign.permitted());
     assertEquals(
-        List.of("DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"),
+        List.of("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"),
         campaign.legalStatuses());
+    // Its lifecycle elides IMPLEMENTING, and IMPLEMENTED -> REFINED is its BACK move (qits-749).
+    assertEquals(
+        List.of("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
+        campaign.lifecycle());
+    assertEquals(
+        List.of(
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
+            move("REPORTED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        campaign.transitions().get("REFINED"));
+    assertEquals(
+        List.of(
+            move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
+            move("REFINED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        campaign.transitions().get("IMPLEMENTED"));
+    assertEquals(false, campaign.transitions().containsKey("IMPLEMENTING"));
     for (Archetype other : List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(false, declared(other).gathers(), other + " gathers");
     }

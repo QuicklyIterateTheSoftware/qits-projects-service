@@ -88,7 +88,10 @@ class ArchetypesTest {
         six);
     assertEquals(six, Archetypes.legalStatuses(Archetype.EPIC));
     assertEquals(six, Archetypes.legalStatuses(Archetype.TICKET));
-    assertEquals(six, Archetypes.legalStatuses(Archetype.CAMPAIGN));
+    // A campaign never enters IMPLEMENTING (qits-749): its words are the rest.
+    var campaign = new java.util.HashSet<>(six);
+    campaign.remove("IMPLEMENTING");
+    assertEquals(campaign, Archetypes.legalStatuses(Archetype.CAMPAIGN));
     assertTrue(Archetypes.legalStatuses(Archetype.FEATURE).isEmpty());
     assertTrue(Archetypes.legalStatuses(Archetype.TASK).isEmpty());
   }

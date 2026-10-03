@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.control;
 
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,6 +57,14 @@ import java.util.Set;
  * be taken at any point while the work is open, and from nowhere else. It reopens (REOPEN) to
  * REPORTED and to nothing else: somebody who has changed their mind about abandoned work is asking
  * what it is for again, which is the refine phase.
+ *
+ * <p><b>A campaign walks the same machine with IMPLEMENTING elided</b> (qits-749). A campaign never
+ * enters IMPLEMENTING — its press starts it and REFINED is what running means — so for that archetype
+ * the state is taken out and the walk closed over the gap: the moves into and out of it go, the
+ * SKIP over it is the campaign's one FORWARD step (REFINED → IMPLEMENTED), and the BACK into it
+ * lands on the state before it (IMPLEMENTED → REFINED, the campaign's BACK move as it always was).
+ * It is derived from {@link #TRANSITIONS}, never declared a second time — see {@link
+ * #transitionsFrom(Archetype, EntityStatus)}.
  *
  * <p><b>The declaration checks itself.</b> The class initialiser refuses a {@link #TRANSITIONS} entry
  * whose kind does not match its ends (a FORWARD that is not the next step on the walk, a DROP that
@@ -160,6 +169,10 @@ public final class EntityStateMachine {
   /** {@link #TRANSITIONS} indexed by source, order kept; every state has an entry. */
   private static final Map<EntityStatus, List<Transition>> OUTGOING = index();
 
+  /** The states an archetype's lifecycle elides from the walk; absent means none. */
+  private static final Map<Archetype, Set<EntityStatus>> ELIDED =
+      Map.of(Archetype.CAMPAIGN, EnumSet.of(EntityStatus.IMPLEMENTING));
+
   static {
     verify();
   }
@@ -213,6 +226,66 @@ public final class EntityStateMachine {
     }
     String refused = "cannot move from " + from + " to " + to;
     return Optional.of(isTerminal(from) ? refused + ": " + finality(from) : refused);
+  }
+
+  // --- per archetype (a campaign elides IMPLEMENTING) ---------------------------------------------
+
+  /** The states {@code archetype}'s lifecycle holds, in lifecycle order. */
+  public static List<EntityStatus> states(Archetype archetype) {
+    Set<EntityStatus> elided = elided(archetype);
+    return STATES.stream().filter(state -> !elided.contains(state)).toList();
+  }
+
+  /**
+   * The legal moves out of {@code from} for {@code archetype}: {@link #transitionsFrom(EntityStatus)}
+   * with the archetype's elided states closed over — a move into or out of one goes, a SKIP over one
+   * becomes a FORWARD step, and a BACK into one lands on the walk's state before it. Empty for a
+   * state the archetype does not hold. The order (FORWARD, SKIP, BACK, DROP/REOPEN) is kept.
+   */
+  public static List<Transition> transitionsFrom(Archetype archetype, EntityStatus from) {
+    Set<EntityStatus> elided = elided(archetype);
+    if (elided.isEmpty()) {
+      return transitionsFrom(from);
+    }
+    if (elided.contains(from)) {
+      return List.of();
+    }
+    List<Transition> moves = new ArrayList<>();
+    for (Transition move : transitionsFrom(from)) {
+      EntityStatus to = move.to();
+      TransitionKind kind = move.kind();
+      if (elided.contains(to)) {
+        if (kind != TransitionKind.BACK) {
+          continue;
+        }
+        to = WALK.get(WALK.indexOf(to) - 1);
+      } else if (kind == TransitionKind.SKIP) {
+        kind = TransitionKind.FORWARD;
+      }
+      Transition collapsed = new Transition(from, to, kind);
+      if (!moves.contains(collapsed)) {
+        moves.add(collapsed);
+      }
+    }
+    return List.copyOf(moves);
+  }
+
+  /** Whether {@code from → to} is a legal move for {@code archetype}. */
+  public static boolean allows(Archetype archetype, EntityStatus from, EntityStatus to) {
+    return transitionsFrom(archetype, from).stream().anyMatch(move -> move.to() == to);
+  }
+
+  /** {@link #refusal(EntityStatus, EntityStatus)} over {@code archetype}'s moves. */
+  public static Optional<String> refusal(Archetype archetype, EntityStatus from, EntityStatus to) {
+    if (allows(archetype, from, to)) {
+      return Optional.empty();
+    }
+    String refused = "cannot move from " + from + " to " + to;
+    return Optional.of(isTerminal(from) ? refused + ": " + finality(from) : refused);
+  }
+
+  private static Set<EntityStatus> elided(Archetype archetype) {
+    return ELIDED.getOrDefault(archetype, Set.of());
   }
 
   /** Whether {@code status} is final — a state with no exits. Today that is DONE alone. */
@@ -315,6 +388,19 @@ public final class EntityStateMachine {
       for (int i = 1; i < moves.size(); i++) {
         if (rank(moves.get(i - 1).kind()) > rank(moves.get(i).kind())) {
           throw new IllegalStateException(state + "'s moves are not FORWARD, SKIP, BACK, DROP/REOPEN");
+        }
+      }
+    }
+    for (Archetype archetype : ELIDED.keySet()) {
+      for (EntityStatus state : states(archetype)) {
+        List<Transition> moves = transitionsFrom(archetype, state);
+        if (isTerminal(state) != moves.isEmpty()) {
+          throw new IllegalStateException(archetype + ": " + state + " is a dead end or has exits");
+        }
+        for (Transition move : moves) {
+          if (!states(archetype).contains(move.to())) {
+            throw new IllegalStateException(archetype + ": " + move + " leaves its lifecycle");
+          }
         }
       }
     }

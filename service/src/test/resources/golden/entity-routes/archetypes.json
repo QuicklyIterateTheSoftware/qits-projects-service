@@ -173,7 +173,7 @@
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE", "STATUS" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS" ],
-      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ],
       "transitions" : {
         "REPORTED" : [ {
           "to" : "REFINED",
@@ -183,23 +183,10 @@
           "kind" : "DROP"
         } ],
         "REFINED" : [ {
-          "to" : "IMPLEMENTING",
-          "kind" : "FORWARD"
-        }, {
           "to" : "IMPLEMENTED",
-          "kind" : "SKIP"
+          "kind" : "FORWARD"
         }, {
           "to" : "REPORTED",
-          "kind" : "BACK"
-        }, {
-          "to" : "DROPPED",
-          "kind" : "DROP"
-        } ],
-        "IMPLEMENTING" : [ {
-          "to" : "IMPLEMENTED",
-          "kind" : "FORWARD"
-        }, {
-          "to" : "REFINED",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -209,7 +196,7 @@
           "to" : "VERIFIED",
           "kind" : "FORWARD"
         }, {
-          "to" : "IMPLEMENTING",
+          "to" : "REFINED",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -231,7 +218,7 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
     } ]
   }
 } ]

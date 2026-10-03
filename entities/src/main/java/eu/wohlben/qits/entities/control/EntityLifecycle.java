@@ -91,7 +91,7 @@ final class EntityLifecycle {
    * and a person decides what follows (qits-592).
    */
   static void requireTransition(Archetype archetype, EntityStatus from, EntityStatus target) {
-    EntityStateMachine.refusal(from, target)
+    EntityStateMachine.refusal(archetype, from, target)
         .ifPresent(
             reason -> {
               throw new ConflictException(subject(archetype) + " " + reason);

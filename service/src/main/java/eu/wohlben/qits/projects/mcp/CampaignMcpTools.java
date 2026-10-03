@@ -211,8 +211,9 @@ public class CampaignMcpTools {
               + " DROPPED, by the rule transition_epic states for an epic — adjacent moves only, one"
               + " step at a time — except that a campaign NEVER enters IMPLEMENTING (refused with a"
               + " 409: REFINED is what running means for a campaign, and its members are what is"
-              + " implemented), so it goes from REFINED to IMPLEMENTED by the walk's one skip, and"
-              + " IMPLEMENTED has no move back but DROPPED. Its membership and conditions are editable only while it is"
+              + " implemented), so its walk is REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED ->"
+              + " DONE with IMPLEMENTING left out: REFINED -> IMPLEMENTED is one step forward and"
+              + " IMPLEMENTED -> REFINED one step back. Its membership and conditions are editable only while it is"
               + " REPORTED or REFINED — add_campaign_member, move_campaign_member,"
               + " remove_campaign_member and set_campaign_member_condition are all refused once it"
               + " moves past REFINED. Moving out of REFINED pauses a campaign that is currently"
@@ -224,8 +225,7 @@ public class CampaignMcpTools {
               description =
                   "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
                       + " DROPPED (never IMPLEMENTING). It must be a neighbour of the campaign's"
-                      + " current status, or IMPLEMENTED from REFINED (the skip); DONE is final and"
-                      + " moves nowhere")
+                      + " current status on that walk; DONE is final and moves nowhere")
           String target) {
     requireCampaignInProject(id);
     String projectId = scope.requireProjectId();

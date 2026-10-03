@@ -176,6 +176,16 @@ class CampaignApiTest {
         .then()
         .statusCode(409)
         .body("message", containsString("never moves to IMPLEMENTING"));
+    // ... and its BACK move from IMPLEMENTED is still REFINED, through the same door.
+    for (String target : List.of("IMPLEMENTED", "REFINED")) {
+      given()
+          .contentType(ContentType.JSON)
+          .body(Map.of("target", target))
+          .post(base + "/transition")
+          .then()
+          .statusCode(200)
+          .body("campaign.status", equalTo(target));
+    }
 
     given()
         .get("/projects/api/projects/" + PROJECT + "/campaigns")

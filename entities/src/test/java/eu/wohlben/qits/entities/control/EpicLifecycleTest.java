@@ -751,10 +751,16 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertTrue(refused.getMessage().contains("never moves to IMPLEMENTING"), refused.getMessage());
     assertEquals(
         EntityStatus.REFINED.name(), workEntities.get(Archetype.CAMPAIGN, campaign.id).status);
-    // It reaches IMPLEMENTED by the walk's one skip instead.
+    // It reaches IMPLEMENTED in one step instead, and IMPLEMENTED -> REFINED is still its BACK move.
     assertEquals(
         EntityStatus.IMPLEMENTED.name(),
         workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t").entity().status);
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTING", "t"));
+    assertEquals(
+        EntityStatus.REFINED.name(),
+        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REFINED", "t").entity().status);
   }
 
   @Test

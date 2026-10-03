@@ -840,6 +840,7 @@ public class WorkEntityService {
     if (kind.archetype() == Archetype.CAMPAIGN && to == EntityStatus.IMPLEMENTING) {
       // A campaign never enters IMPLEMENTING (qits-749): its press starts it and REFINED is what
       // "running" means, so the status would say nothing a campaign's start does not already say.
+      // Its lifecycle elides the state already; this refusal is here for the sentence it says.
       throw new ConflictException(
           "A campaign never moves to IMPLEMENTING: campaign "
               + row.id

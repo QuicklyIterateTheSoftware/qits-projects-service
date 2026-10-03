@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.entities.control.EntityStateMachine.TransitionKind;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Transition;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -136,6 +137,40 @@ class EntityStateMachineTest {
     // IMPLEMENTED -> REFINED was replaced by IMPLEMENTED -> IMPLEMENTING.
     assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.REFINED));
     assertTrue(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING));
+  }
+
+  @Test
+  void aCampaignWalksTheMachineWithImplementingElided() {
+    // qits-749: a campaign never enters IMPLEMENTING, so its lifecycle is the walk closed over it.
+    assertFalse(EntityStateMachine.states(Archetype.CAMPAIGN).contains(EntityStatus.IMPLEMENTING));
+    assertEquals(
+        List.of(
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
+            new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP)),
+        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.REFINED));
+    assertEquals(
+        List.of(
+            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP)),
+        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTED));
+    assertTrue(
+        EntityStateMachine.refusal(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTED, EntityStatus.REFINED)
+            .isEmpty());
+    assertTrue(
+        EntityStateMachine.refusal(
+                Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.IMPLEMENTING)
+            .isPresent());
+    // Every other archetype reads the machine unchanged.
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
+      assertEquals(EntityStateMachine.states(), EntityStateMachine.states(archetype));
+      for (EntityStatus state : EntityStatus.values()) {
+        assertEquals(
+            EntityStateMachine.transitionsFrom(state),
+            EntityStateMachine.transitionsFrom(archetype, state));
+      }
+    }
   }
 
   // ---- DONE is final ---------------------------------------------------------------------------

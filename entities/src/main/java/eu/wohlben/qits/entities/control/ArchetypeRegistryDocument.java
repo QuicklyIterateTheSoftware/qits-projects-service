@@ -186,10 +186,10 @@ public record ArchetypeRegistryDocument(
       return Map.of();
     }
     Map<String, List<LegalMove>> served = new LinkedHashMap<>();
-    for (EntityStatus state : EntityStateMachine.states()) {
+    for (EntityStatus state : EntityStateMachine.states(spec.archetype())) {
       served.put(
           state.name(),
-          EntityStateMachine.transitionsFrom(state).stream()
+          EntityStateMachine.transitionsFrom(spec.archetype(), state).stream()
               .map(move -> new LegalMove(move.to().name(), move.kind()))
               .toList());
     }
@@ -201,7 +201,7 @@ public record ArchetypeRegistryDocument(
     if (spec.legalStatuses().isEmpty()) {
       return List.of();
     }
-    return EntityStateMachine.states().stream().map(EntityStatus::name).toList();
+    return EntityStateMachine.states(spec.archetype()).stream().map(EntityStatus::name).toList();
   }
 
   /** The members of {@code properties}, in the vocabulary's own declaration order. */

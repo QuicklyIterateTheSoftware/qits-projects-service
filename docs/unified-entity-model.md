@@ -2112,8 +2112,12 @@ history. Consumers rank `implementedAt` over `implementingAt`. A PATCH may set t
 not clear it; a transition entry neither states nor clears it where the target kind has a slot.
 
 **A campaign never enters IMPLEMENTING** — REFINED is what running means for one — so the move is a
-409 there, and a campaign reaches IMPLEMENTED by the skip. A consequence worth stating: IMPLEMENTED's
-one step back is IMPLEMENTING now, so a campaign at IMPLEMENTED has no backward move, only DROPPED.
+409 there. Its lifecycle is the same machine with IMPLEMENTING elided
+(`EntityStateMachine.transitionsFrom(Archetype, …)`, derived, never declared twice): the moves into
+and out of IMPLEMENTING go, the skip over it is the campaign's FORWARD step REFINED → IMPLEMENTED,
+and the BACK into it lands on REFINED, so IMPLEMENTED → REFINED stays a campaign's BACK move. The
+served registry says so per archetype: a campaign's `legalStatuses`, `lifecycle` and `transitions`
+carry no IMPLEMENTING.
 
 ## Where the code is
 
