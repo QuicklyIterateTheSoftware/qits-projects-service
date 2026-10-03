@@ -1788,6 +1788,43 @@
       ]
     },
     {
+      "name": "an epic with a feature whose tasks are all verified",
+      "slug": "an-epic-with-a-feature-whose-tasks-are-all-verified",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "an-epic-with-a-feature-whose-tasks-are-all-verified/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an epic with features and tasks",
       "slug": "an-epic-with-features-and-tasks",
       "params": {

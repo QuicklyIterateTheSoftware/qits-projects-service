@@ -64,6 +64,8 @@ public class ProviderStates {
   public static final String AN_EPIC_WITH_FEATURES_AND_TASKS = "an epic with features and tasks";
   public static final String AN_EPIC_WITH_TASKS_IN_EVERY_STATUS =
       "an epic with tasks in every status";
+  public static final String AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED =
+      "an epic with a feature whose tasks are all verified";
   public static final String A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS =
       "a campaign with ordered developments";
   public static final String A_VERIFIED_EPIC = "a verified epic";
@@ -192,6 +194,9 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_WORK_IN_EVERY_STATUS, this::aProjectWithWorkInEveryStatus);
     states.put(AN_EPIC_WITH_FEATURES_AND_TASKS, this::anEpicWithFeaturesAndTasks);
     states.put(AN_EPIC_WITH_TASKS_IN_EVERY_STATUS, this::anEpicWithTasksInEveryStatus);
+    states.put(
+        AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED,
+        this::anEpicWithAFeatureWhoseTasksAreAllVerified);
     states.put(A_VERIFIED_EPIC, this::aVerifiedEpic);
     states.put(A_VERIFIED_TICKET, this::aVerifiedTicket);
     states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
@@ -473,6 +478,45 @@ public class ProviderStates {
       walk(Archetype.TASK, task, status);
     }
     work.transition(Archetype.TASK, tasks.get(EntityStatus.DROPPED), "DROPPED", SEEDER);
+    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+  }
+
+  /**
+   * <b>An IMPLEMENTING epic with a feature whose tasks are all VERIFIED</b>: a board draws that
+   * feature's row with empty lanes. A second feature keeps one REFINED task and one IMPLEMENTING
+   * task, for contrast. The IMPLEMENTING task moves the epic to IMPLEMENTING; each verified task
+   * gets its marker and then its own moves, which move nothing above it.
+   */
+  private Setup anEpicWithAFeatureWhoseTasksAreAllVerified() {
+    String token = token();
+    Project project = project(token, AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED);
+    String repositoryId = repository(project, "contract-service");
+    String epic =
+        create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work."));
+    String verified =
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Verified feature", "Seeded.", null));
+    List<String> verifiedTasks = new ArrayList<>();
+    for (String ordinal : List.of("First", "Second", "Third")) {
+      verifiedTasks.add(
+          node(
+              Archetype.TASK,
+              verified,
+              EntityWrite.task(repositoryId, ordinal + " verified task", "Seeded.", null)));
+    }
+    String open =
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded.", null));
+    node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Refined task", "Seeded.", null));
+    String started =
+        node(
+            Archetype.TASK,
+            open,
+            EntityWrite.task(repositoryId, "Implementing task", "Seeded.", null));
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.markImplementing(started, SEEDER);
+    for (String task : verifiedTasks) {
+      implemented(task);
+      walk(Archetype.TASK, task, EntityStatus.VERIFIED);
+    }
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
   }
 
