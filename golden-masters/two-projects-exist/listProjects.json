@@ -1,0 +1,30 @@
+{
+  "entries": [
+    {
+      "project": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "qits",
+        "slug": "qits-00000001",
+        "description": "Seeded by the provider state 'two projects exist'.",
+        "dns": {
+          "domain": "example.test.eu",
+          "type": "A",
+          "value": "203.0.113.9"
+        }
+      }
+    },
+    {
+      "project": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "name": "telemetry",
+        "slug": "telemetry-00000002",
+        "description": "Seeded by the provider state 'two projects exist'.",
+        "dns": {
+          "domain": "example.test.eu",
+          "type": "A",
+          "value": "203.0.113.9"
+        }
+      }
+    }
+  ]
+}

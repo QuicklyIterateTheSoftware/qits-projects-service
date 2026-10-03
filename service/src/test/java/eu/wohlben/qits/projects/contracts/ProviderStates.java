@@ -46,6 +46,9 @@ import java.util.function.Supplier;
 public class ProviderStates {
 
   public static final String A_PROJECT_EXISTS = "a project exists";
+  public static final String TWO_PROJECTS_EXIST = "two projects exist";
+  public static final String NO_PROJECTS_EXIST = "no projects exist";
+  public static final String A_PROJECT_WITH_ONE_REPOSITORY = "a project with one repository";
   public static final String A_PROJECT_WITH_3_REPOSITORIES = "a project with 3 repositories";
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
   public static final String A_PROJECT_WITH_REFINED_WORK = "a project with refined work";
@@ -103,6 +106,9 @@ public class ProviderStates {
 
   public ProviderStates() {
     states.put(A_PROJECT_EXISTS, this::aProjectExists);
+    states.put(TWO_PROJECTS_EXIST, this::twoProjectsExist);
+    states.put(NO_PROJECTS_EXIST, this::noProjectsExist);
+    states.put(A_PROJECT_WITH_ONE_REPOSITORY, this::aProjectWithOneRepository);
     states.put(A_PROJECT_WITH_3_REPOSITORIES, this::aProjectWith3Repositories);
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
     states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
@@ -175,6 +181,46 @@ public class ProviderStates {
   private Setup aProjectExists() {
     String token = token();
     Project project = project(token, A_PROJECT_EXISTS);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * Two projects, {@code qits} ({@code projectId}) and {@code telemetry} ({@code secondProjectId}),
+   * for a picker that shows more than one. The first holds two repositories in the {@code qits-ci}
+   * component and three work items (a REFINED epic and ticket, a REPORTED ticket), so its
+   * per-project reads have something to count; the second holds nothing. Slugs are {@code
+   * <name>-<token>}, as every seeded slug carries a token.
+   */
+  private Setup twoProjectsExist() {
+    String first = token();
+    String second = token();
+    Project qits = project("qits", "qits-" + first, TWO_PROJECTS_EXIST);
+    Project telemetry = project("telemetry", "telemetry-" + second, TWO_PROJECTS_EXIST);
+    projectService.createRepository(qits.id, null, "qits-ci-service", null, "qits-ci");
+    projectService.createRepository(qits.id, null, "qits-ci-frontend", null, "qits-ci");
+    String epic = create(Archetype.EPIC, qits, EntityWrite.epic("Unified SPA", "Seeded work."));
+    String ticket = ticket(qits, "Picker shows every project");
+    ticket(qits, "Cards load their lines lazily");
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.TICKET, ticket, "REFINED", SEEDER);
+    return new Setup(
+        params("projectId", qits.id, "secondProjectId", telemetry.id), List.of(first, second));
+  }
+
+  /**
+   * Seeds nothing. A pact verification runs it after {@code PlatformStateReset} has emptied the
+   * projects tables, so the list is empty there; the recorder filters the list to the state's own
+   * entries, of which there are none.
+   */
+  private Setup noProjectsExist() {
+    return new Setup(params(), List.of());
+  }
+
+  /** One component repository: the listing holds it and the project's wrapper. */
+  private Setup aProjectWithOneRepository() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_ONE_REPOSITORY);
+    projectService.createRepository(project.id, null, "contract-service", null);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
@@ -495,12 +541,12 @@ public class ProviderStates {
    * name is free to repeat (only the slug is unique), so it stays fixed seed data.
    */
   private Project project(String token, String state) {
+    return project("Contract project", "contract-" + token, state);
+  }
+
+  private Project project(String name, String slug, String state) {
     return projectService.create(
-        "Contract project",
-        "contract-" + token,
-        "Seeded by the provider state '" + state + "'.",
-        null,
-        DNS);
+        name, slug, "Seeded by the provider state '" + state + "'.", null, DNS);
   }
 
   /** Eight random hex characters — enough to keep slugs apart, short enough to fit one. */

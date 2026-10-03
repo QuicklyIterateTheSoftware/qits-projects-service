@@ -1,0 +1,62 @@
+{
+  "entries": [
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "name": "qits-00000001-qits-00000001",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "PROJECT",
+        "component": null,
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/qits-00000001/qits-00000001-qits-00000001"
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "name": "qits-ci-frontend",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "FRONTEND",
+        "component": "qits-ci",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/qits-00000001/qits-ci-frontend"
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "name": "qits-ci-service",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "SERVICE",
+        "component": "qits-ci",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/qits-00000001/qits-ci-service"
+      },
+      "declared": true
+    }
+  ],
+  "wrapper": {
+    "repositoryId": "00000000-0000-4000-8000-000000000003",
+    "branch": "main",
+    "entries": [
+      {
+        "path": "components/qits-ci/qits-ci-service",
+        "name": "qits-ci-service",
+        "repositoryId": "00000000-0000-4000-8000-000000000005"
+      },
+      {
+        "path": "components/qits-ci/qits-ci-frontend",
+        "name": "qits-ci-frontend",
+        "repositoryId": "00000000-0000-4000-8000-000000000004"
+      }
+    ]
+  }
+}
