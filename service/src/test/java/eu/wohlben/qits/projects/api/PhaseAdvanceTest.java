@@ -425,6 +425,65 @@ public class PhaseAdvanceTest {
         moved.stream().map(entity -> entity.statusBefore() + "->" + entity.status()).toList());
   }
 
+  /**
+   * <b>VERIFYING mirrors IMPLEMENTING</b> (qits-749): a FLOW hand-off into IMPLEMENTED whose verify
+   * turn is spoken moves on to VERIFYING with one turn; an explicit IMPLEMENTED → VERIFYING pushes
+   * nothing; VERIFIED → VERIFYING (back) pushes the verify prompt again.
+   */
+  @Test
+  public void aFlowHandOffIntoImplementedMovesOnToVerifyingWithOneTurn() {
+    String projectId = createProject("Advance Into Verifying");
+    String ticketId = createTicket(projectId, "Verify me next");
+    transition(ticketId, "REFINED"); // nobody to tell, so it stays REFINED
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transitions.reset();
+
+    transition(ticketId, "IMPLEMENTED"); // the skip
+
+    assertEquals(1, turns.calls().size(), "one verify turn and no second");
+    assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
+    assertEquals("VERIFYING", statusOf(ticketId));
+    assertEquals(
+        List.of("REFINED->IMPLEMENTED", "IMPLEMENTED->VERIFYING"),
+        transitions.published().stream()
+            .flatMap(event -> event.entities().stream())
+            .map(entity -> entity.statusBefore() + "->" + entity.status())
+            .toList());
+  }
+
+  @Test
+  public void aMoveFromImplementedIntoVerifyingPushesNothing() {
+    String projectId = createProject("Advance Verifying By Hand");
+    String ticketId = createTicket(projectId, "Verifying by hand");
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED"); // nobody to tell, so it stays IMPLEMENTED
+    assertEquals("IMPLEMENTED", statusOf(ticketId));
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "VERIFYING");
+
+    assertEquals(List.of(), turns.calls(), "no second verify prompt");
+  }
+
+  @Test
+  public void aMoveBackToVerifyingStartsTheVerifyPhase() {
+    String projectId = createProject("Advance Reverify");
+    String ticketId = createTicket(projectId, "Check it again");
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED"); // the skip
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "VERIFYING");
+
+    assertEquals(1, turns.calls().size());
+    assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
+    assertEquals("VERIFYING", statusOf(ticketId));
+  }
+
   private String statusOf(String id) {
     return dispatchEntities.fresh(id).status;
   }
@@ -840,7 +899,7 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
     String first = (String) releaseRequestsOf(wrapperId).get(0).get("id");
-    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFYING"); // the step back from VERIFIED since qits-749
     transition(ticketId, "VERIFIED");
 
     java.util.List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
@@ -855,7 +914,7 @@ public class PhaseAdvanceTest {
         "the thread says which request it joined: " + thread(ticketId));
   }
 
-  // --- and a move back into IMPLEMENTED names it ----------------------------------------------
+  // --- and a move back into VERIFYING names it -----------------------------------------------
 
   /**
    * <b>A failed verification withdraws nothing and says so.</b> There is no door that removes one
@@ -863,7 +922,7 @@ public class PhaseAdvanceTest {
    * would destroy the work — so what the platform owes a person is the request id.
    */
   @Test
-  public void aMoveBackIntoImplementedNamesTheReleaseThatStandsOpen() {
+  public void aMoveBackIntoVerifyingNamesTheReleaseThatStandsOpen() {
     String projectId = createProject("Advance Release Back");
     String ticketId = createTicket(projectId, "Not fixed after all");
     String wrapperId = wrapperIdOf(projectId);
@@ -873,7 +932,7 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
     String requestId = (String) releaseRequestsOf(wrapperId).get(0).get("id");
-    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFYING"); // VERIFIED's BACK move since qits-749
 
     String last = thread(ticketId).get(thread(ticketId).size() - 1);
     assertEquals(

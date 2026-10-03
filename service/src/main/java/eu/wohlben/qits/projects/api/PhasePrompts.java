@@ -16,17 +16,18 @@ import java.util.Optional;
  *
  * <h2>The status picks the phase, and that is the whole design</h2>
  *
- * <p>{@code REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE}, where a status is
- * what has been <em>achieved</em> — or, for IMPLEMENTING alone, a fact the platform recorded: an
- * implementation was started (qits-749) — and the phase that runs while it holds is what happens
- * <em>next</em> ({@link EntityStatus}). So REPORTED starts the refine phase, REFINED and
- * IMPLEMENTING both run implement (a press on an IMPLEMENTING entity resumes it rather than
- * refusing), IMPLEMENTED starts verify, and VERIFIED and DONE start nothing at all — the work is
+ * <p>{@code REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE}, where a
+ * status is what has been <em>achieved</em> — or, for the two "-ING" statuses, a fact the platform
+ * recorded: an implementation or a verification was started (qits-749) — and the phase that runs
+ * while it holds is what happens <em>next</em> ({@link EntityStatus}). So REPORTED starts the refine
+ * phase, REFINED and IMPLEMENTING both run implement, IMPLEMENTED and VERIFYING both run verify (a
+ * press on an "-ING" entity resumes its phase rather than refusing), and VERIFIED and DONE start
+ * nothing at all — the work is
  * over and closing is a person's move. {@link EntityStatus#DROPPED} starts nothing either: the work
  * was decided against. That mapping is declared once, on the state machine ({@code
  * EntityStateMachine.phaseStartedBy}); {@link #phaseOf} is the <b>only</b> place in this service
  * that asks it, and it does not look at the archetype: an epic and a ticket at the same status run
- * the same phase. Nothing here moves an entity into IMPLEMENTING — the dispatch press and the FLOW
+ * the same phase. Nothing here moves an entity into an "-ING" status — the dispatch press and the FLOW
  * hand-off do ({@link EntityDispatch}, {@link PhaseAdvance}); a template only says how to leave it.
  *
  * <p>Because the prompt is derived rather than passed in, pressing dispatch on a half-finished
@@ -56,7 +57,7 @@ import java.util.Optional;
  *       thread, while everything that hands out work reads the status and the flag, so an
  *       unfinished phase that only commented went on advertising itself as ready work.
  *   <li><b>No backward move.</b> A move back is a correction of a claim that turned out wrong, not
- *       how a phase reports failure. A verification that fails blocks the entity at IMPLEMENTED with
+ *       how a phase reports failure. A verification that fails blocks the entity where it stands with
  *       what still occurs; a person decides what happens next, and closing is a person's move too.
  *   <li><b>At most 900 characters per phase turn</b>, not counting {@link #FLOW_BRIEF_POINTER} and
  *       the substituted title, type, qualified id, slug and id. {@code PhasePromptsTest} renders
@@ -140,7 +141,8 @@ final class PhasePrompts {
    * The one mapping: what has been achieved decides what runs next — or empty where nothing does,
    * including every row of a kind with no lifecycle (a feature, a task), whose status is null. The
    * mapping itself is the state machine's ({@link EntityStateMachine#phaseStartedBy}): REPORTED
-   * starts refine, REFINED and IMPLEMENTING implement, IMPLEMENTED verify, and VERIFIED, DONE and DROPPED nothing —
+   * starts refine, REFINED and IMPLEMENTING implement, IMPLEMENTED and VERIFYING verify, and
+   * VERIFIED, DONE and DROPPED nothing —
    * VERIFIED and DONE because the work is over and closing is a person's, DROPPED because the work
    * was decided against. This method only reads the stored word back into the enum first.
    */
@@ -305,7 +307,8 @@ final class PhasePrompts {
   }
 
   /**
-   * <b>VERIFY</b>, run while the ticket is {@link EntityStatus#IMPLEMENTED}. The live platform is
+   * <b>VERIFY</b>, run while the ticket is {@link EntityStatus#IMPLEMENTED} or {@link
+   * EntityStatus#VERIFYING}. The live platform is
    * the subject; reading the change is the fallback and comes second, bounded to what cannot be
    * reproduced on demand. The thread says which, because the two are different evidence. A check
    * that fails — or could not be made — blocks the ticket where it stands with what was found; it
@@ -392,7 +395,8 @@ final class PhasePrompts {
   }
 
   /**
-   * <b>VERIFY</b> for an epic, run while it is {@link EntityStatus#IMPLEMENTED}: the ticket's verify
+   * <b>VERIFY</b> for an epic, run while it is {@link EntityStatus#IMPLEMENTED} or {@link
+   * EntityStatus#VERIFYING}: the ticket's verify
    * turn applied to what an epic claims — not that a reported fault is gone, but that what it
    * promised holds, feature by feature. What was confirmed, and how, goes on the epic's thread.
    * Reaching VERIFIED asks for the release of {@code epic/<slug>} ({@link PhaseAdvance}); closing

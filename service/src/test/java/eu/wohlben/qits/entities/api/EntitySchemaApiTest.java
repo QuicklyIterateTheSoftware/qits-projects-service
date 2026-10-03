@@ -430,7 +430,7 @@ class EntitySchemaApiTest {
           "status" : {
             "type" : "string",
             "description" : "The lifecycle status.",
-            "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+            "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
           },
           "ticketType" : {
             "type" : "string",

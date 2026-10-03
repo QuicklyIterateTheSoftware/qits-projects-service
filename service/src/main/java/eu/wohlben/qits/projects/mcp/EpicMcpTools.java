@@ -222,14 +222,14 @@ public class EpicMcpTools {
               + " feature/task tree. Start here: call it with status=\"REPORTED\" to find the"
               + " drafts that are open for editing, and decide between extending one of them and"
               + " proposing a new epic. Only REPORTED epics can be changed at all; the other"
-              + " statuses (REFINED, IMPLEMENTING, IMPLEMENTED, VERIFIED, DONE, DROPPED) are"
+              + " statuses (REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED, DONE, DROPPED) are"
               + " read-only here.")
   public List<EpicSummary> listEpics(
       @ToolArg(
               required = false,
               description =
                   "exact status to filter by: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED,"
-                      + " VERIFIED, DONE or DROPPED. Omit for every epic of the project.")
+                      + " VERIFYING, VERIFIED, DONE or DROPPED. Omit for every epic of the project.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return entities.listByProject(Archetype.EPIC, scope.requireProjectId(), status).stream()
@@ -366,12 +366,14 @@ public class EpicMcpTools {
               + " epic here for you); IMPLEMENTED — every task is"
               + " marked with mark_task_implemented and every touched repository is released AND"
               + " deployed (moving here stamps any task still unmarked, so never make it with work"
-              + " outstanding); VERIFIED — you confirmed on the platform that what the epic promised"
+              + " outstanding); VERIFYING — the verification was started (a dispatch press moves the"
+              + " epic here for you); VERIFIED — you confirmed on the platform that what the epic promised"
               + " holds; DONE — closed, which is a person's call; DROPPED — a decision was taken not"
               + " to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or"
-              + " back: REPORTED <-> REFINED <-> IMPLEMENTING <-> IMPLEMENTED <-> VERIFIED -> DONE,"
-              + " one step at a time, with ONE SKIP: REFINED -> IMPLEMENTED directly is allowed,"
-              + " for work finished without ever being moved to IMPLEMENTING. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
+              + " back: REPORTED <-> REFINED <-> IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING <->"
+              + " VERIFIED -> DONE, one step at a time, with TWO SKIPS: REFINED -> IMPLEMENTED and"
+              + " IMPLEMENTED -> VERIFIED directly are allowed, for work finished without ever"
+              + " being moved to IMPLEMENTING or VERIFYING. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
               + " epic (propose_epic). Reopening a frozen scope is the move back from REFINED to"
               + " REPORTED. Moving back corrects a claim that turned out wrong. It is not how a phase"
               + " reports failure: a phase that cannot finish, or a verification that fails, is"
@@ -381,10 +383,11 @@ public class EpicMcpTools {
       @ToolArg(description = "id of an epic in this project") String id,
       @ToolArg(
               description =
-                  "the status to move to: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFIED,"
+                  "the status to move to: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,"
+                      + " VERIFIED,"
                       + " DONE or DROPPED. On the pipeline it must be a neighbour of the epic's"
-                      + " current status, or IMPLEMENTED from REFINED (the skip); DONE is final and"
-                      + " moves nowhere")
+                      + " current status, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED"
+                      + " (the skips); DONE is final and moves nowhere")
           String target) {
     requireEpicInProject(id);
     if (target != null && WorkEntityService.SUPERSEDE.equals(target)) {

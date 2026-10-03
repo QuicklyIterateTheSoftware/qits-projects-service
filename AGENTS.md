@@ -1072,9 +1072,10 @@ wanting two callers is why they are two classes, on top of the failure contracts
 ## Epic lifecycle
 
 **One lifecycle for every archetype that has one (qits-392).** An epic holds one of `EntityStatus`'
-seven words, exactly as a ticket does — `REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED →
-DONE`, plus `DROPPED` — over one explicit state machine, `entities/control/EntityStateMachine`
-(adjacent moves in either direction below `DONE`, plus the one `SKIP` REFINED → IMPLEMENTED, `DROPPED` reachable from every status that is not `DONE` and
+eight words, exactly as a ticket does — `REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING →
+VERIFIED → DONE`, plus `DROPPED` — over one explicit state machine, `entities/control/EntityStateMachine`
+(adjacent moves in either direction below `DONE`, plus the two `SKIP`s REFINED → IMPLEMENTED and
+IMPLEMENTED → VERIFIED, `DROPPED` reachable from every status that is not `DONE` and
 reopening only to `REPORTED`, and **`DONE` final, with no exits at all** — a follow-up to done work
 is a new ticket or epic). The machine declares each transition once with its kind
 (`FORWARD`/`SKIP`/`BACK`/`DROP`/`REOPEN`), checks its own declaration at class load, and is what
@@ -1115,7 +1116,8 @@ scopes; the successor *epic's* slug cannot, so it mints the next free suffix lik
 **Putting an agent on an epic or a ticket is one action**, `POST /projects/api/entities/{id}/dispatch`
 (`projects/api/EntityDispatchController` → `EntityDispatch`), `qits:admin` alone. It starts the phase
 the entity's **status** implies — REPORTED starts refine, REFINED and IMPLEMENTING implement (a press
-on a REFINED entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED verify;
+on a REFINED entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED and VERIFYING verify (a
+press on an IMPLEMENTED entity moves it to VERIFYING);
 VERIFIED, DONE and DROPPED start nothing and answer **409** naming the status — in one workspace on
 the project's **wrapper** with `branchTree`, on `ticket/<slug>` or `epic/<slug>`. The body names a
 mode, and the mode is the only difference between the two actions the UI offers:
@@ -1337,17 +1339,20 @@ and each one is a decision rather than a simplification:
 
   **The lifecycle is five phases (V7, 2026-09-14) and one exit off them** — and since qits-392 it
   is the epic's lifecycle too, one `EntityStatus` over one graph (see "Epic lifecycle"): `REPORTED → REFINED →
-  IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE`. **A status is what has been ACHIEVED — or a fact the
-  platform recorded — and the phase that runs while it holds is what happens next** — REPORTED means
-  somebody said what is wrong (refine runs), REFINED means the ticket says what to do (implement
-  runs), IMPLEMENTING means an implementation was started (implement keeps running), IMPLEMENTED
-  means the change is released and deployed (verify runs), VERIFIED means it no longer occurs on the
-  platform (a person closes it), DONE means closed. **IMPLEMENTING is the one status naming work in
-  flight, and it is not the `IN_PROGRESS` this rule forbade** (qits-749, V22): the platform sets it —
-  the dispatch press, the FLOW hand-off into implement, an agent's first `mark_task_implementing` —
-  so nobody keeps it current by hand, and "an implementation was started" does not go stale. No
-  status a person must maintain is allowed, still. It is skippable: REFINED → IMPLEMENTED is a legal
-  `SKIP`. `docs/unified-entity-model.md` § "IMPLEMENTING, and the rule it rewrote" is the whole of it.
+  IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE`. **A status is what has been ACHIEVED —
+  or a fact the platform recorded — and the phase that runs while it holds is what happens next** —
+  REPORTED means somebody said what is wrong (refine runs), REFINED means the ticket says what to do
+  (implement runs), IMPLEMENTING means an implementation was started (implement keeps running),
+  IMPLEMENTED means the change is released and deployed (verify runs), VERIFYING means a
+  verification was started (verify keeps running), VERIFIED means it no longer occurs on the
+  platform (a person closes it), DONE means closed. **IMPLEMENTING and VERIFYING are the two statuses
+  naming work in flight, and neither is the `IN_PROGRESS` this rule forbade** (qits-749, V22/V23):
+  the platform sets them — the dispatch press, the FLOW hand-off that delivers the phase's turn, and
+  for IMPLEMENTING an agent's first `mark_task_implementing` — so nobody keeps them current by hand,
+  and "an implementation / a verification was started" does not go stale. No status a person must
+  maintain is allowed, still. Both are skippable: REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED
+  are legal `SKIP`s. `docs/unified-entity-model.md` § "IMPLEMENTING, and the rule it rewrote" and § "VERIFYING, the mirror one phase later" are the
+  whole of it.
   Moves along that pipeline are **adjacent-only in either direction**, asking for the
   status a ticket already has stays refused, a move back corrects a claim that turned out wrong and
   is not how a phase reports failure — a failed verification blocks the ticket at IMPLEMENTED
@@ -1522,9 +1527,10 @@ entity's `dispatch_continues` says the last press asked for the whole flow; a PH
 silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
 and no second switch**: the prompt for a status is the work that starts from it, so a
 move back from IMPLEMENTED to IMPLEMENTING — a correction, not a failure path — gets the *implement* turn and a close to DONE
-gets nothing. Direction is consulted once (qits-749): REFINED → IMPLEMENTING pushes nothing, because
-that move says the implementation already started. And a FLOW hand-off whose implement turn was
-spoken moves the entity on to IMPLEMENTING itself, through `WorkEntityService.transitionFrom`, never
+gets nothing. Direction is consulted once (qits-749): the platform's "phase started" moves, REFINED →
+IMPLEMENTING and IMPLEMENTED → VERIFYING, push nothing when made by hand, because each says the phase
+already started. And a FLOW hand-off whose implement or verify turn was spoken moves the entity on to
+IMPLEMENTING or VERIFYING itself, through `WorkEntityService.transitionFrom`, never
 a route — as the dispatch press does (`EntityDispatch`). It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
 

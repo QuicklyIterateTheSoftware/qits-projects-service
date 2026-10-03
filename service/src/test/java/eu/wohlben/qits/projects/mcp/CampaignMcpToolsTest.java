@@ -285,6 +285,14 @@ public class CampaignMcpToolsTest {
           assertTrue(response.isError(), "a campaign must not move to IMPLEMENTING");
           assertTrue(text(response).contains("never moves to IMPLEMENTING"), text(response));
         });
+    call(
+        projectId,
+        "transition_campaign",
+        Map.of("id", campaignId[0], "target", "VERIFYING"),
+        response -> {
+          assertTrue(response.isError(), "a campaign must not move to VERIFYING either");
+          assertTrue(text(response).contains("never moves to VERIFYING"), text(response));
+        });
 
     call(
         projectId,

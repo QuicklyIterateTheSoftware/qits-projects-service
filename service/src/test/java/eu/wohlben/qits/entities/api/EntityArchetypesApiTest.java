@@ -93,6 +93,7 @@ class EntityArchetypesApiTest {
         .body(at("TASK") + "gathers", equalTo(false))
         .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(6))
         .body(at("CAMPAIGN") + "transitions.IMPLEMENTED.to", contains("VERIFIED", "REFINED", "DROPPED"))
+        .body(at("CAMPAIGN") + "transitions.VERIFIED.to", contains("DONE", "IMPLEMENTED", "DROPPED"))
         .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
   }
 
@@ -126,9 +127,23 @@ class EntityArchetypesApiTest {
         .body(
             at("EPIC") + "legalStatuses",
             contains(
-                "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"))
+                "DONE",
+                "DROPPED",
+                "IMPLEMENTED",
+                "IMPLEMENTING",
+                "REFINED",
+                "REPORTED",
+                "VERIFIED",
+                "VERIFYING"))
         .body(at("TICKET") + "legalStatuses", contains(
-                "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"));
+                "DONE",
+                "DROPPED",
+                "IMPLEMENTED",
+                "IMPLEMENTING",
+                "REFINED",
+                "REPORTED",
+                "VERIFIED",
+                "VERIFYING"));
   }
 
   @Test
@@ -177,10 +192,16 @@ class EntityArchetypesApiTest {
     expected.put(
         "IMPLEMENTED",
         List.of(
-            move("VERIFIED", "FORWARD"), move("IMPLEMENTING", "BACK"), move("DROPPED", "DROP")));
+            move("VERIFYING", "FORWARD"),
+            move("VERIFIED", "SKIP"),
+            move("IMPLEMENTING", "BACK"),
+            move("DROPPED", "DROP")));
+    expected.put(
+        "VERIFYING",
+        List.of(move("VERIFIED", "FORWARD"), move("IMPLEMENTED", "BACK"), move("DROPPED", "DROP")));
     expected.put(
         "VERIFIED",
-        List.of(move("DONE", "FORWARD"), move("IMPLEMENTED", "BACK"), move("DROPPED", "DROP")));
+        List.of(move("DONE", "FORWARD"), move("VERIFYING", "BACK"), move("DROPPED", "DROP")));
     expected.put("DONE", List.of());
     expected.put("DROPPED", List.of(move("REPORTED", "REOPEN")));
     assertEquals(expected, transitions);
@@ -193,17 +214,38 @@ class EntityArchetypesApiTest {
         .body(
             at("TICKET") + "lifecycle",
             contains(
-                "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
+                "REPORTED",
+                "REFINED",
+                "IMPLEMENTING",
+                "IMPLEMENTED",
+                "VERIFYING",
+                "VERIFIED",
+                "DONE",
+                "DROPPED"))
         .body(
             at("EPIC") + "lifecycle",
             contains(
-                "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
+                "REPORTED",
+                "REFINED",
+                "IMPLEMENTING",
+                "IMPLEMENTED",
+                "VERIFYING",
+                "VERIFIED",
+                "DONE",
+                "DROPPED"))
         .body(at("EPIC") + "transitions.DONE", empty())
         // Additive: the alphabetical legalStatuses is still there, unchanged, beside it.
         .body(
             at("TICKET") + "legalStatuses",
             contains(
-                "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"));
+                "DONE",
+                "DROPPED",
+                "IMPLEMENTED",
+                "IMPLEMENTING",
+                "REFINED",
+                "REPORTED",
+                "VERIFIED",
+                "VERIFYING"));
   }
 
   @Test

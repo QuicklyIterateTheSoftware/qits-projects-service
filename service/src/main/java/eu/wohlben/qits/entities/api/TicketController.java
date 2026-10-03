@@ -74,8 +74,9 @@ public class TicketController {
 
   /**
    * A lifecycle move. {@code target} is the status name; along REPORTED → REFINED → IMPLEMENTING →
-   * IMPLEMENTED → VERIFIED → DONE the move must be to a NEIGHBOUR of the ticket's current status —
-   * one step, forward or back, or the one skip REFINED → IMPLEMENTED — and DROPPED sits off that line, reachable from any status that is not already
+   * IMPLEMENTED → VERIFYING → VERIFIED → DONE the move must be to a NEIGHBOUR of the ticket's current
+   * status — one step, forward or back, or one of the skips REFINED → IMPLEMENTED and IMPLEMENTED →
+   * VERIFIED — and DROPPED sits off that line, reachable from any status that is not already
    * closed and reopening only to REPORTED. DONE is final: it has no exits, and a follow-up is a new
    * ticket. The rule is declared once, in {@code EntityStateMachine}. A move the lifecycle does not allow (including a move to the
    * status the ticket already has), and a target naming no status, both answer 409 with a message;

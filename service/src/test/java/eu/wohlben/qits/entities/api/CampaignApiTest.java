@@ -176,8 +176,18 @@ class CampaignApiTest {
         .then()
         .statusCode(409)
         .body("message", containsString("never moves to IMPLEMENTING"));
-    // ... and its BACK move from IMPLEMENTED is still REFINED, through the same door.
-    for (String target : List.of("IMPLEMENTED", "REFINED")) {
+    // ... and its BACK moves are still IMPLEMENTED -> REFINED and VERIFIED -> IMPLEMENTED, with
+    // VERIFYING refused the same way (qits-749), through the same door.
+    for (String target : List.of("IMPLEMENTED", "VERIFIED", "IMPLEMENTED", "REFINED")) {
+      if (target.equals("VERIFIED")) {
+        given()
+            .contentType(ContentType.JSON)
+            .body(Map.of("target", "VERIFYING"))
+            .post(base + "/transition")
+            .then()
+            .statusCode(409)
+            .body("message", containsString("never moves to VERIFYING"));
+      }
       given()
           .contentType(ContentType.JSON)
           .body(Map.of("target", target))

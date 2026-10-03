@@ -487,8 +487,8 @@ Declared in `entities/control/Archetypes.java`, as data. Nothing else re-decides
 
 | archetype | depth | may be a root | requires | permits (beyond required) | legal statuses |
 | --- | --- | --- | --- | --- | --- |
-| `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the seven `EntityStatus` words (six until V22 added IMPLEMENTING; was the five `EpicStatus` words until V15 — see "One lifecycle for every archetype") |
-| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the seven `EntityStatus` words (six until V22; the enum was `TicketStatus` until V15) |
+| `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the eight `EntityStatus` words (six until V22 added IMPLEMENTING and V23 VERIFYING; was the five `EpicStatus` words until V15 — see "One lifecycle for every archetype") |
+| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the eight `EntityStatus` words (six until V22 and V23; the enum was `TicketStatus` until V15) |
 | `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
 | `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
 
@@ -1065,21 +1065,23 @@ of a project's whole plan to.
                      "requiredOnTransition": ["TITLE","STATUS"],
                      "permitted": ["TITLE","SLUG","DESCRIPTION","STATUS","SUPERSEDED_BY"],
                      "legalStatuses": ["DONE","DROPPED","IMPLEMENTED","IMPLEMENTING","REFINED",
-                                       "REPORTED","VERIFIED"],
+                                       "REPORTED","VERIFIED","VERIFYING"],
                      "transitions": {
                        "REPORTED":    [{"to":"REFINED","kind":"FORWARD"},{"to":"DROPPED","kind":"DROP"}],
                        "REFINED":     [{"to":"IMPLEMENTING","kind":"FORWARD"},{"to":"IMPLEMENTED","kind":"SKIP"},
                                        {"to":"REPORTED","kind":"BACK"},{"to":"DROPPED","kind":"DROP"}],
                        "IMPLEMENTING":[{"to":"IMPLEMENTED","kind":"FORWARD"},{"to":"REFINED","kind":"BACK"},
                                        {"to":"DROPPED","kind":"DROP"}],
-                       "IMPLEMENTED": [{"to":"VERIFIED","kind":"FORWARD"},{"to":"IMPLEMENTING","kind":"BACK"},
+                       "IMPLEMENTED": [{"to":"VERIFYING","kind":"FORWARD"},{"to":"VERIFIED","kind":"SKIP"},
+                                       {"to":"IMPLEMENTING","kind":"BACK"},{"to":"DROPPED","kind":"DROP"}],
+                       "VERIFYING":   [{"to":"VERIFIED","kind":"FORWARD"},{"to":"IMPLEMENTED","kind":"BACK"},
                                        {"to":"DROPPED","kind":"DROP"}],
-                       "VERIFIED":    [{"to":"DONE","kind":"FORWARD"},{"to":"IMPLEMENTED","kind":"BACK"},
+                       "VERIFIED":    [{"to":"DONE","kind":"FORWARD"},{"to":"VERIFYING","kind":"BACK"},
                                        {"to":"DROPPED","kind":"DROP"}],
                        "DONE":        [],
                        "DROPPED":     [{"to":"REPORTED","kind":"REOPEN"}] },
-                     "lifecycle": ["REPORTED","REFINED","IMPLEMENTING","IMPLEMENTED","VERIFIED","DONE",
-                                   "DROPPED"] } ] }
+                     "lifecycle": ["REPORTED","REFINED","IMPLEMENTING","IMPLEMENTED","VERIFYING",
+                                   "VERIFIED","DONE","DROPPED"] } ] }
 ```
 
 **It exists so the archetype gate is met as form fields rather than as an error after a button
@@ -1125,7 +1127,8 @@ its first phase (it was `ABANDONED` leading an epic's list while epics had a voc
 
 **The legal moves are served, off the state machine (qits-310 follow-up).** `transitions` is keyed by
 every status word in lifecycle order, and each value lists the moves out of that status —
-`{"to", "kind"}`, `FORWARD` first, then `SKIP` (the one, REFINED → IMPLEMENTED, qits-749), then
+`{"to", "kind"}`, `FORWARD` first, then `SKIP` (REFINED → IMPLEMENTED or IMPLEMENTED → VERIFIED,
+qits-749), then
 `BACK`, then `DROP`/`REOPEN` — with `DONE` answering `[]`
 because DONE is final; `lifecycle` is the ordered walk plus `DROPPED`. A kind with no lifecycle serves
 `{}` and `[]`. Both are read off `control/EntityStateMachine`, the one declaration of the states and
@@ -2111,13 +2114,38 @@ IMPLEMENTED still stamps `implementedAt` on everything unmarked and keeps `imple
 history. Consumers rank `implementedAt` over `implementingAt`. A PATCH may set the marker and may
 not clear it; a transition entry neither states nor clears it where the target kind has a slot.
 
-**A campaign never enters IMPLEMENTING** — REFINED is what running means for one — so the move is a
-409 there. Its lifecycle is the same machine with IMPLEMENTING elided
+**A campaign never enters IMPLEMENTING or VERIFYING** — REFINED is what running means for one — so
+either move is a 409 there. Its lifecycle is the same machine with both elided
 (`EntityStateMachine.transitionsFrom(Archetype, …)`, derived, never declared twice): the moves into
-and out of IMPLEMENTING go, the skip over it is the campaign's FORWARD step REFINED → IMPLEMENTED,
-and the BACK into it lands on REFINED, so IMPLEMENTED → REFINED stays a campaign's BACK move. The
-served registry says so per archetype: a campaign's `legalStatuses`, `lifecycle` and `transitions`
-carry no IMPLEMENTING.
+and out of them go, each skip is a campaign FORWARD step (REFINED → IMPLEMENTED, IMPLEMENTED →
+VERIFIED), and each BACK into one lands on the state before it, so IMPLEMENTED → REFINED and
+VERIFIED → IMPLEMENTED stay a campaign's BACK moves, exactly as before qits-749. The served registry
+says so per archetype: a campaign's `legalStatuses`, `lifecycle` and `transitions` carry neither.
+
+## VERIFYING, the mirror one phase later (V23, qits-749)
+
+**The walk is `REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE`,
+plus `DROPPED`.** VERIFYING is IMPLEMENTING's mirror for the verify phase, and everything above
+applies to it with the words moved one phase on:
+
+- **Rows:** IMPLEMENTED → VERIFYING `FORWARD`, IMPLEMENTED → VERIFIED `SKIP` (the self-check takes a
+  `SKIP` from REFINED or IMPLEMENTED, two steps, and from nowhere else), VERIFYING → VERIFIED
+  `FORWARD`, VERIFYING → IMPLEMENTED `BACK`, VERIFYING → DROPPED `DROP`, and VERIFIED → VERIFYING
+  `BACK`, which replaced VERIFIED → IMPLEMENTED. VERIFYING starts the verify phase, as IMPLEMENTED
+  does, so a press on it resumes verify.
+- **The platform sets it, the same three ways and through the same rule.**
+  `EntityStateMachine.startedStatusOf` declares the pairs once — REFINED → IMPLEMENTING,
+  IMPLEMENTED → VERIFYING — and the dispatch press (FLOW and PHASE) and the FLOW hand-off whose turn
+  was spoken both read it. `PhaseAdvance` pushes nothing on either "phase started" move made by hand
+  (`isStartedMove`), and pushes the verify turn on VERIFIED → VERIFYING (re-verification).
+- **What stayed keyed on VERIFIED and why.** The release ask is a move into VERIFIED, from VERIFYING
+  or by the skip, unchanged. "Arrived" for a campaign member (`CampaignService.ARRIVED`, the
+  executor's skip, the progress read) is still VERIFIED or DONE: VERIFYING has not arrived, as
+  IMPLEMENTING has not implemented. `CampaignInFlight` counts VERIFYING as under way. The note about
+  a release still standing open fires on arrival at IMPLEMENTED or VERIFYING, the two places a move
+  back from VERIFIED can land.
+- **No marker.** Features and tasks carry nothing for verifying; V23 widens `ck_entity_status` and
+  adds no column.
 
 ## Where the code is
 

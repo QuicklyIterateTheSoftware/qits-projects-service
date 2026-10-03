@@ -224,9 +224,10 @@ public class ProviderStates {
 
   /** A project and nothing in it: every work list answers empty. */
   /**
-   * One epic and one ticket in each status, IMPLEMENTING and DROPPED included: the Work page's
-   * board, backlog and archive all have something to show. Each item is moved through the lifecycle
-   * to its status, the IMPLEMENTED ones through IMPLEMENTING (qits-749). Plus one REFINED epic whose
+   * One epic and one ticket in each status, IMPLEMENTING, VERIFYING and DROPPED included: the Work
+   * page's board, backlog and archive all have something to show. Each item is moved through the
+   * lifecycle to its status, through IMPLEMENTING and VERIFYING wherever its path passes them
+   * (qits-749). Plus one REFINED epic whose
    * one feature holds a task marked implementing and not implemented, so a feature and a task in
    * the IMPLEMENTING column are on the record too.
    */
@@ -238,8 +239,12 @@ public class ProviderStates {
     paths.put("Refined", List.of("REFINED"));
     paths.put("Implementing", List.of("REFINED", "IMPLEMENTING"));
     paths.put("Implemented", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED"));
-    paths.put("Verified", List.of("REFINED", "IMPLEMENTED", "VERIFIED"));
-    paths.put("Done", List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE"));
+    paths.put("Verifying", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"));
+    paths.put(
+        "Verified", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED"));
+    paths.put(
+        "Done",
+        List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE"));
     paths.put("Dropped", List.of("DROPPED"));
     for (Map.Entry<String, List<String>> path : paths.entrySet()) {
       String epic =
