@@ -66,6 +66,8 @@ public class ProviderStates {
       "an epic with tasks in every status";
   public static final String AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED =
       "an epic with a feature whose tasks are all verified";
+  public static final String AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED =
+      "an epic with a verified feature whose tasks are all verified";
   public static final String A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS =
       "a campaign with ordered developments";
   public static final String A_VERIFIED_EPIC = "a verified epic";
@@ -196,7 +198,14 @@ public class ProviderStates {
     states.put(AN_EPIC_WITH_TASKS_IN_EVERY_STATUS, this::anEpicWithTasksInEveryStatus);
     states.put(
         AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED,
-        this::anEpicWithAFeatureWhoseTasksAreAllVerified);
+        () ->
+            anEpicWithAFeatureWhoseTasksAreAllVerified(
+                AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED));
+    states.put(
+        AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED,
+        () ->
+            anEpicWithAFeatureWhoseTasksAreAllVerified(
+                AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED));
     states.put(A_VERIFIED_EPIC, this::aVerifiedEpic);
     states.put(A_VERIFIED_TICKET, this::aVerifiedTicket);
     states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
@@ -486,15 +495,27 @@ public class ProviderStates {
    * feature's row with empty lanes. A second feature keeps one REFINED task and one IMPLEMENTING
    * task, for contrast. The IMPLEMENTING task moves the epic to IMPLEMENTING; each verified task
    * gets its marker and then its own moves, which move nothing above it.
+   *
+   * <p>The feature keeps its own status: REFINED, titled "Feature pending verification". For
+   * {@link #AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED} it is titled "Verified
+   * feature" and, after its tasks, gets its own marker and moves to VERIFIED too.
    */
-  private Setup anEpicWithAFeatureWhoseTasksAreAllVerified() {
+  private Setup anEpicWithAFeatureWhoseTasksAreAllVerified(String state) {
+    boolean featureVerified =
+        state.equals(AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED);
     String token = token();
-    Project project = project(token, AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED);
+    Project project = project(token, state);
     String repositoryId = repository(project, "contract-service");
     String epic =
         create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work."));
     String verified =
-        node(Archetype.FEATURE, epic, EntityWrite.feature("Verified feature", "Seeded.", null));
+        node(
+            Archetype.FEATURE,
+            epic,
+            EntityWrite.feature(
+                featureVerified ? "Verified feature" : "Feature pending verification",
+                "Seeded.",
+                null));
     List<String> verifiedTasks = new ArrayList<>();
     for (String ordinal : List.of("First", "Second", "Third")) {
       verifiedTasks.add(
@@ -516,6 +537,10 @@ public class ProviderStates {
     for (String task : verifiedTasks) {
       implemented(task);
       walk(Archetype.TASK, task, EntityStatus.VERIFIED);
+    }
+    if (featureVerified) {
+      implemented(verified);
+      walk(Archetype.FEATURE, verified, EntityStatus.VERIFIED);
     }
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
   }

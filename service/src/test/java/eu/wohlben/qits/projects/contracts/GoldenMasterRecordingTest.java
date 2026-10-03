@@ -212,6 +212,14 @@ class GoldenMasterRecordingTest {
               null,
               null),
           new Interaction(
+              ProviderStates.AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS,
               "listProjectEntities",
               "GET",
