@@ -2,6 +2,8 @@ package eu.wohlben.qits.entities.api;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -197,5 +199,50 @@ public class DossierAssetControllerTest {
     openRefinement(mine);
     // The boundary that keeps copy-on-reference from becoming a cross-epic reference by accident.
     inline(mine, strangerSketch, "IMAGE").then().statusCode(404);
+  }
+
+  @Test
+  public void theListingNamesEachAssetAndThePagesThatInlineIt() {
+    String projectId = createProject("Figure Listing");
+    String epicId = createEpic(projectId, "Checkout epic");
+    String assets = "/projects/api/epics/" + epicId + "/dossier-assets";
+    given().when().get(assets).then().statusCode(200).body("assets", empty());
+
+    String sketchId = attachSketch(openRefinement(epicId), "The claim loop");
+    String line = inline(epicId, sketchId, "IMAGE").then().statusCode(200).extract().path("markdown");
+    String pageId =
+        given()
+            .contentType(ContentType.JSON)
+            .body(Map.of("title", "Flow", "body", "The loop:\n\n" + line))
+            .when()
+            .post("/projects/api/epics/" + epicId + "/dossier")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("id");
+
+    given()
+        .when()
+        .get(assets)
+        .then()
+        .statusCode(200)
+        .body("assets.id", contains(sketchId))
+        .body("assets[0].kind", equalTo("IMAGE"))
+        .body("assets[0].mimeType", equalTo("image/png"))
+        .body("assets[0].label", equalTo("The claim loop"))
+        .body("assets[0].markdown", equalTo(line))
+        .body(
+            "assets[0].url",
+            equalTo("/epics/" + epicId + "/dossier-assets/" + sketchId + "/content"))
+        .body("assets[0].pageIds", contains(pageId));
+  }
+
+  @Test
+  public void theListingOfAnUnknownEpicIsNotFound() {
+    given()
+        .when()
+        .get("/projects/api/epics/" + java.util.UUID.randomUUID() + "/dossier-assets")
+        .then()
+        .statusCode(404);
   }
 }

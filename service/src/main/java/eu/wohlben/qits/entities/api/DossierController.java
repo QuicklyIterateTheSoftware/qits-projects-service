@@ -2,8 +2,8 @@ package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.DossierService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
-import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.dto.DossierPageDto;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.mapper.DossierPageMapper;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -21,6 +21,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /**
  * The epic's dossier — its long form. The epic's description is the value pitch; the dossier is the
@@ -82,6 +83,10 @@ public class DossierController {
   /** The epic's pages in position order, bodies included. Empty list, never a 404. */
   @GET
   @RolesAllowed({"qits:admin", "qits:agent"})
+  @Operation(
+      operationId = "listEpicDossierPages",
+      summary = "Read an epic's dossier",
+      description = "The epic's dossier pages in position order, bodies included. Empty, never 404.")
   public ListPagesResponse list(@PathParam("epicId") String epicId) {
     // The epic is resolved here rather than in the entities module, which cannot see `domain` and has
     // no way to check a project scope — the same split EpicController makes.
@@ -108,6 +113,7 @@ public class DossierController {
   @GET
   @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{pageId}")
+  @Operation(operationId = "getEpicDossierPage", summary = "Read one page of an epic's dossier")
   public DossierPageDto get(@PathParam("epicId") String epicId, @PathParam("pageId") String pageId) {
     return mapper.toDto(requireOfEpic(epicId, pageId));
   }

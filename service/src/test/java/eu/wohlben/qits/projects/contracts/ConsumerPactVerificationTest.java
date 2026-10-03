@@ -297,6 +297,41 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_DROPPED_EPIC);
   }
 
+  @State(ProviderStates.AN_EPIC_IN_DETAIL)
+  Map<String, String> anEpicInDetail() {
+    return states.params(ProviderStates.AN_EPIC_IN_DETAIL);
+  }
+
+  @State(ProviderStates.A_FEATURE_IN_DETAIL)
+  Map<String, String> aFeatureInDetail() {
+    return states.params(ProviderStates.A_FEATURE_IN_DETAIL);
+  }
+
+  @State(ProviderStates.A_TASK_IN_DETAIL)
+  Map<String, String> aTaskInDetail() {
+    return states.params(ProviderStates.A_TASK_IN_DETAIL);
+  }
+
+  @State(ProviderStates.A_BUG_TICKET_IN_DETAIL)
+  Map<String, String> aBugTicketInDetail() {
+    return states.params(ProviderStates.A_BUG_TICKET_IN_DETAIL);
+  }
+
+  @State(ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL)
+  Map<String, String> anImprovementTicketInDetail() {
+    return states.params(ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL);
+  }
+
+  @State(ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL)
+  Map<String, String> aMaintenanceTicketInDetail() {
+    return states.params(ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL);
+  }
+
+  @State(ProviderStates.A_CAMPAIGN_IN_DETAIL)
+  Map<String, String> aCampaignInDetail() {
+    return states.params(ProviderStates.A_CAMPAIGN_IN_DETAIL);
+  }
+
   @State(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID)
   Map<String, String> noProjectWithTheGivenId() {
     return states.params(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID);

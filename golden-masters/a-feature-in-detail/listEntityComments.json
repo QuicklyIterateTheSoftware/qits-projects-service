@@ -1,0 +1,14 @@
+{
+  "entries": [
+    {
+      "comment": {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "entityId": "00000000-0000-4000-8000-000000000007",
+        "author": "qits-agent",
+        "body": "Started on the renderer. The preview waits for it.",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-01-01T00:00:00Z"
+      }
+    }
+  ]
+}

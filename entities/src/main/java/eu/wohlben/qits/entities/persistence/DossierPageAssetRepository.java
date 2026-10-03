@@ -14,6 +14,11 @@ public class DossierPageAssetRepository
     return list("pageId", pageId);
   }
 
+  /** Which pages name this asset. */
+  public List<DossierPageAsset> listByAsset(String assetId) {
+    return list("assetId = ?1 order by pageId", assetId);
+  }
+
   /** Whether any page still names this asset — the reference count, asked as a question. */
   public boolean anyReferences(String assetId) {
     return count("assetId", assetId) > 0;

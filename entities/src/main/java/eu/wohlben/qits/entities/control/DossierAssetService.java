@@ -111,6 +111,23 @@ public class DossierAssetService {
   }
 
   /**
+   * One asset of an epic as its listing shows it: what it is, the URL and the markdown line that
+   * render it, and the pages that name it. No bytes; the content route serves those.
+   */
+  public record Listed(DossierAsset asset, List<String> pageIds) {}
+
+  /** The epic's assets, by label, each with the ids of the pages that name it. */
+  public List<Listed> list(String epicId) {
+    return assets.listByEpicInOrder(epicId).stream()
+        .map(
+            asset ->
+                new Listed(
+                    asset,
+                    references.listByAsset(asset.id).stream().map(row -> row.pageId).toList()))
+        .toList();
+  }
+
+  /**
    * Rewrite one page's references from its body, then delete any asset of this epic nothing names
    * any more. Runs inside the caller's transaction — the save's — so the reference count is exact at
    * every instant rather than eventually.

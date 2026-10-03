@@ -363,9 +363,71 @@ class GoldenMasterRecordingTest {
    * and a FLOW dispatch for each archetype, and the reads of an implemented ticket.
    *
    * <p>Each recorded move is the first legal one out of the state's status, read off the state
-   * machine, so the table restates no move.
+   * machine, so the table restates no move. {@link #withWorkDetail} adds the detail page's reads.
    */
   private static List<Interaction> withWorkActions(List<Interaction> base) {
+    return withWorkDetail(withWorkActionsOnly(base));
+  }
+
+  /**
+   * The landing app's detail page (epic qits-112), one state per archetype and ticket type over one
+   * seeded project ({@link ProviderStates#IN_DETAIL}). Each records the entity and its thread by
+   * the qualified id the page's route carries, and the project's entity list, which holds every
+   * child (parent, qualified id, title, archetype, status) and the shell's breadcrumbs. The epic and
+   * the tickets add their dossier — the epic its figures too — and every campaign member, and the
+   * campaign itself, add the campaign.
+   */
+  private static List<Interaction> withWorkDetail(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    ProviderStates.IN_DETAIL.forEach(
+        (state, focus) -> {
+          all.add(read(state, "getEntity", "/projects/api/entities/{qualifiedId}"));
+          all.add(
+              read(state, "listEntityComments", "/projects/api/entities/{qualifiedId}/comments"));
+          all.add(
+              read(state, "listProjectEntities", "/projects/api/projects/{projectId}/entities"));
+        });
+    for (String member :
+        List.of(
+            ProviderStates.AN_EPIC_IN_DETAIL,
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL,
+            ProviderStates.A_CAMPAIGN_IN_DETAIL)) {
+      all.add(read(member, "getCampaign", "/projects/api/campaigns/{campaignId}"));
+    }
+    all.add(
+        read(
+            ProviderStates.AN_EPIC_IN_DETAIL,
+            "listEpicDossierPages",
+            "/projects/api/epics/{epicId}/dossier"));
+    all.add(
+        read(
+            ProviderStates.AN_EPIC_IN_DETAIL,
+            "listEpicDossierAssets",
+            "/projects/api/epics/{epicId}/dossier-assets"));
+    all.add(
+        read(
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            "listTicketDossierPages",
+            "/projects/api/tickets/{bugTicketId}/dossier"));
+    all.add(
+        read(
+            ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL,
+            "listTicketDossierPages",
+            "/projects/api/tickets/{improvementTicketId}/dossier"));
+    all.add(
+        read(
+            ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL,
+            "listTicketDossierPages",
+            "/projects/api/tickets/{maintenanceTicketId}/dossier"));
+    return List.copyOf(all);
+  }
+
+  private static Interaction read(String state, String operationId, String path) {
+    return new Interaction(state, operationId, "GET", path, 200, null, null);
+  }
+
+  private static List<Interaction> withWorkActionsOnly(List<Interaction> base) {
     List<Interaction> all = new ArrayList<>(base);
     all.add(
         new Interaction(

@@ -94,6 +94,19 @@ public class ProviderStates {
   public static final String A_VERIFYING_EPIC = "a verifying epic";
   public static final String A_DROPPED_EPIC = "a dropped epic";
 
+  // The landing app's detail page, one state per archetype (and per ticket type). All seven seed
+  // the same project — see #workInDetail — and differ only in the entity they focus on.
+  public static final String AN_EPIC_IN_DETAIL = "an epic in detail";
+  public static final String A_FEATURE_IN_DETAIL = "a feature in detail";
+  public static final String A_TASK_IN_DETAIL = "a task in detail";
+  public static final String A_BUG_TICKET_IN_DETAIL = "a bug ticket in detail";
+  public static final String AN_IMPROVEMENT_TICKET_IN_DETAIL = "an improvement ticket in detail";
+  public static final String A_MAINTENANCE_TICKET_IN_DETAIL = "a maintenance ticket in detail";
+  public static final String A_CAMPAIGN_IN_DETAIL = "a campaign in detail";
+
+  /** Each detail state, by the param naming the entity it focuses on. */
+  public static final Map<String, String> IN_DETAIL = inDetail();
+
   /**
    * The ticket states for the status door, by the status each leaves the ticket in. {@link
    * #A_VERIFIED_TICKET} is one of them; it was here first, for {@code transitionTicket}.
@@ -135,6 +148,12 @@ public class ProviderStates {
   @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
 
   @Inject eu.wohlben.qits.entities.control.EntityCommentService comments;
+
+  @Inject eu.wohlben.qits.entities.control.DossierService dossier;
+
+  @Inject eu.wohlben.qits.entities.control.DossierAssetService dossierAssets;
+
+  @Inject eu.wohlben.qits.projects.api.EntityBlocks blocks;
 
   /**
    * The test suite's dispatch port: a dispatch press records here and starts no agent. An {@code
@@ -199,6 +218,7 @@ public class ProviderStates {
             states.put(name, () -> anEpicIn(name, status));
           }
         });
+    IN_DETAIL.forEach((name, focus) -> states.put(name, () -> workInDetail(name, focus)));
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -705,6 +725,365 @@ public class ProviderStates {
             "projectId", project.id,
             "secondCampaignId", second),
         List.of(token));
+  }
+
+  private static Map<String, String> inDetail() {
+    Map<String, String> out = new LinkedHashMap<>();
+    out.put(AN_EPIC_IN_DETAIL, "epicId");
+    out.put(A_FEATURE_IN_DETAIL, "featureId");
+    out.put(A_TASK_IN_DETAIL, "taskId");
+    out.put(A_BUG_TICKET_IN_DETAIL, "bugTicketId");
+    out.put(AN_IMPROVEMENT_TICKET_IN_DETAIL, "improvementTicketId");
+    out.put(A_MAINTENANCE_TICKET_IN_DETAIL, "maintenanceTicketId");
+    out.put(A_CAMPAIGN_IN_DETAIL, "campaignId");
+    return Collections.unmodifiableMap(out);
+  }
+
+  /** A person on the threads, and an agent. */
+  private static final String PERSON = "dana.weber";
+
+  private static final String AGENT = "qits-agent";
+
+  /** A 1x1 PNG: the figure's bytes. The content route serves them; no golden master holds them. */
+  private static final byte[] FIGURE_PNG =
+      java.util.Base64.getDecoder()
+          .decode(
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+
+  /**
+   * <b>One project's work, rich enough for the detail page of every archetype</b> (epic qits-112).
+   * The seven detail states seed this same project and differ only in {@code focus}, the param
+   * whose entity the page shows; its qualified id is the {@code qualifiedId} param. Every state
+   * returns every entity's id, so all of them freeze each entity to the same id.
+   *
+   * <ul>
+   *   <li>A campaign, REFINED, with a Markdown description and five members in order: a VERIFIED
+   *       epic, the IMPLEMENTING epic, the blocked bug, a DONE bug and the REFINED improvement — the
+   *       last waiting on the epic being VERIFIED and on an approval.
+   *   <li>An IMPLEMENTING epic (Markdown description with headings, a list and code; three
+   *       comments; a dossier of three pages, one inlining a figure). Its first feature is
+   *       implemented with both tasks implemented; its second depends on the first, is implementing,
+   *       and holds one implementing task and one open task. Each task names a repository; the
+   *       second task of each feature depends on the first.
+   *   <li>A BUG ticket, IMPLEMENTING, assigned and blocked (the reason lands on its thread), with a
+   *       dossier of two pages. An IMPROVEMENT ticket, REFINED, with an empty dossier. A
+   *       MAINTENANCE ticket, REPORTED, with one page and no comments.
+   * </ul>
+   */
+  private Setup workInDetail(String state, String focus) {
+    resetDispatchPorts();
+    String token = token();
+    Project project = project(token, state);
+    String service =
+        projectService.createRepository(project.id, null, "billing-service", null, "billing")
+            .repository()
+            .id;
+    String frontend =
+        projectService.createRepository(project.id, null, "billing-frontend", null, "billing")
+            .repository()
+            .id;
+
+    String campaign =
+        work.createCampaign(
+                project.id,
+                "Invoicing for the Q4 close",
+                """
+                Everything accounting needs before the books close on 15 December.
+
+                ## Done when
+                - the accountants can export every invoice of a quarter
+                - tax rates are right for every country we bill
+                - no open bug touches an invoice total
+                """,
+                PERSON)
+            .id;
+
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic(
+                "Export invoices for the accountants",
+                """
+                ## Why
+                Accounting copies every invoice into their tool by hand, about 400 a quarter.
+
+                ## What
+                - a **CSV export** of a date range, in the column order the tool imports
+                - a **PDF export** of one invoice, for the audit folder
+
+                ## Example
+                ```
+                GET /billing/api/invoices/export?from=2026-10-01&to=2026-12-31&format=csv
+                ```
+                """));
+    String csv =
+        node(
+            Archetype.FEATURE,
+            epic,
+            EntityWrite.feature(
+                "CSV export",
+                "Stream a date range of invoices as CSV, one row per line item.",
+                null));
+    String stream =
+        node(
+            Archetype.TASK,
+            csv,
+            EntityWrite.task(
+                service,
+                "Stream invoices as CSV",
+                "Add `GET /invoices/export?format=csv`. Stream the rows; do not load the range.",
+                null));
+    String button =
+        node(
+            Archetype.TASK,
+            csv,
+            EntityWrite.task(
+                frontend,
+                "Download button on the invoice list",
+                "A button above the list that downloads the filtered range as CSV.",
+                stream));
+    String pdf =
+        node(
+            Archetype.FEATURE,
+            epic,
+            EntityWrite.feature(
+                "PDF export",
+                "Render one invoice as an A4 PDF, in the same layout as the printed one.",
+                csv));
+    String render =
+        node(
+            Archetype.TASK,
+            pdf,
+            EntityWrite.task(
+                service,
+                "Render one invoice as PDF",
+                "Render server-side; embed the fonts so the archive stays readable.",
+                null));
+    String preview =
+        node(
+            Archetype.TASK,
+            pdf,
+            EntityWrite.task(
+                frontend,
+                "Preview the PDF before download",
+                "Show the rendered PDF in a dialog, with a download button.",
+                render));
+    dossierPage(
+        epic,
+        null,
+        "Scope",
+        """
+        ## In scope
+        - invoices and credit notes
+        - one date range per export
+
+        ## Out of scope
+        - exports of payments; the bank statement covers them
+        """);
+    String figure = UUID.randomUUID().toString();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                dossierAssets.copyFrom(
+                    epic,
+                    figure,
+                    eu.wohlben.qits.entities.entity.DossierAsset.Kind.IMAGE,
+                    FIGURE_PNG,
+                    "image/png",
+                    "Export data flow"));
+    String flowPage =
+        dossierPage(
+            epic,
+            null,
+            "Data flow",
+            "The export reads the invoices once and streams them out:\n\n"
+                + "![Export data flow]("
+                + eu.wohlben.qits.entities.control.DossierAssetService.contentUrl(epic, figure)
+                + ")\n\n"
+                + "1. the list sends its filter\n"
+                + "2. the service streams the rows\n"
+                + "3. the browser saves the file\n");
+    dossierPage(
+        epic,
+        null,
+        "Rollout",
+        "Ship the CSV export first. The PDF export follows once the accountants confirm the"
+            + " columns.");
+
+    String taxes =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Tax rates per country", "Bill each country at its own VAT rate."));
+
+    String bug =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket(
+                "Invoice totals are off by one cent",
+                "An accountant found three invoices whose total is one cent above the sum of their"
+                    + " lines.",
+                """
+                ## Cause
+                Each line is rounded before the sum, so rounding errors add up.
+
+                ## Fix
+                Sum the exact amounts and round **once**, half up:
+                ```java
+                total = lines.stream().map(Line::amount).reduce(ZERO, BigDecimal::add)
+                    .setScale(2, RoundingMode.HALF_UP);
+                ```
+                """,
+                "BUG",
+                PERSON));
+    dossierPage(
+        null,
+        bug,
+        "Reproduction",
+        """
+        1. Create an invoice with three lines of 0.335 EUR each.
+        2. Read its total: **1.02 EUR**. The lines add up to 1.005, which rounds once to 1.01.
+        """);
+    dossierPage(
+        null,
+        bug,
+        "Affected invoices",
+        "| Invoice | Total | Expected |\n|---|---|---|\n| 2026-0412 | 1.01 | 1.00 |\n"
+            + "| 2026-0418 | 20.04 | 20.03 |\n| 2026-0533 | 7.11 | 7.10 |\n");
+
+    String improvement =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket(
+                "Remember the last export format",
+                "Accountants pick CSV every time; the list forgets it.",
+                "Keep the chosen export format per user and preselect it next time.",
+                "IMPROVEMENT",
+                null));
+
+    String maintenance =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket(
+                "Release request for billing-service is stuck",
+                "The release request for billing-service has waited on its gates for 6 hours.",
+                null,
+                "MAINTENANCE",
+                null));
+    dossierPage(
+        null,
+        maintenance,
+        "What the platform saw",
+        "The fold built green, and the deployment never reported the version live.\n\n"
+            + "- requested: `2026.1003.90000`\n- last gate: `deployment`\n");
+
+    String creditNotes =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket(
+                "Credit notes show the wrong sign",
+                "A credit note of 50 EUR prints as 50 EUR, not -50 EUR.",
+                "Print credit note amounts negative.",
+                "BUG",
+                null));
+
+    // Work: the epic's markers, then every status. Task markers move only while the epic is
+    // REFINED or IMPLEMENTING; marking a task implementing moves the epic to IMPLEMENTING.
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.markImplementing(stream, AGENT);
+    implemented(stream);
+    work.markImplementing(button, AGENT);
+    implemented(button);
+    implemented(csv);
+    work.markImplementing(render, AGENT);
+    walk(Archetype.EPIC, taxes, EntityStatus.VERIFIED);
+    walk(Archetype.TICKET, bug, EntityStatus.IMPLEMENTING);
+    work.transition(Archetype.TICKET, improvement, "REFINED", SEEDER);
+    walk(Archetype.TICKET, creditNotes, EntityStatus.DONE);
+
+    List<String> members = new ArrayList<>();
+    for (String member : List.of(taxes, epic, bug, creditNotes, improvement)) {
+      members.add(campaigns.addMember(campaign, member, null, false, PERSON).membership().id);
+    }
+    campaigns.setCondition(
+        campaign,
+        members.get(4),
+        List.of(
+            new eu.wohlben.qits.entities.campaign.CampaignService.GroupSpec(
+                List.of(
+                    new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
+                        null, "ENTITY_STATUS", Map.of("entityId", epic, "status", "VERIFIED")),
+                    new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
+                        null, "APPROVAL", null)))),
+        PERSON);
+    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
+
+    // Threads, oldest first. The block's reason lands on the bug's thread as the last remark.
+    comments.addComment(
+        epic, "Accounting needs the export before the Q4 close on 15 December.", PERSON);
+    comments.addComment(
+        epic,
+        "Refined into two features. CSV comes first: the accountants' tool imports it today."
+            + " The PDF export depends on it for the column order.",
+        AGENT);
+    comments.addComment(epic, "Agreed. Start with the CSV export.", PERSON);
+    comments.addComment(
+        pdf, "Started on the renderer. The preview waits for it.", AGENT);
+    comments.addComment(
+        button, "Implemented and released in billing-frontend `2026.1001.140000`.", AGENT);
+    comments.addComment(
+        bug, "Three invoices from October are affected; see the dossier.", PERSON);
+    comments.addComment(
+        bug, "The fix is ready, but the expected totals need finance's sign-off.", AGENT);
+    blocks.apply(
+        work.find(bug),
+        true,
+        "Waiting for finance to confirm the expected totals of the affected invoices.",
+        AGENT);
+    comments.addComment(improvement, "Per user, not per browser, please.", PERSON);
+    comments.addComment(
+        campaign, "Tax rates are verified. The export is next, then the open bug.", PERSON);
+
+    Map<String, String> ids = new TreeMap<>();
+    ids.put("campaignId", campaign);
+    ids.put("epicId", epic);
+    ids.put("featureId", pdf);
+    ids.put("taskId", button);
+    ids.put("bugTicketId", bug);
+    ids.put("improvementTicketId", improvement);
+    ids.put("maintenanceTicketId", maintenance);
+    ids.put("projectId", project.id);
+    // The rest are named so every answer freezes them alike: a consumer joins a campaign's members,
+    // a task's dependsOn and a page's figure to the other answers by id.
+    ids.put("taxesEpicId", taxes);
+    ids.put("creditNoteTicketId", creditNotes);
+    ids.put("csvFeatureId", csv);
+    ids.put("csvTaskId", stream);
+    ids.put("pdfTaskId", render);
+    ids.put("previewTaskId", preview);
+    ids.put("serviceRepositoryId", service);
+    ids.put("frontendRepositoryId", frontend);
+    ids.put("figureAssetId", figure);
+    ids.put("figurePageId", flowPage);
+    ids.put(
+        "qualifiedId",
+        eu.wohlben.qits.projects.api.QualifiedEntityIds.render(
+            project.slug, work.find(ids.get(focus)).number));
+    return new Setup(Collections.unmodifiableMap(ids), List.of(token));
+  }
+
+  /** A dossier page on an epic or a ticket, as the person on the threads writes it. */
+  private String dossierPage(String epicId, String ticketId, String title, String body) {
+    var owner =
+        epicId != null
+            ? eu.wohlben.qits.entities.entity.DossierOwner.epic(epicId)
+            : eu.wohlben.qits.entities.entity.DossierOwner.ticket(ticketId);
+    return dossier.create(owner, title, body, PERSON).id;
   }
 
   private String repository(Project project, String name) {
