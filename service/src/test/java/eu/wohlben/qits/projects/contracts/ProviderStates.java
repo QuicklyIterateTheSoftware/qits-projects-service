@@ -78,6 +78,29 @@ public class ProviderStates {
   public static final String AN_EPIC_IN_TWO_CAMPAIGNS = "an epic in two campaigns";
   public static final String THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS =
       "the second campaign of an epic in two campaigns";
+  public static final String THE_ARCHETYPE_REGISTRY = "the archetype registry";
+  public static final String A_REPORTED_TICKET = "a reported ticket";
+  public static final String A_REFINED_TICKET = "a refined ticket";
+  public static final String AN_IMPLEMENTING_TICKET = "an implementing ticket";
+  public static final String AN_IMPLEMENTED_TICKET = "an implemented ticket";
+  public static final String A_VERIFYING_TICKET = "a verifying ticket";
+  public static final String A_DROPPED_TICKET = "a dropped ticket";
+  public static final String A_REPORTED_EPIC = "a reported epic";
+  public static final String A_REFINED_EPIC = "a refined epic";
+  public static final String AN_IMPLEMENTING_EPIC = "an implementing epic";
+  public static final String AN_IMPLEMENTED_EPIC = "an implemented epic";
+  public static final String A_VERIFYING_EPIC = "a verifying epic";
+  public static final String A_DROPPED_EPIC = "a dropped epic";
+
+  /**
+   * The ticket states for the status door, by the status each leaves the ticket in. {@link
+   * #A_VERIFIED_TICKET} is one of them; it was here first, for {@code transitionTicket}.
+   */
+  public static final Map<String, EntityStatus> TICKET_IN_STATUS = ticketsInStatus();
+
+  /** The epic states for the status door, as {@link #TICKET_IN_STATUS}. */
+  public static final Map<String, EntityStatus> EPIC_IN_STATUS = epicsInStatus();
+
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
@@ -108,6 +131,22 @@ public class ProviderStates {
   @Inject WorkEntityService work;
 
   @Inject eu.wohlben.qits.entities.campaign.CampaignService campaigns;
+
+  @Inject eu.wohlben.qits.entities.control.EntityCommentService comments;
+
+  /**
+   * The test suite's dispatch port: a dispatch press records here and starts no agent. An {@code
+   * Instance} because a test profile may take the port away ({@code
+   * EntityDispatchWithNoWorkspacesTest}), and this bean is in every test application.
+   */
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch>
+      dispatches;
+
+  /** The test suite's turn port, reset with {@link #dispatches} so no earlier test's script leaks. */
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns>
+      turns;
 
   private final Map<String, Supplier<Setup>> states = new LinkedHashMap<>();
 
@@ -144,6 +183,19 @@ public class ProviderStates {
     states.put(A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE, this::aCampaignWithWorkInEveryPhase);
     states.put(AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
+    states.put(THE_ARCHETYPE_REGISTRY, ProviderStates::theArchetypeRegistry);
+    TICKET_IN_STATUS.forEach(
+        (name, status) -> {
+          if (!name.equals(A_VERIFIED_TICKET)) {
+            states.put(name, () -> aTicketIn(name, status));
+          }
+        });
+    EPIC_IN_STATUS.forEach(
+        (name, status) -> {
+          if (!name.equals(A_VERIFIED_EPIC)) {
+            states.put(name, () -> anEpicIn(name, status));
+          }
+        });
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -392,6 +444,95 @@ public class ProviderStates {
     node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded.", null));
     walk(Archetype.EPIC, epic, EntityStatus.VERIFIED);
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+  }
+
+  private static Map<String, EntityStatus> ticketsInStatus() {
+    Map<String, EntityStatus> out = new LinkedHashMap<>();
+    out.put(A_REPORTED_TICKET, EntityStatus.REPORTED);
+    out.put(A_REFINED_TICKET, EntityStatus.REFINED);
+    out.put(AN_IMPLEMENTING_TICKET, EntityStatus.IMPLEMENTING);
+    out.put(AN_IMPLEMENTED_TICKET, EntityStatus.IMPLEMENTED);
+    out.put(A_VERIFYING_TICKET, EntityStatus.VERIFYING);
+    out.put(A_VERIFIED_TICKET, EntityStatus.VERIFIED);
+    out.put(A_DROPPED_TICKET, EntityStatus.DROPPED);
+    return Collections.unmodifiableMap(out);
+  }
+
+  private static Map<String, EntityStatus> epicsInStatus() {
+    Map<String, EntityStatus> out = new LinkedHashMap<>();
+    out.put(A_REPORTED_EPIC, EntityStatus.REPORTED);
+    out.put(A_REFINED_EPIC, EntityStatus.REFINED);
+    out.put(AN_IMPLEMENTING_EPIC, EntityStatus.IMPLEMENTING);
+    out.put(AN_IMPLEMENTED_EPIC, EntityStatus.IMPLEMENTED);
+    out.put(A_VERIFYING_EPIC, EntityStatus.VERIFYING);
+    out.put(A_VERIFIED_EPIC, EntityStatus.VERIFIED);
+    out.put(A_DROPPED_EPIC, EntityStatus.DROPPED);
+    return Collections.unmodifiableMap(out);
+  }
+
+  /** The registry is the model itself and needs no seed. */
+  private static Setup theArchetypeRegistry() {
+    return new Setup(params(), List.of());
+  }
+
+  /**
+   * A BUG ticket in {@code status}, walked there one step at a time (DROPPED: dropped while
+   * REPORTED). It carries an impetus, a description and, from IMPLEMENTED on, the implementer's
+   * comment — the shape of a real ticket's page. The dispatch ports are reset, so a dispatch press
+   * answers the recording port's default and starts no agent.
+   */
+  private Setup aTicketIn(String state, EntityStatus status) {
+    resetDispatchPorts();
+    String token = token();
+    Project project = project(token, state);
+    String ticket =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket(
+                "Database runs out of connection slots during deploys",
+                "A new container fails its migration at boot: the database refuses the connection.",
+                "Raise the database's connection limit, so two pools fit during a rolling deploy."
+                    + " Verify by deploying again.",
+                "BUG",
+                null));
+    moveTo(Archetype.TICKET, ticket, status);
+    if (status != EntityStatus.DROPPED
+        && EntityStateMachine.isAtOrPast(status, EntityStatus.IMPLEMENTED)) {
+      comments.addComment(ticket, "Released and deployed. The connection limit is now 300.", SEEDER);
+    }
+    return new Setup(params("projectId", project.id, "ticketId", ticket), List.of(token));
+  }
+
+  /** An epic with no children in {@code status}, walked there as {@link #aTicketIn} is. */
+  private Setup anEpicIn(String state, EntityStatus status) {
+    resetDispatchPorts();
+    String token = token();
+    Project project = project(token, state);
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Work item actions", "Seeded work: the page's moves and dispatches."));
+    moveTo(Archetype.EPIC, epic, status);
+    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+  }
+
+  private void moveTo(Archetype archetype, String id, EntityStatus status) {
+    if (status == EntityStatus.DROPPED) {
+      work.transition(archetype, id, status.name(), SEEDER);
+    } else {
+      walk(archetype, id, status);
+    }
+  }
+
+  private void resetDispatchPorts() {
+    if (dispatches.isResolvable()) {
+      dispatches.get().reset();
+    }
+    if (turns.isResolvable()) {
+      turns.get().reset();
+    }
   }
 
   /** A VERIFIED ticket, ready to be moved to DONE. */

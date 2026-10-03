@@ -367,6 +367,79 @@ class ArchetypeRegistryDocumentTest {
     assertEquals(ArchetypeRegistryDocument.describe(), ArchetypeRegistryDocument.describe());
   }
 
+  // ---- dispatch phases --------------------------------------------------------------------------
+
+  /**
+   * {@code phases} is the state machine's dispatch logic, served: per status, the phase a PHASE
+   * press runs ({@link EntityStateMachine#phaseRunFrom}) and the phases a FLOW press chains ({@link
+   * EntityStateMachine#flowFrom}), keyed by every lifecycle status in order.
+   */
+  @Test
+  void phasesAreTheStateMachinesDispatchLogic() {
+    for (Archetype archetype : List.of(Archetype.TICKET, Archetype.EPIC)) {
+      Map<String, ArchetypeRegistryDocument.DispatchPhases> phases = declared(archetype).phases();
+      assertEquals(declared(archetype).lifecycle(), List.copyOf(phases.keySet()), archetype + "");
+      for (EntityStatus status : EntityStateMachine.states(archetype)) {
+        ArchetypeRegistryDocument.DispatchPhases served = phases.get(status.name());
+        assertEquals(
+            EntityStateMachine.phaseRunFrom(archetype, status)
+                .map(ArchetypeRegistryDocument.DispatchPhase::of)
+                .orElse(null),
+            served.next(),
+            archetype + " " + status);
+        assertEquals(
+            EntityStateMachine.flowFrom(archetype, status).stream()
+                .map(ArchetypeRegistryDocument.DispatchPhase::of)
+                .toList(),
+            served.flow(),
+            archetype + " " + status);
+        // A PHASE press runs the first phase of the FLOW press from the same status.
+        assertEquals(
+            served.flow().isEmpty() ? null : served.flow().get(0), served.next(), status + "");
+      }
+    }
+  }
+
+  /** The ticket's served phases, spelled out once, so a change to the logic shows here. */
+  @Test
+  void theTicketsServedPhasesReadAsSpecified() {
+    Map<String, ArchetypeRegistryDocument.DispatchPhases> phases =
+        declared(Archetype.TICKET).phases();
+    var refine = new ArchetypeRegistryDocument.DispatchPhase("refine", "REPORTED", null, "REFINED");
+    var implement =
+        new ArchetypeRegistryDocument.DispatchPhase(
+            "implement", "REFINED", "IMPLEMENTING", "IMPLEMENTED");
+    var resume =
+        new ArchetypeRegistryDocument.DispatchPhase(
+            "implement", "IMPLEMENTING", null, "IMPLEMENTED");
+    var verify =
+        new ArchetypeRegistryDocument.DispatchPhase(
+            "verify", "IMPLEMENTED", "VERIFYING", "VERIFIED");
+    var reverify =
+        new ArchetypeRegistryDocument.DispatchPhase("verify", "VERIFYING", null, "VERIFIED");
+
+    assertEquals(refine, phases.get("REPORTED").next());
+    assertEquals(List.of(refine, implement, verify), phases.get("REPORTED").flow());
+    assertEquals(implement, phases.get("REFINED").next());
+    assertEquals(List.of(implement, verify), phases.get("REFINED").flow());
+    assertEquals(List.of(resume, verify), phases.get("IMPLEMENTING").flow());
+    assertEquals(List.of(verify), phases.get("IMPLEMENTED").flow());
+    assertEquals(List.of(reverify), phases.get("VERIFYING").flow());
+    for (String none : List.of("VERIFIED", "DONE", "DROPPED")) {
+      assertEquals(null, phases.get(none).next(), none);
+      assertEquals(List.of(), phases.get(none).flow(), none);
+    }
+  }
+
+  /** A campaign's press is its start, and a feature or a task has no lifecycle: no phases. */
+  @Test
+  void aKindADispatchRunsNoPhasesOnServesNone() {
+    for (Archetype archetype : List.of(Archetype.CAMPAIGN, Archetype.FEATURE, Archetype.TASK)) {
+      assertEquals(Map.of(), declared(archetype).phases(), archetype + "");
+      assertFalse(EntityStateMachine.runsPhases(archetype), archetype + "");
+    }
+  }
+
   private static void assertInVocabularyOrder(String what, List<EntityProperty> properties) {
     List<EntityProperty> expected = new ArrayList<>(properties);
     expected.sort((left, right) -> Integer.compare(left.ordinal(), right.ordinal()));
