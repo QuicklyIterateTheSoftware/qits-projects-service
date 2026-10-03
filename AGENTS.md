@@ -1130,7 +1130,12 @@ mode, and the mode is the only difference between the two actions the UI offers:
       → {"state": {entityId, archetype, status, nextPhase, blocked, dispatchable, mode}}
 
 The GET is how the SPA learns which phase a press would start (`nextPhase`, or null) without
-re-implementing the status→phase rule, which lives only in `api/PhasePrompts.phaseOf`. A missing or
+re-implementing the status→phase rule, which lives only in `api/PhasePrompts.phaseOf`. For every
+status at once, the registry (`GET /entities/archetypes`, `listArchetypes`) serves `phases` per
+EPIC and TICKET: `{STATUS: {next: {phase, from, enters, endsIn} | null, flow: [...]}}` — `next` is
+what a PHASE press runs, `flow` what a FLOW press chains until a status starts none. Both come off
+`EntityStateMachine.phaseRunFrom`/`flowFrom` (`runsPhases`, `endOf`), which the dispatch door and
+the phase prompts' forward claims read too, so the page and the agent cannot disagree. A missing or
 unknown mode is a 400; a feature or a task is a 409 (no lifecycle); a blocked ticket or epic is a
 409 naming the block, and a blocked campaign's start press is too; no workspaces context is a 503; a
 project with no wrapper is a 409.
@@ -2675,8 +2680,8 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   `golden-masters/<state-slug>/<operationId>.json` plus `index.json`; the same switch rewrites them.
   A state assumes nothing about the database and is safe to run beside any other, so a slug carries
   a random token and the index lists it under `frozen.strings`. A committed `.json` no interaction
-  records any more fails the compare. The four `operationId`s it names are `@Operation`s on the
-  controllers, so renaming one is a contract change, not a refactor.
+  records any more fails the compare. Every `operationId` it names is an
+  `@Operation` on a controller, so renaming one is a contract change, not a refactor.
   <br>**The platform publishes it, from `release.yml`'s `contracts:` declaration** (epic qits-620;
   README "What a release publishes"): the jar `eu.wohlben.qits:qits-projects-golden-masters`, the
   npm package `@qits/projects-golden-masters` and the `@contracts/qits-projects` docs bundle, each

@@ -232,6 +232,71 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS);
   }
 
+  @State(ProviderStates.THE_ARCHETYPE_REGISTRY)
+  Map<String, String> theArchetypeRegistry() {
+    return states.params(ProviderStates.THE_ARCHETYPE_REGISTRY);
+  }
+
+  @State(ProviderStates.A_REPORTED_TICKET)
+  Map<String, String> aReportedTicket() {
+    return states.params(ProviderStates.A_REPORTED_TICKET);
+  }
+
+  @State(ProviderStates.A_REFINED_TICKET)
+  Map<String, String> aRefinedTicket() {
+    return states.params(ProviderStates.A_REFINED_TICKET);
+  }
+
+  @State(ProviderStates.AN_IMPLEMENTING_TICKET)
+  Map<String, String> anImplementingTicket() {
+    return states.params(ProviderStates.AN_IMPLEMENTING_TICKET);
+  }
+
+  @State(ProviderStates.AN_IMPLEMENTED_TICKET)
+  Map<String, String> anImplementedTicket() {
+    return states.params(ProviderStates.AN_IMPLEMENTED_TICKET);
+  }
+
+  @State(ProviderStates.A_VERIFYING_TICKET)
+  Map<String, String> aVerifyingTicket() {
+    return states.params(ProviderStates.A_VERIFYING_TICKET);
+  }
+
+  @State(ProviderStates.A_DROPPED_TICKET)
+  Map<String, String> aDroppedTicket() {
+    return states.params(ProviderStates.A_DROPPED_TICKET);
+  }
+
+  @State(ProviderStates.A_REPORTED_EPIC)
+  Map<String, String> aReportedEpic() {
+    return states.params(ProviderStates.A_REPORTED_EPIC);
+  }
+
+  @State(ProviderStates.A_REFINED_EPIC)
+  Map<String, String> aRefinedEpic() {
+    return states.params(ProviderStates.A_REFINED_EPIC);
+  }
+
+  @State(ProviderStates.AN_IMPLEMENTING_EPIC)
+  Map<String, String> anImplementingEpic() {
+    return states.params(ProviderStates.AN_IMPLEMENTING_EPIC);
+  }
+
+  @State(ProviderStates.AN_IMPLEMENTED_EPIC)
+  Map<String, String> anImplementedEpic() {
+    return states.params(ProviderStates.AN_IMPLEMENTED_EPIC);
+  }
+
+  @State(ProviderStates.A_VERIFYING_EPIC)
+  Map<String, String> aVerifyingEpic() {
+    return states.params(ProviderStates.A_VERIFYING_EPIC);
+  }
+
+  @State(ProviderStates.A_DROPPED_EPIC)
+  Map<String, String> aDroppedEpic() {
+    return states.params(ProviderStates.A_DROPPED_EPIC);
+  }
+
   @State(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID)
   Map<String, String> noProjectWithTheGivenId() {
     return states.params(ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID);

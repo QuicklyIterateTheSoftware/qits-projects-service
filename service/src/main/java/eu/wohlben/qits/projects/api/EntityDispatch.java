@@ -374,8 +374,12 @@ public class EntityDispatch {
     }
   }
 
+  /**
+   * Whether a press runs phases on this kind — the state machine's declaration, which the served
+   * registry's {@code phases} reads too.
+   */
   private static boolean nextPhaseAware(WorkEntity entity) {
-    return entity.archetype == Archetype.TICKET || entity.archetype == Archetype.EPIC;
+    return EntityStateMachine.runsPhases(entity.archetype);
   }
 
   /**

@@ -295,6 +295,29 @@ public class PhasePromptsTest {
     }
   }
 
+  /**
+   * Each turn claims the status the served registry names as its phase's end ({@code phases[status]
+   * .next.endsIn}): the page and the agent read one value.
+   */
+  @Test
+  public void everyTurnClaimsTheServedEnd() {
+    for (WorkEntity entity : everyPhaseOfBothArchetypes()) {
+      String noun = entity.archetype == Archetype.TICKET ? "ticket" : "epic";
+      var served =
+          eu.wohlben.qits.entities.control.ArchetypeRegistryDocument.describe().archetypes().stream()
+              .filter(a -> a.archetype() == entity.archetype)
+              .findFirst()
+              .orElseThrow()
+              .phases()
+              .get(entity.status)
+              .next();
+      assertEquals(PhasePrompts.phaseOf(entity).orElseThrow().word(), served.phase());
+      assertTrue(
+          prompt(entity).orElseThrow().contains("transition_" + noun + " to " + served.endsIn()),
+          entity.status + " " + noun);
+    }
+  }
+
   /** <b>No template routes anything backwards</b> — a move back is a correction, not a failure path. */
   @Test
   public void noTemplateMovesBack() {

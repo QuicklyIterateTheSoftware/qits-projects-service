@@ -28,6 +28,9 @@ import java.util.Set;
  *
  *   starts phase:  REPORTED → refine,  REFINED and IMPLEMENTING → implement,
  *                  IMPLEMENTED and VERIFYING → verify;  VERIFIED, DONE and DROPPED start nothing.
+ *   ends in:       refine → REFINED, implement → IMPLEMENTED, verify → VERIFIED ({@link #endOf}).
+ *   runs phases:   EPIC and TICKET only ({@link #runsPhases}); a FLOW press chains the phases
+ *                  ({@link #flowFrom}) until a status starts none.
  * </pre>
  *
  * <p><b>The walk</b> — REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED →
@@ -180,6 +183,13 @@ public final class EntityStateMachine {
       Map.of(
           EntityStatus.REFINED, EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING);
+
+  /**
+   * The archetypes a dispatch runs phases on: the two the dispatch door puts an agent on. A
+   * campaign has a lifecycle but its press is its start (its executor dispatches its members), and
+   * a feature or a task has no lifecycle. Read by the dispatch door and the served registry alike.
+   */
+  private static final Set<Archetype> PHASE_ARCHETYPES = EnumSet.of(Archetype.EPIC, Archetype.TICKET);
 
   /** {@link #TRANSITIONS} indexed by source, order kept; every state has an entry. */
   private static final Map<EntityStatus, List<Transition>> OUTGOING = index();
@@ -353,6 +363,70 @@ public final class EntityStateMachine {
     return Optional.ofNullable(PHASES.get(status));
   }
 
+  // --- dispatch phases, derived ------------------------------------------------------------------
+
+  /**
+   * One phase a dispatch runs.
+   *
+   * @param phase the phase that runs
+   * @param from the status it runs from
+   * @param enters the "-ING" status the platform moves the entity into when the phase starts
+   *     ({@link #startedStatusOf}), or null where it moves nothing
+   * @param endsIn the status the phase ends in when it succeeds ({@link #endOf})
+   */
+  public record PhaseRun(Phase phase, EntityStatus from, EntityStatus enters, EntityStatus endsIn) {}
+
+  /** Whether a dispatch runs phases on {@code archetype} — an epic or a ticket. */
+  public static boolean runsPhases(Archetype archetype) {
+    return PHASE_ARCHETYPES.contains(archetype);
+  }
+
+  /**
+   * The status {@code phase} ends in: the first status on the walk past the statuses that start it.
+   * REFINE ends in REFINED, IMPLEMENT in IMPLEMENTED, VERIFY in VERIFIED. Derived from {@link
+   * #PHASES} and the walk, so it moves with them.
+   */
+  public static EntityStatus endOf(Phase phase) {
+    boolean seen = false;
+    for (EntityStatus status : WALK) {
+      boolean starts = PHASES.get(status) == phase;
+      if (seen && !starts) {
+        return status;
+      }
+      seen |= starts;
+    }
+    throw new IllegalStateException(phase + " is started by no status on the walk, or never ends");
+  }
+
+  /**
+   * The phase one dispatch press runs on {@code archetype} from {@code status} — a PHASE press, and
+   * the first phase of a FLOW press — or empty where a press starts nothing: VERIFIED, DONE,
+   * DROPPED, and every status of an archetype that runs no phases ({@link #runsPhases}).
+   */
+  public static Optional<PhaseRun> phaseRunFrom(Archetype archetype, EntityStatus status) {
+    if (!runsPhases(archetype) || status == null) {
+      return Optional.empty();
+    }
+    return phaseStartedBy(status)
+        .map(phase -> new PhaseRun(phase, status, STARTED.get(status), endOf(phase)));
+  }
+
+  /**
+   * The phases a FLOW press runs on {@code archetype} from {@code status}, in order, until the flow
+   * stops: each phase ends in its {@link PhaseRun#endsIn}, and the next one runs from there, until a
+   * status starts no phase (VERIFIED, where the release is asked for). Empty where a press starts
+   * nothing. The run also stops early when an agent blocks the entity; that is not in the data.
+   */
+  public static List<PhaseRun> flowFrom(Archetype archetype, EntityStatus status) {
+    List<PhaseRun> flow = new ArrayList<>();
+    Optional<PhaseRun> run = phaseRunFrom(archetype, status);
+    while (run.isPresent() && flow.size() < STATES.size()) {
+      flow.add(run.get());
+      run = phaseRunFrom(archetype, run.get().endsIn());
+    }
+    return List.copyOf(flow);
+  }
+
   /**
    * Whether {@code status} is {@code milestone} or beyond it on the walk. False for a state off the
    * walk (DROPPED), which is neither behind nor beyond anything.
@@ -427,6 +501,20 @@ public final class EntityStateMachine {
           || move.get().kind() != TransitionKind.FORWARD
           || PHASES.get(started.getKey()) != PHASES.get(started.getValue())) {
         throw new IllegalStateException(started + " is not a forward move within one phase");
+      }
+    }
+    for (Phase phase : Phase.values()) {
+      // Every phase ends on a later step of the walk, so a flow always moves forward and stops.
+      EntityStatus end = endOf(phase);
+      for (EntityStatus start : WALK) {
+        if (PHASES.get(start) == phase && WALK.indexOf(end) <= WALK.indexOf(start)) {
+          throw new IllegalStateException(phase + " ends in " + end + ", not past " + start);
+        }
+      }
+    }
+    for (Archetype archetype : PHASE_ARCHETYPES) {
+      if (ELIDED.containsKey(archetype)) {
+        throw new IllegalStateException(archetype + " runs phases, so it may elide no state");
       }
     }
     for (Archetype archetype : ELIDED.keySet()) {

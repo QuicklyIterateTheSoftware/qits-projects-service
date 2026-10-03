@@ -74,6 +74,13 @@ public class EntityArchetypesController {
    */
   @GET
   @Path("/archetypes")
+  @Operation(
+      operationId = "listArchetypes",
+      summary = "The archetype registry: properties, lifecycles, legal moves and dispatch phases",
+      description =
+          "Every archetype's declaration, read off the registry and the state machine the doors"
+              + " enforce: what it requires and permits, its lifecycle, the legal moves out of each"
+              + " status (transitions) and what a dispatch press runs from each status (phases).")
   public ArchetypeRegistryDocument archetypes() {
     return ArchetypeRegistryDocument.describe();
   }
