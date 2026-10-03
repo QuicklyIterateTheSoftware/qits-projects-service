@@ -690,15 +690,21 @@ public class ProviderStates {
    * order: a DONE ticket; a DONE epic whose feature and two tasks are DONE; a VERIFIED epic whose
    * feature and two tasks are VERIFIED; the IMPLEMENTING epic of {@link
    * #AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES}; and a REFINED ticket. Recorded for the
-   * entity list and for the campaign; the params name every member, so both answers give each
-   * member the same frozen id.
+   * entity list, for the campaign, and for the detail page's reads of the campaign item (its
+   * {@code qualifiedId} param); the params name every member, so all answers give each member the
+   * same frozen id.
    */
   private Setup aCampaignWithADoneAVerifiedAndAnImplementingEpic() {
     String token = token();
     Project project = project(token, A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC);
     String repositoryId = repository(project, "contract-service");
     String campaign =
-        work.createCampaign(project.id, "Campaign in flight", "Seeded work.", SEEDER).id;
+        work.createCampaign(
+                project.id,
+                "Campaign in flight",
+                "Ships two tickets and three epics, one after the other.",
+                SEEDER)
+            .id;
     String doneTicket = ticket(project, "Done ticket");
     String refinedTicket = ticket(project, "Refined ticket");
     String doneEpic =
@@ -721,6 +727,9 @@ public class ProviderStates {
             "doneTicketId", doneTicket,
             "implementingEpicId", implementingEpic,
             "projectId", project.id,
+            "qualifiedId",
+                eu.wohlben.qits.projects.api.QualifiedEntityIds.render(
+                    project.slug, work.find(campaign).number),
             "refinedTicketId", refinedTicket,
             "verifiedEpicId", verifiedEpic),
         List.of(token));

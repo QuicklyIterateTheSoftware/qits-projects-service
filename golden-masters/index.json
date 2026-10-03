@@ -270,6 +270,7 @@
         "doneTicketId": "00000000-0000-4000-8000-000000000003",
         "implementingEpicId": "00000000-0000-4000-8000-000000000004",
         "projectId": "00000000-0000-4000-8000-000000000005",
+        "qualifiedId": "contract-00000001-1",
         "refinedTicketId": "00000000-0000-4000-8000-000000000006",
         "verifiedEpicId": "00000000-0000-4000-8000-000000000007"
       },
@@ -296,6 +297,41 @@
               "$.campaign.qualifiedId",
               "$.campaign.members[*].entity.qualifiedId"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/listEntityComments.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },

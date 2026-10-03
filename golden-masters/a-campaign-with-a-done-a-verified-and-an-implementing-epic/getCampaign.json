@@ -6,7 +6,7 @@
     "projectId": "00000000-0000-4000-8000-000000000005",
     "slug": "campaign-in-flight",
     "title": "Campaign in flight",
-    "description": "Seeded work.",
+    "description": "Ships two tickets and three epics, one after the other.",
     "status": "REFINED",
     "blocked": false,
     "start": null,

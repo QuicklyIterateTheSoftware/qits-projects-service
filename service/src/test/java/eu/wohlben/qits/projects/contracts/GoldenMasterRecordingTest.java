@@ -301,6 +301,22 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          new Interaction(
+              ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
+              "getEntity",
+              "GET",
+              "/projects/api/entities/{qualifiedId}",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
+              "listEntityComments",
+              "GET",
+              "/projects/api/entities/{qualifiedId}/comments",
+              200,
+              null,
+              null),
           // One epic in two campaigns: a state records one answer per operation, so the second
           // campaign is its own state over the same seed and params (same frozen ids).
           new Interaction(
