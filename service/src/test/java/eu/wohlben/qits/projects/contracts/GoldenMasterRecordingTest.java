@@ -220,6 +220,14 @@ class GoldenMasterRecordingTest {
               null,
               null),
           new Interaction(
+              ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS,
               "listProjectEntities",
               "GET",
