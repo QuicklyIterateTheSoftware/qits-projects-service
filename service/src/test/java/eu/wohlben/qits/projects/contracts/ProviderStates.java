@@ -224,8 +224,11 @@ public class ProviderStates {
 
   /** A project and nothing in it: every work list answers empty. */
   /**
-   * One epic and one ticket in each status, DROPPED included: the Work page's board, backlog and
-   * archive all have something to show. Each item is moved through the lifecycle to its status.
+   * One epic and one ticket in each status, IMPLEMENTING and DROPPED included: the Work page's
+   * board, backlog and archive all have something to show. Each item is moved through the lifecycle
+   * to its status, the IMPLEMENTED ones through IMPLEMENTING (qits-749). Plus one REFINED epic whose
+   * one feature holds a task marked implementing and not implemented, so a feature and a task in
+   * the IMPLEMENTING column are on the record too.
    */
   private Setup aProjectWithWorkInEveryStatus() {
     String token = token();
@@ -233,7 +236,8 @@ public class ProviderStates {
     Map<String, List<String>> paths = new LinkedHashMap<>();
     paths.put("Reported", List.of());
     paths.put("Refined", List.of("REFINED"));
-    paths.put("Implemented", List.of("REFINED", "IMPLEMENTED"));
+    paths.put("Implementing", List.of("REFINED", "IMPLEMENTING"));
+    paths.put("Implemented", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED"));
     paths.put("Verified", List.of("REFINED", "IMPLEMENTED", "VERIFIED"));
     paths.put("Done", List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE"));
     paths.put("Dropped", List.of("DROPPED"));
@@ -246,6 +250,16 @@ public class ProviderStates {
         work.transition(Archetype.TICKET, ticket, status, SEEDER);
       }
     }
+    String repositoryId = repository(project, "contract-service");
+    String started =
+        create(Archetype.EPIC, project, EntityWrite.epic("Started epic", "Seeded work."));
+    String feature =
+        node(Archetype.FEATURE, started, EntityWrite.feature("Started feature", "Seeded.", null));
+    String task =
+        node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "Started task", "Seeded.", null));
+    work.transition(Archetype.EPIC, started, "REFINED", SEEDER);
+    // The tool's own path: stamps the task and its feature, and moves the epic to IMPLEMENTING.
+    work.markImplementing(task, SEEDER);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 

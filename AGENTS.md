@@ -1072,12 +1072,12 @@ wanting two callers is why they are two classes, on top of the failure contracts
 ## Epic lifecycle
 
 **One lifecycle for every archetype that has one (qits-392).** An epic holds one of `EntityStatus`'
-six words, exactly as a ticket does — `REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE`, plus
-`DROPPED` — over one explicit state machine, `entities/control/EntityStateMachine` (adjacent moves
-in either direction below `DONE`, `DROPPED` reachable from every status that is not `DONE` and
+seven words, exactly as a ticket does — `REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED →
+DONE`, plus `DROPPED` — over one explicit state machine, `entities/control/EntityStateMachine`
+(adjacent moves in either direction below `DONE`, plus the one `SKIP` REFINED → IMPLEMENTED, `DROPPED` reachable from every status that is not `DONE` and
 reopening only to `REPORTED`, and **`DONE` final, with no exits at all** — a follow-up to done work
 is a new ticket or epic). The machine declares each transition once with its kind
-(`FORWARD`/`BACK`/`DROP`/`REOPEN`), checks its own declaration at class load, and is what
+(`FORWARD`/`SKIP`/`BACK`/`DROP`/`REOPEN`), checks its own declaration at class load, and is what
 `EntityLifecycle.requireTransition`, `resolves`, the DONE rule on `POST /entities/transition`, the
 served registry's `transitions`/`lifecycle` members and `PhasePrompts.phaseOf` (via
 `phaseStartedBy`) all read; nothing else spells a move. New epics start `REPORTED`. `EpicStatus` and `EpicLifecycle` are
@@ -1096,8 +1096,9 @@ epic implement prompt makes the move conditional on every task already being mar
 now — below DONE; a DONE epic's scope is frozen for good.** `EntityLifecycle` holds the two guards and all three services obey them — a task's phase is
 the phase of its feature's epic. Structural changes (the epic's title/description, any feature/task
 create, update or delete, `dependsOn` included, and every epic-owned dossier write) need `REPORTED`
-(`requireReported`); the implemented markers need `REFINED` (`requireRefined`). Those two rules
-reject every write past `REFINED`, and a call carrying both kinds always fails. Moving an epic back
+(`requireReported`); the task markers (implemented, and since qits-749 implementing) need `REFINED`
+or `IMPLEMENTING` (`requireBeingImplemented`, which was `requireRefined`). Those two rules reject
+every write past `IMPLEMENTING`, and a call carrying both kinds always fails. Moving an epic back
 to `REPORTED` is how its scope is reopened — no new door. Deleting an *epic* stays allowed in every
 status: it removes the row rather than editing a frozen scope, and the audit log outlives it.
 
@@ -1113,7 +1114,8 @@ scopes; the successor *epic's* slug cannot, so it mints the next free suffix lik
 
 **Putting an agent on an epic or a ticket is one action**, `POST /projects/api/entities/{id}/dispatch`
 (`projects/api/EntityDispatchController` → `EntityDispatch`), `qits:admin` alone. It starts the phase
-the entity's **status** implies — REPORTED starts refine, REFINED implement, IMPLEMENTED verify;
+the entity's **status** implies — REPORTED starts refine, REFINED and IMPLEMENTING implement (a press
+on a REFINED entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED verify;
 VERIFIED, DONE and DROPPED start nothing and answer **409** naming the status — in one workspace on
 the project's **wrapper** with `branchTree`, on `ticket/<slug>` or `epic/<slug>`. The body names a
 mode, and the mode is the only difference between the two actions the UI offers:
@@ -1178,7 +1180,8 @@ Five things are rules rather than details:
 - **Prompts are per archetype, the phase is not.** `PhasePrompts.render(archetype, phase, entity)`:
   an epic's refine turn writes the description, the feature/task tree (with `dependsOn`) and the
   dossier and ends with `transition_epic` to REFINED (the freeze); its implement turn works the tasks
-  in `dependsOn` order, marks each with `mark_task_implemented` as it lands, releases every touched
+  in `dependsOn` order, marks each with `mark_task_implementing` as it starts and
+  `mark_task_implemented` as it lands, releases every touched
   repository, does **not** integrate the workspace, and ends with `transition_epic` to IMPLEMENTED
   only once every task is marked; its verify turn confirms live on the platform and ends at
   VERIFIED. All three record on the epic's thread with `add_comment`, never "in your report" — a
@@ -1213,7 +1216,7 @@ epic prompts name) added there and in `AgentSurfaceDefaults` on the same day.
 a widening of `update_task`, whose refusal ("the implemented marker is not editable here") is a
 stance about the *refining* agent and stays intact — one that is drafting a plan must not also be
 able to declare parts of it shipped. Two agents, two stances, two tools. It lands on
-`WorkEntityService.update`'s marker arm alone (an `EntityWrite` touching the marker and no scope), so `EntityLifecycle.requireRefined` is the guard that
+`WorkEntityService.update`'s marker arm alone (an `EntityWrite` touching the marker and no scope), so `EntityLifecycle.requireBeingImplemented` is the guard that
 runs and its message is what a draft's task answers with, and it returns its own small result record
 rather than widening `TaskSummary` (which three tools return and none of which can ever carry a
 marker). It is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`: an unattended run steered by an
@@ -1326,7 +1329,7 @@ comment gets its own audit row, the `value` + `clear*` pairing on the three null
 target naming no status answering 409 while an absent one answers 400. Three things are *different*,
 and each one is a decision rather than a simplification:
 
-- **Nothing freezes.** `EntityLifecycle`'s two guards (`requireReported`, `requireRefined`) are about
+- **Nothing freezes.** `EntityLifecycle`'s two guards (`requireReported`, `requireBeingImplemented`) are about
   which of an epic's fields a phase still permits, because an epic carries a scope that was committed
   to; no ticket write calls them, and there is no `requireOpen` and must not grow one: a DONE ticket's
   fields stay editable and its thread commentable. Its *status* is final like every DONE entity's:
@@ -1334,12 +1337,18 @@ and each one is a decision rather than a simplification:
 
   **The lifecycle is five phases (V7, 2026-09-14) and one exit off them** — and since qits-392 it
   is the epic's lifecycle too, one `EntityStatus` over one graph (see "Epic lifecycle"): `REPORTED → REFINED →
-  IMPLEMENTED → VERIFIED → DONE`. **A status is what has been ACHIEVED, and the phase that runs
-  while it holds is what happens next** — REPORTED means somebody said what is wrong (refine runs),
-  REFINED means the ticket says what to do (implement runs), IMPLEMENTED means the change is
-  released and deployed (verify runs), VERIFIED means it no longer occurs on the platform (a person
-  closes it), DONE means closed. So no status names work in flight and there must never be an
-  `IN_PROGRESS`. Moves along that pipeline are **adjacent-only in either direction**, asking for the
+  IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE`. **A status is what has been ACHIEVED — or a fact the
+  platform recorded — and the phase that runs while it holds is what happens next** — REPORTED means
+  somebody said what is wrong (refine runs), REFINED means the ticket says what to do (implement
+  runs), IMPLEMENTING means an implementation was started (implement keeps running), IMPLEMENTED
+  means the change is released and deployed (verify runs), VERIFIED means it no longer occurs on the
+  platform (a person closes it), DONE means closed. **IMPLEMENTING is the one status naming work in
+  flight, and it is not the `IN_PROGRESS` this rule forbade** (qits-749, V22): the platform sets it —
+  the dispatch press, the FLOW hand-off into implement, an agent's first `mark_task_implementing` —
+  so nobody keeps it current by hand, and "an implementation was started" does not go stale. No
+  status a person must maintain is allowed, still. It is skippable: REFINED → IMPLEMENTED is a legal
+  `SKIP`. `docs/unified-entity-model.md` § "IMPLEMENTING, and the rule it rewrote" is the whole of it.
+  Moves along that pipeline are **adjacent-only in either direction**, asking for the
   status a ticket already has stays refused, a move back corrects a claim that turned out wrong and
   is not how a phase reports failure — a failed verification blocks the ticket at IMPLEMENTED
   (qits-592) — and **DONE is the one terminal status**: it has
@@ -1505,15 +1514,18 @@ Three things travel with it:
 
 **A transition starts the next phase by itself — when the run was dispatched as a flow — and the
 transition is the whole trigger.** `projects/api/PhaseAdvance` (application-scoped,
-`afterTransition(entity, changedBy)`; `TicketPhaseAdvance` until qits-394) is called by **every**
+`afterTransition(entity, statusBefore, changedBy)`; `TicketPhaseAdvance` until qits-394) is called by **every**
 lifecycle transition surface — `entities/api/EntityRoutes.transition`, behind both the ticket's and
 the epic's route, and `mcp/TicketMcpTools.transitionTicket` / `mcp/EpicMcpTools.transitionEpic` — *after* the move is recorded and outside its
 transaction, exactly where each already fires its hint. It delivers the next turn only when the
 entity's `dispatch_continues` says the last press asked for the whole flow; a PHASE run stops there,
 silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
 and no second switch**: the prompt for a status is the work that starts from it, so a
-move back from IMPLEMENTED to REFINED — a correction, not a failure path — gets the *implement* turn and a close to DONE
-gets nothing. Direction is never consulted. It hangs off the transition and off nothing else — not
+move back from IMPLEMENTED to IMPLEMENTING — a correction, not a failure path — gets the *implement* turn and a close to DONE
+gets nothing. Direction is consulted once (qits-749): REFINED → IMPLEMENTING pushes nothing, because
+that move says the implementation already started. And a FLOW hand-off whose implement turn was
+spoken moves the entity on to IMPLEMENTING itself, through `WorkEntityService.transitionFrom`, never
+a route — as the dispatch press does (`EntityDispatch`). It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
 
 - **It is not on `WorkEntityService`** because the entities module has no idea what a workspace is and must

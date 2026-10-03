@@ -2,7 +2,7 @@
   "request" : "GET /projects/api/entities/archetypes",
   "status" : 200,
   "response" : {
-    "properties" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY", "SUPERSEDED_BY", "REPOSITORY_ID", "IMPLEMENTED_AT", "DEPENDS_ON" ],
+    "properties" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY", "SUPERSEDED_BY", "REPOSITORY_ID", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
     "serverOwned" : [ "SLUG", "CREATED_BY" ],
     "archetypes" : [ {
       "archetype" : "EPIC",
@@ -13,7 +13,7 @@
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE", "STATUS" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY" ],
-      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED" ],
       "transitions" : {
         "REPORTED" : [ {
           "to" : "REFINED",
@@ -23,10 +23,23 @@
           "kind" : "DROP"
         } ],
         "REFINED" : [ {
+          "to" : "IMPLEMENTING",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "SKIP"
+        }, {
+          "to" : "REPORTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTING" : [ {
           "to" : "IMPLEMENTED",
           "kind" : "FORWARD"
         }, {
-          "to" : "REPORTED",
+          "to" : "REFINED",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -36,7 +49,7 @@
           "to" : "VERIFIED",
           "kind" : "FORWARD"
         }, {
-          "to" : "REFINED",
+          "to" : "IMPLEMENTING",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -58,7 +71,7 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
     }, {
       "archetype" : "TICKET",
       "depth" : 0,
@@ -68,7 +81,7 @@
       "requiredAtCreate" : [ "TITLE", "STATUS", "TICKET_TYPE", "IMPETUS" ],
       "requiredOnTransition" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY" ],
-      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED" ],
       "transitions" : {
         "REPORTED" : [ {
           "to" : "REFINED",
@@ -78,10 +91,23 @@
           "kind" : "DROP"
         } ],
         "REFINED" : [ {
+          "to" : "IMPLEMENTING",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "SKIP"
+        }, {
+          "to" : "REPORTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTING" : [ {
           "to" : "IMPLEMENTED",
           "kind" : "FORWARD"
         }, {
-          "to" : "REPORTED",
+          "to" : "REFINED",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -91,7 +117,7 @@
           "to" : "VERIFIED",
           "kind" : "FORWARD"
         }, {
-          "to" : "REFINED",
+          "to" : "IMPLEMENTING",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -113,7 +139,7 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
     }, {
       "archetype" : "FEATURE",
       "depth" : 1,
@@ -122,7 +148,7 @@
       "required" : [ "TITLE" ],
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE" ],
-      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "IMPLEMENTED_AT", "DEPENDS_ON" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
       "legalStatuses" : [ ],
       "transitions" : { },
       "lifecycle" : [ ]
@@ -134,7 +160,7 @@
       "required" : [ "TITLE", "REPOSITORY_ID" ],
       "requiredAtCreate" : [ "TITLE", "REPOSITORY_ID" ],
       "requiredOnTransition" : [ "TITLE", "REPOSITORY_ID" ],
-      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "REPOSITORY_ID", "IMPLEMENTED_AT", "DEPENDS_ON" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "REPOSITORY_ID", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
       "legalStatuses" : [ ],
       "transitions" : { },
       "lifecycle" : [ ]
@@ -147,7 +173,7 @@
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE", "STATUS" ],
       "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS" ],
-      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED" ],
       "transitions" : {
         "REPORTED" : [ {
           "to" : "REFINED",
@@ -157,10 +183,23 @@
           "kind" : "DROP"
         } ],
         "REFINED" : [ {
+          "to" : "IMPLEMENTING",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "SKIP"
+        }, {
+          "to" : "REPORTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTING" : [ {
           "to" : "IMPLEMENTED",
           "kind" : "FORWARD"
         }, {
-          "to" : "REPORTED",
+          "to" : "REFINED",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -170,7 +209,7 @@
           "to" : "VERIFIED",
           "kind" : "FORWARD"
         }, {
-          "to" : "REFINED",
+          "to" : "IMPLEMENTING",
           "kind" : "BACK"
         }, {
           "to" : "DROPPED",
@@ -192,7 +231,7 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
     } ]
   }
 } ]

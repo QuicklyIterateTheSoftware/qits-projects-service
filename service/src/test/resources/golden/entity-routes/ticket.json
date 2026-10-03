@@ -260,6 +260,7 @@
       "supersededBy" : null,
       "repositoryId" : null,
       "implementedAt" : null,
+      "implementingAt" : null,
       "dependsOn" : null,
       "parent" : null,
       "position" : null,
@@ -799,6 +800,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -831,6 +833,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -863,6 +866,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -895,6 +899,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -927,6 +932,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -959,6 +965,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -997,6 +1004,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -1029,6 +1037,7 @@
         "supersededByEntityId" : null,
         "repositoryId" : null,
         "implementedAt" : null,
+        "implementingAt" : null,
         "dependsOnEntityId" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
@@ -1134,7 +1143,7 @@
       "status" : {
         "type" : "string",
         "description" : "The lifecycle status.",
-        "enum" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+        "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
       },
       "ticketType" : {
         "type" : "string",
@@ -1200,6 +1209,7 @@
     "supersededBy" : null,
     "repositoryId" : null,
     "implementedAt" : null,
+    "implementingAt" : null,
     "dependsOn" : null,
     "parent" : null,
     "position" : null,
@@ -1242,6 +1252,7 @@
     "supersededBy" : null,
     "repositoryId" : null,
     "implementedAt" : null,
+    "implementingAt" : null,
     "dependsOn" : null,
     "parent" : null,
     "position" : null,
@@ -1279,6 +1290,7 @@
       "supersededBy" : null,
       "repositoryId" : null,
       "implementedAt" : null,
+      "implementingAt" : null,
       "dependsOn" : null,
       "parent" : null,
       "position" : null,
@@ -1305,6 +1317,7 @@
       "supersededBy" : null,
       "repositoryId" : null,
       "implementedAt" : null,
+      "implementingAt" : null,
       "dependsOn" : null,
       "parent" : null,
       "position" : null,
@@ -1337,6 +1350,7 @@
       "supersededBy" : null,
       "repositoryId" : null,
       "implementedAt" : null,
+      "implementingAt" : null,
       "dependsOn" : null,
       "parent" : null,
       "position" : null,
@@ -1377,6 +1391,7 @@
     "supersededBy" : null,
     "repositoryId" : null,
     "implementedAt" : null,
+    "implementingAt" : null,
     "dependsOn" : null,
     "parent" : null,
     "position" : null,

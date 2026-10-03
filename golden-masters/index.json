@@ -295,11 +295,14 @@
             "ids": [
               "$.entities[*].id",
               "$.entities[*].projectId",
-              "$.entities[*].slugScope"
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
             ],
             "instants": [
               "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementingAt"
             ],
             "strings": [
               "$.entities[*].qualifiedId"
