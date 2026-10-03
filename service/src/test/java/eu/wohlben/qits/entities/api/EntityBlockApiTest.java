@@ -166,16 +166,28 @@ class EntityBlockApiTest {
     thread(epic).body("entries", hasSize(before));
   }
 
-  /** A feature has no lifecycle of its own: its phase is its epic's. */
+  /**
+   * A feature holds a status since qits-763 but runs no phase of its own: its phase is its epic's.
+   * Refused even at a status that would start a phase on an epic (REFINED), because the refusal is
+   * about the kind — it must not read as a status the caller could move away from.
+   */
   @Test
   void aFeatureIsA409() {
     EntityFixtures.Project project = EntityFixtures.project("Block Feature");
-    String feature = EntityFixtures.feature(EntityFixtures.epic(project.id()));
+    String epic = EntityFixtures.epic(project.id());
+    String feature = EntityFixtures.feature(epic);
+    given()
+        .contentType(ContentType.JSON)
+        .body(map("target", "REFINED"))
+        .post("/projects/api/entities/" + epic + "/status")
+        .then()
+        .statusCode(200);
 
     setBlocked(feature, true, "waiting on somebody")
         .statusCode(409)
         .body("message", containsString("Feature " + feature))
-        .body("message", containsString("no lifecycle of its own"));
+        .body("message", containsString("runs no phase of its own"))
+        .body("message", containsString("block the epic instead"));
   }
 
   @Test

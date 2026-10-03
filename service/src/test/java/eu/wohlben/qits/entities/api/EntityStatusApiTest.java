@@ -4,6 +4,8 @@ import static eu.wohlben.qits.entities.api.EntityFixtures.map;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 
 import io.quarkus.test.junit.QuarkusTest;
@@ -66,14 +68,63 @@ class EntityStatusApiTest {
     given().get("/projects/api/tickets/" + ticket).then().body("ticket.status", equalTo("REPORTED"));
   }
 
+  /** qits-763: a feature's own move waits for its epic to leave REPORTED — the plan is a draft. */
   @Test
-  void aFeatureHasNoStatusToMove() {
+  void aFeatureDoesNotMoveWhileItsEpicIsADraft() {
     EntityFixtures.Project project = EntityFixtures.project("Status Feature");
-    String feature = EntityFixtures.feature(EntityFixtures.epic(project.id()));
+    String epic = EntityFixtures.epic(project.id());
+    String feature = EntityFixtures.feature(epic);
 
     move(feature, "REFINED")
-        .statusCode(400)
-        .body("message", containsString("a FEATURE has no status"));
+        .statusCode(409)
+        .body("message", containsString("is REPORTED"));
+    given().get("/projects/api/features/" + feature).then().body("feature.status", equalTo("REPORTED"));
+  }
+
+  /**
+   * qits-763: a task holds the one lifecycle of its own, so it is verified while its epic and its
+   * sibling stay IMPLEMENTED — the epic's move carried both tasks there, and nothing moves them on.
+   */
+  @Test
+  void aTaskIsVerifiedOnItsOwnWhileItsEpicStaysImplemented() {
+    EntityFixtures.Project project = EntityFixtures.project("Status Task");
+    String repository = EntityFixtures.repository(project.id());
+    String epic = EntityFixtures.epic(project.id());
+    String feature = EntityFixtures.feature(epic);
+    String task = EntityFixtures.task(feature, repository);
+    String sibling = EntityFixtures.task(feature, repository);
+    move(epic, "REFINED").statusCode(200);
+    move(epic, "IMPLEMENTED").statusCode(200);
+
+    move(EntityFixtures.qualifiedId(task), "VERIFYING")
+        .statusCode(200)
+        .body("archetype", equalTo("TASK"))
+        .body("statusBefore", equalTo("IMPLEMENTED"))
+        .body("status", equalTo("VERIFYING"))
+        .body("$", not(hasKey("blocked")));
+    move(task, "VERIFIED").statusCode(200).body("status", equalTo("VERIFIED"));
+
+    given().get("/projects/api/tasks/" + task).then().body("task.status", equalTo("VERIFIED"));
+    given().get("/projects/api/tasks/" + sibling).then().body("task.status", equalTo("IMPLEMENTED"));
+    given().get("/projects/api/features/" + feature).then().body("feature.status", equalTo("IMPLEMENTED"));
+    given().get("/projects/api/epics/" + epic).then().body("epic.status", equalTo("IMPLEMENTED"));
+  }
+
+  /**
+   * A task's move takes a ticket's roles, not an epic's: an agent is refused only by the project
+   * binding (this forwarded agent carries no project claim), never by "qits:admin alone".
+   */
+  @Test
+  void anAgentMovingATaskIsBoundToItsProjectAndNotRefusedAsForAnEpic() {
+    EntityFixtures.Project project = EntityFixtures.project("Status Agent Task");
+    String epic = EntityFixtures.epic(project.id());
+    String feature = EntityFixtures.feature(epic);
+    move(epic, "REFINED").statusCode(200);
+
+    move(asForwardedAgent(), feature, "IMPLEMENTED")
+        .statusCode(403)
+        .body("message", containsString("its own project"));
+    given().get("/projects/api/features/" + feature).then().body("feature.status", equalTo("REFINED"));
   }
 
   /** The epic and the campaign move by their own doors' path, for a person. */

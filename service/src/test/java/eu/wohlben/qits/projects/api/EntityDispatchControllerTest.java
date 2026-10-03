@@ -691,7 +691,7 @@ public class EntityDispatchControllerTest {
     String featureId = addFeature(epicId, "Not dispatchable");
     String ticketId = createTicket(projectId, "Say how");
 
-    pressRefused(featureId, "FLOW", "no lifecycle");
+    pressRefused(featureId, "FLOW", "runs no phase of its own");
     asAdmin("mallory")
         .body(Map.of())
         .when()

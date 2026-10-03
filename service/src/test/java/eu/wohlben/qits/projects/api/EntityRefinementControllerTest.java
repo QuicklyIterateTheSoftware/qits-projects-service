@@ -186,7 +186,7 @@ public class EntityRefinementControllerTest {
     open(featureId)
         .then()
         .statusCode(409)
-        .body("message", containsString("feature has no lifecycle"));
+        .body("message", containsString("feature runs no phase of its own"));
     asAdmin()
         .when()
         .get("/projects/api/projects/" + projectId + "/refinements")

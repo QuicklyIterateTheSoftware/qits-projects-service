@@ -512,13 +512,14 @@ class EntityAgentBoundsTest {
   }
 
   /** A feature restated as itself, hanging under {@code parent}. */
+  /** A feature under {@code parent}, stated REPORTED: a transition mints no status (qits-763). */
   private static EntityTransition featureUnder(String parent, String title) {
     return new EntityTransition(
         Archetype.FEATURE,
         new EntityTransition.Membership(parent, null),
         title,
         null,
-        null,
+        "REPORTED",
         null,
         null,
         null,

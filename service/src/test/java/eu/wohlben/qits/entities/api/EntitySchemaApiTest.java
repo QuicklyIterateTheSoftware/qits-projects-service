@@ -566,6 +566,11 @@ class EntitySchemaApiTest {
             "type" : "string",
             "description" : "The long-form Markdown body."
           },
+          "status" : {
+            "type" : "string",
+            "description" : "The lifecycle status.",
+            "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+          },
           "repositoryId" : {
             "type" : "string",
             "description" : "The id of the one repository a task works in; it must be in the task's project.",
@@ -599,7 +604,7 @@ class EntitySchemaApiTest {
             "additionalProperties" : false
           }
         },
-        "required" : [ "title", "repositoryId", "membership" ],
+        "required" : [ "title", "status", "repositoryId", "membership" ],
         "additionalProperties" : false
       }
       """;

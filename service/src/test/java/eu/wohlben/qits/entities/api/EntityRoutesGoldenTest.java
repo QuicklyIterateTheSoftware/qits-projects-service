@@ -334,8 +334,15 @@ class EntityRoutesGoldenTest {
     r.call(
         "POST",
         "/projects/api/entities/" + genericFeature + "/status",
-        map("target", "REFINED")); // 400: no lifecycle
+        map("target", "REFINED")); // 409: its epic is still REPORTED (qits-763)
     r.call("POST", "/projects/api/entities/" + genericEpic + "/status", map("target", "REFINED"));
+    // The feature's own move, legal since qits-763: the epic's freeze carried it to REFINED, the
+    // skip takes it to IMPLEMENTED, and it carries its task along.
+    r.call(
+        "POST",
+        "/projects/api/entities/" + genericFeature + "/status",
+        map("target", "IMPLEMENTED"));
+    r.call("GET", p + "/entities?archetype=TASK", null);
     r.call("POST", "/projects/api/entities/" + genericEpic + "/status", map("target", "DONE")); // 409
 
     r.assertGolden("epic-feature-task.json");

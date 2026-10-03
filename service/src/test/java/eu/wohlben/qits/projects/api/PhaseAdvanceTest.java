@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.api;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -299,6 +300,90 @@ public class PhaseAdvanceTest {
     assertEquals(List.of(), turns.calls(), "a campaign is never delivered a turn");
     assertEquals(
         List.of(), workspaces.lookups(), "and no workspace is looked up, so no release is asked");
+  }
+
+  /**
+   * <b>A feature's and a task's move delivers nothing and releases nothing</b> (qits-763), at every
+   * status — VERIFIED included, where an epic or a ticket would ask for its branch's release. They
+   * hold a status of their own now, but no phase runs on a piece of a plan: the bean returns before
+   * it reads a phase, so neither the prompt renderer (which has no template for them and throws) nor
+   * the workspace lookup is reached. Handed to the bean directly, the campaign case's idiom, and
+   * asserted not to throw — a throw here is what the doors would log as a WARN on every move.
+   */
+  @Test
+  public void aFeaturesAndATasksMoveDeliversNoTurnAndAsksForNoRelease() {
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    for (Archetype piece : new Archetype[] {Archetype.FEATURE, Archetype.TASK}) {
+      for (EntityStatus status : EntityStatus.values()) {
+        WorkEntity row = new WorkEntity();
+        row.id = piece + "-" + status;
+        row.projectId = "prj-piece";
+        row.archetype = piece;
+        row.title = "A piece";
+        row.slug = "a-piece";
+        row.status = status.name();
+        row.dispatchContinues = true;
+
+        assertDoesNotThrow(
+            () -> advance.afterTransition(row, EntityStatus.IMPLEMENTED.name(), "dana"),
+            piece + " at " + status);
+      }
+    }
+
+    assertEquals(List.of(), turns.calls(), "a piece of a plan is never delivered a turn");
+    assertEquals(
+        List.of(), workspaces.lookups(), "and no workspace is looked up, so no release is asked");
+  }
+
+  /**
+   * The same through the door a person or an agent presses: a task moved to VERIFIED through {@code
+   * POST /entities/{id}/status} is announced as a TASK and starts nothing.
+   */
+  @Test
+  public void aTaskVerifiedThroughTheStatusDoorIsAnnouncedAndStartsNothing() {
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    String projectId = createProject("Phase Advance Task");
+    String epic =
+        asAdmin("setup")
+            .body(Map.of("title", "The plan"))
+            .post("/projects/api/projects/" + projectId + "/epics")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("epic.id");
+    String feature =
+        asAdmin("setup")
+            .body(Map.of("title", "The part"))
+            .post("/projects/api/epics/" + epic + "/features")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("feature.id");
+    for (String target : List.of("REFINED", "IMPLEMENTED")) {
+      asAdmin("dana")
+          .body(Map.of("target", target))
+          .post("/projects/api/entities/" + epic + "/status")
+          .then()
+          .statusCode(200);
+    }
+    turns.reset();
+    workspaces.reset();
+    transitions.reset();
+
+    asAdmin("dana")
+        .body(Map.of("target", "VERIFIED"))
+        .post("/projects/api/entities/" + feature + "/status")
+        .then()
+        .statusCode(200);
+
+    assertEquals(List.of(), turns.calls(), "a verified feature delivers no turn");
+    assertEquals(List.of(), workspaces.lookups(), "and asks for no release of any branch");
+    assertTrue(
+        transitions.published().stream()
+            .flatMap(event -> event.entities().stream())
+            .anyMatch(
+                entity -> "FEATURE".equals(entity.archetype()) && "VERIFIED".equals(entity.status())),
+        "the move is announced as the feature's own: " + transitions.published());
   }
 
   /**

@@ -225,7 +225,7 @@ class CampaignApiTest {
         .post(base + "/members")
         .then()
         .statusCode(409)
-        .body("message", containsString("no lifecycle"));
+        .body("message", containsString("runs no phase of its own"));
     given()
         .contentType(ContentType.JSON)
         .body(Map.of("entityId", "no-such-entity"))

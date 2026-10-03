@@ -487,7 +487,10 @@ public class PhasePromptsTest {
     }
   }
 
-  /** The three that start nothing start nothing for an epic too, and a feature has no phase at all. */
+  /**
+   * The three that start nothing start nothing for an epic too, and a feature or a task starts no
+   * phase at any status: it holds one of its own since qits-763, but no phase runs on a piece.
+   */
   @Test
   public void anEpicPastTheWorkAndAFeatureStartNoPhase() {
     for (EntityStatus status :
@@ -495,10 +498,14 @@ public class PhasePromptsTest {
       assertEquals(Optional.empty(), prompt(epic(status)), status.name());
       assertEquals(Optional.empty(), PhasePrompts.nextPhase(epic(status)), status.name());
     }
-    WorkEntity feature = epic(EntityStatus.REPORTED);
-    feature.archetype = Archetype.FEATURE;
-    feature.status = null;
-    assertEquals(Optional.empty(), PhasePrompts.nextPhase(feature), "a feature has no lifecycle");
+    for (Archetype piece : new Archetype[] {Archetype.FEATURE, Archetype.TASK}) {
+      for (EntityStatus status : EntityStatus.values()) {
+        WorkEntity row = epic(status);
+        row.archetype = piece;
+        assertEquals(Optional.empty(), PhasePrompts.nextPhase(row), piece + " at " + status);
+        assertEquals(Optional.empty(), prompt(row), piece + " at " + status);
+      }
+    }
   }
 
   /**
@@ -520,8 +527,9 @@ public class PhasePromptsTest {
 
   /**
    * The epic implement turn: the frozen brief with corrections on the thread, dependsOn order,
-   * mark_task_implementing as each starts and mark_task_implemented as each lands, released per repository, no integration, and the claim to
-   * IMPLEMENTED — which stamps every unmarked task.
+   * mark_task_implementing as each starts and mark_task_implemented as each lands — each moving the
+   * task's own status (qits-763) — a task verified on its own with transition_task, released per
+   * repository, no integration, and the claim to IMPLEMENTED — which carries every unmarked task.
    */
   @Test
   public void theEpicImplementTurnMarksReleasesAndClaimsImplemented() {
@@ -533,11 +541,14 @@ public class PhasePromptsTest {
     assertTrue(turn.contains("in dependsOn order"), turn);
     assertTrue(turn.contains("mark_task_implementing when you start one"), turn);
     assertTrue(turn.contains("mark_task_implemented as it lands"), turn);
+    assertTrue(turn.contains("each moves that task's status"), turn);
+    assertTrue(turn.contains("Verify a task on its own"), turn);
+    assertTrue(turn.contains("transition_task it to VERIFIED"), turn);
     assertTrue(turn.contains("released and deployed, through a release request per repository"), turn);
     assertTrue(turn.contains("not merged and not green"), turn);
     assertTrue(turn.contains("Do not integrate the workspace"), turn);
     assertTrue(turn.contains("When every task is marked, transition_epic to IMPLEMENTED"), turn);
-    assertTrue(turn.contains("stamps any unmarked task"), turn);
+    assertTrue(turn.contains("carries any unmarked task to IMPLEMENTED"), turn);
   }
 
   /**

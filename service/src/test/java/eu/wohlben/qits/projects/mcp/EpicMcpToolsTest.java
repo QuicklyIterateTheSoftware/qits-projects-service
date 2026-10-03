@@ -513,6 +513,8 @@ public class EpicMcpToolsTest {
                   Map.of(
                       "archetype", "TASK",
                       "title", "Task for " + repositoryId,
+                      // A task holds a status since qits-763, and a transition mints none.
+                      "status", "REPORTED",
                       "repositoryId", repositoryId,
                       "membership", Map.of("parent", featureId[0])))),
           response ->
@@ -905,7 +907,7 @@ public class EpicMcpToolsTest {
         Map.of("id", taskId, "reason", "waiting on somebody"),
         response -> {
           assertTrue(response.isError(), "a task has no phase of its own to block");
-          assertTrue(text(response).contains("no lifecycle of its own"), text(response));
+          assertTrue(text(response).contains("runs no phase of its own"), text(response));
         });
     String stranger = createProject("Blocking Tools Stranger");
     call(
@@ -969,8 +971,98 @@ public class EpicMcpToolsTest {
               assertFalse(names.contains("mark_epic_implemented"), names.toString());
               assertTrue(names.contains("mark_task_implemented"), names.toString());
               assertTrue(names.contains("mark_task_implementing"), names.toString());
+              assertTrue(names.contains("transition_task"), names.toString());
             })
         .thenAssertResults();
+  }
+
+  /**
+   * <b>{@code transition_task} (qits-763)</b>: a task moves along its own lifecycle once its epic is
+   * past REPORTED, the markers move it too, and verifying one task leaves its sibling and its epic
+   * where they stand. Anything that is not a feature or a task reads as not found, with the tool to
+   * use instead.
+   */
+  @Test
+  public void transitionTaskVerifiesOneTaskOnItsOwn() {
+    String projectId = createProject("TransitionTaskTool");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Verified piece by piece");
+    String taskId = addTask(projectId, epicId, repoId, "Verified first");
+    String siblingId = addTask(projectId, epicId, repoId, "Still being checked");
+
+    call(
+        projectId,
+        "transition_task",
+        Map.of("id", taskId, "target", "REFINED"),
+        response -> {
+          assertTrue(response.isError(), "a piece of a draft plan does not move on its own");
+          assertTrue(text(response).contains("is REPORTED"), text(response));
+        });
+
+    freeze(epicId);
+    for (String id : List.of(taskId, siblingId)) {
+      call(
+          projectId,
+          "mark_task_implemented",
+          Map.of("id", id),
+          response -> {
+            assertFalse(response.isError(), text(response));
+            assertTrue(
+                text(response).contains("\"status\":\"IMPLEMENTED\""),
+                "the marker moves the task's status: " + text(response));
+          });
+    }
+
+    call(
+        projectId,
+        "transition_task",
+        Map.of("id", taskId, "target", "VERIFIED"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains("\"archetype\":\"TASK\""), body);
+          assertTrue(body.contains("\"statusBefore\":\"IMPLEMENTED\""), body);
+          assertTrue(body.contains("\"status\":\"VERIFIED\""), body);
+        });
+
+    authenticated()
+        .get("/projects/api/tasks/" + taskId)
+        .then()
+        .body("task.status", org.hamcrest.Matchers.equalTo("VERIFIED"));
+    authenticated()
+        .get("/projects/api/tasks/" + siblingId)
+        .then()
+        .body("task.status", org.hamcrest.Matchers.equalTo("IMPLEMENTED"));
+    authenticated()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .body("epic.status", org.hamcrest.Matchers.equalTo("REFINED"));
+    call(
+        projectId,
+        "get_epic",
+        Map.of("id", epicId),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains("\"status\":\"VERIFIED\""), "the tree shows it: " + body);
+        });
+
+    call(
+        projectId,
+        "transition_task",
+        Map.of("id", epicId, "target", "IMPLEMENTED"),
+        response -> {
+          assertTrue(response.isError(), "an epic is not this tool's subject");
+          assertTrue(text(response).contains("transition_epic"), text(response));
+        });
+    String stranger = createProject("TransitionTaskStranger");
+    call(
+        stranger,
+        "transition_task",
+        Map.of("id", siblingId, "target", "VERIFIED"),
+        response -> {
+          assertTrue(response.isError(), "another project's task is not found");
+          assertTrue(text(response).contains("not found in this project"), text(response));
+        });
   }
 
   @Test

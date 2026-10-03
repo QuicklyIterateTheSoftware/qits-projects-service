@@ -144,10 +144,16 @@ class EntityReadApiTest {
         .get(path + "?archetype=TICKET&status=REPORTED")
         .then()
         .body("entities", hasSize(0));
+    // Every archetype is matched by its own status — a feature's and a task's too since qits-763,
+    // still REPORTED here under their draft epic — in the tree's order.
     given()
         .get(path + "?status=REPORTED")
         .then()
-        .body("entities.id", equalTo(List.of(epic, campaign)));
+        .body("entities.id", equalTo(List.of(epic, feature, task, campaign)));
+    given()
+        .get(path + "?archetype=TASK&status=REPORTED")
+        .then()
+        .body("entities.id", contains(task));
   }
 
   @Test

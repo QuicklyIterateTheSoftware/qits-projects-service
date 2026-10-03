@@ -294,12 +294,21 @@ public class EntityMcpToolsTest {
     entities.put(
         featureId,
         Map.of("archetype", "EPIC", "title", "Really an epic", "status", "REPORTED"));
+    // A feature holds a status since qits-763, and a transition mints none: each entry states it.
     entities.put(
         first,
-        Map.of("archetype", "FEATURE", "title", "First slice", "membership", under(featureId, 0)));
+        Map.of(
+            "archetype", "FEATURE",
+            "title", "First slice",
+            "status", "REPORTED",
+            "membership", under(featureId, 0)));
     entities.put(
         second,
-        Map.of("archetype", "FEATURE", "title", "Second slice", "membership", under(featureId, 1)));
+        Map.of(
+            "archetype", "FEATURE",
+            "title", "Second slice",
+            "status", "REPORTED",
+            "membership", under(featureId, 1)));
 
     call(
         projectId,

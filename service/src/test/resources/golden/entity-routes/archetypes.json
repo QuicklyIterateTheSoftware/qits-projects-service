@@ -173,11 +173,80 @@
       "gathers" : false,
       "required" : [ "TITLE" ],
       "requiredAtCreate" : [ "TITLE" ],
-      "requiredOnTransition" : [ "TITLE" ],
-      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
-      "legalStatuses" : [ ],
-      "transitions" : { },
-      "lifecycle" : [ ]
+      "requiredOnTransition" : [ "TITLE", "STATUS" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED", "VERIFYING" ],
+      "transitions" : {
+        "REPORTED" : [ {
+          "to" : "REFINED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "REFINED" : [ {
+          "to" : "IMPLEMENTING",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "SKIP"
+        }, {
+          "to" : "REPORTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTING" : [ {
+          "to" : "IMPLEMENTED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "REFINED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTED" : [ {
+          "to" : "VERIFYING",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "VERIFIED",
+          "kind" : "SKIP"
+        }, {
+          "to" : "IMPLEMENTING",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "VERIFYING" : [ {
+          "to" : "VERIFIED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "VERIFIED" : [ {
+          "to" : "DONE",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "VERIFYING",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "DONE" : [ ],
+        "DROPPED" : [ {
+          "to" : "REPORTED",
+          "kind" : "REOPEN"
+        } ]
+      },
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
     }, {
       "archetype" : "TASK",
       "depth" : 2,
@@ -185,11 +254,80 @@
       "gathers" : false,
       "required" : [ "TITLE", "REPOSITORY_ID" ],
       "requiredAtCreate" : [ "TITLE", "REPOSITORY_ID" ],
-      "requiredOnTransition" : [ "TITLE", "REPOSITORY_ID" ],
-      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "REPOSITORY_ID", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
-      "legalStatuses" : [ ],
-      "transitions" : { },
-      "lifecycle" : [ ]
+      "requiredOnTransition" : [ "TITLE", "STATUS", "REPOSITORY_ID" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "REPOSITORY_ID", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
+      "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED", "VERIFYING" ],
+      "transitions" : {
+        "REPORTED" : [ {
+          "to" : "REFINED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "REFINED" : [ {
+          "to" : "IMPLEMENTING",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "SKIP"
+        }, {
+          "to" : "REPORTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTING" : [ {
+          "to" : "IMPLEMENTED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "REFINED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "IMPLEMENTED" : [ {
+          "to" : "VERIFYING",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "VERIFIED",
+          "kind" : "SKIP"
+        }, {
+          "to" : "IMPLEMENTING",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "VERIFYING" : [ {
+          "to" : "VERIFIED",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "IMPLEMENTED",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "VERIFIED" : [ {
+          "to" : "DONE",
+          "kind" : "FORWARD"
+        }, {
+          "to" : "VERIFYING",
+          "kind" : "BACK"
+        }, {
+          "to" : "DROPPED",
+          "kind" : "DROP"
+        } ],
+        "DONE" : [ ],
+        "DROPPED" : [ {
+          "to" : "REPORTED",
+          "kind" : "REOPEN"
+        } ]
+      },
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
     }, {
       "archetype" : "CAMPAIGN",
       "depth" : -1,
