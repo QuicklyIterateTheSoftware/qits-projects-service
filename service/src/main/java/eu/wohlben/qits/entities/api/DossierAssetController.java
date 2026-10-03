@@ -15,6 +15,10 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.time.Instant;
+import java.util.List;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
  * The figures a dossier page inlines: the door that copies one in, and the one hardened route that
@@ -87,6 +91,55 @@ public class DossierAssetController {
   }
 
   /**
+   * One asset in the listing: what it is, the URL and markdown line that render it, and the pages
+   * that name it. The bytes are the content route's.
+   */
+  @Schema(name = "DossierAssetEntry")
+  public record AssetEntry(
+      String id,
+      String kind,
+      String mimeType,
+      String label,
+      String url,
+      String markdown,
+      List<String> pageIds,
+      Instant createdAt) {}
+
+  @Schema(name = "DossierAssetList")
+  public record ListAssetsResponse(List<AssetEntry> assets) {}
+
+  /**
+   * The epic's assets, by label, without their bytes — so a reader can show what the dossier
+   * inlines and know which content URLs its pages will ask for. Empty, never a 404 for a known epic.
+   */
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @RolesAllowed({"qits:admin", "qits:agent"})
+  @Operation(
+      operationId = "listEpicDossierAssets",
+      summary = "List the figures an epic's dossier inlines",
+      description =
+          "Each asset's kind, mime type, label, content URL, markdown line and the pages that"
+              + " name it. No bytes: getDossierAssetContent serves those.")
+  public ListAssetsResponse list(@PathParam("epicId") String epicId) {
+    hints.projectOfEpic(epicId); // 404 if the epic does not exist
+    return new ListAssetsResponse(
+        assets.list(epicId).stream()
+            .map(
+                listed ->
+                    new AssetEntry(
+                        listed.asset().id,
+                        listed.asset().kind.name(),
+                        listed.asset().mimeType,
+                        listed.asset().label,
+                        DossierAssetService.contentUrl(epicId, listed.asset().id),
+                        DossierAssetService.markdownFor(epicId, listed.asset()),
+                        listed.pageIds(),
+                        listed.asset().createdAt))
+            .toList());
+  }
+
+  /**
    * The copied bytes, with the sandbox headers on every response.
    *
    * <p>The mime type comes from the row and is never sniffed from the request: the stored value is
@@ -96,6 +149,9 @@ public class DossierAssetController {
   @GET
   @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{assetId}/content")
+  @Operation(
+      operationId = "getDossierAssetContent",
+      summary = "The bytes of one figure an epic's dossier inlines, sandboxed")
   public Response content(
       @PathParam("epicId") String epicId, @PathParam("assetId") String assetId) {
     DossierAsset asset = assets.get(epicId, assetId);

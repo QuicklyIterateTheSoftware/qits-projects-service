@@ -1,0 +1,40 @@
+{
+  "pages": [
+    {
+      "id": "00000000-0000-4000-8000-000000000013",
+      "epicId": "00000000-0000-4000-8000-000000000006",
+      "ticketId": null,
+      "slug": "scope",
+      "title": "Scope",
+      "position": 0,
+      "body": "## In scope\n- invoices and credit notes\n- one date range per export\n\n## Out of scope\n- exports of payments; the bank statement covers them\n",
+      "version": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000009",
+      "epicId": "00000000-0000-4000-8000-000000000006",
+      "ticketId": null,
+      "slug": "data-flow",
+      "title": "Data flow",
+      "position": 1,
+      "body": "The export reads the invoices once and streams them out:\n\n![Export data flow](/epics/00000000-0000-4000-8000-000000000006/dossier-assets/00000000-0000-4000-8000-000000000008/content)\n\n1. the list sends its filter\n2. the service streams the rows\n3. the browser saves the file\n",
+      "version": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000014",
+      "epicId": "00000000-0000-4000-8000-000000000006",
+      "ticketId": null,
+      "slug": "rollout",
+      "title": "Rollout",
+      "position": 2,
+      "body": "Ship the CSV export first. The PDF export follows once the accountants confirm the columns.",
+      "version": 0,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

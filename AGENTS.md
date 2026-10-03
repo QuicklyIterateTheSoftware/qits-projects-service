@@ -1320,6 +1320,10 @@ attribute: the browser applies it to the response, so the document lands in an o
 when the URL is opened directly, which is the case the attribute cannot cover. The SPA sets the
 attribute too, never with `allow-same-origin`.
 
+`GET /epics/{epicId}/dossier-assets` (`listEpicDossierAssets`) lists the epic's assets without their
+bytes: kind, mime type, label, the content URL, the markdown line and the ids of the pages that name
+it, by label. It is how a reader shows what a dossier inlines; the bytes stay this route's alone.
+
 ## Tickets
 
 A **second root beside `Epic`, not a row under it** (V4). A ticket is a bug or an improvement small
@@ -2681,7 +2685,9 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   A state assumes nothing about the database and is safe to run beside any other, so a slug carries
   a random token and the index lists it under `frozen.strings`. A committed `.json` no interaction
   records any more fails the compare. Every `operationId` it names is an
-  `@Operation` on a controller, so renaming one is a contract change, not a refactor.
+  `@Operation` on a controller, so renaming one is a contract change, not a refactor. A param is
+  frozen like the answer, tokens included, so a qualified id param (`contract-<token>-3`) works.
+  Only JSON is recorded: `getDossierAssetContent` serves bytes and has no golden master.
   <br>**The platform publishes it, from `release.yml`'s `contracts:` declaration** (epic qits-620;
   README "What a release publishes"): the jar `eu.wohlben.qits:qits-projects-golden-masters`, the
   npm package `@qits/projects-golden-masters` and the `@contracts/qits-projects` docs bundle, each

@@ -1,0 +1,199 @@
+{
+  "campaign": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "number": 1,
+    "qualifiedId": "contract-00000001-1",
+    "projectId": "00000000-0000-4000-8000-00000000000f",
+    "slug": "invoicing-for-the-q4-close",
+    "title": "Invoicing for the Q4 close",
+    "description": "Everything accounting needs before the books close on 15 December.\n\n## Done when\n- the accountants can export every invoice of a quarter\n- tax rates are right for every country we bill\n- no open bug touches an invoice total\n",
+    "status": "REFINED",
+    "blocked": false,
+    "start": null,
+    "members": [
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000013",
+        "position": 0,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "archetype": "EPIC",
+          "qualifiedId": "contract-00000001-9",
+          "title": "Tax rates per country",
+          "status": "VERIFIED",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": []
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000014",
+        "position": 1,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000006",
+          "archetype": "EPIC",
+          "qualifiedId": "contract-00000001-2",
+          "title": "Export invoices for the accountants",
+          "status": "IMPLEMENTING",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": []
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000015",
+        "position": 2,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-10",
+          "title": "Invoice totals are off by one cent",
+          "status": "IMPLEMENTING",
+          "blocked": true
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-000000000016",
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-000000000017",
+                "kind": "ENTITY_STATUS",
+                "predicate": {
+                  "entityId": "00000000-0000-4000-8000-000000000006",
+                  "status": "VERIFIED"
+                },
+                "seeded": true,
+                "satisfiedAt": null,
+                "evidence": null,
+                "approval": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000018",
+        "position": 3,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-13",
+          "title": "Credit notes show the wrong sign",
+          "status": "DONE",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-000000000019",
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-00000000001a",
+                "kind": "ENTITY_STATUS",
+                "predicate": {
+                  "entityId": "00000000-0000-4000-8000-000000000001",
+                  "status": "VERIFIED"
+                },
+                "seeded": true,
+                "satisfiedAt": null,
+                "evidence": null,
+                "approval": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-00000000001b",
+        "position": 4,
+        "entity": {
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-11",
+          "title": "Remember the last export format",
+          "status": "REFINED",
+          "blocked": false
+        },
+        "claimedAt": null,
+        "joinedRunning": false,
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-00000000001c",
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-00000000001d",
+                "kind": "ENTITY_STATUS",
+                "predicate": {
+                  "entityId": "00000000-0000-4000-8000-000000000006",
+                  "status": "VERIFIED"
+                },
+                "seeded": false,
+                "satisfiedAt": null,
+                "evidence": null,
+                "approval": null
+              },
+              {
+                "id": "00000000-0000-4000-8000-00000000001e",
+                "kind": "APPROVAL",
+                "predicate": {},
+                "seeded": false,
+                "satisfiedAt": null,
+                "evidence": null,
+                "approval": null
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

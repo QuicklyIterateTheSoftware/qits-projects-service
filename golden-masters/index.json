@@ -3,6 +3,265 @@
   "provider": "qits-projects",
   "states": [
     {
+      "name": "a bug ticket in detail",
+      "slug": "a-bug-ticket-in-detail",
+      "params": {
+        "bugTicketId": "00000000-0000-4000-8000-000000000001",
+        "campaignId": "00000000-0000-4000-8000-000000000002",
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+        "csvTaskId": "00000000-0000-4000-8000-000000000005",
+        "epicId": "00000000-0000-4000-8000-000000000006",
+        "featureId": "00000000-0000-4000-8000-000000000007",
+        "figureAssetId": "00000000-0000-4000-8000-000000000008",
+        "figurePageId": "00000000-0000-4000-8000-000000000009",
+        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+        "projectId": "00000000-0000-4000-8000-00000000000f",
+        "qualifiedId": "contract-00000001-10",
+        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+        "taskId": "00000000-0000-4000-8000-000000000011",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{campaignId}",
+          "status": 200,
+          "file": "a-bug-ticket-in-detail/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id",
+              "$.campaign.members[*].groups[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "a-bug-ticket-in-detail/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "a-bug-ticket-in-detail/listEntityComments.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].comment.id",
+              "$.entries[*].comment.entityId"
+            ],
+            "instants": [
+              "$.entries[*].comment.createdAt",
+              "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-bug-ticket-in-detail/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId",
+              "$.entities[*].dependsOn"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listTicketDossierPages",
+          "method": "GET",
+          "path": "/projects/api/tickets/{bugTicketId}/dossier",
+          "status": 200,
+          "file": "a-bug-ticket-in-detail/listTicketDossierPages.json",
+          "frozen": {
+            "ids": [
+              "$.pages[*].id",
+              "$.pages[*].ticketId"
+            ],
+            "instants": [
+              "$.pages[*].createdAt",
+              "$.pages[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a campaign in detail",
+      "slug": "a-campaign-in-detail",
+      "params": {
+        "bugTicketId": "00000000-0000-4000-8000-000000000001",
+        "campaignId": "00000000-0000-4000-8000-000000000002",
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+        "csvTaskId": "00000000-0000-4000-8000-000000000005",
+        "epicId": "00000000-0000-4000-8000-000000000006",
+        "featureId": "00000000-0000-4000-8000-000000000007",
+        "figureAssetId": "00000000-0000-4000-8000-000000000008",
+        "figurePageId": "00000000-0000-4000-8000-000000000009",
+        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+        "projectId": "00000000-0000-4000-8000-00000000000f",
+        "qualifiedId": "contract-00000001-1",
+        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+        "taskId": "00000000-0000-4000-8000-000000000011",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{campaignId}",
+          "status": 200,
+          "file": "a-campaign-in-detail/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id",
+              "$.campaign.members[*].groups[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "a-campaign-in-detail/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "a-campaign-in-detail/listEntityComments.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].comment.id",
+              "$.entries[*].comment.entityId"
+            ],
+            "instants": [
+              "$.entries[*].comment.createdAt",
+              "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-campaign-in-detail/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId",
+              "$.entities[*].dependsOn"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a campaign with ordered developments",
       "slug": "a-campaign-with-ordered-developments",
       "params": {
@@ -224,6 +483,214 @@
             "strings": [
               "$.qualifiedId"
             ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a feature in detail",
+      "slug": "a-feature-in-detail",
+      "params": {
+        "bugTicketId": "00000000-0000-4000-8000-000000000001",
+        "campaignId": "00000000-0000-4000-8000-000000000002",
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+        "csvTaskId": "00000000-0000-4000-8000-000000000005",
+        "epicId": "00000000-0000-4000-8000-000000000006",
+        "featureId": "00000000-0000-4000-8000-000000000007",
+        "figureAssetId": "00000000-0000-4000-8000-000000000008",
+        "figurePageId": "00000000-0000-4000-8000-000000000009",
+        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+        "projectId": "00000000-0000-4000-8000-00000000000f",
+        "qualifiedId": "contract-00000001-6",
+        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+        "taskId": "00000000-0000-4000-8000-000000000011",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "a-feature-in-detail/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope",
+              "$.dependsOn",
+              "$.parent"
+            ],
+            "instants": [
+              "$.implementingAt",
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "a-feature-in-detail/listEntityComments.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].comment.id",
+              "$.entries[*].comment.entityId"
+            ],
+            "instants": [
+              "$.entries[*].comment.createdAt",
+              "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-feature-in-detail/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId",
+              "$.entities[*].dependsOn"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a maintenance ticket in detail",
+      "slug": "a-maintenance-ticket-in-detail",
+      "params": {
+        "bugTicketId": "00000000-0000-4000-8000-000000000001",
+        "campaignId": "00000000-0000-4000-8000-000000000002",
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+        "csvTaskId": "00000000-0000-4000-8000-000000000005",
+        "epicId": "00000000-0000-4000-8000-000000000006",
+        "featureId": "00000000-0000-4000-8000-000000000007",
+        "figureAssetId": "00000000-0000-4000-8000-000000000008",
+        "figurePageId": "00000000-0000-4000-8000-000000000009",
+        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+        "projectId": "00000000-0000-4000-8000-00000000000f",
+        "qualifiedId": "contract-00000001-12",
+        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+        "taskId": "00000000-0000-4000-8000-000000000011",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "a-maintenance-ticket-in-detail/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "a-maintenance-ticket-in-detail/listEntityComments.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-maintenance-ticket-in-detail/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId",
+              "$.entities[*].dependsOn"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listTicketDossierPages",
+          "method": "GET",
+          "path": "/projects/api/tickets/{maintenanceTicketId}/dossier",
+          "status": 200,
+          "file": "a-maintenance-ticket-in-detail/listTicketDossierPages.json",
+          "frozen": {
+            "ids": [
+              "$.pages[*].id",
+              "$.pages[*].ticketId"
+            ],
+            "instants": [
+              "$.pages[*].createdAt",
+              "$.pages[*].updatedAt"
+            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }
@@ -743,6 +1210,107 @@
       ]
     },
     {
+      "name": "a task in detail",
+      "slug": "a-task-in-detail",
+      "params": {
+        "bugTicketId": "00000000-0000-4000-8000-000000000001",
+        "campaignId": "00000000-0000-4000-8000-000000000002",
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+        "csvTaskId": "00000000-0000-4000-8000-000000000005",
+        "epicId": "00000000-0000-4000-8000-000000000006",
+        "featureId": "00000000-0000-4000-8000-000000000007",
+        "figureAssetId": "00000000-0000-4000-8000-000000000008",
+        "figurePageId": "00000000-0000-4000-8000-000000000009",
+        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+        "projectId": "00000000-0000-4000-8000-00000000000f",
+        "qualifiedId": "contract-00000001-5",
+        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+        "taskId": "00000000-0000-4000-8000-000000000011",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "a-task-in-detail/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope",
+              "$.repositoryId",
+              "$.dependsOn",
+              "$.parent"
+            ],
+            "instants": [
+              "$.implementedAt",
+              "$.implementingAt",
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "a-task-in-detail/listEntityComments.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].comment.id",
+              "$.entries[*].comment.entityId"
+            ],
+            "instants": [
+              "$.entries[*].comment.createdAt",
+              "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-task-in-detail/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId",
+              "$.entities[*].dependsOn"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a ticket of every type",
       "slug": "a-ticket-of-every-type",
       "params": {
@@ -995,6 +1563,168 @@
             ],
             "strings": [
               "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an epic in detail",
+      "slug": "an-epic-in-detail",
+      "params": {
+        "bugTicketId": "00000000-0000-4000-8000-000000000001",
+        "campaignId": "00000000-0000-4000-8000-000000000002",
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+        "csvTaskId": "00000000-0000-4000-8000-000000000005",
+        "epicId": "00000000-0000-4000-8000-000000000006",
+        "featureId": "00000000-0000-4000-8000-000000000007",
+        "figureAssetId": "00000000-0000-4000-8000-000000000008",
+        "figurePageId": "00000000-0000-4000-8000-000000000009",
+        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+        "projectId": "00000000-0000-4000-8000-00000000000f",
+        "qualifiedId": "contract-00000001-2",
+        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+        "taskId": "00000000-0000-4000-8000-000000000011",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{campaignId}",
+          "status": 200,
+          "file": "an-epic-in-detail/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id",
+              "$.campaign.members[*].groups[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "an-epic-in-detail/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "an-epic-in-detail/listEntityComments.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].comment.id",
+              "$.entries[*].comment.entityId"
+            ],
+            "instants": [
+              "$.entries[*].comment.createdAt",
+              "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEpicDossierAssets",
+          "method": "GET",
+          "path": "/projects/api/epics/{epicId}/dossier-assets",
+          "status": 200,
+          "file": "an-epic-in-detail/listEpicDossierAssets.json",
+          "frozen": {
+            "ids": [
+              "$.assets[*].id",
+              "$.assets[*].pageIds[*]"
+            ],
+            "instants": [
+              "$.assets[*].createdAt"
+            ],
+            "strings": [
+              "$.assets[*].url",
+              "$.assets[*].markdown"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEpicDossierPages",
+          "method": "GET",
+          "path": "/projects/api/epics/{epicId}/dossier",
+          "status": 200,
+          "file": "an-epic-in-detail/listEpicDossierPages.json",
+          "frozen": {
+            "ids": [
+              "$.pages[*].id",
+              "$.pages[*].epicId"
+            ],
+            "instants": [
+              "$.pages[*].createdAt",
+              "$.pages[*].updatedAt"
+            ],
+            "strings": [
+              "$.pages[*].body"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "an-epic-in-detail/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId",
+              "$.entities[*].dependsOn"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -1313,6 +2043,139 @@
             "strings": [
               "$.qualifiedId"
             ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an improvement ticket in detail",
+      "slug": "an-improvement-ticket-in-detail",
+      "params": {
+        "bugTicketId": "00000000-0000-4000-8000-000000000001",
+        "campaignId": "00000000-0000-4000-8000-000000000002",
+        "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+        "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+        "csvTaskId": "00000000-0000-4000-8000-000000000005",
+        "epicId": "00000000-0000-4000-8000-000000000006",
+        "featureId": "00000000-0000-4000-8000-000000000007",
+        "figureAssetId": "00000000-0000-4000-8000-000000000008",
+        "figurePageId": "00000000-0000-4000-8000-000000000009",
+        "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+        "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+        "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+        "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+        "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+        "projectId": "00000000-0000-4000-8000-00000000000f",
+        "qualifiedId": "contract-00000001-11",
+        "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+        "taskId": "00000000-0000-4000-8000-000000000011",
+        "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{campaignId}",
+          "status": 200,
+          "file": "an-improvement-ticket-in-detail/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id",
+              "$.campaign.members[*].groups[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}",
+          "status": 200,
+          "file": "an-improvement-ticket-in-detail/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{qualifiedId}/comments",
+          "status": 200,
+          "file": "an-improvement-ticket-in-detail/listEntityComments.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].comment.id",
+              "$.entries[*].comment.entityId"
+            ],
+            "instants": [
+              "$.entries[*].comment.createdAt",
+              "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "an-improvement-ticket-in-detail/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId",
+              "$.entities[*].dependsOn"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt",
+              "$.entities[*].implementingAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listTicketDossierPages",
+          "method": "GET",
+          "path": "/projects/api/tickets/{improvementTicketId}/dossier",
+          "status": 200,
+          "file": "an-improvement-ticket-in-detail/listTicketDossierPages.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         }
