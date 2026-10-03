@@ -131,7 +131,8 @@ public class EpicMcpTools {
       String description,
       String repositoryId,
       String dependsOnTaskId,
-      Instant implementedAt) {}
+      Instant implementedAt,
+      Instant implementingAt) {}
 
   /** A feature inside {@link EpicDetail}, with its tasks. */
   public record FeatureDetail(
@@ -142,6 +143,7 @@ public class EpicMcpTools {
       String description,
       String dependsOnFeatureId,
       Instant implementedOn,
+      Instant implementingOn,
       List<TaskDetail> tasks) {}
 
   /**
@@ -197,6 +199,19 @@ public class EpicMcpTools {
       String repositoryId,
       Instant implementedAt) {}
 
+  /**
+   * What {@link #markTaskImplementing} answers: the task plus the implementing marker it holds now
+   * — the one it just wrote, or the earlier one a repeated call kept. A record of its own for
+   * {@link TaskImplemented}'s reason.
+   */
+  public record TaskImplementing(
+      String id,
+      String qualifiedId,
+      String slug,
+      String title,
+      String repositoryId,
+      Instant implementingAt) {}
+
   // --- Epics ----------------------------------------------------------------
 
   @McpServer("repository")
@@ -207,13 +222,14 @@ public class EpicMcpTools {
               + " feature/task tree. Start here: call it with status=\"REPORTED\" to find the"
               + " drafts that are open for editing, and decide between extending one of them and"
               + " proposing a new epic. Only REPORTED epics can be changed at all; the other"
-              + " statuses (REFINED, IMPLEMENTED, VERIFIED, DONE, DROPPED) are read-only here.")
+              + " statuses (REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED, DONE, DROPPED) are"
+              + " read-only here.")
   public List<EpicSummary> listEpics(
       @ToolArg(
               required = false,
               description =
-                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
-                      + " DROPPED. Omit for every epic of the project.")
+                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED,"
+                      + " VERIFYING, VERIFIED, DONE or DROPPED. Omit for every epic of the project.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return entities.listByProject(Archetype.EPIC, scope.requireProjectId(), status).stream()
@@ -227,9 +243,10 @@ public class EpicMcpTools {
       description =
           "Read one epic of this project in full: its description plus every feature and, under"
               + " each, every task, and the epic's own comment thread, oldest first. Use it before"
-              + " editing a draft, so the tree you extend is the one that exists. The implemented markers it reports are set as work ships and are"
-              + " not part of a draft; if you are the agent implementing this epic, record one with"
-              + " mark_task_implemented.")
+              + " editing a draft, so the tree you extend is the one that exists. The implementing"
+              + " and implemented markers it reports are set as work starts and ships and are not"
+              + " part of a draft; if you are the agent implementing this epic, record them with"
+              + " mark_task_implementing and mark_task_implemented.")
   public EpicDetail getEpic(
       @ToolArg(description = "id of an epic in this project") String id) {
     WorkEntity epic = requireEpicInProject(id);
@@ -247,6 +264,7 @@ public class EpicMcpTools {
                       feature.description,
                       feature.dependsOnEntityId,
                       feature.implementedAt,
+                      feature.implementingAt,
                       entities.listChildren(Archetype.TASK, feature.id).stream()
                           .map(Nested::entity)
                           .map(
@@ -259,7 +277,8 @@ public class EpicMcpTools {
                                       task.description,
                                       task.repositoryId,
                                       task.dependsOnEntityId,
-                                      task.implementedAt))
+                                      task.implementedAt,
+                                      task.implementingAt))
                           .toList());
                 })
             .toList();
@@ -342,14 +361,19 @@ public class EpicMcpTools {
           "Move an epic along its lifecycle. A status is a claim about what has been ACHIEVED, so"
               + " only move to one you can honestly make: REPORTED — the work is raised and its plan"
               + " is being written; REFINED — the plan is complete: description, feature/task tree"
-              + " and dossier, and moving here FREEZES that scope; IMPLEMENTED — every task is"
+              + " and dossier, and moving here FREEZES that scope; IMPLEMENTING — the implementation"
+              + " was started (a dispatch press, or your first mark_task_implementing, moves the"
+              + " epic here for you); IMPLEMENTED — every task is"
               + " marked with mark_task_implemented and every touched repository is released AND"
               + " deployed (moving here stamps any task still unmarked, so never make it with work"
-              + " outstanding); VERIFIED — you confirmed on the platform that what the epic promised"
+              + " outstanding); VERIFYING — the verification was started (a dispatch press moves the"
+              + " epic here for you); VERIFIED — you confirmed on the platform that what the epic promised"
               + " holds; DONE — closed, which is a person's call; DROPPED — a decision was taken not"
               + " to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or"
-              + " back: REPORTED <-> REFINED <-> IMPLEMENTED <-> VERIFIED -> DONE, one step at a"
-              + " time. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
+              + " back: REPORTED <-> REFINED <-> IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING <->"
+              + " VERIFIED -> DONE, one step at a time, with TWO SKIPS: REFINED -> IMPLEMENTED and"
+              + " IMPLEMENTED -> VERIFIED directly are allowed, for work finished without ever"
+              + " being moved to IMPLEMENTING or VERIFYING. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
               + " epic (propose_epic). Reopening a frozen scope is the move back from REFINED to"
               + " REPORTED. Moving back corrects a claim that turned out wrong. It is not how a phase"
               + " reports failure: a phase that cannot finish, or a verification that fails, is"
@@ -359,9 +383,11 @@ public class EpicMcpTools {
       @ToolArg(description = "id of an epic in this project") String id,
       @ToolArg(
               description =
-                  "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
-                      + " DROPPED. On the pipeline it must be a neighbour of the epic's current"
-                      + " status; DONE is final and moves nowhere")
+                  "the status to move to: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,"
+                      + " VERIFIED,"
+                      + " DONE or DROPPED. On the pipeline it must be a neighbour of the epic's"
+                      + " current status, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED"
+                      + " (the skips); DONE is final and moves nowhere")
           String target) {
     requireEpicInProject(id);
     if (target != null && WorkEntityService.SUPERSEDE.equals(target)) {
@@ -370,11 +396,13 @@ public class EpicMcpTools {
               + " supersedes an epic from the board.");
     }
     String changedBy = changedBy();
-    WorkEntity epic = resolutions.transition(Archetype.EPIC, id, target, changedBy).entity();
+    WorkEntityService.Transition moved =
+        resolutions.transition(Archetype.EPIC, id, target, changedBy);
+    WorkEntity epic = moved.entity();
     announce();
     // The agent's claim IS the trigger for the next phase: after the move, outside its transaction.
     try {
-      phaseAdvance.afterTransition(epic, changedBy);
+      phaseAdvance.afterTransition(epic, moved.statusBefore(), changedBy);
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not start the phase epic %s just moved into", epic.id);
     }
@@ -535,8 +563,10 @@ public class EpicMcpTools {
    *
    * <p>The guard is the lifecycle's own and not a second copy of it: this lands on {@code
    * WorkEntityService.update}'s marker arm alone (an {@code EntityWrite} that touches the marker and
-   * no scope), so {@code EntityLifecycle.requireRefined} is what runs and its message is what a
-   * REPORTED or finished epic answers with.
+   * no scope), so {@code EntityLifecycle.requireBeingImplemented} is what runs and its message is
+   * what a REPORTED or finished epic answers with. Since qits-749 the epic may be REFINED or
+   * IMPLEMENTING, and {@code mark_task_implementing} before this is optional: without it the
+   * task's {@code implementingAt} simply stays null.
    *
    * <p><b>This is an interim and it is written to be easy to remove.</b> Nothing on the platform
    * derives these markers today — no listener sets one when a task's work merges — so a dispatched
@@ -550,11 +580,12 @@ public class EpicMcpTools {
   @Tool(
       name = "mark_task_implemented",
       description =
-          "Record that a task's work has landed. Accepted only while the owning epic is"
-              + " REFINED (being implemented) — a task of a REPORTED epic has nothing to mark yet, and one of a"
-              + " finished epic is already settled. This is the marker a dispatched implementing"
-              + " agent sets as it goes: mark each task as its work lands, rather than all of them"
-              + " at the end.")
+          "Record that a task's work has landed. Accepted only while the owning epic is being"
+              + " implemented — REFINED or IMPLEMENTING; a task of a REPORTED epic has nothing to"
+              + " mark yet, and one of a finished epic is already settled. This is the marker a"
+              + " dispatched implementing agent sets as it goes: mark each task as its work lands,"
+              + " rather than all of them at the end. Calling mark_task_implementing first is"
+              + " expected but not required.")
   public TaskImplemented markTaskImplemented(
       @ToolArg(description = "id of a task in this project") String id) {
     requireTaskInProject(id);
@@ -570,6 +601,40 @@ public class EpicMcpTools {
         task.title,
         task.repositoryId,
         task.implementedAt);
+  }
+
+  /**
+   * <b>The implementing marker</b> (qits-749): the task's work was started. Its sibling {@link
+   * #markTaskImplemented} records that the work landed; this records that it began, so a feature or
+   * a task — which have no status — shows in the IMPLEMENTING column. It stamps the task's {@code
+   * implementingAt} (and its feature's, the first time) when unset and keeps it when set, so a
+   * second call is harmless; and on an epic still REFINED it moves the epic to IMPLEMENTING, so an
+   * agent that starts without a dispatch press still shows on the board. All three are {@code
+   * WorkEntityService.markImplementing}'s, guarded by {@code
+   * EntityLifecycle.requireBeingImplemented} like the sibling. Skippable: a task may be marked
+   * implemented without ever being marked implementing.
+   */
+  @McpServer("repository")
+  @Tool(
+      name = "mark_task_implementing",
+      description =
+          "Record that you started a task's work. Accepted only while the owning epic is being"
+              + " implemented — REFINED or IMPLEMENTING. It stamps the task (and its feature, the"
+              + " first time) as implementing, and an epic still REFINED moves to IMPLEMENTING."
+              + " Idempotent: a task already marked keeps its first time. Call it as you start each"
+              + " task, then mark_task_implemented as its work lands.")
+  public TaskImplementing markTaskImplementing(
+      @ToolArg(description = "id of a task in this project") String id) {
+    requireTaskInProject(id);
+    WorkEntity task = entities.markImplementing(id, changedBy()).entity();
+    announce();
+    return new TaskImplementing(
+        task.id,
+        QualifiedEntityIds.render(projectSlug(), task.number),
+        task.slug,
+        task.title,
+        task.repositoryId,
+        task.implementingAt);
   }
 
   @McpServer("repository")

@@ -623,6 +623,11 @@ public class EntityTransitionService {
     row.supersededByEntityId = blankToNull(target.supersededBy());
     row.repositoryId = blankToNull(target.repositoryId());
     row.implementedAt = target.implementedAt();
+    if (!Archetypes.spec(target.archetype()).permits(EntityProperty.IMPLEMENTING_AT)) {
+      // Not part of the stated row (qits-749): the implementing marker is carried like the slug
+      // where the target kind has a slot for it, and cleared where it has none.
+      row.implementingAt = null;
+    }
     row.dependsOnEntityId = blankToNull(target.dependsOn());
     if (!Archetypes.spec(target.archetype()).permits(EntityProperty.CREATED_BY)) {
       row.createdBy = null;

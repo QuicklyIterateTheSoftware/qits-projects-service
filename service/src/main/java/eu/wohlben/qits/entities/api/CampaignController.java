@@ -114,8 +114,8 @@ public class CampaignController {
   }
 
   /**
-   * {@code inFlight} omitted means the service decides: true when the member is IMPLEMENTED,
-   * VERIFIED or DONE, or an ACTIVE workspace stands on its branch. The answer's {@code
+   * {@code inFlight} omitted means the service decides: true when the member is IMPLEMENTING,
+   * IMPLEMENTED, VERIFYING, VERIFIED or DONE, or an ACTIVE workspace stands on its branch. The answer's {@code
    * joinedRunning} echoes what was decided.
    */
   public record AddCampaignMemberRequest(

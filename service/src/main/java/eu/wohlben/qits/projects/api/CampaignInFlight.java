@@ -16,7 +16,7 @@ import org.jboss.logging.Logger;
  * layer decides when the caller states none (qits-413). The {@code entities} module cannot decide
  * it: half of the answer is a workspace, which lives in another service.
  *
- * <p>In flight means <b>the member is IMPLEMENTED, VERIFIED or DONE</b>, or <b>an ACTIVE workspace
+ * <p>In flight means <b>the member is IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED or DONE</b>, or <b>an ACTIVE workspace
  * stands on its branch</b> — the same {@link WorkspaceAgentDispatch#workspacesReferencing} lookup
  * {@link PhaseAdvance} makes, with the branch from {@link EntityWorkspaces#branchOf}, and the same
  * branch-and-ACTIVE filter: a workspace on some other branch is somebody else's work, and a resolved
@@ -33,7 +33,11 @@ public class CampaignInFlight {
 
   private static final Set<String> UNDER_WAY =
       Set.of(
-          EntityStatus.IMPLEMENTED.name(), EntityStatus.VERIFIED.name(), EntityStatus.DONE.name());
+          EntityStatus.IMPLEMENTING.name(),
+          EntityStatus.IMPLEMENTED.name(),
+          EntityStatus.VERIFYING.name(),
+          EntityStatus.VERIFIED.name(),
+          EntityStatus.DONE.name());
 
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
 

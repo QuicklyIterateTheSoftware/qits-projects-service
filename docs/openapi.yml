@@ -1426,10 +1426,16 @@ components:
           - string
           - "null"
           description: A feature's or task's implemented marker (ISO-8601 instant);
-            null clears it. Moves only while the owning epic is REFINED.
+            null clears it. Moves only while the owning epic is REFINED or IMPLEMENTING.
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
+        implementingAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+          description: "A feature's or task's implementing marker (ISO-8601 instant):\
+            \ when its implementation was started. Cannot be cleared. Moves only while\
+            \ the owning epic is REFINED or IMPLEMENTING."
     EntityProperty:
       type: string
       enum:
@@ -1444,6 +1450,7 @@ components:
       - SUPERSEDED_BY
       - REPOSITORY_ID
       - IMPLEMENTED_AT
+      - IMPLEMENTING_AT
       - DEPENDS_ON
     EntityRefinementResponse:
       type: object
@@ -1458,8 +1465,10 @@ components:
       properties:
         target:
           type: string
-          description: "REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or DROPPED\
-            \ — one the entity's current status may move to"
+          description: "REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED,\
+            \ DONE or DROPPED — one the entity's current status may move to: a neighbour\
+            \ on the walk, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED\
+            \ (the skips). A campaign never moves to IMPLEMENTING or VERIFYING."
     EntityTransition:
       type: object
       properties:
@@ -1569,6 +1578,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+          - REPORTED
+          - REFINED
+          - IMPLEMENTING
+          - IMPLEMENTED
+          - VERIFYING
+          - VERIFIED
+          - DONE
+          - DROPPED
         blocked:
           type: boolean
         supersededByEpicId:
@@ -1606,6 +1624,8 @@ components:
         dependsOnFeatureId:
           type: string
         implementedOn:
+          $ref: "#/components/schemas/Instant"
+        implementingOn:
           $ref: "#/components/schemas/Instant"
         createdAt:
           $ref: "#/components/schemas/Instant"
@@ -2827,6 +2847,8 @@ components:
           type: string
         implementedAt:
           $ref: "#/components/schemas/Instant"
+        implementingAt:
+          $ref: "#/components/schemas/Instant"
         createdAt:
           $ref: "#/components/schemas/Instant"
         updatedAt:
@@ -2884,6 +2906,15 @@ components:
           type: string
         status:
           type: string
+          enum:
+          - REPORTED
+          - REFINED
+          - IMPLEMENTING
+          - IMPLEMENTED
+          - VERIFYING
+          - VERIFIED
+          - DONE
+          - DROPPED
         blocked:
           type: boolean
         assignee:
@@ -2925,6 +2956,7 @@ components:
       type: string
       enum:
       - FORWARD
+      - SKIP
       - BACK
       - DROP
       - REOPEN
@@ -2972,6 +3004,8 @@ components:
         repositoryId:
           type: string
         implementedAt:
+          $ref: "#/components/schemas/Instant"
+        implementingAt:
           $ref: "#/components/schemas/Instant"
         dependsOn:
           type: string

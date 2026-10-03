@@ -544,7 +544,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
         EntityWrite.nodeEdit("Renamed too", null, null, false, null, false),
         "t");
     assertEquals(2, workEntities.listChildren(Archetype.FEATURE, epic.id).size());
-    // And the markers are closed again — they move only at REFINED.
+    // And the markers are closed again — they move only at REFINED or IMPLEMENTING.
     ConflictException refused =
         assertThrows(
             ConflictException.class,
@@ -603,6 +603,175 @@ class EpicLifecycleTest extends EntitiesTestSupport {
                 task.entity().id,
                 EntityWrite.nodeEdit(null, null, null, false, null, true),
                 "t"));
+  }
+
+  // --- the implementing marker and the IMPLEMENTING status (qits-749) -------------------------
+
+  /** An epic with one feature holding one task, frozen at REFINED. */
+  private Nested refinedTask(WorkEntity epic) {
+    Nested task = plannedTask(epic);
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
+    return task;
+  }
+
+  /** An epic with one feature holding one task, still a draft. */
+  private Nested plannedTask(WorkEntity epic) {
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
+    Nested task =
+        workEntities.create(
+            Archetype.TASK,
+            feature.entity().id,
+            EntityWrite.task("repo-1", "Task", null, null),
+            "t");
+    return task;
+  }
+
+  @Test
+  void markingATaskImplementingStampsItAndItsFeatureAndMovesARefinedEpic() {
+    WorkEntity epic = epic();
+    Nested task = refinedTask(epic);
+
+    Nested marked = workEntities.markImplementing(task.entity().id, "agent");
+
+    Instant at = marked.entity().implementingAt;
+    assertNotNull(at, "the task is stamped");
+    assertNull(marked.entity().implementedAt, "implementing is not implemented");
+    assertEquals(
+        at,
+        workEntities.nested(Archetype.FEATURE, task.parentId()).entity().implementingAt,
+        "the feature is stamped by the first of its tasks");
+    assertEquals(
+        EntityStatus.IMPLEMENTING.name(), workEntities.get(Archetype.EPIC, epic.id).status);
+  }
+
+  @Test
+  void markingATaskImplementingTwiceKeepsTheFirstTimeAndMovesNothingFurther() {
+    WorkEntity epic = epic();
+    Nested task = refinedTask(epic);
+    Instant first = workEntities.markImplementing(task.entity().id, "agent").entity().implementingAt;
+
+    Instant again = workEntities.markImplementing(task.entity().id, "agent").entity().implementingAt;
+
+    assertEquals(first, again, "idempotent: the marker records when the work started");
+    assertEquals(
+        EntityStatus.IMPLEMENTING.name(), workEntities.get(Archetype.EPIC, epic.id).status);
+  }
+
+  @Test
+  void markingATaskImplementingIsRefusedOnADraftAndOnAnImplementedEpic() {
+    WorkEntity draft = epic();
+    Nested feature =
+        workEntities.create(
+            Archetype.FEATURE, draft.id, EntityWrite.feature("Feature", null, null), "t");
+    Nested task =
+        workEntities.create(
+            Archetype.TASK, feature.entity().id, EntityWrite.task("repo-1", "T", null, null), "t");
+    assertThrows(
+        ConflictException.class, () -> workEntities.markImplementing(task.entity().id, "agent"));
+
+    WorkEntity shipped = epic();
+    Nested shippedTask = refinedTask(shipped);
+    workEntities.transition(Archetype.EPIC, shipped.id, "IMPLEMENTED", "t");
+    ConflictException refused =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.markImplementing(shippedTask.entity().id, "agent"));
+    assertTrue(refused.getMessage().contains("REFINED or IMPLEMENTING"), refused.getMessage());
+  }
+
+  @Test
+  void theImplementedMarkerMovesWhileTheEpicIsImplementingWithOrWithoutAnImplementingMark() {
+    WorkEntity epic = epic();
+    Nested marked = plannedTask(epic);
+    Nested unmarked =
+        workEntities.create(
+            Archetype.TASK,
+            marked.parentId(),
+            EntityWrite.task("repo-1", "Skipped the mark", null, null),
+            "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
+    // An agent may move the epic itself; the platform's moves are tested one module up.
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", "t");
+
+    workEntities.update(Archetype.TASK, marked.entity().id, EntityWrite.implementedAt(WHEN), "t");
+    Nested skipped =
+        workEntities.update(
+            Archetype.TASK, unmarked.entity().id, EntityWrite.implementedAt(WHEN), "t");
+
+    assertEquals(WHEN, workEntities.nested(Archetype.TASK, marked.entity().id).entity().implementedAt);
+    assertEquals(WHEN, skipped.entity().implementedAt);
+    assertNull(skipped.entity().implementingAt, "the skip leaves the implementing marker empty");
+  }
+
+  @Test
+  void enteringImplementingStampsNothingAndEnteringImplementedKeepsTheImplementingMarker() {
+    WorkEntity epic = epic();
+    Nested task = plannedTask(epic);
+    Nested other =
+        workEntities.create(
+            Archetype.TASK, task.parentId(), EntityWrite.task("repo-1", "Other", null, null), "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", "t");
+    assertNull(workEntities.nested(Archetype.TASK, other.entity().id).entity().implementingAt);
+
+    Instant started = workEntities.markImplementing(task.entity().id, "agent").entity().implementingAt;
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "t");
+
+    WorkEntity shipped = workEntities.nested(Archetype.TASK, task.entity().id).entity();
+    assertNotNull(shipped.implementedAt);
+    assertEquals(started, shipped.implementingAt, "the implementing marker stays as history");
+  }
+
+  @Test
+  void transitionFromMovesOnlyARowStillAtTheExpectedStatus() {
+    WorkEntity epic = frozen();
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "t"); // the skip
+
+    assertTrue(
+        workEntities
+            .transitionFrom(
+                Archetype.EPIC, epic.id, EntityStatus.REFINED, EntityStatus.IMPLEMENTING, "t")
+            .isEmpty(),
+        "a platform move made late must not walk an IMPLEMENTED epic back");
+    assertEquals(EntityStatus.IMPLEMENTED.name(), workEntities.get(Archetype.EPIC, epic.id).status);
+  }
+
+  @Test
+  void aCampaignNeverMovesToImplementing() {
+    WorkEntity campaign =
+        workEntities.createCampaign("proj-1", "Ordering", null, "t");
+    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REFINED", "t");
+
+    ConflictException refused =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTING", "t"));
+    assertTrue(refused.getMessage().contains("never moves to IMPLEMENTING"), refused.getMessage());
+    assertEquals(
+        EntityStatus.REFINED.name(), workEntities.get(Archetype.CAMPAIGN, campaign.id).status);
+    // It reaches IMPLEMENTED in one step instead, and IMPLEMENTED -> REFINED is still its BACK move.
+    assertEquals(
+        EntityStatus.IMPLEMENTED.name(),
+        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t").entity().status);
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTING", "t"));
+    assertEquals(
+        EntityStatus.REFINED.name(),
+        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "REFINED", "t").entity().status);
+    // VERIFYING the same (qits-749), and VERIFIED -> IMPLEMENTED stays its BACK move.
+    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t");
+    ConflictException verifying =
+        assertThrows(
+            ConflictException.class,
+            () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "VERIFYING", "t"));
+    assertTrue(verifying.getMessage().contains("never moves to VERIFYING"), verifying.getMessage());
+    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "VERIFIED", "t");
+    assertEquals(
+        EntityStatus.IMPLEMENTED.name(),
+        workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t").entity().status);
   }
 
   @Test

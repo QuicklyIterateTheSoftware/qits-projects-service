@@ -1,8 +1,10 @@
 package eu.wohlben.qits.projects.contracts;
 
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.BackupOutcome;
 import eu.wohlben.qits.projects.entity.Project;
@@ -282,16 +284,18 @@ public class ProviderStates {
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.TICKET, first, "REFINED", SEEDER);
     work.transition(Archetype.TICKET, second, "REFINED", SEEDER);
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      work.transition(Archetype.TICKET, done, status, SEEDER);
-    }
+    walk(Archetype.TICKET, done, EntityStatus.DONE);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
   /** A project and nothing in it: every work list answers empty. */
   /**
-   * One epic and one ticket in each status, DROPPED included: the Work page's board, backlog and
-   * archive all have something to show. Each item is moved through the lifecycle to its status.
+   * One epic and one ticket in each status, IMPLEMENTING, VERIFYING and DROPPED included: the Work
+   * page's board, backlog and archive all have something to show. Each item is moved through the
+   * lifecycle to its status, through IMPLEMENTING and VERIFYING wherever its path passes them
+   * (qits-749). Plus one REFINED epic whose
+   * one feature holds a task marked implementing and not implemented, so a feature and a task in
+   * the IMPLEMENTING column are on the record too.
    */
   private Setup aProjectWithWorkInEveryStatus() {
     String token = token();
@@ -299,9 +303,14 @@ public class ProviderStates {
     Map<String, List<String>> paths = new LinkedHashMap<>();
     paths.put("Reported", List.of());
     paths.put("Refined", List.of("REFINED"));
-    paths.put("Implemented", List.of("REFINED", "IMPLEMENTED"));
-    paths.put("Verified", List.of("REFINED", "IMPLEMENTED", "VERIFIED"));
-    paths.put("Done", List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE"));
+    paths.put("Implementing", List.of("REFINED", "IMPLEMENTING"));
+    paths.put("Implemented", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED"));
+    paths.put("Verifying", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"));
+    paths.put(
+        "Verified", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED"));
+    paths.put(
+        "Done",
+        List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE"));
     paths.put("Dropped", List.of("DROPPED"));
     for (Map.Entry<String, List<String>> path : paths.entrySet()) {
       String epic =
@@ -312,6 +321,16 @@ public class ProviderStates {
         work.transition(Archetype.TICKET, ticket, status, SEEDER);
       }
     }
+    String repositoryId = repository(project, "contract-service");
+    String started =
+        create(Archetype.EPIC, project, EntityWrite.epic("Started epic", "Seeded work."));
+    String feature =
+        node(Archetype.FEATURE, started, EntityWrite.feature("Started feature", "Seeded.", null));
+    String task =
+        node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "Started task", "Seeded.", null));
+    work.transition(Archetype.EPIC, started, "REFINED", SEEDER);
+    // The tool's own path: stamps the task and its feature, and moves the epic to IMPLEMENTING.
+    work.markImplementing(task, SEEDER);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
@@ -352,13 +371,9 @@ public class ProviderStates {
     node(Archetype.FEATURE, running, EntityWrite.feature("Running feature", "Seeded.", null));
     String waiting = ticket(project, "Waiting ticket");
     String standalone = ticket(project, "Standalone ticket");
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
-      work.transition(Archetype.EPIC, shipped, status, SEEDER);
-    }
+    walk(Archetype.EPIC, shipped, EntityStatus.VERIFIED);
     work.transition(Archetype.EPIC, running, "REFINED", SEEDER);
-    for (String status : List.of("REFINED", "IMPLEMENTED")) {
-      work.transition(Archetype.TICKET, standalone, status, SEEDER);
-    }
+    walk(Archetype.TICKET, standalone, EntityStatus.IMPLEMENTED);
     for (String member : List.of(shipped, running, waiting)) {
       campaigns.addMember(campaign, member, null, false, SEEDER);
     }
@@ -375,9 +390,7 @@ public class ProviderStates {
     String epic = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded."));
     String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded.", null));
     node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded.", null));
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
-      work.transition(Archetype.EPIC, epic, status, SEEDER);
-    }
+    walk(Archetype.EPIC, epic, EntityStatus.VERIFIED);
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
   }
 
@@ -386,9 +399,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_VERIFIED_TICKET);
     String ticket = ticket(project, "Verified ticket");
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
-      work.transition(Archetype.TICKET, ticket, status, SEEDER);
-    }
+    walk(Archetype.TICKET, ticket, EntityStatus.VERIFIED);
     return new Setup(params("projectId", project.id, "ticketId", ticket), List.of(token));
   }
 
@@ -431,15 +442,11 @@ public class ProviderStates {
       tasks.add(
           node(Archetype.TASK, feature, EntityWrite.task(repositoryId, title, "Seeded.", null)));
     }
-    // Implemented markers move only while the epic is REFINED.
+    // Task markers move only while the epic is REFINED or IMPLEMENTING.
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     tasks.forEach(this::implemented);
     implemented(feature);
-    List<String> path =
-        done ? List.of("IMPLEMENTED", "VERIFIED", "DONE") : List.of("IMPLEMENTED", "VERIFIED");
-    for (String status : path) {
-      work.transition(Archetype.EPIC, epic, status, SEEDER);
-    }
+    walk(Archetype.EPIC, epic, done ? EntityStatus.DONE : EntityStatus.VERIFIED);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
@@ -464,9 +471,7 @@ public class ProviderStates {
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.TICKET, refined, "REFINED", SEEDER);
     work.transition(Archetype.TICKET, outside, "REFINED", SEEDER);
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      work.transition(Archetype.TICKET, done, status, SEEDER);
-    }
+    walk(Archetype.TICKET, done, EntityStatus.DONE);
     for (String member : List.of(epic, refined, reported, done)) {
       campaigns.addMember(campaign, member, null, false, SEEDER);
     }
@@ -519,6 +524,19 @@ public class ProviderStates {
 
   private String node(Archetype archetype, String parent, EntityWrite write) {
     return work.create(archetype, parent, write, SEEDER).entity().id;
+  }
+
+  /**
+   * Moves an epic or a ticket forward one step at a time along the walk until it is {@code
+   * target}, through IMPLEMENTING and VERIFYING (qits-749) rather than over them — the way the
+   * platform itself moves work, so a seeded VERIFIED row got there the way a real one does.
+   */
+  private void walk(Archetype archetype, String id, EntityStatus target) {
+    List<EntityStatus> walk = EntityStateMachine.walk();
+    int from = walk.indexOf(EntityStatus.valueOf(work.find(id).status));
+    for (int step = from + 1; step <= walk.indexOf(target); step++) {
+      work.transition(archetype, id, walk.get(step).name(), SEEDER);
+    }
   }
 
   /** Marks a feature or task implemented now, as an edit of its marker. */

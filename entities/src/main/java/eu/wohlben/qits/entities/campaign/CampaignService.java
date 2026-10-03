@@ -2,6 +2,7 @@ package eu.wohlben.qits.entities.campaign;
 
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.AuditService;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.Nesting;
 import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -88,14 +89,12 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class CampaignService {
 
-  /** The forward walk ENTITY_STATUS reads "at or past" along; DROPPED is never past anything. */
-  private static final List<EntityStatus> FORWARD =
-      List.of(
-          EntityStatus.REPORTED,
-          EntityStatus.REFINED,
-          EntityStatus.IMPLEMENTED,
-          EntityStatus.VERIFIED,
-          EntityStatus.DONE);
+  /**
+   * The forward walk ENTITY_STATUS reads "at or past" along; DROPPED is never past anything. Read
+   * off {@link EntityStateMachine#walk()} rather than copied (qits-749): a copy missed IMPLEMENTING
+   * once, and {@code indexOf} answered -1 for it in silence.
+   */
+  private static final List<EntityStatus> FORWARD = EntityStateMachine.walk();
 
   /** Where a campaign's membership may still be edited. */
   private static final Set<String> EDITABLE =
@@ -714,8 +713,8 @@ public class CampaignService {
    * EntityTransitioned is then in the past, where event criteria never look.
    *
    * <p>For every unsatisfied ENTITY_STATUS criterion of an unclaimed membership whose target's
-   * current status is at or past the wanted one along {@code REPORTED < REFINED < IMPLEMENTED <
-   * VERIFIED < DONE} (DROPPED is never past anything), the criterion latches with {@code
+   * current status is at or past the wanted one along {@code REPORTED < REFINED < IMPLEMENTING <
+   * IMPLEMENTED < VERIFIED < DONE} (DROPPED is never past anything), the criterion latches with {@code
    * evidence_signature = 'STATE_AT_START'}, no event id, and the summary {@code "<qid> was already
    * <status> when the campaign started"}. Not history: it reads a row this service owns.
    *

@@ -123,6 +123,13 @@ public final class Archetypes {
    */
   private static final Set<String> STATUSES = names(EntityStatus.values());
 
+  /**
+   * A campaign's words: the one vocabulary less IMPLEMENTING, which a campaign never enters
+   * (qits-749) — read off the state machine's campaign lifecycle rather than listed.
+   */
+  private static final Set<String> CAMPAIGN_STATUSES =
+      names(EntityStateMachine.states(Archetype.CAMPAIGN).toArray(EntityStatus[]::new));
+
   private static final Map<Archetype, ArchetypeSpec> REGISTRY = declare();
 
   private Archetypes() {}
@@ -206,7 +213,8 @@ public final class Archetypes {
                 EntityProperty.SLUG,
                 EntityProperty.DESCRIPTION,
                 EntityProperty.DEPENDS_ON,
-                EntityProperty.IMPLEMENTED_AT),
+                EntityProperty.IMPLEMENTED_AT,
+                EntityProperty.IMPLEMENTING_AT),
             Set.of(),
             false));
 
@@ -226,7 +234,8 @@ public final class Archetypes {
                 EntityProperty.DESCRIPTION,
                 EntityProperty.REPOSITORY_ID,
                 EntityProperty.DEPENDS_ON,
-                EntityProperty.IMPLEMENTED_AT),
+                EntityProperty.IMPLEMENTED_AT,
+                EntityProperty.IMPLEMENTING_AT),
             Set.of(),
             false));
 
@@ -252,7 +261,7 @@ public final class Archetypes {
                 EntityProperty.SLUG,
                 EntityProperty.DESCRIPTION,
                 EntityProperty.STATUS),
-            STATUSES,
+            CAMPAIGN_STATUSES,
             true));
 
     verify(registry);
