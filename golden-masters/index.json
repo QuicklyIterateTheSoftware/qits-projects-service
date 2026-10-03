@@ -61,6 +61,103 @@
       ]
     },
     {
+      "name": "a campaign with work in every phase",
+      "slug": "a-campaign-with-work-in-every-phase",
+      "params": {
+        "campaignId": "00000000-0000-4000-8000-000000000001",
+        "doneTicketId": "00000000-0000-4000-8000-000000000002",
+        "outsideTicketId": "00000000-0000-4000-8000-000000000003",
+        "projectId": "00000000-0000-4000-8000-000000000004",
+        "refinedEpicId": "00000000-0000-4000-8000-000000000005",
+        "refinedTicketId": "00000000-0000-4000-8000-000000000006",
+        "reportedTicketId": "00000000-0000-4000-8000-000000000007"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{campaignId}",
+          "status": 200,
+          "file": "a-campaign-with-work-in-every-phase/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id",
+              "$.campaign.members[*].groups[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].id",
+              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-campaign-with-work-in-every-phase/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a done epic with every task implemented",
+      "slug": "a-done-epic-with-every-task-implemented",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-done-epic-with-every-task-implemented/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project exists",
       "slug": "a-project-exists",
       "params": {
@@ -370,6 +467,38 @@
       ]
     },
     {
+      "name": "a ticket of every type",
+      "slug": "a-ticket-of-every-type",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-ticket-of-every-type/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a verified epic",
       "slug": "a-verified-epic",
       "params": {
@@ -398,6 +527,41 @@
             ],
             "strings": [
               "$.epic.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a verified epic with every task implemented",
+      "slug": "a-verified-epic-with-every-task-implemented",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "a-verified-epic-with-every-task-implemented/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope",
+              "$.entities[*].parent",
+              "$.entities[*].repositoryId"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt",
+              "$.entities[*].implementedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }

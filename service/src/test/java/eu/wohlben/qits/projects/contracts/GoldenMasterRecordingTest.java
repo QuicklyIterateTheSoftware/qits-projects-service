@@ -208,6 +208,48 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          // The landing app's card screenshots: one state per card case no other state covers.
+          new Interaction(
+              ProviderStates.A_TICKET_OF_EVERY_TYPE,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          // The params name every member, so both answers freeze an entity to the same id.
+          new Interaction(
+              ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
+              "getCampaign",
+              "GET",
+              "/projects/api/campaigns/{campaignId}",
+              200,
+              null,
+              null),
           // Writes: the body is recorded with the answer, and a consumer's pact sends the same.
           new Interaction(
               ProviderStates.A_VERIFIED_EPIC,
