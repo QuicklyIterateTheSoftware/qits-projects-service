@@ -342,6 +342,41 @@ class AgentContainerFactoryTest {
         spec().env().get("QITS_PLATFORM_MCP_URL"));
   }
 
+  /**
+   * qits-731: the bare public domain is the whole of what a container is told about the platform's
+   * registries now — no internal maven/npm URL travels any more, and {@code QITS_DOMAIN} is injected
+   * only when {@code qits.domain} is set. Unset under test, so the shipped spec carries neither.
+   */
+  @Test
+  void injectsNoRegistryUrlsAndNoDomainWhenUnset() {
+    Map<String, String> env = spec().env();
+
+    assertFalse(env.containsKey("QITS_DOMAIN"), "qits.domain is unset under test");
+    assertFalse(env.containsKey("QITS_MAVEN_REPOSITORY_URL"), "the registry keys are retired");
+    assertFalse(env.containsKey("npm_config_registry"), "the registry keys are retired");
+    assertFalse(env.containsKey("QITS_WORKSPACE_NPM_REGISTRY_URL"), "the registry keys are retired");
+  }
+
+  /**
+   * The domain reaches the container when configured, trimmed and never as a blank line — the same
+   * convention every optional key here follows, proven directly against {@link
+   * AgentContainerFactory#domainOrNull()} rather than through a second Quarkus boot.
+   */
+  @Test
+  void theDomainIsInjectedWhenSetAndOmittedWhenBlank() {
+    AgentContainerFactory configured = new AgentContainerFactory();
+    configured.domain = Optional.of("wohlben.eu");
+    assertEquals("wohlben.eu", configured.domainOrNull());
+
+    AgentContainerFactory blank = new AgentContainerFactory();
+    blank.domain = Optional.of("   ");
+    assertNull(blank.domainOrNull());
+
+    AgentContainerFactory unset = new AgentContainerFactory();
+    unset.domain = Optional.empty();
+    assertNull(unset.domainOrNull());
+  }
+
   /** Configured wins; blank — what a deployment rendering {@code KEY=} produces — does not. */
   @Test
   void theConfiguredPlatformMcpUrlWinsAndBlankComposesTheDefault() {

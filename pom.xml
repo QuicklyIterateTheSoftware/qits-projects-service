@@ -216,7 +216,7 @@
              release (1.6.1) is built against Quarkus 3.14.1 and pins pact-jvm 4.6.17, and it would
              put quarkus-kotlin into the test application — see ConsumerPactVerificationTest. -->
         <pact.version>4.6.21</pact.version>
-        <qits.maven.repository.url>http://registry.dev.localhost:8080/artifacts/maven/maven</qits.maven.repository.url>
+        <qits.maven.repository.url>https://registry.qits.wohlben.eu/artifacts/maven/maven</qits.maven.repository.url>
 
         <!-- The container ITs need docker and a built qits/workspace image, which a fresh clone has
              not got — and the ones that survived the cut here are the MCP/task-prompt delivery ITs
