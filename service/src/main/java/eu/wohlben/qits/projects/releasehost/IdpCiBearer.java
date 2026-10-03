@@ -12,7 +12,7 @@ import org.jboss.logging.Logger;
 
 /**
  * The machine bearer this service presents to qits-ci — {@code wiring/IdpGitHostBearer}'s sibling on
- * the {@code qits} named client (service-client-identity-plan.md, C4), asking one audience,
+ * the {@code qits} named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4), asking one audience,
  * {@code qits-platform}, empty on the same terms.
  *
  * <p>Two hops hold it and both are about a release request's gate: {@link HttpActiveBuilds} reads

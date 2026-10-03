@@ -191,8 +191,8 @@ public class RefinementContainerFactory {
   String idpAuthServerUrl;
 
   /**
-   * The one audience every service now asks for and every service now accepts
-   * (service-client-identity-plan.md, C4) — what the container's git credential helper requests for
+   * The one audience every service now asks for and every service now accepts (epic qits-540
+   * dossier, 'Plan (as of 2026-09-13)', C4) — what the container's git credential helper requests for
    * its git reads AND what the daemon requests for its own dial-home to this service's refinement
    * control socket. A constant, not a config key: there is nothing left for a deployment to
    * configure here.

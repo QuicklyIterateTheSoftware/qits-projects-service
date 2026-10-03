@@ -31,15 +31,16 @@ import org.jboss.logging.Logger;
  * secret — it is how it gets tokens at all — so there is no new audience to configure and no
  * bearer-validation stack inside the service that issues the bearers. The pair comes from
  * {@code quarkus.oidc-client.qits.client-id} and {@code quarkus.oidc-client.qits.credentials.secret}
- * — the one named client every outbound identity this service has (service-client-identity-plan.md,
- * C4) — and the base url from {@code quarkus.oidc-client.qits.auth-server-url}: one set of keys, so a
- * deployment that turned machine auth on has already configured this.
+ * — the one named client every outbound identity this service has (epic qits-540 dossier, 'Plan (as
+ * of 2026-09-13)', C4) — and the base url from {@code quarkus.oidc-client.qits.auth-server-url}: one
+ * set of keys, so a deployment that declared the deployer's {@code idp:client} resource has already
+ * configured this.
  *
- * <p><b>Absent is the shipped configuration.</b> {@code quarkus.oidc-client.qits.client-enabled=false}
- * means this process holds no secret, so it can authenticate to nothing and
- * {@link #enabled()} answers false before any url is built. A blank secret with the switch on is the
- * same answer with a warning: a deployment half-way through turning idp on must not fail every
- * ensure, it must behave as it did yesterday and say so once.
+ * <p><b>Absent is the posture under %dev and %test.</b> With
+ * {@code quarkus.oidc-client.qits.client-enabled=false} this process holds no secret, so it can
+ * authenticate to nothing and {@link #enabled()} answers false before any url is built. A blank
+ * secret with the switch on is the same answer with a warning: a deployment with no resource
+ * declared must not fail every ensure, it must behave as it did yesterday and say so once.
  *
  * <p><b>{@code Map}, never a DTO</b>, for both directions — the discipline {@code
  * wiring/HttpGitHostRepositories} keeps and for the same reason: a record reached through a bare

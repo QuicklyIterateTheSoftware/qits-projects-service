@@ -369,14 +369,13 @@ public class ReleaseRequests {
    * platform may run a second robot; it is not a switch for turning the behaviour off, which is what
    * leaving the port unimplemented does.
    *
-   * <p>Two names for one robot while qits-maintenance is cut over to its own deployer-provisioned
-   * idp client (qits-162): {@code qits-platform-maintenance} is the shared client it signs in as
-   * today, {@code dev-qits-maintenance} the one it signs in as after. Drop the first once no
-   * environment signs in with it.
+   * <p>{@code dev-qits-maintenance} is the one robot now (qits-162 finished the cutover to its own
+   * deployer-provisioned idp client): the shared {@code qits-platform-maintenance} client it used to
+   * sign in as is gone from every environment.
    */
   @ConfigProperty(
       name = "qits.projects.release-requests.unattended-requesters",
-      defaultValue = "qits-platform-maintenance,dev-qits-maintenance")
+      defaultValue = "dev-qits-maintenance")
   List<String> unattendedRequesters;
 
   /**
