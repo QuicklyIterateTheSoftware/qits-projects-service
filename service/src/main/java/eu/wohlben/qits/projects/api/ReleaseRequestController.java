@@ -115,8 +115,8 @@ public class ReleaseRequestController {
    *     {@code MEDIUM}, and a word naming no priority is a 400. It is stated <b>per branch</b>, so
    *     the implied {@code main} takes the default rather than this value. On the converge arm —
    *     asking again for a branch that already participates — an absent priority leaves the stored
-   *     one alone, so a re-ask never downgrades an escalation. A branch joining a wrapper's open
-   *     request states its own urgency and no sibling's; the request's effective priority is the
+   *     one alone, so a re-ask never downgrades an escalation. A branch joining the repository's
+   *     open request states its own urgency and no sibling's; the request's effective priority is the
    *     max over its sources.
    */
   public static record CreateReleaseRequest(
@@ -125,36 +125,39 @@ public class ReleaseRequestController {
   }
 
   /**
-   * <b>Creates, converges on, or joins</b> the open release request this branch participates in.
+   * <b>Creates, converges on, or joins</b> the repository's one open release request.
    *
    * <p>Which of the three happened is not a field on the answer and does not need to be: the
    * response is the whole {@link ReleaseRequestDto}, so a caller that kept the id it was given last
    * time can see it is the same one, and a caller that has never seen this request can see the
    * source list carrying branches it never named.
    *
-   * <p><b>The wrapper case is the one worth reading about.</b> Two workspaces of one project
-   * releasing on the same night are two asks about one estate, not two releases, so on a {@code
-   * PROJECT}-archetype repository the second ask becomes a named source of the first's request
-   * instead of minting a rival — one calver tag, one build, one approval, one deployment.
-   * Two consequences a caller has to expect: the summary and requester they sent do <b>not</b>
-   * become the request's (they reach their own source row, and the opening ask's words stand), and
-   * a red gate or a decline on the shared request holds every participant at once. {@code
-   * ReleaseRequests.request} is where the rule lives and argues for itself.
+   * <p><b>Joining is the case worth reading about.</b> A repository has at most one open request,
+   * whatever its archetype (qits-552), so two workspaces releasing one repository on the same night
+   * are two asks about one release: the second ask becomes a named source of the first's request
+   * instead of minting a rival — one calver tag, one build, one approval, one deployment. Two
+   * consequences a caller has to expect: on a request other branches were asked onto, the summary
+   * and requester they sent do <b>not</b> become the request's (they reach their own source row,
+   * and the opening ask's words stand — only a caller whose branch is the request's sole asked-for
+   * source restates them), and a red gate or a decline on the shared request holds every
+   * participant at once. {@code ReleaseRequests.request} is where the rule lives and argues for
+   * itself.
    */
   @POST
   @Operation(
       summary = "Ask for a branch to be released once its builds are green",
       description =
-          "Creates (or converges on) the open release request the branch participates in. The"
+          "Creates (or converges on) the repository's one open release request. A fresh"
               + " request's sources are main plus the named branch, plus every released tag of the"
               + " repository not yet merged to main; they are folded onto release/<id> and it is"
-              + " that MERGE the gates evaluate — mergedSha on the answer. A branch that already"
-              + " participates in an open request answers that request rather than opening a"
-              + " second. On the project's WRAPPER repository convergence is per repository rather"
-              + " than per branch: a branch nothing has asked about JOINS the estate's one open"
-              + " request as a further source, so the answer may carry an id you did not create,"
-              + " sources you did not name and somebody else's summary — the words of the ask that"
-              + " opened the request stand, and yours are recorded on your own source row. Poll"
+              + " that MERGE the gates evaluate — mergedSha on the answer. A repository has at most"
+              + " one unreleased request, whatever its archetype: a branch that already"
+              + " participates answers that request, and a branch nothing has asked about JOINS it"
+              + " as a further source, so the answer may carry an id you did not create, sources"
+              + " you did not name and somebody else's summary. Only when your branch is the"
+              + " request's sole asked-for source do your summary and requester replace the"
+              + " request's; otherwise the words of the ask that opened it stand, and yours are"
+              + " recorded on your own source row. Poll"
               + " until RELEASED, REJECTED, CONFLICTED or FAILED; detail says why, and conflict"
               + " says what to resolve.")
   public CreateReleaseRequest.Response create(

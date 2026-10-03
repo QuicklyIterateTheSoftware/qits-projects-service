@@ -256,8 +256,11 @@ public class ReleaseGateCorrelationTest {
 
   @Test
   public void aSharedTriggerCancelsPerRequestAndNeverASiblings() {
-    String first = create("work-a");
-    String second = create("work-b");
+    // Two open requests on one repository: no longer something an ask makes (qits-552), but a
+    // repository can still carry them from before, and a shared trigger must treat each as its own.
+    List<String> both = LegacyOpenRequests.openTwo(() -> create("work-a"), () -> create("work-b"));
+    String first = both.get(0);
+    String second = both.get(1);
     cancellations.reset();
 
     // A push to main participates in every open request of the repository — and each of them folds

@@ -829,8 +829,13 @@ public class ReleaseRequestSourcesTest {
 
   @Test
   public void aSiblingReleaseJoinsTheImplicitSetAndRefoldsEveryOtherOpenRequest() {
-    String shipping = create("work-shipping");
-    String waiting = create("work-waiting");
+    // A request waiting beside one that releases: no longer something an ask makes (qits-552) —
+    // a fresh ask would join, or obsolete the released one — but a repository can still carry two
+    // open requests from before, and the waiting one must still take the sibling's tag in.
+    List<String> both =
+        LegacyOpenRequests.openTwo(() -> create("work-shipping"), () -> create("work-waiting"));
+    String shipping = both.get(0);
+    String waiting = both.get(1);
 
     // Let the first one release. Its calver becomes a tag that has not reached main yet.
     activeBuilds.answer(Optional.of(0));
@@ -858,8 +863,13 @@ public class ReleaseRequestSourcesTest {
 
   @Test
   public void aPendingTagReachingMainLeavesTheSetAndIsContentIdempotent() {
-    String shipping = create("work-shipping");
-    String waiting = create("work-waiting");
+    // A request waiting beside one that releases: no longer something an ask makes (qits-552) —
+    // a fresh ask would join, or obsolete the released one — but a repository can still carry two
+    // open requests from before, and the waiting one must still take the sibling's tag in.
+    List<String> both =
+        LegacyOpenRequests.openTwo(() -> create("work-shipping"), () -> create("work-waiting"));
+    String shipping = both.get(0);
+    String waiting = both.get(1);
     activeBuilds.answer(Optional.of(0));
     greenVerdict(mergedShaOf(shipping));
     awaitState(shipping, "RELEASED");

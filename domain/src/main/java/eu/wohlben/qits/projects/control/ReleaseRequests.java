@@ -74,13 +74,11 @@ import org.jboss.logging.Logger;
  * deployment, so between those two moments a request that did not fold the tag in would be a step
  * backwards from what is already shipping.
  *
- * <p><b>How many requests a repository may have open is an archetype question, and there are two
- * answers.</b> Ordinarily the unit is the branch: one open request per named branch, and asking
- * again for a branch that already participates answers that request. For the project's <b>wrapper</b>
- * ({@link eu.wohlben.qits.projects.entity.RepositoryArchetype#PROJECT}) the unit is the repository:
- * its content is the estate, so every ask joins the one open request as a further named source and
- * a night of work is one tag, one build, one approval and one deployment. {@link #request}
- * holds the rule and the argument for it.
+ * <p><b>A repository has at most one open request, whatever its archetype.</b> Every ask joins the
+ * request already open as a further named source, and asking again for a branch that already
+ * participates answers that request — so a night of work on one repository is one tag, one build,
+ * one approval and one deployment. {@link #request} holds the rule and the argument for it (bug
+ * qits-552: it used to hold for the wrapper alone).
  *
  * <p>{@link #remerge} folds them into {@code refs/heads/release/<id>} through {@link
  * BackingBranchMerger} and stores the tip as {@code mergedSha}. <b>That fold is the re-arm</b>:
@@ -415,41 +413,47 @@ public class ReleaseRequests {
   // ---------------------------------------------------------------------------------------------
 
   /**
-   * Create (or converge on) the request the named branch participates in. The fresh request's named
-   * sources are the repository's default branch and {@code branch} — {@code main} is <b>implied</b>
-   * rather than asked for, because a release that does not contain what is already on main is not a
+   * Create (or converge on) the repository's one open request. The fresh request's named sources
+   * are the repository's default branch and {@code branch} — {@code main} is <b>implied</b> rather
+   * than asked for, because a release that does not contain what is already on main is not a
    * release anybody wants; naming the default branch itself simply makes a main-only request.
    *
-   * <p>At most one open request per named branch, the merge-request shape kept: asking again for a
-   * branch that already participates in an open request answers that request rather than opening a
-   * second one, and adds nothing to it.
+   * <h2>A repository converges per REPOSITORY, not per branch</h2>
    *
-   * <h2>A wrapper converges per REPOSITORY, not per branch</h2>
+   * <p><b>The unit of convergence is the repository, for every archetype.</b> An ask naming a
+   * branch nothing has asked about yet <b>joins</b> the request that is already open and becomes a
+   * named source of it, exactly as {@link #addSource} would; asking again for a branch that already
+   * participates answers that request and adds nothing to it; only when the repository has no open
+   * request at all is a fresh one minted.
    *
-   * <p><b>Where the repository is the project's wrapper ({@link RepositoryArchetype#PROJECT} — the
-   * root superproject, at most one per project), the unit of convergence is the repository.</b> An
-   * ask naming a branch nothing has asked about yet <b>joins</b> the request that is already open
-   * and becomes a named source of it, exactly as {@link #addSource} would; only when the repository
-   * has no open request at all is a fresh one minted. Every other archetype keeps the per-branch
-   * rule above, untouched.
+   * <p>The reason is what a release <em>is</em>: a tag of the repository, cut from one fold. Two
+   * workspaces releasing one repository on the same night are two asks about one thing, and
+   * answering them with two requests gives it two tags, two builds, two approvals and two
+   * deployments, each folding a different half — and the second request's fold contains the
+   * first's tag only once that tag is cut, so the two race each other through qits-ci rather than
+   * build on each other. The wrapper ({@link RepositoryArchetype#PROJECT}) was where this was first
+   * seen, because its content is the estate; it was never only true of the wrapper (qits-552). One
+   * request with many participating branches is the honest shape, and it is the shape {@link
+   * ReleaseRequestSource} already models — a request is an octopus merge of N sources and always
+   * was; what changed is only which asks are allowed to reach the same one.
    *
-   * <p>The reason is what a wrapper <em>is</em>. Its content is the estate — the gitlink pins of
-   * every component — so two workspaces releasing on the same night are not two releases: they are
-   * two asks about one estate, and answering them with two requests gives that estate two calver
-   * tags, two builds, two approvals and two deployments for one night's work, each of them
-   * folding a different half. One request with many participating branches is the honest shape, and
-   * it is the shape {@link ReleaseRequestSource} already models — a request is an octopus merge of N
-   * sources and always was; what changed is only which asks are allowed to reach the same one.
+   * <p><b>Two asks arriving at once still meet.</b> The transaction takes a {@code
+   * PESSIMISTIC_WRITE} lock on the repository's row before it reads what is open, so concurrent
+   * asks on one repository serialise there and the second one finds — and joins — the request the
+   * first minted. Nothing else in the schema forbids a second open request; the lock is the rule.
    *
-   * <p><b>A converging ask on a wrapper does not rewrite the request's words.</b> The {@code
-   * summary} and {@code requester} are those of the ask that <em>opened</em> it and they stand: the
-   * request is shared now, and letting the second workspace's sentence replace the first's would
-   * erase what a person reading the approval gate is being asked to approve. What the newcomer's
-   * words do reach is their own row — {@link ReleaseRequestSource#addedBy} records who put the
+   * <h2>Whose words the request carries</h2>
+   *
+   * <p><b>A re-ask restates the summary (and a non-null requester) only when the caller's branch is
+   * the request's sole asked-for source</b> — its only named branch besides the implied default
+   * branch, or the default branch itself on a request naming nothing else. Then the caller is the
+   * whole of the request's ask and their words are the request's: that is what lets a maintenance
+   * bump re-ask its own request with a new "N dependencies" summary. On a <b>shared</b> request the
+   * words of the ask that opened it stand: letting a second workspace's sentence replace the first's
+   * would erase what a person reading the approval gate is being asked to approve. What a joiner
+   * says reaches its own row instead — {@link ReleaseRequestSource#addedBy} records who put the
    * branch on, and {@link ReleaseRequestSource#priority} is stated per branch — so nothing a
-   * converging caller says is lost, it is simply recorded against the branch it is about rather
-   * than against everybody's request. The per-branch converge arm (the same branch asked for twice,
-   * on any archetype) still re-states the summary of a request it is the whole of the ask for.
+   * converging caller says is lost, it is simply recorded against the branch it is about.
    *
    * <p><b>A caller can always tell what happened</b>, because the answer is the whole {@link
    * ReleaseRequestDto}: an id that is not new, a source list carrying branches the caller never
@@ -462,8 +466,8 @@ public class ReleaseRequests {
    * The fresh request folds that earlier tag in, so it <em>is</em> the earlier release plus more:
    * the earlier request is marked {@link ReleaseRequest.State#OBSOLETE}, its runs are cancelled and
    * its owed merge abandoned. {@link #obsolete} holds the rule, and states there why obsolescence
-   * and convergence cannot fight — the short of it is that every convergence read is over {@link
-   * ReleaseRequestRepository#UNRELEASED} and every obsolescence read is over RELEASED, two disjoint
+   * and convergence cannot fight — the short of it is that the convergence read is over {@link
+   * ReleaseRequestRepository#UNRELEASED} and the obsolescence read is over RELEASED, two disjoint
    * sets, so a converging ask never reaches this at all.
    *
    * @param priority how urgently the named branch wants to be released, or null/blank for {@code
@@ -492,12 +496,9 @@ public class ReleaseRequests {
         repository.mainBranch == null || repository.mainBranch.isBlank()
             ? DEFAULT_MAIN
             : repository.mainBranch;
-    // Which unit this repository converges on, read here beside the rest of the row's facts: the
-    // wrapper IS the project's estate, so its unit is the repository. See the javadoc.
-    boolean wrapper = repository.archetype == RepositoryArchetype.PROJECT;
 
     // What the fold that follows is about. It is only ever "created" on the fresh arm; a branch
-    // joining an estate's open request is the same content change an explicit addSource is, and
+    // joining the repository's open request is the same content change an explicit addSource is, and
     // the announcement should say which branch arrived rather than claim a creation.
     AtomicReference<String> why = new AtomicReference<>("created");
     // The requests this create OBSOLETES, carried out of the transaction: their runs are cancelled
@@ -508,28 +509,29 @@ public class ReleaseRequests {
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
-                  ReleaseRequest open =
-                      wrapper
-                          ? openOfWrapper(repoId, named)
-                          : requests.findUnreleasedByBranch(repoId, named).orElse(null);
+                  // The repository's row is the lock two concurrent asks meet on: the second waits
+                  // here until the first commits, then reads the request the first minted and
+                  // joins it. See the javadoc.
+                  repositories.findById(repoId, LockModeType.PESSIMISTIC_WRITE);
+                  ReleaseRequest open = openOfRepository(repoId, named);
                   if (open != null) {
                     ReleaseRequestSource participating =
                         sources
                             .find(open.id, ReleaseRequestSource.Kind.BRANCH, named)
                             .orElse(null);
                     if (participating == null) {
-                      // The wrapper arm, and the only way to reach it: a branch nothing has asked
-                      // about joins the estate's one open request instead of opening a second.
+                      // A branch nothing has asked about joins the repository's one open request
+                      // instead of opening a second.
                       addSourceRow(open.id, named, requester, orDefault(stated));
                       why.set("a source was added: " + named);
                     } else {
                       if (stated != null) {
                         participating.priority = stated;
                       }
-                      if (!wrapper) {
-                        // The per-branch converge arm: the caller is the whole of this request's
-                        // ask, so their words are the request's. On a wrapper they are not — the
-                        // words of the ask that opened it stand. See this method's javadoc.
+                      if (soleAsk(open.id, named, main)) {
+                        // The caller is the whole of this request's ask, so their words are the
+                        // request's. On a shared request they are not — the words of the ask that
+                        // opened it stand. See this method's javadoc.
                         open.summary = summary.trim();
                         if (requester != null) {
                           open.requester = requester;
@@ -604,13 +606,13 @@ public class ReleaseRequests {
    * <h2>Obsolescence and convergence cannot fight, and this is why</h2>
    *
    * <p><b>Convergence wins wherever it applies, because obsolescence cannot reach the same rows.</b>
-   * Both arms of {@link #request} read {@link ReleaseRequestRepository#UNRELEASED} — {@link
-   * #openOfWrapper} and {@code findUnreleasedByBranch} alike — so a converging ask answers a request
-   * whose tag has <em>not</em> been cut and never gets here at all. This runs only after that read
+   * {@link #request} converges through {@link #openOfRepository}, which reads {@link
+   * ReleaseRequestRepository#UNRELEASED}, so a converging ask answers a request whose tag has
+   * <em>not</em> been cut and never gets here at all. This runs only after that read
    * came back empty and a fresh request was minted, and it looks only at RELEASED rows, which no
    * convergence read can return. The two operate on disjoint sets by construction rather than by
-   * ordering, which is what makes "a second workspace joins the estate's open request" and "a new
-   * release overtakes one still publishing" both true of a wrapper at the same time.
+   * ordering, which is what makes "a second workspace joins the repository's open request" and "a
+   * new release overtakes one still publishing" both true of one repository at the same time.
    *
    * <p>The tag itself stays in the implicit source set: it was really cut and every later fold must
    * still contain it, or the next release would be a step backwards from something that shipped.
@@ -660,25 +662,25 @@ public class ReleaseRequests {
   }
 
   /**
-   * The one open request of a <b>wrapper</b> repository — the estate's request, which a new ask
-   * joins rather than duplicates. See {@link #request}'s javadoc for why the unit of convergence is
-   * the repository here and the branch everywhere else.
+   * The one open request of a repository, which a new ask joins rather than duplicates. See {@link
+   * #request}'s javadoc for why the unit of convergence is the repository.
    *
    * <p>There is at most one by construction once this rule is in force, but the read does not
-   * assume it: a repository that was accumulating a request per workspace before this shipped can
-   * have several open at once, and the answer has to be stable and has to be the <em>right</em> one
-   * for the branch being asked about. So a request that <b>already names the branch</b> wins — that
-   * is the per-branch converge the caller is entitled to, and a re-ask must answer the request it
-   * answered last time — and otherwise the oldest open request is the estate's, which is also the
-   * one the others will drain into as their branches release.
+   * assume it: a repository that was accumulating a request per branch before the rule reached
+   * every archetype (qits-552) can have several open at once, and the answer has to be stable and
+   * has to be the <em>right</em> one for the branch being asked about. So a request that <b>already
+   * names the branch</b> wins — a re-ask must answer the request it answered last time — and
+   * otherwise the oldest open request is the repository's, which is also the one the others will
+   * drain into as their branches release.
    *
    * <p><b>"Open" here is {@link ReleaseRequestRepository#UNRELEASED}, not {@link
    * ReleaseRequestRepository#OPEN}</b>, and since RELEASED became an open state that distinction is
-   * what keeps this correct: an estate whose tag is cut and is waiting on its deployment must not be
-   * joined by a new branch, because its content is already tagged. Such an ask mints a fresh request
-   * — and {@link #obsolete} then supersedes the released one, which is the honest outcome.
+   * what keeps this correct: a request whose tag is cut and is waiting on its publish run or its
+   * deployment must not be joined by a new branch, because its content is already tagged. Such an
+   * ask mints a fresh request — and {@link #obsolete} then supersedes the released one, which is
+   * the honest outcome.
    */
-  private ReleaseRequest openOfWrapper(String repoId, String named) {
+  private ReleaseRequest openOfRepository(String repoId, String named) {
     List<ReleaseRequest> open = requests.listUnreleasedByRepo(repoId);
     for (ReleaseRequest candidate : open) {
       if (sources.find(candidate.id, ReleaseRequestSource.Kind.BRANCH, named).isPresent()) {
@@ -687,6 +689,20 @@ public class ReleaseRequests {
     }
     return open.isEmpty() ? null : open.get(0);
   }
+  /**
+   * Whether {@code named} is the whole of what {@code requestId} was asked for — the only named
+   * branch on it besides the implied default branch {@code main}, or {@code main} itself on a
+   * request naming nothing else. A re-ask restates the request's words only then; see {@link
+   * #request}.
+   */
+  private boolean soleAsk(String requestId, String named, String main) {
+    return sources.listByRequest(requestId).stream()
+        .filter(source -> source.kind == ReleaseRequestSource.Kind.BRANCH)
+        .map(source -> source.name)
+        .filter(name -> !name.equals(main) || name.equals(named))
+        .allMatch(named::equals);
+  }
+
 
   /**
    * Put another branch on an open request. Idempotent — a branch already named is not added twice
@@ -2345,9 +2361,12 @@ public class ReleaseRequests {
    * implementation at all are one answer: carry on. That is also why every call site makes it
    * <b>after</b> its own write transaction and outside every transaction, beside the announcement.
    *
-   * <p><b>Scoped to this request and never to the repository.</b> A sibling request folds its own
-   * sources onto its own backing branch and its runs are none of this one's business; cancelling by
-   * repository would take a neighbour's green build away seconds before it settled them.
+   * <p><b>Scoped to this request and never to the repository.</b> A repository has at most one
+   * unreleased request (see {@link #request}), but it can still have another one open beside it — a
+   * RELEASED request waiting on its publish run, or one of the several a repository accumulated
+   * before that rule reached every archetype — and that request's runs are none of this one's
+   * business. The per-repository rule that one build runs at a time lives in qits-ci's accept
+   * path, not here: this cancels by request id and nothing wider.
    */
   private void cancel(String repoId, String requestId, String reason) {
     if (!cancellations.isResolvable()) {

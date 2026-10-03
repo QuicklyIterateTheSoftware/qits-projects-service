@@ -189,11 +189,13 @@ public class ProjectReleaseRequestsTest {
 
   @Test
   public void theDefaultIsEveryOpenRequestInTheProjectAndNothingElse() {
+    // Settled first: a repository has one open request, so an ask made while it was open would
+    // join it rather than be a request of its own to withdraw.
+    String settled = create(serviceRepoId, "work-settled");
+    withdraw(serviceRepoId, settled);
     String service = create(serviceRepoId, "work-service");
     String frontend = create(frontendRepoId, "work-frontend");
     String elsewhere = create(otherRepoId, "work-elsewhere");
-    String settled = create(serviceRepoId, "work-settled");
-    withdraw(serviceRepoId, settled);
 
     List<String> ids = idsAt("");
     assertTrue(
