@@ -466,7 +466,7 @@ class TicketServiceTest extends EntitiesTestSupport {
         workEntities.transition(Archetype.TICKET, forward.id, "REFINED", "alice").entity().blocked);
 
     // The backward arm, which is the one a reader expects to preserve it: sending a ticket back
-    // from IMPLEMENTED to REFINED looks like a return to where it was, block and all. It is not —
+    // from IMPLEMENTED to IMPLEMENTING looks like a return to where it was, block and all. It is not —
     // it is an ask to implement again, and whether THAT is blocked is a question for whoever
     // tries. There is no rule here for backward moves; there is one rule, and this pins it.
     WorkEntity backward = bug("Blocked while being implemented");
@@ -475,7 +475,7 @@ class TicketServiceTest extends EntitiesTestSupport {
     workEntities.setBlocked(Archetype.TICKET, backward.id, true, "alice");
     assertFalse(
         workEntities
-            .transition(Archetype.TICKET, backward.id, "REFINED", "alice")
+            .transition(Archetype.TICKET, backward.id, "IMPLEMENTING", "alice")
             .entity()
             .blocked);
     inFreshTx(() -> assertFalse(workEntities.get(Archetype.TICKET, backward.id).blocked));

@@ -15,21 +15,29 @@ package eu.wohlben.qits.entities.entity;
  * What that bought is the point of the change: an epic can now be {@link #VERIFIED} and {@link
  * #DONE}, which it could not before.
  *
- * <p><b>A status says what has been ACHIEVED, never what is being done.</b> That is the whole
- * reading of these six words, and it is what keeps them from drifting into a task board: there is
- * no {@code IN_PROGRESS} here and there must never be one, because "somebody is working on it" is a
- * fact about a person rather than about the entity, it is out of date the moment it is written, and
- * the platform already answers it — the workspaces an entity is worked in are read per request and
- * shown beside the status.
+ * <p><b>A status says what has been ACHIEVED, or a fact the platform recorded — never a claim
+ * somebody keeps up to date by hand.</b> That is what keeps these eight words from drifting into a
+ * task board: there is no {@code IN_PROGRESS} that a person sets and forgets, because "somebody is
+ * working on it", kept by hand, is out of date the moment it is written. {@link #IMPLEMENTING} and
+ * {@link #VERIFYING} are not that word, and they are the two statuses that name something under way
+ * (qits-749): <b>the platform sets them</b> — at the dispatch press that starts the implement or the
+ * verify phase, on the FLOW hand-off that delivers that phase's turn, and (IMPLEMENTING only) at an
+ * agent's first {@code mark_task_implementing} — so nobody keeps them current, and what they record
+ * — an implementation, a verification, was started — does not go stale. Each phase leaves its
+ * "-ING" status by the same transition it always made, to {@link #IMPLEMENTED} or to {@link
+ * #VERIFIED}. Both are skippable: REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED stay legal moves
+ * (SKIPs in {@code EntityStateMachine}), so work an agent finished without ever being marked started
+ * is not stranded.
  *
  * <p><b>Entering a status starts the phase that belongs to it.</b> The two halves are the same
  * line read from either end: a status is entered by the phase that produced it, and it is held
  * while the next one runs. {@link #REPORTED} means somebody said what is wrong, so the refine phase
- * runs; {@link #REFINED} means the entity says what to do, so implement runs; {@link #IMPLEMENTED}
- * means the change is released and deployed, so verify runs; {@link #VERIFIED} means it no longer
- * occurs on the platform, so a person closes it; {@link #DONE} means closed. So reading the status
- * tells you both what is true and what happens next, which is why a phase never needs a status of
- * its own.
+ * runs; {@link #REFINED} means the entity says what to do, so implement runs; {@link #IMPLEMENTING}
+ * means that implementation was started, so implement keeps running (a dispatch resumes it); {@link
+ * #IMPLEMENTED} means the change is released and deployed, so verify runs; {@link #VERIFYING} means
+ * that verification was started, so verify keeps running (a dispatch resumes it); {@link #VERIFIED} means
+ * it no longer occurs on the platform, so a person closes it; {@link #DONE} means closed. So reading
+ * the status tells you both what is true and what happens next.
  *
  * <p><b>{@link #DROPPED} is the one word not on that line</b>, and it starts nothing: it does not
  * say a phase finished, it says the phases stopped. Everything above is about work that is moving
@@ -47,7 +55,8 @@ package eu.wohlben.qits.entities.entity;
  *
  * <p><b>What the words freeze is per archetype, and only an epic freezes anything.</b> An epic's
  * scope (title, description, features, tasks) is editable at {@link #REPORTED} and frozen from
- * {@link #REFINED} on; its implemented markers move only at {@link #REFINED}. Moving the epic back
+ * {@link #REFINED} on; its task markers (implementing, implemented) move only while it is {@link
+ * #REFINED} or {@link #IMPLEMENTING}. Moving the epic back
  * to {@link #REPORTED} is how a frozen scope is reopened. A ticket freezes nothing.
  */
 public enum EntityStatus {
@@ -62,12 +71,28 @@ public enum EntityStatus {
   /** The entity says what to do: the description is the refinement's output. Implement runs. */
   REFINED,
 
+  /**
+   * An implementation was started — the platform moved it here at the dispatch press, or an agent
+   * marked its first task implementing. The implement phase runs, and leaves it through the move to
+   * {@link #IMPLEMENTED}. Skippable: REFINED → IMPLEMENTED is still a legal move.
+   */
+  IMPLEMENTING,
+
   /** The change is released and deployed. Verify runs — nobody has confirmed it yet. */
   IMPLEMENTED,
 
   /**
+   * A verification was started — the platform moved it here at the dispatch press that started the
+   * verify phase, or on the FLOW hand-off that delivered its turn. The verify phase runs, and leaves
+   * it through the move to {@link #VERIFIED}. Skippable: IMPLEMENTED → VERIFIED is still a legal
+   * move. No feature or task marker mirrors it.
+   */
+  VERIFYING,
+
+  /**
    * It no longer occurs on the platform. What runs is a person's judgement that there is nothing
-   * left on the thread; a failed verification never lands here, it blocks at {@link #IMPLEMENTED}.
+   * left on the thread; a failed verification never lands here, it blocks where it stands ({@link #VERIFYING}, or
+   * {@link #IMPLEMENTED} when nobody moved it).
    */
   VERIFIED,
 

@@ -10,6 +10,8 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -55,6 +57,10 @@ public class PhaseAdvanceTest {
    */
   @Inject PhaseAdvance advance;
 
+  @Inject RecordingEntityTransitionAnnouncer transitions;
+
+  @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
+
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
 
@@ -62,6 +68,7 @@ public class PhaseAdvanceTest {
   void resetThePort() {
     turns.reset();
     workspaces.reset();
+    transitions.reset();
   }
 
   /**
@@ -215,6 +222,8 @@ public class PhaseAdvanceTest {
     assertTrue(
         implement.text().contains("Implement ticket \""),
         "REFINED starts implementation: " + implement.text());
+    // The turn was spoken, so the implementation started and the ticket says so (qits-749).
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
 
     transition(ticketId, "IMPLEMENTED");
     assertTrue(
@@ -254,7 +263,7 @@ public class PhaseAdvanceTest {
     dropped.ticketType = TicketType.BUG;
     dropped.status = EntityStatus.DROPPED.name();
 
-    advance.afterTransition(dropped, "dana");
+    advance.afterTransition(dropped, null, "dana");
 
     assertEquals(
         List.of(), turns.calls(), "a dropped ticket has no phase to start, so no turn is delivered");
@@ -284,7 +293,7 @@ public class PhaseAdvanceTest {
       campaign.status = status.name();
       campaign.dispatchContinues = true;
 
-      advance.afterTransition(campaign, "dana");
+      advance.afterTransition(campaign, null, "dana");
     }
 
     assertEquals(List.of(), turns.calls(), "a campaign is never delivered a turn");
@@ -319,7 +328,7 @@ public class PhaseAdvanceTest {
     blocked.status = EntityStatus.REFINED.name();
     blocked.blocked = true;
 
-    advance.afterTransition(blocked, "dana");
+    advance.afterTransition(blocked, null, "dana");
 
     assertEquals(
         List.of(),
@@ -341,9 +350,9 @@ public class PhaseAdvanceTest {
   public void movingBackToReportedDeliversTheRefinePrompt() {
     String projectId = createProject("Advance Reopen");
     String ticketId = createTicket(projectId, "Back to the start");
-    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
-    transition(ticketId, "REFINED");
+    transition(ticketId, "REFINED"); // nobody to tell yet, so it stays REFINED
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     transition(ticketId, "REPORTED");
 
     assertTrue(
@@ -353,25 +362,130 @@ public class PhaseAdvanceTest {
 
   /**
    * <b>Direction is not consulted, and this is the case that proves it.</b> A move back from
-   * IMPLEMENTED to REFINED corrects a claim that turned out wrong — it is not how a failed
+   * IMPLEMENTED to IMPLEMENTING corrects a claim that turned out wrong — it is not how a failed
    * verification reports, which is a block (qits-592) — and what has to start from it is
-   * <em>implementation</em>, because REFINED means the ticket says what to do. A rule that asked
-   * "forward or back?" would need a second table to answer from, and that table is the thing that
-   * goes wrong.
+   * <em>implementation</em> again, rework. A rule that asked "forward or back?" would need a second
+   * table to answer from, and that table is the thing that goes wrong.
    */
   @Test
-  public void aMoveBackToRefinedStartsTheImplementPhase() {
+  public void aMoveBackToImplementingStartsTheImplementPhase() {
     String projectId = createProject("Advance Backward");
     String ticketId = createTicket(projectId, "Still broken after all");
     transition(ticketId, "REFINED");
-    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "IMPLEMENTED"); // the skip
+    turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "IMPLEMENTING");
+
+    assertEquals(1, turns.calls().size());
+    assertTrue(
+        turns.lastCall().text().contains("Implement ticket \""),
+        "a move BACK to IMPLEMENTING starts implementation again: " + turns.lastCall().text());
+  }
+
+  /**
+   * <b>The one exception to direction not being consulted</b> (qits-749): REFINED → IMPLEMENTING
+   * says an implementation was started — by a press, or by the agent at work — so the implement
+   * prompt is already out and a second one would restart it.
+   */
+  @Test
+  public void aMoveFromRefinedIntoImplementingPushesNothing() {
+    String projectId = createProject("Advance Started By Hand");
+    String ticketId = createTicket(projectId, "Started by hand");
+    transition(ticketId, "REFINED"); // no workspace answers, so this stays REFINED
+    assertEquals("REFINED", statusOf(ticketId));
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "IMPLEMENTING");
+
+    assertEquals(List.of(), turns.calls(), "no second implement prompt");
+  }
+
+  /**
+   * <b>A FLOW refine that ends in REFINED ends in IMPLEMENTING</b> (qits-749): the implement turn is
+   * spoken, and the move follows it with exactly one turn and one more {@code EntityTransitioned}.
+   */
+  @Test
+  public void aFlowRefineThatLandsRefinedAndIsHandedItsTurnMovesOnToImplementing() {
+    String projectId = createProject("Advance Into Implementing");
+    String ticketId = createTicket(projectId, "Carried on");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.LAUNCHED, "launched one");
 
     transition(ticketId, "REFINED");
 
-    assertTrue(
-        turns.lastCall().text().contains("Implement ticket \""),
-        "a move BACK to REFINED starts implementation again: " + turns.lastCall().text());
+    assertEquals(1, turns.calls().size(), "one implement turn and no second");
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    List<EntityTransitioned.Entity> moved =
+        transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
+    assertEquals(
+        List.of("REPORTED->REFINED", "REFINED->IMPLEMENTING"),
+        moved.stream().map(entity -> entity.statusBefore() + "->" + entity.status()).toList());
+  }
+
+  /**
+   * <b>VERIFYING mirrors IMPLEMENTING</b> (qits-749): a FLOW hand-off into IMPLEMENTED whose verify
+   * turn is spoken moves on to VERIFYING with one turn; an explicit IMPLEMENTED → VERIFYING pushes
+   * nothing; VERIFIED → VERIFYING (back) pushes the verify prompt again.
+   */
+  @Test
+  public void aFlowHandOffIntoImplementedMovesOnToVerifyingWithOneTurn() {
+    String projectId = createProject("Advance Into Verifying");
+    String ticketId = createTicket(projectId, "Verify me next");
+    transition(ticketId, "REFINED"); // nobody to tell, so it stays REFINED
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transitions.reset();
+
+    transition(ticketId, "IMPLEMENTED"); // the skip
+
+    assertEquals(1, turns.calls().size(), "one verify turn and no second");
+    assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
+    assertEquals("VERIFYING", statusOf(ticketId));
+    assertEquals(
+        List.of("REFINED->IMPLEMENTED", "IMPLEMENTED->VERIFYING"),
+        transitions.published().stream()
+            .flatMap(event -> event.entities().stream())
+            .map(entity -> entity.statusBefore() + "->" + entity.status())
+            .toList());
+  }
+
+  @Test
+  public void aMoveFromImplementedIntoVerifyingPushesNothing() {
+    String projectId = createProject("Advance Verifying By Hand");
+    String ticketId = createTicket(projectId, "Verifying by hand");
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED"); // nobody to tell, so it stays IMPLEMENTED
+    assertEquals("IMPLEMENTED", statusOf(ticketId));
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "VERIFYING");
+
+    assertEquals(List.of(), turns.calls(), "no second verify prompt");
+  }
+
+  @Test
+  public void aMoveBackToVerifyingStartsTheVerifyPhase() {
+    String projectId = createProject("Advance Reverify");
+    String ticketId = createTicket(projectId, "Check it again");
+    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED"); // the skip
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "VERIFYING");
+
+    assertEquals(1, turns.calls().size());
+    assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
+    assertEquals("VERIFYING", statusOf(ticketId));
+  }
+
+  private String statusOf(String id) {
+    return dispatchEntities.fresh(id).status;
   }
 
   // --- what lands on the thread ---------------------------------------------------------------
@@ -785,7 +899,7 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
     String first = (String) releaseRequestsOf(wrapperId).get(0).get("id");
-    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFYING"); // the step back from VERIFIED since qits-749
     transition(ticketId, "VERIFIED");
 
     java.util.List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
@@ -800,7 +914,7 @@ public class PhaseAdvanceTest {
         "the thread says which request it joined: " + thread(ticketId));
   }
 
-  // --- and a move back into IMPLEMENTED names it ----------------------------------------------
+  // --- and a move back into VERIFYING names it -----------------------------------------------
 
   /**
    * <b>A failed verification withdraws nothing and says so.</b> There is no door that removes one
@@ -808,7 +922,7 @@ public class PhaseAdvanceTest {
    * would destroy the work — so what the platform owes a person is the request id.
    */
   @Test
-  public void aMoveBackIntoImplementedNamesTheReleaseThatStandsOpen() {
+  public void aMoveBackIntoVerifyingNamesTheReleaseThatStandsOpen() {
     String projectId = createProject("Advance Release Back");
     String ticketId = createTicket(projectId, "Not fixed after all");
     String wrapperId = wrapperIdOf(projectId);
@@ -818,7 +932,7 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
     String requestId = (String) releaseRequestsOf(wrapperId).get(0).get("id");
-    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFYING"); // VERIFIED's BACK move since qits-749
 
     String last = thread(ticketId).get(thread(ticketId).size() - 1);
     assertEquals(

@@ -235,7 +235,8 @@ public class EntityCreateController {
             dependency(text(body, "dependsOn")),
             false,
             null,
-            false);
+            false,
+            null);
     if (write.repositoryId() != null) {
       Repository repo = repositories.get(write.repositoryId()); // 404 if absent
       if (repo.project == null || !projectId.equals(repo.project.id)) {

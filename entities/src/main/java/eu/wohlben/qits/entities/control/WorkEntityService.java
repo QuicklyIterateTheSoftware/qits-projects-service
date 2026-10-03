@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -61,8 +62,9 @@ import java.util.stream.Collectors;
  *       one id space, so "no epic with this id" means "no EPIC row with this id".
  *   <li><b>The scope freeze is the owner's phase.</b> A kind whose {@link Kind#freezeOwner} is set
  *       has its scope frozen by that ancestor's status — an epic by its own, a feature by its epic's,
- *       a task by the epic two hops up ({@link EntityLifecycle#requireReported}); the implemented
- *       marker moves only at REFINED ({@link EntityLifecycle#requireRefined}). A ticket names no
+ *       a task by the epic two hops up ({@link EntityLifecycle#requireReported}); the task
+ *       markers move only while the epic is REFINED or IMPLEMENTING ({@link
+ *       EntityLifecycle#requireBeingImplemented}). A ticket names no
  *       owner, so nothing about it freezes. Deleting a <em>root</em> is allowed in every status — it
  *       removes the scope rather than changing it — while deleting a node is a scope change.
  *   <li><b>The audit subtree key is the root</b>: an epic's and a ticket's own id, a feature's and a
@@ -535,7 +537,7 @@ public class WorkEntityService {
         EntityLifecycle.requireReported(owner);
       }
       if (write.touchesMarker()) {
-        EntityLifecycle.requireRefined(owner);
+        EntityLifecycle.requireBeingImplemented(owner);
       }
     }
     if (write.title() != null) {
@@ -580,10 +582,67 @@ public class WorkEntityService {
     } else if (write.implementedAt() != null) {
       row.implementedAt = write.implementedAt();
     }
+    if (write.implementingAt() != null) {
+      row.implementingAt = write.implementingAt();
+    }
     requireArchetypeValid(row, Demand.ON_UPDATE);
     WorkEntity updated = settled(row);
     audit(updated, rootOf(kind, updated, owner), AuditOperation.UPDATE, changedBy);
     return new Nested(updated, parentId);
+  }
+
+  /**
+   * <b>Marks a task's implementation started</b> (qits-749) — what {@code mark_task_implementing}
+   * does, and the one way a feature or a task, which have no status, enters the IMPLEMENTING column.
+   *
+   * <ul>
+   *   <li>The task's {@code implementingAt} is stamped now if it is unset, and kept if it is set: the
+   *       call is idempotent, and a second press does not rewrite when the work started.
+   *   <li>Its feature is stamped too, the first time one of its tasks is marked: a feature reads as
+   *       implementing once any of its tasks is, and stamping it here puts {@code implementingOn} on
+   *       the wire without every consumer deriving it.
+   *   <li>Legal while the owning epic is REFINED or IMPLEMENTING ({@link
+   *       EntityLifecycle#requireBeingImplemented}); <b>a REFINED epic moves to IMPLEMENTING</b>, so
+   *       an agent that starts work without a dispatch press still shows on the board. That move is
+   *       an ordinary move ({@link #transitionFrom}), after the stamp, so it is announced like any
+   *       other.
+   * </ul>
+   *
+   * Skippable: {@code mark_task_implemented} without this before it stays legal and leaves the
+   * marker null. Entering IMPLEMENTING on the epic stamps nothing beneath it.
+   */
+  public Nested markImplementing(String taskId, String changedBy) {
+    Kind kind = kind(Archetype.TASK);
+    WorkEntity[] epic = {null};
+    Nested marked =
+        writes.hold(
+            kind.label("implementing"),
+            () -> {
+              WorkEntity row = lookup(Archetype.TASK, taskId);
+              String featureId = parentOf(taskId);
+              WorkEntity owner = owner(kind, row, featureId);
+              EntityLifecycle.requireBeingImplemented(owner);
+              epic[0] = owner;
+              // Truncated to what the column holds, so the answer handed back equals the row read.
+              Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+              if (row.implementingAt == null) {
+                row.implementingAt = now;
+                requireArchetypeValid(row, Demand.ON_UPDATE);
+                audit(row, owner.id, AuditOperation.UPDATE, changedBy);
+              }
+              WorkEntity feature = featureId == null ? null : entities.findById(featureId);
+              if (feature != null && feature.implementingAt == null) {
+                feature.implementingAt = now;
+                requireArchetypeValid(feature, Demand.ON_UPDATE);
+                audit(feature, owner.id, AuditOperation.UPDATE, changedBy);
+              }
+              return new Nested(settled(row), featureId);
+            });
+    if (EntityStatus.REFINED.name().equals(epic[0].status)) {
+      transitionFrom(
+          Archetype.EPIC, epic[0].id, EntityStatus.REFINED, EntityStatus.IMPLEMENTING, changedBy);
+    }
+    return marked;
   }
 
   // --- lifecycle ------------------------------------------------------------------------------------
@@ -633,14 +692,49 @@ public class WorkEntityService {
     Kind kind = kind(archetype);
     Validations.requireText(target, "target");
     Moved moved =
-        writes.hold(kind.label("transition"), () -> move(kind, archetype, id, target, changedBy));
+        writes.hold(
+            kind.label("transition"), () -> move(kind, archetype, id, null, target, changedBy));
     announce(moved.batch());
     return moved.transition();
   }
 
-  /** The body of {@link #transition}: database-only, so a retry may run it again. */
-  private Moved move(Kind kind, Archetype archetype, String id, String target, String changedBy) {
+  /**
+   * <b>{@link #transition}, but only from {@code from}</b> (qits-749): the move is made when the row
+   * is still at {@code from} as the write reads it, and nothing happens — no write, no announcement
+   * — when it is anywhere else. Empty then. For the platform's own moves into IMPLEMENTING (a
+   * dispatch press, a FLOW hand-off, a first {@code mark_task_implementing}), each of which means
+   * "REFINED, and implementation starts now": an agent that got further in the meantime (straight
+   * to IMPLEMENTED by the skip) must not be moved BACK by a platform that was a moment late.
+   */
+  public Optional<Transition> transitionFrom(
+      Archetype archetype, String id, EntityStatus from, EntityStatus target, String changedBy) {
+    Kind kind = kind(archetype);
+    Moved moved =
+        writes.hold(
+            kind.label("transition"),
+            () -> move(kind, archetype, id, from, target.name(), changedBy));
+    if (moved == null) {
+      return Optional.empty();
+    }
+    announce(moved.batch());
+    return Optional.of(moved.transition());
+  }
+
+  /**
+   * The body of {@link #transition}: database-only, so a retry may run it again. With {@code
+   * expected} set, a row at any other status is left alone and the answer is null.
+   */
+  private Moved move(
+      Kind kind,
+      Archetype archetype,
+      String id,
+      EntityStatus expected,
+      String target,
+      String changedBy) {
     WorkEntity row = lookup(archetype, id);
+    if (expected != null && !expected.name().equals(row.status)) {
+      return null;
+    }
     if (archetype == Archetype.CAMPAIGN) {
       // The campaign row first (qits-417), re-read under its lock, and only then the start row the
       // pause hook below updates: the order CampaignService.start takes the same two rows in, so a
@@ -730,7 +824,8 @@ public class WorkEntityService {
    * The status a transition {@code target} lands on: the word itself, or {@link EntityStatus#DROPPED}
    * for the {@linkplain #SUPERSEDE supersede} operation of a kind that has it — judged against the
    * lifecycle graph from the row's status. A word naming neither is a 409, and so is asking it of a
-   * kind with no lifecycle.
+   * kind with no lifecycle, and so is IMPLEMENTING or VERIFYING for a campaign, which enters
+   * neither.
    */
   private static EntityStatus targetStatus(Kind kind, WorkEntity row, String target) {
     if (!kind.hasLifecycle()) {
@@ -743,6 +838,18 @@ public class WorkEntityService {
             : EntityLifecycle.parse(target)
                 .orElseThrow(
                     () -> new ConflictException("Unknown " + kind.word() + " status: " + target));
+    if (kind.archetype() == Archetype.CAMPAIGN
+        && !EntityStateMachine.states(Archetype.CAMPAIGN).contains(to)) {
+      // A campaign never enters IMPLEMENTING or VERIFYING (qits-749): its press starts it and
+      // REFINED is what "running" means, so either status would say nothing a campaign's start does
+      // not already say. Its lifecycle elides both already; this refusal is here for the sentence.
+      throw new ConflictException(
+          "A campaign never moves to "
+              + to
+              + ": campaign "
+              + row.id
+              + " runs while it is REFINED, and its members are what is implemented and verified.");
+    }
     EntityLifecycle.requireTransition(kind.archetype(), EntityStatus.valueOf(row.status), to);
     return to;
   }

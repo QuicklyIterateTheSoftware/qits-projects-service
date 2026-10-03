@@ -18,6 +18,7 @@ import io.restassured.specification.RequestSpecification;
 import io.restassured.http.ContentType;
 import io.vertx.core.MultiMap;
 import jakarta.ws.rs.core.Response;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -605,6 +606,113 @@ public class EpicMcpToolsTest {
   }
 
   /**
+   * <b>{@code mark_task_implementing} (qits-749)</b>: it stamps the task, it is idempotent, and on a
+   * REFINED epic it moves the epic to IMPLEMENTING — so an agent that starts without a press still
+   * shows on the board. Its feature reads as implementing on the wire too.
+   */
+  @Test
+  public void marksATaskImplementingStampsItOnceAndMovesARefinedEpic() {
+    String projectId = createProject("MarkingImplementing");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Start it");
+    String taskId = addTask(projectId, epicId, repoId, "Begin the column");
+    freeze(epicId);
+
+    call(
+        projectId,
+        "mark_task_implementing",
+        Map.of("id", taskId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("implementingAt"), text(response));
+        });
+    String first =
+        authenticated()
+            .when()
+            .get("/projects/api/tasks/" + taskId)
+            .then()
+            .statusCode(Response.Status.OK.getStatusCode())
+            .body("task.implementingAt", org.hamcrest.Matchers.notNullValue())
+            .body("task.implementedAt", org.hamcrest.Matchers.nullValue())
+            .extract()
+            .path("task.implementingAt");
+    authenticated()
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("epic.status", org.hamcrest.Matchers.equalTo("IMPLEMENTING"));
+    call(
+        projectId,
+        "get_epic",
+        Map.of("id", epicId),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains("\"implementingOn\":\""), "the feature is implementing: " + body);
+        });
+
+    // Idempotent: a second call keeps the first time, and the epic is moved nowhere further.
+    call(
+        projectId,
+        "mark_task_implementing",
+        Map.of("id", taskId),
+        response -> assertFalse(response.isError(), text(response)));
+    authenticated()
+        .when()
+        .get("/projects/api/tasks/" + taskId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("task.implementingAt", org.hamcrest.Matchers.equalTo(first));
+    authenticated()
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("epic.status", org.hamcrest.Matchers.equalTo("IMPLEMENTING"));
+  }
+
+  /**
+   * <b>{@code mark_task_implemented} while the epic is IMPLEMENTING, and without a prior implementing
+   * mark</b>: the skip is legal, and it leaves the implementing marker empty.
+   */
+  @Test
+  public void marksATaskImplementedWhileItsEpicIsImplementingWithOrWithoutTheImplementingMark() {
+    String projectId = createProject("MarkingWhileImplementing");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Under way");
+    String started = addTask(projectId, epicId, repoId, "Started first");
+    String skipped = addTask(projectId, epicId, repoId, "Never marked started");
+    freeze(epicId);
+    call(
+        projectId,
+        "mark_task_implementing",
+        Map.of("id", started),
+        response -> assertFalse(response.isError(), text(response)));
+
+    for (String taskId : List.of(started, skipped)) {
+      call(
+          projectId,
+          "mark_task_implemented",
+          Map.of("id", taskId),
+          response -> assertFalse(response.isError(), text(response)));
+    }
+    authenticated()
+        .when()
+        .get("/projects/api/tasks/" + skipped)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("task.implementedAt", org.hamcrest.Matchers.notNullValue())
+        .body("task.implementingAt", org.hamcrest.Matchers.nullValue());
+    authenticated()
+        .when()
+        .get("/projects/api/tasks/" + started)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("task.implementedAt", org.hamcrest.Matchers.notNullValue())
+        .body("task.implementingAt", org.hamcrest.Matchers.notNullValue());
+  }
+
+  /**
    * <b>The thread every entity has (qits-551), from the agent's side.</b> A REFINED epic's scope is
    * frozen and its thread is not: a finding goes on the epic by its qualified id, a task-level one
    * on the task's own thread, {@code get_epic} carries the epic's thread and {@code list_comments}
@@ -817,7 +925,7 @@ public class EpicMcpToolsTest {
     String epicId = proposeEpic(projectId, "Not started");
     String taskId = addTask(projectId, epicId, repoId, "Nothing has landed");
 
-    // The refusal is EntityLifecycle.requireRefined's own — this tool adds no second copy of
+    // The refusal is EntityLifecycle.requireBeingImplemented's own — this tool adds no second copy of
     // the rule, it lands on WorkEntityService.update's marker arm and lets the lifecycle answer.
     call(
         projectId,
@@ -826,8 +934,18 @@ public class EpicMcpToolsTest {
         response -> {
           assertTrue(response.isError(), "a draft's task has nothing shipped to record");
           assertTrue(
-              text(response).contains("Implemented markers move only while an epic is REFINED"),
+              text(response)
+                  .contains("Task markers move only while an epic is REFINED or IMPLEMENTING"),
               text(response));
+        });
+    // Its sibling answers a draft the same way: nothing has started on a plan still being written.
+    call(
+        projectId,
+        "mark_task_implementing",
+        Map.of("id", taskId),
+        response -> {
+          assertTrue(response.isError(), "a draft's task has nothing started to record");
+          assertTrue(text(response).contains("REFINED or IMPLEMENTING"), text(response));
         });
   }
 
@@ -850,6 +968,7 @@ public class EpicMcpToolsTest {
               assertFalse(names.contains("supersede_epic"), names.toString());
               assertFalse(names.contains("mark_epic_implemented"), names.toString());
               assertTrue(names.contains("mark_task_implemented"), names.toString());
+              assertTrue(names.contains("mark_task_implementing"), names.toString());
             })
         .thenAssertResults();
   }

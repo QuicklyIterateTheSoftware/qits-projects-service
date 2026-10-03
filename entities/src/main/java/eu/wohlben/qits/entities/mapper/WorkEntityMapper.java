@@ -31,7 +31,8 @@ import org.mapstruct.Named;
  *       the archetype, which is the one thing it is not, so the column was renamed and the DTO was
  *       not.
  *   <li>{@code implementedAt} → {@code implementedOn} on a feature: one fact that had two names,
- *       merged into one column. The feature DTO keeps the old spelling.
+ *       merged into one column. The feature DTO keeps the old spelling, and the implementing
+ *       marker follows it: {@code implementingAt} → {@code implementingOn} (qits-749).
  *   <li>{@code dependsOnEntityId} → {@code dependsOnFeatureId}/{@code dependsOnTaskId}: one sibling
  *       ordering edge for what were two columns. <b>Never nesting</b> — see {@code
  *       WorkEntity.dependsOnEntityId}.
@@ -86,6 +87,7 @@ public interface WorkEntityMapper {
   @Mapping(target = "epicId", source = "epicId")
   @Mapping(target = "dependsOnFeatureId", source = "entity.dependsOnEntityId")
   @Mapping(target = "implementedOn", source = "entity.implementedAt")
+  @Mapping(target = "implementingOn", source = "entity.implementingAt")
   @Mapping(target = "qualifiedId", ignore = true)
   FeatureDto toFeatureDto(WorkEntity entity, String epicId);
 

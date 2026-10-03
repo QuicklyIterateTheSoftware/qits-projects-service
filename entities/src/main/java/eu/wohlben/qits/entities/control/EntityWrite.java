@@ -38,12 +38,14 @@ public record EntityWrite(
     String dependsOn,
     boolean clearDependsOn,
     Instant implementedAt,
-    boolean clearImplementedAt) {
+    boolean clearImplementedAt,
+    Instant implementingAt) {
 
   /** An epic: its title and its long-form spine. */
   public static EntityWrite epic(String title, String description) {
     return new EntityWrite(
-        title, description, false, null, false, null, null, false, null, null, false, null, false);
+        title, description, false, null, false, null, null, false, null, null, false, null, false,
+        null);
   }
 
   /** A campaign: a title and a description, the same two words an epic is written in. */
@@ -56,14 +58,14 @@ public record EntityWrite(
       String title, String impetus, String description, String type, String assignee) {
     return new EntityWrite(
         title, description, false, impetus, false, type, assignee, false, null, null, false, null,
-        false);
+        false, null);
   }
 
   /** A feature under an epic, optionally depending on a sibling. */
   public static EntityWrite feature(String title, String description, String dependsOn) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, null, dependsOn, false, null,
-        false);
+        false, null);
   }
 
   /** A task under a feature: the work in one repository, optionally depending on a sibling. */
@@ -71,7 +73,7 @@ public record EntityWrite(
       String repositoryId, String title, String description, String dependsOn) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, repositoryId, dependsOn, false,
-        null, false);
+        null, false, null);
   }
 
   /** An edit of a ticket's words, each nullable field with its clear flag. */
@@ -97,7 +99,8 @@ public record EntityWrite(
         null,
         false,
         null,
-        false);
+        false,
+        null);
   }
 
   /**
@@ -124,7 +127,8 @@ public record EntityWrite(
         dependsOn,
         clearDependsOn,
         implementedAt,
-        clearImplementedAt);
+        clearImplementedAt,
+        null);
   }
 
   /** Only the implemented marker, stamped — what {@code mark_task_implemented} writes. */
@@ -133,11 +137,21 @@ public record EntityWrite(
   }
 
   /**
-   * Whether this edit touches the implemented marker — the one property whose phase is REFINED
-   * rather than REPORTED, see {@code EntityLifecycle.requireRefined}.
+   * Only the implementing marker, stamped — what {@code mark_task_implementing} writes (qits-749).
+   * There is no clear flag: the marker is history, kept once the work is implemented.
+   */
+  public static EntityWrite implementingAt(Instant at) {
+    return new EntityWrite(
+        null, null, false, null, false, null, null, false, null, null, false, null, false, at);
+  }
+
+  /**
+   * Whether this edit touches a task marker, implemented or implementing — the properties whose
+   * phase is the epic being implemented (REFINED or IMPLEMENTING) rather than REPORTED, see {@code
+   * EntityLifecycle.requireBeingImplemented}.
    */
   boolean touchesMarker() {
-    return implementedAt != null || clearImplementedAt;
+    return implementedAt != null || clearImplementedAt || implementingAt != null;
   }
 
   /**

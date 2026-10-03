@@ -276,6 +276,23 @@ public class CampaignMcpToolsTest {
           assertFalse(response.isError(), text(response));
           assertEquals("REFINED", json(response).get("status").asText());
         });
+    // A campaign never enters IMPLEMENTING (qits-749): REFINED is what running means for one.
+    call(
+        projectId,
+        "transition_campaign",
+        Map.of("id", campaignId[0], "target", "IMPLEMENTING"),
+        response -> {
+          assertTrue(response.isError(), "a campaign must not move to IMPLEMENTING");
+          assertTrue(text(response).contains("never moves to IMPLEMENTING"), text(response));
+        });
+    call(
+        projectId,
+        "transition_campaign",
+        Map.of("id", campaignId[0], "target", "VERIFYING"),
+        response -> {
+          assertTrue(response.isError(), "a campaign must not move to VERIFYING either");
+          assertTrue(text(response).contains("never moves to VERIFYING"), text(response));
+        });
 
     call(
         projectId,

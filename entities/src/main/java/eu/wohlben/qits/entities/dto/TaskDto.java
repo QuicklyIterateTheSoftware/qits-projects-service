@@ -10,6 +10,10 @@ import java.time.Instant;
  * @param qualifiedId {@code <project-slug>-<number>} — {@code qits-1337}. Null until the project
  *     slug is resolved, which happens in {@code projects/api/QualifiedEntityIds} and nowhere else;
  *     see {@link EpicDto#qualifiedId}.
+ * @param implementingAt when the implementation of this task was started, or null — the
+ *     implementing marker (qits-749), stamped by {@code mark_task_implementing}. Skippable, so an
+ *     implemented task may never have had it; kept once {@code implementedAt} is set, which ranks
+ *     over it.
  */
 public record TaskDto(
     String id,
@@ -23,6 +27,7 @@ public record TaskDto(
     String description,
     String dependsOnTaskId,
     Instant implementedAt,
+    Instant implementingAt,
     Instant createdAt,
     Instant updatedAt) {
 
@@ -40,6 +45,7 @@ public record TaskDto(
         description,
         dependsOnTaskId,
         implementedAt,
+        implementingAt,
         createdAt,
         updatedAt);
   }

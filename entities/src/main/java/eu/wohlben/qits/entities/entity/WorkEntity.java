@@ -307,6 +307,17 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public Instant implementedAt;
 
   /**
+   * <b>The implementing marker</b> (qits-749, epics V22): when the implementation of a feature or a
+   * task was started — stamped by {@code mark_task_implementing} on a task, and on its feature by
+   * the first of its tasks so marked. Features and tasks have no status, so this is how they show in
+   * the IMPLEMENTING column. Skippable: a task may be marked implemented without ever being marked
+   * implementing, and then this stays null. Kept as history once {@link #implementedAt} is set;
+   * consumers rank that one over this one. Entering IMPLEMENTING on the epic stamps nothing.
+   */
+  @Column(name = "implementing_at")
+  public Instant implementingAt;
+
+  /**
    * <b>One sibling-dependency edge for what were two</b>: a feature's {@code depends_on_feature_id}
    * and a task's {@code depends_on_task_id}. Self-FK with {@code on delete set null}. The DTOs keep
    * both old spellings — see {@code mapper/WorkEntityMapper}.

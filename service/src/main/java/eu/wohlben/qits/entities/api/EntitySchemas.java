@@ -37,16 +37,17 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li><b>create</b> — {@code POST /entities}. The kind's permitted properties, less the
  *       server-owned pair, less what the writer mints or a later move states (the status, starting
- *       REPORTED; a supersede) and less the implemented marker — which moves only while the owning
- *       epic is REFINED, while a create under it needs the epic REPORTED, so no create could ever
- *       carry one. Plus the placement: {@code project} for a kind that may be a root, {@code parent}
+ *       REPORTED; a supersede) and less the two task markers, implemented and implementing — which
+ *       move only while the owning epic is REFINED or IMPLEMENTING, while a create under it needs
+ *       the epic REPORTED, so no create could ever carry one. Plus the placement: {@code project} for a kind that may be a root, {@code parent}
  *       for one that sits below one, described as the id of the kind {@code WorkEntityService} looks
  *       it up as. Required: {@code requiredAtCreate} less the status, plus the placement.
  *   <li><b>update</b> — {@code PATCH /entities/{id}}, a merge patch. The same properties less the
  *       server-owned pair and the {@linkplain EntityWireProperties#MOVES moves}; a clearable one is
  *       typed {@code ["string","null"]}. Nothing is required, and at least one property must be named.
  *   <li><b>transition</b> — one entry of {@code POST /entities/transition}, the full post-state. The
- *       kind's permitted properties less the server-owned pair, plus {@code membership}. Required:
+ *       kind's permitted properties less the server-owned pair and the implementing marker (which
+ *       that door carries rather than states), plus {@code membership}. Required:
  *       {@code requiredOnTransition} as the registry document serves it — and {@code membership} for a
  *       kind that may not be a root, because that door reads an absent membership as "a root" and the
  *       nesting rule then refuses a root feature. A registry that says {@code title} alone for a
@@ -90,7 +91,20 @@ public final class EntitySchemas {
 
   /** What a create never takes, beyond the server-owned pair: see the class javadoc. */
   private static final List<EntityProperty> NOT_AT_CREATE =
-      List.of(EntityProperty.STATUS, EntityProperty.SUPERSEDED_BY, EntityProperty.IMPLEMENTED_AT);
+      List.of(
+          EntityProperty.STATUS,
+          EntityProperty.SUPERSEDED_BY,
+          EntityProperty.IMPLEMENTED_AT,
+          EntityProperty.IMPLEMENTING_AT);
+
+  /**
+   * What a transition entry never states: the implementing marker (qits-749). {@code
+   * EntityTransition} has no slot for it, so that door carries it like the slug where the target
+   * kind has room and clears it where it has none — publishing it as a property would advertise a
+   * value the door ignores.
+   */
+  private static final List<EntityProperty> NOT_ON_TRANSITION =
+      List.of(EntityProperty.IMPLEMENTING_AT);
 
   private static final String DRAFT = "https://json-schema.org/draft/2020-12/schema";
 
@@ -170,6 +184,9 @@ public final class EntitySchemas {
     Map<String, Object> properties = new LinkedHashMap<>();
     List<String> required = new ArrayList<>();
     for (EntityWireProperties.Slot slot : writable(spec)) {
+      if (NOT_ON_TRANSITION.contains(slot.property())) {
+        continue;
+      }
       properties.put(slot.wire(), slot.schema());
       if (onTransition.contains(slot.property())) {
         required.add(slot.wire());
@@ -290,9 +307,10 @@ public final class EntitySchemas {
           "status is not written at create: a new "
               + archetype
               + " is REPORTED, and moves through POST /projects/api/entities/{id}/status";
-      case IMPLEMENTED_AT ->
-          "implementedAt is not written at create: the marker moves only while the epic is"
-              + " REFINED, and a create needs it REPORTED";
+      case IMPLEMENTED_AT, IMPLEMENTING_AT ->
+          name
+              + " is not written at create: the marker moves only while the epic is REFINED or"
+              + " IMPLEMENTING, and a create needs it REPORTED";
       default -> name + " is not written at create";
     };
   }

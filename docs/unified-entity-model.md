@@ -487,10 +487,10 @@ Declared in `entities/control/Archetypes.java`, as data. Nothing else re-decides
 
 | archetype | depth | may be a root | requires | permits (beyond required) | legal statuses |
 | --- | --- | --- | --- | --- | --- |
-| `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the six `EntityStatus` words (was the five `EpicStatus` words until V15 — see "One lifecycle for every archetype") |
-| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the six `EntityStatus` words (the enum was `TicketStatus` until V15) |
-| `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
-| `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT` | none |
+| `EPIC` | 0 | yes | `TITLE` | `SLUG`, `DESCRIPTION`, `STATUS`, `SUPERSEDED_BY` | the eight `EntityStatus` words (six until V22 added IMPLEMENTING and V23 VERIFYING; was the five `EpicStatus` words until V15 — see "One lifecycle for every archetype") |
+| `TICKET` | 0 | yes | `TITLE`, `TICKET_TYPE`, `STATUS` — **plus `IMPETUS` at create** | `SLUG`, `DESCRIPTION`, `IMPETUS`, `ASSIGNEE`, `CREATED_BY` | the eight `EntityStatus` words (six until V22 and V23; the enum was `TicketStatus` until V15) |
+| `FEATURE` | 1 | no | `TITLE` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
+| `TASK` | 2 | no | `TITLE`, `REPOSITORY_ID` | `SLUG`, `DESCRIPTION`, `DEPENDS_ON`, `IMPLEMENTED_AT`, `IMPLEMENTING_AT` | none |
 
 **There are two required sets, not one.** `required` is what a row of a kind must carry at every
 moment of its life; `requiredAtCreate` is what intake demands of a row being born, and it is the
@@ -1057,25 +1057,31 @@ of a project's whole plan to.
 
 ```json
 { "properties":  ["TITLE","SLUG","DESCRIPTION","STATUS","TICKET_TYPE","IMPETUS","ASSIGNEE",
-                  "CREATED_BY","SUPERSEDED_BY","REPOSITORY_ID","IMPLEMENTED_AT","DEPENDS_ON"],
+                  "CREATED_BY","SUPERSEDED_BY","REPOSITORY_ID","IMPLEMENTED_AT","IMPLEMENTING_AT",
+                  "DEPENDS_ON"],
   "serverOwned": ["SLUG","CREATED_BY"],
   "archetypes":  [ { "archetype": "EPIC", "depth": 0, "mayBeRoot": true,
                      "required": ["TITLE"], "requiredAtCreate": ["TITLE"],
                      "requiredOnTransition": ["TITLE","STATUS"],
                      "permitted": ["TITLE","SLUG","DESCRIPTION","STATUS","SUPERSEDED_BY"],
-                     "legalStatuses": ["DONE","DROPPED","IMPLEMENTED","REFINED","REPORTED",
-                                       "VERIFIED"],
+                     "legalStatuses": ["DONE","DROPPED","IMPLEMENTED","IMPLEMENTING","REFINED",
+                                       "REPORTED","VERIFIED","VERIFYING"],
                      "transitions": {
                        "REPORTED":    [{"to":"REFINED","kind":"FORWARD"},{"to":"DROPPED","kind":"DROP"}],
-                       "REFINED":     [{"to":"IMPLEMENTED","kind":"FORWARD"},{"to":"REPORTED","kind":"BACK"},
+                       "REFINED":     [{"to":"IMPLEMENTING","kind":"FORWARD"},{"to":"IMPLEMENTED","kind":"SKIP"},
+                                       {"to":"REPORTED","kind":"BACK"},{"to":"DROPPED","kind":"DROP"}],
+                       "IMPLEMENTING":[{"to":"IMPLEMENTED","kind":"FORWARD"},{"to":"REFINED","kind":"BACK"},
                                        {"to":"DROPPED","kind":"DROP"}],
-                       "IMPLEMENTED": [{"to":"VERIFIED","kind":"FORWARD"},{"to":"REFINED","kind":"BACK"},
+                       "IMPLEMENTED": [{"to":"VERIFYING","kind":"FORWARD"},{"to":"VERIFIED","kind":"SKIP"},
+                                       {"to":"IMPLEMENTING","kind":"BACK"},{"to":"DROPPED","kind":"DROP"}],
+                       "VERIFYING":   [{"to":"VERIFIED","kind":"FORWARD"},{"to":"IMPLEMENTED","kind":"BACK"},
                                        {"to":"DROPPED","kind":"DROP"}],
-                       "VERIFIED":    [{"to":"DONE","kind":"FORWARD"},{"to":"IMPLEMENTED","kind":"BACK"},
+                       "VERIFIED":    [{"to":"DONE","kind":"FORWARD"},{"to":"VERIFYING","kind":"BACK"},
                                        {"to":"DROPPED","kind":"DROP"}],
                        "DONE":        [],
                        "DROPPED":     [{"to":"REPORTED","kind":"REOPEN"}] },
-                     "lifecycle": ["REPORTED","REFINED","IMPLEMENTED","VERIFIED","DONE","DROPPED"] } ] }
+                     "lifecycle": ["REPORTED","REFINED","IMPLEMENTING","IMPLEMENTED","VERIFYING",
+                                   "VERIFIED","DONE","DROPPED"] } ] }
 ```
 
 **It exists so the archetype gate is met as form fields rather than as an error after a button
@@ -1121,7 +1127,9 @@ its first phase (it was `ABANDONED` leading an epic's list while epics had a voc
 
 **The legal moves are served, off the state machine (qits-310 follow-up).** `transitions` is keyed by
 every status word in lifecycle order, and each value lists the moves out of that status —
-`{"to", "kind"}`, `FORWARD` first, then `BACK`, then `DROP`/`REOPEN` — with `DONE` answering `[]`
+`{"to", "kind"}`, `FORWARD` first, then `SKIP` (REFINED → IMPLEMENTED or IMPLEMENTED → VERIFIED,
+qits-749), then
+`BACK`, then `DROP`/`REOPEN` — with `DONE` answering `[]`
 because DONE is final; `lifecycle` is the ordered walk plus `DROPPED`. A kind with no lifecycle serves
 `{}` and `[]`. Both are read off `control/EntityStateMachine`, the one declaration of the states and
 their moves that the per-archetype transition doors enforce, so the served moves and the enforced
@@ -2049,7 +2057,8 @@ The mapping, which is also V15's backfill:
   the post-state, the kept successor pointer and that no row was lost.
 - **The freeze re-expresses and becomes reversible.** `EntityLifecycle.requireReported` (was
   `requireRefining`): an epic's scope is editable at REPORTED and frozen from REFINED on.
-  `requireRefined` (was `requireImplementation`): the implemented markers move only at REFINED. A
+  `requireRefined` (was `requireImplementation`): the implemented markers move only at REFINED — and
+  since qits-749 `requireBeingImplemented`, REFINED or IMPLEMENTING. A
   frozen scope is reopened by the ordinary backward move to REPORTED — no new door — except at DONE,
   which is final: a DONE epic's scope is frozen for good.
 - **`SUPERSEDED` is an operation now, not a status.** `POST /epics/{id}/transition` still accepts
@@ -2061,6 +2070,83 @@ The mapping, which is also V15's backfill:
   in the same transaction, exactly as before.
 - **Resolving** (what tears a refinement down) is a move to IMPLEMENTED, VERIFIED, DONE or DROPPED.
 
+## IMPLEMENTING, and the rule it rewrote (V22, qits-749)
+
+**The walk is `REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE`, plus `DROPPED`.**
+IMPLEMENTING says an implementation was started; the implement phase runs while it holds, as it does
+at REFINED, so a dispatch press on an IMPLEMENTING entity resumes that phase rather than answering
+409. Its rows in `EntityStateMachine`: REFINED → IMPLEMENTING `FORWARD`, IMPLEMENTING → IMPLEMENTED
+`FORWARD`, IMPLEMENTING → REFINED `BACK`, IMPLEMENTING → DROPPED `DROP`, and IMPLEMENTED →
+IMPLEMENTING `BACK`, which replaced IMPLEMENTED → REFINED.
+
+**It is skippable.** REFINED → IMPLEMENTED stays legal as the one `SKIP` — a `TransitionKind` of its
+own, two steps along the walk and from REFINED only — so work an agent finished without ever being
+moved to IMPLEMENTING is not stranded. `FORWARD` stays one step; the self-check refuses a `SKIP`
+anywhere else and a two-step `FORWARD` anywhere at all.
+
+**The house rule it overturned, rewritten rather than left contradicting the code.** Until V22 a
+status said what had been ACHIEVED and never what was being done — no `IN_PROGRESS`, ever — because
+"somebody is working on it", kept by hand, is stale the moment it is written. That worry is about a
+status a person maintains. IMPLEMENTING is not one: **the platform sets it** — at the dispatch press
+(`EntityDispatch`, FLOW and PHASE alike, the campaign executor's press included), on the FLOW
+hand-off when the implement turn is spoken after refine lands REFINED (`PhaseAdvance`), and at an
+agent's first `mark_task_implementing` on a REFINED epic — and what it records, *an implementation
+was started*, does not go stale. The implement phase leaves it by the same move to IMPLEMENTED it
+always made. So the rule now reads: a status names what has been achieved, or a fact the platform
+recorded. V7 keeps the old sentence (an applied migration is never edited); V22's header carries the
+new one.
+
+**Every platform move into IMPLEMENTING is `WorkEntityService.transitionFrom(…, REFINED,
+IMPLEMENTING, …)`** — a move made only while the row is still REFINED as the write reads it, so a
+platform a moment late never walks an agent's IMPLEMENTED back. It is never a route, so `PhaseAdvance`
+is not re-entered and no second implement prompt is pushed; it is announced like any move (one
+`EntityTransitioned`, REFINED → IMPLEMENTING), and the dispatch's own comment is the only sentence on
+the thread. An explicit move by hand from REFINED into IMPLEMENTING pushes nothing either; from
+IMPLEMENTED (rework) it pushes the implement turn.
+
+**Features and tasks keep no status; they get a marker beside `implemented_at`.** V22 adds a nullable
+`implementing_at timestamptz` (`IMPLEMENTING_AT` in the registry; `implementingAt` on a task and on
+the merged shape, `implementingOn` on a feature). `mark_task_implementing` stamps a task (and its
+feature, the first time) when unset, is idempotent, is accepted while the epic is REFINED or
+IMPLEMENTING (`EntityLifecycle.requireBeingImplemented`, which was `requireRefined`), and moves a
+REFINED epic to IMPLEMENTING. Entering IMPLEMENTING on the epic stamps nothing beneath it; entering
+IMPLEMENTED still stamps `implementedAt` on everything unmarked and keeps `implementingAt` as
+history. Consumers rank `implementedAt` over `implementingAt`. A PATCH may set the marker and may
+not clear it; a transition entry neither states nor clears it where the target kind has a slot.
+
+**A campaign never enters IMPLEMENTING or VERIFYING** — REFINED is what running means for one — so
+either move is a 409 there. Its lifecycle is the same machine with both elided
+(`EntityStateMachine.transitionsFrom(Archetype, …)`, derived, never declared twice): the moves into
+and out of them go, each skip is a campaign FORWARD step (REFINED → IMPLEMENTED, IMPLEMENTED →
+VERIFIED), and each BACK into one lands on the state before it, so IMPLEMENTED → REFINED and
+VERIFIED → IMPLEMENTED stay a campaign's BACK moves, exactly as before qits-749. The served registry
+says so per archetype: a campaign's `legalStatuses`, `lifecycle` and `transitions` carry neither.
+
+## VERIFYING, the mirror one phase later (V23, qits-749)
+
+**The walk is `REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE`,
+plus `DROPPED`.** VERIFYING is IMPLEMENTING's mirror for the verify phase, and everything above
+applies to it with the words moved one phase on:
+
+- **Rows:** IMPLEMENTED → VERIFYING `FORWARD`, IMPLEMENTED → VERIFIED `SKIP` (the self-check takes a
+  `SKIP` from REFINED or IMPLEMENTED, two steps, and from nowhere else), VERIFYING → VERIFIED
+  `FORWARD`, VERIFYING → IMPLEMENTED `BACK`, VERIFYING → DROPPED `DROP`, and VERIFIED → VERIFYING
+  `BACK`, which replaced VERIFIED → IMPLEMENTED. VERIFYING starts the verify phase, as IMPLEMENTED
+  does, so a press on it resumes verify.
+- **The platform sets it, the same three ways and through the same rule.**
+  `EntityStateMachine.startedStatusOf` declares the pairs once — REFINED → IMPLEMENTING,
+  IMPLEMENTED → VERIFYING — and the dispatch press (FLOW and PHASE) and the FLOW hand-off whose turn
+  was spoken both read it. `PhaseAdvance` pushes nothing on either "phase started" move made by hand
+  (`isStartedMove`), and pushes the verify turn on VERIFIED → VERIFYING (re-verification).
+- **What stayed keyed on VERIFIED and why.** The release ask is a move into VERIFIED, from VERIFYING
+  or by the skip, unchanged. "Arrived" for a campaign member (`CampaignService.ARRIVED`, the
+  executor's skip, the progress read) is still VERIFIED or DONE: VERIFYING has not arrived, as
+  IMPLEMENTING has not implemented. `CampaignInFlight` counts VERIFYING as under way. The note about
+  a release still standing open fires on arrival at IMPLEMENTED or VERIFYING, the two places a move
+  back from VERIFIED can land.
+- **No marker.** Features and tasks carry nothing for verifying; V23 widens `ck_entity_status` and
+  adds no column.
+
 ## Where the code is
 
 | | |
@@ -2070,7 +2156,7 @@ The mapping, which is also V15's backfill:
 | repositories | `entities/…/persistence/WorkEntityRepository.java`, `EntityMembershipRepository.java` |
 | the registry | `entities/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
 | the five cut-over services | `entities/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java` — answering `WorkEntity` and `control/Nested.java`; `WorkEntityProjections.java` is **deleted** |
-| the lifecycle guards | `entities/…/control/EntityLifecycle.java` (was `EpicLifecycle.java` + `TicketLifecycle.java` until qits-392) — every caller hands it the `entity` row itself |
+| the lifecycle guards | `entities/…/control/EntityLifecycle.java` (was `EpicLifecycle.java` + `TicketLifecycle.java` until qits-392) — every caller hands it the `entity` row itself; the walk and its moves are `entities/…/control/EntityStateMachine.java` |
 | the one mapper | `entities/…/mapper/WorkEntityMapper.java` — `toEpicDto`/`toTicketDto`/`toFeatureDto`/`toTaskDto`, replacing `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`, all four **deleted** |
 | the four old entities and their repositories | **deleted** with their tables (V13): `entities/…/entity/Epic.java`, `Ticket.java`, `Feature.java`, `Task.java`; `entities/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` |
 | the nesting rule | `entities/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |

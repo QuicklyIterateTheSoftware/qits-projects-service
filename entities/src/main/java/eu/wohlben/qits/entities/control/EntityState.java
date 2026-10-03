@@ -68,6 +68,7 @@ public record EntityState(Archetype archetype, String status, Set<EntityProperty
     add(present, EntityProperty.SUPERSEDED_BY, entity.supersededByEntityId);
     add(present, EntityProperty.REPOSITORY_ID, entity.repositoryId);
     add(present, EntityProperty.IMPLEMENTED_AT, entity.implementedAt);
+    add(present, EntityProperty.IMPLEMENTING_AT, entity.implementingAt);
     add(present, EntityProperty.DEPENDS_ON, entity.dependsOnEntityId);
     return new EntityState(entity.archetype, entity.status, present);
   }

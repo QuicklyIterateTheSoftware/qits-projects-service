@@ -40,12 +40,13 @@ import java.util.Optional;
  *       ticketType} — derived rather than written down, which is also how {@code EntityTransition}
  *       spells every one of them. The legacy per-archetype doors' names ({@code type}, {@code
  *       dependsOnFeatureId}) are theirs and are not in here.
- *   <li><b>A value is a string by default</b>; the ticket type is its enum, the implemented marker a
- *       {@code date-time}, and the three properties an empty value would defeat — title, impetus,
+ *   <li><b>A value is a string by default</b>; the ticket type is its enum, the two task markers
+ *       (implemented, implementing) a {@code date-time}, and the three properties an empty value would defeat — title, impetus,
  *       repository — carry the pattern {@code \S}. The status carries the lifecycle's words.
- *   <li><b>Clearable</b> is false for the three properties that have no {@code clear*} flag behind
- *       them in {@code EntityWrite}: every kind that permits one requires it, so a null there is a
- *       400 rather than an absent flag.
+ *   <li><b>Clearable</b> is false for the four properties that have no {@code clear*} flag behind
+ *       them in {@code EntityWrite}: three because every kind that permits one requires it, so a
+ *       null there is a 400 rather than an absent flag, and the implementing marker (qits-749)
+ *       because it is history — kept once the work is implemented, never taken back.
  * </ul>
  *
  * <p>Which of these a door takes is the door's: the status and a supersede are moves ({@link
@@ -112,7 +113,15 @@ public final class EntityWireProperties {
         true,
         dateTime(
             "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is"
-                + " REFINED."));
+                + " REFINED or IMPLEMENTING."));
+    row(
+        table,
+        EntityProperty.IMPLEMENTING_AT,
+        false,
+        dateTime(
+            "The implementing marker, an ISO-8601 instant: when the implementation was started."
+                + " Moves only while the owning epic is REFINED or IMPLEMENTING; history once"
+                + " implementedAt is set, so it is never cleared."));
     row(
         table,
         EntityProperty.DEPENDS_ON,
