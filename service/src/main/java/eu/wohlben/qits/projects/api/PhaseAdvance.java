@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
+import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -68,13 +69,30 @@ import org.jboss.logging.Logger;
  * door. This class adds no second table and no second switch: it reads that one, and everything
  * else follows from it.
  *
- * <p><b>Direction is deliberately not consulted.</b> The ticket's new status is the entire input, so
- * a move back from IMPLEMENTED to REFINED — a correction of a claim, not a failure path — gets the
- * <em>implement</em> turn, which is precisely right, because REFINED means the ticket says what to
- * do and implementing is what runs next — and a person closing a VERIFIED ticket to DONE gets
- * nothing, which is also right, because DONE starts no phase at all (and, being final, never moves
- * again). A rule that asked "forward or back?" would need a second table to answer from, and the
- * second table is the thing that goes wrong.
+ * <p><b>Direction is not consulted, with one exception.</b> The ticket's new status is otherwise the
+ * entire input, so a move back from IMPLEMENTED to IMPLEMENTING — a correction of a claim, not a
+ * failure path — gets the <em>implement</em> turn, which is precisely right, because rework is
+ * what runs next; a move back to REFINED gets it for the same reason; and a person closing a
+ * VERIFIED ticket to DONE gets nothing, which is also right, because DONE starts no phase at all
+ * (and, being final, never moves again).
+ *
+ * <p><b>The exception is REFINED → IMPLEMENTING</b> (qits-749), and it pushes nothing. That move
+ * means an implementation was started: the platform made it at the dispatch press (which is not a
+ * route and never reaches here), or the agent already working moved itself by hand — either way the
+ * implement prompt is out or the agent is at work, and a second one would restart it. Into
+ * IMPLEMENTING from anywhere else (BACK from IMPLEMENTED, rework) the implement turn is delivered
+ * as for any phase. {@code statusBefore} is passed in for this and read for nothing else.
+ *
+ * <h2>Delivering the implement turn starts the implementation (qits-749)</h2>
+ *
+ * <p><b>One rule:</b> whenever the implement prompt is delivered for an epic or a ticket that is
+ * REFINED, the entity moves to IMPLEMENTING. {@link EntityDispatch} does it at the press; this
+ * class does it for the FLOW hand-off, when the refine phase lands REFINED with {@code
+ * dispatchContinues} set and the implement turn is spoken (DELIVERED or LAUNCHED) — and only then:
+ * a turn that found no workspace, or could not be delivered, started nothing, and the entity stays
+ * REFINED. The move goes straight through {@link WorkEntityService#transitionFrom}, never back
+ * through a route, so this class is not re-entered and no second prompt is pushed; a row that moved
+ * on meanwhile is left where it is.
  *
  * <p>{@link EntityStatus#VERIFIED}, {@link EntityStatus#DONE} and {@link EntityStatus#DROPPED}
  * therefore start no phase and deliver no turn, and that is where the one remaining human decision
@@ -192,6 +210,9 @@ public class PhaseAdvance {
 
   @Inject EntityCommentService comments;
 
+  /** The move into IMPLEMENTING a delivered implement turn makes — see the class javadoc. */
+  @Inject WorkEntityService lifecycle;
+
   @Inject EntityWorkspaces workspaces;
 
   @Inject ProjectChangePublisher publisher;
@@ -246,11 +267,13 @@ public class PhaseAdvance {
    * string the transition's audit row carries, whichever door it came through, and it keeps this bean
    * out of the request context entirely.
    *
-   * @param entity the ticket or epic <b>as it is after the move</b> — the new status is the only
-   *     input to which phase starts, and its {@code dispatchContinues} is whether it starts at all
+   * @param entity the ticket or epic <b>as it is after the move</b> — the new status is the input
+   *     to which phase starts, and its {@code dispatchContinues} is whether it starts at all
+   * @param statusBefore the status it moved from, read only to tell REFINED → IMPLEMENTING (which
+   *     pushes nothing) from any other arrival at IMPLEMENTING; may be null
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
-  public void afterTransition(WorkEntity entity, String changedBy) {
+  public void afterTransition(WorkEntity entity, String statusBefore, String changedBy) {
     if (entity.archetype == Archetype.CAMPAIGN) {
       // A campaign stands in no workspace: its moves deliver no turn and release no branch. What a
       // campaign's move does do — pause or resume its executor — belongs to its own door (qits-411).
@@ -278,6 +301,16 @@ public class PhaseAdvance {
           entity.archetype, entity.id, entity.status);
       return;
     }
+    if (EntityStatus.IMPLEMENTING.name().equals(entity.status)
+        && EntityStatus.REFINED.name().equals(statusBefore)) {
+      // An implementation was started — at a dispatch press, or by the agent at work moving itself.
+      // The implement prompt is out either way; a second one would restart the work (qits-749).
+      LOG.debugf(
+          "%s %s moved REFINED → IMPLEMENTING; the implement phase is already under way, so no turn"
+              + " is delivered",
+          entity.archetype, entity.id);
+      return;
+    }
     Optional<Phase> phase = PhasePrompts.phaseOf(entity);
     if (phase.isEmpty()) {
       // DONE and DROPPED, now that VERIFIED is answered above: the work is over, or it was decided
@@ -300,7 +333,12 @@ public class PhaseAdvance {
       // qualified id the dispatch named that workspace with (qits-301).
       PhasePrompts.Started started =
           PhasePrompts.start(entity, phase.get(), workspaces.qualifiedIdOf(entity));
-      deliver(entity, started, target.get(), changedBy);
+      boolean spoken = deliver(entity, started, target.get(), changedBy);
+      if (spoken
+          && phase.get() == Phase.IMPLEMENT
+          && EntityStatus.REFINED.name().equals(entity.status)) {
+        startImplementing(entity, changedBy);
+      }
     } else {
       // The continue-or-stop bit, read at its one place: the press that started this run asked for
       // one phase, so the next one waits for somebody to press again. Nothing is said on a thread —
@@ -510,11 +548,35 @@ public class PhaseAdvance {
   private static final String FINALIZED = "FINALIZED";
 
   /**
+   * The FLOW hand-off's move into IMPLEMENTING, once the implement turn was spoken — see the class
+   * javadoc. Never throws: the turn is out and the thread has said so, and a refused move must not
+   * reach the caller of a transition that already happened.
+   */
+  private void startImplementing(WorkEntity entity, String changedBy) {
+    try {
+      lifecycle.transitionFrom(
+          entity.archetype,
+          entity.id,
+          EntityStatus.REFINED,
+          EntityStatus.IMPLEMENTING,
+          changedBy);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "%s %s was handed its implement turn but could not be moved to IMPLEMENTING",
+          entity.archetype,
+          entity.id);
+    }
+  }
+
+  /**
    * The turn, and the one sentence that follows it. Split out so the method above reads as the rule
    * it implements — status picks a phase, a phase needs an address — and this one as what is done
    * with the answer.
+   *
+   * @return whether the turn was spoken — delivered to an agent, or one was launched to take it
    */
-  private void deliver(
+  private boolean deliver(
       WorkEntity ticket,
       PhasePrompts.Started started,
       EntityWorkspaces.Target target,
@@ -544,7 +606,7 @@ public class PhaseAdvance {
       LOG.debugf(
           "No workspace stands on %s, so ticket %s starts its %s phase when somebody dispatches one",
           branch, ticket.id, started.phase());
-      return;
+      return false;
     }
 
     if (turn.spoken()) {
@@ -557,6 +619,7 @@ public class PhaseAdvance {
           started.phase(), ticket.id, ticket.slug, branch, turn.detail());
     }
     say(ticket, comment(ticket, started.phase(), branch, turn), changedBy);
+    return turn.spoken();
   }
 
   /**

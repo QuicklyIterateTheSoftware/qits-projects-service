@@ -10,6 +10,8 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
@@ -55,6 +57,10 @@ public class PhaseAdvanceTest {
    */
   @Inject PhaseAdvance advance;
 
+  @Inject RecordingEntityTransitionAnnouncer transitions;
+
+  @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
+
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
 
@@ -62,6 +68,7 @@ public class PhaseAdvanceTest {
   void resetThePort() {
     turns.reset();
     workspaces.reset();
+    transitions.reset();
   }
 
   /**
@@ -215,6 +222,8 @@ public class PhaseAdvanceTest {
     assertTrue(
         implement.text().contains("Implement ticket \""),
         "REFINED starts implementation: " + implement.text());
+    // The turn was spoken, so the implementation started and the ticket says so (qits-749).
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
 
     transition(ticketId, "IMPLEMENTED");
     assertTrue(
@@ -254,7 +263,7 @@ public class PhaseAdvanceTest {
     dropped.ticketType = TicketType.BUG;
     dropped.status = EntityStatus.DROPPED.name();
 
-    advance.afterTransition(dropped, "dana");
+    advance.afterTransition(dropped, null, "dana");
 
     assertEquals(
         List.of(), turns.calls(), "a dropped ticket has no phase to start, so no turn is delivered");
@@ -284,7 +293,7 @@ public class PhaseAdvanceTest {
       campaign.status = status.name();
       campaign.dispatchContinues = true;
 
-      advance.afterTransition(campaign, "dana");
+      advance.afterTransition(campaign, null, "dana");
     }
 
     assertEquals(List.of(), turns.calls(), "a campaign is never delivered a turn");
@@ -319,7 +328,7 @@ public class PhaseAdvanceTest {
     blocked.status = EntityStatus.REFINED.name();
     blocked.blocked = true;
 
-    advance.afterTransition(blocked, "dana");
+    advance.afterTransition(blocked, null, "dana");
 
     assertEquals(
         List.of(),
@@ -341,9 +350,9 @@ public class PhaseAdvanceTest {
   public void movingBackToReportedDeliversTheRefinePrompt() {
     String projectId = createProject("Advance Reopen");
     String ticketId = createTicket(projectId, "Back to the start");
-    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
-    transition(ticketId, "REFINED");
+    transition(ticketId, "REFINED"); // nobody to tell yet, so it stays REFINED
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     transition(ticketId, "REPORTED");
 
     assertTrue(
@@ -353,25 +362,71 @@ public class PhaseAdvanceTest {
 
   /**
    * <b>Direction is not consulted, and this is the case that proves it.</b> A move back from
-   * IMPLEMENTED to REFINED corrects a claim that turned out wrong — it is not how a failed
+   * IMPLEMENTED to IMPLEMENTING corrects a claim that turned out wrong — it is not how a failed
    * verification reports, which is a block (qits-592) — and what has to start from it is
-   * <em>implementation</em>, because REFINED means the ticket says what to do. A rule that asked
-   * "forward or back?" would need a second table to answer from, and that table is the thing that
-   * goes wrong.
+   * <em>implementation</em> again, rework. A rule that asked "forward or back?" would need a second
+   * table to answer from, and that table is the thing that goes wrong.
    */
   @Test
-  public void aMoveBackToRefinedStartsTheImplementPhase() {
+  public void aMoveBackToImplementingStartsTheImplementPhase() {
     String projectId = createProject("Advance Backward");
     String ticketId = createTicket(projectId, "Still broken after all");
     transition(ticketId, "REFINED");
-    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "IMPLEMENTED"); // the skip
+    turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "IMPLEMENTING");
+
+    assertEquals(1, turns.calls().size());
+    assertTrue(
+        turns.lastCall().text().contains("Implement ticket \""),
+        "a move BACK to IMPLEMENTING starts implementation again: " + turns.lastCall().text());
+  }
+
+  /**
+   * <b>The one exception to direction not being consulted</b> (qits-749): REFINED → IMPLEMENTING
+   * says an implementation was started — by a press, or by the agent at work — so the implement
+   * prompt is already out and a second one would restart it.
+   */
+  @Test
+  public void aMoveFromRefinedIntoImplementingPushesNothing() {
+    String projectId = createProject("Advance Started By Hand");
+    String ticketId = createTicket(projectId, "Started by hand");
+    transition(ticketId, "REFINED"); // no workspace answers, so this stays REFINED
+    assertEquals("REFINED", statusOf(ticketId));
+    turns.reset();
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "IMPLEMENTING");
+
+    assertEquals(List.of(), turns.calls(), "no second implement prompt");
+  }
+
+  /**
+   * <b>A FLOW refine that ends in REFINED ends in IMPLEMENTING</b> (qits-749): the implement turn is
+   * spoken, and the move follows it with exactly one turn and one more {@code EntityTransitioned}.
+   */
+  @Test
+  public void aFlowRefineThatLandsRefinedAndIsHandedItsTurnMovesOnToImplementing() {
+    String projectId = createProject("Advance Into Implementing");
+    String ticketId = createTicket(projectId, "Carried on");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.LAUNCHED, "launched one");
 
     transition(ticketId, "REFINED");
 
-    assertTrue(
-        turns.lastCall().text().contains("Implement ticket \""),
-        "a move BACK to REFINED starts implementation again: " + turns.lastCall().text());
+    assertEquals(1, turns.calls().size(), "one implement turn and no second");
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    List<EntityTransitioned.Entity> moved =
+        transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
+    assertEquals(
+        List.of("REPORTED->REFINED", "REFINED->IMPLEMENTING"),
+        moved.stream().map(entity -> entity.statusBefore() + "->" + entity.status()).toList());
+  }
+
+  private String statusOf(String id) {
+    return dispatchEntities.fresh(id).status;
   }
 
   // --- what lands on the thread ---------------------------------------------------------------

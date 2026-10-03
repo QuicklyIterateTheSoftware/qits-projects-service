@@ -102,6 +102,7 @@ public class AgentSurfaceDefaultsTest {
           "mcp__repository__add_comment",
           "mcp__repository__update_comment",
           "mcp__repository__transition_ticket",
+          "mcp__repository__mark_task_implementing",
           "mcp__repository__mark_task_implemented");
 
   private static final List<String> OBSERVABILITY_TOOLS =

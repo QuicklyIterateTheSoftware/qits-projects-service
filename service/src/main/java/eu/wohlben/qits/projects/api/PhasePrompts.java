@@ -16,14 +16,18 @@ import java.util.Optional;
  *
  * <h2>The status picks the phase, and that is the whole design</h2>
  *
- * <p>{@code REPORTED → REFINED → IMPLEMENTED → VERIFIED → DONE}, where a status is what has been
- * <em>achieved</em> and the phase that runs while it holds is what happens <em>next</em> ({@link
- * EntityStatus}). So REPORTED starts the refine phase, REFINED starts implement, IMPLEMENTED starts
- * verify, and VERIFIED and DONE start nothing at all — the work is over and closing is a person's
- * move. {@link EntityStatus#DROPPED} starts nothing either: the work was decided against. That
- * mapping is declared once, on the state machine ({@code EntityStateMachine.phaseStartedBy}); {@link
- * #phaseOf} is the <b>only</b> place in this service that asks it, and it does not look at the
- * archetype: an epic and a ticket at the same status run the same phase.
+ * <p>{@code REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED → DONE}, where a status is
+ * what has been <em>achieved</em> — or, for IMPLEMENTING alone, a fact the platform recorded: an
+ * implementation was started (qits-749) — and the phase that runs while it holds is what happens
+ * <em>next</em> ({@link EntityStatus}). So REPORTED starts the refine phase, REFINED and
+ * IMPLEMENTING both run implement (a press on an IMPLEMENTING entity resumes it rather than
+ * refusing), IMPLEMENTED starts verify, and VERIFIED and DONE start nothing at all — the work is
+ * over and closing is a person's move. {@link EntityStatus#DROPPED} starts nothing either: the work
+ * was decided against. That mapping is declared once, on the state machine ({@code
+ * EntityStateMachine.phaseStartedBy}); {@link #phaseOf} is the <b>only</b> place in this service
+ * that asks it, and it does not look at the archetype: an epic and a ticket at the same status run
+ * the same phase. Nothing here moves an entity into IMPLEMENTING — the dispatch press and the FLOW
+ * hand-off do ({@link EntityDispatch}, {@link PhaseAdvance}); a template only says how to leave it.
  *
  * <p>Because the prompt is derived rather than passed in, pressing dispatch on a half-finished
  * entity <b>resumes</b> it at the phase it stands in, and the SPA learns the phase a press would
@@ -71,7 +75,8 @@ import java.util.Optional;
  * be reproduced on demand — that order is the design, since the code-reading arm is always the one
  * an agent can finish in one turn — and the thread says which was done. An epic's implement turn
  * also makes the move to IMPLEMENTED conditional on every task being marked, because that move
- * stamps every unmarked task.
+ * stamps every unmarked task, and asks for {@code mark_task_implementing} as each task starts, so
+ * the board shows which of them are under way (qits-749).
  *
  * <p>Every turn names its entity by <b>qualified id</b> ({@code qits-297}) beside the slug and the
  * row id, and both implement turns give the commit-subject convention with that id written in
@@ -100,6 +105,8 @@ import java.util.Optional;
  * transition_epic} (qits-394), the epic tree writes the epic refine template names, and the dossier
  * reads. {@code add_comment} and {@code update_comment} are in {@code TICKET_THREAD_TOOLS} (qits-551),
  * and {@code mark_task_implemented}, {@code get_epic} and {@code list_epics} are already listed.
+ * {@code mark_task_implementing} (qits-749) is in {@code AgentSurfaceDefaults}' copy beside its
+ * sibling, and joins the daemon's bucket in that repository's own release.
  * Every surface ships CLAUDE with {@code SKIP_PERMISSIONS} today, so an unlisted tool is still
  * reachable and the sentences are actionable as they stand. A surface moved to <b>kimi</b> needs
  * them added to qits-workspace-daemon's bucket and to {@code AgentSurfaceDefaults}' copy of it on
@@ -133,7 +140,7 @@ final class PhasePrompts {
    * The one mapping: what has been achieved decides what runs next — or empty where nothing does,
    * including every row of a kind with no lifecycle (a feature, a task), whose status is null. The
    * mapping itself is the state machine's ({@link EntityStateMachine#phaseStartedBy}): REPORTED
-   * starts refine, REFINED implement, IMPLEMENTED verify, and VERIFIED, DONE and DROPPED nothing —
+   * starts refine, REFINED and IMPLEMENTING implement, IMPLEMENTED verify, and VERIFIED, DONE and DROPPED nothing —
    * VERIFIED and DONE because the work is over and closing is a person's, DROPPED because the work
    * was decided against. This method only reads the stored word back into the enum first.
    */
@@ -270,7 +277,7 @@ final class PhasePrompts {
   }
 
   /**
-   * <b>IMPLEMENT</b>, run while the ticket is {@link EntityStatus#REFINED}. A running thread rather
+   * <b>IMPLEMENT</b>, run while the ticket is REFINED or IMPLEMENTING. A running thread rather
    * than one report at the end, because the thread is the record the verify phase reads; a
    * contradiction goes on it rather than into the description, which is what the work was agreed
    * against. Released and deployed, because the next phase verifies the live platform. And no
@@ -355,9 +362,10 @@ final class PhasePrompts {
   }
 
   /**
-   * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#REFINED}. The tree and dossier
-   * are frozen, so corrections go on the thread. Tasks in {@code dependsOn} order, each marked with
-   * {@code mark_task_implemented} as it lands so a run that dies halfway leaves a true record; landed
+   * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#REFINED} or {@link
+   * EntityStatus#IMPLEMENTING}. The tree and dossier are frozen, so corrections go on the thread.
+   * Tasks in {@code dependsOn} order, each marked with {@code mark_task_implementing} as it starts
+   * and {@code mark_task_implemented} as it lands so a run that dies halfway leaves a true record; landed
    * means released and deployed, one release request per repository. The claim to IMPLEMENTED is
    * conditional on every task being marked because the move stamps any task still unmarked.
    */
@@ -373,8 +381,8 @@ final class PhasePrompts {
         + "). Read it with get_epic: its tree and dossier are the brief. Both are read-only now:"
         + " record progress and corrections on its thread with add_comment (entityId "
         + epic.id
-        + ") as the work goes. Work the tasks in dependsOn order and mark each one with"
-        + " mark_task_implemented as it lands. Landed means released and deployed, through a"
+        + ") as the work goes. Work the tasks in dependsOn order: mark_task_implementing when you"
+        + " start one, mark_task_implemented as it lands. Landed means released and deployed, through a"
         + " release request per repository, not merged and not green."
         + commitSubjects(q)
         + " Do not integrate the"

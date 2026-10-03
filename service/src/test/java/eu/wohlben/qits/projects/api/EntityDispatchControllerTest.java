@@ -10,6 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
@@ -47,6 +50,8 @@ public class EntityDispatchControllerTest {
 
   @Inject RecordingWorkspaceAgentTurns turns;
 
+  @Inject RecordingEntityTransitionAnnouncer transitions;
+
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
 
   @Inject eu.wohlben.qits.entities.control.WorkEntityService workEntities;
@@ -61,6 +66,7 @@ public class EntityDispatchControllerTest {
   void resetThePorts() {
     dispatch.reset();
     turns.reset();
+    transitions.reset();
   }
 
   /** Open requests must not outlive this class: the release sweep walks every open row. */
@@ -366,6 +372,9 @@ public class EntityDispatchControllerTest {
     transitionTicket(ticketId, "REFINED");
     assertEquals(1, turns.calls().size(), "the flow carried the ticket on");
     assertEquals("ticket/flow-ticket", turns.lastCall().branch());
+    // The implement turn was spoken, so the implementation started (qits-749): the ticket is moved
+    // on to IMPLEMENTING with no second turn.
+    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
     assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
     // A later phase's turn carries the qualified id and the commit-subject form too (qits-301): the
     // advance renders it, not the press, so it is pinned on the advance's own delivery.
@@ -376,6 +385,7 @@ public class EntityDispatchControllerTest {
 
     transitionEpic(epicId, "REFINED");
     assertEquals(2, turns.calls().size(), "and the epic, through the epic's own transition door");
+    assertEquals("IMPLEMENTING", statusOf(Archetype.EPIC, epicId));
     assertEquals("epic/flow-epic", turns.lastCall().branch());
     assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
     assertTrue(turns.lastCall().text().contains("Implement epic \""), turns.lastCall().text());
@@ -402,6 +412,9 @@ public class EntityDispatchControllerTest {
     transitionEpic(epicId, "REFINED");
 
     assertTrue(turns.calls().isEmpty(), "a one-phase run stops: " + turns.calls());
+    // Nothing was delivered, so nothing started: both stay REFINED until somebody presses.
+    assertEquals("REFINED", statusOf(Archetype.TICKET, ticketId));
+    assertEquals("REFINED", statusOf(Archetype.EPIC, epicId));
   }
 
   /**
@@ -424,8 +437,91 @@ public class EntityDispatchControllerTest {
     assertTrue(turns.calls().isEmpty(), "the second press recorded PHASE again");
 
     assertEquals("verify", press(ticketId, "FLOW"));
-    transitionTicket(ticketId, "REFINED"); // a failed verification, claimed by the agent
+    transitionTicket(ticketId, "IMPLEMENTING"); // a claim that turned out wrong, moved back
     assertEquals(1, turns.calls().size(), "a FLOW press turns the run back into a flow");
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+  }
+
+  // ---- the press starts the implementation (qits-749) -----------------------------------------
+
+  /**
+   * <b>A press on a REFINED entity moves it to IMPLEMENTING, in FLOW and PHASE alike</b>: one
+   * implement prompt (the dispatch's own), no turn pushed by the move, one {@code EntityTransitioned}
+   * REFINED → IMPLEMENTING, and the one dispatch comment on the thread.
+   */
+  @Test
+  public void aPressOnARefinedEntityMovesItToImplementingOnceWithOnePrompt() {
+    String projectId = createProject("Dispatch Implementing");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    for (String mode : List.of("FLOW", "PHASE")) {
+      String ticketId = createTicket(projectId, "Implementing ticket " + mode);
+      String epicId = createEpic(projectId, "Implementing epic " + mode);
+      // PHASE to REFINED, so the claim itself pushes nothing and the press is the only prompt.
+      press(ticketId, "PHASE");
+      press(epicId, "PHASE");
+      transitionTicket(ticketId, "REFINED");
+      transitionEpic(epicId, "REFINED");
+      dispatch.reset();
+      turns.reset();
+      transitions.reset();
+      int commentsBefore = threadOf(ticketId).size();
+
+      assertEquals("implement", press(ticketId, mode));
+      assertEquals("implement", press(epicId, mode));
+
+      assertEquals(2, dispatch.calls().size(), mode + ": one implement prompt each");
+      assertTrue(dispatch.calls().get(0).instruction().contains("Implement ticket \""));
+      assertTrue(dispatch.calls().get(1).instruction().contains("Implement epic \""));
+      assertEquals("IMPLEMENTING", dispatch.calls().get(0).subject().status());
+      assertTrue(turns.calls().isEmpty(), mode + ": the move pushes no second prompt");
+      assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+      assertEquals("IMPLEMENTING", statusOf(Archetype.EPIC, epicId));
+      List<EntityTransitioned.Entity> moved =
+          transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
+      assertEquals(2, moved.size(), mode + ": one EntityTransitioned each: " + moved);
+      for (EntityTransitioned.Entity entity : moved) {
+        assertEquals("REFINED", entity.statusBefore());
+        assertEquals("IMPLEMENTING", entity.status());
+      }
+      assertEquals(
+          commentsBefore + 1, threadOf(ticketId).size(), "the dispatch comment and nothing more");
+    }
+  }
+
+  /** <b>A press on an IMPLEMENTING entity resumes the implement phase</b> and moves nothing. */
+  @Test
+  public void aPressOnAnImplementingEntityResumesImplementWithoutMovingIt() {
+    String projectId = createProject("Dispatch Resume Implementing");
+    String ticketId = createTicket(projectId, "Resume me");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "IMPLEMENTING");
+    transitions.reset();
+
+    assertEquals("implement", press(ticketId, "FLOW"));
+
+    assertTrue(dispatch.lastCall().instruction().contains("Implement ticket \""));
+    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(List.of(), transitions.published(), "no move, so nothing announced");
+  }
+
+  /** <b>Any other phase moves nothing</b>: a refine press leaves REPORTED, a verify press IMPLEMENTED. */
+  @Test
+  public void aRefineOrVerifyPressMovesNothing() {
+    String projectId = createProject("Dispatch No Move");
+    String ticketId = createTicket(projectId, "Leave me where I am");
+    assertEquals("refine", press(ticketId, "PHASE"));
+    assertEquals("REPORTED", statusOf(Archetype.TICKET, ticketId));
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "IMPLEMENTED"); // the skip
+    transitions.reset();
+    assertEquals("verify", press(ticketId, "PHASE"));
+    assertEquals("IMPLEMENTED", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(List.of(), transitions.published());
+  }
+
+  private String statusOf(Archetype archetype, String id) {
+    return dispatchEntities.fresh(id).status;
   }
 
   /**

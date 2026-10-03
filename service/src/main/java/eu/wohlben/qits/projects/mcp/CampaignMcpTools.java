@@ -208,8 +208,11 @@ public class CampaignMcpTools {
       name = "transition_campaign",
       description =
           "Move a campaign along its lifecycle: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
-              + " DROPPED, adjacent moves only, one step at a time, exactly the rule transition_epic"
-              + " states for an epic. Its membership and conditions are editable only while it is"
+              + " DROPPED, by the rule transition_epic states for an epic — adjacent moves only, one"
+              + " step at a time — except that a campaign NEVER enters IMPLEMENTING (refused with a"
+              + " 409: REFINED is what running means for a campaign, and its members are what is"
+              + " implemented), so it goes from REFINED to IMPLEMENTED by the walk's one skip, and"
+              + " IMPLEMENTED has no move back but DROPPED. Its membership and conditions are editable only while it is"
               + " REPORTED or REFINED — add_campaign_member, move_campaign_member,"
               + " remove_campaign_member and set_campaign_member_condition are all refused once it"
               + " moves past REFINED. Moving out of REFINED pauses a campaign that is currently"
@@ -220,8 +223,9 @@ public class CampaignMcpTools {
       @ToolArg(
               description =
                   "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
-                      + " DROPPED. It must be a neighbour of the campaign's current status; DONE is"
-                      + " final and moves nowhere")
+                      + " DROPPED (never IMPLEMENTING). It must be a neighbour of the campaign's"
+                      + " current status, or IMPLEMENTED from REFINED (the skip); DONE is final and"
+                      + " moves nowhere")
           String target) {
     requireCampaignInProject(id);
     String projectId = scope.requireProjectId();
@@ -245,7 +249,8 @@ public class CampaignMcpTools {
               + " how a dependency between them is stated; add set_campaign_member_condition"
               + " afterwards for anything more. Whether the member joins already IN FLIGHT is, unless"
               + " you state inFlight explicitly, decided for you: true when the member is already"
-              + " IMPLEMENTED, VERIFIED or DONE, or when an ACTIVE workspace already stands on its"
+              + " IMPLEMENTING, IMPLEMENTED, VERIFIED or DONE, or when an ACTIVE workspace already"
+              + " stands on its"
               + " branch — both mean its work is already under way and the campaign should not wait"
               + " on a fresh dispatch of it.")
   public CampaignMemberDto addCampaignMember(

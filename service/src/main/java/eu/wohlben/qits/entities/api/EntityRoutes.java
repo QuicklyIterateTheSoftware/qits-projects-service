@@ -352,7 +352,7 @@ public class EntityRoutes {
     // A supersede spawns a second row in the same project, so one hint covers both.
     publisher.fire(moved.entity().projectId, ProjectChangeHint.Topic.of(archetype));
     try {
-      phaseAdvance.afterTransition(moved.entity(), changedBy);
+      phaseAdvance.afterTransition(moved.entity(), moved.statusBefore(), changedBy);
     } catch (RuntimeException e) {
       // It says it must not throw; a throw is a bug in it and must not touch a recorded move.
       LOG.warnf(

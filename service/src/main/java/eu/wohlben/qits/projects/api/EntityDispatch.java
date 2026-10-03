@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
+import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -43,6 +44,17 @@ import org.jboss.logging.Logger;
  *       returned must already find the answer the press gave. A dispatch that then fails leaves the
  *       bit saying what the person last asked for, which is harmless — it is read only when a
  *       transition happens with a workspace standing.
+ *   <li><b>The move to IMPLEMENTING</b> (qits-749), when the phase is implement and the entity is
+ *       REFINED: the press is the moment an implementation starts, so the platform records it in
+ *       the same press rather than leaving it to anybody's hand. FLOW and PHASE alike — it is a
+ *       fact about this press, not about what follows it. Made through {@link
+ *       WorkEntityService#transitionFrom} directly, never through a route, so {@link PhaseAdvance}
+ *       does not see it and no second implement prompt is pushed; the move is announced (one
+ *       {@code EntityTransitioned}, REFINED → IMPLEMENTING) like any other, and its record is that
+ *       event and the audit row — the dispatch comment below is the only sentence on the thread.
+ *       Before the dispatch, for the bit's reason. An entity already IMPLEMENTING is not moved: a
+ *       press there resumes the implement phase. Any other phase moves nothing — a refine
+ *       dispatch leaves REPORTED as it is, a verify dispatch IMPLEMENTED.
  *   <li><b>The dispatch</b>, with the entity as the workspace's {@link WorkspaceAgentDispatch.Subject}
  *       and the archetype's own turn. A failure surfaces as the port's 502/503 and nothing is written
  *       on the entity after it.
@@ -83,6 +95,9 @@ public class EntityDispatch {
   private static final Logger LOG = Logger.getLogger(EntityDispatch.class);
 
   @Inject EntityDispatchService entities;
+
+  /** The move into IMPLEMENTING a press makes — straight through the service, see the javadoc. */
+  @Inject WorkEntityService lifecycle;
 
   /** The entity's thread is written through the comment service, the one writer of comments. */
   @Inject EntityCommentService comments;
@@ -194,6 +209,7 @@ public class EntityDispatch {
     String branch = target.branch();
 
     WorkEntity recorded = entities.setDispatchContinues(entity.id, mode.continues(), changedBy);
+    recorded = startImplementing(recorded, checked.phase(), changedBy);
     // One qualified-id read names both the workspace and the entity in the agent's first turn, so
     // the session label and the commit subjects the turn asks for cannot disagree (qits-301).
     WorkspaceAgentDispatch.Subject subject = workspaces.subjectOf(recorded);
@@ -268,6 +284,26 @@ public class EntityDispatch {
   }
 
   // ---- the pieces --------------------------------------------------------------------------
+
+  /**
+   * The move a press makes into IMPLEMENTING (qits-749): only for the implement phase and only from
+   * REFINED, judged by the write itself so a row that moved meanwhile is left where it is. Answers
+   * the row as it now stands.
+   */
+  private WorkEntity startImplementing(WorkEntity entity, Phase phase, String changedBy) {
+    if (phase != Phase.IMPLEMENT || !EntityStatus.REFINED.name().equals(entity.status)) {
+      return entity;
+    }
+    return lifecycle
+        .transitionFrom(
+            entity.archetype,
+            entity.id,
+            EntityStatus.REFINED,
+            EntityStatus.IMPLEMENTING,
+            changedBy)
+        .map(WorkEntityService.Transition::entity)
+        .orElse(entity);
+  }
 
   /** What {@link #checked} decided: the phase, and where it runs. */
   private record Checked(Phase phase, EntityWorkspaces.Target target) {}

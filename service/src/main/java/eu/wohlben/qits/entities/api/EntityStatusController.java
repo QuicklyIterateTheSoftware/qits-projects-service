@@ -80,8 +80,10 @@ public class EntityStatusController {
       @Schema(
               required = true,
               description =
-                  "REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or DROPPED — one the entity's"
-                      + " current status may move to")
+                  "REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFIED, DONE or DROPPED — one"
+                      + " the entity's current status may move to: a neighbour on the walk, or"
+                      + " IMPLEMENTED from REFINED (the skip). A campaign never moves to"
+                      + " IMPLEMENTING.")
           String target) {}
 
   @POST

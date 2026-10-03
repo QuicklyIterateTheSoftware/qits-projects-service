@@ -169,8 +169,14 @@ public class EntityPatchController {
               nullable = true,
               description =
                   "A feature's or task's implemented marker (ISO-8601 instant); null clears it."
-                      + " Moves only while the owning epic is REFINED.")
-          Instant implementedAt) {}
+                      + " Moves only while the owning epic is REFINED or IMPLEMENTING.")
+          Instant implementedAt,
+      @Schema(
+              description =
+                  "A feature's or task's implementing marker (ISO-8601 instant): when its"
+                      + " implementation was started. Cannot be cleared. Moves only while the"
+                      + " owning epic is REFINED or IMPLEMENTING.")
+          Instant implementingAt) {}
 
   /**
    * Applies the patch and answers the entity as it now stands.
@@ -285,11 +291,11 @@ public class EntityPatchController {
         }
       } else if (!value.isTextual()) {
         refused.add(name + " must be a string");
-      } else if (name.equals("implementedAt")) {
+      } else if (name.equals("implementedAt") || name.equals("implementingAt")) {
         try {
           Instant.parse(value.textValue());
         } catch (DateTimeParseException e) {
-          refused.add("implementedAt must be an ISO-8601 instant: " + value.textValue());
+          refused.add(name + " must be an ISO-8601 instant: " + value.textValue());
         }
       }
     }
@@ -298,6 +304,7 @@ public class EntityPatchController {
     }
 
     String implementedAt = text(body, "implementedAt");
+    String implementingAt = text(body, "implementingAt");
     return new EntityWrite(
         text(body, "title"),
         text(body, "description"),
@@ -311,7 +318,8 @@ public class EntityPatchController {
         text(body, "dependsOn"),
         cleared(body, "dependsOn"),
         implementedAt == null ? null : Instant.parse(implementedAt),
-        cleared(body, "implementedAt"));
+        cleared(body, "implementedAt"),
+        implementingAt == null ? null : Instant.parse(implementingAt));
   }
 
   /** The lifecycle door of the archetype, or the registry's word for a kind with no status. */

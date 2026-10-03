@@ -221,8 +221,11 @@ public final class AgentSurfaceDefaults {
                   "mcp__repository__update_comment"),
               // TICKET_RESOLUTION_TOOLS — the dispatch is told to resolve its ticket once released.
               List.of("mcp__repository__transition_ticket"),
-              // TASK_IMPLEMENTATION_TOOLS — the epic dispatch marks tasks as the work lands.
-              List.of("mcp__repository__mark_task_implemented"))
+              // TASK_IMPLEMENTATION_TOOLS — the epic dispatch marks tasks as the work starts
+              // (qits-749) and as it lands.
+              List.of(
+                  "mcp__repository__mark_task_implementing",
+                  "mcp__repository__mark_task_implemented"))
           .flatMap(List::stream)
           .toList();
 

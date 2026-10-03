@@ -46,6 +46,8 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * an epic's "done" is derived from it — so an unattended run steered by an untrusted commit
    * message must not be able to make it. The implementing agent that owns it is dispatched through
    * {@code EntityDispatch} and connects without the marker, exactly as the refinement agent does.
+   * {@code mark_task_implementing} (qits-749) sits beside it for the same reason: it says work
+   * started, and on a REFINED epic it moves the epic to IMPLEMENTING.
    * {@code transition_epic} (qits-394) joins them on the strongest reading of all: it freezes a
    * plan or declares it implemented, and an implemented move stamps every unmarked task.
    *
@@ -109,6 +111,7 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
           "add_task",
           "update_task",
           "remove_task",
+          "mark_task_implementing",
           "mark_task_implemented",
           "transition_epic",
           "put_design",

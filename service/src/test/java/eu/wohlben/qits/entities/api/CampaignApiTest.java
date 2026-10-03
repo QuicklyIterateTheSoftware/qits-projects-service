@@ -168,6 +168,14 @@ class CampaignApiTest {
         .then()
         .statusCode(200)
         .body("campaign.status", equalTo("REFINED"));
+    // A campaign never enters IMPLEMENTING (qits-749): a 409, and it stays REFINED.
+    given()
+        .contentType(ContentType.JSON)
+        .body(Map.of("target", "IMPLEMENTING"))
+        .post(base + "/transition")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("never moves to IMPLEMENTING"));
 
     given()
         .get("/projects/api/projects/" + PROJECT + "/campaigns")

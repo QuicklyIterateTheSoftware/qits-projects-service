@@ -197,15 +197,16 @@ class TicketApiTest {
         .then()
         .statusCode(200)
         .body("ticket.status", equalTo("IMPLEMENTED"));
-    // A failed verification is this ordinary backward move and not a verb of its own.
+    // A claim that turned out wrong is this ordinary backward move (to IMPLEMENTING since qits-749)
+    // and not a verb of its own.
     given()
         .contentType(ContentType.JSON)
-        .body(new TicketController.TransitionTicketRequest("REFINED"))
+        .body(new TicketController.TransitionTicketRequest("IMPLEMENTING"))
         .when()
         .post("/projects/api/tickets/" + ticketId + "/transition")
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("REFINED"));
+        .body("ticket.status", equalTo("IMPLEMENTING"));
 
     // Comments: created under the ticket, then edited on their own root.
     String commentId =

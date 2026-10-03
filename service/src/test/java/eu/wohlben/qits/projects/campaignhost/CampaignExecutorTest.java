@@ -272,6 +272,9 @@ class CampaignExecutorTest {
     assertNotNull(dispatched.dispatchedAt);
     assertNull(dispatched.dispatchRefusal, "the claim clears the refusal");
     assertEquals(1, port.calls().size());
+    // The executor's dispatch is the press's, so the member starts IMPLEMENTING too (qits-749).
+    assertEquals(
+        "IMPLEMENTING", workEntities.get(Archetype.TICKET, reported.id).status);
   }
 
   // --- 6. the member moves between the precheck and the claim ------------------------------------

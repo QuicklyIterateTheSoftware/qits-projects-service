@@ -179,7 +179,7 @@ class EntitySchemaApiTest {
   // --- update -----------------------------------------------------------------------------------
 
   /**
-   * Every property the update schema lists is one {@code PATCH} accepts. The implemented marker goes
+   * Every property the update schema lists is one {@code PATCH} accepts. The two task markers go
    * alone and after the epic is REFINED, because the freeze refuses it beside any scope edit — a
    * rule about the moment, not about the property.
    */
@@ -195,13 +195,13 @@ class EntitySchemaApiTest {
                       String id = rows.rowOf(archetype);
                       JsonNode schema = schema(archetype.name(), "update");
                       Map<String, Object> body = new LinkedHashMap<>();
-                      Object marker = null;
+                      Map<String, Object> markers = new LinkedHashMap<>();
                       for (Iterator<String> names = schema.get("properties").fieldNames();
                           names.hasNext(); ) {
                         String name = names.next();
                         Object value = rows.value(archetype, name, schema.at("/properties/" + name));
-                        if (name.equals("implementedAt")) {
-                          marker = value;
+                        if (name.equals("implementedAt") || name.equals("implementingAt")) {
+                          markers.put(name, value);
                         } else {
                           body.put(name, value);
                         }
@@ -210,14 +210,14 @@ class EntitySchemaApiTest {
                       Response patched = patch(id, body);
                       assertEquals(200, patched.statusCode(), archetype + ": " + patched.asString());
 
-                      if (marker != null) {
+                      if (!markers.isEmpty()) {
                         given()
                             .contentType(ContentType.JSON)
                             .body(map("target", "REFINED"))
                             .post("/projects/api/epics/" + rows.epic + "/transition")
                             .then()
                             .statusCode(200);
-                        Response marked = patch(id, map("implementedAt", marker));
+                        Response marked = patch(id, markers);
                         assertEquals(200, marked.statusCode(), archetype + ": " + marked.asString());
                       }
                     }));
@@ -430,7 +430,7 @@ class EntitySchemaApiTest {
           "status" : {
             "type" : "string",
             "description" : "The lifecycle status.",
-            "enum" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+            "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
           },
           "ticketType" : {
             "type" : "string",
@@ -530,7 +530,12 @@ class EntitySchemaApiTest {
           },
           "implementedAt" : {
             "type" : [ "string", "null" ],
-            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED.",
+            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED or IMPLEMENTING.",
+            "format" : "date-time"
+          },
+          "implementingAt" : {
+            "type" : "string",
+            "description" : "The implementing marker, an ISO-8601 instant: when the implementation was started. Moves only while the owning epic is REFINED or IMPLEMENTING; history once implementedAt is set, so it is never cleared.",
             "format" : "date-time"
           },
           "dependsOn" : {
@@ -568,7 +573,7 @@ class EntitySchemaApiTest {
           },
           "implementedAt" : {
             "type" : "string",
-            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED.",
+            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED or IMPLEMENTING.",
             "format" : "date-time"
           },
           "dependsOn" : {

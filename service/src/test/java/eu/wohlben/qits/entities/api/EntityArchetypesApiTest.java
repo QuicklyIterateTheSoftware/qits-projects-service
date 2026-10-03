@@ -91,7 +91,7 @@ class EntityArchetypesApiTest {
         .body(at("TICKET") + "gathers", equalTo(false))
         .body(at("FEATURE") + "gathers", equalTo(false))
         .body(at("TASK") + "gathers", equalTo(false))
-        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(6))
+        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(7))
         .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
   }
 
@@ -124,8 +124,10 @@ class EntityArchetypesApiTest {
             contains("TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY"))
         .body(
             at("EPIC") + "legalStatuses",
-            contains("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"))
-        .body(at("TICKET") + "legalStatuses", contains("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"));
+            contains(
+                "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"))
+        .body(at("TICKET") + "legalStatuses", contains(
+                "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"));
   }
 
   @Test
@@ -144,7 +146,7 @@ class EntityArchetypesApiTest {
 
   /**
    * The ticket's whole served map of legal moves, asserted exactly — keys in lifecycle order, each
-   * value FORWARD, then BACK, then DROP/REOPEN — and DONE answering no move at all, because DONE is
+   * value FORWARD, then SKIP, then BACK, then DROP/REOPEN — and DONE answering no move at all, because DONE is
    * final. Parsed with Jackson rather than read through a GPath so the key order is what arrived.
    */
   @Test
@@ -163,10 +165,18 @@ class EntityArchetypesApiTest {
         "REPORTED", List.of(move("REFINED", "FORWARD"), move("DROPPED", "DROP")));
     expected.put(
         "REFINED",
-        List.of(move("IMPLEMENTED", "FORWARD"), move("REPORTED", "BACK"), move("DROPPED", "DROP")));
+        List.of(
+            move("IMPLEMENTING", "FORWARD"),
+            move("IMPLEMENTED", "SKIP"),
+            move("REPORTED", "BACK"),
+            move("DROPPED", "DROP")));
+    expected.put(
+        "IMPLEMENTING",
+        List.of(move("IMPLEMENTED", "FORWARD"), move("REFINED", "BACK"), move("DROPPED", "DROP")));
     expected.put(
         "IMPLEMENTED",
-        List.of(move("VERIFIED", "FORWARD"), move("REFINED", "BACK"), move("DROPPED", "DROP")));
+        List.of(
+            move("VERIFIED", "FORWARD"), move("IMPLEMENTING", "BACK"), move("DROPPED", "DROP")));
     expected.put(
         "VERIFIED",
         List.of(move("DONE", "FORWARD"), move("IMPLEMENTED", "BACK"), move("DROPPED", "DROP")));
@@ -181,15 +191,18 @@ class EntityArchetypesApiTest {
     document()
         .body(
             at("TICKET") + "lifecycle",
-            contains("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
+            contains(
+                "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
         .body(
             at("EPIC") + "lifecycle",
-            contains("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
+            contains(
+                "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"))
         .body(at("EPIC") + "transitions.DONE", empty())
         // Additive: the alphabetical legalStatuses is still there, unchanged, beside it.
         .body(
             at("TICKET") + "legalStatuses",
-            contains("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"));
+            contains(
+                "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "REFINED", "REPORTED", "VERIFIED"));
   }
 
   @Test

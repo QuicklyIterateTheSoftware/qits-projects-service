@@ -465,7 +465,12 @@ public class PhasePromptsTest {
   @Test
   public void anEpicAndATicketAtTheSameStatusStartTheSamePhaseWithDifferentWords() {
     for (EntityStatus status :
-        new EntityStatus[] {EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED}) {
+        new EntityStatus[] {
+          EntityStatus.REPORTED,
+          EntityStatus.REFINED,
+          EntityStatus.IMPLEMENTING,
+          EntityStatus.IMPLEMENTED
+        }) {
       PhasePrompts.Started ticketRun = started(ticket(status)).orElseThrow();
       PhasePrompts.Started epicRun = started(epic(status)).orElseThrow();
       assertEquals(ticketRun.phase(), epicRun.phase(), status + " starts one phase for both");
@@ -515,7 +520,7 @@ public class PhasePromptsTest {
 
   /**
    * The epic implement turn: the frozen brief with corrections on the thread, dependsOn order,
-   * mark_task_implemented as each lands, released per repository, no integration, and the claim to
+   * mark_task_implementing as each starts and mark_task_implemented as each lands, released per repository, no integration, and the claim to
    * IMPLEMENTED — which stamps every unmarked task.
    */
   @Test
@@ -526,12 +531,24 @@ public class PhasePromptsTest {
     assertTrue(turn.contains("Both are read-only now"), turn);
     assertTrue(turn.contains("add_comment (entityId epc-9) as the work goes"), turn);
     assertTrue(turn.contains("in dependsOn order"), turn);
+    assertTrue(turn.contains("mark_task_implementing when you start one"), turn);
     assertTrue(turn.contains("mark_task_implemented as it lands"), turn);
     assertTrue(turn.contains("released and deployed, through a release request per repository"), turn);
     assertTrue(turn.contains("not merged and not green"), turn);
     assertTrue(turn.contains("Do not integrate the workspace"), turn);
     assertTrue(turn.contains("When every task is marked, transition_epic to IMPLEMENTED"), turn);
     assertTrue(turn.contains("stamps any unmarked task"), turn);
+  }
+
+  /**
+   * <b>IMPLEMENTING resumes the implement phase</b> (qits-749): a press on an entity whose
+   * implementation was started is handed the same implement turn as at REFINED, not a 409.
+   */
+  @Test
+  public void implementingStartsTheImplementPhaseWithTheSameTurnAsRefined() {
+    assertEquals(Optional.of("implement"), PhasePrompts.nextPhase(ticket(EntityStatus.IMPLEMENTING)));
+    assertEquals(Optional.of("implement"), PhasePrompts.nextPhase(epic(EntityStatus.IMPLEMENTING)));
+    assertEquals(epicPromptFor(EntityStatus.REFINED), epicPromptFor(EntityStatus.IMPLEMENTING));
   }
 
   /** The epic verify turn: the live platform first, the code second, VERIFIED or a block. */
