@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.containers.client.ContainersWire.VolumeMount;
 import eu.wohlben.qits.projects.control.AgentSurfaceConfigurationService;
 import eu.wohlben.qits.projects.control.GitIdentity;
+import eu.wohlben.qits.projects.refinementhost.RefinementContainerFactory;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -311,6 +312,16 @@ public class AgentContainerFactory {
    */
   @ConfigProperty(name = "qits.projects.agent-mcp-url")
   Optional<String> agentMcpUrl;
+
+  /**
+   * The bare public domain (qits-731) — the same {@code qits.domain} key {@code PublicCloneUrls}
+   * reads, unset shipped. The project agent image derives its registries from it ({@code
+   * registry.qits.<domain>}, {@code mirror.qits.<domain>}) rather than being handed an internal
+   * registry URL this service composed. Injected only when set, the same convention
+   * {@link RefinementContainerFactory} follows.
+   */
+  @ConfigProperty(name = "qits.domain")
+  Optional<String> domain;
 
   /**
    * The central {@code qits} MCP server — the qits CLI served over MCP (qits-630) — injected as
@@ -619,6 +630,12 @@ public class AgentContainerFactory {
     // The central qits server (qits-630), which the daemon adds beside `repository` on every surface
     // that has it on. Scoped by the caller's bearer rather than by its url, so it carries no ids.
     env.put("QITS_PLATFORM_MCP_URL", platformMcpUrl());
+    // The bare domain (qits-731): the image derives every registry host from this rather than being
+    // handed an internal URL. Unset injects nothing.
+    String domainValue = domainOrNull();
+    if (domainValue != null) {
+      env.put("QITS_DOMAIN", domainValue);
+    }
     // The commit identity as container-level env, so every git process in the container inherits it
     // regardless of cwd or .git/config — identity env beats every git config level.
     gitIdentity.envMap().forEach(env::put);
@@ -804,6 +821,11 @@ public class AgentContainerFactory {
   private static String authority(String url) {
     URI uri = URI.create(url);
     return uri.getPort() == -1 ? uri.getHost() : uri.getHost() + ":" + uri.getPort();
+  }
+
+  /** The domain, trimmed of blanks, or {@code null} when unset — never injected as an empty line. */
+  String domainOrNull() {
+    return domain.filter(value -> !value.isBlank()).orElse(null);
   }
 
   /** The configured zone, or this service's own default zone when blank. */

@@ -239,19 +239,14 @@ public class RefinementContainerFactory {
   String environment;
 
   /**
-   * The package registries a refinement's checkout builds against, blank meaning "inject nothing" —
-   * the same three keys, same names in the container, and same deliberately-absent defaults as
-   * qits-workspaces (the artifacts alias carries the environment name, so a default here would be a
-   * guess at the deployment's topology).
+   * The bare public domain (qits-731) — the same key {@code PublicCloneUrls} reads, unset shipped.
+   * This is now the whole of what a refinement container is told about the platform's registries:
+   * the image derives {@code registry.qits.<domain>} and {@code mirror.qits.<domain>} from it, rather
+   * than being handed an internal host or path this service composed. Injected only when set, the
+   * same convention as every other optional key here.
    */
-  @ConfigProperty(name = "qits.projects.refinement-maven-repository-url")
-  Optional<String> mavenRepositoryUrl;
-
-  @ConfigProperty(name = "qits.projects.refinement-npm-registry-url")
-  Optional<String> npmRegistryUrl;
-
-  @ConfigProperty(name = "qits.projects.refinement-npm-proxy-url")
-  Optional<String> npmProxyUrl;
+  @ConfigProperty(name = "qits.domain")
+  Optional<String> domain;
 
   /** The bearer the daemon's loopback API requires; {@link RefinementProxyRoute} presents it. */
   @ConfigProperty(
@@ -424,15 +419,13 @@ public class RefinementContainerFactory {
       shared.add(new SharedMount(pnpmVolume, PNPM_MOUNT));
       env.put("npm_config_store_dir", PNPM_MOUNT + "/store");
     }
-    // The registries, when the deployment names them. Same env names as a workspace, including the
-    // POSIX-shaped stand-in for the scoped-registry key (the image shim spells the @qits scope).
-    mavenRepositoryUrl
-        .filter(url -> !url.isBlank())
-        .ifPresent(url -> env.put("QITS_MAVEN_REPOSITORY_URL", url));
-    npmProxyUrl.filter(url -> !url.isBlank()).ifPresent(url -> env.put("npm_config_registry", url));
-    npmRegistryUrl
-        .filter(url -> !url.isBlank())
-        .ifPresent(url -> env.put("QITS_WORKSPACE_NPM_REGISTRY_URL", url));
+    // The bare domain (qits-731): the image derives every registry host from this rather than being
+    // handed an internal URL. Unset injects nothing, the same convention every optional key here
+    // follows.
+    String domainValue = domainOrNull();
+    if (domainValue != null) {
+      env.put("QITS_DOMAIN", domainValue);
+    }
 
     Map<String, String> labels = new LinkedHashMap<>();
     labels.put("qits.managed", MANAGED_LABEL_VALUE);
@@ -504,6 +497,11 @@ public class RefinementContainerFactory {
           "qits.projects.refinement-pids-limit is not a number ('%s'); no pids cap is set", value);
       return null;
     }
+  }
+
+  /** The domain, trimmed of blanks, or {@code null} when unset — never injected as an empty line. */
+  String domainOrNull() {
+    return domain.filter(value -> !value.isBlank()).orElse(null);
   }
 
   private String timezone() {
