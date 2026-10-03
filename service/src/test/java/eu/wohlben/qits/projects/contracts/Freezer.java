@@ -80,9 +80,12 @@ public final class Freezer {
     return this;
   }
 
-  /** The frozen form of a param value: its UUIDs through the same mapping as the answer. */
+  /**
+   * The frozen form of a param value: its UUIDs and unique tokens through the same mappings as the
+   * answer — a qualified id param ({@code contract-<token>-3}) carries the project slug's token.
+   */
   public String freezeParam(String value) {
-    return freezeIds(value);
+    return freezeTokens(freezeIds(value));
   }
 
   public JsonNode freeze(JsonNode node) {

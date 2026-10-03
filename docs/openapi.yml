@@ -1256,6 +1256,34 @@ components:
       - NO_MATCHING_ZONE
       - NOT_CONFIGURED
       - FAILED
+    DossierAssetEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        mimeType:
+          type: string
+        label:
+          type: string
+        url:
+          type: string
+        markdown:
+          type: string
+        pageIds:
+          type: array
+          items:
+            type: string
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+    DossierAssetList:
+      type: object
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/DossierAssetEntry"
     DossierPageDto:
       type: object
       properties:
@@ -4324,6 +4352,10 @@ paths:
         - qits:system
   /projects/api/epics/{epicId}/dossier:
     get:
+      summary: Read an epic's dossier
+      description: "The epic's dossier pages in position order, bodies included. Empty,\
+        \ never 404."
+      operationId: listEpicDossierPages
       parameters:
       - name: epicId
         in: path
@@ -4341,7 +4373,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: List
       tags:
       - Dossier Controller
       security:
@@ -4382,6 +4413,34 @@ paths:
         - qits:admin
         - qits:agent
   /projects/api/epics/{epicId}/dossier-assets:
+    get:
+      summary: List the figures an epic's dossier inlines
+      description: "Each asset's kind, mime type, label, content URL, markdown line\
+        \ and the pages that name it. No bytes: getDossierAssetContent serves those."
+      operationId: listEpicDossierAssets
+      parameters:
+      - name: epicId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierAssetList"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Dossier Asset Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
     post:
       parameters:
       - name: epicId
@@ -4417,6 +4476,8 @@ paths:
         - qits:agent
   /projects/api/epics/{epicId}/dossier-assets/{assetId}/content:
     get:
+      summary: "The bytes of one figure an epic's dossier inlines, sandboxed"
+      operationId: getDossierAssetContent
       parameters:
       - name: assetId
         in: path
@@ -4438,7 +4499,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Content
       tags:
       - Dossier Asset Controller
       security:
@@ -4485,6 +4545,8 @@ paths:
         - qits:admin
         - qits:agent
     get:
+      summary: Read one page of an epic's dossier
+      operationId: getEpicDossierPage
       parameters:
       - name: epicId
         in: path
@@ -4507,7 +4569,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Get
       tags:
       - Dossier Controller
       security:
@@ -7929,6 +7990,10 @@ paths:
         - qits:agent
   /projects/api/tickets/{ticketId}/dossier:
     get:
+      summary: Read a ticket's dossier
+      description: "The ticket's dossier pages in position order, bodies included.\
+        \ Empty, never 404."
+      operationId: listTicketDossierPages
       parameters:
       - name: ticketId
         in: path
@@ -7946,7 +8011,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: List
       tags:
       - Ticket Dossier Controller
       security:
@@ -8026,6 +8090,8 @@ paths:
         - qits:admin
         - qits:agent
     get:
+      summary: "Read one page of a ticket's dossier, by its slug or its id"
+      operationId: getTicketDossierPage
       parameters:
       - name: slug
         in: path
@@ -8048,7 +8114,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Get
       tags:
       - Ticket Dossier Controller
       security:

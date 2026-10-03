@@ -18,6 +18,11 @@ public class DossierAssetRepository implements PanacheRepositoryBase<DossierAsse
    * Which of {@code ids} this epic holds a copy of — the "in use" answer for a whole listing in one
    * query rather than one per row. The id match works because a copy keeps the source's id.
    */
+  /** The epic's assets by label, id breaking a tie, so a listing has one order. */
+  public List<DossierAsset> listByEpicInOrder(String epicId) {
+    return list("epicId = ?1 order by label, id", epicId);
+  }
+
   public List<String> idsHeldByEpic(String epicId, Collection<String> ids) {
     if (ids.isEmpty()) {
       return List.of();

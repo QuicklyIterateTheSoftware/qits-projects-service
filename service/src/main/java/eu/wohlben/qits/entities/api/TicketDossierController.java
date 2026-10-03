@@ -7,8 +7,8 @@ import eu.wohlben.qits.entities.api.DossierController.NewPage;
 import eu.wohlben.qits.entities.api.DossierController.WritePage;
 import eu.wohlben.qits.entities.control.DossierService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
-import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.dto.DossierPageDto;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.entity.DossierPage;
 import eu.wohlben.qits.entities.error.NotFoundException;
@@ -26,6 +26,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /**
  * The ticket's dossier — the long form of a ticket, and the mirror of {@link DossierController}.
@@ -81,6 +82,11 @@ public class TicketDossierController {
   /** The ticket's pages in position order, bodies included. Empty list, never a 404. */
   @GET
   @RolesAllowed({"qits:admin", "qits:agent"})
+  @Operation(
+      operationId = "listTicketDossierPages",
+      summary = "Read a ticket's dossier",
+      description =
+          "The ticket's dossier pages in position order, bodies included. Empty, never 404.")
   public ListPagesResponse list(@PathParam("ticketId") String ticketId) {
     // The ticket is resolved here rather than in the entities module, which cannot see `domain` and
     // has no way to check a project scope — the same split every other ticket route makes.
@@ -107,6 +113,9 @@ public class TicketDossierController {
   @GET
   @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{slug}")
+  @Operation(
+      operationId = "getTicketDossierPage",
+      summary = "Read one page of a ticket's dossier, by its slug or its id")
   public DossierPageDto get(
       @PathParam("ticketId") String ticketId, @PathParam("slug") String slug) {
     return mapper.toDto(requireOfTicket(ticketId, slug));
