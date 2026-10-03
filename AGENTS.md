@@ -1751,7 +1751,8 @@ because a caller there already holds an idp credential and that is how the API a
 is `@DefaultBean`, so the suite's `FakeAgentCredentials` wins the injection and no test reaches an
 idp. Everything is read from the keys the `qits` named oidc-client block already ships
 (`client-enabled`, `client-id`, `credentials.secret`, `auth-server-url` —
-service-client-identity-plan.md, C4) — there is no second address and no second credential to
+epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4) — there is no second address and no second
+credential to
 configure.
 
 **The `claims` member is the scope, and it is not the same fact as `contextId`.** The context id
@@ -1768,12 +1769,13 @@ here was before.
 
 Four things bite.
 
-- **Absent is the shipped configuration and must stay byte-identical.** With
+- **Absent is the posture under %dev and %test and must stay byte-identical.** With
   `quarkus.oidc-client.qits.client-enabled=false` this process holds no secret, so it can
   authenticate to nothing: nothing is commissioned, the two names are simply not in the env map, and
   the spec a
   container is started with is the spec it was before any of this existed. Same answer, plus one
-  WARN, when the switch is on and the secret is blank.
+  WARN, when the switch is on and the secret is blank — which is now the ordinary deployed case
+  before the deployer's resource is declared.
 - **The fresh arm commissions and the wake arm must not.** `AgentContainerFactory.forProject` mints
   a credential; `forRestart` reads back the pair the container already holds and sends it unchanged.
   That is not a cache: qits-containers hashes a workload's whole spec, **environment included**, so
@@ -2432,8 +2434,8 @@ Five things bite.
   `explicitName` — a hint for `docker ps`, never an address. `qits.projects.containers.owner`
   **must equal the machine token's `sub`** once the far side's gate is on (its `OwnerGuard` compares
   them), which is why it defaults to reading `quarkus.oidc-client.qits.client-id`, the one named
-  client every outbound identity this service has (service-client-identity-plan.md, C4). Two
-  instances must not
+  client every outbound identity this service has (epic qits-540 dossier, 'Plan (as of
+  2026-09-13)', C4). Two instances must not
   share it; two environments sharing one docker daemon are `dev-qits-projects` and
   `prod-qits-projects` and neither one's rows name the other's containers.
 - **The client never throws, and its four answers are the whole vocabulary.** A refusal and an
@@ -2900,9 +2902,12 @@ diagram and no route this service owns is.
 **The launched process needs a git-host credential, and that is a real finding rather than test
 plumbing.** `HttpGitHostRepositories` fails **closed**: every lifecycle call asks `IdpGitHostBearer`
 for a machine token and throws `No machine bearer is available for qits-githost` rather than sending
-one unauthenticated. The shipped default is `quarkus.oidc-client.qits.client-enabled=false` — the one
-named client every outbound identity this service has (service-client-identity-plan.md, C4) — so a
-packaged process with no idp configured **cannot create a repository at all** — which is correct in
+one unauthenticated. Outside a deployment carrying the deployer's `idp:client` resource,
+`quarkus.oidc-client.qits.client-enabled` is `true` (NORMAL mode has no `%dev`/`%test` override) but
+`quarkus.oidc-client.qits.credentials.secret` is empty — the one named client every outbound identity
+this service has (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4) — so a packaged process with
+no idp configured still **cannot create a repository at all** — the token fetch against the derived
+`dev-qits-idp` default fails rather than the client refusing outright — which is correct in
 production and is why `PackagedWithMockIdp` now points that named client at the same `MockIdp` and
 stubs `POST /idp/token` on it.
 

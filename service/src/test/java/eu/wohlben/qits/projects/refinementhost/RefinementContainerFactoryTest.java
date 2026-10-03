@@ -298,7 +298,8 @@ public class RefinementContainerFactoryTest {
     Map<String, String> env = request.spec().env();
     assertEquals("dyn-refinement-7-1", env.get("QITS_COMMISSIONED_CLIENT_ID"));
     assertEquals("secret-dyn-refinement-7-1", env.get("QITS_COMMISSIONED_CLIENT_SECRET"));
-    // One audience for every service now (service-client-identity-plan.md, C4): qits-platform, not
+    // One audience for every service now (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4):
+    // qits-platform, not
     // this service's own client id or a git-host-specific audience.
     assertEquals("qits-platform", env.get("QITS_WORKSPACE_DAEMON_AUTH_AUDIENCE"));
     assertEquals("githost.dev.internal:8080", env.get("QITS_GIT_AUTH_HOST"));

@@ -21,17 +21,14 @@
 # bootstrap stores all of them. A declaration also never drops a stored entry from the resolved read.
 # This is step one of the two-step rule (docs guide §7.5): provably inert.
 #
-# THE `qits` CLIENT'S FALLBACK. The four `QUARKUS_OIDC_CLIENT_*` keys with no client name are read by
-# the `qits` named client in application.properties, as the fallback behind `QITS_RESOURCE_IDP_*`
-# (service-client-identity-plan.md, C4). They stay declared until this service's `idp:client`
-# cutover (plan C5) retires that fallback. Remove them here in the same change.
-#
 # LEFT OUT ON PURPOSE, so they show as orphaned:
-#   * the old named clients' keys, QUARKUS_OIDC_CLIENT_{GITHOST,CI,MAINTENANCE,WORKSPACES,
-#     CONFIGURATION}_*. Those clients do not exist: application.properties declares one named client,
-#     `qits`, and nothing injects any other.
-#   * QUARKUS_OIDC_CLIENT_GRANT_OPTIONS_CLIENT_AUDIENCE. The `qits` client asks for the constant
-#     `qits-platform`; this key only reaches the unnamed default client, which nothing injects.
+#   * QUARKUS_OIDC_CLIENT_* and QUARKUS_OIDC_CLIENT_{GITHOST,CI,MAINTENANCE,WORKSPACES,
+#     CONFIGURATION}_* (five keys each) — the old unnamed and named clients. The `qits` client reads
+#     QITS_RESOURCE_IDP_* alone, which the deployer injects because .config/qits/deployments.yml
+#     declares `idp:client`; nothing binds these. application.properties still neutralises every one
+#     of these names while the variables reach the container.
+#   * QITS_AUTH_MACHINE_AUDIENCE — the inbound audience is the platform's one, qits-platform, read by
+#     the shared guard from its own shipped `qits.auth.machine.platform-audience`.
 #   * QITS_RESOURCE_*. The deployer injects those from its resource registry; they are never entries.
 #   * env.QITS_PROJECTS_REFINEMENT_IMAGE_VERSION and env.QITS_PROJECTS_AGENT_IMAGE_VERSION, the two
 #     retired image pins, REMOVED 2026-09-17 with the keys they named. The decision, since both
@@ -156,28 +153,6 @@ keys:
     type: boolean
     description: "The machine gate. Off, there is no OIDC tenant at all; on, a machine token is validated and its audience checked."
 
-  env.QITS_AUTH_MACHINE_AUDIENCE:
-    type: string
-    description: "The audience a machine token addressed to this service must carry: the platform's one audience, qits-platform. qits-auth-core refuses to start with the gate on and this unset."
-
   env.QUARKUS_OIDC_AUTH_SERVER_URL:
     type: string
     description: "The issuer whose JWKS validates the tokens that arrive here."
-
-  # --- the `qits` client's fallback (until the idp:client cutover, plan C5) --------------------
-
-  env.QUARKUS_OIDC_CLIENT_CLIENT_ENABLED:
-    type: boolean
-    description: "Turns the `qits` named client on. Off, no bearer is sent and no container credential is commissioned."
-
-  env.QUARKUS_OIDC_CLIENT_AUTH_SERVER_URL:
-    type: string
-    description: "The idp the `qits` client gets its tokens from, when QITS_RESOURCE_IDP_URL is unset."
-
-  env.QUARKUS_OIDC_CLIENT_CLIENT_ID:
-    type: string
-    description: "The `qits` client's id, when QITS_RESOURCE_IDP_CLIENT_ID is unset. Also the owner key at qits-containers."
-
-  env.QUARKUS_OIDC_CLIENT_CREDENTIALS_SECRET:
-    type: string
-    description: "A secret: the `qits` client's secret, when QITS_RESOURCE_IDP_CLIENT_SECRET is unset."

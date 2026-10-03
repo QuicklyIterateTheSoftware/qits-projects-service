@@ -9,8 +9,8 @@ import org.eclipse.microprofile.config.Config;
 import org.junit.jupiter.api.Test;
 
 /**
- * Guards the pre-expiry refresh window on the one named client every outbound call now shares
- * (service-client-identity-plan.md, C4).
+ * Guards the pre-expiry refresh window on the one named client every outbound call now shares (epic
+ * qits-540 dossier, 'Plan (as of 2026-09-13)', C4).
  *
  * <p>qits-idp grants service tokens for an hour. Without this skew, {@code TokensHelper} can reuse
  * a bearer in its JWT {@code exp} second: the resource server has already rejected it, while the

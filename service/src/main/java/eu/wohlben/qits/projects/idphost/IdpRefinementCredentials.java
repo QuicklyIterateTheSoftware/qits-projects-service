@@ -25,7 +25,7 @@ import org.jboss.logging.Logger;
 /**
  * {@link RefinementCredentials} over qits-idp's commission API — the refinement sibling of
  * {@link IdpAgentCredentials}, one directory over, same shape on purpose: HTTP Basic with this
- * service's own oidc pair — the {@code qits} named client (service-client-identity-plan.md, C4) —
+ * service's own oidc pair — the {@code qits} named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4) —
  * {@code Map}s and never DTOs (no native-image registration to owe), an instance {@link HttpClient},
  * and absent-as-shipped when {@code quarkus.oidc-client.qits.client-enabled} is off. The only
  * differences are the context kind and the context id (a refinement row id rather than a project

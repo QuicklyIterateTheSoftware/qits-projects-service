@@ -86,13 +86,12 @@ class AgentCommissioningTest {
     assertEquals(clientId, env.get("QITS_COMMISSIONED_CLIENT_ID"));
     assertEquals("secret-of-" + clientId, env.get("QITS_COMMISSIONED_CLIENT_SECRET"));
     // quarkus.oidc-client.qits.auth-server-url derives from QITS_ENVIRONMENT (unset under test, so
-    // "dev") against qits-platform-idp, one of the nine platform services — the bare qits-idp
-    // resolves to nothing on a real estate.
+    // "dev") against qits-idp, one of the nine platform services.
     assertEquals(
-        "http://dev-qits-platform-idp:8080/idp/token",
+        "http://dev-qits-idp:8080/idp/token",
         env.get("QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL"));
-    // One audience for every service now (service-client-identity-plan.md, C4): qits-platform, not
-    // this service's own client id or a git-host-specific audience.
+    // One audience for every service now (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4):
+    // qits-platform, not this service's own client id or a git-host-specific audience.
     assertEquals("qits-platform", env.get("QITS_PROJECTS_DAEMON_AUTH_AUDIENCE"));
     assertEquals("qits-platform", env.get("QITS_PROJECTS_DAEMON_GIT_AUTH_AUDIENCE"));
     // And the container's git: the four names the image's credential helper reads, which the
@@ -104,7 +103,7 @@ class AgentCommissioningTest {
     assertEquals("/etc/qits-gitconfig", env.get("GIT_CONFIG_GLOBAL"));
     assertEquals("githost.dev.internal:8080", env.get("QITS_GIT_AUTH_HOST"));
     assertEquals(
-        "http://dev-qits-platform-idp:8080/idp/token", env.get("QITS_GIT_AUTH_TOKEN_URL"));
+        "http://dev-qits-idp:8080/idp/token", env.get("QITS_GIT_AUTH_TOKEN_URL"));
     assertEquals("qits-platform", env.get("QITS_GIT_AUTH_AUDIENCE"));
   }
 

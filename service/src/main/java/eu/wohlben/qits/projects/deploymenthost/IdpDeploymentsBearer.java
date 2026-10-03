@@ -12,7 +12,7 @@ import org.jboss.logging.Logger;
 
 /**
  * The machine bearer this service presents to qits-deployments — {@code releasehost/IdpCiBearer}'s
- * sibling on the same {@code qits} named client (service-client-identity-plan.md, C4), asking the
+ * sibling on the same {@code qits} named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4), asking the
  * one audience this platform has, {@code qits-platform}, and empty on the same terms.
  *
  * <p>A class of its own rather than an injection of the qits-ci one, because a bearer class here is

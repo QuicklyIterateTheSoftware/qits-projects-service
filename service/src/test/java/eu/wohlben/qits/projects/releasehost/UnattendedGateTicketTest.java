@@ -48,20 +48,22 @@ import org.junit.jupiter.api.Test;
  * the ordinary ticket API, because that is what a person's browser reads.
  *
  * <p>Every request here is created with an explicit {@code requester}, which is the whole subject:
- * {@code qits-platform-maintenance} is the platform's bump robot and nobody watches what it asks
+ * {@code dev-qits-maintenance} is the platform's bump robot and nobody watches what it asks
  * for; a person's name is somebody who does.
  */
 @QuarkusTest
 public class UnattendedGateTicketTest {
 
   /** The default of {@code qits.projects.release-requests.unattended-requesters}. */
-  private static final String ROBOT = "qits-platform-maintenance";
+  private static final String ROBOT = "dev-qits-maintenance";
 
   /**
-   * The same robot under the deployer-provisioned idp client it is cut over to (qits-162). Also in
-   * the shipped list, so both names are machines for as long as the transition lasts.
+   * qits-maintenance's retired client id (qits-162 cut it over to {@link #ROBOT}). No environment
+   * signs in with it any more, and it is deliberately not in the shipped list: a name gone from
+   * every deployment must not keep matching here either, or the narrowing never shows up as having
+   * happened.
    */
-  private static final String NEXT_ROBOT = "dev-qits-maintenance";
+  private static final String RETIRED_CLIENT_ID = "qits-platform-maintenance";
 
   /** The repository the ticket that started all this was about. */
   private static final String REPO_NAME = "qits-deployments-platform-service";
@@ -192,23 +194,21 @@ public class UnattendedGateTicketTest {
   }
 
   /**
-   * qits-maintenance's next client id (qits-162) is as much a machine as its current one: a red gate
-   * on a bump it asks for under {@code dev-qits-maintenance} must reach a person just the same, or the
-   * cut-over silently reopens the 2026-09-10 hole.
+   * qits-maintenance's retired client id is not in the shipped list any more (qits-162's cutover is
+   * finished, and no environment signs in with it) — a red gate on a bump filed under that old name
+   * is treated like any other named requester's, not like the robot's.
    */
   @Test
-  public void aRedGateOnTheRobotsNextClientIdIsUnattendedToo() {
-    String id = create("maintenance/dependencies", NEXT_ROBOT);
+  public void aRedGateOnTheRobotsRetiredClientIdIsNoLongerUnattended() {
+    String id = create("maintenance/dependencies", RETIRED_CLIENT_ID);
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
 
-    String ticketId = awaitTicketOn(id);
     assertEquals(
-        true,
+        false,
         request(id).getBoolean("unattended"),
-        "dev-qits-maintenance is the same robot under its own client");
-    var ticket = given().get("/projects/api/tickets/" + ticketId).then().statusCode(200).extract();
-    assertEquals("MAINTENANCE", ticket.path("ticket.type"));
+        "qits-platform-maintenance is gone from every environment and is no longer matched");
+    assertEquals(List.of(), ticketsOnProject(), "so nothing was filed");
   }
 
   /** A person's request is answered by that person; filing them a ticket is noise. */

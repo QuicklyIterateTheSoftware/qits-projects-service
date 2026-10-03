@@ -13,7 +13,7 @@ import org.jboss.logging.Logger;
 
 /**
  * The shipped {@link ConfigurationBearer}: the {@code qits} named OIDC client's token
- * (service-client-identity-plan.md, C4 — one audience, {@code qits-platform}, not
+ * (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4 — one audience, {@code qits-platform}, not
  * {@code qits-configuration} specifically) — the same service identity as {@code
  * wiring/IdpGitHostBearer}, {@code releasehost/IdpCiBearer}, {@code
  * workspacehost/IdpWorkspacesBearer} and {@code maintenancehost/IdpMaintenanceBearer}.

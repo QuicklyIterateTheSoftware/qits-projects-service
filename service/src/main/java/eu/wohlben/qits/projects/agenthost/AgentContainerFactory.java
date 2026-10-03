@@ -264,7 +264,7 @@ public class AgentContainerFactory {
 
   /**
    * The one audience every service now asks for and every service now accepts
-   * (service-client-identity-plan.md, C4) — what the commissioned daemon requests both for its own
+   * (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4) — what the commissioned daemon requests both for its own
    * dial-home to this service's control socket AND for its direct qits-githost reads. A constant,
    * not a config key: there is nothing left for a deployment to configure here.
    */
