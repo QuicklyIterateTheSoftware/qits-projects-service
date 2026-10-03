@@ -73,6 +73,9 @@ public class ProviderStates {
       "a done epic with every task implemented";
   public static final String A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE =
       "a campaign with work in every phase";
+  public static final String AN_EPIC_IN_TWO_CAMPAIGNS = "an epic in two campaigns";
+  public static final String THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS =
+      "the second campaign of an epic in two campaigns";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
@@ -137,6 +140,8 @@ public class ProviderStates {
         A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
         () -> anEpicWithEveryTaskImplemented(A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED));
     states.put(A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE, this::aCampaignWithWorkInEveryPhase);
+    states.put(AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
+    states.put(THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -475,6 +480,36 @@ public class ProviderStates {
             "refinedEpicId", epic,
             "refinedTicketId", refined,
             "reportedTicketId", reported),
+        List.of(token));
+  }
+
+  /**
+   * A REFINED epic that is a member of two REFINED campaigns, and nothing else. Recorded as two
+   * states with the same seed: {@link #AN_EPIC_IN_TWO_CAMPAIGNS} for the entity list and the first
+   * campaign, {@link #THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS} for the second campaign (a
+   * state records one answer per operation).
+   *
+   * <p>Both states have the same params, which name every entity, so the freezer gives each entity
+   * the same id in all three answers and a consumer can join both campaigns' members to the list.
+   */
+  private Setup anEpicInTwoCampaigns() {
+    String token = token();
+    Project project = project(token, AN_EPIC_IN_TWO_CAMPAIGNS);
+    String first = work.createCampaign(project.id, "First campaign", "Seeded work.", SEEDER).id;
+    String second = work.createCampaign(project.id, "Second campaign", "Seeded work.", SEEDER).id;
+    String epic =
+        create(Archetype.EPIC, project, EntityWrite.epic("Epic in two campaigns", "Seeded."));
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    for (String campaign : List.of(first, second)) {
+      campaigns.addMember(campaign, epic, null, false, SEEDER);
+      work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
+    }
+    return new Setup(
+        params(
+            "epicId", epic,
+            "firstCampaignId", first,
+            "projectId", project.id,
+            "secondCampaignId", second),
         List.of(token));
   }
 

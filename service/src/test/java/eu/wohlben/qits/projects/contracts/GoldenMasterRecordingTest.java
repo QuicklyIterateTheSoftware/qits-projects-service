@@ -250,6 +250,32 @@ class GoldenMasterRecordingTest {
               200,
               null,
               null),
+          // One epic in two campaigns: a state records one answer per operation, so the second
+          // campaign is its own state over the same seed and params (same frozen ids).
+          new Interaction(
+              ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
+              "getCampaign",
+              "GET",
+              "/projects/api/campaigns/{firstCampaignId}",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS,
+              "getCampaign",
+              "GET",
+              "/projects/api/campaigns/{secondCampaignId}",
+              200,
+              null,
+              null),
           // Writes: the body is recorded with the answer, and a consumer's pact sends the same.
           new Interaction(
               ProviderStates.A_VERIFIED_EPIC,

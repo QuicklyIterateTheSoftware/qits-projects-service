@@ -604,6 +604,62 @@
       ]
     },
     {
+      "name": "an epic in two campaigns",
+      "slug": "an-epic-in-two-campaigns",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "firstCampaignId": "00000000-0000-4000-8000-000000000002",
+        "projectId": "00000000-0000-4000-8000-000000000003",
+        "secondCampaignId": "00000000-0000-4000-8000-000000000004"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{firstCampaignId}",
+          "status": 200,
+          "file": "an-epic-in-two-campaigns/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "an-epic-in-two-campaigns/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an epic with features and tasks",
       "slug": "an-epic-with-features-and-tasks",
       "params": {
@@ -703,6 +759,40 @@
             "instants": [],
             "strings": [
               "$.message"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "the second campaign of an epic in two campaigns",
+      "slug": "the-second-campaign-of-an-epic-in-two-campaigns",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "firstCampaignId": "00000000-0000-4000-8000-000000000002",
+        "projectId": "00000000-0000-4000-8000-000000000003",
+        "secondCampaignId": "00000000-0000-4000-8000-000000000004"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getCampaign",
+          "method": "GET",
+          "path": "/projects/api/campaigns/{secondCampaignId}",
+          "status": 200,
+          "file": "the-second-campaign-of-an-epic-in-two-campaigns/getCampaign.json",
+          "frozen": {
+            "ids": [
+              "$.campaign.id",
+              "$.campaign.projectId",
+              "$.campaign.members[*].membershipId",
+              "$.campaign.members[*].entity.id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.campaign.qualifiedId",
+              "$.campaign.members[*].entity.qualifiedId"
             ],
             "listFilteredTo": null
           }
