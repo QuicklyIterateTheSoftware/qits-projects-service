@@ -182,6 +182,37 @@
       ]
     },
     {
+      "name": "a project with one repository",
+      "slug": "a-project-with-one-repository",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectRepositories",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/repositories",
+          "status": 200,
+          "file": "a-project-with-one-repository/listProjectRepositories.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].repository.id",
+              "$.entries[*].repository.projectId",
+              "$.wrapper.repositoryId",
+              "$.wrapper.entries[*].repositoryId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.entries[*].repository.name",
+              "$.entries[*].repository.cloneUrl"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with pending release requests",
       "slug": "a-project-with-pending-release-requests",
       "params": {
@@ -469,6 +500,27 @@
       ]
     },
     {
+      "name": "no projects exist",
+      "slug": "no-projects-exist",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjects",
+          "method": "GET",
+          "path": "/projects/api/projects",
+          "status": 200,
+          "file": "no-projects-exist/listProjects.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": "$.entries"
+          }
+        }
+      ]
+    },
+    {
       "name": "no repository with the given id",
       "slug": "no-repository-with-the-given-id",
       "params": {
@@ -489,6 +541,77 @@
               "$.message"
             ],
             "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "two projects exist",
+      "slug": "two-projects-exist",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "secondProjectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "two-projects-exist/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectRepositories",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/repositories",
+          "status": 200,
+          "file": "two-projects-exist/listProjectRepositories.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].repository.id",
+              "$.entries[*].repository.projectId",
+              "$.wrapper.repositoryId",
+              "$.wrapper.entries[*].repositoryId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.entries[*].repository.name",
+              "$.entries[*].repository.cloneUrl"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjects",
+          "method": "GET",
+          "path": "/projects/api/projects",
+          "status": 200,
+          "file": "two-projects-exist/listProjects.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].project.id"
+            ],
+            "instants": [],
+            "strings": [
+              "$.entries[*].project.slug"
+            ],
+            "listFilteredTo": "$.entries"
           }
         }
       ]

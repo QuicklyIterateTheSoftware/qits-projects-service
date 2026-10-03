@@ -1,0 +1,43 @@
+{
+  "entries": [
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "name": "contract-00000001-contract-00000001",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "PROJECT",
+        "component": null,
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-00000001-contract-00000001"
+      },
+      "declared": true
+    },
+    {
+      "repository": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "name": "contract-service",
+        "backupUrl": null,
+        "mainBranch": "main",
+        "archetype": "SERVICE",
+        "component": "contract-service",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "lastBackup": null,
+        "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-service"
+      },
+      "declared": true
+    }
+  ],
+  "wrapper": {
+    "repositoryId": "00000000-0000-4000-8000-000000000002",
+    "branch": "main",
+    "entries": [
+      {
+        "path": "components/contract-service/contract-service",
+        "name": "contract-service",
+        "repositoryId": "00000000-0000-4000-8000-000000000003"
+      }
+    ]
+  }
+}

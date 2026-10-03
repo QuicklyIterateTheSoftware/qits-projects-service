@@ -127,6 +127,21 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_EXISTS);
   }
 
+  @State(ProviderStates.TWO_PROJECTS_EXIST)
+  Map<String, String> twoProjectsExist() {
+    return states.params(ProviderStates.TWO_PROJECTS_EXIST);
+  }
+
+  @State(ProviderStates.NO_PROJECTS_EXIST)
+  Map<String, String> noProjectsExist() {
+    return states.params(ProviderStates.NO_PROJECTS_EXIST);
+  }
+
+  @State(ProviderStates.A_PROJECT_WITH_ONE_REPOSITORY)
+  Map<String, String> aProjectWithOneRepository() {
+    return states.params(ProviderStates.A_PROJECT_WITH_ONE_REPOSITORY);
+  }
+
   @State(ProviderStates.A_PROJECT_WITH_3_REPOSITORIES)
   Map<String, String> aProjectWith3Repositories() {
     return states.params(ProviderStates.A_PROJECT_WITH_3_REPOSITORIES);

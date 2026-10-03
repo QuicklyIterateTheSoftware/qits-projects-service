@@ -101,6 +101,50 @@ class GoldenMasterRecordingTest {
               200,
               "$.entries",
               null),
+          // The picker's grid: both projects, sorted by name since the list reads with no ORDER BY.
+          // Per-project reads are recorded for the first project ({projectId}) only: a state
+          // records one answer per operation.
+          new Interaction(
+              ProviderStates.TWO_PROJECTS_EXIST,
+              "listProjects",
+              "GET",
+              "/projects/api/projects",
+              200,
+              "$.entries",
+              "$.entries:project.name"),
+          new Interaction(
+              ProviderStates.TWO_PROJECTS_EXIST,
+              "listProjectRepositories",
+              "GET",
+              "/projects/api/projects/{projectId}/repositories",
+              200,
+              null,
+              "$.entries:repository.name"),
+          new Interaction(
+              ProviderStates.TWO_PROJECTS_EXIST,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          // The picker's empty grid.
+          new Interaction(
+              ProviderStates.NO_PROJECTS_EXIST,
+              "listProjects",
+              "GET",
+              "/projects/api/projects",
+              200,
+              "$.entries",
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_ONE_REPOSITORY,
+              "listProjectRepositories",
+              "GET",
+              "/projects/api/projects/{projectId}/repositories",
+              200,
+              null,
+              "$.entries:repository.name"),
           // listRepositories reads the rows with no ORDER BY, so the entries are sorted by name
           // here (the wrapper's random slug token blanked); a consumer must not depend on the
           // provider's order.
