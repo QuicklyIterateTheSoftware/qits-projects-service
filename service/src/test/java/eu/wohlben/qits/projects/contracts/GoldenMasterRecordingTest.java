@@ -101,6 +101,50 @@ class GoldenMasterRecordingTest {
               200,
               "$.entries",
               null),
+          // The picker's grid: both projects, sorted by name since the list reads with no ORDER BY.
+          // Per-project reads are recorded for the first project ({projectId}) only: a state
+          // records one answer per operation.
+          new Interaction(
+              ProviderStates.TWO_PROJECTS_EXIST,
+              "listProjects",
+              "GET",
+              "/projects/api/projects",
+              200,
+              "$.entries",
+              "$.entries:project.name"),
+          new Interaction(
+              ProviderStates.TWO_PROJECTS_EXIST,
+              "listProjectRepositories",
+              "GET",
+              "/projects/api/projects/{projectId}/repositories",
+              200,
+              null,
+              "$.entries:repository.name"),
+          new Interaction(
+              ProviderStates.TWO_PROJECTS_EXIST,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          // The picker's empty grid.
+          new Interaction(
+              ProviderStates.NO_PROJECTS_EXIST,
+              "listProjects",
+              "GET",
+              "/projects/api/projects",
+              200,
+              "$.entries",
+              null),
+          new Interaction(
+              ProviderStates.A_PROJECT_WITH_ONE_REPOSITORY,
+              "listProjectRepositories",
+              "GET",
+              "/projects/api/projects/{projectId}/repositories",
+              200,
+              null,
+              "$.entries:repository.name"),
           // listRepositories reads the rows with no ORDER BY, so the entries are sorted by name
           // here (the wrapper's random slug token blanked); a consumer must not depend on the
           // provider's order.
@@ -161,6 +205,74 @@ class GoldenMasterRecordingTest {
               "getCampaign",
               "GET",
               "/projects/api/campaigns/{campaignId}",
+              200,
+              null,
+              null),
+          // The landing app's card screenshots: one state per card case no other state covers.
+          new Interaction(
+              ProviderStates.A_TICKET_OF_EVERY_TYPE,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          // The params name every member, so both answers freeze an entity to the same id.
+          new Interaction(
+              ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
+              "getCampaign",
+              "GET",
+              "/projects/api/campaigns/{campaignId}",
+              200,
+              null,
+              null),
+          // One epic in two campaigns: a state records one answer per operation, so the second
+          // campaign is its own state over the same seed and params (same frozen ids).
+          new Interaction(
+              ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
+              "listProjectEntities",
+              "GET",
+              "/projects/api/projects/{projectId}/entities",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
+              "getCampaign",
+              "GET",
+              "/projects/api/campaigns/{firstCampaignId}",
+              200,
+              null,
+              null),
+          new Interaction(
+              ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS,
+              "getCampaign",
+              "GET",
+              "/projects/api/campaigns/{secondCampaignId}",
               200,
               null,
               null),

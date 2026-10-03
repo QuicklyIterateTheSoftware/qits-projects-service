@@ -1,8 +1,10 @@
 package eu.wohlben.qits.projects.contracts;
 
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.BackupOutcome;
 import eu.wohlben.qits.projects.entity.Project;
@@ -46,6 +48,9 @@ import java.util.function.Supplier;
 public class ProviderStates {
 
   public static final String A_PROJECT_EXISTS = "a project exists";
+  public static final String TWO_PROJECTS_EXIST = "two projects exist";
+  public static final String NO_PROJECTS_EXIST = "no projects exist";
+  public static final String A_PROJECT_WITH_ONE_REPOSITORY = "a project with one repository";
   public static final String A_PROJECT_WITH_3_REPOSITORIES = "a project with 3 repositories";
   public static final String A_REPOSITORY_EXISTS = "a repository exists";
   public static final String A_PROJECT_WITH_REFINED_WORK = "a project with refined work";
@@ -63,6 +68,16 @@ public class ProviderStates {
   public static final String A_VERIFIED_TICKET = "a verified ticket";
   public static final String A_PROJECT_WITH_WORK_IN_EVERY_STATUS =
       "a project with work in every status";
+  public static final String A_TICKET_OF_EVERY_TYPE = "a ticket of every type";
+  public static final String A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED =
+      "a verified epic with every task implemented";
+  public static final String A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED =
+      "a done epic with every task implemented";
+  public static final String A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE =
+      "a campaign with work in every phase";
+  public static final String AN_EPIC_IN_TWO_CAMPAIGNS = "an epic in two campaigns";
+  public static final String THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS =
+      "the second campaign of an epic in two campaigns";
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
@@ -103,6 +118,9 @@ public class ProviderStates {
 
   public ProviderStates() {
     states.put(A_PROJECT_EXISTS, this::aProjectExists);
+    states.put(TWO_PROJECTS_EXIST, this::twoProjectsExist);
+    states.put(NO_PROJECTS_EXIST, this::noProjectsExist);
+    states.put(A_PROJECT_WITH_ONE_REPOSITORY, this::aProjectWithOneRepository);
     states.put(A_PROJECT_WITH_3_REPOSITORIES, this::aProjectWith3Repositories);
     states.put(A_REPOSITORY_EXISTS, this::aRepositoryExists);
     states.put(A_PROJECT_WITH_REFINED_WORK, this::aProjectWithRefinedWork);
@@ -116,6 +134,16 @@ public class ProviderStates {
     states.put(A_VERIFIED_EPIC, this::aVerifiedEpic);
     states.put(A_VERIFIED_TICKET, this::aVerifiedTicket);
     states.put(A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, this::aCampaignWithOrderedDevelopments);
+    states.put(A_TICKET_OF_EVERY_TYPE, this::aTicketOfEveryType);
+    states.put(
+        A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
+        () -> anEpicWithEveryTaskImplemented(A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED));
+    states.put(
+        A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
+        () -> anEpicWithEveryTaskImplemented(A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED));
+    states.put(A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE, this::aCampaignWithWorkInEveryPhase);
+    states.put(AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
+    states.put(THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
   }
@@ -179,6 +207,46 @@ public class ProviderStates {
   }
 
   /**
+   * Two projects, {@code qits} ({@code projectId}) and {@code telemetry} ({@code secondProjectId}),
+   * for a picker that shows more than one. The first holds two repositories in the {@code qits-ci}
+   * component and three work items (a REFINED epic and ticket, a REPORTED ticket), so its
+   * per-project reads have something to count; the second holds nothing. Slugs are {@code
+   * <name>-<token>}, as every seeded slug carries a token.
+   */
+  private Setup twoProjectsExist() {
+    String first = token();
+    String second = token();
+    Project qits = project("qits", "qits-" + first, TWO_PROJECTS_EXIST);
+    Project telemetry = project("telemetry", "telemetry-" + second, TWO_PROJECTS_EXIST);
+    projectService.createRepository(qits.id, null, "qits-ci-service", null, "qits-ci");
+    projectService.createRepository(qits.id, null, "qits-ci-frontend", null, "qits-ci");
+    String epic = create(Archetype.EPIC, qits, EntityWrite.epic("Unified SPA", "Seeded work."));
+    String ticket = ticket(qits, "Picker shows every project");
+    ticket(qits, "Cards load their lines lazily");
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.TICKET, ticket, "REFINED", SEEDER);
+    return new Setup(
+        params("projectId", qits.id, "secondProjectId", telemetry.id), List.of(first, second));
+  }
+
+  /**
+   * Seeds nothing. A pact verification runs it after {@code PlatformStateReset} has emptied the
+   * projects tables, so the list is empty there; the recorder filters the list to the state's own
+   * entries, of which there are none.
+   */
+  private Setup noProjectsExist() {
+    return new Setup(params(), List.of());
+  }
+
+  /** One component repository: the listing holds it and the project's wrapper. */
+  private Setup aProjectWithOneRepository() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_ONE_REPOSITORY);
+    projectService.createRepository(project.id, null, "contract-service", null);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
    * Three blank component repositories on the (fake) git host, each added to the wrapper by the
    * same create flow the REST door runs — so the listing's {@code wrapper} view is read off a real
    * {@code .gitmodules}.
@@ -216,9 +284,7 @@ public class ProviderStates {
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.TICKET, first, "REFINED", SEEDER);
     work.transition(Archetype.TICKET, second, "REFINED", SEEDER);
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      work.transition(Archetype.TICKET, done, status, SEEDER);
-    }
+    walk(Archetype.TICKET, done, EntityStatus.DONE);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
@@ -305,13 +371,9 @@ public class ProviderStates {
     node(Archetype.FEATURE, running, EntityWrite.feature("Running feature", "Seeded.", null));
     String waiting = ticket(project, "Waiting ticket");
     String standalone = ticket(project, "Standalone ticket");
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
-      work.transition(Archetype.EPIC, shipped, status, SEEDER);
-    }
+    walk(Archetype.EPIC, shipped, EntityStatus.VERIFIED);
     work.transition(Archetype.EPIC, running, "REFINED", SEEDER);
-    for (String status : List.of("REFINED", "IMPLEMENTED")) {
-      work.transition(Archetype.TICKET, standalone, status, SEEDER);
-    }
+    walk(Archetype.TICKET, standalone, EntityStatus.IMPLEMENTED);
     for (String member : List.of(shipped, running, waiting)) {
       campaigns.addMember(campaign, member, null, false, SEEDER);
     }
@@ -328,9 +390,7 @@ public class ProviderStates {
     String epic = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded."));
     String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded.", null));
     node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded.", null));
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
-      work.transition(Archetype.EPIC, epic, status, SEEDER);
-    }
+    walk(Archetype.EPIC, epic, EntityStatus.VERIFIED);
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
   }
 
@@ -339,10 +399,123 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_VERIFIED_TICKET);
     String ticket = ticket(project, "Verified ticket");
-    for (String status : List.of("REFINED", "IMPLEMENTED", "VERIFIED")) {
-      work.transition(Archetype.TICKET, ticket, status, SEEDER);
-    }
+    walk(Archetype.TICKET, ticket, EntityStatus.VERIFIED);
     return new Setup(params("projectId", project.id, "ticketId", ticket), List.of(token));
+  }
+
+  /**
+   * Three REFINED tickets, one of each type: BUG, IMPROVEMENT and MAINTENANCE (the type the
+   * platform files for a stuck release request; seeded here through the service layer).
+   */
+  private Setup aTicketOfEveryType() {
+    String token = token();
+    Project project = project(token, A_TICKET_OF_EVERY_TYPE);
+    for (String type : List.of("BUG", "IMPROVEMENT", "MAINTENANCE")) {
+      String title = type.charAt(0) + type.substring(1).toLowerCase(Locale.ROOT) + " ticket";
+      String ticket =
+          create(Archetype.TICKET, project, EntityWrite.ticket(title, "Seeded work.", null, type, null));
+      work.transition(Archetype.TICKET, ticket, "REFINED", SEEDER);
+    }
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * An epic whose work is complete: one feature with two tasks, all three implemented while the
+   * epic is REFINED, then the epic moved to VERIFIED, or on to DONE for {@link
+   * #A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED}. The children are created while the epic is still
+   * REPORTED, as the domain demands.
+   */
+  private Setup anEpicWithEveryTaskImplemented(String state) {
+    String token = token();
+    Project project = project(token, state);
+    String repositoryId = repository(project, "contract-service");
+    boolean done = state.equals(A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED);
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic(done ? "Done epic" : "Verified epic", "Seeded work."));
+    String feature =
+        node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded.", null));
+    List<String> tasks = new ArrayList<>();
+    for (String title : List.of("First shipped task", "Second shipped task")) {
+      tasks.add(
+          node(Archetype.TASK, feature, EntityWrite.task(repositoryId, title, "Seeded.", null)));
+    }
+    // Task markers move only while the epic is REFINED or IMPLEMENTING.
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    tasks.forEach(this::implemented);
+    implemented(feature);
+    walk(Archetype.EPIC, epic, done ? EntityStatus.DONE : EntityStatus.VERIFIED);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * A REFINED campaign whose members sit in every phase: a REFINED epic and a REFINED ticket (the
+   * board), a REPORTED ticket (the backlog) and a DONE ticket (the archive), plus one REFINED ticket
+   * outside the campaign. Recorded for the entity list and for the campaign.
+   *
+   * <p>The params name every member, so both answers number the same entity with the same frozen
+   * id: the freezer numbers the params first, and a consumer can join the campaign's members to the
+   * list's entities.
+   */
+  private Setup aCampaignWithWorkInEveryPhase() {
+    String token = token();
+    Project project = project(token, A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE);
+    String campaign = work.createCampaign(project.id, "Card campaign", "Seeded work.", SEEDER).id;
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Refined epic", "Seeded."));
+    String refined = ticket(project, "Refined ticket");
+    String reported = ticket(project, "Reported ticket");
+    String done = ticket(project, "Done ticket");
+    String outside = ticket(project, "Ticket outside the campaign");
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.TICKET, refined, "REFINED", SEEDER);
+    work.transition(Archetype.TICKET, outside, "REFINED", SEEDER);
+    walk(Archetype.TICKET, done, EntityStatus.DONE);
+    for (String member : List.of(epic, refined, reported, done)) {
+      campaigns.addMember(campaign, member, null, false, SEEDER);
+    }
+    work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
+    return new Setup(
+        params(
+            "campaignId", campaign,
+            "doneTicketId", done,
+            "outsideTicketId", outside,
+            "projectId", project.id,
+            "refinedEpicId", epic,
+            "refinedTicketId", refined,
+            "reportedTicketId", reported),
+        List.of(token));
+  }
+
+  /**
+   * A REFINED epic that is a member of two REFINED campaigns, and nothing else. Recorded as two
+   * states with the same seed: {@link #AN_EPIC_IN_TWO_CAMPAIGNS} for the entity list and the first
+   * campaign, {@link #THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS} for the second campaign (a
+   * state records one answer per operation).
+   *
+   * <p>Both states have the same params, which name every entity, so the freezer gives each entity
+   * the same id in all three answers and a consumer can join both campaigns' members to the list.
+   */
+  private Setup anEpicInTwoCampaigns() {
+    String token = token();
+    Project project = project(token, AN_EPIC_IN_TWO_CAMPAIGNS);
+    String first = work.createCampaign(project.id, "First campaign", "Seeded work.", SEEDER).id;
+    String second = work.createCampaign(project.id, "Second campaign", "Seeded work.", SEEDER).id;
+    String epic =
+        create(Archetype.EPIC, project, EntityWrite.epic("Epic in two campaigns", "Seeded."));
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    for (String campaign : List.of(first, second)) {
+      campaigns.addMember(campaign, epic, null, false, SEEDER);
+      work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
+    }
+    return new Setup(
+        params(
+            "epicId", epic,
+            "firstCampaignId", first,
+            "projectId", project.id,
+            "secondCampaignId", second),
+        List.of(token));
   }
 
   private String repository(Project project, String name) {
@@ -351,6 +524,19 @@ public class ProviderStates {
 
   private String node(Archetype archetype, String parent, EntityWrite write) {
     return work.create(archetype, parent, write, SEEDER).entity().id;
+  }
+
+  /**
+   * Moves an epic or a ticket forward one step at a time along the walk until it is {@code
+   * target}, through IMPLEMENTING and VERIFYING (qits-749) rather than over them — the way the
+   * platform itself moves work, so a seeded VERIFIED row got there the way a real one does.
+   */
+  private void walk(Archetype archetype, String id, EntityStatus target) {
+    List<EntityStatus> walk = EntityStateMachine.walk();
+    int from = walk.indexOf(EntityStatus.valueOf(work.find(id).status));
+    for (int step = from + 1; step <= walk.indexOf(target); step++) {
+      work.transition(archetype, id, walk.get(step).name(), SEEDER);
+    }
   }
 
   /** Marks a feature or task implemented now, as an edit of its marker. */
@@ -514,12 +700,12 @@ public class ProviderStates {
    * name is free to repeat (only the slug is unique), so it stays fixed seed data.
    */
   private Project project(String token, String state) {
+    return project("Contract project", "contract-" + token, state);
+  }
+
+  private Project project(String name, String slug, String state) {
     return projectService.create(
-        "Contract project",
-        "contract-" + token,
-        "Seeded by the provider state '" + state + "'.",
-        null,
-        DNS);
+        name, slug, "Seeded by the provider state '" + state + "'.", null, DNS);
   }
 
   /** Eight random hex characters — enough to keep slugs apart, short enough to fit one. */

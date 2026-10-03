@@ -127,6 +127,21 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_EXISTS);
   }
 
+  @State(ProviderStates.TWO_PROJECTS_EXIST)
+  Map<String, String> twoProjectsExist() {
+    return states.params(ProviderStates.TWO_PROJECTS_EXIST);
+  }
+
+  @State(ProviderStates.NO_PROJECTS_EXIST)
+  Map<String, String> noProjectsExist() {
+    return states.params(ProviderStates.NO_PROJECTS_EXIST);
+  }
+
+  @State(ProviderStates.A_PROJECT_WITH_ONE_REPOSITORY)
+  Map<String, String> aProjectWithOneRepository() {
+    return states.params(ProviderStates.A_PROJECT_WITH_ONE_REPOSITORY);
+  }
+
   @State(ProviderStates.A_PROJECT_WITH_3_REPOSITORIES)
   Map<String, String> aProjectWith3Repositories() {
     return states.params(ProviderStates.A_PROJECT_WITH_3_REPOSITORIES);
@@ -160,6 +175,36 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_VERIFIED_TICKET)
   Map<String, String> aVerifiedTicket() {
     return states.params(ProviderStates.A_VERIFIED_TICKET);
+  }
+
+  @State(ProviderStates.A_TICKET_OF_EVERY_TYPE)
+  Map<String, String> aTicketOfEveryType() {
+    return states.params(ProviderStates.A_TICKET_OF_EVERY_TYPE);
+  }
+
+  @State(ProviderStates.A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED)
+  Map<String, String> aVerifiedEpicWithEveryTaskImplemented() {
+    return states.params(ProviderStates.A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED);
+  }
+
+  @State(ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED)
+  Map<String, String> aDoneEpicWithEveryTaskImplemented() {
+    return states.params(ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED);
+  }
+
+  @State(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE)
+  Map<String, String> aCampaignWithWorkInEveryPhase() {
+    return states.params(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE);
+  }
+
+  @State(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS)
+  Map<String, String> anEpicInTwoCampaigns() {
+    return states.params(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS);
+  }
+
+  @State(ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS)
+  Map<String, String> theSecondCampaignOfAnEpicInTwoCampaigns() {
+    return states.params(ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS);
   }
 
   @State(ProviderStates.A_PROJECT_WITH_NO_WORK)
