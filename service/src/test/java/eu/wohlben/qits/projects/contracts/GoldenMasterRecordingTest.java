@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
@@ -84,7 +86,8 @@ class GoldenMasterRecordingTest {
   }
 
   static final List<Interaction> INTERACTIONS =
-      List.of(
+      withWorkActions(
+          List.of(
           new Interaction(
               ProviderStates.A_PROJECT_EXISTS,
               "getProject",
@@ -352,7 +355,95 @@ class GoldenMasterRecordingTest {
               "/projects/api/repositories/{repositoryId}",
               404,
               null,
-              null));
+              null)));
+
+  /**
+   * The landing app's work item page (epic qits-112): the registry it reads the moves and the
+   * dispatch phases from, one status move out of every ticket and epic status that has one, a PHASE
+   * and a FLOW dispatch for each archetype, and the reads of an implemented ticket.
+   *
+   * <p>Each recorded move is the first legal one out of the state's status, read off the state
+   * machine, so the table restates no move.
+   */
+  private static List<Interaction> withWorkActions(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    all.add(
+        new Interaction(
+            ProviderStates.THE_ARCHETYPE_REGISTRY,
+            "listArchetypes",
+            "GET",
+            "/projects/api/entities/archetypes",
+            200,
+            null,
+            null));
+    moves(all, ProviderStates.TICKET_IN_STATUS, "ticketId");
+    moves(all, ProviderStates.EPIC_IN_STATUS, "epicId");
+    all.add(dispatch(ProviderStates.AN_IMPLEMENTED_TICKET, "ticketId", "PHASE"));
+    all.add(dispatch(ProviderStates.A_REFINED_TICKET, "ticketId", "FLOW"));
+    all.add(dispatch(ProviderStates.A_REPORTED_EPIC, "epicId", "PHASE"));
+    all.add(dispatch(ProviderStates.A_REFINED_EPIC, "epicId", "FLOW"));
+    all.add(
+        new Interaction(
+            ProviderStates.AN_IMPLEMENTED_TICKET,
+            "getEntity",
+            "GET",
+            "/projects/api/entities/{ticketId}",
+            200,
+            null,
+            null));
+    all.add(
+        new Interaction(
+            ProviderStates.AN_IMPLEMENTED_TICKET,
+            "listEntityComments",
+            "GET",
+            "/projects/api/entities/{ticketId}/comments",
+            200,
+            null,
+            null));
+    all.add(
+        new Interaction(
+            ProviderStates.AN_IMPLEMENTED_TICKET,
+            "listProjectEntities",
+            "GET",
+            "/projects/api/projects/{projectId}/entities",
+            200,
+            null,
+            null));
+    return List.copyOf(all);
+  }
+
+  private static void moves(
+      List<Interaction> all, Map<String, EntityStatus> statesByStatus, String idParam) {
+    statesByStatus.forEach(
+        (state, status) -> {
+          List<EntityStateMachine.Transition> out = EntityStateMachine.transitionsFrom(status);
+          if (out.isEmpty()) {
+            return;
+          }
+          all.add(
+              new Interaction(
+                  state,
+                  "moveEntityStatus",
+                  "POST",
+                  "/projects/api/entities/{" + idParam + "}/status",
+                  200,
+                  null,
+                  null,
+                  "{\"target\":\"" + out.get(0).to().name() + "\"}"));
+        });
+  }
+
+  private static Interaction dispatch(String state, String idParam, String mode) {
+    return new Interaction(
+        state,
+        "dispatchEntity",
+        "POST",
+        "/projects/api/entities/{" + idParam + "}/dispatch",
+        200,
+        null,
+        null,
+        "{\"mode\":\"" + mode + "\"}");
+  }
 
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final Pattern TEMPLATE_PARAM = Pattern.compile("\\{([^}]+)}");

@@ -84,7 +84,111 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+      "phases" : {
+        "REPORTED" : {
+          "next" : {
+            "phase" : "refine",
+            "from" : "REPORTED",
+            "enters" : null,
+            "endsIn" : "REFINED"
+          },
+          "flow" : [ {
+            "phase" : "refine",
+            "from" : "REPORTED",
+            "enters" : null,
+            "endsIn" : "REFINED"
+          }, {
+            "phase" : "implement",
+            "from" : "REFINED",
+            "enters" : "IMPLEMENTING",
+            "endsIn" : "IMPLEMENTED"
+          }, {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "REFINED" : {
+          "next" : {
+            "phase" : "implement",
+            "from" : "REFINED",
+            "enters" : "IMPLEMENTING",
+            "endsIn" : "IMPLEMENTED"
+          },
+          "flow" : [ {
+            "phase" : "implement",
+            "from" : "REFINED",
+            "enters" : "IMPLEMENTING",
+            "endsIn" : "IMPLEMENTED"
+          }, {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "IMPLEMENTING" : {
+          "next" : {
+            "phase" : "implement",
+            "from" : "IMPLEMENTING",
+            "enters" : null,
+            "endsIn" : "IMPLEMENTED"
+          },
+          "flow" : [ {
+            "phase" : "implement",
+            "from" : "IMPLEMENTING",
+            "enters" : null,
+            "endsIn" : "IMPLEMENTED"
+          }, {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "IMPLEMENTED" : {
+          "next" : {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          },
+          "flow" : [ {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "VERIFYING" : {
+          "next" : {
+            "phase" : "verify",
+            "from" : "VERIFYING",
+            "enters" : null,
+            "endsIn" : "VERIFIED"
+          },
+          "flow" : [ {
+            "phase" : "verify",
+            "from" : "VERIFYING",
+            "enters" : null,
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "VERIFIED" : {
+          "next" : null,
+          "flow" : [ ]
+        },
+        "DONE" : {
+          "next" : null,
+          "flow" : [ ]
+        },
+        "DROPPED" : {
+          "next" : null,
+          "flow" : [ ]
+        }
+      }
     }, {
       "archetype" : "TICKET",
       "depth" : 0,
@@ -165,7 +269,111 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+      "phases" : {
+        "REPORTED" : {
+          "next" : {
+            "phase" : "refine",
+            "from" : "REPORTED",
+            "enters" : null,
+            "endsIn" : "REFINED"
+          },
+          "flow" : [ {
+            "phase" : "refine",
+            "from" : "REPORTED",
+            "enters" : null,
+            "endsIn" : "REFINED"
+          }, {
+            "phase" : "implement",
+            "from" : "REFINED",
+            "enters" : "IMPLEMENTING",
+            "endsIn" : "IMPLEMENTED"
+          }, {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "REFINED" : {
+          "next" : {
+            "phase" : "implement",
+            "from" : "REFINED",
+            "enters" : "IMPLEMENTING",
+            "endsIn" : "IMPLEMENTED"
+          },
+          "flow" : [ {
+            "phase" : "implement",
+            "from" : "REFINED",
+            "enters" : "IMPLEMENTING",
+            "endsIn" : "IMPLEMENTED"
+          }, {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "IMPLEMENTING" : {
+          "next" : {
+            "phase" : "implement",
+            "from" : "IMPLEMENTING",
+            "enters" : null,
+            "endsIn" : "IMPLEMENTED"
+          },
+          "flow" : [ {
+            "phase" : "implement",
+            "from" : "IMPLEMENTING",
+            "enters" : null,
+            "endsIn" : "IMPLEMENTED"
+          }, {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "IMPLEMENTED" : {
+          "next" : {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          },
+          "flow" : [ {
+            "phase" : "verify",
+            "from" : "IMPLEMENTED",
+            "enters" : "VERIFYING",
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "VERIFYING" : {
+          "next" : {
+            "phase" : "verify",
+            "from" : "VERIFYING",
+            "enters" : null,
+            "endsIn" : "VERIFIED"
+          },
+          "flow" : [ {
+            "phase" : "verify",
+            "from" : "VERIFYING",
+            "enters" : null,
+            "endsIn" : "VERIFIED"
+          } ]
+        },
+        "VERIFIED" : {
+          "next" : null,
+          "flow" : [ ]
+        },
+        "DONE" : {
+          "next" : null,
+          "flow" : [ ]
+        },
+        "DROPPED" : {
+          "next" : null,
+          "flow" : [ ]
+        }
+      }
     }, {
       "archetype" : "FEATURE",
       "depth" : 1,
@@ -246,7 +454,8 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+      "phases" : { }
     }, {
       "archetype" : "TASK",
       "depth" : 2,
@@ -327,7 +536,8 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ],
+      "phases" : { }
     }, {
       "archetype" : "CAMPAIGN",
       "depth" : -1,
@@ -382,7 +592,8 @@
           "kind" : "REOPEN"
         } ]
       },
-      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ]
+      "lifecycle" : [ "REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED" ],
+      "phases" : { }
     } ]
   }
 } ]

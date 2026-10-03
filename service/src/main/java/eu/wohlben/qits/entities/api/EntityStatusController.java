@@ -92,6 +92,7 @@ public class EntityStatusController {
   @Path("/{id}/status")
   @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
   @Operation(
+      operationId = "moveEntityStatus",
       summary = "Move an entity through its lifecycle",
       description =
           "Moves an epic, ticket, campaign, feature or task to the target status, by the same path"

@@ -105,6 +105,12 @@ public record ArchetypeRegistryDocument(
    * @param gathers whether this kind's children are <b>campaign memberships, never structural</b>
    *     — true for {@code CAMPAIGN} alone. A client must not draw a gathering row's children as
    *     its subtree: they hang somewhere else as well, and this row only orders them
+   * @param phases what a dispatch press runs from each status, keyed by <b>every</b> status in
+   *     {@link #lifecycle} order — {@link DispatchPhases}. Empty for a kind a dispatch runs no phases
+   *     on: a feature or a task (a lifecycle, but no phase of its own) and a campaign (its press is
+   *     its start). Read off {@link EntityStateMachine#phaseRunFrom} and {@link EntityStateMachine#flowFrom}, which the
+   *     dispatch door and the FLOW hand-off follow, so the served phases and the run ones are one
+   *     declaration
    */
   public record DeclaredArchetype(
       Archetype archetype,
@@ -117,7 +123,41 @@ public record ArchetypeRegistryDocument(
       List<EntityProperty> permitted,
       List<String> legalStatuses,
       Map<String, List<LegalMove>> transitions,
-      List<String> lifecycle) {}
+      List<String> lifecycle,
+      Map<String, DispatchPhases> phases) {}
+
+  /**
+   * What a dispatch press does from one status.
+   *
+   * @param next the one phase a PHASE press runs — also the first phase of a FLOW press — or null
+   *     where a press starts nothing (VERIFIED, DONE, DROPPED)
+   * @param flow the phases a FLOW press runs, in order, until the flow stops at a status that starts
+   *     no phase (VERIFIED, where the release is asked for). Empty where a press starts nothing. A
+   *     block stops a flow early; that is not in the data
+   */
+  public record DispatchPhases(DispatchPhase next, List<DispatchPhase> flow) {}
+
+  /**
+   * One phase a dispatch runs.
+   *
+   * @param phase the phase's word: {@code refine}, {@code implement} or {@code verify} — the word
+   *     the dispatch door answers in {@code phase} and {@code GET /entities/{id}/dispatch} in {@code
+   *     nextPhase}
+   * @param from the status the phase runs from
+   * @param enters the status the platform moves the entity into when the phase starts (REFINED →
+   *     IMPLEMENTING, IMPLEMENTED → VERIFYING), or null where it moves nothing
+   * @param endsIn the status the phase's agent moves the entity to when the phase is done
+   */
+  public record DispatchPhase(String phase, String from, String enters, String endsIn) {
+
+    static DispatchPhase of(EntityStateMachine.PhaseRun run) {
+      return new DispatchPhase(
+          run.phase().word(),
+          run.from().name(),
+          run.enters() == null ? null : run.enters().name(),
+          run.endsIn().name());
+    }
+  }
 
   /**
    * One legal move out of a status, as served: where it lands and what kind of move it is.
@@ -151,7 +191,8 @@ public record ArchetypeRegistryDocument(
               inVocabularyOrder(spec.permitted()),
               spec.legalStatuses().stream().sorted().toList(),
               transitions(spec),
-              lifecycle(spec)));
+              lifecycle(spec),
+              phases(spec)));
     }
     return new ArchetypeRegistryDocument(
         List.of(EntityProperty.values()),
@@ -192,6 +233,29 @@ public record ArchetypeRegistryDocument(
           EntityStateMachine.transitionsFrom(spec.archetype(), state).stream()
               .map(move -> new LegalMove(move.to().name(), move.kind()))
               .toList());
+    }
+    return Collections.unmodifiableMap(served);
+  }
+
+  /**
+   * What a press runs from each state, keyed in lifecycle order — or nothing for a kind a dispatch
+   * runs no phases on. Insertion-ordered for {@link #transitions}' reason.
+   */
+  private static Map<String, DispatchPhases> phases(ArchetypeSpec spec) {
+    if (spec.legalStatuses().isEmpty() || !EntityStateMachine.runsPhases(spec.archetype())) {
+      return Map.of();
+    }
+    Map<String, DispatchPhases> served = new LinkedHashMap<>();
+    for (EntityStatus state : EntityStateMachine.states(spec.archetype())) {
+      served.put(
+          state.name(),
+          new DispatchPhases(
+              EntityStateMachine.phaseRunFrom(spec.archetype(), state)
+                  .map(DispatchPhase::of)
+                  .orElse(null),
+              EntityStateMachine.flowFrom(spec.archetype(), state).stream()
+                  .map(DispatchPhase::of)
+                  .toList()));
     }
     return Collections.unmodifiableMap(served);
   }

@@ -20,6 +20,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.Locale;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
@@ -95,6 +96,13 @@ public class EntityDispatchController {
    */
   @POST
   @Path("/{id}/dispatch")
+  @Operation(
+      operationId = "dispatchEntity",
+      summary = "Put an agent on an epic or a ticket, or start a campaign",
+      description =
+          "mode PHASE runs the one phase the entity's status starts; mode FLOW runs that phase and"
+              + " the ones after it until a status starts none. The archetype registry's phases"
+              + " say which phases those are, per status. On a campaign the press is its start.")
   @APIResponse(
       responseCode = "200",
       description =

@@ -1118,10 +1118,23 @@ components:
             type: array
             items:
               $ref: "#/components/schemas/LegalMove"
+          description: "The legal moves out of each status, keyed by every status\
+            \ in lifecycle order: FORWARD first, then SKIP, BACK, DROP/REOPEN. DONE\
+            \ maps to an empty list. Empty for a kind with no lifecycle. The status\
+            \ door (moveEntityStatus) allows exactly these."
         lifecycle:
           type: array
           items:
             type: string
+          description: The statuses in lifecycle order. Empty for a kind with no lifecycle.
+        phases:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/DispatchPhases"
+          description: "What a dispatch press (dispatchEntity) runs from each status,\
+            \ keyed by every status in lifecycle order. Empty for a kind a dispatch\
+            \ runs no phases on: a feature, a task and a campaign (whose press is\
+            \ its start)."
     DeclineReleaseRequest:
       type: object
       required:
@@ -1185,6 +1198,39 @@ components:
       enum:
       - FLOW
       - PHASE
+    DispatchPhase:
+      type: object
+      properties:
+        phase:
+          type: string
+          description: "The phase's word: refine, implement or verify — the word dispatchEntity\
+            \ answers in phase."
+        from:
+          type: string
+          description: The status the phase runs from.
+        enters:
+          type: string
+          description: "The status the platform moves the entity into when the phase\
+            \ starts (REFINED to IMPLEMENTING, IMPLEMENTED to VERIFYING). Null where\
+            \ it moves nothing."
+        endsIn:
+          type: string
+          description: The status the phase's agent moves the entity to when the phase
+            is done.
+    DispatchPhases:
+      type: object
+      properties:
+        next:
+          $ref: "#/components/schemas/DispatchPhase"
+          description: "The one phase a PHASE press runs, which is also the first\
+            \ phase of a FLOW press. Null where a press starts nothing (VERIFIED,\
+            \ DONE, DROPPED)."
+        flow:
+          type: array
+          items:
+            $ref: "#/components/schemas/DispatchPhase"
+          description: "The phases a FLOW press runs, in order, until a status starts\
+            \ no phase. Empty where a press starts nothing. A block stops a flow early."
     DispatchRequest:
       type: object
       properties:
@@ -3814,6 +3860,13 @@ paths:
         - qits:system
   /projects/api/entities/archetypes:
     get:
+      summary: "The archetype registry: properties, lifecycles, legal moves and dispatch\
+        \ phases"
+      description: "Every archetype's declaration, read off the registry and the state\
+        \ machine the doors enforce: what it requires and permits, its lifecycle,\
+        \ the legal moves out of each status (transitions) and what a dispatch press\
+        \ runs from each status (phases)."
+      operationId: listArchetypes
       responses:
         "200":
           description: OK
@@ -3825,7 +3878,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Archetypes
       tags:
       - Entity Archetypes Controller
       security:
@@ -4131,6 +4183,12 @@ paths:
         - qits:admin
         - qits:agent
     post:
+      summary: "Put an agent on an epic or a ticket, or start a campaign"
+      description: "mode PHASE runs the one phase the entity's status starts; mode\
+        \ FLOW runs that phase and the ones after it until a status starts none. The\
+        \ archetype registry's phases say which phases those are, per status. On a\
+        \ campaign the press is its start."
+      operationId: dispatchEntity
       parameters:
       - name: id
         in: path
@@ -4159,7 +4217,6 @@ paths:
           description: Not Allowed
         "400":
           description: Bad Request
-      summary: Dispatch
       tags:
       - Entity Dispatch Controller
       security:
@@ -4226,6 +4283,7 @@ paths:
         \ epic is past REPORTED; the epic's moves to REFINED, back to REPORTED and\
         \ to IMPLEMENTED carry it, no other does. The id is the UUID or the qualified\
         \ id. Answers the entity in the merged shape, with statusBefore."
+      operationId: moveEntityStatus
       parameters:
       - name: id
         in: path
@@ -8068,4 +8126,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1003.104901
+  version: 2026.1003.123822

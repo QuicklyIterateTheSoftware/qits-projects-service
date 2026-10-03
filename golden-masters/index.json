@@ -158,6 +158,78 @@
       ]
     },
     {
+      "name": "a dropped epic",
+      "slug": "a-dropped-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "REPORTED"
+          },
+          "status": 200,
+          "file": "a-dropped-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a dropped ticket",
+      "slug": "a-dropped-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "REPORTED"
+          },
+          "status": 200,
+          "file": "a-dropped-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project exists",
       "slug": "a-project-exists",
       "params": {
@@ -441,6 +513,207 @@
       ]
     },
     {
+      "name": "a refined epic",
+      "slug": "a-refined-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "dispatchEntity",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/dispatch",
+          "body": {
+            "mode": "FLOW"
+          },
+          "status": 200,
+          "file": "a-refined-epic/dispatchEntity.json",
+          "frozen": {
+            "ids": [
+              "$.dispatch.entityId",
+              "$.dispatch.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "IMPLEMENTING"
+          },
+          "status": 200,
+          "file": "a-refined-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a refined ticket",
+      "slug": "a-refined-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "dispatchEntity",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/dispatch",
+          "body": {
+            "mode": "FLOW"
+          },
+          "status": 200,
+          "file": "a-refined-ticket/dispatchEntity.json",
+          "frozen": {
+            "ids": [
+              "$.dispatch.entityId",
+              "$.dispatch.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "IMPLEMENTING"
+          },
+          "status": 200,
+          "file": "a-refined-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a reported epic",
+      "slug": "a-reported-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "dispatchEntity",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/dispatch",
+          "body": {
+            "mode": "PHASE"
+          },
+          "status": 200,
+          "file": "a-reported-epic/dispatchEntity.json",
+          "frozen": {
+            "ids": [
+              "$.dispatch.entityId",
+              "$.dispatch.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "REFINED"
+          },
+          "status": 200,
+          "file": "a-reported-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a reported ticket",
+      "slug": "a-reported-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "REFINED"
+          },
+          "status": 200,
+          "file": "a-reported-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a repository exists",
       "slug": "a-repository-exists",
       "params": {
@@ -510,6 +783,31 @@
       },
       "dependsOn": [],
       "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "DONE"
+          },
+          "status": 200,
+          "file": "a-verified-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
         {
           "operationId": "transitionEpic",
           "method": "POST",
@@ -581,6 +879,31 @@
       "dependsOn": [],
       "operations": [
         {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "DONE"
+          },
+          "status": 200,
+          "file": "a-verified-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "transitionTicket",
           "method": "POST",
           "path": "/projects/api/tickets/{ticketId}/transition",
@@ -600,6 +923,78 @@
             ],
             "strings": [
               "$.ticket.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a verifying epic",
+      "slug": "a-verifying-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "VERIFIED"
+          },
+          "status": 200,
+          "file": "a-verifying-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a verifying ticket",
+      "slug": "a-verifying-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "VERIFIED"
+          },
+          "status": 200,
+          "file": "a-verifying-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -735,6 +1130,232 @@
       ]
     },
     {
+      "name": "an implemented epic",
+      "slug": "an-implemented-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "VERIFYING"
+          },
+          "status": 200,
+          "file": "an-implemented-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an implemented ticket",
+      "slug": "an-implemented-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "dispatchEntity",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/dispatch",
+          "body": {
+            "mode": "PHASE"
+          },
+          "status": 200,
+          "file": "an-implemented-ticket/dispatchEntity.json",
+          "frozen": {
+            "ids": [
+              "$.dispatch.entityId",
+              "$.dispatch.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getEntity",
+          "method": "GET",
+          "path": "/projects/api/entities/{ticketId}",
+          "status": 200,
+          "file": "an-implemented-ticket/getEntity.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listEntityComments",
+          "method": "GET",
+          "path": "/projects/api/entities/{ticketId}/comments",
+          "status": 200,
+          "file": "an-implemented-ticket/listEntityComments.json",
+          "frozen": {
+            "ids": [
+              "$.entries[*].comment.id",
+              "$.entries[*].comment.entityId"
+            ],
+            "instants": [
+              "$.entries[*].comment.createdAt",
+              "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listProjectEntities",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/entities",
+          "status": 200,
+          "file": "an-implemented-ticket/listProjectEntities.json",
+          "frozen": {
+            "ids": [
+              "$.entities[*].id",
+              "$.entities[*].projectId",
+              "$.entities[*].slugScope"
+            ],
+            "instants": [
+              "$.entities[*].createdAt",
+              "$.entities[*].updatedAt"
+            ],
+            "strings": [
+              "$.entities[*].qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "VERIFYING"
+          },
+          "status": 200,
+          "file": "an-implemented-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an implementing epic",
+      "slug": "an-implementing-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "IMPLEMENTED"
+          },
+          "status": 200,
+          "file": "an-implementing-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an implementing ticket",
+      "slug": "an-implementing-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "IMPLEMENTED"
+          },
+          "status": 200,
+          "file": "an-implementing-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "no project with the given id",
       "slug": "no-project-with-the-given-id",
       "params": {
@@ -800,6 +1421,27 @@
             "strings": [
               "$.message"
             ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "the archetype registry",
+      "slug": "the-archetype-registry",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listArchetypes",
+          "method": "GET",
+          "path": "/projects/api/entities/archetypes",
+          "status": 200,
+          "file": "the-archetype-registry/listArchetypes.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         }

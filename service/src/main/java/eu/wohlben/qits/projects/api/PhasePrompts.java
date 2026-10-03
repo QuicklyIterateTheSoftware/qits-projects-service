@@ -225,6 +225,14 @@ final class PhasePrompts {
     return FLOW_BRIEF_POINTER + " " + phaseTurn;
   }
 
+  /**
+   * The status a phase's agent claims when it is done — the state machine's {@link
+   * EntityStateMachine#endOf}, the same value the served registry's {@code phases} names.
+   */
+  private static String end(Phase phase) {
+    return EntityStateMachine.endOf(phase).name();
+  }
+
   /** {@code "qits-297, "} for the header's parenthesis, or nothing where there is no id. */
   private static String named(String qualifiedId) {
     return qualifiedId == null ? "" : qualifiedId + ", ";
@@ -277,7 +285,9 @@ final class PhasePrompts {
         + ticket.id
         + ") only for what prose cannot hold. Do not implement anything: the implement phase is a"
         + " separate session that starts from what you write. When someone else could implement"
-        + " from the ticket alone, transition_ticket to REFINED. If you cannot get there,"
+        + " from the ticket alone, transition_ticket to "
+        + end(Phase.REFINE)
+        + ". If you cannot get there,"
         + " block_entity with what is missing.";
   }
 
@@ -305,7 +315,9 @@ final class PhasePrompts {
         + " merged and not green."
         + commitSubjects(q)
         + " Do not integrate the workspace, because verification runs here"
-        + " next. Once the change is live, transition_ticket to IMPLEMENTED. If you cannot get"
+        + " next. Once the change is live, transition_ticket to "
+        + end(Phase.IMPLEMENT)
+        + ". If you cannot get"
         + " there, block_entity with what is missing.";
   }
 
@@ -331,7 +343,9 @@ final class PhasePrompts {
         + "). Read it with get_ticket, then check on the live platform that what it reported no"
         + " longer occurs. Fall back to reading the change only if the situation cannot be"
         + " reproduced on demand. Say on the thread with add_ticket_comment which of the two you"
-        + " did. If it holds, transition_ticket to VERIFIED; closing is a person's move. If it"
+        + " did. If it holds, transition_ticket to "
+        + end(Phase.VERIFY)
+        + "; closing is a person's move. If it"
         + " still occurs, or you could not check, block_entity with what you found.";
   }
 
@@ -362,8 +376,9 @@ final class PhasePrompts {
         + "). Record decisions and open questions on its thread with add_comment (entityId "
         + epic.id
         + "). Do not implement anything: the implement phase is a separate session that starts from"
-        + " what you write. When every task could be built from the epic alone, transition_epic to"
-        + " REFINED, which freezes the scope. If you cannot get there, block_entity with what is"
+        + " what you write. When every task could be built from the epic alone, transition_epic to "
+        + end(Phase.REFINE)
+        + ", which freezes the scope. If you cannot get there, block_entity with what is"
         + " missing.";
   }
 
@@ -398,8 +413,10 @@ final class PhasePrompts {
         + commitSubjects(q)
         + " Do not integrate the"
         + " workspace, because verification runs here next. When every task is marked,"
-        + " transition_epic to IMPLEMENTED; that move carries any unmarked task to IMPLEMENTED. If"
-        + " you cannot get there, block_entity with what is missing.";
+        + " transition_epic to "
+        + end(Phase.IMPLEMENT)
+        + "; that move carries any unmarked task to IMPLEMENTED. If you cannot get"
+        + " there, block_entity with what is missing.";
   }
 
   /**
@@ -423,7 +440,9 @@ final class PhasePrompts {
         + " it promised holds. Fall back to reading the change only if a behaviour cannot be"
         + " reproduced on demand. Record on its thread with add_comment (entityId "
         + epic.id
-        + ") what you confirmed and how. If it holds, transition_epic to VERIFIED; closing is a"
+        + ") what you confirmed and how. If it holds, transition_epic to "
+        + end(Phase.VERIFY)
+        + "; closing is a"
         + " person's move. If something does not hold, or you could not check, block_entity with"
         + " what you found.";
   }
