@@ -79,4 +79,21 @@ public interface WorkspaceAgentEntities {
    * @param blocked what the flag now is on the entity's row
    */
   void changed(String repositoryId, String branch, String title, String status, boolean blocked);
+
+  /**
+   * {@link #changed(String, String, String, String, boolean)}, naming the work item too
+   * (qits-112): qits-workspaces finds the workspace bound to {@code workId} first and falls back to
+   * the branch. A port that knows no work id ignores it.
+   *
+   * @param workId the work item's entity id, or {@code null}
+   */
+  default void changed(
+      String workId,
+      String repositoryId,
+      String branch,
+      String title,
+      String status,
+      boolean blocked) {
+    changed(repositoryId, branch, title, status, blocked);
+  }
 }

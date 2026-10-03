@@ -258,4 +258,14 @@ class HttpWorkspaceAgentEntitiesTest {
 
     assertEquals(1, received.size(), "an unset own key falls back to the release path's address");
   }
+
+  /** With a work id, the body carries it, so qits-workspaces finds the workspace by it (qits-112). */
+  @Test
+  void aChangeNamingItsWorkItemCarriesTheWorkId() throws Exception {
+    String base = startServer();
+
+    against(base).changed("w-1", "repo-1", "ticket/puce-button", "Puce button", "REFINED", false);
+
+    assertEquals("w-1", MAPPER.readValue(received.get(0).body(), Map.class).get("workId"));
+  }
 }

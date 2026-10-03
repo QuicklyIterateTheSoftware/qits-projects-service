@@ -112,6 +112,17 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
   @Override
   public void changed(
       String repositoryId, String branch, String title, String status, boolean blocked) {
+    changed(null, repositoryId, branch, title, status, blocked);
+  }
+
+  @Override
+  public void changed(
+      String workId,
+      String repositoryId,
+      String branch,
+      String title,
+      String status,
+      boolean blocked) {
     String what = describe(title, status, blocked);
     Optional<String> base = address();
     if (base.isEmpty()) {
@@ -130,6 +141,11 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
       body.put("title", title);
       body.put("status", status);
       body.put("blocked", blocked);
+      // The work item, which qits-workspaces finds the workspace by before the branch (qits-112).
+      // Omitted when unknown; an older qits-workspaces ignores it.
+      if (workId != null) {
+        body.put("workId", workId);
+      }
       HttpResponse<String> response = post(base.get() + ENTITY_PATH, authorization.get(), body);
       if (response.statusCode() == 404 || response.statusCode() == 405) {
         // A qits-workspaces older than the entity door: tell it the one value it knows. 405 is the
@@ -139,6 +155,9 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
         flag.put("repositoryId", repositoryId);
         flag.put("branch", branch);
         flag.put("blocked", blocked);
+        if (workId != null) {
+          flag.put("workId", workId);
+        }
         LOG.debugf(
             "qits-workspaces has no %s yet (status %s); telling %s only that it is blocked=%s",
             ENTITY_PATH, response.statusCode(), branch, blocked);

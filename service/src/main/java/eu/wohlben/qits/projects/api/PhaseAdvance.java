@@ -616,7 +616,7 @@ public class PhaseAdvance {
     String branch = target.branch();
     WorkspaceAgentTurns.Turn turn;
     try {
-      turn = turns.get().deliver(target.repositoryId(), branch, started.instruction());
+      turn = turns.get().deliver(ticket.id, target.repositoryId(), branch, started.instruction());
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not touch a transition that
       // has already been recorded. The thread still gets the honest sentence, because a reader

@@ -235,4 +235,14 @@ class HttpWorkspaceAgentTurnsTest {
 
     assertTrue(received.isEmpty(), "an uncredentialed hop dials nothing: " + received);
   }
+
+  /** With a work id, the body carries it, so qits-workspaces finds the workspace by it (qits-112). */
+  @Test
+  void aTurnNamingItsWorkItemCarriesTheWorkId() throws Exception {
+    String base = startServer();
+
+    against(base).deliver("w-1", "repo-1", "ticket/puce-button", "go");
+
+    assertEquals("w-1", MAPPER.readValue(received.get(0).body(), Map.class).get("workId"));
+  }
 }
