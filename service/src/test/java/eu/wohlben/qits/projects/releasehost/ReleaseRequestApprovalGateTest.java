@@ -51,7 +51,7 @@ import org.junit.jupiter.api.Test;
 public class ReleaseRequestApprovalGateTest {
 
   /** The default of {@code qits.projects.release-requests.unattended-requesters}. */
-  private static final String ROBOT = "qits-platform-maintenance";
+  private static final String ROBOT = "dev-qits-maintenance";
 
   @Inject BuildStatusListener listener;
 

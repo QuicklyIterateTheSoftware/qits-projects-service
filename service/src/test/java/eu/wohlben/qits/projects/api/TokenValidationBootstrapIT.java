@@ -134,12 +134,14 @@ public class TokenValidationBootstrapIT {
       // THE OUTBOUND HALF, and it is what lets the catalogue stories exist at all.
       // HttpGitHostRepositories fails CLOSED: every lifecycle call to qits-githost asks
       // IdpGitHostBearer for a machine token first and throws "No machine bearer is available"
-      // rather than sending one unauthenticated. The shipped default is
-      // quarkus.oidc-client.qits.client-enabled=false, so a packaged process with no idp cannot
-      // create a repository at all — which is correct in production and is why every story that
-      // publishes to the git host needs this named client (service-client-identity-plan.md, C4 — the
-      // one client every outbound call now shares) pointed at the same MockIdp the inbound tenant
-      // validates against. The token itself is a stub on that mock (see
+      // rather than sending one unauthenticated. Outside a deployment carrying the deployer's
+      // idp:client resource, quarkus.oidc-client.qits.client-enabled is true here (NORMAL mode has
+      // no %dev/%test override) but the secret is empty and the derived dev-qits-idp address
+      // answers nothing, so a packaged process with no idp configured still cannot create a
+      // repository at all — which is correct in production and is why every story that publishes to
+      // the git host needs this named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4 —
+      // the one client every outbound call now shares) pointed at the same MockIdp the inbound
+      // tenant validates against. The token itself is a stub on that mock (see
       // {@link #stubTheGitHostTokenEndpoint}); the git-host fixture does not check it, because what
       // is under test here is that this service PRESENTS one.
       overrides.put("quarkus.oidc-client.qits.client-enabled", "true");
@@ -166,7 +168,8 @@ public class TokenValidationBootstrapIT {
    * audience anybody will ask for.
    *
    * <p>The token is a real RS256 token signed by the mock's keypair, with the platform audience
-   * qits-githost now enforces (service-client-identity-plan.md, C1 widened it fleet-wide), so the
+   * qits-githost now enforces (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C1 widened it
+   * fleet-wide), so the
    * answer is the shape a resource server would accept rather than a placeholder string. It carries
    * an hour, which outlives any story run, so exactly <b>one</b> token fetch happens per run — and
    * that fetch is an edge in whichever story first publishes to the git host, which is where it
@@ -253,7 +256,7 @@ public class TokenValidationBootstrapIT {
       category = "authentication")
   @UserStoryDescription(
       """
-      A freshly deployed qits-projects reaches qits-platform-idp for nothing at all while it is
+      A freshly deployed qits-projects reaches qits-idp for nothing at all while it is
       starting: the HTTP listener opens and /projects/q/health/ready answers whether the idp is up
       or not. The signing keys (JWKS) are fetched when the first bearer arrives — looked up by that
       token's own `kid`, discovery stays off and the path is configured — and then cached, so the
@@ -270,7 +273,7 @@ public class TokenValidationBootstrapIT {
     MockIdp idp = MockIdp.attach();
 
     story.note(
-        "qits-projects starts with the OIDC tenant on, beside a reachable qits-platform-idp");
+        "qits-projects starts with the OIDC tenant on, beside a reachable qits-idp");
     given().get("/projects/q/health/ready").then().statusCode(200);
 
     // End (a), the idp side, and it is a NEGATIVE: the packaged process is up and answering its
@@ -281,7 +284,7 @@ public class TokenValidationBootstrapIT {
         idp.recordedRequests().stream().noneMatch(r -> "/idp/jwks".equals(r.path())),
         "the packaged service fetched /idp/jwks before any bearer had arrived");
     story
-        .note("the service is up and ready having asked qits-platform-idp for nothing at all")
+        .note("the service is up and ready having asked qits-idp for nothing at all")
         .as("no-jwks-at-boot");
 
     // End (b), the projects side: those keys are what token validation now runs on. A platform

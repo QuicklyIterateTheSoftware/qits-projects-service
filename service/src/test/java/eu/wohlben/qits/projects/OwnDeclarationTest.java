@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
  * <p><b>Why the file exists.</b> qits-configuration flags a stored entry {@code orphaned} only when
  * the application has a declaration that does not list the key. So {@code
  * .config/qits/configuration.yml} lists every key this service still reads, and the leftovers show
- * up as orphans a person can remove (service-client-identity-plan.md, C10).
+ * up as orphans a person can remove (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C10).
  *
  * <p><b>What this test is NOT.</b> It is not a parser. qits-configuration's {@code DeclarationParser}
  * owns the grammar, and a second copy here would disagree with it the day the grammar grows. The file

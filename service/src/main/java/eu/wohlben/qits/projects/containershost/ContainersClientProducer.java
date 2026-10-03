@@ -29,10 +29,10 @@ import org.jboss.logging.Logger;
  * <p><b>The token is asked for per request and it costs the header, never the call.</b> That is the
  * {@code TokenSource} contract: a source that throws is a source that returned nothing, so a broken
  * or unreachable qits-idp turns into a 401 from qits-containers — reportable, one of the four
- * answers — rather than an exception on the request thread. Empty is the shipped posture:
- * {@code quarkus.oidc-client.qits.client-enabled} is {@code false} and the orchestrator's own gate
- * is off with it, so the owner in the path is trusted on network trust exactly as every sibling hop
- * is.
+ * answers — rather than an exception on the request thread. Empty is the posture under %dev and
+ * %test: {@code quarkus.oidc-client.qits.client-enabled} is {@code false} there and the
+ * orchestrator's own gate is off with it, so the owner in the path is trusted on network trust
+ * exactly as every sibling hop is.
  *
  * <p><b>The wait is bounded.</b> The caller is a REST request thread opening a refinement panel, or
  * the idle sweep's scheduler thread; an untimed {@code await().indefinitely()} — which is what every
@@ -67,9 +67,9 @@ public class ContainersClientProducer {
    * it for anything. Deliberately required — a deployment that deletes the shipped line fails to
    * start instead of quietly dropping the credential off every outbound call.
    *
-   * <p>{@code qits}, the one named client every outbound identity this service has now shares
-   * (service-client-identity-plan.md, C4) — not the unnamed default client, which stays disabled and
-   * exists only so {@code qits}'s own keys have an old env name to fall back to.
+   * <p>{@code qits}, the one named client every outbound identity this service has now shares (epic
+   * qits-540 dossier, 'Plan (as of 2026-09-13)', C4) — not the unnamed default client, which stays
+   * disabled and is neutralised only because the container still carries its old env names.
    */
   @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean tokensEnabled;

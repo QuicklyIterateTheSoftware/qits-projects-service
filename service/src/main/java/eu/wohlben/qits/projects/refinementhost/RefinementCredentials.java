@@ -10,9 +10,9 @@ import java.util.List;
  * fake-able.
  *
  * <p>The sole implementation is {@code idphost/IdpRefinementCredentials}, {@code @DefaultBean} so
- * the suite installs a double and reaches no idp. <b>Absent is the shipped configuration</b>: with
- * {@code quarkus.oidc-client.qits.client-enabled=false} nothing is commissioned and a container's
- * spec is byte for byte the spec it would be without any of this.
+ * the suite installs a double and reaches no idp. <b>Absent is the posture under %dev and %test</b>:
+ * with {@code quarkus.oidc-client.qits.client-enabled=false} nothing is commissioned and a
+ * container's spec is byte for byte the spec it would be without any of this.
  */
 public interface RefinementCredentials {
 
