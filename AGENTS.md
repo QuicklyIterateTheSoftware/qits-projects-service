@@ -2247,9 +2247,13 @@ Where it differs from the agent harness, each difference is the domain line:
   answers that credential — the two names this key replaced,
   `qits.projects.refinement-git-url` and `qits.projects.agent-git-base`, are read by nobody now and
   `agenthost/RetiredContainerGitKeys` WARNs at boot while a deployment still carries either entry.
-  The three registry keys
-  (`refinement-maven-repository-url` / `-npm-registry-url` / `-npm-proxy-url`) ship blank like
-  qits-workspaces' — unset injects nothing.
+  **The three registry keys are gone** (`refinement-maven-repository-url` / `-npm-registry-url` /
+  `-npm-proxy-url`, and the project agent's twin env names `QITS_MAVEN_REPOSITORY_URL` /
+  `npm_config_registry` / `QITS_WORKSPACE_NPM_REGISTRY_URL`) — qits-731: a container no longer takes
+  internal registry URLs from configuration at all. Both factories inject `QITS_DOMAIN` instead, read
+  from `qits.domain` (the same key `PublicCloneUrls` reads, unset shipped and injected only when set);
+  the image derives every registry host from it — `registry.qits.<domain>` and `mirror.qits.<domain>`
+  — and never from a value this service hands it.
 
 The REST surface is under `/projects/api`: `POST /entities/{id}/refinement` (find-or-create keyed by
 entity — adopt-existing is the create's ordinary path, not an error dance; see "The refine action"
