@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.releasehost;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -23,29 +24,35 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>A wrapper repository converges per REPOSITORY, not per branch.</b> Two workspaces of one
- * project releasing on the same night are two asks about one estate, so the second ask joins the
- * request the first opened rather than minting a rival — one calver tag, one build, one
- * approval, one deployment for one night's work.
+ * <b>A repository converges per REPOSITORY, not per branch, whatever its archetype.</b> Two
+ * workspaces releasing one repository on the same night are two asks about one release, so the
+ * second ask joins the request the first opened rather than minting a rival — one calver tag, one
+ * build, one approval, one deployment for one night's work.
  *
  * <p>{@code WrapperEstatePinGateTest} is the template, and the fixture is deliberately its shape: a
- * {@link RepositoryArchetype#PROJECT} wrapper and a plain repository as the <b>control</b>, because
- * the whole claim of this class is that the rule is scoped to the archetype and that everything
- * else keeps the per-branch model untouched. Nothing reaches a git host or qits-maintenance — the
- * wrapper's branches are staged with no submodules at all, so the estate gate finds nothing stale
- * and what holds a request here is only ever the CI gate.
+ * {@link RepositoryArchetype#PROJECT} wrapper and a plain {@link RepositoryArchetype#SERVICE}
+ * repository, because the rule used to be scoped to the wrapper and qits-552 is that the plain one
+ * converges exactly the same way. Nothing reaches a git host or qits-maintenance — the wrapper's
+ * branches are staged with no submodules at all, so the estate gate finds nothing stale and what
+ * holds a request here is only ever the CI gate.
  */
 @QuarkusTest
-public class WrapperReleaseConvergenceTest {
+public class ReleaseConvergenceTest {
 
   @Inject BuildStatusListener listener;
 
@@ -162,28 +169,64 @@ public class WrapperReleaseConvergenceTest {
   }
 
   /**
-   * <b>The control, and the whole reason the rule is written against the archetype.</b> Everything
-   * that is not a project's wrapper keeps the per-branch model: two branches are two asks about two
-   * independent things, and answering the second with the first's request would fold work nobody
-   * asked to ship together.
+   * <b>The rule is not the wrapper's (qits-552).</b> An ordinary repository's second branch joins
+   * the request already open exactly as the wrapper's does: two requests on one repository would be
+   * two tags, two builds and two approvals racing each other through qits-ci for one night's work.
    */
   @Test
-  public void anOrdinaryRepositoryStillOpensOneRequestPerBranch() {
+  public void aSecondBranchOfAnOrdinaryRepositoryJoinsTheOpenRequestToo() {
     String first = create(plainRepoId, "alpha", "a release", "ada");
     String second = create(plainRepoId, "beta", "another release", "grace");
 
-    assertNotEquals(first, second);
-    assertEquals(2, openCountOf(plainRepoId));
-    request(plainRepoId, first).body("sources.name", contains("main", "alpha"));
-    request(plainRepoId, second).body("sources.name", contains("main", "beta"));
+    assertEquals(first, second, "one repository, one open request");
+    assertEquals(1, openCountOf(plainRepoId));
+    request(plainRepoId, first)
+        .body("sources.name", contains("main", "alpha", "beta"))
+        .body("sources.find { it.name == 'beta' }.addedBy", equalTo("grace"));
+    assertEquals(
+        List.of("refs/heads/main", "refs/heads/alpha", "refs/heads/beta"),
+        merger.foldsOf("refs/heads/release/" + first).get(1).sources(),
+        "the joiner is content, so the request is folded again with it in");
+  }
+
+  /**
+   * <b>Two asks arriving at once still meet on one request.</b> The repository's row is the lock
+   * they serialise on, so the second reads the request the first minted and joins it, rather than
+   * both reading "nothing open" and minting one each. A latch releases both asks through the real
+   * door together so they genuinely overlap; without the lock this mints two requests most runs.
+   */
+  @Test
+  public void twoConcurrentAsksOnOneRepositoryMintOneRequest() throws Exception {
+    CountDownLatch go = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      List<Future<String>> asks = new ArrayList<>();
+      for (String branch : List.of("alpha", "beta")) {
+        asks.add(
+            pool.submit(
+                () -> {
+                  go.await();
+                  return create(plainRepoId, branch, "at once", branch);
+                }));
+      }
+      go.countDown();
+      String first = asks.get(0).get(30, TimeUnit.SECONDS);
+      String second = asks.get(1).get(30, TimeUnit.SECONDS);
+
+      assertEquals(first, second, "the second ask joined the request the first minted");
+      assertEquals(1, openCountOf(plainRepoId));
+      request(plainRepoId, first).body("sources.name", containsInAnyOrder("main", "alpha", "beta"));
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   /**
    * <b>Re-asking for a branch already on the shared request is still the idempotent converge.</b> It
-   * answers the same request and adds nothing to it — the per-branch rule surviving inside the
-   * per-repository one, which is what makes a workspace safe to retry its own ask.
+   * answers the same request and adds nothing to it — the per-branch converge surviving inside
+   * the per-repository one, which is what makes a workspace safe to retry its own ask.
    *
-   * <p>It does still <em>ask</em> for the fold, exactly as the per-branch converge always has, and
+   * <p>It does still <em>ask</em> for the fold, exactly as the per-branch converge always did, and
    * that is free rather than an oversight: the same heads folded onto the same target is {@code
    * unchanged} at a real git host, so no ref moves and nothing is re-armed. The recorded merger
    * cannot model that — it mints a fresh sha every time — so what is asserted here is the source
@@ -227,17 +270,38 @@ public class WrapperReleaseConvergenceTest {
   }
 
   /**
-   * The per-branch converge arm is untouched by all of this: on an ordinary repository the caller
-   * <b>is</b> the whole of the request's ask, so re-asking restates its summary. That is the
-   * behaviour that existed before this rule and the one the rule deliberately leaves alone.
+   * <b>A caller who is the whole of a request's ask restates its words.</b> When the re-asked branch
+   * is the request's only asked-for source (the implied {@code main} aside), the caller's new
+   * summary and requester become the request's — which is what lets a maintenance bump re-ask its
+   * own request with a new "N dependencies" summary.
    */
   @Test
-  public void anOrdinaryRepositorysReAskStillRestatesTheSummary() {
+  public void aSoleSourcesReAskRestatesTheSummary() {
     String id = create(plainRepoId, "alpha", "first words", "ada");
 
-    assertEquals(id, create(plainRepoId, "alpha", "better words", "ada"));
+    assertEquals(id, create(plainRepoId, "alpha", "better words", "grace"));
 
-    request(plainRepoId, id).body("summary", equalTo("better words"));
+    request(plainRepoId, id)
+        .body("summary", equalTo("better words"))
+        .body("requester", equalTo("grace"));
+  }
+
+  /**
+   * <b>On a shared request a re-ask does not restate the words</b>, even from the branch that opened
+   * it: other branches were asked onto it on the strength of what it said, and the approval gate
+   * shows that sentence to a person approving all of them.
+   */
+  @Test
+  public void aReAskOnASharedRequestKeepsTheOpenersWords() {
+    String id = create(plainRepoId, "alpha", "first words", "ada");
+    create(plainRepoId, "beta", "grace's words", "grace");
+
+    assertEquals(id, create(plainRepoId, "alpha", "ada's second thoughts", "ada"));
+    assertEquals(id, create(plainRepoId, "beta", "grace insists", "grace"));
+
+    request(plainRepoId, id)
+        .body("summary", equalTo("first words"))
+        .body("requester", equalTo("ada"));
   }
 
   /**

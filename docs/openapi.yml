@@ -6731,19 +6731,18 @@ paths:
         - qits:agent
     post:
       summary: Ask for a branch to be released once its builds are green
-      description: "Creates (or converges on) the open release request the branch\
-        \ participates in. The request's sources are main plus the named branch, plus\
-        \ every released tag of the repository not yet merged to main; they are folded\
-        \ onto release/<id> and it is that MERGE the gates evaluate — mergedSha on\
-        \ the answer. A branch that already participates in an open request answers\
-        \ that request rather than opening a second. On the project's WRAPPER repository\
-        \ convergence is per repository rather than per branch: a branch nothing has\
-        \ asked about JOINS the estate's one open request as a further source, so\
-        \ the answer may carry an id you did not create, sources you did not name\
-        \ and somebody else's summary — the words of the ask that opened the request\
-        \ stand, and yours are recorded on your own source row. Poll until RELEASED,\
-        \ REJECTED, CONFLICTED or FAILED; detail says why, and conflict says what\
-        \ to resolve."
+      description: "Creates (or converges on) the repository's one open release request.\
+        \ A fresh request's sources are main plus the named branch, plus every released\
+        \ tag of the repository not yet merged to main; they are folded onto release/<id>\
+        \ and it is that MERGE the gates evaluate — mergedSha on the answer. A repository\
+        \ has at most one unreleased request, whatever its archetype: a branch that\
+        \ already participates answers that request, and a branch nothing has asked\
+        \ about JOINS it as a further source, so the answer may carry an id you did\
+        \ not create, sources you did not name and somebody else's summary. Only when\
+        \ your branch is the request's sole asked-for source do your summary and requester\
+        \ replace the request's; otherwise the words of the ask that opened it stand,\
+        \ and yours are recorded on your own source row. Poll until RELEASED, REJECTED,\
+        \ CONFLICTED or FAILED; detail says why, and conflict says what to resolve."
       parameters:
       - name: repoId
         in: path

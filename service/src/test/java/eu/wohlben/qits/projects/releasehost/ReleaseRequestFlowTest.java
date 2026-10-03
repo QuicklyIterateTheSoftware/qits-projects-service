@@ -267,6 +267,13 @@ public class ReleaseRequestFlowTest {
         .body("request.priority", equalTo("MEDIUM"))
         .body("request.sources.find { it.name == 'main' }.priority", equalTo("MEDIUM"))
         .body("request.sources.find { it.name == 'work' }.priority", equalTo("MEDIUM"));
+    // Out of the way, so the next ask is a create of its own rather than a join of this one.
+    given()
+        .contentType(ContentType.JSON)
+        .body("{}")
+        .post(base() + "/" + plain + "/withdraw")
+        .then()
+        .statusCode(200);
 
     createAt("work-urgent", "HIGH")
         .statusCode(200)
@@ -746,8 +753,11 @@ public class ReleaseRequestFlowTest {
   @Test
   public void aPushToMainRefoldsEveryOpenRequestOfTheRepositoryOnItsOwnBranch() {
     activeBuilds.answer(Optional.of(1));
-    String first = create("work-a");
-    String second = create("work-b");
+    // Two open requests on one repository: no longer something an ask makes (qits-552), but a
+    // repository can still carry them from before, and each must keep folding on its own.
+    List<String> both = LegacyOpenRequests.openTwo(() -> create("work-a"), () -> create("work-b"));
+    String first = both.get(0);
+    String second = both.get(1);
     merger.reset();
 
     headMoved("main", sha());
