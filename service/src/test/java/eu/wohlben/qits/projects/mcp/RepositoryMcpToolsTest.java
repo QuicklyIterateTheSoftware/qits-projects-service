@@ -487,6 +487,8 @@ public class RepositoryMcpToolsTest {
                       // any lifecycle here, and freezing a draft is still a human act in the UI.
                       "transition_entities",
                       "list_entities",
+                      // ... and the one entity in full: list_entities answers no description.
+                      "get_entity",
                       // CampaignMcpTools (qits-414) — building a campaign's membership and order.
                       // No start tool and no approve tool: both are qits:admin presses, and an MCP
                       // tool would be the "dispatch without a person" door the epic refuses.

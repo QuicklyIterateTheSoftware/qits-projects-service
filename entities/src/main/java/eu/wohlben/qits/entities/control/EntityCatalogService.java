@@ -64,7 +64,17 @@ public class EntityCatalogService {
    * is the thing the merged model exists not to do.
    */
   public List<TransitionedEntity> listByProject(String projectId) {
-    return reads.hold("the entities of a project", () -> tree(projectId));
+    return reads.hold("the entities of a project", () -> tree(entities.listByProject(projectId)));
+  }
+
+  /**
+   * {@link #listByProject} with {@code description} null on every entry: the column is not read.
+   * For a list that shows no description; a detail view reads the entity on its own.
+   */
+  public List<TransitionedEntity> listByProjectWithoutDescription(String projectId) {
+    return reads.hold(
+        "the entities of a project",
+        () -> tree(entities.listByProjectWithoutDescription(projectId)));
   }
 
   /**
@@ -90,8 +100,7 @@ public class EntityCatalogService {
     return answered;
   }
 
-  private List<TransitionedEntity> tree(String projectId) {
-    List<WorkEntity> rows = entities.listByProject(projectId);
+  private List<TransitionedEntity> tree(List<WorkEntity> rows) {
     Map<String, EntityMembership> edges = edgesOf(rows);
 
     Map<String, List<WorkEntity>> children = new LinkedHashMap<>();

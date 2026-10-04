@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.EntityCatalogService;
+import eu.wohlben.qits.entities.control.EntitySummary;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
@@ -44,8 +45,12 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * </ul>
  *
  * <p>{@code {projectId}} is the project's id or its slug ({@code qits}). The answer is {@code
- * {"entities": [...]}}, each a qualified {@link TransitionedEntity} — one slug lookup for the page —
- * with {@code blocked} on the tickets. A read: {@code qits:agent}, unbound.
+ * {"entities": [...]}}, each a qualified {@link EntitySummary} — one slug lookup for the page — with
+ * {@code blocked} on the tickets. A read: {@code qits:agent}, unbound.
+ *
+ * <p><b>A list row carries no description.</b> The body is long-form Markdown and only a detail view
+ * shows it, so it is read one entity at a time through {@code GET /projects/api/entities/{id}}. The
+ * list does not even read the column ({@link EntityCatalogService#listByProjectWithoutDescription}).
  */
 @Path("/projects/{projectId}/entities")
 @Produces(MediaType.APPLICATION_JSON)
@@ -59,7 +64,7 @@ public class ProjectEntitiesController {
   @Inject QualifiedEntityIds qualifiedIds;
 
   @Schema(name = "EntityList", description = "A project's entities, in tree order.")
-  public record EntityList(List<TransitionedEntity> entities) {}
+  public record EntityList(List<EntitySummary> entities) {}
 
   @GET
   @Operation(
@@ -89,12 +94,13 @@ public class ProjectEntitiesController {
     String project = ids.resolveProject(projectId).id;
     String parentId = blank(parent) ? null : ids.resolve(parent).id;
     List<TransitionedEntity> entities =
-        catalog.listByProject(project).stream()
+        catalog.listByProjectWithoutDescription(project).stream()
             .filter(entity -> kind == null || entity.archetype() == kind)
             .filter(entity -> word == null || word.equals(entity.status()))
             .filter(entity -> parentId == null || parentId.equals(entity.parent()))
             .toList();
-    return new EntityList(qualifiedIds.qualifyEntities(entities));
+    return new EntityList(
+        qualifiedIds.qualifyEntities(entities).stream().map(EntitySummary::of).toList());
   }
 
   private static Archetype archetype(String word) {

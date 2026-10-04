@@ -334,6 +334,38 @@ public class EntityMcpToolsTest {
         entity(projectId, epicId).path("parent").isNull(), "the epic it left is still a root");
   }
 
+  // --- The description is a detail read ---------------------------------------
+
+  /** list_entities leaves the description out; get_entity answers it, by id or qualified id. */
+  @Test
+  public void theDescriptionIsReadOneEntityAtATime() {
+    String projectId = createProject("Detail read");
+    String epicId = proposeEpic(projectId, "Long form");
+
+    JsonNode listed = entity(projectId, epicId);
+    assertFalse(listed.has("description"), listed.toString());
+
+    String qualifiedId = listed.path("qualifiedId").asText();
+    for (String named : java.util.List.of(epicId, qualifiedId)) {
+      call(
+          projectId,
+          "get_entity",
+          Map.of("entityId", named),
+          response -> {
+            assertFalse(response.isError(), text(response));
+            assertEquals("drafted by the agent", json(response).path("description").asText());
+            assertEquals(qualifiedId, json(response).path("qualifiedId").asText());
+          });
+    }
+
+    String otherProject = createProject("Elsewhere");
+    call(
+        otherProject,
+        "get_entity",
+        Map.of("entityId", epicId),
+        response -> assertTrue(response.isError(), text(response)));
+  }
+
   // --- A plain edit ---------------------------------------------------------
 
   /** The ordinary write expressed here is a map of one, and the description says so out loud. */

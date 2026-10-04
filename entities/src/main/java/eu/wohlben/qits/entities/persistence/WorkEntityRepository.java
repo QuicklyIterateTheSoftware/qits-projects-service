@@ -1,10 +1,12 @@
 package eu.wohlben.qits.entities.persistence;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +39,52 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
   /** Every row of a project, whatever its archetype or depth. */
   public List<WorkEntity> listByProject(String projectId) {
     return find("projectId", OLDEST_FIRST, projectId).list();
+  }
+
+  /**
+   * <b>{@link #listByProject} without the description column</b>, which is long-form Markdown and
+   * only a detail view shows. The rows are built here, not loaded: they are <b>not managed</b>, so
+   * never persist or merge one. {@code description}, {@code causationId} and {@code
+   * dispatchContinues} are left at their defaults.
+   */
+  public List<WorkEntity> listByProjectWithoutDescription(String projectId) {
+    return getEntityManager()
+        .createQuery(
+            "select e.id, e.projectId, e.archetype, e.number, e.title, e.slug, e.slugScope,"
+                + " e.status, e.blocked, e.ticketType, e.impetus, e.assignee, e.createdBy,"
+                + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
+                + " e.dependsOnEntityId, e.createdAt, e.updatedAt"
+                + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
+            Object[].class)
+        .setParameter(1, projectId)
+        .getResultStream()
+        .map(WorkEntityRepository::withoutDescription)
+        .toList();
+  }
+
+  private static WorkEntity withoutDescription(Object[] c) {
+    WorkEntity row = new WorkEntity();
+    row.id = (String) c[0];
+    row.projectId = (String) c[1];
+    row.archetype = (Archetype) c[2];
+    row.number = (Long) c[3];
+    row.title = (String) c[4];
+    row.slug = (String) c[5];
+    row.slugScope = (String) c[6];
+    row.status = (String) c[7];
+    row.blocked = (Boolean) c[8];
+    row.ticketType = (TicketType) c[9];
+    row.impetus = (String) c[10];
+    row.assignee = (String) c[11];
+    row.createdBy = (String) c[12];
+    row.supersededByEntityId = (String) c[13];
+    row.repositoryId = (String) c[14];
+    row.implementedAt = (Instant) c[15];
+    row.implementingAt = (Instant) c[16];
+    row.dependsOnEntityId = (String) c[17];
+    row.createdAt = (Instant) c[18];
+    row.updatedAt = (Instant) c[19];
+    return row;
   }
 
   /**

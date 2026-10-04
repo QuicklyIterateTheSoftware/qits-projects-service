@@ -1454,7 +1454,7 @@ components:
         entities:
           type: array
           items:
-            $ref: "#/components/schemas/TransitionedEntity"
+            $ref: "#/components/schemas/EntitySummary"
     EntityPatch:
       type: object
       description: "A JSON merge patch (RFC 7396) of one entity. An absent property\
@@ -1547,6 +1547,61 @@ components:
             \ DONE or DROPPED — one the entity's current status may move to: a neighbour\
             \ on the walk, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED\
             \ (the skips). A campaign never moves to IMPLEMENTING or VERIFYING."
+    EntitySummary:
+      type: object
+      properties:
+        id:
+          type: string
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+        projectId:
+          type: string
+        number:
+          type: integer
+          format: int64
+        qualifiedId:
+          type: string
+        title:
+          type: string
+        slug:
+          type: string
+        slugScope:
+          type: string
+        status:
+          type: string
+        statusBefore:
+          type: string
+        ticketType:
+          $ref: "#/components/schemas/TicketType"
+        impetus:
+          type: string
+        assignee:
+          type: string
+        createdBy:
+          type: string
+        supersededBy:
+          type: string
+        repositoryId:
+          type: string
+        implementedAt:
+          $ref: "#/components/schemas/Instant"
+        implementingAt:
+          $ref: "#/components/schemas/Instant"
+        dependsOn:
+          type: string
+        parent:
+          type: string
+        position:
+          type: integer
+          format: int32
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        updatedAt:
+          $ref: "#/components/schemas/Instant"
+        changedBy:
+          type: string
+        blocked:
+          type: boolean
     EntityTransition:
       type: object
       properties:
@@ -8191,4 +8246,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1003.155934
+  version: 2026.1003.182401

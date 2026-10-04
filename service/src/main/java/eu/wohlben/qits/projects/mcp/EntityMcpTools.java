@@ -1,12 +1,15 @@
 package eu.wohlben.qits.projects.mcp;
 
 import eu.wohlben.qits.entities.control.EntityCatalogService;
+import eu.wohlben.qits.entities.control.EntitySummary;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
+import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -87,6 +90,8 @@ public class EntityMcpTools {
 
   @Inject SecurityIdentity identity;
 
+  @Inject EntityIdResolver ids;
+
   // --- The read side --------------------------------------------------------
 
   @McpServer("repository")
@@ -101,10 +106,11 @@ public class EntityMcpTools {
               + " cannot state a correct one without seeing the current archetype and the current"
               + " membership — which get_epic, get_ticket, list_epics and list_tickets do not"
               + " report. Use those for an epic's or a ticket's ordinary detail; use this one before"
-              + " you move, promote, demote or re-parent anything. The fields it answers are the"
-              + " same ones transition_entities takes, so an entry you read here is an entry you can"
-              + " restate there.")
-  public List<TransitionedEntity> listEntities(
+              + " you move, promote, demote or re-parent anything. It answers no description:"
+              + " read that with get_entity, one entity at a time. Every other field it answers is"
+              + " one transition_entities takes, so an entry you restate there is this entry plus"
+              + " its description from get_entity.")
+  public List<EntitySummary> listEntities(
       @ToolArg(
               required = false,
               description =
@@ -112,13 +118,43 @@ public class EntityMcpTools {
                       + " whole tree, which is what you want before a restructuring — the entries"
                       + " you are not moving are the ones that say what is already taken.")
           String archetype) {
-    List<TransitionedEntity> all = catalog.listByProject(scope.requireProjectId());
+    List<TransitionedEntity> all =
+        catalog.listByProjectWithoutDescription(scope.requireProjectId());
     if (archetype != null && !archetype.isBlank()) {
       String wanted = archetype.trim().toUpperCase(java.util.Locale.ROOT);
       all = all.stream().filter(entity -> entity.archetype().name().equals(wanted)).toList();
     }
     // Filtered first, then qualified: one slug lookup for whatever survives, never one per entry.
-    return qualifiedIds.qualifyEntities(all);
+    return qualifiedIds.qualifyEntities(all).stream().map(EntitySummary::of).toList();
+  }
+
+  @McpServer("repository")
+  @Tool(
+      name = "get_entity",
+      description =
+          "Read one entity of this project in full, description included: the same fields"
+              + " list_entities answers, plus the description it leaves out. Read this for every"
+              + " entity you restate in transition_entities, because an omitted description is"
+              + " cleared there.")
+  public TransitionedEntity getEntity(
+      @ToolArg(description = "the entity's UUID or its qualified id (<project-slug>-<n>)")
+          String entityId) {
+    String id = inProject(entityId);
+    return qualifiedIds.qualify(catalog.byIds(List.of(id)).get(id));
+  }
+
+  /** The entity's UUID, or not found when it names nothing in this project. */
+  private String inProject(String entityId) {
+    WorkEntity row;
+    try {
+      row = ids.resolve(entityId);
+    } catch (NotFoundException e) {
+      throw new NotFoundException("Entity not found in this project: " + entityId);
+    }
+    if (!scope.requireProjectId().equals(row.projectId)) {
+      throw new NotFoundException("Entity not found in this project: " + entityId);
+    }
+    return row.id;
   }
 
   // --- The write ------------------------------------------------------------
@@ -155,7 +191,8 @@ public class EntityMcpTools {
               + " together and written in one transaction, so a move that has no legal order —"
               + " promoting a feature to an epic while its tasks become features under it — is one"
               + " call here and is impossible as a sequence of separate edits. Read list_entities"
-              + " first; the entries it answers are the entries this takes.\n"
+              + " first for the tree, and get_entity for each entity you restate: list_entities"
+              + " answers no description.\n"
               + "\n"
               + "THE VALUE IS THE ENTITY IN FULL, NOT A DIFF. Every property you want the entity to"
               + " have afterwards must be in the entry, including the ones you are not changing."
