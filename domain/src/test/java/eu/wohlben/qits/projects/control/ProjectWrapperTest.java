@@ -382,14 +382,12 @@ public class ProjectWrapperTest {
   // ------------------------------------------------- publish push options (⚖3)
 
   /**
-   * projects-volume-decoupling-plan.md §2.4, §3.3, ⚖3: the skeleton carries no pipeline config
-   * (qits-ci discards the run it fires for want of one), so its publish push carries no {@code
-   * qits.no-ci} — unlike the import path's ({@link
-   * RepositoryServiceTest#cloneRepositoryPublishesTheImportWithNoCiSuppressed}), which can be
-   * publishing an upstream's real, possibly CI-configured history.
+   * The skeleton's publish push is an ordinary push and carries no push options at all — the same
+   * as the import path's ({@link
+   * RepositoryServiceTest#cloneRepositoryPublishesTheImportAsAnOrdinaryPush}).
    */
   @Test
-  public void theSkeletonPushCarriesNoCiSuppression() {
+  public void theSkeletonPushCarriesNoPushOptions() {
     var project = projectService.create("No Suppression", "no-suppression", null);
     var wrapper = wrapperOf(project);
 

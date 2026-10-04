@@ -11,8 +11,9 @@ import java.util.List;
  * of that: a release is a <b>tag</b>, {@code main} is finalized after the deployment, and the
  * content being released is a fold that exists only on the git host. So the whole of what an
  * implementation does now is: stamp a version, rewrite the manifests at the fold, commit them onto
- * the backing branch, tag that commit, delete the branches the release consumed, and announce it.
- * {@code qits.projects.release-requests.workspaces-url} went with the door.
+ * the backing branch, tag that commit and announce it — and, as a second call made once the request
+ * is RELEASED ({@link #deleteConsumedBranches}), delete the branches the release consumed. {@code
+ * qits.projects.release-requests.workspaces-url} went with the door.
  *
  * <p><b>The ask says nothing about archetypes any more.</b> Until the pins moved into the fold, the
  * WRAPPER's release carried a catalog of its project's other repositories with it, so that the
@@ -46,8 +47,8 @@ public interface ReleaseExecutor {
    *     bump lands on top of it.
    * @param summary what the requester said this release is, for the commit and the tag message
    * @param requester who asked, or null
-   * @param namedSources the request's named source branches, {@code main} included — deleted on
-   *     success, <b>except</b> {@link #defaultBranch}, which is never deleted by anything
+   * @param namedSources the request's named source branches, {@code main} included — deleted once
+   *     released, <b>except</b> {@link #defaultBranch}, which is never deleted by anything
    * @param defaultBranch the repository's default branch, so the exclusion above is a fact rather
    *     than a guess at the string {@code "main"}
    * @param priority the request's effective priority — the max over {@link #namedSources}' rows, as
@@ -71,6 +72,23 @@ public interface ReleaseExecutor {
 
   /** Release the fold. Never throws; a failure is an {@link Outcome}. */
   Outcome release(Release release);
+
+  /**
+   * Delete the branches a landed release consumed — its named sources except {@link
+   * Release#defaultBranch}, and its backing branch. Best effort: it answers nothing and never
+   * throws, because the release already happened and a branch that could not be deleted is a log
+   * line, not a failure.
+   *
+   * <p><b>Called only once the request is RELEASED, and that ordering is the point.</b> The git host
+   * announces every deletion as {@code SCMDeleteBranch}, and the head listener drops a deleted
+   * branch from every <em>unreleased</em> request naming it — withdrawing one left with nothing but
+   * {@code main}, re-folding the rest. Deleted while the request was still READY, its own sources
+   * would come back as exactly that news about it: a release withdrawn or re-folded by its own
+   * deletions (qits-886). Once the row says RELEASED it is outside every read that event triggers,
+   * by the same state rule that keeps a push from re-arming a cut tag, so no claim or marker is
+   * needed to tell the two apart.
+   */
+  void deleteConsumedBranches(Release release);
 
   /**
    * What happened: a version when it released, otherwise why it did not — and whether retrying the

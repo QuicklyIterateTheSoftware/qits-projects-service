@@ -44,7 +44,7 @@ import java.util.regex.Pattern;
  * <defaultBranch>}, plus {@code http.receivepack} (off by default — a push over dumb-looking HTTP
  * needs it explicitly) and {@code receive.advertisePushOptions} (JGit advertises it in production;
  * a local {@code receive-pack} does not by default) so a real push — including one carrying {@code -o
- * qits.no-ci}, the imported-history path — is accepted the way it is in production.
+ * qits.token=…}, the protected-branch path — is accepted the way it is in production.
  *
  * <p><b>Every answered request is appended to {@link #requestLog()}</b>, one {@code METHOD URI
  * STATUS} line each. That file is the only place the outgoing half of a userflow's network diagram

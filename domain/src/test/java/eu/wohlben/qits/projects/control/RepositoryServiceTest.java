@@ -181,18 +181,20 @@ public class RepositoryServiceTest {
   // home in qits-workspace-daemon.
 
   /**
-   * projects-volume-decoupling-plan.md §2.4, §3.3 step 6, ⚖3: importing an upstream's whole history
-   * publishes it in one push carrying {@code -o qits.no-ci}, so a pipeline config already committed
-   * upstream does not fire one CI run per branch against history that predates the platform.
+   * Importing an upstream's whole history publishes it in one <b>ordinary</b> push (qits-886): CI
+   * is gated once, by a release request, and nothing builds off a push, so there is no build to
+   * suppress and no option asking for it. At most the host token rides along.
    */
   @Test
-  public void cloneRepositoryPublishesTheImportWithNoCiSuppressed() throws Exception {
-    var project = projectService.create("No CI Import", null);
+  public void cloneRepositoryPublishesTheImportAsAnOrdinaryPush() throws Exception {
+    var project = projectService.create("Ordinary Import", null);
     var repo = repositoryService.cloneRepository(GitFixtures.path("testing-repo.git"), null, project);
 
     assertTrue(
-        fakeGitHostRepositories.lastPushOptions(repo.id).contains("qits.no-ci"),
-        "the import path's publish push must carry -o qits.no-ci");
+        fakeGitHostRepositories.lastPushOptions(repo.id).stream()
+            .allMatch(option -> option.startsWith("qits.token=")),
+        "the import path's publish push carries no option but the host token: "
+            + fakeGitHostRepositories.lastPushOptions(repo.id));
   }
 
   @Test

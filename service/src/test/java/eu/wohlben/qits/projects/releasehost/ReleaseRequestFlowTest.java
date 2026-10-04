@@ -309,6 +309,30 @@ public class ReleaseRequestFlowTest {
   }
 
   /**
+   * qits-886: a {@code release/} branch is another request's backing branch, folded into and
+   * announced on every fold — never a source. Refused on the create and on the join, and the
+   * refusal opens and adds nothing.
+   */
+  @Test
+  public void aBackingBranchIsRefusedAsASource() {
+    activeBuilds.answer(Optional.of(1));
+    createAt("release/some-other-request", "HIGH")
+        .statusCode(400)
+        .body("message", containsString("release/some-other-request"));
+    assertEquals(List.of(), idsAt("?state=all"));
+
+    String id = create("work");
+    given()
+        .contentType(ContentType.JSON)
+        .body("{\"branch\":\"release/" + id + "\"}")
+        .post(base() + "/" + id + "/sources")
+        .then()
+        .statusCode(400)
+        .body("message", containsString("backing branch"));
+    given().get(base() + "/" + id).then().body("request.sources.size()", equalTo(2));
+  }
+
+  /**
    * <b>What the release is asked for with is the priority the sources have at RELEASE time.</b> A
    * request can wait a whole pipeline on its gate, so the value is read live rather than carried
    * from the fold — and the escalation below is made through the route that does not re-fold, which

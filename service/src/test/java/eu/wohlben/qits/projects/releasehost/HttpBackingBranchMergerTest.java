@@ -80,6 +80,11 @@ class HttpBackingBranchMergerTest {
     return merger;
   }
 
+  private static final String REPO = "repo-1";
+  private static final String PROJECT = "project-1";
+  private static final String NAME = "the-repo";
+  private static final String TARGET = "refs/heads/release/r1";
+
   private static final List<String> SOURCES =
       List.of("refs/heads/main", "refs/heads/work", "refs/tags/2026.903.1");
 
@@ -87,7 +92,7 @@ class HttpBackingBranchMergerTest {
   void aFoldWithNothingToDecideSendsNoResolutionsKeyAtAll() throws Exception {
     String base = startServer();
 
-    against(base).merge("repo-1", "refs/heads/release/r1", SOURCES, "a fold");
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
 
     JsonNode body = MAPPER.readTree(received.get(0).body());
     assertEquals("POST", received.get(0).method());
@@ -100,11 +105,31 @@ class HttpBackingBranchMergerTest {
     assertEquals(3, body.get("sources").size());
   }
 
+  /**
+   * qits-886: the git host announces the fold as an {@code SCMPublishCommit} and stores no names, so
+   * the address pair travels in the body — and a repository with no name sends neither key rather
+   * than a null the far side would have to read.
+   */
+  @Test
+  void theAddressPairTravelsInTheBodyAndIsOmittedWhereUnknown() throws Exception {
+    String base = startServer();
+
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
+    against(base).merge(REPO, null, null, TARGET, SOURCES, "a fold");
+
+    JsonNode named = MAPPER.readTree(received.get(0).body());
+    assertEquals("project-1", named.get("projectId").asText());
+    assertEquals("the-repo", named.get("repoName").asText());
+    JsonNode unnamed = MAPPER.readTree(received.get(1).body());
+    assertFalse(unnamed.has("projectId"), unnamed.toString());
+    assertFalse(unnamed.has("repoName"), unnamed.toString());
+  }
+
   @Test
   void anEmptyResolutionListIsTheSameRequestAsNoneAtAll() throws Exception {
     String base = startServer();
 
-    against(base).merge("repo-1", "refs/heads/release/r1", SOURCES, "a fold", List.of());
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of());
 
     assertFalse(MAPPER.readTree(received.get(0).body()).has("resolutions"));
   }
@@ -116,6 +141,8 @@ class HttpBackingBranchMergerTest {
     against(base)
         .merge(
             "repo-1",
+            "project-1",
+            "the-repo",
             "refs/heads/release/r1",
             SOURCES,
             "a fold",
@@ -140,7 +167,7 @@ class HttpBackingBranchMergerTest {
             + "\"resolved\":[\"components/member-a/member-a\"]}");
 
     BackingBranchMerger.Outcome outcome =
-        against(base).merge("repo-1", "refs/heads/release/r1", SOURCES, "a fold", List.of());
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of());
 
     assertEquals(BackingBranchMerger.Result.MERGED, outcome.result());
     assertEquals(List.of("components/member-a/member-a"), outcome.resolved());
@@ -151,7 +178,7 @@ class HttpBackingBranchMergerTest {
     String base = startServer();
 
     BackingBranchMerger.Outcome outcome =
-        against(base).merge("repo-1", "refs/heads/release/r1", SOURCES, "a fold");
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
 
     assertTrue(outcome.folded());
     assertEquals(List.of(), outcome.resolved());
@@ -168,7 +195,7 @@ class HttpBackingBranchMergerTest {
             + "\"base\":\"base-sha\",\"ours\":\"ours-sha\",\"theirs\":\"theirs-sha\"}]}");
 
     BackingBranchMerger.Outcome outcome =
-        against(base).merge("repo-1", "refs/heads/release/r1", SOURCES, "a fold", List.of());
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of());
 
     assertEquals(BackingBranchMerger.Result.CONFLICT, outcome.result());
     BackingBranchMerger.Conflict conflict = outcome.conflicts().get(0);
@@ -191,7 +218,7 @@ class HttpBackingBranchMergerTest {
 
     BackingBranchMerger.Conflict conflict =
         against(base)
-            .merge("repo-1", "refs/heads/release/r1", SOURCES, "a fold", List.of())
+            .merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of())
             .conflicts()
             .get(0);
 
@@ -214,7 +241,7 @@ class HttpBackingBranchMergerTest {
 
     BackingBranchMerger.Conflict conflict =
         against(base)
-            .merge("repo-1", "refs/heads/release/r1", SOURCES, "a fold", List.of())
+            .merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of())
             .conflicts()
             .get(0);
 

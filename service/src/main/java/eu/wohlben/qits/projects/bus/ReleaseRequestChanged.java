@@ -11,9 +11,10 @@ import java.util.UUID;
  *
  * <p>The <b>second</b> event this service publishes, and the one the release flow turns on. A
  * request is an octopus merge of N sources folded onto {@code release/<id>} — a branch nobody
- * pushed, written by qits-githost's merge primitive, which deliberately fires no {@code
- * post-receive} and therefore publishes no {@code SCMPublishCommit}. So without this event the fold
- * would exist and <b>nothing would build it</b>. qits-ci is the motivating consumer: it reads
+ * pushed, written by qits-githost's merge primitive. The git host announces that write as an {@code
+ * SCMPublishCommit} like any ref move, but a ref and a sha are all it can say: it knows no request,
+ * no sources and no priority. So without this event the fold would exist and <b>nothing would build
+ * it</b>. qits-ci is the motivating consumer: it reads
  * {@code repoId} and {@code mergedSha} and runs the repository's pipeline against the fold, whose
  * verdict comes back here as the request's build gate.
  *

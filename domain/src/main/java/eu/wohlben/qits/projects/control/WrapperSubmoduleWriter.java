@@ -39,10 +39,10 @@ import org.jboss.logging.Logger;
  * clone that tried to materialize it. Both callers publish the child first.
  *
  * <p>The push carries the host token, because the wrapper's default branch is protected like every
- * other, and it carries no {@code qits.no-ci}: a wrapper commit is a real change to the project and
- * fires CI exactly like a person's push would. Two concurrent creates race for the same branch tip,
- * so a lost fast-forward is retried from a fresh read — three times, which is a race that has to
- * happen three times in a row to fail.
+ * other, and is otherwise an ordinary push: a wrapper commit is a real change to the project and is
+ * announced exactly like a person's push would be. Two concurrent creates race for the same branch
+ * tip, so a lost fast-forward is retried from a fresh read — three times, which is a race that has
+ * to happen three times in a row to fail.
  */
 @ApplicationScoped
 public class WrapperSubmoduleWriter {

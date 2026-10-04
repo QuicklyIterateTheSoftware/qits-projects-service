@@ -13,7 +13,9 @@ import java.util.List;
  *
  * <p><b>It speaks refs and nothing else.</b> The git host owns no vocabulary about releases and this
  * port keeps it that way: no version, no request id, no notion of what {@code release/<id>} is for.
- * What travels is a target ref, source refs in the order they should become parents, and a message.
+ * What travels is a target ref, source refs in the order they should become parents, and a message
+ * — plus the repository's public address pair, which is no release vocabulary either: it is what the
+ * git host needs to announce the fold like any other ref move.
  */
 public interface BackingBranchMerger {
 
@@ -21,8 +23,14 @@ public interface BackingBranchMerger {
    * Fold {@code sources} into {@code target}, resolving nothing — the shape every caller had before
    * directives existed, kept because most folds have nothing to direct.
    */
-  default Outcome merge(String repoId, String target, List<String> sources, String message) {
-    return merge(repoId, target, sources, message, List.of());
+  default Outcome merge(
+      String repoId,
+      String projectId,
+      String repoName,
+      String target,
+      List<String> sources,
+      String message) {
+    return merge(repoId, projectId, repoName, target, sources, message, List.of());
   }
 
   /**
@@ -41,6 +49,11 @@ public interface BackingBranchMerger {
    * tell the difference.
    *
    * @param repoId the repository's storage id — the git host's own key
+   * @param projectId the project the repository belongs to, or null. With {@code repoName} it is the
+   *     public address pair the git host stamps on the {@code SCMPublishCommit} it announces for the
+   *     move — the git host stores no names, so a door write knows them only if it is told, exactly
+   *     as a push knows them only from its URL. Addressing still rides {@code repoId} alone.
+   * @param repoName the repository's registered name, or null
    * @param target the full backing-branch ref, {@code refs/heads/release/<id>}
    * @param sources fully qualified refs ({@code refs/heads/main}, {@code refs/tags/2026.903.1}), in
    *     the order they should become parents of the fold
@@ -49,6 +62,8 @@ public interface BackingBranchMerger {
    */
   Outcome merge(
       String repoId,
+      String projectId,
+      String repoName,
       String target,
       List<String> sources,
       String message,

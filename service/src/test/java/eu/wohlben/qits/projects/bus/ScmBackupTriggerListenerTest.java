@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.bus;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.eventstream.control.CanonicalJson;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.githost.events.SCMDeleteBranch;
@@ -13,7 +14,9 @@ import eu.wohlben.qits.eventstream.QitsEvent;
 import eu.wohlben.qits.projects.control.BackupPushService;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,7 +67,7 @@ class ScmBackupTriggerListenerTest {
 
   @Test
   void aCommitOnABranchOwesTheRepositoryABackup() {
-    listener.onFrame(frameOf(commit("some-repository", "main", false)));
+    listener.onFrame(frameOf(commit("some-repository", "main")));
 
     assertEquals(List.of("some-repository"), backups.pushed);
   }
@@ -84,17 +87,6 @@ class ScmBackupTriggerListenerTest {
     listener.onFrame(frameOf(new SCMDeleteTag("untagged-repo", null, null, "v0.9", "ddd", now())));
 
     assertEquals(List.of("tagged-repo", "pruned-repo", "untagged-repo"), backups.pushed);
-  }
-
-  /**
-   * {@code suppressCi} is qits-ci's question, not this one's — and the push it is set on is the
-   * import of an upstream's whole history, which is exactly the push that most needs a twin.
-   */
-  @Test
-  void suppressCiIsIgnoredBecauseABackupIsOwedRegardless() {
-    listener.onFrame(frameOf(commit("imported-repo", "main", true)));
-
-    assertEquals(List.of("imported-repo"), backups.pushed);
   }
 
   /**
@@ -119,22 +111,27 @@ class ScmBackupTriggerListenerTest {
     return Instant.parse("2026-08-10T17:04:05Z");
   }
 
-  private static SCMPublishCommit commit(String repoId, String branch, boolean suppressCi) {
-    return new SCMPublishCommit(
-        repoId,
-        null,
-        null,
-        branch,
-        "1111111111111111111111111111111111111111",
-        "2222222222222222222222222222222222222222",
-        List.of("1111111111111111111111111111111111111111"),
-        "qits",
-        "qits@local",
-        now(),
-        now(),
-        "a commit",
-        suppressCi,
-        now());
+  /**
+   * Built by decoding wire JSON that simply omits the one boolean flag the git host has retired,
+   * through {@link CanonicalJson#payloadTo} — the same lenient mapper a real consumer reads a bus
+   * payload with: {@code FAIL_ON_UNKNOWN_PROPERTIES} is off, so this fixture compiles and runs
+   * against both the still-pinned githost-events jar (which still declares that component, bound
+   * here to its default) and whatever version drops it.
+   */
+  private static SCMPublishCommit commit(String repoId, String branch) {
+    Map<String, Object> fields = new LinkedHashMap<>();
+    fields.put("repoId", repoId);
+    fields.put("branch", branch);
+    fields.put("oldSha", "1111111111111111111111111111111111111111");
+    fields.put("sha", "2222222222222222222222222222222222222222");
+    fields.put("parents", List.of("1111111111111111111111111111111111111111"));
+    fields.put("authorName", "qits");
+    fields.put("authorEmail", "qits@local");
+    fields.put("authoredAt", now());
+    fields.put("committedAt", now());
+    fields.put("message", "a commit");
+    fields.put("receivedAt", now());
+    return CanonicalJson.payloadTo(CanonicalJson.canonicalize(fields), SCMPublishCommit.class);
   }
 
   /** The event as it really arrives: canonicalized into an envelope, then read back as a frame. */

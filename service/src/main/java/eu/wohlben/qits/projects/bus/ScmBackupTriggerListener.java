@@ -40,11 +40,10 @@ import org.jboss.logging.Logger;
  * the GC's {@code tags.sweep} ({@code control/TagCollector}, behind {@code POST
  * /projects/api/gc/tags}); a deleted branch stays on the twin.
  *
- * <p><b>{@code suppressCi} is ignored, deliberately.</b> That flag on {@link SCMPublishCommit}
- * carries {@code -o qits.no-ci} — a statement about whether a <em>build</em> should run, which is
- * qits-ci's question. An imported upstream's history is exactly the case: it must not fire a build
- * per branch, and it must absolutely be backed up. Reading the flag here would make the one push
- * that most needs a twin the one push that never gets one.
+ * <p><b>Whoever moved the refs, a backup is owed.</b> A person's push, an imported upstream's whole
+ * history and a write through one of the git host's own doors (a release request's fold, a version
+ * commit, a release tag, a consumed branch deleted) are all announced the same way and all read the
+ * same here: the twin is behind.
  *
  * <h2>Debounce and sweep, both kept</h2>
  *

@@ -50,7 +50,10 @@ public record PushSpec(List<Ref> refs, List<String> options, boolean atomic) {
     return new PushSpec(List.of(refs), List.of(), false);
   }
 
-  /** The same push, carrying a {@code --push-option} the git host's hooks read (e.g. {@code qits.no-ci}). */
+  /**
+   * The same push, carrying a {@code --push-option} the git host's hooks read (e.g. {@code
+   * qits.token=<token>}, which the protected-ref hook accepts in place of a person).
+   */
   public PushSpec withOption(String option) {
     List<String> next = new ArrayList<>(options);
     next.add(option);

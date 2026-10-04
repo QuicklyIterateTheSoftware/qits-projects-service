@@ -372,12 +372,11 @@ merely its only occupant. Six things about it are rules:
   the git host made from inside somebody's `git push` — so a push landing while this process was
   restarting cost a backup with nothing to say so. Now the claim and the schedule commit together
   and a disconnect window is caught up from the log.
-- **All four events map to one call, and `suppressCi` is ignored.** `SCMPublishCommit`,
-  `SCMPublishTag`, `SCMDeleteBranch` and `SCMDeleteTag` each say "the refs in this repository are
-  not what the twin holds". Tags and deletions **never used to trigger a backup at all** — the old
-  hook fanned out branch updates only — so that is a fix rather than a translation. `suppressCi`
-  says whether a *build* should run, which is qits-ci's question; the push that sets it is an
-  imported upstream's whole history, which is exactly the push that most needs a twin.
+- **All four events map to one call.** `SCMPublishCommit`, `SCMPublishTag`, `SCMDeleteBranch` and
+  `SCMDeleteTag` each say "the refs in this repository are not what the twin holds", whichever door
+  moved them — a push, or one of the git host's own write doors the release flow uses. Tags and
+  deletions **never used to trigger a backup at all** — the old hook fanned out branch updates only
+  — so that is a fix rather than a translation.
 - **`consumerId()` is `projects-backup-push` and it is STORAGE.** It names every `consumed_event`
   row and the watermark. Change it and you mint a brand-new consumer that initializes at the head of
   the log, silently skipping everything in between.

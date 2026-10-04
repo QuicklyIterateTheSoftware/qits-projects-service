@@ -194,8 +194,8 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
 
   /**
    * When {@link #mergedSha} was armed — the merge that produced it. The settle window's basis: a
-   * re-armed request waits its own window, and a no-ci push (which will never produce a verdict)
-   * still passes vacuously after it.
+   * re-armed request waits its own window, and a fold no verdict will ever arrive for still passes
+   * vacuously after it.
    */
   @Column(name = "armed_at", nullable = false)
   public Instant armedAt;

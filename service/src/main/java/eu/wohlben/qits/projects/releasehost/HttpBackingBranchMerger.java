@@ -73,6 +73,8 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
   @Override
   public Outcome merge(
       String repoId,
+      String projectId,
+      String repoName,
       String target,
       List<String> sources,
       String message,
@@ -97,6 +99,10 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
       body.put("message", message);
       // The author both halves or neither, the far side's rule. This service is the one folding.
       body.put("author", Map.of("name", "qits-projects", "email", "qits-projects@qits.internal"));
+      // The address pair the git host stamps on the SCMPublishCommit it announces for this fold. A
+      // git host that predates the announcement ignores both; a repository with no name sends none.
+      putIfPresent(body, "projectId", projectId);
+      putIfPresent(body, "repoName", repoName);
       if (resolutions != null && !resolutions.isEmpty()) {
         // OMITTED ENTIRELY when there is nothing to direct, which is almost every fold: a git host
         // that has never heard of resolutions must see byte for byte the request it saw before this
@@ -197,6 +203,12 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
   private static String text(JsonNode node, String field) {
     JsonNode value = node.path(field);
     return value.isMissingNode() || value.isNull() ? null : value.asText();
+  }
+
+  private static void putIfPresent(Map<String, Object> body, String key, String value) {
+    if (value != null && !value.isBlank()) {
+      body.put(key, value);
+    }
   }
 
   private static String encode(String value) {

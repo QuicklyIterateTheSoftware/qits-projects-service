@@ -23,14 +23,14 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Every bare it creates advertises push options ({@code receive.advertisePushOptions=true}),
  * which JGit does in production and a local {@code receive-pack} does not by default — without it
- * {@code git push --push-option} (the {@code -o qits.no-ci} publish path) would refuse the exact
- * argv that ships. The same fixture lesson as qits-workspaces' {@code TestOrigin} and this module's
+ * {@code git push --push-option} (the {@code -o qits.token=…} protected-branch path) would refuse
+ * the exact argv that ships. The same fixture lesson as qits-workspaces' {@code TestOrigin} and this module's
  * own {@code TestBare}.
  *
  * <p>It also installs a {@code post-receive} hook recording the push options the <em>last</em>
- * accepted push carried, read back by {@link #lastPushOptions}: what a test asserts {@code
- * -o qits.no-ci} against, the same fact {@code CiPostReceiveNotifier} reads off {@code
- * ReceivePack.getPushOptions()} in production (§2.4).
+ * accepted push carried, read back by {@link #lastPushOptions}: what a test asserts a push's options
+ * against, the same fact the git host's hooks read off {@code ReceivePack.getPushOptions()} in
+ * production (§2.4).
  */
 @ApplicationScoped
 public class FakeGitHostRepositories implements GitHostRepositories {

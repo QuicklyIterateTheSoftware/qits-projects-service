@@ -43,11 +43,14 @@ import org.jboss.logging.Logger;
  *       version-uniqueness guarantee</b>, not an error: somebody released that second already, so
  *       the whole attempt starts again with a fresh stamp. Bounded at {@link #ATTEMPTS}, because a
  *       name that stays taken past three seconds is not a same-second tie.
- *   <li><b>Delete</b> the branches the release consumed — the named sources and the backing branch
- *       — best effort, because by now the tag exists and nothing after it may pretend it does not.
- *       <b>Never the default branch</b>, which is stated by the caller rather than guessed at.
  *   <li><b>Announce</b> {@code SCMRelease}, over {@link ReleaseAnnouncer}, at the moment the tag was
  *       accepted. qits-projects is that event's publisher now; its payload is unchanged.
+ *   <li><b>Delete</b> the branches the release consumed — the named sources and the backing branch
+ *       — best effort, because by now the tag exists and nothing after it may pretend it does not.
+ *       <b>Never the default branch</b>, which is stated by the caller rather than guessed at. This
+ *       is a <b>second call</b>, {@link #deleteConsumedBranches}, which {@code ReleaseRequests} makes
+ *       only once the request is RELEASED: the git host announces each deletion, and a request that
+ *       still read as unreleased would take its own deletions for a person's (see the port).
  * </ol>
  *
  * <p><b>The WRAPPER's release used to bank its estate here, and it must not.</b> That arm rewrote
@@ -145,6 +148,8 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
         ReleaseGitHost.Answer<String> commit =
             gitHost.commit(
                 release.repoId(),
+                release.projectId(),
+                release.repoName(),
                 ref,
                 "release(" + version + "): " + summaryOf(release),
                 bumped.files(),
@@ -157,16 +162,21 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
 
       ReleaseGitHost.TagAnswer tag =
           gitHost.tag(
-              release.repoId(), version, tagged, "release(" + version + "): " + summaryOf(release));
+              release.repoId(),
+              release.projectId(),
+              release.repoName(),
+              version,
+              tagged,
+              "release(" + version + "): " + summaryOf(release));
       switch (tag.result()) {
         case CREATED -> {
           Instant releasedAt = Instant.now();
           LOG.infof(
               "Release request %s tagged %s at %s (%d manifest(s) bumped)",
               release.requestId(), version, tagged, bumped.files().size());
-          // Everything past here is after the fact: the tag exists and the release happened, so
-          // neither a failed branch delete nor a failed announcement may turn it into a failure.
-          deleteConsumedBranches(release);
+          // Everything past here is after the fact: the tag exists and the release happened, so a
+          // failed announcement may not turn it into a failure. The consumed branches are NOT
+          // deleted here: ReleaseRequests asks for that once the request reads RELEASED.
           announce(release, version, tagged, releasedAt);
           return Outcome.released(version, tagged);
         }
@@ -307,13 +317,23 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
    * whose default branch is called something else must not have it deleted by a spelling mistake.
    * qits-githost refuses its own default branch too, which makes this the near half of a seatbelt
    * rather than the only one.
+   *
+   * <p>Each delete carries the address pair, because qits-githost announces it as {@code
+   * SCMDeleteBranch} — which is what ends a maintenance bump's branch row — and knows the names only
+   * if it is told.
    */
-  private void deleteConsumedBranches(Release release) {
+  @Override
+  public void deleteConsumedBranches(Release release) {
     Set<String> branches = new LinkedHashSet<>(release.namedSources());
     branches.remove(release.defaultBranch());
     branches.add(release.backingBranch());
     for (String branch : branches) {
-      gitHost.deleteBranch(release.repoId(), branch);
+      try {
+        gitHost.deleteBranch(release.repoId(), release.projectId(), release.repoName(), branch);
+      } catch (RuntimeException e) {
+        // The port says it must not throw; one branch that would not go must not keep the rest.
+        LOG.warnf(e, "Could not delete %s of %s", branch, release.repoId());
+      }
     }
   }
 
@@ -329,9 +349,9 @@ public class GitHostReleaseExecutor implements ReleaseExecutor {
    *
    * <p>{@code release.requestId()} rides out beside it as the event's {@code releaseRequestId} — the
    * key the publish phase of a release pipeline is recognised by. It is supplied here rather than
-   * left to be parsed back out of {@code backingBranch}: {@link #deleteConsumedBranches} has just
-   * deleted that ref, so {@code release/<id>} names nothing by the time a consumer reads the event,
-   * while the id itself still resolves against this service.
+   * left to be parsed back out of {@code backingBranch}: {@link #deleteConsumedBranches} deletes
+   * that ref moments later, so {@code release/<id>} names nothing by the time a consumer reads the
+   * event, while the id itself still resolves against this service.
    */
   private void announce(Release release, String version, String tagged, Instant releasedAt) {
     if (!announcers.isResolvable()) {

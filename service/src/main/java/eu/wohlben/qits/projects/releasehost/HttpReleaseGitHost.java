@@ -29,10 +29,15 @@ import org.jboss.logging.Logger;
  * <pre>
  *   GET    /githost/api/repositories/{repoId}/tree?rev=&lt;sha&gt;
  *   GET    /githost/api/repositories/{repoId}/file?rev=&lt;sha&gt;&amp;path=&lt;path&gt;
- *   POST   /githost/api/repositories/{repoId}/commits   {ref, message, files, author}
- *   POST   /githost/api/repositories/{repoId}/tags      {name, sha, message, author}
- *   DELETE /githost/api/repositories/{repoId}/branches/{name}
+ *   POST   /githost/api/repositories/{repoId}/commits   {ref, message, files, author, projectId, repoName}
+ *   POST   /githost/api/repositories/{repoId}/tags      {name, sha, message, author, projectId, repoName}
+ *   DELETE /githost/api/repositories/{repoId}/branches/{name}?projectId=&amp;repoName=
  * </pre>
+ *
+ * <p>The three writes carry the repository's address pair so that the git host can announce each
+ * one as it announces a push — in the body where there is one, as query parameters on the delete,
+ * which has none. Either is omitted where the repository has no name, and a git host that predates
+ * the announcement ignores both.
  *
  * <p>And <b>one route off that plane entirely</b>, the git plane's name-addressed directory listing:
  *
@@ -256,6 +261,8 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   @Override
   public Answer<String> commit(
       String repoId,
+      String projectId,
+      String repoName,
       String ref,
       String message,
       Map<String, String> files,
@@ -268,6 +275,7 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
       body.put("gitlinks", gitlinks);
     }
     body.put("author", AUTHOR);
+    putNames(body, projectId, repoName);
     return call(
         builder -> builder.POST(json(body)),
         "/commits",
@@ -286,12 +294,14 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   }
 
   @Override
-  public TagAnswer tag(String repoId, String name, String sha, String message) {
+  public TagAnswer tag(
+      String repoId, String projectId, String repoName, String name, String sha, String message) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("name", name);
     body.put("sha", sha);
     body.put("message", message);
     body.put("author", AUTHOR);
+    putNames(body, projectId, repoName);
     String address = address(repoId, "/tags");
     if (address == null) {
       return TagAnswer.failedRetryable(unconfigured());
@@ -332,8 +342,9 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
   }
 
   @Override
-  public void deleteBranch(String repoId, String name) {
-    String address = address(repoId, "/branches/" + encodePath(name));
+  public void deleteBranch(String repoId, String projectId, String repoName, String name) {
+    String address =
+        address(repoId, "/branches/" + encodePath(name) + namesQuery(projectId, repoName));
     if (address == null) {
       LOG.warnf("Cannot delete %s of %s: %s", name, repoId, unconfigured());
       return;
@@ -508,6 +519,32 @@ public class HttpReleaseGitHost implements ReleaseGitHost {
       // A map of strings that will not serialize is a programming error, not a runtime condition.
       throw new IllegalStateException("cannot serialize a git-host request body", e);
     }
+  }
+
+  /** The address pair onto a write's body, each half only where it is known. */
+  private static void putNames(Map<String, Object> body, String projectId, String repoName) {
+    if (present(projectId)) {
+      body.put("projectId", projectId);
+    }
+    if (present(repoName)) {
+      body.put("repoName", repoName);
+    }
+  }
+
+  /** The same pair as the delete's query string — it has no body — or nothing at all. */
+  private static String namesQuery(String projectId, String repoName) {
+    List<String> params = new ArrayList<>();
+    if (present(projectId)) {
+      params.add("projectId=" + encode(projectId));
+    }
+    if (present(repoName)) {
+      params.add("repoName=" + encode(repoName));
+    }
+    return params.isEmpty() ? "" : "?" + String.join("&", params);
+  }
+
+  private static boolean present(String value) {
+    return value != null && !value.isBlank();
   }
 
   private static String encode(String value) {

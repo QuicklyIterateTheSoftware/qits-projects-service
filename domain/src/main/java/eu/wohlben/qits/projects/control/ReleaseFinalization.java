@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
+import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryNameRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
@@ -586,7 +587,14 @@ public class ReleaseFinalization {
    * remember.
    */
   private void merge(String rowId) {
-    record Ask(String repoId, String tagName, String sha, String target, boolean owed) {}
+    record Ask(
+        String repoId,
+        String projectId,
+        String repoName,
+        String tagName,
+        String sha,
+        String target,
+        boolean owed) {}
     Ask ask =
         QuarkusTransaction.requiringNew()
             .call(
@@ -599,14 +607,27 @@ public class ReleaseFinalization {
                                     && row.mergeRequestedAt != null
                                     && row.abandonedAt == null)
                         .map(
-                            row ->
-                                new Ask(
-                                    row.repoId,
-                                    row.tagName,
-                                    row.releasedSha,
-                                    "refs/heads/" + mainOf(row.repoId),
-                                    true))
-                        .orElse(new Ask(null, null, null, null, false)));
+                            row -> {
+                              // The address pair the git host announces this merge under — read off
+                              // the repository row as it stands now rather than the request's copy,
+                              // so a repository renamed since its release is announced by the name
+                              // its readers know it by today.
+                              Repository repository =
+                                  repositories.findByIdOptional(row.repoId).orElse(null);
+                              return new Ask(
+                                  row.repoId,
+                                  repository == null || repository.project == null
+                                      ? null
+                                      : repository.project.id,
+                                  repository == null
+                                      ? null
+                                      : names.nameFor(repository).orElse(null),
+                                  row.tagName,
+                                  row.releasedSha,
+                                  "refs/heads/" + mainOf(row.repoId),
+                                  true);
+                            })
+                        .orElse(new Ask(null, null, null, null, null, null, false)));
     if (!ask.owed()) {
       return;
     }
@@ -629,6 +650,8 @@ public class ReleaseFinalization {
               .get()
               .merge(
                   ask.repoId(),
+                  ask.projectId(),
+                  ask.repoName(),
                   ask.target(),
                   List.of(ask.sha()),
                   "Release " + ask.tagName() + " is deployed; finalizing " + ask.target());
@@ -648,8 +671,11 @@ public class ReleaseFinalization {
     landed(rowId);
     // merged_at is stamped THERE and only there — one writer of that column — by asking whether main
     // at its new head contains each pending tag: this one, and any obsoleted tag that rode in with it.
-    // The merge primitive announces nothing, so nothing else would ask. A check that could not be
-    // made leaves this row owed, and the next sweep re-merges (`unchanged`) and asks again.
+    // The git host announces this merge as an SCMPublishCommit on main too, and the head listener
+    // asks the same question again when it arrives; asking here as well is what keeps finalization
+    // from depending on the bus being up, and the second ask is harmless because the stamp re-checks
+    // merged_at under its own transaction and a request leaves RELEASED once. A check that could not
+    // be made leaves this row owed, and the next sweep re-merges (`unchanged`) and asks again.
     releaseRequests.onMainMoved(ask.repoId(), outcome.sha());
     LOG.infof(
         "The released tag %s of %s reached %s (%s)",

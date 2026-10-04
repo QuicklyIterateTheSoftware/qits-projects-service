@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.bus;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import eu.wohlben.qits.eventstream.control.CanonicalJson;
 import eu.wohlben.qits.eventstream.control.EventEnvelope;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.githost.events.SCMPublishCommit;
@@ -14,7 +15,9 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -103,24 +106,29 @@ class ReleaseRequestHeadListenerTest {
                 ReleasedTagPendingMerge.<ReleasedTagPendingMerge>findById(rowId).mergedAt);
   }
 
+  /**
+   * Built by decoding wire JSON that omits the retired boolean flag — see {@code
+   * ScmPushFrames.commit} in qits-ci-service for the identical argument — so this fixture stays
+   * correct whether the pinned githost-events jar still carries that component or has dropped it.
+   */
   private SCMPublishCommit commit(String branch, String sha) {
     Instant now = Instant.now();
-    return new SCMPublishCommit(
-        repoId,
-        projectId,
-        "head-repo",
-        branch,
-        "1".repeat(40),
-        sha,
-        // A parent that is NOT the head: the head is the question, never its parents.
-        List.of("1".repeat(40)),
-        "qits",
-        "qits@local",
-        now,
-        now,
-        "a hand push",
-        false,
-        now);
+    Map<String, Object> fields = new LinkedHashMap<>();
+    fields.put("repoId", repoId);
+    fields.put("projectId", projectId);
+    fields.put("repoName", "head-repo");
+    fields.put("branch", branch);
+    fields.put("oldSha", "1".repeat(40));
+    fields.put("sha", sha);
+    // A parent that is NOT the head: the head is the question, never its parents.
+    fields.put("parents", List.of("1".repeat(40)));
+    fields.put("authorName", "qits");
+    fields.put("authorEmail", "qits@local");
+    fields.put("authoredAt", now);
+    fields.put("committedAt", now);
+    fields.put("message", "a hand push");
+    fields.put("receivedAt", now);
+    return CanonicalJson.payloadTo(CanonicalJson.canonicalize(fields), SCMPublishCommit.class);
   }
 
   /** The event as it really arrives: canonicalized into an envelope, then read back as a frame. */

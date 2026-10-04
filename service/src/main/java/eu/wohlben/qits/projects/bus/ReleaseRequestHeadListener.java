@@ -26,19 +26,27 @@ import org.jboss.logging.Logger;
  * the new head contains leaves the implicit source set ({@code ReleaseRequests#onMainMoved}), which
  * is how a tag carried there by hand stops being folded in.
  *
- * <p><b>This is the whole of how a push reaches the release flow.</b> The git host's merge primitive
- * fires no {@code post-receive}, so a backing branch's own movement never comes back here — which is
- * what keeps the loop from feeding itself, and why finalization's own merge to {@code main} asks the
- * same question directly instead of waiting for an event that never comes.
+ * <p><b>This is the whole of how a push reaches the release flow</b> — and the release flow's own
+ * writes come back here too, because qits-githost announces every ref its doors move exactly as it
+ * announces a push. None of them feeds a loop:
+ *
+ * <ul>
+ *   <li>A <b>fold</b> onto {@code release/<id>} names a branch no request can hold as a source — a
+ *       {@code release/} branch is refused at create and join — so it matches nothing.
+ *   <li>The <b>version commit</b> lands on that same backing branch, and the <b>tag</b> is an {@code
+ *       SCMPublishTag} this listener does not read.
+ *   <li>The <b>deletions</b> of the consumed branches are asked for only once the request is
+ *       RELEASED, which no unreleased read returns, so a release is never withdrawn or re-folded by
+ *       its own deletions.
+ *   <li>Finalization's <b>merge to {@code main}</b> arrives as a push to the default branch: the open
+ *       requests re-fold onto the new {@code main}, as for any push there, and {@code onMainMoved}
+ *       runs a second time after finalization's direct call — which finds the rows already stamped
+ *       and changes nothing.
+ * </ul>
  *
  * <p>Its own durable consumer beside {@link ScmBackupTriggerListener} rather than a second concern
  * inside it: the backup consumption is total over all four SCM events and must never learn release
  * semantics, and the two keep separate watermarks so one's poison cannot hold the other's.
- *
- * <p>{@code suppressCi} is deliberately ignored, the backup listener's reasoning pointed at gates:
- * a no-ci push still moves the head, so the request must still re-fold and re-arm — its gate then
- * passes through the settle window, because no verdict is coming. Reading the flag here would let a
- * no-ci push land commits nothing re-gated.
  *
  * <p>Failure policy is the seam's: an unreadable payload or one naming no {@code (repoId, branch,
  * sha)} is poison — WARN and settle; a database that could not answer is left to throw.
