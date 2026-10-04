@@ -284,17 +284,14 @@ public class RepositoryService {
     gitHostRepositories.ensure(repo.id, repo.mainBranch);
 
     if (skeletonCommit != null) {
-      // No upstream history existed to import, so there is nothing a suppressed CI run would have
-      // saved — the skeleton carries no pipeline config anyway (qits-ci discards the run for want of
-      // one). Publish the single root commit onto the main branch.
+      // No upstream history existed to import. Publish the single root commit onto the main branch.
       publishSingleRef(mirror, skeletonCommit, repo.mainBranch, "the skeleton commit");
     } else {
-      // Publish the whole imported history in one push: every branch and every tag. `-o qits.no-ci`
-      // suppresses post-receive for this push only (⚖3, BN) — an imported upstream can carry a
-      // pipeline config and many branches, and without the option that becomes one CI run per branch
-      // against history that predates the platform. A later push to any of these branches fires
-      // normally. Explicit wildcard refspecs rather than `--mirror`, which also implies force and
-      // would push deletions the host should never take from an import.
+      // Publish the whole imported history in one push: every branch and every tag. Nothing builds
+      // off a push — CI is gated once, by a release request — so an imported upstream with a
+      // pipeline config and many branches costs no runs, and the push is announced like any other.
+      // Explicit wildcard refspecs rather than `--mirror`, which also implies force and would push
+      // deletions the host should never take from an import.
       PushOutcome outcome =
           mirror.push(
               withHostToken(
@@ -302,8 +299,7 @@ public class RepositoryService {
                           eu.wohlben.qits.projects.gitmirror.PushSpec.Ref.update(
                               "refs/heads/*", "refs/heads/*"),
                           eu.wohlben.qits.projects.gitmirror.PushSpec.Ref.update(
-                              "refs/tags/*", "refs/tags/*"))
-                      .withOption("qits.no-ci")));
+                              "refs/tags/*", "refs/tags/*"))));
       requireAccepted(outcome, "Failed to publish the imported history");
     }
 
@@ -444,8 +440,6 @@ public class RepositoryService {
 
     String skeletonCommit = seedTemplate(mirror, projectTemplate.repositoryEntries(), "repository");
     gitHostRepositories.ensure(repo.id, WRAPPER_DEFAULT_BRANCH);
-    // No `-o qits.no-ci`: the skeleton carries no pipeline config, so qits-ci discards the run it
-    // fires for want of one — cheaper than special-casing this push.
     publishSingleRef(mirror, skeletonCommit, WRAPPER_DEFAULT_BRANCH, "the repository's skeleton commit");
 
     if (!workspaceLifecycle.isUnsatisfied()) {
@@ -752,8 +746,6 @@ public class RepositoryService {
     String skeletonCommit = seedProjectTemplate(mirror);
     // The git host must hold this repository before the skeleton can be pushed to it (§2.2).
     gitHostRepositories.ensure(repo.id, WRAPPER_DEFAULT_BRANCH);
-    // No `-o qits.no-ci`: the skeleton carries no pipeline config, so qits-ci simply discards the
-    // run it fires for want of one — cheaper than special-casing this push.
     publishSingleRef(mirror, skeletonCommit, WRAPPER_DEFAULT_BRANCH, "the wrapper's skeleton commit");
 
     // The workspace container clones from the git host, so it must run after the push above, not
