@@ -43,6 +43,13 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   /** One tag as it was asked for, and what the host said. */
   public record Tag(String name, String sha, String message, TagResult result) {}
 
+  /**
+   * The address pair one write carried — {@code commit}, {@code tag} or {@code delete} — which the
+   * real git host announces the move under. Recorded apart from the payloads so that a test about
+   * a commit's bytes does not have to spell out names it is not about.
+   */
+  public record Addressed(String write, String projectId, String repoName) {}
+
   /** The tree, keyed by the sha it belongs to. */
   private final Map<String, Map<String, String>> trees =
       Collections.synchronizedMap(new LinkedHashMap<>());
@@ -50,6 +57,15 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   private final List<Commit> commits = Collections.synchronizedList(new ArrayList<>());
   private final List<Tag> tags = Collections.synchronizedList(new ArrayList<>());
   private final List<String> deletedBranches = Collections.synchronizedList(new ArrayList<>());
+  private final List<Addressed> addressed = Collections.synchronizedList(new ArrayList<>());
+
+  /**
+   * Called with {@code (repoId, branch)} as each delete lands — standing in for the real git host
+   * announcing it as {@code SCMDeleteBranch} and the head listener consuming that at once, which is
+   * the tightest the race between a release's own deletions and its settle can be drawn.
+   */
+  private final AtomicReference<java.util.function.BiConsumer<String, String>> onDelete =
+      new AtomicReference<>();
 
   /** Tag names the host already holds — the version-uniqueness refusal, staged. */
   private final List<String> taken = Collections.synchronizedList(new ArrayList<>());
@@ -329,6 +345,8 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
     commits.clear();
     tags.clear();
     deletedBranches.clear();
+    addressed.clear();
+    onDelete.set(null);
     taken.clear();
     pins.clear();
     resolvable.clear();
@@ -367,6 +385,15 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
 
   public List<String> deletedBranches() {
     return List.copyOf(deletedBranches);
+  }
+
+  public List<Addressed> addressed() {
+    return List.copyOf(addressed);
+  }
+
+  /** See {@link #onDelete}; cleared by {@link #reset}. */
+  public void onDelete(java.util.function.BiConsumer<String, String> hook) {
+    onDelete.set(hook);
   }
 
   /** The tree at a sha, as it stands — a commit's effect, read back. */
@@ -422,10 +449,13 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   @Override
   public Answer<String> commit(
       String repoId,
+      String projectId,
+      String repoName,
       String ref,
       String message,
       Map<String, String> files,
       Map<String, String> gitlinks) {
+    addressed.add(new Addressed("commit", projectId, repoName));
     Answer<String> failure = commitFailure.get();
     if (failure != null) {
       return failure;
@@ -527,7 +557,9 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   }
 
   @Override
-  public TagAnswer tag(String repoId, String name, String sha, String message) {
+  public TagAnswer tag(
+      String repoId, String projectId, String repoName, String name, String sha, String message) {
+    addressed.add(new Addressed("tag", projectId, repoName));
     TagAnswer failure = tagFailure.get();
     if (failure != null) {
       tags.add(new Tag(name, sha, message, TagResult.FAILED));
@@ -544,8 +576,13 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
   }
 
   @Override
-  public void deleteBranch(String repoId, String name) {
+  public void deleteBranch(String repoId, String projectId, String repoName, String name) {
+    addressed.add(new Addressed("delete", projectId, repoName));
     deletedBranches.add(name);
+    java.util.function.BiConsumer<String, String> hook = onDelete.get();
+    if (hook != null) {
+      hook.accept(repoId, name);
+    }
   }
 
   private String newestSha() {

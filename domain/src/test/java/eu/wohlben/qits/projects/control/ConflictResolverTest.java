@@ -318,6 +318,8 @@ public class ConflictResolverTest {
     @Override
     public Answer<String> commit(
         String repoId,
+        String projectId,
+        String repoName,
         String ref,
         String message,
         Map<String, String> files,
@@ -349,12 +351,13 @@ public class ConflictResolverTest {
     }
 
     @Override
-    public TagAnswer tag(String repoId, String name, String sha, String message) {
+    public TagAnswer tag(
+        String repoId, String projectId, String repoName, String name, String sha, String message) {
       throw new UnsupportedOperationException("no release is being made here");
     }
 
     @Override
-    public void deleteBranch(String repoId, String name) {
+    public void deleteBranch(String repoId, String projectId, String repoName, String name) {
       throw new UnsupportedOperationException("no release is being made here");
     }
   }

@@ -39,6 +39,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
    */
   public record Fold(
       String repoId,
+      String projectId,
+      String repoName,
       String target,
       List<String> sources,
       String message,
@@ -98,12 +100,21 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
   @Override
   public Outcome merge(
       String repoId,
+      String projectId,
+      String repoName,
       String target,
       List<String> sources,
       String message,
       List<Resolution> resolutions) {
     folds.add(
-        new Fold(repoId, target, List.copyOf(sources), message, List.copyOf(resolutions)));
+        new Fold(
+            repoId,
+            projectId,
+            repoName,
+            target,
+            List.copyOf(sources),
+            message,
+            List.copyOf(resolutions)));
     Outcome once = queued.poll();
     Outcome scriptedOutcome = scripted.get();
     Outcome outcome =

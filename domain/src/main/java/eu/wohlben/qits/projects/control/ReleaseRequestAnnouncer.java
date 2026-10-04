@@ -12,9 +12,11 @@ import java.util.List;
  * one implementation is {@code service/…/bus/ReleaseRequestChangedAnnouncer}.
  *
  * <p><b>What it is for.</b> qits-ci is the motivating consumer: a release request's backing branch
- * is not a branch anybody pushed, so no {@code SCMPublishCommit} ever announces it — the git host's
- * merge primitive deliberately fires no post-receive. Without this event the fold would exist and
- * nothing would build it.
+ * is not a branch anybody pushed. The git host does announce the fold — every ref its doors move is
+ * an {@code SCMPublishCommit} like a push — but that event names a ref and a sha and nothing about
+ * the request: no request id, no sources, no priority, and nothing a gate could be correlated by.
+ * This event is the one that says "this request has new content", and without it the fold would
+ * exist and nothing would build it.
  *
  * <p><b>Only a real change is announced.</b> A fold that produced nothing new ({@code unchanged} at
  * the git host — every head already contained, same sha, no new commit) is not a change: announcing

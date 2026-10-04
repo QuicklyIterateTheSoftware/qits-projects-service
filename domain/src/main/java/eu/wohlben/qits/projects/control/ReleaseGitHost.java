@@ -23,6 +23,12 @@ import java.util.Map;
  * not there, a rev that does not resolve and a malformed request answer the same forever and are
  * not. The distinction becomes the release request's {@code retryable} flag, which is the only
  * thing standing between a final refusal and the sweep knocking on it every thirty seconds.
+ *
+ * <p><b>Every write carries the repository's public address pair</b> — {@code projectId} and {@code
+ * repoName}, either null on a repository with no name — beside the storage id it is addressed by.
+ * The git host announces a door write exactly as it announces a push ({@code SCMPublishCommit},
+ * {@code SCMPublishTag}, {@code SCMDeleteBranch}), stores no names of its own, and so knows them
+ * only if it is told, the way a push knows them only from its URL.
  */
 public interface ReleaseGitHost {
 
@@ -80,6 +86,8 @@ public interface ReleaseGitHost {
    */
   Answer<String> commit(
       String repoId,
+      String projectId,
+      String repoName,
       String ref,
       String message,
       Map<String, String> files,
@@ -191,7 +199,8 @@ public interface ReleaseGitHost {
   }
 
   /** An annotated tag at {@code sha}. {@code name} is the bare tag name, which is the version. */
-  TagAnswer tag(String repoId, String name, String sha, String message);
+  TagAnswer tag(
+      String repoId, String projectId, String repoName, String name, String sha, String message);
 
   /**
    * Delete a branch, best effort. <b>It answers nothing and must never throw</b>: by the time it is
@@ -199,5 +208,5 @@ public interface ReleaseGitHost {
    * — a branch that could not be deleted is a log line, not a failed release. A branch that is
    * already gone is a success, and the git host refuses a repository's default branch on its own.
    */
-  void deleteBranch(String repoId, String name);
+  void deleteBranch(String repoId, String projectId, String repoName, String name);
 }

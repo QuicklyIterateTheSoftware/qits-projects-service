@@ -1804,6 +1804,11 @@ public class ReleaseRequests {
    * also asks qits-ci to cancel its runs: this is the exact case {@link #cancel}'s javadoc names —
    * a run still building the branch that was just deleted, about to fail {@code CLONE_FAILED} for a
    * reason that has nothing to do with the code under test.
+   *
+   * <p><b>A release's own deletions are not news here.</b> qits-githost announces the branches a
+   * release consumed like any other deletion, but {@link #execute} asks for them only once the
+   * request is RELEASED, and RELEASED is outside {@code findUnreleasedByBranches} — so they match
+   * nothing, and a release can never be withdrawn or re-folded by the branches it consumed.
    */
   public void onBranchDeleted(String repoId, String branch) {
     record Affected(String id, boolean withdrawn, String gateTicketId, String repoName) {}
@@ -1861,9 +1866,15 @@ public class ReleaseRequests {
    * main} some other way pending for ever: an OBSOLETE request's tag rides its successor there, and
    * no merge of <em>that</em> tag ever happens, so ten dead tags stood in every fold of one
    * repository (2026-09-29). The question is lineage, so lineage answers it: {@link
-   * ReleaseGitHost#contains}, per pending row, abandoned ones included. The git host's merge
-   * primitive announces nothing, which is why finalization calls this directly rather than relying
-   * on the push event.
+   * ReleaseGitHost#contains}, per pending row, abandoned ones included.
+   *
+   * <p><b>Finalization's own merge reaches this twice, and that is harmless.</b> {@link
+   * ReleaseFinalization} calls it directly the moment its merge lands, so that finishing a release
+   * does not depend on the bus; qits-githost also announces that merge as an {@code
+   * SCMPublishCommit} on {@code main}, and the head listener calls it again off the event. Whichever
+   * arrives second finds the rows already stamped — {@code listPending} no longer returns them, and
+   * the stamp re-checks {@code mergedAt} under its own transaction anyway — so it finalizes nothing,
+   * re-folds nothing and costs at most a few containment reads.
    *
    * <p><b>"Could not ask" is never "no", and neither stamps.</b> A failed answer leaves the row
    * pending with a WARN, and the next movement of {@code main} asks again; an owed merge whose own
@@ -2198,14 +2209,19 @@ public class ReleaseRequests {
    */
   void remerge(String id, String why) {
     record Ask(
-        String repoId, String projectId, List<String> refs, String summary, boolean stillOpen) {}
+        String repoId,
+        String projectId,
+        String repoName,
+        List<String> refs,
+        String summary,
+        boolean stillOpen) {}
     Ask ask =
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
                   ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
                   if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
-                    return new Ask(null, null, List.of(), null, false);
+                    return new Ask(null, null, null, List.of(), null, false);
                   }
                   // The project is read here rather than at the conflict, because by then the only
                   // transaction going is one this thread is deliberately not in; a conflict is rare
@@ -2217,9 +2233,12 @@ public class ReleaseRequests {
                               repository ->
                                   repository.project == null ? null : repository.project.id)
                           .orElse(null);
+                  // The name rides along for the git host alone, which announces the fold like a
+                  // push and is told the address pair because it stores none.
                   return new Ask(
                       row.repoId,
                       projectId,
+                      row.repoName,
                       refsOf(sources.listByRequest(id), implicitFor(row.repoId)),
                       row.summary,
                       true);
@@ -2234,7 +2253,15 @@ public class ReleaseRequests {
     }
     String message = "Release request " + id + ": " + ask.summary();
     BackingBranchMerger.Outcome outcome =
-        fold(id, ask.repoId(), target, ask.refs(), message, List.of());
+        fold(
+            id,
+            ask.repoId(),
+            ask.projectId(),
+            ask.repoName(),
+            target,
+            ask.refs(),
+            message,
+            List.of());
     String attempted = null;
     if (outcome.result() == BackingBranchMerger.Result.CONFLICT) {
       // ONE mechanical attempt, and one extra fold at most. See fold() for why there is no
@@ -2250,6 +2277,8 @@ public class ReleaseRequests {
             fold(
                 id,
                 ask.repoId(),
+                ask.projectId(),
+                ask.repoName(),
                 target,
                 ask.refs(),
                 message + "\n\n" + attempt.trailer(),
@@ -2301,12 +2330,16 @@ public class ReleaseRequests {
   private BackingBranchMerger.Outcome fold(
       String id,
       String repoId,
+      String projectId,
+      String repoName,
       String target,
       List<String> refs,
       String message,
       List<BackingBranchMerger.Resolution> resolutions) {
     try {
-      return mergers.get().merge(repoId, target, refs, message, resolutions);
+      return mergers
+          .get()
+          .merge(repoId, projectId, repoName, target, refs, message, resolutions);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not lose the request.
       LOG.warnf(e, "The backing-branch merger threw for release request %s", id);
@@ -3086,8 +3119,8 @@ public class ReleaseRequests {
    *
    * <p>What is released is the <b>backing branch</b> at the <b>merged sha</b> — the fold, not any
    * one participant — and what the release <em>is</em> is a tag: the executor stamps a calver,
-   * rewrites the manifests at the fold, commits them onto the backing branch, tags that commit and
-   * deletes the branches the release consumed. {@code main} is finalized after the deployment, which
+   * rewrites the manifests at the fold, commits them onto the backing branch and tags that commit,
+   * and — asked separately, once the row is RELEASED — deletes the branches the release consumed. {@code main} is finalized after the deployment, which
    * is why the bookkeeping below exists: the tag joins the repository's implicit source set until
    * something merges it, so that every other open request is a superset of what is already shipping.
    *
@@ -3154,10 +3187,15 @@ public class ReleaseRequests {
           ask.repoName() != null ? ask.repoName() : ask.repoId(),
           ask.backingBranch(),
           outcome.version());
-      // The executor already deleted the backing branch as part of the release, so any run still
-      // building it is doomed to a checkout failure that has nothing to do with the code under
-      // test — the exact case cancel() exists for, and best effort for the same reason as every
-      // other call to it: the release already happened and nothing here may undo it.
+      // The consumed branches go only NOW, with the row RELEASED, and never inside release(): the
+      // git host announces each deletion, and onBranchDeleted reads only unreleased requests, so
+      // this request's own deletions cannot come back to withdraw or re-fold it (qits-886). See
+      // ReleaseExecutor#deleteConsumedBranches.
+      deleteConsumedBranches(ask);
+      // The backing branch is gone now, so any run still building it is doomed to a checkout
+      // failure that has nothing to do with the code under test — the exact case cancel() exists
+      // for, and best effort for the same reason as every other call to it: the release already
+      // happened and nothing here may undo it.
       cancel(ask.repoId(), id, "was released as " + outcome.version());
       remergeOpenOf(ask.repoId(), id, "the sibling release " + outcome.version() + " is in flight");
       // THE PUBLISH PHASE'S FORK, on the release's own thread and the moment it lands: a repository
@@ -3174,6 +3212,18 @@ public class ReleaseRequests {
       LOG.warnf(
           "Release request %s was not released (%s): %s",
           id, outcome.retryable() ? "will retry" : "final until re-armed", outcome.detail());
+    }
+  }
+
+  /**
+   * The executor's second call, belted like its first: the port must not throw, and a throw here is
+   * a port bug that must not reach a release which has already been settled.
+   */
+  private void deleteConsumedBranches(ReleaseExecutor.Release ask) {
+    try {
+      executors.get().deleteConsumedBranches(ask);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not delete the branches consumed by release request %s", ask.requestId());
     }
   }
 
@@ -3858,7 +3908,19 @@ public class ReleaseRequests {
     if (branch == null || branch.isBlank() || branch.startsWith("-")) {
       throw new BadRequestException("A release request names a branch");
     }
-    return branch.trim();
+    String named = branch.trim();
+    if (named.startsWith(ReleaseRequest.BACKING_BRANCH_PREFIX)) {
+      // A backing branch is this flow's own scratch ref: every fold onto it is announced like a push,
+      // so a request naming one as a source would re-fold whenever any request's fold moved it, and
+      // its release would delete another request's backing branch.
+      throw new BadRequestException(
+          "A release request cannot name "
+              + named
+              + ": "
+              + ReleaseRequest.BACKING_BRANCH_PREFIX
+              + "* branches are the backing branches release requests fold into, not sources");
+    }
+    return named;
   }
 
   /** The repository's default branch, for the "nothing but main is left" reading. */

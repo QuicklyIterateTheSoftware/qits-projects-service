@@ -83,4 +83,15 @@ public class RecordingReleaseExecutor implements ReleaseExecutor {
             release.priority()));
     return delegate.get() ? real.release(release) : outcome.get();
   }
+
+  /**
+   * The second call, delegated the same way: a scripted release consumed nothing on any git host,
+   * and a passed-through one deletes exactly what the shipped executor would.
+   */
+  @Override
+  public void deleteConsumedBranches(Release release) {
+    if (delegate.get()) {
+      real.deleteConsumedBranches(release);
+    }
+  }
 }

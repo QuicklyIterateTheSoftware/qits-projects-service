@@ -227,6 +227,20 @@ public class AutoReleaseTest {
     fail("request " + id + " never reached " + expected + "; last seen " + last);
   }
 
+  /** The consumed branches go after RELEASED is written, so a test reading them waits for them. */
+  private void awaitDeletions(int expected) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (gitHost.deletedBranches().size() < expected && System.currentTimeMillis() < deadline) {
+      try {
+        Thread.sleep(20);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        fail("interrupted");
+      }
+    }
+    assertEquals(expected, gitHost.deletedBranches().size(), "deleted: " + gitHost.deletedBranches());
+  }
+
   /**
    * Create a gated request over a staged tree and let the real executor release it. Returns the
    * request's id; the merged sha the tree was staged at is {@link #mergedSha}.
@@ -315,7 +329,9 @@ public class AutoReleaseTest {
     assertEquals(List.of(version), gitHost.createdTags());
     assertEquals(commit.sha(), gitHost.tags().get(0).sha(), "what is tagged is the bump commit");
 
-    // 5. The branches the release consumed. NEVER the default branch.
+    // 5. The branches the release consumed. NEVER the default branch. Asked for once the row reads
+    // RELEASED, so they may trail the state this test awaited by a moment.
+    awaitDeletions(2);
     assertEquals(
         List.of("work", "release/" + id),
         gitHost.deletedBranches(),
@@ -677,5 +693,77 @@ public class AutoReleaseTest {
         .body("request.retryable", org.hamcrest.Matchers.equalTo(true));
     String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
     assertTrue(detail.contains("could not be read"), detail);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // A release's own deletions (qits-886)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * <b>qits-githost announces the branches a release consumes, and the release must not hear them
+   * as news about itself.</b> The fake git host hands each delete straight to {@code
+   * onBranchDeleted} as it lands — the real announcement consumed with no delay at all, the
+   * tightest the race can be drawn. Were the deletes made while the request still read READY, the
+   * drop of {@code work} would leave nothing but {@code main} and withdraw it, and RELEASED would
+   * then be written over a request whose sources were gone. Asked for only once it is RELEASED, they
+   * match no unreleased request: the row is RELEASED at every delete, both sources stand, and
+   * nothing folds onto its backing branch again.
+   *
+   * <p>And each write carried the address pair the real host announces it under.
+   */
+  @Test
+  public void theReleasesOwnBranchDeletionsLeaveTheRequestReleasedWithItsSourcesIntact() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                alias(
+                    Project.findById(projectId),
+                    Repository.findById(repoId),
+                    "qits-thing"));
+    List<String> seenAtDelete = new java.util.concurrent.CopyOnWriteArrayList<>();
+    gitHost.onDelete(
+        (repo, branch) -> {
+          seenAtDelete.add(
+              QuarkusTransaction.requiringNew()
+                  .call(
+                      () ->
+                          ReleaseRequest.<ReleaseRequest>find("repoId", repo)
+                              .firstResult()
+                              .state
+                              .name()));
+          releaseRequests.onBranchDeleted(repo, branch);
+        });
+
+    java.util.concurrent.atomic.AtomicInteger foldsAtTheGate =
+        new java.util.concurrent.atomic.AtomicInteger();
+    String id = releaseARequest(reactor(), fold -> foldsAtTheGate.set(merger.folds().size()));
+    awaitState(id, "RELEASED");
+    awaitDeletions(2);
+
+    assertEquals(List.of("RELEASED", "RELEASED"), seenAtDelete, "RELEASED before the first delete");
+    assertEquals("RELEASED", stateOf(id), "never withdrawn by its own deletions");
+    assertEquals(
+        List.of("main", "work"),
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    eu.wohlben.qits.projects.entity.ReleaseRequestSource
+                        .<eu.wohlben.qits.projects.entity.ReleaseRequestSource>list(
+                            "requestId = ?1 order by name", id)
+                        .stream()
+                        .map(source -> source.name)
+                        .toList()),
+        "no source was dropped");
+    List<RecordingBackingBranchMerger.Fold> folds = merger.folds();
+    assertTrue(
+        folds.subList(foldsAtTheGate.get(), folds.size()).stream()
+            .noneMatch(fold -> fold.target().equals("refs/heads/release/" + id)),
+        "nothing re-folded the released request");
+    assertTrue(
+        gitHost.addressed().stream()
+            .allMatch(
+                write ->
+                    projectId.equals(write.projectId()) && "qits-thing".equals(write.repoName())),
+        "every write named the repository: " + gitHost.addressed());
   }
 }
