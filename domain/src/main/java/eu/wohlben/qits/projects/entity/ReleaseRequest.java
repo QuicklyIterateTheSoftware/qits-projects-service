@@ -129,7 +129,7 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
    * beside {@link State}'s.
    *
    * <p><b>There is no column behind this and there must never be one.</b> It is derived per read
-   * from two facts that live elsewhere: whether {@code ApprovalPolicy} says this repository needs a
+   * from two facts that live elsewhere: whether {@code ApprovalPolicy} says this request needs a
    * person at all, and the newest {@link ReleaseRequestApproval} at the request's <em>current</em>
    * {@link #mergedSha}. Storing it would be a second answer that a policy change could not reach —
    * the day the policy widens, every already-open request has to start needing approval, and a

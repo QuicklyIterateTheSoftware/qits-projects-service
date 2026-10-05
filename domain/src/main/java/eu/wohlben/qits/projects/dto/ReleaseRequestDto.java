@@ -70,9 +70,11 @@ import java.util.List;
  *
  * <p><b>The approval fields are the SECOND gate, and every one of them is derived at the request's
  * current {@code mergedSha} and never stored on the request row.</b> {@code approvalRequired} is
- * {@code ApprovalPolicy}'s answer about the repository; {@code approvalState} is {@code
- * NOT_REQUIRED}, {@code WAITING}, {@code APPROVED} or {@code DECLINED}, a word rather than a closed
- * set like {@code state} and {@code priority} beside it, because the vocabulary may grow. Deriving
+ * {@code ApprovalPolicy}'s answer about this request — its repository's {@code manual-review}, or
+ * its fold changing the repository's own {@code .config/qits/} — and the {@code APPROVAL} entry of
+ * {@code gates} carries the reason; {@code approvalState} is {@code NOT_REQUIRED}, {@code WAITING},
+ * {@code APPROVED} or {@code DECLINED}, a word rather than a closed set like {@code state} and {@code
+ * priority} beside it, because the vocabulary may grow. Deriving
  * rather than storing is the whole point: a policy change has to reach the requests that are already
  * open — the day a second archetype starts needing a person, every PENDING request of one does, at
  * once — and a stored copy would be a second answer that went on saying {@code NOT_REQUIRED} until
@@ -89,8 +91,9 @@ import java.util.List;
  * fields is how a caller comes to read one and miss the other.
  *
  * <p><b>{@code gates} is the whole set, and it is what the approval fields are one member of.</b>
- * Each entry is a gate the repository <em>configures</em> together with what that gate says about
- * this request's current fold — see {@link ReleaseGateDto}. It is derived on every read out of the
+ * Each entry is a gate the repository <em>configures</em> — or, for {@code APPROVAL}, one the
+ * request's own content requires — together with what that gate says about this request's current
+ * fold — see {@link ReleaseGateDto}. It is derived on every read out of the
  * repository's {@code main}, the ledger and the approval table, and no part of it is a column on the
  * request row, for the approval fields' own reason one paragraph up. Three request states a reader
  * can now tell apart that did not exist before: waiting on a build, waiting on a person, and waiting

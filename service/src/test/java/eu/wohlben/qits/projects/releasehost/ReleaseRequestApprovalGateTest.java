@@ -75,6 +75,9 @@ public class ReleaseRequestApprovalGateTest {
    */
   @Inject RecordingReleaseGitHost gitHost;
 
+  /** What each fold changed — "nothing" unless a test of the content rule scripts otherwise. */
+  @Inject RecordingFoldChanges foldChanges;
+
   private String projectId;
   private String wrapperRepoId;
   private String plainRepoId;
@@ -88,6 +91,7 @@ public class ReleaseRequestApprovalGateTest {
     executor.reset();
     merger.reset();
     gitHost.reset();
+    foldChanges.reset();
     requestIds.clear();
     // A wrapper whose branches declare no submodules: the estate gate reads them, finds nothing
     // pinned and lets every request here through to the gate under test. See the field's javadoc.
@@ -402,9 +406,199 @@ public class ReleaseRequestApprovalGateTest {
         entries.getString("requests.find { it.id == '" + plain + "' }.approvalState"));
   }
 
+
+  // -----------------------------------------------------------------------------------------
+  // The content rule: a fold that changes .config/qits/ asks a person, whatever main configures
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * <b>A request may not rewrite its own rules unseen.</b> The plain repository configures no
+   * approval, and its fold adds, modifies, deletes and renames under {@code .config/qits/} — a rename
+   * out of the directory counting by its old path. Every one of those holds the request at the
+   * approval gate, and the gate says which paths did it. The requester is the bump robot on purpose:
+   * a machine requester is not exempt.
+   */
+  @Test
+  public void aFoldChangingConfigQitsIsHeldForAPersonAndNamesThePaths() {
+    foldChanges.changes(
+        plainRepoId,
+        List.of(
+            RecordingFoldChanges.file("MODIFIED", "README.md", null),
+            RecordingFoldChanges.file("ADDED", ".config/qits/deployments.yml", null),
+            RecordingFoldChanges.file("MODIFIED", ".config/qits/release.yml", null),
+            RecordingFoldChanges.file("DELETED", ".config/qits/release-requests.yml", null),
+            RecordingFoldChanges.file("RENAMED", ".config/qits/b.yml", ".config/qits/a.yml"),
+            RecordingFoldChanges.file("RENAMED", "docs/moved.yml", ".config/qits/moved.yml")));
+    String id = create(plainRepoId, "work", ROBOT);
+    String merged = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, "BuildSuccessful", merged, "");
+
+    var request = request(plainRepoId, id);
+    assertEquals("PENDING", request.getString("state"), "green, and a person has not seen it");
+    assertEquals(
+        "Waiting for a person to approve " + merged.substring(0, 10),
+        request.getString("detail"));
+    assertEquals(true, request.getBoolean("approvalRequired"));
+    assertEquals("WAITING", request.getString("approvalState"));
+    String expected =
+        "changes .config/qits/: .config/qits/deployments.yml, .config/qits/release.yml,"
+            + " .config/qits/release-requests.yml, .config/qits/a.yml, .config/qits/b.yml,"
+            + " .config/qits/moved.yml";
+    assertEquals("PENDING", request.getString("gates.find { it.kind == 'APPROVAL' }.state"));
+    assertEquals(expected, request.getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+    assertNull(
+        request.getString("gates.find { it.kind == 'CI' }.detail"), "only the approval gate says why");
+    assertEquals(0, executor.calls().size());
+
+    // And the list read answers the same reason, asked per request rather than per repository.
+    var entries =
+        given()
+            .get("/projects/api/projects/" + projectId + "/release-requests")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath();
+    assertEquals(
+        expected,
+        entries.getString(
+            "requests.find { it.id == '" + id + "' }.gates.find { it.kind == 'APPROVAL' }.detail"));
+  }
+
+  /**
+   * Gitlinks are somebody else's tree: a fold that only moves pins — even one mounted under {@code
+   * .config/qits/} — is this repository changing none of its own rules.
+   */
+  @Test
+  public void aGitlinkOnlyFoldIsNotHeld() {
+    foldChanges.changes(
+        plainRepoId,
+        List.of(
+            RecordingFoldChanges.gitlink("components/qits-thing/qits-thing-service"),
+            RecordingFoldChanges.gitlink(".config/qits/vendored")));
+    String id = create(plainRepoId, "work", "wohlben");
+    verdict(plainRepoId, "BuildSuccessful", mergedShaOf(plainRepoId, id), "");
+    awaitState(plainRepoId, id, "RELEASED");
+
+    var request = request(plainRepoId, id);
+    assertEquals(false, request.getBoolean("approvalRequired"));
+    assertNull(request.get("gates.find { it.kind == 'APPROVAL' }"), "no approval gate at all");
+  }
+
+  /** An unreadable fold is held, and says so: "could not look" is not the cheap way past a person. */
+  @Test
+  public void aFoldWhoseChangesCannotBeReadIsHeld() {
+    foldChanges.unreadable(plainRepoId, "the mirror is on fire");
+    String id = create(plainRepoId, "work", "wohlben");
+    verdict(plainRepoId, "BuildSuccessful", mergedShaOf(plainRepoId, id), "");
+
+    var request = request(plainRepoId, id);
+    assertEquals("PENDING", request.getString("state"));
+    assertEquals("WAITING", request.getString("approvalState"));
+    assertEquals(
+        "the changes to .config/qits/ could not be read: the mirror is on fire",
+        request.getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+    assertEquals(0, executor.calls().size());
+  }
+
+  /** The requirement is the current fold's: a refold that drops the change releases on green. */
+  @Test
+  public void aRefoldThatDropsTheConfigChangeClearsTheRequirement() {
+    foldChanges.changes(
+        plainRepoId, List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/release.yml", null)));
+    String id = create(plainRepoId, "work", "wohlben");
+    String firstFold = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, "BuildSuccessful", firstFold, "");
+    assertEquals("WAITING", request(plainRepoId, id).getString("approvalState"));
+
+    foldChanges.changes(plainRepoId, List.of(RecordingFoldChanges.file("MODIFIED", "README.md", null)));
+    headMoved(plainRepoId, "work");
+    String secondFold = awaitNewFold(plainRepoId, id, firstFold);
+    verdict(plainRepoId, "BuildSuccessful", secondFold, "");
+    awaitState(plainRepoId, id, "RELEASED");
+
+    var request = request(plainRepoId, id);
+    assertEquals(false, request.getBoolean("approvalRequired"));
+    assertEquals("NOT_REQUIRED", request.getString("approvalState"));
+  }
+
+  /**
+   * An approval names the fold it read. A refold that changes {@code .config/qits/} again is content
+   * nobody approved, so the request asks again — the yes at the older sha counts for nothing.
+   */
+  @Test
+  public void aRefoldThatChangesConfigQitsAgainAfterAnApprovalAsksAgain() {
+    foldChanges.changes(
+        plainRepoId, List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/release.yml", null)));
+    String id = create(plainRepoId, "work", "wohlben");
+    String firstFold = mergedShaOf(plainRepoId, id);
+    record(id, firstFold, ReleaseRequestApproval.Decision.APPROVED, "ada", "fine at this fold");
+    assertEquals("APPROVED", request(plainRepoId, id).getString("approvalState"));
+
+    foldChanges.changes(
+        plainRepoId,
+        List.of(RecordingFoldChanges.file("ADDED", ".config/qits/deployments.yml", null)));
+    headMoved(plainRepoId, "work");
+    String secondFold = awaitNewFold(plainRepoId, id, firstFold);
+    verdict(plainRepoId, "BuildSuccessful", secondFold, "");
+
+    var request = request(plainRepoId, id);
+    assertEquals("PENDING", request.getString("state"));
+    assertEquals("WAITING", request.getString("approvalState"));
+    assertNull(request.getString("approvedBy"), "the yes judged a fold this request has left");
+    assertEquals(
+        "changes .config/qits/: .config/qits/deployments.yml",
+        request.getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+    assertEquals(0, executor.calls().size());
+  }
+
+  /** Both rules at once: the configuration's reason first, the content's after it. */
+  @Test
+  public void manualReviewAndAConfigChangeAreBothNamed() {
+    foldChanges.changes(
+        wrapperRepoId,
+        List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/release-requests.yml", null)));
+    String id = create(wrapperRepoId, "work", "wohlben");
+    verdict(wrapperRepoId, "BuildSuccessful", mergedShaOf(wrapperRepoId, id), "");
+
+    var request = request(wrapperRepoId, id);
+    assertEquals(
+        "configured by manual-review; changes .config/qits/: .config/qits/release-requests.yml",
+        request.getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+  }
+
+  /** The configuration alone says so in its own words. */
+  @Test
+  public void manualReviewAloneSaysSo() {
+    String id = create(wrapperRepoId, "work", "wohlben");
+    verdict(wrapperRepoId, "BuildSuccessful", mergedShaOf(wrapperRepoId, id), "");
+
+    assertEquals(
+        "configured by manual-review",
+        request(wrapperRepoId, id).getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+  }
+
   // -----------------------------------------------------------------------------------------
   // Driving it
   // -----------------------------------------------------------------------------------------
+
+  /** The refold runs off the head event; poll until the request is on a fold other than {@code old}. */
+  private String awaitNewFold(String repoId, String id, String old) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (System.currentTimeMillis() < deadline) {
+      String now = mergedShaOf(repoId, id);
+      if (now != null && !now.equals(old)) {
+        return now;
+      }
+      try {
+        Thread.sleep(50);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        fail("interrupted");
+      }
+    }
+    fail("request " + id + " never refolded off " + old);
+    return null;
+  }
 
   private String base(String repoId) {
     return "/projects/api/repositories/" + repoId + "/release-requests";

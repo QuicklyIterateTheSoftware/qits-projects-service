@@ -46,6 +46,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -165,9 +166,10 @@ import org.jboss.logging.Logger;
  * <h2>The approval gate</h2>
  *
  * <p><b>Some releases need a person to say yes, and that is a gate of its own rather than a clause
- * of the CI one.</b> Where {@link ApprovalPolicy} says this repository's releases have to be
- * approved — {@code manual-review: true} in its {@code .config/qits/release-requests.yml} — a
- * request does not become READY until somebody has decided about it. The decision is a {@link
+ * of the CI one.</b> Where {@link ApprovalPolicy} says this request has to be approved — {@code
+ * manual-review: true} in its repository's {@code .config/qits/release-requests.yml}, or a fold that
+ * changes the repository's own {@code .config/qits/} — a request does not become READY until
+ * somebody has decided about it. The decision is a {@link
  * eu.wohlben.qits.projects.entity.ReleaseRequestApproval} row: APPROVED lets it through, DECLINED
  * rejects it with the decider's own sentence, and no row at all holds it PENDING saying so.
  *
@@ -190,11 +192,11 @@ import org.jboss.logging.Logger;
  * holding the old one. What the API answers is derived the same way, for the same reason — see
  * {@link ReleaseRequestDto}.
  *
- * <p><b>Its rule is the repository's own configuration, and that is what the placeholder became.</b>
- * {@link ApprovalPolicy} tested the archetype until the gate set landed — the wrapper was the
- * population that needed a person first — and it reads {@code manual-review} now, so approval has
- * stopped being about being a wrapper at all. The wrapper still requires it, because its own {@code
- * main} says so.
+ * <p><b>Its rule is the repository's own configuration or the request's own content, and that is
+ * what the placeholder became.</b> {@link ApprovalPolicy} tested the archetype until the gate set
+ * landed — the wrapper was the population that needed a person first — and it reads {@code
+ * manual-review} and the fold's changes to {@code .config/qits/} now, so approval has stopped being
+ * about being a wrapper at all. The wrapper still requires it, because its own {@code main} says so.
  *
  * <p><b>The decision arrives through {@link #approve} and {@link #decline}, and both name the fold
  * they are about.</b> The stated {@code mergedSha} is what makes an approval a statement about
@@ -944,12 +946,12 @@ public class ReleaseRequests {
                       .orElseThrow(
                           () -> new NotFoundException("Release request not found: " + id));
               requireDecidable(row, decision);
-              if (!approvalPolicy.requiresApproval(row.repoId)) {
+              if (!approvalPolicy.requirementFor(row).required()) {
                 throw new DomainException(
                     409,
                     "Release request "
                         + id
-                        + " releases a repository that needs no approval, so there is nothing here"
+                        + " needs no approval, so there is nothing here"
                         + " to "
                         + verb(decision)
                         + ".");
@@ -2785,7 +2787,7 @@ public class ReleaseRequests {
                   // service owns, and approving is itself a re-evaluation trigger, so a door that
                   // records a decision calls evaluate() after its write and the request settles
                   // here on the next pass.
-                  if (approvalPolicy.requiresApproval(row.repoId)) {
+                  if (approvalPolicy.requirementFor(row).required()) {
                     ReleaseRequestApproval decision =
                         approvals.latestFor(row.id, row.mergedSha).orElse(null);
                     if (decision == null) {
@@ -3455,13 +3457,11 @@ public class ReleaseRequests {
    * Filtering it out is what used to make the answer say "there is no such release" for exactly the
    * releases somebody is watching.
    *
-   * <p><b>The approval gate is answered in the same batched shape and for the same reason.</b> It is
-   * derived per read rather than stored, so it is two more questions per row and would be two more
-   * queries per row if it were asked naively — on the project-wide worklist, which is the busiest
-   * read this class has. So the policy is asked once per <b>distinct repository</b> (the page's rows
-   * are usually a handful of repositories, and the answer cannot differ within one) and the
-   * decisions come back in one query, keyed on each request's own current fold — see {@link
-   * ReleaseRequestApprovalRepository#currentForEach}.
+   * <p><b>The approval decisions are answered in the same batched shape and for the same reason</b>:
+   * one query, keyed on each request's own current fold — see {@link
+   * ReleaseRequestApprovalRepository#currentForEach}. Whether approval is <em>required</em> cannot
+   * be batched per repository any more: it depends on what each fold changes, so the policy is
+   * asked per request, once per distinct {@code (repoId, mergedSha)} in the page.
    */
   private List<ReleaseRequestDto> decorate(
       List<ReleaseRequest> rows, Map<String, String> currentNames) {
@@ -3477,14 +3477,19 @@ public class ReleaseRequests {
     Map<String, ReleasedTagPendingMerge> released =
         pendingTags.listByRequests(ids).stream()
             .collect(Collectors.toMap(tag -> tag.releaseRequestId, tag -> tag, (a, b) -> a));
-    Map<String, Boolean> approvalRequired =
-        rows.stream()
-            .map(row -> row.repoId)
-            .distinct()
-            .collect(
-                Collectors.toMap(repoId -> repoId, repoId -> approvalPolicy.requiresApproval(repoId)));
-    // The gate set, asked once per DISTINCT repository for the policy's own reason above — and it
-    // cannot differ within one repository, since it is read from that repository's main.
+    // Asked PER REQUEST, because the answer depends on what each fold changes; cached by (repoId,
+    // mergedSha) within this read, since two requests on one fold are one question.
+    Map<String, ApprovalPolicy.ApprovalRequirement> approvalAsked = new HashMap<>();
+    Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequired = new HashMap<>();
+    for (ReleaseRequest row : rows) {
+      approvalRequired.put(
+          row.id,
+          approvalAsked.computeIfAbsent(
+              row.repoId + "@" + row.mergedSha,
+              key -> approvalPolicy.requirementFor(row.repoId, row.mergedSha)));
+    }
+    // The gate set, asked once per DISTINCT repository — it cannot differ within one repository,
+    // since it is read from that repository's main.
     Map<String, ReleaseGates.GateSet> gateSets =
         rows.stream()
             .map(row -> row.repoId)
@@ -3515,7 +3520,9 @@ public class ReleaseRequests {
             row -> {
               ApprovalView approval =
                   ApprovalView.of(
-                      approvalRequired.getOrDefault(row.repoId, false), decisions.get(row.id));
+                      approvalRequired.getOrDefault(
+                          row.id, ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED),
+                      decisions.get(row.id));
               return dto(
                   row,
                   currentNames.getOrDefault(row.repoId, row.repoName),
@@ -3604,9 +3611,11 @@ public class ReleaseRequests {
     if (released != null && released.mergedAt != null) {
       states.put(ReleaseGates.Kind.DEPLOYMENT, ReleaseGates.State.PASSED);
     }
-    ReleaseGates.GateSet reported = set;
+    // The content rule can require approval of a repository whose main configures none, so a
+    // required approval is what puts the kind in the set here — the same seam PUBLISH uses below.
+    ReleaseGates.GateSet reported = approval.required() ? set.with(ReleaseGates.Kind.APPROVAL) : set;
     if (released != null && released.publishState != null) {
-      reported = set.with(ReleaseGates.Kind.PUBLISH);
+      reported = reported.with(ReleaseGates.Kind.PUBLISH);
       states.put(
           ReleaseGates.Kind.PUBLISH,
           switch (released.publishState) {
@@ -3618,26 +3627,32 @@ public class ReleaseRequests {
     List<ReleaseGates.Gate> decided = ReleaseGates.report(reported, states);
     return new GateView(
         decided.stream()
-            .map(gate -> new ReleaseGateDto(gate.kind().name(), gate.state().name()))
+            .map(
+                gate ->
+                    new ReleaseGateDto(
+                        gate.kind().name(),
+                        gate.state().name(),
+                        gate.kind() == ReleaseGates.Kind.APPROVAL ? approval.detail() : null))
             .toList(),
         pipelineAssembler.assemble(
-            phaseRuns, decided, gateDetails(set, released), released, reach));
+            phaseRuns, decided, gateDetails(set, released, approval), released, reach));
   }
 
   /**
    * A sentence per gate, where the path that already answered the gate already has one — sourced,
    * never invented, because nothing here may evaluate a gate to produce prose about it.
    *
-   * <p>Two gates can say something and no third one can. The <b>publish</b> gate's sentence is
+   * <p>Three gates can say something and no fourth one can. The <b>publish</b> gate's sentence is
    * {@code released_tag_pending_merge.publish_detail}, which is where a publish run that never
-   * reports is made audible once a window; an <b>unknown</b> gate set's is the set's own reason for
-   * not having been readable, which is the one case where the sentence is about the gate having no
-   * answer rather than about its answer. CI and approval carry none: their sentence today is the
-   * request's own {@code detail}, one field up, and copying it onto a gate would be the same words
-   * in two places free to drift.
+   * reports is made audible once a window; the <b>approval</b> gate's is {@link ApprovalPolicy}'s
+   * reason for asking a person at all; an <b>unknown</b> gate set's is the set's own reason for not
+   * having been readable, which is the one case where the sentence is about the gate having no
+   * answer rather than about its answer. CI carries none: its sentence today is the request's own
+   * {@code detail}, one field up, and copying it onto a gate would be the same words in two places
+   * free to drift.
    */
   private static Map<ReleaseGates.Kind, String> gateDetails(
-      ReleaseGates.GateSet set, ReleasedTagPendingMerge released) {
+      ReleaseGates.GateSet set, ReleasedTagPendingMerge released, ApprovalView approval) {
     Map<ReleaseGates.Kind, String> details = new java.util.EnumMap<>(ReleaseGates.Kind.class);
     if (!set.known() && set.detail() != null) {
       for (ReleaseGates.Kind kind : ReleaseGates.Kind.values()) {
@@ -3649,6 +3664,9 @@ public class ReleaseRequests {
         && released.publishDetail != null
         && !released.publishDetail.isBlank()) {
       details.put(ReleaseGates.Kind.PUBLISH, released.publishDetail);
+    }
+    if (approval.detail() != null) {
+      details.put(ReleaseGates.Kind.APPROVAL, approval.detail());
     }
     return details;
   }
@@ -3671,8 +3689,10 @@ public class ReleaseRequests {
    * policy and the approval table, never out of the request row, because there is nothing about it
    * on the request row — see the approval gate in this class's javadoc.
    *
-   * <p>It is a record rather than five parameters threaded through {@link #dto} because both callers
-   * compute the same five things and only the number of queries differs, and because the invariant
+   * <p>{@code detail} is the policy's reason for asking at all, null where nobody is asked.
+   *
+   * <p>It is a record rather than six parameters threaded through {@link #dto} because both callers
+   * compute the same six things and only the number of queries differs, and because the invariant
    * worth holding in one place is that {@code state} and the three decision fields can never
    * disagree: they are made from the one decision or from its absence, together.
    */
@@ -3681,28 +3701,34 @@ public class ReleaseRequests {
       ReleaseRequest.ApprovalState state,
       String actor,
       Instant decidedAt,
-      String note) {
+      String note,
+      String detail) {
 
     /**
      * @param decision the newest decision at the request's <b>current</b> {@code mergedSha}, or null
      *     where there is none — a fold nobody has judged, and one whose decisions were all made
      *     against a sha the request has moved past, which are one answer on purpose.
      */
-    static ApprovalView of(boolean required, ReleaseRequestApproval decision) {
-      if (!required) {
+    static ApprovalView of(
+        ApprovalPolicy.ApprovalRequirement requirement, ReleaseRequestApproval decision) {
+      if (!requirement.required()) {
         // Not asked, which is deliberately not the same word as approved. The decision fields stay
         // null even where a row exists: a policy that stopped requiring approval must not leave the
         // answer looking like somebody is still gating on it.
-        return new ApprovalView(false, ReleaseRequest.ApprovalState.NOT_REQUIRED, null, null, null);
+        return new ApprovalView(
+            false, ReleaseRequest.ApprovalState.NOT_REQUIRED, null, null, null, null);
       }
+      String detail = requirement.detail();
       if (decision == null) {
-        return new ApprovalView(true, ReleaseRequest.ApprovalState.WAITING, null, null, null);
+        return new ApprovalView(
+            true, ReleaseRequest.ApprovalState.WAITING, null, null, null, detail);
       }
       ReleaseRequest.ApprovalState state =
           decision.decision == ReleaseRequestApproval.Decision.DECLINED
               ? ReleaseRequest.ApprovalState.DECLINED
               : ReleaseRequest.ApprovalState.APPROVED;
-      return new ApprovalView(true, state, decision.actor, decision.decidedAt, decision.note);
+      return new ApprovalView(
+          true, state, decision.actor, decision.decidedAt, decision.note, detail);
     }
   }
 
@@ -3712,10 +3738,10 @@ public class ReleaseRequests {
    * #effectivePriorityOf(String)} beside it.
    */
   private ApprovalView approvalOf(ReleaseRequest row) {
-    boolean required = approvalPolicy.requiresApproval(row.repoId);
+    ApprovalPolicy.ApprovalRequirement required = approvalPolicy.requirementFor(row);
     return ApprovalView.of(
         required,
-        required && row.mergedSha != null
+        required.required() && row.mergedSha != null
             ? approvals.latestFor(row.id, row.mergedSha).orElse(null)
             : null);
   }

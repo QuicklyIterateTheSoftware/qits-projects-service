@@ -22,7 +22,8 @@
       "gates": [
         {
           "kind": "CI",
-          "state": "PENDING"
+          "state": "PENDING",
+          "detail": null
         }
       ],
       "conflict": null,
@@ -57,7 +58,8 @@
       "gates": [
         {
           "kind": "CI",
-          "state": "PENDING"
+          "state": "PENDING",
+          "detail": null
         }
       ],
       "conflict": null,
@@ -92,7 +94,8 @@
       "gates": [
         {
           "kind": "CI",
-          "state": "PASSED"
+          "state": "PASSED",
+          "detail": null
         }
       ],
       "conflict": null,
@@ -127,7 +130,8 @@
       "gates": [
         {
           "kind": "CI",
-          "state": "FAILED"
+          "state": "FAILED",
+          "detail": null
         }
       ],
       "conflict": null,
@@ -162,7 +166,8 @@
       "gates": [
         {
           "kind": "CI",
-          "state": "PENDING"
+          "state": "PENDING",
+          "detail": null
         }
       ],
       "conflict": null,
@@ -197,7 +202,8 @@
       "gates": [
         {
           "kind": "CI",
-          "state": "PENDING"
+          "state": "PENDING",
+          "detail": null
         }
       ],
       "conflict": null,

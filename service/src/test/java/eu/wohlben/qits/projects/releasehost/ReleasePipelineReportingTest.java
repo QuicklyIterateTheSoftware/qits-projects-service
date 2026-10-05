@@ -292,11 +292,14 @@ public class ReleasePipelineReportingTest {
     assertEquals(
         strings(id, "request.gates.state"), strings(id, "request.pipeline.gates.state"));
     assertEquals(
-        List.<String>of(),
-        strings(id, "request.pipeline.gates.detail").stream()
-            .filter(java.util.Objects::nonNull)
-            .toList(),
-        "no sentence is invented: these three gates' existing answers carry none");
+        java.util.Arrays.asList(null, "configured by manual-review", null),
+        strings(id, "request.pipeline.gates.detail"),
+        "no sentence is invented: CI and deployment carry none, and approval carries the policy's"
+            + " own reason for asking");
+    assertEquals(
+        strings(id, "request.gates.detail"),
+        strings(id, "request.pipeline.gates.detail"),
+        "and the flat list says the same words");
   }
 
   /**

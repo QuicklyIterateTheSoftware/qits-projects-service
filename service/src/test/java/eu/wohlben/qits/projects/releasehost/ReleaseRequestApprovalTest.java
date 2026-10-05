@@ -160,7 +160,7 @@ public class ReleaseRequestApprovalTest {
     gitHost.reset();
     for (RepositoryArchetype archetype : RepositoryArchetype.values()) {
       assertFalse(
-          policy.requiresApproval(repoIdOf(archetype)),
+          policy.requirementFor(repoIdOf(archetype), null).required(),
           archetype + " releases on what it configures, and it configures no approval");
     }
   }
@@ -175,9 +175,13 @@ public class ReleaseRequestApprovalTest {
           repoId,
           "refs/heads/main",
           java.util.Map.of(".config/qits/release-requests.yml", "manual-review: true\n"));
+      ApprovalPolicy.ApprovalRequirement requirement = policy.requirementFor(repoId, null);
       assertTrue(
-          policy.requiresApproval(repoId),
-          archetype + " requires a person because its own main says so");
+          requirement.required(), archetype + " requires a person because its own main says so");
+      assertEquals(
+          "configured by manual-review",
+          requirement.detail(),
+          "and says which rule asked — a request with no fold yet has no content to add a reason");
     }
   }
 
@@ -187,6 +191,10 @@ public class ReleaseRequestApprovalTest {
    */
   @Test
   void aRepositoryWithNoRowRequiresNoApproval() {
-    assertFalse(policy.requiresApproval("approval-vanished-" + UUID.randomUUID()));
+    ApprovalPolicy.ApprovalRequirement requirement =
+        policy.requirementFor(
+            "approval-vanished-" + UUID.randomUUID(), "sha-of-a-fold-nobody-can-read-any-more");
+    assertFalse(requirement.required(), "not even the content rule holds settled history");
+    assertEquals(null, requirement.detail());
   }
 }

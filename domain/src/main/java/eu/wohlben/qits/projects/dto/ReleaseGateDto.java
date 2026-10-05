@@ -7,8 +7,9 @@ package eu.wohlben.qits.projects.dto;
  * word rather than a closed set, like {@code state} and {@code priority} on the request beside it,
  * because the vocabulary may grow. A gate is in the list because the repository <em>configures</em>
  * it: a CI recipe, a deployments manifest, {@code manual-review: true}, a released tree qits-ci says
- * it runs a release for. A gate the repository does not configure is simply absent and is never
- * waited on.
+ * it runs a release for. The one exception is {@code APPROVAL}, which a fold changing the
+ * repository's own {@code .config/qits/} requires whatever {@code main} configures — see {@link
+ * #detail}. A gate that applies neither way is simply absent and is never waited on.
  *
  * <p>({@code PUBLISH} was missing from that sentence for longer than it was missing from the wire:
  * the gate has been emitted since the request stopped ending at the tag, and this javadoc went on
@@ -39,5 +40,12 @@ package eu.wohlben.qits.projects.dto;
  * <p><b>The deployment gate is reported on a request that has already released</b>, where it is the
  * only gate left: a release is a tag, and {@code main} is finalized when the deployment is live, so
  * "released, waiting on its deployment" is a real state today that the surface showed nothing for.
+ *
+ * <p><b>{@code detail} says why a person is being asked</b>, on the {@code APPROVAL} gate and nowhere
+ * else: {@code configured by manual-review}, {@code changes .config/qits/: <paths>}, or both joined
+ * with {@code "; "} — {@code ApprovalPolicy}'s own reason, never re-derived here. Null on every other
+ * kind, and on an approval gate nobody has to be asked about. A repository whose main configures no
+ * approval still reports an {@code APPROVAL} gate on a request whose fold changes its {@code
+ * .config/qits/}, and this is the field that says so.
  */
-public record ReleaseGateDto(String kind, String state) {}
+public record ReleaseGateDto(String kind, String state, String detail) {}

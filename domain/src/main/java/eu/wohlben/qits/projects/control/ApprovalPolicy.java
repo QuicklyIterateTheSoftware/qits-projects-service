@@ -1,54 +1,152 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import org.jboss.logging.Logger;
 
 /**
- * Whether a release of this repository has to be approved by a person.
+ * Whether a release request has to be approved by a person.
  *
- * <p><b>The answer is what the repository configures</b>: {@code manual-review: true} in its {@code
- * .config/qits/release-requests.yml}, read from its {@code main} through {@link ReleaseGates}.
- * Approval is one member of that gate set, standing beside the CI and deployment gates rather than
- * behind either of them — a repository whose graduation is a person reading a diff configures this
- * and nothing else, and waits on nothing else.
+ * <p><b>The answer is the repository's configuration OR the request's own content</b>, and it is a
+ * question about one request rather than about a repository:
  *
- * <p><b>It used to test the archetype, and that was always the placeholder.</b> A release of an
- * archetype {@link RepositoryArchetype#PROJECT} repository is the estate's own version moving, so
- * the wrapper was the population that needed a person first — but being a wrapper was never what
- * approval <em>meant</em>. The quality gates replaced the test, the wrapper still requires approval
- * because its own {@code main} says {@code manual-review: true}, and this method's body changed
- * while nothing that calls it did.
+ * <ul>
+ *   <li><b>{@code manual-review: true}</b> in the repository's {@code
+ *       .config/qits/release-requests.yml}, read from its {@code main} through {@link ReleaseGates}.
+ *       A repository whose graduation is a person reading a diff configures this and waits on
+ *       nothing else.
+ *   <li><b>The fold changes {@value #CONFIG_DIRECTORY}</b> in this repository's own tree — a platform
+ *       rule, not a setting. That directory is what tells the platform how to gate, release and
+ *       deploy the repository, so a request that rewrites it is changing the rules every later
+ *       request of this repository is held by — switching {@code manual-review} off, dropping a QA
+ *       slot, re-pointing a deployment — and that is a change a person sees before it ships.
+ *       Added, modified, deleted and renamed paths all count, a rename by its old path as well as
+ *       its new one, and machine requesters are not exempt. <b>Gitlinks never count</b>: a wrapper moving a pin moves
+ *       somebody else's tree, which that repository's own request has already answered for.
+ * </ul>
  *
- * <p>Which is the whole point of it being one method in one class, and the rule survives the swap:
- * <b>nothing else in this domain may read {@code manual-review} to decide this question</b>, exactly
- * as nothing else was allowed to read the archetype for it. A second reading spelled inline at a
- * gate, in the API or in the announcement is an answer that the next change would have to find and
- * replace one by one, and one of them would be missed. Ask here.
+ * <p>"Changes" is the diff the request's {@code …/changes} view shows — {@code mergedSha} against
+ * the newest release tag that does not contain it ({@link FoldChanges}) — so what a person is shown
+ * and what the gate counts are one reading. A request with no fold yet has no content, so only the
+ * configuration applies to it; a fold whose changes cannot be read <b>requires approval</b>, because
+ * "could not look" must not be the cheapest way past a person. The answer is derived from the
+ * current {@code mergedSha} on every ask, and a decision is read at that same sha, so a refold that
+ * drops the change clears the requirement and one that changes the directory again after an
+ * approval asks again.
  *
- * <p><b>A repository whose gate configuration cannot be read requires no approval <em>here</em>, and
- * that is not a hole.</b> This is asked on the read path and from inside the evaluation, and the
- * evaluation has already refused to release an unknown gate set before it reaches this line — so an
- * unreadable configuration holds the request one gate earlier, where the sentence a person reads
- * says why. Answering "yes, ask somebody" here instead would put a person in front of a fold whose
- * rules nobody could establish.
+ * <p>The answer carries a {@link ApprovalRequirement#detail sentence} saying which rule applied, so
+ * the surface can say why a person is being asked rather than only that one is.
  *
- * <p><b>A repository with no row requires no approval</b>, and follows from the same line: a release
- * request outlives the repository it named — {@code repo_id} is a plain string and never a foreign
- * key, for exactly that reason — so this is asked for ids that no longer resolve, and the answer must
- * be the one that lets settled history be read rather than a hold nobody can ever satisfy.
+ * <p><b>Nothing else in this domain may answer this question</b> — not by reading {@code
+ * manual-review}, not by diffing a fold, not by testing the archetype the way this class once did. A
+ * second reading spelled inline at a gate, in the API or in the announcement is an answer that the
+ * next change would have to find and replace one by one, and one of them would be missed. Ask here.
+ *
+ * <p><b>A repository whose gate configuration cannot be read is not held by the configuration
+ * half</b>, and that is not a hole: the evaluation has already refused to release an unknown gate set
+ * before it reaches this question, so an unreadable configuration holds the request one gate
+ * earlier, where the sentence a person reads says why.
+ *
+ * <p><b>A repository with no row requires no approval</b>: a release request outlives the repository
+ * it named — {@code repo_id} is a plain string and never a foreign key, for exactly that reason — so
+ * this is asked for ids that no longer resolve, and the answer must be the one that lets settled
+ * history be read rather than a hold nobody can ever satisfy.
  */
 @ApplicationScoped
 public class ApprovalPolicy {
+
+  private static final Logger LOG = Logger.getLogger(ApprovalPolicy.class);
+
+  /** The directory whose change in a fold puts a person in front of it. */
+  public static final String CONFIG_DIRECTORY = ".config/qits/";
+
+  /** The sentence for the configuration half of the rule. */
+  static final String MANUAL_REVIEW_DETAIL = "configured by manual-review";
 
   @Inject RepositoryRepository repositories;
 
   @Inject ReleaseGates gates;
 
-  /** Whether a release of {@code repoId} needs a person's approval. See the class javadoc. */
-  public boolean requiresApproval(String repoId) {
-    return gates.resolve(repoId).requires(ReleaseGates.Kind.APPROVAL);
+  @Inject FoldChanges foldChanges;
+
+  /**
+   * The answer to the approval question for one request.
+   *
+   * @param detail which rule applied — {@code configured by manual-review}, {@code changes
+   *     .config/qits/: <paths>}, both joined with {@code "; "}, or the sentence saying the fold's
+   *     changes could not be read; null exactly when {@code required} is false
+   */
+  public record ApprovalRequirement(boolean required, String detail) {
+
+    public static final ApprovalRequirement NOT_REQUIRED = new ApprovalRequirement(false, null);
+  }
+
+  /** Whether {@code request} needs a person's approval at its current fold. See the class javadoc. */
+  public ApprovalRequirement requirementFor(ReleaseRequest request) {
+    return requirementFor(request.repoId, request.mergedSha);
+  }
+
+  /**
+   * The same question asked of a repository and a fold, for the list read that caches per {@code
+   * (repoId, mergedSha)}. {@code mergedSha} may be null: a request with no fold yet.
+   */
+  public ApprovalRequirement requirementFor(String repoId, String mergedSha) {
+    List<String> reasons = new ArrayList<>(2);
+    if (gates.resolve(repoId).requires(ReleaseGates.Kind.APPROVAL)) {
+      reasons.add(MANUAL_REVIEW_DETAIL);
+    }
+    String content = contentReason(repoId, mergedSha);
+    if (content != null) {
+      reasons.add(content);
+    }
+    return reasons.isEmpty()
+        ? ApprovalRequirement.NOT_REQUIRED
+        : new ApprovalRequirement(true, String.join("; ", reasons));
+  }
+
+  /** The content half: a sentence where the fold changes {@link #CONFIG_DIRECTORY}, else null. */
+  private String contentReason(String repoId, String mergedSha) {
+    if (mergedSha == null || mergedSha.isBlank()) {
+      return null;
+    }
+    if (repositories.findByIdOptional(repoId).isEmpty()) {
+      return null;
+    }
+    List<CommitFileChangeDto> files;
+    try {
+      files = foldChanges.changes(repoId, mergedSha, CONFIG_DIRECTORY);
+    } catch (RuntimeException e) {
+      // FAIL CLOSED: the one answer that must not come out of an outage is "changes nothing".
+      LOG.warnf(
+          "Could not read whether %s of %s changes %s; requiring approval: %s",
+          mergedSha, repoId, CONFIG_DIRECTORY, e.getMessage());
+      return "the changes to " + CONFIG_DIRECTORY + " could not be read: " + e.getMessage();
+    }
+    Set<String> touched = new LinkedHashSet<>();
+    for (CommitFileChangeDto file : files) {
+      if (file.touchesGitlink()) {
+        continue;
+      }
+      if (underConfig(file.oldPath())) {
+        touched.add(file.oldPath());
+      }
+      if (underConfig(file.path())) {
+        touched.add(file.path());
+      }
+    }
+    return touched.isEmpty() ? null : "changes " + CONFIG_DIRECTORY + ": " + String.join(", ", touched);
+  }
+
+  private static boolean underConfig(String path) {
+    return path != null && path.startsWith(CONFIG_DIRECTORY);
   }
 
   /**
@@ -56,8 +154,8 @@ public class ApprovalPolicy {
    * release is the whole platform's version moving and whose gitlinks therefore have to name what
    * its members have released before it may ship.
    *
-   * <p><b>This is a different question from {@link #requiresApproval}, and they no longer read the
-   * same fact at all.</b> They did until the quality gates landed, and that was always a coincidence
+   * <p><b>This is a different question from {@link #requirementFor(ReleaseRequest)}, and they no
+   * longer read the same fact at all.</b> They did until the quality gates landed, and that was always a coincidence
    * of where the platform had got to: approval was asked because the wrapper was the population that
    * needed a person first, and its rule was a placeholder. Pinning an estate is not a placeholder for
    * anything. It is a property of what the repository <em>is</em>: a superproject has gitlinks and
@@ -83,7 +181,7 @@ public class ApprovalPolicy {
    * here.</b> The gate set is a tree reading of {@code main}; this one is the row, because arming is
    * asked before any tree has been read and for a request that may have no fold yet.
    *
-   * <p>A repository with no row is <b>not</b> a wrapper, for {@link #requiresApproval}'s reason: a
+   * <p>A repository with no row is <b>not</b> a wrapper, for the approval question's reason: a
    * release request outlives the repository it named, and a hold nobody can ever satisfy is worse
    * than settled history being readable.
    */

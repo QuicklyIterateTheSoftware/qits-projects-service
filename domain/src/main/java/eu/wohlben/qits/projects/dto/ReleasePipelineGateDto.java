@@ -32,8 +32,10 @@ package eu.wohlben.qits.projects.dto;
  *
  * <p><b>{@code detail} is a sentence where the existing path already has one, and null otherwise.</b>
  * It is sourced, never invented: the publish gate's is {@code released_tag_pending_merge}'s {@code
- * publish_detail} — which is where a publish that never reports is made audible — and an {@code
- * UNKNOWN} gate's is the gate set's own reason for not having been readable. No gate is evaluated to
+ * publish_detail} — which is where a publish that never reports is made audible — the approval
+ * gate's is {@code ApprovalPolicy}'s reason for asking a person at all, the same words as {@link
+ * ReleaseGateDto#detail()}, and an {@code UNKNOWN} gate's is the gate set's own reason for not having
+ * been readable. No gate is evaluated to
  * produce one, so a gate whose existing answer carries no sentence carries none here.
  */
 public record ReleasePipelineGateDto(
