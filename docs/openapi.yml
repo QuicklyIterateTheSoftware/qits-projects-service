@@ -7100,8 +7100,10 @@ paths:
         \ a fold whose build is already green releases on the click. 409 also for\
         \ a request that has concluded or is already being released, for one with\
         \ no fold yet, and for a repository that needs no approval at all — approving\
-        \ what has no gate is a caller error, not a no-op. qits:admin only: a machine\
-        \ may ask for a release and withdraw one, and may not sign off the estate."
+        \ what has no gate is a caller error, not a no-op. A person only: qits:admin,\
+        \ verified by this service from a browser session or a person's qits CLI token\
+        \ — asserted identity headers alone answer 403. A machine may ask for a release\
+        \ and withdraw one, and may not sign off the estate."
       parameters:
       - name: repoId
         in: path
@@ -7418,7 +7420,8 @@ paths:
         \ while withdraw judges the ASK, is terminal, frees the branches and makes\
         \ the next release ask mint a fresh request. Same body and same refusals as\
         \ approve, mergedSha included. No unattended-gate ticket is filed: a person\
-        \ just said no, so somebody is watching by definition. qits:admin only."
+        \ just said no, so somebody is watching by definition. A person only, verified\
+        \ exactly as approve verifies one."
       parameters:
       - name: repoId
         in: path

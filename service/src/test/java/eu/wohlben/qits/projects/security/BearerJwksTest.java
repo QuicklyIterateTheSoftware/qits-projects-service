@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.security;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -144,5 +145,53 @@ class BearerJwksTest {
     return MockIdp.attach().recordedRequests().stream()
         .filter(request -> "/idp/jwks".equals(request.path()))
         .count();
+  }
+
+  /**
+   * The CLI half of {@link PersonCheck} through a really validated bearer (qits-891): the claim
+   * shapes quarkus-oidc hands back are what the check reads, so this is the hop {@code
+   * PersonCheckTest}'s hand-made tokens cannot vouch for.
+   */
+  @Test
+  @Order(6)
+  void onlyAPersonsCliTokenHoldingAdminIsAPerson() {
+    MockIdp idp = MockIdp.attach();
+    String cli =
+        idp.token()
+            .subject("user-7")
+            .audience("qits-platform")
+            .groups("qits:admin")
+            .claim("credential_type", "cli")
+            .mint();
+    String service =
+        idp.token()
+            .subject(SUBJECT)
+            .audience("qits-platform")
+            .groups("qits:system", "qits:admin", "clients/" + SUBJECT)
+            .mint();
+    String agent =
+        idp.token()
+            .subject("dev-qits-projects-agent-7")
+            .audience("qits-platform")
+            .groups("qits:admin")
+            .claim("credential_type", "cli")
+            .claim("context_kind", "agent-container")
+            .mint();
+
+    given()
+        .header("Authorization", "Bearer " + cli)
+        .get(IDENTITY)
+        .then()
+        .statusCode(200)
+        .body("person", equalTo("user-7"));
+    for (String machine : new String[] {service, agent}) {
+      given()
+          .header("Authorization", "Bearer " + machine)
+          .get(IDENTITY)
+          .then()
+          .statusCode(200)
+          .body("anonymous", equalTo(false))
+          .body("person", nullValue());
+    }
   }
 }

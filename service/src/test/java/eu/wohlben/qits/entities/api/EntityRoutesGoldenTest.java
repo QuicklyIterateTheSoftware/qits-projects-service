@@ -14,6 +14,8 @@ import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.contracts.GoldenFiles;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.security.TestSecurity;
@@ -642,7 +644,10 @@ class EntityRoutesGoldenTest {
     }
 
     Response call(String method, String path, Object body) throws IOException {
-      RequestSpecification request = given();
+      // @TestSecurity's admin is an asserted identity, which the approval doors do not take on its
+      // own (qits-891): every call also carries a session this service verifies, as a browser's does.
+      RequestSpecification request =
+          given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"));
       if (body != null) {
         request = request.contentType(ContentType.JSON).body(body);
       } else if (!"GET".equals(method) && !"DELETE".equals(method)) {

@@ -13,6 +13,7 @@ import eu.wohlben.qits.projects.dto.SubmoduleChangesDto;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.security.AgentAccess;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.constraints.NotBlank;
@@ -99,6 +100,8 @@ public class ReleaseRequestController {
   @Inject ReleaseArtifacts releaseArtifacts;
 
   @Inject SecurityIdentity identity;
+
+  @Inject PersonCheck persons;
 
   /**
    * @param branch the branch to release. {@code main} is <b>implied</b> and is never asked for — a
@@ -298,9 +301,10 @@ public class ReleaseRequestController {
               + " gate is re-asked immediately, so a fold whose build is already green releases on"
               + " the click. 409 also for a request that has concluded or is already being"
               + " released, for one with no fold yet, and for a repository that needs no approval at"
-              + " all — approving what has no gate is a caller error, not a no-op. qits:admin only:"
-              + " a machine may ask for a release and withdraw one, and may not sign off the"
-              + " estate.")
+              + " all — approving what has no gate is a caller error, not a no-op. A person only:"
+              + " qits:admin, verified by this service from a browser session or a person's qits"
+              + " CLI token — asserted identity headers alone answer 403. A machine may ask for a"
+              + " release and withdraw one, and may not sign off the estate.")
   public ApproveReleaseRequest.Response approve(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -338,7 +342,8 @@ public class ReleaseRequestController {
               + " it is pending both gates again — while withdraw judges the ASK, is terminal, frees"
               + " the branches and makes the next release ask mint a fresh request. Same body and"
               + " same refusals as approve, mergedSha included. No unattended-gate ticket is filed:"
-              + " a person just said no, so somebody is watching by definition. qits:admin only.")
+              + " a person just said no, so somebody is watching by definition. A person only,"
+              + " verified exactly as approve verifies one.")
   public DeclineReleaseRequest.Response decline(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -358,9 +363,13 @@ public class ReleaseRequestController {
    * caller sign somebody else's name to it. There is no anonymous arm either — these two routes are
    * {@code qits:admin}, so an unauthenticated call is refused at the mechanism and never reaches
    * this method.
+   *
+   * <p>The role is only the first filter: the name comes from {@link PersonCheck}, which answers 403
+   * unless this service verified a person itself (qits-891) — so it is the proof's name, not the
+   * forwarded principal's.
    */
   private String decider() {
-    return identity.getPrincipal().getName();
+    return persons.requireAdmin();
   }
 
   public static record ListReleaseRequestApprovals() {

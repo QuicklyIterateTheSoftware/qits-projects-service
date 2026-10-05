@@ -575,7 +575,12 @@ write** (user ruling, 2026-09-12):
   …/members/{membershipId}/position`, `DELETE …/members/{membershipId}`, `PUT
   …/members/{membershipId}/condition`). **`POST …/criteria/{criterionId}/approve` is `qits:admin`
   alone** — an approval is the sign-off on a gated member — and `AgentReadAccessTest` pins both
-  (`CAMPAIGN_AGENT_WRITES`, and approve in `ADMIN_ONLY_WRITES`).
+  (`CAMPAIGN_AGENT_WRITES`, and approve in `ADMIN_ONLY_WRITES`). The role is only the first filter:
+  approve, and the release-request approve and decline, then require `security/PersonCheck` — the
+  one definition of a person (qits-891): a `qits-session` cookie this service introspects at idp
+  itself, or a person's `qits` CLI bearer (`credential_type=cli`, no `context_kind`, no `clients/…`
+  group), holding `qits:admin`. Asserted `X-Qits-*` headers alone are a 403, and the recorded name
+  is the proof's. qits-887 and qits-897 reuse it.
 - **A sixth write takes it: `ProjectController.createRepository`** — `POST
   /projects/{projectId}/repositories`, the route that adds a component to a project. It is granted
   because it is additive: it mints a blank on the git host (or attaches a url) and declares it in

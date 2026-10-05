@@ -10,6 +10,7 @@ import eu.wohlben.qits.projects.api.CampaignInFlight;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -36,8 +37,9 @@ import java.util.Map;
  *   <li><b>Every door but approve admits {@code qits:agent}</b>, bound to the agent's own project:
  *       the campaign is resolved first (an unknown id is its 404) and its project checked before the
  *       write ({@link EntitiesAgentAccess}).
- *   <li><b>Approve is {@code qits:admin} alone</b> — it is the sign-off, and the actor is the
- *       caller's principal, never a body field.
+ *   <li><b>Approve is a person alone</b> — it is the sign-off: {@code qits:admin}, then {@link
+ *       PersonCheck}, and the actor is the name from that proof, never a body field nor a
+ *       forwarded header.
  *   <li><b>The transition is the only door that moves a campaign's status</b> — the MIMO door
  *       refuses it — and goes through {@link EntityResolutions} and so through the announcer;
  *       leaving REFINED pauses the campaign's start in the same transaction (the hook is inside
@@ -64,6 +66,8 @@ public class CampaignController {
   @Inject ProjectChangePublisher publisher;
 
   @Inject SecurityIdentity identity;
+
+  @Inject PersonCheck persons;
 
   public record CampaignResponse(CampaignDto campaign) {}
 
@@ -223,9 +227,10 @@ public class CampaignController {
   public record ApproveCampaignCriterionRequest(String note) {}
 
   /**
-   * A person's yes on an APPROVAL criterion — {@code qits:admin} alone. 409 if the criterion is not
-   * APPROVAL, is already satisfied (the message names who and when), or the campaign is DONE or
-   * DROPPED.
+   * A person's yes on an APPROVAL criterion — {@code qits:admin} at the door, then a person this
+   * service verified itself ({@link PersonCheck}, 403 otherwise), whose name is what is recorded.
+   * 409 if the criterion is not APPROVAL, is already satisfied (the message names who and when), or
+   * the campaign is DONE or DROPPED.
    */
   @POST
   @Path("/{id}/members/{membershipId}/criteria/{criterionId}/approve")
@@ -234,14 +239,11 @@ public class CampaignController {
       @PathParam("membershipId") String membershipId,
       @PathParam("criterionId") String criterionId,
       ApproveCampaignCriterionRequest request) {
+    String approver = persons.requireAdmin();
     String projectId = workEntities.get(Archetype.CAMPAIGN, id).projectId;
     CampaignService.Approved approved =
         campaigns.approve(
-            id,
-            membershipId,
-            criterionId,
-            request == null ? null : request.note(),
-            identity.isAnonymous() ? null : identity.getPrincipal().getName());
+            id, membershipId, criterionId, request == null ? null : request.note(), approver);
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
     return new CampaignMemberResponse(views.member(approved.member()));
   }
