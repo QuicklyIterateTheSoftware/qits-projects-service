@@ -3461,7 +3461,9 @@ public class ReleaseRequests {
    * one query, keyed on each request's own current fold — see {@link
    * ReleaseRequestApprovalRepository#currentForEach}. Whether approval is <em>required</em> cannot
    * be batched per repository any more: it depends on what each fold changes, so the policy is
-   * asked per request, once per distinct {@code (repoId, mergedSha)} in the page.
+   * asked per request, once per distinct {@code (repoId, mergedSha)} in the page — and only for the
+   * requests still before their tag; a settled one is answered from the decisions above with no git
+   * read.
    */
   private List<ReleaseRequestDto> decorate(
       List<ReleaseRequest> rows, Map<String, String> currentNames) {
@@ -3477,17 +3479,6 @@ public class ReleaseRequests {
     Map<String, ReleasedTagPendingMerge> released =
         pendingTags.listByRequests(ids).stream()
             .collect(Collectors.toMap(tag -> tag.releaseRequestId, tag -> tag, (a, b) -> a));
-    // Asked PER REQUEST, because the answer depends on what each fold changes; cached by (repoId,
-    // mergedSha) within this read, since two requests on one fold are one question.
-    Map<String, ApprovalPolicy.ApprovalRequirement> approvalAsked = new HashMap<>();
-    Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequired = new HashMap<>();
-    for (ReleaseRequest row : rows) {
-      approvalRequired.put(
-          row.id,
-          approvalAsked.computeIfAbsent(
-              row.repoId + "@" + row.mergedSha,
-              key -> approvalPolicy.requirementFor(row.repoId, row.mergedSha)));
-    }
     // The gate set, asked once per DISTINCT repository — it cannot differ within one repository,
     // since it is read from that repository's main.
     Map<String, ReleaseGates.GateSet> gateSets =
@@ -3501,6 +3492,27 @@ public class ReleaseRequests {
                 .filter(row -> row.mergedSha != null)
                 .collect(
                     Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a)));
+    // Asked PER REQUEST, because the answer depends on what each fold changes; cached by (repoId,
+    // mergedSha) within this read, since two open requests on one fold are one question. A settled
+    // request reads no git at all — the policy answers it from the configuration and the approval
+    // batched just above.
+    Map<String, ApprovalPolicy.ApprovalRequirement> approvalAsked = new HashMap<>();
+    Map<String, ApprovalPolicy.ApprovalRequirement> approvalRequired = new HashMap<>();
+    for (ReleaseRequest row : rows) {
+      approvalRequired.put(
+          row.id,
+          ApprovalPolicy.isSettled(row.state)
+              ? approvalPolicy.requirementFor(
+                  row.repoId,
+                  row.mergedSha,
+                  row.state,
+                  decisions.containsKey(row.id)
+                      && decisions.get(row.id).decision
+                          == ReleaseRequestApproval.Decision.APPROVED)
+              : approvalAsked.computeIfAbsent(
+                  row.repoId + "@" + row.mergedSha,
+                  key -> approvalPolicy.requirementFor(row.repoId, row.mergedSha)));
+    }
     // The CI gate's state needs the ledger, which would be a query per row asked naively; the same
     // batched shape as the decisions above answers the whole page in one.
     Map<BuildStatusLedger.VerdictKey, List<CommitBuildStatusDto>> verdicts =

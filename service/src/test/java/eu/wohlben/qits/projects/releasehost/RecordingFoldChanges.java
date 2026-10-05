@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The suite's {@link FoldChanges}: an ordinary bean over the {@code @DefaultBean} mirror read, so it
@@ -34,6 +35,14 @@ public class RecordingFoldChanges implements FoldChanges {
 
   private final Set<String> mirrored = ConcurrentHashMap.newKeySet();
 
+  private final Map<String, AtomicInteger> reads = new ConcurrentHashMap<>();
+
+  /** How many times {@code repoId}'s folds were read since the last reset. */
+  public int reads(String repoId) {
+    AtomicInteger count = reads.get(repoId);
+    return count == null ? 0 : count.get();
+  }
+
   /** Every fold of {@code repoId} changes {@code files}, from now until the next script or reset. */
   public void changes(String repoId, List<CommitFileChangeDto> files) {
     unreadable.remove(repoId);
@@ -55,10 +64,12 @@ public class RecordingFoldChanges implements FoldChanges {
     scripted.clear();
     unreadable.clear();
     mirrored.clear();
+    reads.clear();
   }
 
   @Override
   public List<CommitFileChangeDto> changes(String repoId, String mergedSha, String pathspec) {
+    reads.computeIfAbsent(repoId, key -> new AtomicInteger()).incrementAndGet();
     if (mirrored.contains(repoId)) {
       return mirror.changes(repoId, mergedSha, pathspec);
     }

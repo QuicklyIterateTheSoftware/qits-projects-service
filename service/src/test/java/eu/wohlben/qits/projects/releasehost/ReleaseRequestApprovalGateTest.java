@@ -551,6 +551,85 @@ public class ReleaseRequestApprovalGateTest {
     assertEquals(0, executor.calls().size());
   }
 
+  /**
+   * <b>A settled request reads no git.</b> Its {@code release/<id>} ref is gone, so a read would
+   * fetch the mirror per row and then fail closed into a WAITING nobody can answer. Without a
+   * recorded approval it simply was not asked about, whatever its fold changed; with one, it was —
+   * and the history still says who approved. Both the single read and the list read are asked.
+   */
+  @Test
+  public void aSettledRequestNeverReadsItsFoldAndAnswersFromTheRecord() {
+    foldChanges.changes(
+        plainRepoId, List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/release.yml", null)));
+    String silent = settled(plainRepoId, ReleaseRequest.State.FINALIZED);
+    String approved = settled(plainRepoId, ReleaseRequest.State.RELEASED);
+    record(approved, "settled-fold-" + approved, ReleaseRequestApproval.Decision.APPROVED, "ada", "fine");
+
+    var nobody = request(plainRepoId, silent);
+    assertEquals(false, nobody.getBoolean("approvalRequired"));
+    assertEquals("NOT_REQUIRED", nobody.getString("approvalState"));
+    assertNull(nobody.get("gates.find { it.kind == 'APPROVAL' }"));
+
+    var somebody = request(plainRepoId, approved);
+    assertEquals(true, somebody.getBoolean("approvalRequired"));
+    assertEquals("APPROVED", somebody.getString("approvalState"));
+    assertEquals("ada", somebody.getString("approvedBy"));
+    assertEquals("PASSED", somebody.getString("gates.find { it.kind == 'APPROVAL' }.state"));
+    assertNull(
+        somebody.getString("gates.find { it.kind == 'APPROVAL' }.detail"),
+        "no manual-review configured, and a recorded approval speaks for itself");
+
+    var entries =
+        given()
+            .get("/projects/api/projects/" + projectId + "/release-requests?state=all")
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath();
+    assertEquals(
+        false, entries.getBoolean("requests.find { it.id == '" + silent + "' }.approvalRequired"));
+    assertEquals(
+        "APPROVED", entries.getString("requests.find { it.id == '" + approved + "' }.approvalState"));
+    assertEquals("ada", entries.getString("requests.find { it.id == '" + approved + "' }.approvedBy"));
+
+    assertEquals(0, foldChanges.reads(plainRepoId), "not one git read for history");
+  }
+
+  /** On a settled request, manual-review still says so in its own words — and still reads no git. */
+  @Test
+  public void aSettledRequestOfAManualReviewRepositoryKeepsTheConfigurationsSentence() {
+    String id = settled(wrapperRepoId, ReleaseRequest.State.FINALIZED);
+
+    var request = request(wrapperRepoId, id);
+    assertEquals(true, request.getBoolean("approvalRequired"));
+    assertEquals(
+        "configured by manual-review",
+        request.getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+    assertEquals(0, foldChanges.reads(wrapperRepoId));
+  }
+
+  /** A request row written straight into the table at a settled state, its fold named after it. */
+  private String settled(String repoId, ReleaseRequest.State state) {
+    String id = UUID.randomUUID().toString();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row = new ReleaseRequest();
+              row.id = id;
+              row.repoId = repoId;
+              row.projectId = projectId;
+              row.summary = "settled history";
+              row.state = state;
+              row.mergedSha = "settled-fold-" + id;
+              row.createdAt = Instant.now();
+              row.armedAt = row.createdAt;
+              row.updatedAt = row.createdAt;
+              row.persist();
+            });
+    requestIds.add(id);
+    return id;
+  }
+
   /** Both rules at once: the configuration's reason first, the content's after it. */
   @Test
   public void manualReviewAndAConfigChangeAreBothNamed() {

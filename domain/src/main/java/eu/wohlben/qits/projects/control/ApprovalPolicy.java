@@ -2,12 +2,15 @@ package eu.wohlben.qits.projects.control;
 
 import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestApprovalRepository;
 import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import org.jboss.logging.Logger;
@@ -41,6 +44,15 @@ import org.jboss.logging.Logger;
  * current {@code mergedSha} on every ask, and a decision is read at that same sha, so a refold that
  * drops the change clears the requirement and one that changes the directory again after an
  * approval asks again.
+ *
+ * <p><b>The content is read only for a request still before its tag</b> — {@link #BEFORE_RELEASE}.
+ * A settled request ({@code RELEASED} and after, {@code FAILED}, {@code WITHDRAWN}) reads no git at
+ * all: its {@code release/<id>} ref is deleted, so the read would force a mirror fetch per row on
+ * every list read and then fail closed into a {@code WAITING} on history nobody can approve any more.
+ * For those the content half is replaced by the record: approval was required if {@code
+ * manual-review} is configured or an approval is recorded at the request's {@code mergedSha}, which
+ * is what lets history still say who approved. The detail is then the configuration's sentence or
+ * null — a recorded decision speaks for itself.
  *
  * <p>The answer carries a {@link ApprovalRequirement#detail sentence} saying which rule applied, so
  * the surface can say why a person is being asked rather than only that one is.
@@ -77,12 +89,26 @@ public class ApprovalPolicy {
 
   @Inject FoldChanges foldChanges;
 
+  @Inject ReleaseRequestApprovalRepository approvals;
+
+  /**
+   * The states in which the fold's content is still a question — nothing has been tagged, so the
+   * gate may yet hold it. Every other state is settled; see the class javadoc.
+   */
+  public static final Set<ReleaseRequest.State> BEFORE_RELEASE =
+      EnumSet.of(
+          ReleaseRequest.State.PENDING,
+          ReleaseRequest.State.READY,
+          ReleaseRequest.State.REJECTED,
+          ReleaseRequest.State.CONFLICTED);
+
   /**
    * The answer to the approval question for one request.
    *
    * @param detail which rule applied — {@code configured by manual-review}, {@code changes
    *     .config/qits/: <paths>}, both joined with {@code "; "}, or the sentence saying the fold's
-   *     changes could not be read; null exactly when {@code required} is false
+   *     changes could not be read; null when {@code required} is false, and on a settled request
+   *     required only because an approval is recorded
    */
   public record ApprovalRequirement(boolean required, String detail) {
 
@@ -91,12 +117,52 @@ public class ApprovalPolicy {
 
   /** Whether {@code request} needs a person's approval at its current fold. See the class javadoc. */
   public ApprovalRequirement requirementFor(ReleaseRequest request) {
+    if (isSettled(request.state)) {
+      return settled(
+          request.repoId,
+          request.mergedSha != null
+              && approvals
+                  .latestFor(request.id, request.mergedSha)
+                  .filter(decision -> decision.decision == ReleaseRequestApproval.Decision.APPROVED)
+                  .isPresent());
+    }
     return requirementFor(request.repoId, request.mergedSha);
   }
 
   /**
-   * The same question asked of a repository and a fold, for the list read that caches per {@code
-   * (repoId, mergedSha)}. {@code mergedSha} may be null: a request with no fold yet.
+   * The same question for the list read, which has already batched the decisions: {@code
+   * approvedAtFold} is whether the newest decision at the request's current {@code mergedSha} is an
+   * approval, and is read only for a settled request.
+   */
+  public ApprovalRequirement requirementFor(
+      String repoId, String mergedSha, ReleaseRequest.State state, boolean approvedAtFold) {
+    return isSettled(state) ? settled(repoId, approvedAtFold) : requirementFor(repoId, mergedSha);
+  }
+
+  /** Whether {@code state} is past the point where the fold's content is read. */
+  public static boolean isSettled(ReleaseRequest.State state) {
+    return state != null && !BEFORE_RELEASE.contains(state);
+  }
+
+  /**
+   * A settled request: the configuration, or a recorded approval — never git.
+   *
+   * <p><b>An approval, not any decision.</b> A decline sitting at the fold of a request that settled
+   * anyway is a decision the gate never asked for — a repository nobody had to ask about releases
+   * past it — and reading it as "a person was required" would rewrite that history into a declined
+   * release.
+   */
+  private ApprovalRequirement settled(String repoId, boolean approvedAtFold) {
+    if (gates.resolve(repoId).requires(ReleaseGates.Kind.APPROVAL)) {
+      return new ApprovalRequirement(true, MANUAL_REVIEW_DETAIL);
+    }
+    return approvedAtFold ? new ApprovalRequirement(true, null) : ApprovalRequirement.NOT_REQUIRED;
+  }
+
+  /**
+   * The question for a request still before its tag, asked of a repository and a fold — the shape
+   * the list read caches per {@code (repoId, mergedSha)}. {@code mergedSha} may be null: a request
+   * with no fold yet.
    */
   public ApprovalRequirement requirementFor(String repoId, String mergedSha) {
     List<String> reasons = new ArrayList<>(2);
