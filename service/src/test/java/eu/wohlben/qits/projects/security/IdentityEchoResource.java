@@ -28,7 +28,10 @@ public class IdentityEchoResource {
 
   @Inject SecurityIdentity identity;
 
-  public record Identity(boolean anonymous, String principal, Set<String> roles) {}
+  @Inject PersonCheck persons;
+
+  /** {@code person} is {@link PersonCheck}'s answer for the same request, or null (qits-891). */
+  public record Identity(boolean anonymous, String principal, Set<String> roles, String person) {}
 
   @GET
   @Operation(hidden = true)
@@ -36,6 +39,7 @@ public class IdentityEchoResource {
     return new Identity(
         identity.isAnonymous(),
         identity.getPrincipal() == null ? null : identity.getPrincipal().getName(),
-        identity.getRoles());
+        identity.getRoles(),
+        persons.verifiedAdmin().orElse(null));
   }
 }

@@ -22,6 +22,8 @@ import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import eu.wohlben.qits.projects.security.AgentTokens;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.test.junit.QuarkusTest;
@@ -136,17 +138,22 @@ class CampaignApiTest {
     String criterionId =
         given().get(base).then().statusCode(200).extract().path("campaign.members[1].groups[0].criteria[0].id");
 
+    // The %test dev user is qits:admin by header alone, which is not a person (qits-891).
     given()
         .contentType(ContentType.JSON)
         .body(Map.of("note", "go"))
         .post(base + "/members/" + second + "/criteria/" + criterionId + "/approve")
         .then()
+        .statusCode(403);
+    asPerson("ada")
+        .body(Map.of("note", "go"))
+        .post(base + "/members/" + second + "/criteria/" + criterionId + "/approve")
+        .then()
         .statusCode(200)
         .body("member.groups[0].criteria[0].satisfiedAt", notNullValue())
-        .body("member.groups[0].criteria[0].approval.approvedBy", notNullValue())
+        .body("member.groups[0].criteria[0].approval.approvedBy", equalTo("ada"))
         .body("member.groups[0].criteria[0].approval.note", equalTo("go"));
-    given()
-        .contentType(ContentType.JSON)
+    asPerson("ada")
         .body(Map.of())
         .post(base + "/members/" + second + "/criteria/" + criterionId + "/approve")
         .then()
@@ -447,6 +454,13 @@ class CampaignApiTest {
         .orElseThrow()
         .campaign()
         .number;
+  }
+
+  /** A browser session: the %test dev user's headers plus a session this service verifies. */
+  private static RequestSpecification asPerson(String user) {
+    return given()
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user))
+        .contentType(ContentType.JSON);
   }
 
   private static RequestSpecification asForwardedAgent() {

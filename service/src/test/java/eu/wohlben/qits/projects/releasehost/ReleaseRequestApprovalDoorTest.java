@@ -15,7 +15,9 @@ import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.NoDevUserProfile;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
@@ -272,6 +274,62 @@ public class ReleaseRequestApprovalDoorTest {
   }
 
   /**
+   * <b>Asserted headers are not a person</b> (qits-891). {@code qits:admin} in {@code X-Qits-Roles}
+   * passes the role filter, and is exactly what anything on the network could send; without a proof
+   * this service verified — here a session cookie — both doors are 403 and nothing is written. A
+   * session idp does not hold as an admin, or does not know at all, is the same 403.
+   */
+  @Test
+  public void assertedHeadersAloneMayNotDecide() {
+    String id = create(admin(), wrapperRepoId, "wohlben");
+    String merged = mergedShaOf(wrapperRepoId, id);
+    verdict(wrapperRepoId, merged);
+
+    for (String verb : List.of("approve", "decline")) {
+      headersOnly("ada")
+          .body("{\"mergedSha\":\"" + merged + "\"}")
+          .post(base(wrapperRepoId) + "/" + id + "/" + verb)
+          .then()
+          .statusCode(403);
+      headersOnly("ada")
+          .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.cookie("ada", "qits:agent"))
+          .body("{\"mergedSha\":\"" + merged + "\"}")
+          .post(base(wrapperRepoId) + "/" + id + "/" + verb)
+          .then()
+          .statusCode(403);
+      headersOnly("ada")
+          .cookie(PersonCheck.SESSION_COOKIE, "a-value-idp-never-issued")
+          .body("{\"mergedSha\":\"" + merged + "\"}")
+          .post(base(wrapperRepoId) + "/" + id + "/" + verb)
+          .then()
+          .statusCode(403);
+    }
+
+    assertEquals(List.of(), approvals(admin(), wrapperRepoId, id));
+    assertEquals("PENDING", stateOf(wrapperRepoId, id));
+  }
+
+  /**
+   * <b>The name on the decision is the proof's.</b> The headers say one admin and the session idp
+   * vouches for another: the row names the session's person, because a header is a claim and the
+   * session is what this service checked.
+   */
+  @Test
+  public void theDeciderIsTheVerifiedPersonNotTheAssertedOne() {
+    String id = create(admin(), wrapperRepoId, "wohlben");
+    String merged = mergedShaOf(wrapperRepoId, id);
+    verdict(wrapperRepoId, merged);
+
+    headersOnly("mallory")
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("ada"))
+        .body("{\"mergedSha\":\"" + merged + "\"}")
+        .post(base(wrapperRepoId) + "/" + id + "/approve")
+        .then()
+        .statusCode(200)
+        .body("request.approvedBy", org.hamcrest.Matchers.equalTo("ada"));
+  }
+
+  /**
    * The no, through the door: REJECTED at once, carrying the decider's own words rather than a
    * machine's sentence about a run. It rejects <em>at once</em> because the door re-asks the gate
    * like the approval does — a decline that left the request PENDING until a sweep came round would
@@ -374,11 +432,20 @@ public class ReleaseRequestApprovalDoorTest {
   // Driving it
   // -----------------------------------------------------------------------------------------
 
-  /** A browser session as the edge forwards it — the only caller these two doors admit. */
+  /**
+   * A browser session as the edge forwards it — the headers it asserts and the cookie it keeps —
+   * which is the caller these two doors admit: the cookie is what this service verifies for itself.
+   */
   private RequestSpecification admin() {
+    return headersOnly("ada")
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("ada"));
+  }
+
+  /** {@code qits:admin} asserted in headers and nothing this service could verify. */
+  private RequestSpecification headersOnly(String user) {
     return given()
         .contentType(ContentType.JSON)
-        .header("X-Qits-User", "ada")
+        .header("X-Qits-User", user)
         .header("X-Qits-Roles", "qits:admin");
   }
 

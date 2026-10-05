@@ -26,6 +26,8 @@ import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.bus.CampaignCriteriaListener;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
 import eu.wohlben.qits.projects.error.DomainException;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.arc.ClientProxy;
 import io.quarkus.hibernate.orm.PersistenceUnit;
@@ -793,10 +795,12 @@ class CampaignExecutorTest {
     assertEquals(0, executor.pendingAttempts(), "the executor's hand-offs finished");
   }
 
+  /** A person: the forwarded headers and the session cookie this service verifies (qits-891). */
   private static RequestSpecification asAdmin(String user) {
     return given()
         .contentType(ContentType.JSON)
         .header("X-Qits-User", user)
-        .header("X-Qits-Roles", "qits:admin");
+        .header("X-Qits-Roles", "qits:admin")
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user));
   }
 }
