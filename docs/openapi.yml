@@ -2164,6 +2164,8 @@ components:
           type: string
         state:
           type: string
+        detail:
+          type: string
     ReleasePhaseDto:
       type: object
       properties:
@@ -8249,4 +8251,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1003.182401
+  version: 2026.1005.132915
