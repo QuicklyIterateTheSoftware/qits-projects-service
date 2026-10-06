@@ -1,9 +1,6 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
-import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -12,7 +9,6 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -42,9 +38,7 @@ public class EntityReadController {
 
   @Inject EntityIdResolver ids;
 
-  @Inject EntityCatalogService catalog;
-
-  @Inject QualifiedEntityIds qualifiedIds;
+  @Inject WorkEntityDoors doors;
 
   @GET
   @Path("/{id}")
@@ -64,7 +58,6 @@ public class EntityReadController {
               schema = @Schema(implementation = TransitionedEntity.class)))
   @APIResponse(responseCode = "404", description = "No entity with this id")
   public TransitionedEntity get(@PathParam("id") String id) {
-    WorkEntity row = ids.resolve(id);
-    return qualifiedIds.qualify(catalog.byIds(List.of(row.id)).get(row.id));
+    return doors.read(ids.resolve(id));
   }
 }

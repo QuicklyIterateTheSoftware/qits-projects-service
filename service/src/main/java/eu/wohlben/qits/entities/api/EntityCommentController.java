@@ -1,11 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.dto.CommentDto;
-import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
-import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -53,13 +49,10 @@ public class EntityCommentController {
 
   @Inject EntityIdResolver ids;
 
-  @Inject EntityCommentService comments;
-
-  @Inject EntityCommentMapper mapper;
+  /** The thread itself, shared with {@code /work/{qualifiedId}/comments} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject ProjectChangePublisher publisher;
 
   // The answers carry explicit schema names: the document numbers every nested `Response` it
   // meets (Response22, …), and a new one would renumber the ones after it.
@@ -94,10 +87,9 @@ public class EntityCommentController {
               schema = @Schema(implementation = ListEntityCommentsRequest.Response.class)))
   @APIResponse(responseCode = "404", description = "No entity with this id")
   public ListEntityCommentsRequest.Response list(@PathParam("id") String id) {
-    WorkEntity entity = ids.resolve(id);
     return new ListEntityCommentsRequest.Response(
-        comments.listComments(entity.id).stream()
-            .map(c -> new ListEntityCommentsRequest.Response.Entry(mapper.toDto(c)))
+        doors.comments(ids.resolve(id)).stream()
+            .map(ListEntityCommentsRequest.Response.Entry::new)
             .toList());
   }
 
@@ -126,12 +118,7 @@ public class EntityCommentController {
   @APIResponse(responseCode = "404", description = "No entity with this id")
   public CommentAnswer create(
       @PathParam("id") String id, @Valid CreateEntityCommentRequest request) {
-    WorkEntity entity = ids.resolve(id);
-    EntitiesAgentAccess.requireProject(identity, entity.projectId);
-    var comment =
-        comments.addComment(
-            entity.id, request == null ? null : request.body(), EntitiesPrincipal.changedBy(identity));
-    publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
-    return new CommentAnswer(mapper.toDto(comment));
+    return new CommentAnswer(
+        doors.addComment(identity, ids.resolve(id), request == null ? null : request.body()));
   }
 }

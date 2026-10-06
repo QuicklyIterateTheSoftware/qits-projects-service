@@ -208,6 +208,21 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   route's JSON per archetype in `service/src/test/resources/golden/entity-routes/` — taken from the
   pre-collapse code — and regenerating a golden to make a change pass is the change moving the wire.
 
+  **The `/work` family (qits-969, epic qits-965) is the archetype-free surface, addressed by
+  qualified id, and it is served BESIDE `/entities` and the per-archetype routes until phase 3 of
+  that epic deletes them.** `WorkController` (`GET`/`PUT`/`PATCH /work/{qualifiedId}`, `POST /work`,
+  `POST /work/transition`, `…/status`, `…/blocked`), `WorkCommentController`
+  (`/work/{qualifiedId}/comments[/{commentId}]`), `WorkArchetypesController` (`/work/archetypes…`)
+  and `ProjectWorkController` (`/projects/{project}/work`, id or slug). Every rule lives in
+  `entities/api/WorkEntityDoors`, which the `/entities` controllers (`Entity*Controller`,
+  `CommentController`, `ProjectEntitiesController`) now delegate to as well — so the new classes name
+  no old controller or schema, and deleting the old ones is deleting files. Its `Surface` is the
+  only fork: on `WORK` every entity id in a body takes a qualified id too (the transition's keys,
+  `membership.parent`, `supersededBy`, `dependsOn`; the patch's `dependsOn`), and the bulk answer is
+  keyed exactly as the request was. `PUT /work/{qualifiedId}` is the one-entry PUT-shaped transition
+  (absent clears) under the transition's roles. Roles mirror the route each new one replaces, and
+  `AgentReadAccessTest` pins them.
+
 `control/` is flat. The monorepo split this code across `domain.project.*`, `domain.repository.*`
 and `domain.seeding.*` to break cycles that do not exist here.
 
@@ -2810,7 +2825,13 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   records any more fails the compare. Every `operationId` it names is an
   `@Operation` on a controller, so renaming one is a contract change, not a refactor. A param is
   frozen like the answer, tokens included, so a qualified id param (`contract-<token>-3`) works.
-  Only JSON is recorded: `getDossierAssetContent` serves bytes and has no golden master.
+  Only JSON is recorded: `getDossierAssetContent` serves bytes and has no golden master. A request
+  body may name a param as a quoted `"{name}"` (a value or a member name); it is expanded like a
+  path's and recorded unexpanded. A member name holding a state's token — `transitionWork`'s answer,
+  keyed by qualified id — is frozen like a value, and that operation's index entry gains
+  `frozen.keys` (the objects whose keys were frozen; written only where there is one) with `.*`
+  standing for the key in every path beneath. Every generic entity read and move has a `/work` twin
+  recorded in the same state (`WORK_TWINS`).
   <br>**The platform publishes it, from `release.yml`'s `contracts:` declaration** (epic qits-620;
   README "What a release publishes"): the jar `eu.wohlben.qits:qits-projects-golden-masters`, the
   npm package `@qits/projects-golden-masters` and the `@contracts/qits-projects` docs bundle, each

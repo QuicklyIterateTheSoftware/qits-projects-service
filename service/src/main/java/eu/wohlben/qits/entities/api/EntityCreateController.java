@@ -1,22 +1,9 @@
 package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import eu.wohlben.qits.entities.control.Archetypes;
-import eu.wohlben.qits.entities.control.EntityCatalogService;
-import eu.wohlben.qits.entities.control.EntityWrite;
-import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.error.BadRequestException;
-import eu.wohlben.qits.entities.error.NotFoundException;
-import eu.wohlben.qits.projects.api.ProjectChangeHint;
-import eu.wohlben.qits.projects.api.ProjectChangePublisher;
-import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.control.RepositoryService;
-import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
-import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -26,9 +13,6 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -49,7 +33,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <h2>No second write path</h2>
  *
- * <p>The body becomes an {@link EntityWrite} and goes to {@link WorkEntityService#create} with the
+ * <p>The body becomes an {@code EntityWrite} and goes to {@link WorkEntityService#create} with the
  * one argument that says where a row goes — the project's id for a root, the parent's for a node —
  * exactly as {@code EntityRoutes.createRoot} and {@code createChild} hand it over. The registry's
  * intake rules, the slug, the number, the REPORTED status and the audit row are that method's. What
@@ -66,7 +50,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *   <li><b>A task's repository must be in the task's project</b> — the check {@code
  *       EntityRoutes.createChild} makes, for its reason: it crosses into {@code domain}.
  *   <li><b>{@code project} and {@code parent} are typed ids</b>: a project by its id or its slug, a
- *       parent (and a dependency) by its UUID or its qualified id, through {@link EntityIdResolver}.
+ *       parent (and a dependency) by its UUID or its qualified id, through {@code EntityIdResolver}.
  * </ul>
  *
  * <p><b>The order is the other entity doors' — 404, 403, 400, 409.</b> The placement is resolved
@@ -78,6 +62,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *
  * <p><b>The answer is 201 and the {@link TransitionedEntity}</b>, qualified — the merged shape {@code
  * PATCH /entities/{id}} answers, so a generic caller reads every archetype's answer the same way.
+ *
+ * <p>Since qits-969 the whole of the door's logic is {@link WorkEntityDoors#create}, shared with
+ * {@code POST /work}; this class is the {@code /entities} address and nothing else.
  */
 @Path("/entities")
 @Produces(MediaType.APPLICATION_JSON)
@@ -85,21 +72,10 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @RolesAllowed("qits:admin")
 public class EntityCreateController {
 
-  @Inject WorkEntityService entities;
-
-  /** The answer's read: the row just written, with its edge. */
-  @Inject EntityCatalogService catalog;
-
-  /** A project by id or slug, a parent and a dependency by UUID or qualified id. */
-  @Inject EntityIdResolver ids;
-
-  @Inject RepositoryService repositories;
+  /** The create itself, shared with {@code POST /work}. */
+  @Inject WorkEntityDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject ProjectChangePublisher publisher;
-
-  @Inject QualifiedEntityIds qualifiedIds;
 
   /**
    * The documentation of the body, and only that: it is read as a {@link JsonNode} so that it can
@@ -176,115 +152,6 @@ public class EntityCreateController {
                       mediaType = MediaType.APPLICATION_JSON,
                       schema = @Schema(implementation = EntityCreate.class)))
           JsonNode body) {
-    if (body == null || !body.isObject()) {
-      throw new BadRequestException("a create must be a JSON object");
-    }
-    Archetype archetype = archetypeOf(body.get("archetype"));
-
-    // The placement, resolved before anything is judged: its 404, then the binding's 403.
-    String projectId = null;
-    String under = null;
-    WorkEntity parent = null;
-    if (Archetypes.mayBeRoot(archetype)) {
-      String project = text(body, EntitySchemas.PROJECT);
-      if (project != null && !project.isBlank()) {
-        projectId = ids.resolveProject(project).id;
-        under = projectId;
-      }
-    } else {
-      String named = text(body, EntitySchemas.PARENT);
-      if (named != null && !named.isBlank()) {
-        parent = ids.resolve(named);
-        projectId = parent.projectId;
-        under = parent.id;
-      }
-    }
-    if (projectId != null) {
-      EntitiesAgentAccess.requireProject(identity, projectId);
-    }
-
-    List<String> refused = new ArrayList<>(EntitySchemas.createRefusals(archetype, body));
-    Archetype parentKind = WorkEntityService.parentKindOf(archetype);
-    if (parent != null && parent.archetype != parentKind) {
-      refused.add(
-          "a "
-              + archetype
-              + "'s parent must be "
-              + (parentKind == Archetype.EPIC ? "an " : "a ")
-              + parentKind
-              + ": "
-              + text(body, EntitySchemas.PARENT)
-              + " is a "
-              + parent.archetype);
-    }
-    if (!refused.isEmpty()) {
-      throw new BadRequestException(String.join("; ", refused));
-    }
-
-    EntityWrite write =
-        new EntityWrite(
-            text(body, "title"),
-            text(body, "description"),
-            false,
-            text(body, "impetus"),
-            false,
-            text(body, "ticketType"),
-            text(body, "assignee"),
-            false,
-            text(body, "repositoryId"),
-            dependency(text(body, "dependsOn")),
-            false,
-            null,
-            false,
-            null,
-            EntitySchemas.strings(body.get("acceptanceCriteria")).orElse(null));
-    if (write.repositoryId() != null) {
-      Repository repo = repositories.get(write.repositoryId()); // 404 if absent
-      if (repo.project == null || !projectId.equals(repo.project.id)) {
-        throw new BadRequestException(
-            "Repository " + write.repositoryId() + " is not in this entity's project");
-      }
-    }
-
-    Nested created = entities.create(archetype, under, write, EntitiesPrincipal.changedBy(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.of(archetype));
-    String id = created.entity().id;
-    TransitionedEntity answer = qualifiedIds.qualify(catalog.byIds(List.of(id)).get(id));
-    return Response.status(Response.Status.CREATED).entity(answer).build();
-  }
-
-  /** The body's archetype, or a 400 naming what is wrong with it. */
-  private static Archetype archetypeOf(JsonNode value) {
-    if (value == null || value.isNull() || !value.isTextual() || value.textValue().isBlank()) {
-      throw new BadRequestException(
-          "archetype is required: EPIC, TICKET, FEATURE, TASK or CAMPAIGN");
-    }
-    try {
-      return Archetype.valueOf(value.textValue().trim().toUpperCase(Locale.ROOT));
-    } catch (IllegalArgumentException e) {
-      throw new BadRequestException("Unknown archetype: " + value.textValue());
-    }
-  }
-
-  /**
-   * A dependency named either way, as the UUID the writer compares: a qualified id resolved, and a
-   * value naming nothing handed on unchanged, for the writer's own 400 about a dependency that is
-   * not a sibling — the refusal the per-archetype doors give it.
-   */
-  private String dependency(String named) {
-    if (named == null) {
-      return null;
-    }
-    try {
-      return ids.resolve(named).id;
-    } catch (NotFoundException unknown) {
-      return named;
-    }
-  }
-
-  /** The property's value when it was sent as text; null when absent, null or not text. */
-  private static String text(JsonNode body, String name) {
-    JsonNode value = body.get(name);
-    return value == null || !value.isTextual() ? null : value.textValue();
+    return Response.status(Response.Status.CREATED).entity(doors.create(identity, body)).build();
   }
 }

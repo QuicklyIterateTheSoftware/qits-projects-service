@@ -2,12 +2,6 @@ package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntitySummary;
-import eu.wohlben.qits.entities.control.TransitionedEntity;
-import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.EntityStatus;
-import eu.wohlben.qits.entities.error.BadRequestException;
-import eu.wohlben.qits.projects.api.QualifiedEntityIds;
-import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -17,8 +11,6 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -57,11 +49,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @RolesAllowed({"qits:admin", "qits:agent"})
 public class ProjectEntitiesController {
 
-  @Inject EntityIdResolver ids;
-
-  @Inject EntityCatalogService catalog;
-
-  @Inject QualifiedEntityIds qualifiedIds;
+  /** The listing itself, shared with {@code GET /projects/{project}/work} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   @Schema(name = "EntityList", description = "A project's entities, in tree order.")
   public record EntityList(List<EntitySummary> entities) {}
@@ -89,37 +78,6 @@ public class ProjectEntitiesController {
       @QueryParam("archetype") String archetype,
       @QueryParam("status") String status,
       @QueryParam("parent") String parent) {
-    Archetype kind = blank(archetype) ? null : archetype(archetype);
-    String word = blank(status) ? null : status(status);
-    String project = ids.resolveProject(projectId).id;
-    String parentId = blank(parent) ? null : ids.resolve(parent).id;
-    List<TransitionedEntity> entities =
-        catalog.listByProjectWithoutDescription(project).stream()
-            .filter(entity -> kind == null || entity.archetype() == kind)
-            .filter(entity -> word == null || word.equals(entity.status()))
-            .filter(entity -> parentId == null || parentId.equals(entity.parent()))
-            .toList();
-    return new EntityList(
-        qualifiedIds.qualifyEntities(entities).stream().map(EntitySummary::of).toList());
-  }
-
-  private static Archetype archetype(String word) {
-    try {
-      return Archetype.valueOf(word.trim().toUpperCase(Locale.ROOT));
-    } catch (IllegalArgumentException e) {
-      throw new BadRequestException("Unknown archetype: " + word);
-    }
-  }
-
-  private static String status(String word) {
-    try {
-      return EntityStatus.valueOf(word.trim().toUpperCase(Locale.ROOT)).name();
-    } catch (IllegalArgumentException e) {
-      throw new BadRequestException("Unknown status: " + word);
-    }
-  }
-
-  private static boolean blank(String value) {
-    return Objects.requireNonNullElse(value, "").isBlank();
+    return new EntityList(doors.list(projectId, archetype, status, parent));
   }
 }

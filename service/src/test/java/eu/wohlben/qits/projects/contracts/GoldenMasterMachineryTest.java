@@ -140,6 +140,26 @@ class GoldenMasterMachineryTest {
     assertEquals(List.of("$['odd-key']"), freezer.idPaths());
   }
 
+  /**
+   * A map keyed by qualified id (qits-969, {@code POST /work/transition}): the key's token is frozen
+   * as the param's is, the object is a {@code frozen.keys} path, and what lies beneath is {@code .*}.
+   */
+  @Test
+  void aKeyHoldingAUniqueTokenIsFrozenAndRecorded() throws Exception {
+    String id = UUID.randomUUID().toString();
+    Freezer freezer = new Freezer().uniqueTokens(List.of("3fa9c2e1"));
+    assertEquals("contract-00000001-1", freezer.freezeParam("contract-3fa9c2e1-1"));
+    JsonNode frozen =
+        freezer.freeze(
+            json("{\"contract-3fa9c2e1-1\":{\"id\":\"" + id + "\",\"title\":\"fixed\"}}"));
+    assertEquals(
+        "{\"contract-00000001-1\":{\"id\":\"00000000-0000-4000-8000-000000000001\","
+            + "\"title\":\"fixed\"}}",
+        frozen.toString());
+    assertEquals(List.of("$"), freezer.keyPaths());
+    assertEquals(List.of("$.*.id"), freezer.idPaths());
+  }
+
   // --- rendering -------------------------------------------------------------------------------
 
   @Test

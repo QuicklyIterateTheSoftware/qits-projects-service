@@ -1,0 +1,10 @@
+{
+  "comment": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "entityId": "00000000-0000-4000-8000-000000000003",
+    "author": "dana.weber",
+    "body": "It answers 500 when the range holds no invoice at all.",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z"
+  }
+}

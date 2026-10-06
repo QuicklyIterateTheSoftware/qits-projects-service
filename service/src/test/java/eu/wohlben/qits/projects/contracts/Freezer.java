@@ -31,6 +31,12 @@ import java.util.regex.Pattern;
  *   <li><b>Unique tokens.</b> A random token a state had to put into a name to keep it unique (a
  *       project slug is unique service-wide) becomes the same-length hex counter {@code 0…0N},
  *       numbered by first appearance.
+ *   <li><b>Keys.</b> A member name holding a unique token — a map keyed by qualified id, as {@code
+ *       POST /work/transition} answers — is frozen through the same token mapping, so it reads as
+ *       the frozen param does. The object's path goes in {@link #keyPaths} (the index's {@code
+ *       frozen.keys}, written only where there is one), and the paths beneath such a member name it
+ *       {@code .*}, since no JSONPath can name "whatever this key is frozen to". A UUID in a key is
+ *       still refused outright.
  * </ul>
  *
  * <p>Every value it changes is recorded as a JSONPath, by what the WHOLE value was: a UUID goes in
@@ -57,6 +63,7 @@ public final class Freezer {
   private final Set<String> idPaths = new LinkedHashSet<>();
   private final Set<String> instantPaths = new LinkedHashSet<>();
   private final Set<String> stringPaths = new LinkedHashSet<>();
+  private final Set<String> keyPaths = new LinkedHashSet<>();
 
   /** Numbers each UUID in {@code values}, in order, ahead of anything the answer holds. */
   public Freezer seed(Collection<String> values) {
@@ -104,6 +111,11 @@ public final class Freezer {
     return new ArrayList<>(stringPaths);
   }
 
+  /** The objects whose member names were frozen, in order of first appearance. */
+  public List<String> keyPaths() {
+    return new ArrayList<>(keyPaths);
+  }
+
   /** {@code 00000000-0000-4000-8000-} plus {@code n} as 12 hex digits. */
   public static String frozenId(int n) {
     return String.format("00000000-0000-4000-8000-%012x", n);
@@ -134,7 +146,13 @@ public final class Freezer {
           // record a file no consumer could match.
           throw new IllegalStateException("A UUID in a key cannot be frozen: " + path + " / " + key);
         }
-        out.set(key, freeze(field.getValue(), path + segment(key)));
+        String frozenKey = freezeTokens(key);
+        if (frozenKey.equals(key)) {
+          out.set(key, freeze(field.getValue(), path + segment(key)));
+        } else {
+          keyPaths.add(path);
+          out.set(frozenKey, freeze(field.getValue(), path + ".*"));
+        }
       }
       return out;
     }

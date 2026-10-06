@@ -1,0 +1,31 @@
+{
+  "id": "00000000-0000-4000-8000-00000000000b",
+  "archetype": "TICKET",
+  "projectId": "00000000-0000-4000-8000-00000000000f",
+  "number": 11,
+  "qualifiedId": "contract-00000001-11",
+  "title": "Remember the last export format",
+  "slug": "remember-the-last-export-format",
+  "slugScope": "00000000-0000-4000-8000-00000000000f",
+  "description": "Keep the chosen export format per user and preselect it next time.",
+  "status": "REFINED",
+  "statusBefore": null,
+  "ticketType": "IMPROVEMENT",
+  "impetus": "Accountants pick CSV every time; the list forgets it.",
+  "assignee": null,
+  "createdBy": "contract-seeder",
+  "supersededBy": null,
+  "repositoryId": null,
+  "implementedAt": null,
+  "implementingAt": null,
+  "dependsOn": null,
+  "parent": null,
+  "position": null,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "changedBy": null,
+  "blocked": false,
+  "acceptanceCriteria": [
+    "It does what it says."
+  ]
+}

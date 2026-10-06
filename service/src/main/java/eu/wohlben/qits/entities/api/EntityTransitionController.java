@@ -1,8 +1,6 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityTransition;
-import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -12,9 +10,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * <b>The write surface of the merged model: {@code POST /projects/api/entities/transition}.</b>
@@ -44,7 +40,7 @@ import java.util.Set;
  * agent with no credential at all. Refusing it at the REST door while handing it over one package
  * away was an inconsistency, not a boundary, and this is the door that had it. What binds it is the
  * token's {@code project} claim, against every project the batch touches — see {@link
- * EntitiesAgentAccess} and {@link #transition} for the all-or-nothing resolution.
+ * EntitiesAgentAccess} and {@link WorkEntityDoors#transition} for the all-or-nothing resolution.
  *
  * <p>The grant changes nothing about what a transition <em>is</em>: it still does not run the epic's
  * or the ticket's adjacency rules, so it remains the one door a status may move sideways through,
@@ -62,27 +58,10 @@ import java.util.Set;
 @RolesAllowed("qits:admin")
 public class EntityTransitionController {
 
-  @Inject EntityTransitionService transitions;
-
-  /**
-   * The read side of the transition, used here for one thing only: resolving the projects of the
-   * entities a request names, before the write, so a bound agent can be refused a batch that reaches
-   * outside its own project. One bulk read, never one per entry.
-   */
-  @Inject EntityCatalogService catalog;
+  /** The transition itself, shared with {@code POST /work/transition} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject EpicsTopicHints epicHints;
-
-  @Inject TicketsTopicHints ticketHints;
-
-  /**
-   * The qualified id {@code <project-slug>-<number>} every answer here carries. One batched slug
-   * lookup per listing; see {@link eu.wohlben.qits.projects.api.QualifiedEntityIds}, and
-   * {@code DispatchedWorkspaces} for why the crossing into {@code domain} lives in that package.
-   */
-  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
 
   /**
    * Applies the stated post-state and answers what was written.
@@ -105,7 +84,7 @@ public class EntityTransitionController {
    * a changed acceptance-criteria list from READY_FOR_DEV on. Restating what the row holds passes.
    *
    * <p><b>A bound agent is judged on the whole batch, before any of it is written.</b> Every key of
-   * the map, and every parent it names, is resolved in ONE {@link EntityCatalogService#byIds} read,
+   * the map, and every parent it names, is resolved in ONE {@code EntityCatalogService#byIds} read,
    * and a project outside the token's claim refuses the request entirely — all or nothing, because a
    * batch is one post-state and half of one is not a smaller version of it. <b>An id that resolves
    * to nothing is not a refusal here</b>: it is left to the write, which reports it beside every other
@@ -117,42 +96,6 @@ public class EntityTransitionController {
   @Path("/transition")
   @RolesAllowed({"qits:admin", "qits:agent"})
   public Map<String, TransitionedEntity> transition(Map<String, EntityTransition> request) {
-    requireAgentProjects(request);
-    Map<String, TransitionedEntity> written =
-        transitions.transition(request, EntitiesPrincipal.changedBy(identity));
-
-    Set<String> projects = new LinkedHashSet<>();
-    for (TransitionedEntity entity : written.values()) {
-      projects.add(entity.projectId());
-    }
-    for (String projectId : projects) {
-      epicHints.fire(projectId);
-      ticketHints.fire(projectId);
-    }
-    // One slug lookup for the whole batch, and the map keeps its keys. The service leaves
-    // qualifiedId null because epics cannot see domain; this is where it is filled.
-    return qualifiedIds.qualifyEntities(written);
-  }
-
-  /**
-   * Refuses a bound agent the whole batch unless every project it touches is the token's.
-   *
-   * <p>The parents are collected as well as the keys because a membership edge is where a batch
-   * reaches out of itself: an entry may hang a row it does own under a parent in somebody else's
-   * project, which is a write to that project's tree whatever the map's keys say.
-   */
-  private void requireAgentProjects(Map<String, EntityTransition> request) {
-    if (request == null || request.isEmpty() || !EntitiesAgentAccess.bound(identity)) {
-      return;
-    }
-    Set<String> named = new LinkedHashSet<>(request.keySet());
-    for (EntityTransition entry : request.values()) {
-      if (entry != null && entry.parent() != null) {
-        named.add(entry.parent());
-      }
-    }
-    for (TransitionedEntity resolved : catalog.byIds(named).values()) {
-      EntitiesAgentAccess.requireProject(identity, resolved.projectId());
-    }
+    return doors.transition(identity, request, WorkEntityDoors.Surface.ENTITIES);
   }
 }

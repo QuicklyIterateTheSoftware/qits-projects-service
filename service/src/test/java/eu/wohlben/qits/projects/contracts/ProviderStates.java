@@ -91,6 +91,7 @@ public class ProviderStates {
   public static final String THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS =
       "the second campaign of an epic in two campaigns";
   public static final String THE_ARCHETYPE_REGISTRY = "the archetype registry";
+  public static final String A_TICKET_WITH_A_COMMENT = "a ticket with a comment";
   public static final String A_REPORTED_TICKET = "a reported ticket";
   public static final String A_REFINED_TICKET = "a refined ticket";
   public static final String A_READY_FOR_DEV_TICKET = "a ready for dev ticket";
@@ -234,6 +235,7 @@ public class ProviderStates {
     states.put(AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(THE_ARCHETYPE_REGISTRY, ProviderStates::theArchetypeRegistry);
+    states.put(A_TICKET_WITH_A_COMMENT, this::aTicketWithAComment);
     TICKET_IN_STATUS.forEach(
         (name, status) -> {
           if (!name.equals(A_VERIFIED_TICKET)) {
@@ -768,7 +770,9 @@ public class ProviderStates {
     String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded.", null));
     node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded.", null));
     walk(Archetype.EPIC, epic, EntityStatus.VERIFIED);
-    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+    return new Setup(
+        params("epicId", epic, "projectId", project.id, "qualifiedId", qualified(project, epic)),
+        List.of(token));
   }
 
   private static Map<String, EntityStatus> ticketsInStatus() {
@@ -828,7 +832,10 @@ public class ProviderStates {
         && EntityStateMachine.isAtOrPast(status, EntityStatus.IMPLEMENTED)) {
       comments.addComment(ticket, "Released and deployed. The connection limit is now 300.", SEEDER);
     }
-    return new Setup(params("projectId", project.id, "ticketId", ticket), List.of(token));
+    return new Setup(
+        params(
+            "projectId", project.id, "qualifiedId", qualified(project, ticket), "ticketId", ticket),
+        List.of(token));
   }
 
   /** An epic with no children in {@code status}, walked there as {@link #aTicketIn} is. */
@@ -842,7 +849,9 @@ public class ProviderStates {
             project,
             EntityWrite.epic("Work item actions", "Seeded work: the page's moves and dispatches.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     moveTo(Archetype.EPIC, epic, status);
-    return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
+    return new Setup(
+        params("epicId", epic, "projectId", project.id, "qualifiedId", qualified(project, epic)),
+        List.of(token));
   }
 
   private void moveTo(Archetype archetype, String id, EntityStatus status) {
@@ -868,7 +877,36 @@ public class ProviderStates {
     Project project = project(token, A_VERIFIED_TICKET);
     String ticket = ticket(project, "Verified ticket");
     walk(Archetype.TICKET, ticket, EntityStatus.VERIFIED);
-    return new Setup(params("projectId", project.id, "ticketId", ticket), List.of(token));
+    return new Setup(
+        params(
+            "projectId", project.id, "qualifiedId", qualified(project, ticket), "ticketId", ticket),
+        List.of(token));
+  }
+
+  /**
+   * A REPORTED BUG ticket with one comment on its thread, for the thread's writes on the work family
+   * (qits-969): the comment is the {@code commentId} param an edit and a delete address, under the
+   * ticket's {@code qualifiedId}.
+   */
+  private Setup aTicketWithAComment() {
+    String token = token();
+    Project project = project(token, A_TICKET_WITH_A_COMMENT);
+    String ticket = ticket(project, "Export fails for an empty quarter");
+    String comment =
+        comments.addComment(ticket, "It answers 500 when the range holds no invoice.", PERSON).id;
+    return new Setup(
+        params(
+            "commentId", comment,
+            "projectId", project.id,
+            "qualifiedId", qualified(project, ticket),
+            "ticketId", ticket),
+        List.of(token));
+  }
+
+  /** The qualified id of entity {@code id} in {@code project}: {@code <slug>-<number>}. */
+  private String qualified(Project project, String id) {
+    return eu.wohlben.qits.projects.api.QualifiedEntityIds.render(
+        project.slug, work.find(id).number);
   }
 
   /**

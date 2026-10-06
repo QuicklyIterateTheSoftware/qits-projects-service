@@ -122,6 +122,11 @@ class ConsumerPactVerificationTest {
 
   // --- the states: each one line into the registry -------------------------------------------
 
+  @State(ProviderStates.A_TICKET_WITH_A_COMMENT)
+  Map<String, String> aTicketWithAComment() {
+    return states.params(ProviderStates.A_TICKET_WITH_A_COMMENT);
+  }
+
   @State(ProviderStates.A_PROJECT_EXISTS)
   Map<String, String> aProjectExists() {
     return states.params(ProviderStates.A_PROJECT_EXISTS);

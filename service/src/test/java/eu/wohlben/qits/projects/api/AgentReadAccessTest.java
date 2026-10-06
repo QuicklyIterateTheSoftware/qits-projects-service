@@ -81,6 +81,10 @@ class AgentReadAccessTest {
           eu.wohlben.qits.entities.api.TicketCommentController.class,
           eu.wohlben.qits.entities.api.TicketController.class,
           eu.wohlben.qits.entities.api.TicketDossierController.class,
+          eu.wohlben.qits.entities.api.WorkController.class,
+          eu.wohlben.qits.entities.api.WorkCommentController.class,
+          eu.wohlben.qits.entities.api.WorkArchetypesController.class,
+          eu.wohlben.qits.entities.api.ProjectWorkController.class,
           AgentCapabilityController.class,
           AgentConfigurationController.class,
           AgentContainerController.class,
@@ -177,7 +181,19 @@ class AgentReadAccessTest {
           // The block of any lifecycle archetype (qits-592): block_entity and unblock_entity
           // perform this same write over MCP, and the ticket-only door above always admitted the
           // agent. EntityAgentBoundsTest drives its binding.
-          "EntityBlockController.setBlocked");
+          "EntityBlockController.setBlocked",
+          // The work family (qits-969) mirrors the generic doors above route for route, under the
+          // same roles: the create, the patch, the status move and the block, the bulk transition
+          // and its one-entity form (PUT, the PUT-shaped transition at the entity's address), and
+          // the thread's comment and edit.
+          "WorkController.create",
+          "WorkController.put",
+          "WorkController.patch",
+          "WorkController.transition",
+          "WorkController.setStatus",
+          "WorkController.setBlocked",
+          "WorkCommentController.add",
+          "WorkCommentController.edit");
 
   /**
    * <b>The catalogue write an agent reaches: adding a component to a project.</b> Its own group
@@ -236,6 +252,7 @@ class AgentReadAccessTest {
           "TicketController.delete",
           "TicketCommentController.delete",
           "CommentController.delete",
+          "WorkCommentController.delete",
           // Approving a campaign criterion is the sign-off on a gated member (qits-413).
           "CampaignController.approve");
 
@@ -253,7 +270,14 @@ class AgentReadAccessTest {
           "EntityCommentController.list",
           "EntityCommentController.create",
           "EntityPatchController.patch",
-          "EntityStatusController.move");
+          "EntityStatusController.move",
+          // The same five on the work family (qits-969).
+          "WorkController.create",
+          "WorkController.get",
+          "WorkController.patch",
+          "WorkController.setStatus",
+          "WorkCommentController.list",
+          "WorkCommentController.add");
 
   @Test
   void aPlatformServiceReachesTheGenericEntityDoors() {

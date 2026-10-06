@@ -1,9 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
-import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -55,11 +53,10 @@ public class EntityBlockController {
 
   @Inject EntityIdResolver ids;
 
-  @Inject EntityBlocks blocks;
+  /** The block itself, shared with {@code POST /work/{qualifiedId}/blocked} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject ProjectChangePublisher publisher;
 
   /** {@code reason} is required when blocking and optional when unblocking. */
   @Schema(name = "EntityBlockRequest", description = "What the block flag should become, and why.")
@@ -102,15 +99,11 @@ public class EntityBlockController {
           "A feature or a task (which runs no phase of its own), or a status that starts no phase"
               + " (VERIFIED, DONE, DROPPED)")
   public EntityBlockAnswer setBlocked(@PathParam("id") String id, EntityBlockRequest request) {
-    WorkEntity entity = ids.resolve(id);
-    EntitiesAgentAccess.requireProject(identity, entity.projectId);
-    WorkEntity written =
-        blocks.apply(
-            entity,
+    return new EntityBlockAnswer(
+        doors.block(
+            identity,
+            ids.resolve(id),
             request != null && request.blocked(),
-            request == null ? null : request.reason(),
-            EntitiesPrincipal.changedBy(identity));
-    publisher.fire(written.projectId, ProjectChangeHint.Topic.of(written.archetype));
-    return new EntityBlockAnswer(EntityBlocks.Blocked.of(written));
+            request == null ? null : request.reason()));
   }
 }

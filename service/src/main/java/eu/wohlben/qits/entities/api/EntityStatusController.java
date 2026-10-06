@@ -1,15 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
-import eu.wohlben.qits.entities.control.EntityCatalogService;
-import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
-import eu.wohlben.qits.entities.control.WorkEntityService;
-import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.error.ForbiddenException;
-import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
-import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -19,7 +11,6 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -69,14 +60,10 @@ public class EntityStatusController {
 
   @Inject EntityIdResolver ids;
 
-  /** The row's edge, read before the move: a move changes none. */
-  @Inject EntityCatalogService catalog;
-
-  @Inject EntityRoutes routes;
+  /** The move itself, shared with {@code POST /work/{qualifiedId}/status} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject QualifiedEntityIds qualifiedIds;
 
   @Schema(name = "EntityStatusMove", description = "A lifecycle move: the status to move to.")
   public record EntityStatusMove(
@@ -131,23 +118,6 @@ public class EntityStatusController {
               + " to READY_FOR_DEV by a caller this service did not verify as a person"
               + " (PERSON_APPROVAL)")
   public TransitionedEntity move(@PathParam("id") String id, EntityStatusMove request) {
-    WorkEntity row = ids.resolve(id);
-    Archetype archetype = row.archetype;
-    if (archetype == Archetype.EPIC && !identity.hasRole(AgentAccess.ADMIN_ROLE)) {
-      throw new ForbiddenException(
-          "Moving an epic's status is qits:admin alone, as POST /projects/api/epics/{id}/transition"
-              + " is; an agent's claim goes through the transition_epic MCP tool.");
-    }
-    EntitiesAgentAccess.requireProject(identity, row.projectId);
-
-    TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
-    // The mover's name is the audit's: a verified person's own, never a header (qits-887).
-    Mover mover = routes.moverOf(identity);
-    // Bound above, in this door's refusal order, so the move is asked not to bind again.
-    WorkEntityService.Transition moved =
-        routes.move(
-            archetype, row.id, request == null ? null : request.target(), false, identity, mover);
-    return qualifiedIds.qualify(
-        TransitionedEntity.moved(moved.entity(), before, moved.statusBefore(), mover.name()));
+    return doors.move(identity, ids.resolve(id), request == null ? null : request.target());
   }
 }

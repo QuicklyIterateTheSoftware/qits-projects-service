@@ -3293,6 +3293,215 @@ components:
       properties:
         reason:
           type: string
+    WorkBlockAnswer:
+      type: object
+      description: A work entity's block flag as the write left it.
+      properties:
+        block:
+          $ref: "#/components/schemas/EntityBlock"
+    WorkBlockRequest:
+      type: object
+      required:
+      - blocked
+      description: "What the block flag should become, and why."
+      properties:
+        blocked:
+          type: boolean
+          description: "true to block, false to unblock"
+        reason:
+          type: string
+          description: what is in the way — required when blocking; lands on the entity's
+            thread
+    WorkCommentAnswer:
+      type: object
+      description: One comment on a work entity's thread.
+      properties:
+        comment:
+          $ref: "#/components/schemas/CommentDto"
+    WorkCommentCreate:
+      type: object
+      required:
+      - body
+      description: A remark for a work entity's thread.
+      properties:
+        body:
+          type: string
+          pattern: \S
+          description: "The remark, Markdown."
+    WorkCommentDeleted:
+      type: object
+      description: The comment is gone.
+      properties:
+        success:
+          type: boolean
+    WorkCommentList:
+      type: object
+      description: "A work entity's thread, oldest first."
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkCommentListEntry"
+    WorkCommentListEntry:
+      type: object
+      properties:
+        comment:
+          $ref: "#/components/schemas/CommentDto"
+    WorkCommentPatch:
+      type: object
+      required:
+      - body
+      description: "A JSON merge patch (RFC 7396) of one comment. body is the only\
+        \ property and is required: it replaces the text, and may not be null or blank.\
+        \ id, entityId, author, createdAt and updatedAt are server-owned; any other\
+        \ property is refused as unknown."
+      properties:
+        body:
+          type: string
+          description: "The remark as it should now read, Markdown."
+    WorkCreate:
+      type: object
+      required:
+      - archetype
+      description: "A new work entity of any archetype: the archetype, plus exactly\
+        \ the body GET /projects/api/work/archetypes/{archetype}/schemas/create describes\
+        \ for it. A root (EPIC, TICKET, CAMPAIGN) names its project, a node (FEATURE,\
+        \ TASK) its parent."
+      properties:
+        archetype:
+          $ref: "#/components/schemas/Archetype"
+          type: string
+          description: "EPIC, TICKET, FEATURE, TASK or CAMPAIGN"
+        project:
+          type: string
+          description: "A root's project: its id or its slug."
+        parent:
+          type: string
+          description: "A node's parent — an EPIC for a FEATURE, a FEATURE for a TASK\
+            \ — by qualified id or UUID."
+        title:
+          type: string
+          description: The label.
+        description:
+          type: string
+          description: The long-form Markdown body.
+        ticketType:
+          type: string
+          description: "A ticket's kind, BUG or IMPROVEMENT. MAINTENANCE is reserved\
+            \ for the tickets the platform files about its own stuck release requests,\
+            \ and it closes those itself."
+        impetus:
+          type: string
+          description: Why a ticket came about. Required for a ticket.
+        assignee:
+          type: string
+          description: An epic's or a ticket's assignee.
+        repositoryId:
+          type: string
+          description: "A task's repository, in the task's project."
+        dependsOn:
+          type: string
+          description: "A feature's or task's sibling dependency, by qualified id\
+            \ or UUID."
+        acceptanceCriteria:
+          type: array
+          items:
+            type: string
+          description: "An epic's or a ticket's acceptance criteria, in order."
+    WorkList:
+      type: object
+      description: "A project's work entities, in tree order."
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitySummary"
+    WorkPatch:
+      type: object
+      description: "A JSON merge patch (RFC 7396) of one work entity. An absent property\
+        \ is left as it is; an explicit null clears it. At least one property must\
+        \ be named. status, archetype, membership, supersededBy and blocked are refused\
+        \ with the door that moves them; slug and createdBy are server-owned; any\
+        \ other property is refused as unknown. A property the entity's archetype\
+        \ has no slot for is refused (impetus on an epic)."
+      properties:
+        title:
+          type: string
+          description: The label. Cannot be cleared.
+        description:
+          type:
+          - string
+          - "null"
+          description: The long-form Markdown body; null clears it.
+        impetus:
+          type:
+          - string
+          - "null"
+          description: A ticket's impetus; null clears it.
+        ticketType:
+          type: string
+          description: "A ticket's type, BUG or IMPROVEMENT; MAINTENANCE marks a ticket\
+            \ the platform filed and will close itself, and retyping one away from\
+            \ it takes it over. Cannot be cleared."
+        assignee:
+          type:
+          - string
+          - "null"
+          description: An epic's or a ticket's assignee; null clears it.
+        repositoryId:
+          type: string
+          description: "A task's repository, in the task's project. Cannot be cleared."
+        dependsOn:
+          type:
+          - string
+          - "null"
+          description: "A feature's or task's sibling dependency, by qualified id\
+            \ or UUID; null clears it."
+        implementedAt:
+          type:
+          - string
+          - "null"
+          description: A feature's or task's implemented marker (ISO-8601 instant);
+            null clears it. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.
+            Setting it moves the item's status to IMPLEMENTED; clearing it takes an
+            IMPLEMENTED item back to IMPLEMENTING (or READY_FOR_DEV when it was never
+            marked implementing).
+          anyOf:
+          - $ref: "#/components/schemas/Instant"
+          - type: "null"
+        implementingAt:
+          $ref: "#/components/schemas/Instant"
+          type: string
+          description: "A feature's or task's implementing marker (ISO-8601 instant):\
+            \ when its implementation was started. Cannot be cleared. Moves only while\
+            \ the owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's\
+            \ status to IMPLEMENTING when it is not already there or further."
+        acceptanceCriteria:
+          type:
+          - array
+          - "null"
+          items:
+            type: string
+          description: "An epic's or ticket's acceptance criteria, the whole list\
+            \ in order; null or an empty list clears them. Each item is one line of\
+            \ Markdown: not blank, no line break, at most one '.', and fewer than\
+            \ 20 whitespace characters. Editable at REFINED (outside an epic's scope\
+            \ freeze); from READY_FOR_DEV on a changed list is a 409, and restating\
+            \ the same list passes."
+    WorkStatusMove:
+      type: object
+      required:
+      - target
+      description: "A lifecycle move: the status to move to."
+      properties:
+        target:
+          type: string
+          description: "REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED,\
+            \ VERIFYING, VERIFIED, DONE or DROPPED — one the entity's current status\
+            \ may move to: a neighbour on the walk (IMPLEMENTING has no move back,\
+            \ and READY_FOR_DEV none to REPORTED), or IMPLEMENTED from READY_FOR_DEV\
+            \ or VERIFIED from IMPLEMENTED (the skips). A campaign never moves to\
+            \ IMPLEMENTING or VERIFYING."
     WorkspaceReferenceDto:
       type: object
       properties:
@@ -5914,6 +6123,53 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/projects/{project}/work:
+    get:
+      summary: List a project's work of every archetype
+      description: "The project's whole planning tree, flat: each root oldest first,\
+        \ its descendants depth-first in position order. Optionally narrowed to one\
+        \ archetype, one status, and the direct children of one parent (qualified\
+        \ id or UUID). The project is its id or its slug."
+      operationId: listProjectWork
+      parameters:
+      - name: project
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: archetype
+        in: query
+        schema:
+          type: string
+      - name: parent
+        in: query
+        schema:
+          type: string
+      - name: status
+        in: query
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The work entities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkList"
+        "400":
+          description: An archetype or a status naming none
+        "404":
+          description: "No such project, or no such parent"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Project Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
   /projects/api/refinements/{id}:
     get:
       parameters:
@@ -8318,6 +8574,550 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
+  /projects/api/work:
+    post:
+      summary: Create a work entity of any archetype
+      description: "Files a new epic, ticket, campaign, feature or task from one body\
+        \ shape: the archetype plus the archetype's create schema (GET /projects/api/work/archetypes/{archetype}/schemas/create).\
+        \ A root names its project (id or slug), a node its parent (qualified id or\
+        \ UUID): a feature's parent is an EPIC, a task's a FEATURE. A dependency is\
+        \ a qualified id or a UUID. The status starts REPORTED. Answers the entity\
+        \ in the merged shape, with its qualified id."
+      operationId: createWork
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkCreate"
+        required: true
+      responses:
+        "201":
+          description: The entity as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "Every complaint about the body in one message: not an object,\
+            \ no or an unknown archetype, a property the create schema does not list,\
+            \ a missing required one, a value of the wrong shape, a parent of the\
+            \ wrong kind, or a repository outside the project"
+        "403":
+          description: An agent creating in a project other than its own; nothing
+            is written
+        "404":
+          description: "The project, the parent or the repository names nothing"
+        "409":
+          description: "The owning epic's status freezes its scope: a node needs the\
+            \ epic REPORTED"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+        - qits:system
+  /projects/api/work/archetypes:
+    get:
+      summary: "The archetype registry: properties, lifecycles, legal moves and dispatch\
+        \ phases"
+      description: "Every archetype's declaration, read off the registry and the state\
+        \ machine the doors enforce: what it requires and permits, its lifecycle,\
+        \ the legal moves out of each status (transitions, each naming the quality\
+        \ gates it has to pass) and what a dispatch press runs from each status (phases)."
+      operationId: listWorkArchetypes
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchetypeRegistryDocument"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Archetypes Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/archetypes/{archetype}/schemas/{door}:
+    get:
+      summary: "The JSON Schema of a work write door's payload, per archetype"
+      description: "A JSON Schema (2020-12) object for the body of one write door\
+        \ and one archetype: create (POST /projects/api/work, less the archetype),\
+        \ update (the merge patch of PATCH /projects/api/work/{qualifiedId}) or transition\
+        \ (the body of PUT /projects/api/work/{qualifiedId}, one entry of POST /projects/api/work/transition).\
+        \ Built from the archetype registry and the same property table the doors\
+        \ validate with. The archetype is case-insensitive."
+      operationId: getWorkArchetypeSchema
+      parameters:
+      - name: archetype
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: door
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The schema
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: "No such archetype, or no such door"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Archetypes Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/transition:
+    post:
+      summary: "State several work entities in full, as one post-state"
+      description: "A map of entity id to the whole state that entity is to have afterwards,\
+        \ validated as one post-state, applied in one transaction and announced once.\
+        \ The keys and every id in an entry (membership.parent, supersededBy, dependsOn)\
+        \ are qualified ids or UUIDs; an id naming nothing is one of the violations\
+        \ in the 400. Answers each entity in the merged shape, keyed as the request\
+        \ was."
+      operationId: transitionWork
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/EntityTransition"
+        required: true
+      responses:
+        "200":
+          description: "What was written, keyed as the request was"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "Every violation of the stated post-state, in one message"
+        "403":
+          description: An agent whose batch reaches outside its own project; nothing
+            of it is written
+        "409":
+          description: "A status this door may not state, or a changed acceptance-criteria\
+            \ list from READY_FOR_DEV on"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}:
+    put:
+      summary: State a work entity in full
+      description: "The full edit of one entity: the body is the entity's whole state\
+        \ afterwards — what it is (archetype), where it hangs (membership), every\
+        \ property — and an absent property is cleared, not left alone. It is the\
+        \ one-entry form of POST /projects/api/work/transition and obeys every rule\
+        \ of it, so it is also how a single entity is reshaped, reparented or superseded.\
+        \ Every entity id in the body (membership.parent, supersededBy, dependsOn)\
+        \ is a qualified id or a UUID. Answers the entity as written, in the merged\
+        \ shape."
+      operationId: putWork
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntityTransition"
+        required: true
+      responses:
+        "200":
+          description: The entity as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "Every violation of the stated state, in one message"
+        "403":
+          description: An agent writing outside its own project; nothing is written
+        "404":
+          description: No entity with this id
+        "409":
+          description: "A status this door may not state (a change to or from READY_FOR_DEV,\
+            \ a jump into started work, a gated move — those go through POST /work/{qualifiedId}/status),\
+            \ or a changed acceptance-criteria list from READY_FOR_DEV on"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    patch:
+      summary: Edit a work entity's fields (JSON merge patch)
+      description: "Partial update of one entity of any archetype. An absent property\
+        \ is left unchanged and an explicit null clears it. The status is never written\
+        \ here — a lifecycle move goes through POST /projects/api/work/{qualifiedId}/status,\
+        \ and a reshape, reparent or supersede through PUT /projects/api/work/{qualifiedId}\
+        \ or POST /projects/api/work/transition. dependsOn is a qualified id or a\
+        \ UUID. An epic's, feature's or task's scope follows the epic's freeze: scope\
+        \ edits need the epic REPORTED, the markers need it READY_FOR_DEV or IMPLEMENTING,\
+        \ and a marker moves the item's status with it. An epic's or a ticket's acceptance\
+        \ criteria are frozen from READY_FOR_DEV on, where a changed list is refused\
+        \ and the same list restated passes. Answers the entity in the merged shape."
+      operationId: patchWork
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/WorkPatch"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkPatch"
+        required: true
+      responses:
+        "200":
+          description: The entity as it stands after the edit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "Every complaint about the body in one message: not an object,\
+            \ empty, a property that is a move or server-owned or unknown, one the\
+            \ archetype has no slot for, a null where the property cannot be cleared,\
+            \ or a value of the wrong shape"
+        "403":
+          description: An agent writing an entity outside its own project; nothing
+            is written
+        "404":
+          description: No entity with this id
+        "409":
+          description: "The owning epic's status freezes what the patch touches, or\
+            \ the acceptance criteria are changed from READY_FOR_DEV on"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+        - qits:system
+    get:
+      summary: Read one work entity of any archetype
+      description: "The entity in the merged shape, with its qualified id, its parent\
+        \ and position, and whether it is blocked. The path names it by qualified\
+        \ id (<projectSlug>-<n>) or UUID."
+      operationId: getWork
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+        - qits:system
+  /projects/api/work/{qualifiedId}/blocked:
+    post:
+      summary: Block or unblock a work entity
+      description: "Says the phase an epic's, ticket's or campaign's status starts\
+        \ cannot finish right now (or can again). The status does not move — it is\
+        \ the phase to resume — and the next transition clears the block. The reason\
+        \ is required to block and lands on the entity's thread."
+      operationId: setWorkBlocked
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkBlockRequest"
+        required: true
+      responses:
+        "200":
+          description: The flag as the write left it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkBlockAnswer"
+        "400":
+          description: Blocking with no reason
+        "403":
+          description: An agent blocking outside its own project; nothing is written
+        "404":
+          description: No entity with this id
+        "409":
+          description: "A feature or a task (which runs no phase of its own), or a\
+            \ status that starts no phase (VERIFIED, DONE, DROPPED)"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/comments:
+    get:
+      summary: Read a work entity's comment thread
+      description: "The thread of an entity of any archetype, oldest first. The path\
+        \ names the entity by qualified id (<projectSlug>-<n>) or UUID."
+      operationId: listWorkComments
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The thread, oldest first"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkCommentList"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Comment Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+        - qits:system
+    post:
+      summary: Comment on a work entity
+      description: "Adds a remark to the thread of an entity of any archetype, named\
+        \ by qualified id or UUID. The author is stamped from the caller."
+      operationId: addWorkComment
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkCommentCreate"
+        required: true
+      responses:
+        "200":
+          description: The comment as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkCommentAnswer"
+        "400":
+          description: A blank body
+        "403":
+          description: An agent commenting outside its own project; nothing is written
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Comment Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+        - qits:system
+  /projects/api/work/{qualifiedId}/comments/{commentId}:
+    patch:
+      summary: Edit a comment's text (JSON merge patch)
+      description: "Replaces the body of a comment on a work entity's thread. Only\
+        \ body is written; the author stays who wrote it, and updatedAt moves."
+      operationId: editWorkComment
+      parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/WorkCommentPatch"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkCommentPatch"
+        required: true
+      responses:
+        "200":
+          description: The comment as it stands after the edit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkCommentAnswer"
+        "400":
+          description: "Every complaint about the body in one message: not an object,\
+            \ empty, body null or blank or not a string, a server-owned or unknown\
+            \ property"
+        "403":
+          description: An agent editing a comment outside its own project; nothing
+            is written
+        "404":
+          description: "No entity with this id, or no comment with this id on its\
+            \ thread"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Comment Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    delete:
+      summary: Delete a comment
+      description: Removes a comment from a work entity's thread; audited. Admin only.
+      operationId: deleteWorkComment
+      parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The comment is gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkCommentDeleted"
+        "404":
+          description: "No entity with this id, or no comment with this id on its\
+            \ thread"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Comment Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/work/{qualifiedId}/status:
+    post:
+      summary: Move a work entity through its lifecycle
+      description: "Moves an epic, ticket, campaign, feature or task to the target\
+        \ status, by the same path as the archetype's own transition and under its\
+        \ roles: an agent may move a ticket, a campaign, a feature or a task of its\
+        \ own project, a platform service (qits:system) one of any project, and an\
+        \ epic is qits:admin alone. A feature or a task moves only once its epic is\
+        \ past REPORTED, and its scheduling (to READY_FOR_DEV, or back) is the epic's.\
+        \ Answers the entity in the merged shape, with statusBefore."
+      operationId: setWorkStatus
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkStatusMove"
+        required: true
+      responses:
+        "200":
+          description: The entity as the move left it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: No target
+        "403":
+          description: "An agent moving an epic, or an entity outside its own project;\
+            \ nothing is written"
+        "404":
+          description: No entity with this id
+        "409":
+          description: "A move the lifecycle does not allow, a target naming no status,\
+            \ a feature or a task whose epic is still REPORTED, or a quality gate\
+            \ refusing a forward move — ACCEPTANCE_CRITERIA, or PERSON_APPROVAL for\
+            \ REFINED to READY_FOR_DEV by a caller this service did not verify as\
+            \ a person"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+        - qits:system
 info:
   title: qits-projects API
-  version: 2026.1005.132915
+  version: 2026.1006.121753

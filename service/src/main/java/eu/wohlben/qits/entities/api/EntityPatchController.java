@@ -2,19 +2,9 @@ package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.wohlben.qits.entities.control.AcceptanceCriteria;
-import eu.wohlben.qits.entities.control.ArchetypeViolation;
-import eu.wohlben.qits.entities.control.Archetypes;
-import eu.wohlben.qits.entities.control.EntityCatalogService;
-import eu.wohlben.qits.entities.control.EntityProperty;
 import eu.wohlben.qits.entities.control.EntityWrite;
-import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.control.WorkEntityService;
-import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.error.BadRequestException;
-import eu.wohlben.qits.entities.error.NotFoundException;
-import eu.wohlben.qits.projects.control.RepositoryService;
-import eu.wohlben.qits.projects.entity.Repository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -25,11 +15,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -89,51 +75,12 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 public class EntityPatchController {
 
   /** RFC 7396's media type. Plain {@code application/json} is accepted beside it. */
-  public static final String MERGE_PATCH_JSON = "application/merge-patch+json";
+  public static final String MERGE_PATCH_JSON = WorkEntityDoors.MERGE_PATCH_JSON;
 
-  /**
-   * The properties this door refuses, each with the door to use instead. The status's is blank
-   * here because it depends on the archetype — see {@link #statusDoor}.
-   */
-  private static final Map<String, String> MOVES =
-      Map.of(
-          "status", "",
-          "archetype", "a reshape — state it through POST /projects/api/entities/transition",
-          "membership", "a reparent — state it through POST /projects/api/entities/transition",
-          "supersededBy", "a supersede — state it through POST /projects/api/entities/transition",
-          "blocked", "the block — set it through POST /projects/api/entities/{id}/blocked");
-
-  /** What the server writes and a caller never does. */
-  private static final List<String> SERVER_OWNED = List.of("slug", "createdBy");
-
-  /**
-   * The editable properties, as {@code EntityTransition} spells them, and their registry slot — read
-   * off {@link EntityWireProperties}, the table the published update schema is built from, so the
-   * schema a client is handed and the names this door accepts are one list (qits-548).
-   */
-  private static final Map<String, EntityProperty> EDITABLE = EntityWireProperties.editable();
-
-  /**
-   * Editable, but with no clear flag behind them: every kind that permits one requires it. The
-   * table's {@code clearable} column, which is also what types these as non-nullable in the schema.
-   */
-  private static final List<String> NOT_CLEARABLE = EntityWireProperties.notClearable();
-
-  @Inject WorkEntityService entities;
-
-  /** The id's archetype, project and edge, read before the write. */
-  @Inject EntityCatalogService catalog;
-
-  /** A task's repository must be in the task's project — the check {@code EntityRoutes} makes. */
-  @Inject RepositoryService repositories;
+  /** The patch itself, shared with {@code PATCH /work/{qualifiedId}} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject EpicsTopicHints epicHints;
-
-  @Inject TicketsTopicHints ticketHints;
-
-  @Inject eu.wohlben.qits.projects.api.QualifiedEntityIds qualifiedIds;
 
   /**
    * The documentation of the body, and only that: the body itself is read as a {@link JsonNode},
@@ -252,133 +199,6 @@ public class EntityPatchController {
                     schema = @Schema(implementation = EntityPatch.class))
               })
           JsonNode body) {
-    TransitionedEntity current = catalog.byIds(List.of(id)).get(id);
-    if (current == null) {
-      throw new NotFoundException("Entity not found: " + id);
-    }
-    EntitiesAgentAccess.requireProject(identity, current.projectId());
-
-    EntityWrite write = read(current, body);
-    if (write.repositoryId() != null) {
-      Repository repo = repositories.get(write.repositoryId()); // 404 if absent
-      if (repo.project == null || !current.projectId().equals(repo.project.id)) {
-        throw new BadRequestException(
-            "Repository " + write.repositoryId() + " is not in this entity's project");
-      }
-    }
-    Nested updated =
-        entities.update(current.archetype(), id, write, EntitiesPrincipal.changedBy(identity));
-
-    // After the write and outside it, as the transition door fires them: its body is retried.
-    epicHints.fire(current.projectId());
-    ticketHints.fire(current.projectId());
-    // The row the write handed back, never a re-read — see TransitionedEntity.edited for why a
-    // re-read in this request answers the row as it was.
-    return qualifiedIds.qualify(TransitionedEntity.edited(updated.entity(), current));
-  }
-
-  /**
-   * The body as an {@link EntityWrite} for {@code current}'s archetype, or one 400 carrying every
-   * complaint about it.
-   */
-  private static EntityWrite read(TransitionedEntity current, JsonNode body) {
-    if (body == null || !body.isObject()) {
-      throw new BadRequestException("a merge patch must be a JSON object");
-    }
-    if (body.isEmpty()) {
-      throw new BadRequestException("a merge patch must name at least one property");
-    }
-    Archetype archetype = current.archetype();
-    List<String> refused = new ArrayList<>();
-    for (Iterator<String> names = body.fieldNames(); names.hasNext(); ) {
-      String name = names.next();
-      JsonNode value = body.get(name);
-      if (MOVES.containsKey(name)) {
-        String door = name.equals("status") ? statusDoor(archetype) : MOVES.get(name);
-        refused.add(name + " is not written by a patch: it is " + door);
-      } else if (SERVER_OWNED.contains(name)) {
-        refused.add(name + " is server-owned and never written");
-      } else if (!EDITABLE.containsKey(name)) {
-        refused.add("unknown property: " + name);
-      } else if (!Archetypes.spec(archetype).permits(EDITABLE.get(name))) {
-        refused.add(
-            new ArchetypeViolation(
-                    archetype, EDITABLE.get(name), ArchetypeViolation.Reason.NOT_PERMITTED, null)
-                .message());
-      } else if (value.isNull()) {
-        if (NOT_CLEARABLE.contains(name)) {
-          refused.add(name + " cannot be cleared");
-        }
-      } else if (EDITABLE.get(name) == EntityProperty.ACCEPTANCE_CRITERIA) {
-        EntitySchemas.listRefusal(name, value).ifPresent(refused::add);
-      } else if (!value.isTextual()) {
-        refused.add(name + " must be a string");
-      } else if (name.equals("implementedAt") || name.equals("implementingAt")) {
-        try {
-          Instant.parse(value.textValue());
-        } catch (DateTimeParseException e) {
-          refused.add(name + " must be an ISO-8601 instant: " + value.textValue());
-        }
-      }
-    }
-    if (!refused.isEmpty()) {
-      throw new BadRequestException(String.join("; ", refused));
-    }
-
-    String implementedAt = text(body, "implementedAt");
-    String implementingAt = text(body, "implementingAt");
-    return new EntityWrite(
-        text(body, "title"),
-        text(body, "description"),
-        cleared(body, "description"),
-        text(body, "impetus"),
-        cleared(body, "impetus"),
-        text(body, "ticketType"),
-        text(body, "assignee"),
-        cleared(body, "assignee"),
-        text(body, "repositoryId"),
-        text(body, "dependsOn"),
-        cleared(body, "dependsOn"),
-        implementedAt == null ? null : Instant.parse(implementedAt),
-        cleared(body, "implementedAt"),
-        implementingAt == null ? null : Instant.parse(implementingAt),
-        criteria(body));
-  }
-
-  /**
-   * The acceptance criteria as the patch states them (qits-887): null when the patch does not name
-   * them (left alone), an empty list when it sends null (cleared), else the array's items.
-   */
-  private static List<String> criteria(JsonNode body) {
-    JsonNode value = body.get("acceptanceCriteria");
-    if (value == null) {
-      return null;
-    }
-    return value.isNull() ? List.of() : EntitySchemas.strings(value).orElseThrow();
-  }
-
-  /**
-   * The lifecycle door of the archetype. A feature and a task have no door of their own: since
-   * qits-763 their status moves through the generic one, which is every kind's.
-   */
-  private static String statusDoor(Archetype archetype) {
-    return switch (archetype) {
-      case EPIC -> "a lifecycle move — POST /projects/api/epics/{id}/transition";
-      case TICKET -> "a lifecycle move — POST /projects/api/tickets/{id}/transition";
-      case CAMPAIGN -> "a lifecycle move — POST /projects/api/campaigns/{id}/transition";
-      case FEATURE, TASK -> "a lifecycle move — POST /projects/api/entities/{id}/status";
-    };
-  }
-
-  /** The property's value when it was sent as text; null when absent or sent as null. */
-  private static String text(JsonNode body, String name) {
-    JsonNode value = body.get(name);
-    return value == null || value.isNull() ? null : value.textValue();
-  }
-
-  /** Whether the property was sent, and sent as null — RFC 7396's "remove". */
-  private static boolean cleared(JsonNode body, String name) {
-    JsonNode value = body.get(name);
-    return value != null && value.isNull();
+    return doors.patch(identity, id, body, WorkEntityDoors.Surface.ENTITIES);
   }
 }

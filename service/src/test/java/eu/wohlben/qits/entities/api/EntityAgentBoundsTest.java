@@ -310,22 +310,19 @@ class EntityAgentBoundsTest {
   private EntityCommentController threads(SecurityIdentity caller) {
     EntityCommentController door = new EntityCommentController();
     door.ids = entityIds;
-    door.comments = ticketComments;
-    door.mapper = ticketCommentMapper;
+    door.doors = workDoors;
     door.identity = caller;
-    door.publisher = publisher;
     return door;
   }
 
+
   private CommentController commentDoor(SecurityIdentity caller) {
     CommentController door = new CommentController();
-    door.comments = ticketComments;
-    door.entities = workEntities;
-    door.mapper = ticketCommentMapper;
+    door.doors = workDoors;
     door.identity = caller;
-    door.publisher = publisher;
     return door;
   }
+
 
   private ProjectEpicsController projectEpics(SecurityIdentity caller) {
     ProjectEpicsController door = new ProjectEpicsController();
@@ -363,56 +360,44 @@ class EntityAgentBoundsTest {
 
   private EntityTransitionController entities(SecurityIdentity caller) {
     EntityTransitionController door = new EntityTransitionController();
-    door.transitions = transitionService;
-    door.catalog = catalogService;
+    door.doors = workDoors;
     door.identity = caller;
-    door.epicHints = epicHints;
-    door.ticketHints = ticketHints;
-    door.qualifiedIds = qualifiedIds;
     return door;
   }
+
 
   private EntityPatchController patches(SecurityIdentity caller) {
     EntityPatchController door = new EntityPatchController();
-    door.entities = workEntities;
-    door.catalog = catalogService;
-    door.repositories = repositoryService;
+    door.doors = workDoors;
     door.identity = caller;
-    door.epicHints = epicHints;
-    door.ticketHints = ticketHints;
-    door.qualifiedIds = qualifiedIds;
     return door;
   }
 
+
   private EntityCreateController creates(SecurityIdentity caller) {
     EntityCreateController door = new EntityCreateController();
-    door.entities = workEntities;
-    door.catalog = catalogService;
-    door.ids = entityIds;
-    door.repositories = repositoryService;
+    door.doors = workDoors;
     door.identity = caller;
-    door.publisher = publisher;
-    door.qualifiedIds = qualifiedIds;
     return door;
   }
+
 
   private EntityStatusController statuses(SecurityIdentity caller) {
     EntityStatusController door = new EntityStatusController();
     door.ids = entityIds;
-    door.catalog = catalogService;
-    door.routes = routes;
+    door.doors = workDoors;
     door.identity = caller;
-    door.qualifiedIds = qualifiedIds;
     return door;
   }
+
 
   private EntityReadController reads() {
     EntityReadController door = new EntityReadController();
     door.ids = entityIds;
-    door.catalog = catalogService;
-    door.qualifiedIds = qualifiedIds;
+    door.doors = workDoors;
     return door;
   }
+
 
   /** The block of any lifecycle archetype (qits-592). */
   @Inject eu.wohlben.qits.projects.api.EntityBlocks entityBlocks;
@@ -420,11 +405,31 @@ class EntityAgentBoundsTest {
   private EntityBlockController blocks(SecurityIdentity caller) {
     EntityBlockController door = new EntityBlockController();
     door.ids = entityIds;
-    door.blocks = entityBlocks;
+    door.doors = workDoors;
     door.identity = caller;
-    door.publisher = publisher;
     return door;
   }
+
+  /** The shared implementation every generic door delegates to (qits-969). */
+  @Inject WorkEntityDoors workDoors;
+
+  /** The work family's doors, driven like the generic ones (qits-969). */
+  private WorkController work(SecurityIdentity caller) {
+    WorkController door = new WorkController();
+    door.ids = entityIds;
+    door.doors = workDoors;
+    door.identity = caller;
+    return door;
+  }
+
+  private WorkCommentController workThreads(SecurityIdentity caller) {
+    WorkCommentController door = new WorkCommentController();
+    door.ids = entityIds;
+    door.doors = workDoors;
+    door.identity = caller;
+    return door;
+  }
+
 
   // ---- the request bodies ----------------------------------------------------------------------
 
@@ -706,6 +711,94 @@ class EntityAgentBoundsTest {
     assertEquals(403, refusal.statusCode());
     assertEquals("REPORTED", workEntities.get(Archetype.EPIC, rows.epicId()).status);
     assertEquals("REFINED", statuses(OPERATOR).move(rows.epicId(), to("REFINED")).status());
+  }
+
+  /**
+   * <b>The work family binds exactly as the generic doors do</b> (qits-969): the agent writes its
+   * own project's rows through every {@code /work} write, addressed by qualified id, and is refused
+   * the other project's with nothing written; a platform service reaches the five doors it reaches on
+   * {@code /entities} in a project it has no tie to; an epic's status stays a person's.
+   */
+  @Test
+  void theWorkFamilyBindsAsTheGenericDoorsDo() {
+    String ticket = QualifiedEntityIds.render(OWN_PROJECT, workEntities.find(rows.ticketId()).number);
+    String foreignTicket =
+        QualifiedEntityIds.render(FOREIGN_PROJECT, workEntities.find(rows.foreignTicketId()).number);
+    String foreignEpic =
+        QualifiedEntityIds.render(FOREIGN_PROJECT, workEntities.find(rows.foreignEpicId()).number);
+
+    // Through, for the agent's own project.
+    assertTrue(
+        work(AGENT)
+            .setBlocked(ticket, new WorkController.WorkBlockRequest(true, "waiting"))
+            .block()
+            .blocked());
+    assertEquals("By the agent", work(AGENT).patch(ticket, retitle("By the agent")).title());
+    assertEquals(
+        "Restated on /work",
+        work(AGENT).put(rows.epicQualifiedId(), epicRenamedTo("Restated on /work")).title());
+    assertEquals(
+        "Batched on /work",
+        work(AGENT)
+            .transition(Map.of(rows.epicQualifiedId(), epicRenamedTo("Batched on /work")))
+            .get(rows.epicQualifiedId())
+            .title());
+    String remarkId =
+        workThreads(AGENT).add(ticket, new WorkCommentController.WorkCommentCreate("noted")).comment().id();
+    assertEquals(
+        "noted, corrected",
+        workThreads(AGENT).edit(ticket, remarkId, rewording("noted, corrected")).comment().body());
+    var filed =
+        (TransitionedEntity) work(AGENT).create(filedTicket(OWN_PROJECT, "Filed on /work")).getEntity();
+    assertEquals(
+        "REFINED",
+        work(AGENT).setStatus(filed.qualifiedId(), new WorkController.WorkStatusMove("REFINED")).status());
+
+    // An epic's status stays a person's on /work too.
+    refusedEpicMove(() -> work(AGENT).setStatus(rows.epicQualifiedId(), new WorkController.WorkStatusMove("REFINED")));
+
+    // Refused, for another project's agent, with nothing written.
+    refused(() -> work(FOREIGN_AGENT).patch(ticket, retitle("Not yours")));
+    refused(() -> work(FOREIGN_AGENT).put(rows.epicQualifiedId(), epicRenamedTo("Not yours")));
+    refused(
+        () -> work(FOREIGN_AGENT).transition(Map.of(rows.epicQualifiedId(), epicRenamedTo("Not yours"))));
+    refused(
+        () -> workThreads(FOREIGN_AGENT).add(ticket, new WorkCommentController.WorkCommentCreate("x")));
+    refused(() -> workThreads(FOREIGN_AGENT).edit(ticket, remarkId, rewording("not yours")));
+    refused(() -> work(FOREIGN_AGENT).create(filedTicket(OWN_PROJECT, "Not yours")));
+    refused(
+        () -> work(FOREIGN_AGENT).setStatus(ticket, new WorkController.WorkStatusMove("REFINED")));
+    refused(
+        () ->
+            work(FOREIGN_AGENT)
+                .setBlocked(ticket, new WorkController.WorkBlockRequest(false, null)));
+    // Read in a transaction of its own: outside one this thread keeps the rows it read first.
+    assertEquals("By the agent", titleOf(rows.ticketId()));
+    assertEquals("Batched on /work", titleOf(rows.epicId()));
+
+    // A platform service, unbound, in a project it has no tie to.
+    assertEquals(foreignTicket, work(MACHINE).get(foreignTicket).qualifiedId());
+    assertEquals("By the machine", work(MACHINE).patch(foreignTicket, retitle("By the machine")).title());
+    assertEquals(
+        "dev-qits-maintenance",
+        workThreads(MACHINE)
+            .add(foreignTicket, new WorkCommentController.WorkCommentCreate("from the machine"))
+            .comment()
+            .author());
+    assertEquals(1, workThreads(MACHINE).list(foreignTicket).entries().size());
+    assertEquals(
+        "DROPPED",
+        work(MACHINE).setStatus(foreignTicket, new WorkController.WorkStatusMove("DROPPED")).status());
+    refusedEpicMove(() -> work(MACHINE).setStatus(foreignEpic, new WorkController.WorkStatusMove("REFINED")));
+  }
+
+  private String titleOf(String id) {
+    return QuarkusTransaction.requiringNew().call(() -> workEntities.find(id).title);
+  }
+
+  private static void refusedEpicMove(Executable call) {
+    ForbiddenException refusal = assertThrows(ForbiddenException.class, call);
+    assertEquals(403, refusal.statusCode());
   }
 
   // ---- and are refused for any other project ----------------------------------------------------

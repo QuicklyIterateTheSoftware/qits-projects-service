@@ -1,18 +1,13 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
-import eu.wohlben.qits.entities.control.TransitionGate;
-import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.error.NotFoundException;
 import jakarta.annotation.security.RolesAllowed;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import java.util.Locale;
 import java.util.Map;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
@@ -66,8 +61,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @RolesAllowed({"qits:admin", "qits:agent"})
 public class EntityArchetypesController {
 
-  /** Every quality gate (qits-887), so each served move names the gates it has to pass. */
-  @Inject Instance<TransitionGate> gates;
+  /** The registry and the schemas, shared with {@code /work/archetypes} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   /**
    * The registry as it stands.
@@ -89,7 +84,7 @@ public class EntityArchetypesController {
               + " status (transitions, each naming the quality gates it has to pass) and what a"
               + " dispatch press runs from each status (phases).")
   public ArchetypeRegistryDocument archetypes() {
-    return ArchetypeRegistryDocument.describe(gates.stream().toList());
+    return doors.registry();
   }
 
   /**
@@ -118,21 +113,6 @@ public class EntityArchetypesController {
   @APIResponse(responseCode = "404", description = "No such archetype, or no such door")
   public Map<String, Object> schema(
       @PathParam("archetype") String archetype, @PathParam("door") String door) {
-    Archetype kind = archetype(archetype);
-    EntitySchemas.Door named =
-        EntitySchemas.Door.parse(door)
-            .orElseThrow(
-                () ->
-                    new NotFoundException(
-                        "No schema for door " + door + ": it is create, update or transition"));
-    return EntitySchemas.of(kind, named);
-  }
-
-  private static Archetype archetype(String word) {
-    try {
-      return Archetype.valueOf(word.trim().toUpperCase(Locale.ROOT));
-    } catch (IllegalArgumentException e) {
-      throw new NotFoundException("No such archetype: " + word);
-    }
+    return doors.schema(archetype, door);
   }
 }

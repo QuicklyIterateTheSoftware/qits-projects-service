@@ -1,14 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import eu.wohlben.qits.entities.control.EntityCommentService;
-import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.EntityComment;
-import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.entities.error.BadRequestException;
-import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
-import eu.wohlben.qits.projects.api.ProjectChangeHint;
-import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -19,9 +12,6 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -62,22 +52,12 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 public class CommentController {
 
   /** RFC 7396's media type. Plain {@code application/json} is accepted beside it. */
-  public static final String MERGE_PATCH_JSON = EntityPatchController.MERGE_PATCH_JSON;
+  public static final String MERGE_PATCH_JSON = WorkEntityDoors.MERGE_PATCH_JSON;
 
-  /** What the server writes and a patch names only to be refused. */
-  private static final List<String> SERVER_OWNED =
-      List.of("id", "entityId", "author", "createdAt", "updatedAt");
-
-  @Inject EntityCommentService comments;
-
-  /** The entity a comment hangs on — any archetype — for its project and its topic. */
-  @Inject WorkEntityService entities;
-
-  @Inject EntityCommentMapper mapper;
+  /** The edit and the delete themselves, shared with {@code /work} (qits-969). */
+  @Inject WorkEntityDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject ProjectChangePublisher publisher;
 
   /**
    * The documentation of the body, and only that: the body itself is read as a {@link JsonNode}.
@@ -130,13 +110,9 @@ public class CommentController {
                     schema = @Schema(implementation = CommentPatch.class))
               })
           JsonNode patch) {
-    WorkEntity entity = entityOf(comments.getComment(commentId));
-    EntitiesAgentAccess.requireProject(identity, entity.projectId);
-    String body = bodyOf(patch);
-    EntityComment edited =
-        comments.updateComment(commentId, body, EntitiesPrincipal.changedBy(identity));
-    publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
-    return new EntityCommentController.CommentAnswer(mapper.toDto(edited));
+    EntityComment comment = doors.comment(commentId);
+    return new EntityCommentController.CommentAnswer(
+        doors.editComment(identity, doors.entityOf(comment), comment, patch));
   }
 
   public record DeleteCommentRequest() {
@@ -157,45 +133,8 @@ public class CommentController {
   @APIResponse(responseCode = "404", description = "No comment with this id")
   public DeleteCommentRequest.Response delete(@PathParam("commentId") String commentId) {
     // Resolved before the delete — afterwards there is no row to walk up from.
-    WorkEntity entity = entityOf(comments.getComment(commentId));
-    comments.deleteComment(commentId, EntitiesPrincipal.changedBy(identity));
-    publisher.fire(entity.projectId, ProjectChangeHint.Topic.of(entity.archetype));
+    EntityComment comment = doors.comment(commentId);
+    doors.deleteComment(identity, doors.entityOf(comment), comment);
     return new DeleteCommentRequest.Response(true);
-  }
-
-  private WorkEntity entityOf(EntityComment comment) {
-    return entities.find(comment.entityId);
-  }
-
-  /** The new text, or one 400 carrying every complaint about the patch. */
-  private static String bodyOf(JsonNode patch) {
-    if (patch == null || !patch.isObject()) {
-      throw new BadRequestException("a merge patch must be a JSON object");
-    }
-    if (patch.isEmpty()) {
-      throw new BadRequestException("a merge patch must name at least one property");
-    }
-    List<String> refused = new ArrayList<>();
-    for (Iterator<String> names = patch.fieldNames(); names.hasNext(); ) {
-      String name = names.next();
-      JsonNode value = patch.get(name);
-      if (name.equals("body")) {
-        if (value.isNull()) {
-          refused.add("body cannot be cleared — delete the comment instead");
-        } else if (!value.isTextual()) {
-          refused.add("body must be a string");
-        } else if (value.textValue().isBlank()) {
-          refused.add("body must not be blank");
-        }
-      } else if (SERVER_OWNED.contains(name)) {
-        refused.add(name + " is server-owned and never written");
-      } else {
-        refused.add("unknown property: " + name);
-      }
-    }
-    if (!refused.isEmpty()) {
-      throw new BadRequestException(String.join("; ", refused));
-    }
-    return patch.get("body").textValue();
   }
 }

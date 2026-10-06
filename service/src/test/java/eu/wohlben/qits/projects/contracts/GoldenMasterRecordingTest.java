@@ -62,7 +62,9 @@ class GoldenMasterRecordingTest {
    *     before freezing, so ids are numbered in a stable order. Null when the order is the
    *     provider's own.
    * @param requestBody the JSON a write sends, recorded into the index as the operation's {@code
-   *     body} so a consumer's pact sends the same; null for a read
+   *     body} so a consumer's pact sends the same; null for a read. A {@code {param}} in it — a
+   *     string value or a member name that is exactly a param's name in braces — is expanded from
+   *     the state's params as a path's is, and recorded unexpanded
    */
   record Interaction(
       String state,
@@ -87,8 +89,33 @@ class GoldenMasterRecordingTest {
     }
   }
 
+  /** The generic entity operations whose {@code /work} twin is recorded beside them. */
+  private static final Map<String, String> WORK_TWINS =
+      Map.of(
+          "getEntity", "getWork",
+          "listEntityComments", "listWorkComments",
+          "listProjectEntities", "listProjectWork",
+          "listArchetypes", "listWorkArchetypes",
+          "moveEntityStatus", "setWorkStatus");
+
+  /**
+   * The whole state of {@link ProviderStates#A_REPORTED_TICKET}'s ticket, restated with a new title
+   * and description — the body of a PUT, and an entry of the bulk transition.
+   */
+  private static final String REPORTED_TICKET_STATE =
+      "{\"archetype\":\"TICKET\","
+          + "\"title\":\"Database refuses connections during deploys\","
+          + "\"description\":\"Raise the connection limit so two pools fit during a rolling"
+          + " deploy.\","
+          + "\"status\":\"REPORTED\","
+          + "\"ticketType\":\"BUG\","
+          + "\"impetus\":\"A new container fails its migration at boot: the database refuses the"
+          + " connection.\","
+          + "\"acceptanceCriteria\":[\"It does what it says.\"]}";
+
   static final List<Interaction> INTERACTIONS =
-      withWorkActions(
+      withWorkFamily(
+          withWorkActions(
           List.of(
           new Interaction(
               ProviderStates.A_PROJECT_EXISTS,
@@ -413,7 +440,129 @@ class GoldenMasterRecordingTest {
               "/projects/api/repositories/{repositoryId}",
               404,
               null,
-              null)));
+              null))));
+
+  /**
+   * The work family ({@code /projects/api/work}, qits-969, epic qits-965): every generic entity read
+   * and move the table already records gets its {@code /work} twin in the same state — {@link
+   * #WORK_TWINS} — addressed by the qualified id wherever the original was addressed by a ticket's
+   * or an epic's UUID, so a consumer moving onto {@code /work} finds every state it used; and the
+   * family's own writes and thread operations are recorded once each.
+   */
+  private static List<Interaction> withWorkFamily(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    for (Interaction original : base) {
+      String twin = WORK_TWINS.get(original.operationId());
+      if (twin != null) {
+        all.add(
+            new Interaction(
+                original.state(),
+                twin,
+                original.method(),
+                workPath(original.path()),
+                original.status(),
+                original.listFilteredTo(),
+                original.sortedBy(),
+                original.requestBody()));
+      }
+    }
+    all.add(
+        read(
+            ProviderStates.THE_ARCHETYPE_REGISTRY,
+            "getWorkArchetypeSchema",
+            "/projects/api/work/archetypes/TICKET/schemas/create"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_WITH_NO_WORK,
+            "createWork",
+            "POST",
+            "/projects/api/work",
+            201,
+            null,
+            null,
+            "{\"archetype\":\"TICKET\",\"project\":\"{projectId}\","
+                + "\"title\":\"Export fails for an empty quarter\","
+                + "\"impetus\":\"The CSV export answers 500 when the range holds no invoice.\","
+                + "\"ticketType\":\"BUG\"}"));
+    all.add(
+        write(
+            ProviderStates.A_REPORTED_TICKET,
+            "patchWork",
+            "PATCH",
+            "/projects/api/work/{qualifiedId}",
+            "{\"title\":\"Database refuses connections during deploys\"}"));
+    all.add(
+        write(
+            ProviderStates.A_REPORTED_TICKET,
+            "putWork",
+            "PUT",
+            "/projects/api/work/{qualifiedId}",
+            REPORTED_TICKET_STATE));
+    all.add(
+        write(
+            ProviderStates.A_REPORTED_TICKET,
+            "transitionWork",
+            "POST",
+            "/projects/api/work/transition",
+            "{\"{qualifiedId}\":" + REPORTED_TICKET_STATE + "}"));
+    all.add(
+        write(
+            ProviderStates.A_REPORTED_TICKET,
+            "setWorkBlocked",
+            "POST",
+            "/projects/api/work/{qualifiedId}/blocked",
+            "{\"blocked\":true,"
+                + "\"reason\":\"Waiting for the database team to confirm the new limit.\"}"));
+    all.add(read(ProviderStates.A_TICKET_WITH_A_COMMENT, "getWork", "/projects/api/work/{qualifiedId}"));
+    all.add(
+        read(
+            ProviderStates.A_TICKET_WITH_A_COMMENT,
+            "listWorkComments",
+            "/projects/api/work/{qualifiedId}/comments"));
+    all.add(
+        write(
+            ProviderStates.A_TICKET_WITH_A_COMMENT,
+            "addWorkComment",
+            "POST",
+            "/projects/api/work/{qualifiedId}/comments",
+            "{\"body\":\"The range 2026-07-01 to 2026-09-30 reproduces it.\"}"));
+    all.add(
+        write(
+            ProviderStates.A_TICKET_WITH_A_COMMENT,
+            "editWorkComment",
+            "PATCH",
+            "/projects/api/work/{qualifiedId}/comments/{commentId}",
+            "{\"body\":\"It answers 500 when the range holds no invoice at all.\"}"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_TICKET_WITH_A_COMMENT,
+            "deleteWorkComment",
+            "DELETE",
+            "/projects/api/work/{qualifiedId}/comments/{commentId}",
+            200,
+            null,
+            null));
+    return List.copyOf(all);
+  }
+
+
+
+  /**
+   * An entity route's {@code /work} address: the archetype registry and a project's listing move
+   * under {@code work}, and an entity addressed by a ticket's or an epic's UUID is addressed by its
+   * qualified id — every state recording one returns it as {@code qualifiedId}.
+   */
+  private static String workPath(String path) {
+    return path.replace("/projects/api/projects/{projectId}/entities", "/projects/api/projects/{projectId}/work")
+        .replace("/projects/api/entities/{ticketId}", "/projects/api/work/{qualifiedId}")
+        .replace("/projects/api/entities/{epicId}", "/projects/api/work/{qualifiedId}")
+        .replace("/projects/api/entities/", "/projects/api/work/");
+  }
+
+  private static Interaction write(
+      String state, String operationId, String method, String path, String body) {
+    return new Interaction(state, operationId, method, path, 200, null, null, body);
+  }
 
   /**
    * The landing app's work item page (epic qits-112): the registry it reads the moves and the
@@ -576,6 +725,12 @@ class GoldenMasterRecordingTest {
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final Pattern TEMPLATE_PARAM = Pattern.compile("\\{([^}]+)}");
 
+  /**
+   * A param in a request body: a quoted {@code "{name}"}, so the braces of the JSON itself never
+   * read as one.
+   */
+  private static final Pattern BODY_PARAM = Pattern.compile("\"\\{([A-Za-z][A-Za-z0-9]*)}\"");
+
   @Inject ProviderStates states;
 
   @Test
@@ -619,6 +774,10 @@ class GoldenMasterRecordingTest {
       frozen.set("ids", strings(recorded.freezer().idPaths()));
       frozen.set("instants", strings(recorded.freezer().instantPaths()));
       frozen.set("strings", strings(recorded.freezer().stringPaths()));
+      if (!recorded.freezer().keyPaths().isEmpty()) {
+        // Additive, and only where a member name was frozen: every other entry stays as it was.
+        frozen.set("keys", strings(recorded.freezer().keyPaths()));
+      }
       if (interaction.listFilteredTo() == null) {
         frozen.putNull("listFilteredTo");
       } else {
@@ -688,7 +847,10 @@ class GoldenMasterRecordingTest {
       var request =
           given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"));
       if (interaction.requestBody() != null) {
-        request = request.contentType("application/json").body(interaction.requestBody());
+        request =
+            request
+                .contentType("application/json")
+                .body(expand(interaction.requestBody(), params, BODY_PARAM));
       }
       response = request.when().request(interaction.method(), expand(interaction.path(), params));
     } finally {
@@ -784,7 +946,11 @@ class GoldenMasterRecordingTest {
   }
 
   private static String expand(String template, Map<String, String> params) {
-    Matcher m = TEMPLATE_PARAM.matcher(template);
+    return expand(template, params, TEMPLATE_PARAM);
+  }
+
+  private static String expand(String template, Map<String, String> params, Pattern param) {
+    Matcher m = param.matcher(template);
     StringBuilder out = new StringBuilder();
     while (m.find()) {
       String value = params.get(m.group(1));
@@ -792,7 +958,9 @@ class GoldenMasterRecordingTest {
         throw new IllegalStateException(
             "Path " + template + " names {" + m.group(1) + "}, which the state does not return");
       }
-      m.appendReplacement(out, Matcher.quoteReplacement(value));
+      String replacement =
+          param == BODY_PARAM ? JSON.getNodeFactory().textNode(value).toString() : value;
+      m.appendReplacement(out, Matcher.quoteReplacement(replacement));
     }
     m.appendTail(out);
     return out.toString();

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TICKET create",
+  "description": "The body of POST /projects/api/entities, less its archetype (\"archetype\": \"TICKET\" is added beside these). The status is minted REPORTED by the writer.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The label.",
+      "pattern": "\\S"
+    },
+    "description": {
+      "type": "string",
+      "description": "The long-form Markdown body."
+    },
+    "ticketType": {
+      "type": "string",
+      "description": "A ticket's kind.",
+      "enum": [
+        "BUG",
+        "IMPROVEMENT",
+        "MAINTENANCE"
+      ]
+    },
+    "impetus": {
+      "type": "string",
+      "description": "Why a ticket came about, in the reporter's words; usually one sentence.",
+      "pattern": "\\S"
+    },
+    "assignee": {
+      "type": "string",
+      "description": "Who is looking at it; free text."
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "description": "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+      "items": {
+        "type": "string",
+        "description": "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+        "pattern": "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
+      }
+    },
+    "project": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "The project the new TICKET goes in: its id or its slug."
+    }
+  },
+  "required": [
+    "title",
+    "ticketType",
+    "impetus",
+    "project"
+  ],
+  "additionalProperties": false
+}

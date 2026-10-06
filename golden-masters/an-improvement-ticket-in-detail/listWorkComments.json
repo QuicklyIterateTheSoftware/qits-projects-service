@@ -1,0 +1,14 @@
+{
+  "entries": [
+    {
+      "comment": {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "entityId": "00000000-0000-4000-8000-00000000000b",
+        "author": "dana.weber",
+        "body": "Per user, not per browser, please.",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-01-01T00:00:00Z"
+      }
+    }
+  ]
+}
