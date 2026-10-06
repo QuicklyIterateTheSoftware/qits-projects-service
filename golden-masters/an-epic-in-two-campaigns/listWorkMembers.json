@@ -1,0 +1,28 @@
+{
+  "members": [
+    {
+      "membershipId": "00000000-0000-4000-8000-000000000005",
+      "position": 0,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "archetype": "EPIC",
+        "qualifiedId": "contract-00000001-3",
+        "title": "Epic in two campaigns",
+        "status": "REFINED",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": []
+    }
+  ]
+}

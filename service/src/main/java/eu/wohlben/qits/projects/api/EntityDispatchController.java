@@ -1,13 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.api.CampaignController.CampaignProgressResponse;
-import eu.wohlben.qits.entities.api.CampaignViews;
-import eu.wohlben.qits.entities.api.EntitiesPrincipal;
-import eu.wohlben.qits.entities.campaign.CampaignService;
-import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.WorkEntity;
-import eu.wohlben.qits.projects.campaignhost.CampaignStarter;
-import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -19,7 +12,6 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import java.util.Locale;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
@@ -35,9 +27,10 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *   GET  /projects/api/entities/{id}/dispatch                            → {"state": EntityDispatchStateDto}
  * </pre>
  *
- * <p><b>On a campaign the press is its start</b> (qits-417): the branch is here, not in {@link
+ * <p><b>On a campaign the press is its start</b> (qits-417): the branch is in {@link
+ * DispatchDoors} (shared with {@code /work/{qualifiedId}/dispatch} since qits-970), not in {@link
  * EntityDispatch}, because neither {@link DispatchRequest.Response} nor {@link
- * EntityDispatch.Outcome} can carry a campaign's answer — see {@link CampaignStarter}. The read
+ * EntityDispatch.Outcome} can carry a campaign's answer — see {@code CampaignStarter}. The read
  * answers a campaign too, with {@code dispatchable} meaning REFINED and {@code nextPhase} {@code
  * start} or, while a start is active, {@code recheck}.
  *
@@ -64,14 +57,10 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @RolesAllowed("qits:admin")
 public class EntityDispatchController {
 
-  @Inject EntityDispatch dispatch;
+  /** The press and the read, shared with {@code /work/{qualifiedId}/dispatch} (qits-970). */
+  @Inject DispatchDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  /** A campaign's press is its start. */
-  @Inject CampaignStarter starter;
-
-  @Inject CampaignViews views;
 
   /**
    * The press. {@code mode} is required — the two actions are both reasonable defaults, so a caller
@@ -89,7 +78,7 @@ public class EntityDispatchController {
   }
 
   /**
-   * The press. On a campaign it is the campaign's start ({@link CampaignStarter}), answering {@link
+   * The press. On a campaign it is the campaign's start ({@code CampaignStarter}), answering {@link
    * CampaignProgressResponse} — {@code {"progress": CampaignProgressDto}}, the same wrapper {@code
    * GET /campaigns/{id}/progress} answers (qits-418); on anything else the one dispatch path, answering {@link
    * DispatchRequest.Response}. Hence a {@link Response} rather than either record.
@@ -113,36 +102,18 @@ public class EntityDispatchController {
               schema =
                   @Schema(oneOf = {DispatchRequest.Response.class, CampaignProgressResponse.class})))
   public Response dispatch(@PathParam("id") String id, DispatchRequest request) {
-    DispatchMode mode = modeOf(request);
-    String changedBy = EntitiesPrincipal.changedBy(identity);
-    WorkEntity entity = dispatch.get(id); // 404
-    if (entity.archetype == Archetype.CAMPAIGN) {
-      CampaignService.ProgressRead started = starter.start(entity, mode, changedBy);
-      return Response.ok(new CampaignProgressResponse(views.progress(started))).build();
+    DispatchDoors.Pressed pressed =
+        doors.press(identity, id, request == null ? null : request.mode());
+    if (pressed.progress() != null) {
+      return Response.ok(new CampaignProgressResponse(pressed.progress())).build();
     }
-    EntityDispatch.Outcome outcome = dispatch.dispatch(id, mode, changedBy);
-    return Response.ok(new DispatchRequest.Response(outcome.toDto())).build();
+    return Response.ok(new DispatchRequest.Response(pressed.dispatch())).build();
   }
 
   @GET
   @RolesAllowed({"qits:admin", "qits:agent"})
   @Path("/{id}/dispatch")
   public DispatchStateRequest.Response state(@PathParam("id") String id) {
-    return new DispatchStateRequest.Response(dispatch.state(id));
-  }
-
-  /** A missing or unknown mode is a 400 naming both words, never a guessed default. */
-  private static DispatchMode modeOf(DispatchRequest request) {
-    String raw = request == null ? null : request.mode();
-    if (raw == null || raw.isBlank()) {
-      throw new DomainException(
-          400, "mode is required: FLOW (run the whole flow) or PHASE (run the next phase).");
-    }
-    try {
-      return DispatchMode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
-    } catch (IllegalArgumentException e) {
-      throw new DomainException(
-          400, "Unknown mode " + raw + ": FLOW (run the whole flow) or PHASE (run the next phase).");
-    }
+    return new DispatchStateRequest.Response(doors.state(id));
   }
 }

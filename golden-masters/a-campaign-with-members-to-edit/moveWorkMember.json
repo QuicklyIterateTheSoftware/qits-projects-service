@@ -1,0 +1,121 @@
+{
+  "members": [
+    {
+      "membershipId": "00000000-0000-4000-8000-000000000007",
+      "position": 0,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "archetype": "TICKET",
+        "qualifiedId": "contract-00000001-4",
+        "title": "Credit notes show the wrong sign",
+        "status": "REPORTED",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": [
+        {
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "criteria": [
+            {
+              "id": "00000000-0000-4000-8000-00000000000c",
+              "kind": "ENTITY_STATUS",
+              "predicate": {
+                "entityId": "00000000-0000-4000-8000-000000000003",
+                "status": "VERIFIED"
+              },
+              "seeded": false,
+              "satisfiedAt": null,
+              "evidence": null,
+              "approval": null
+            },
+            {
+              "id": "00000000-0000-4000-8000-000000000001",
+              "kind": "APPROVAL",
+              "predicate": {},
+              "seeded": false,
+              "satisfiedAt": null,
+              "evidence": null,
+              "approval": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "membershipId": "00000000-0000-4000-8000-000000000005",
+      "position": 1,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "archetype": "TICKET",
+        "qualifiedId": "contract-00000001-2",
+        "title": "Export the quarter as CSV",
+        "status": "REFINED",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": []
+    },
+    {
+      "membershipId": "00000000-0000-4000-8000-000000000004",
+      "position": 2,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "archetype": "EPIC",
+        "qualifiedId": "contract-00000001-3",
+        "title": "Tax rates per country",
+        "status": "REFINED",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": [
+        {
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "criteria": [
+            {
+              "id": "00000000-0000-4000-8000-00000000000e",
+              "kind": "ENTITY_STATUS",
+              "predicate": {
+                "entityId": "00000000-0000-4000-8000-000000000006",
+                "status": "VERIFIED"
+              },
+              "seeded": true,
+              "satisfiedAt": null,
+              "evidence": null,
+              "approval": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

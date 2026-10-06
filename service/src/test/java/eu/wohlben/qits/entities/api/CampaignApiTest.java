@@ -63,6 +63,7 @@ class CampaignApiTest {
   @Inject EntityResolutions resolutions;
   @Inject CampaignInFlight inFlight;
   @Inject ProjectChangePublisher publisher;
+  @Inject CampaignDoors doors;
 
   @BeforeEach
   void seed() {
@@ -447,12 +448,8 @@ class CampaignApiTest {
 
   private CampaignController door(SecurityIdentity caller) {
     CampaignController door = new CampaignController();
-    door.campaigns = campaigns;
-    door.views = views;
-    door.workEntities = workEntities;
-    door.resolutions = resolutions;
-    door.inFlight = inFlight;
-    door.publisher = publisher;
+    // The rules are CampaignDoors' (qits-970); the caller travels as an argument into them.
+    door.doors = doors;
     door.identity = caller;
     return door;
   }

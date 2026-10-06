@@ -223,6 +223,54 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   (absent clears) under the transition's roles. Roles mirror the route each new one replaces, and
   `AgentReadAccessTest` pins them.
 
+  **qits-970 gave every remaining work-entity capability its `/work` home, beside the old routes,
+  removing nothing.** One controller per sub-resource path, each its own JAX-RS root (a class at
+  `/work/{qualifiedId}` would shadow `WorkController`'s `…/status` under the spec's longest-literal
+  rule), each resolving `{qualifiedId}` through `EntityIdResolver.resolve` and naming no old
+  controller:
+
+  | old route(s) | `/work` route | class |
+  | --- | --- | --- |
+  | `/epics/{id}/dossier[/{pageId}[/move]]`, `/tickets/{id}/dossier[/{slug}[/move]]` | `GET`/`POST /work/{q}/dossier`, `GET`/`PUT`/`DELETE …/{page}`, `POST …/{page}/move` | `WorkDossierController` |
+  | `/epics/{id}/dossier-assets[/{assetId}/content]` | `POST`/`GET /work/{q}/dossier-assets`, `GET …/{assetId}/content` | `WorkDossierAssetController` |
+  | `/epics/{id}/features`, `/features/{id}/tasks` | `GET`/`POST /work/{q}/children` | `WorkChildrenController` |
+  | `/epics/{id}/audit` | `GET /work/{q}/audit` | `WorkAuditController` |
+  | `GET /campaigns/{id}/progress` | `GET /work/{q}/progress` | `WorkProgressController` |
+  | `GET /campaigns/{id}` (its members), `/campaigns/{id}/members…` (add, position, remove, condition, criteria approve) | `GET`/`POST /work/{q}/members`, `PUT …/{membershipId}/position`, `DELETE …/{membershipId}`, `PUT …/{membershipId}/condition`, `POST …/{membershipId}/criteria/{criterionId}/approve` | `WorkMembersController` |
+  | `/entities/{id}/dispatch` | `GET`/`POST /work/{q}/dispatch` | `projects.api.WorkDispatchController` |
+  | `/entities/{id}/refinement` | `GET`/`POST /work/{q}/refinement` | `projects.api.WorkRefinementController` |
+  | `DELETE /epics/{id}`, `/tickets/{id}`, `/features/{id}`, `/tasks/{id}` | `DELETE /work/{q}` | `WorkController.delete` |
+  | the `workspaces` field `GET /epics/{id}` and `GET /tickets/{id}` decorate (the merged shape has none) | `GET /work/{q}/workspaces` | `projects.api.WorkWorkspacesController` |
+
+  The rules moved into shared beans both families call — `CampaignDoors` (every campaign door,
+  `CampaignController` is now thin), `DispatchDoors` (the press and its campaign branch, and
+  `DispatchMode.parse`), `DossierAssetContent` (the sandbox headers, one literal for both content
+  routes), and `WorkEntityDoors.delete`/`children`/`createChild`/`audit` — or were already one
+  service (`DossierService`, `RefinementService`). Every entity id in a body takes a qualified id:
+  a member's `entityId`, an `ENTITY_STATUS` criterion's `predicate.entityId`, a child's
+  `dependsOn`. Roles mirror the route replaced; the delete admits `qits:agent` at the method for a
+  feature's or task's delete and refuses it an epic's or a ticket's inside the door, as the two
+  per-archetype deletes did, and no door deletes a campaign (a 409: drop it).
+  A campaign's transition and its create need no new route (`…/status`, `POST /work`), and its
+  project listing is `GET /projects/{project}/work?archetype=CAMPAIGN` — without the summary's
+  `started`/`active`/member count, which `…/progress` and `…/members` answer per campaign.
+
+  **The dossier's `{page}` is the page's SLUG, with the page id accepted as a fallback.** The slug is
+  minted from the title at create and never re-derived, it is unique per owner, and it is what the
+  SPA's URLs carry (`?tab=dossier&page=<slug>`) — the human, stable key, as the qualified id is the
+  entity's — so one key serves the reader that holds an address and the one that holds a link. The
+  id still resolves (slug first, then id, and only a page of *this* owner), the way
+  `{qualifiedId}` still takes a UUID, so a caller migrating off the epic half's id addressing is
+  not broken. An archetype with no dossier (feature, task, campaign) is a 404; only an EPIC's
+  dossier inlines figures, so `dossier-assets` is a 404 for any other. The figure's `url` and
+  `markdown` keep the stored `/epics/{epicId}/dossier-assets/{assetId}/content` shape: that string
+  is in page bodies and is what `DossierAssetService`'s reference count parses, so it is data —
+  **deleting the epic content route in phase 3 needs those bodies' URL (and the parser) moved
+  first**, or every inlined figure breaks. The children answer the merged shape (`{"children":
+  [...]}`), the add is `POST /work`'s create of the child kind under the path's parent (201); the
+  audit answers a root's whole subtree and a feature's or task's own rows, and a UUID naming a
+  deleted root still answers. The members' move and remove answer `{"members": [...]}`.
+
 `control/` is flat. The monorepo split this code across `domain.project.*`, `domain.repository.*`
 and `domain.seeding.*` to break cycles that do not exist here.
 
@@ -2831,7 +2879,12 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   keyed by qualified id — is frozen like a value, and that operation's index entry gains
   `frozen.keys` (the objects whose keys were frozen; written only where there is one) with `.*`
   standing for the key in every path beneath. Every generic entity read and move has a `/work` twin
-  recorded in the same state (`WORK_TWINS`).
+  recorded in the same state (`WORK_TWINS`), and since qits-970 so do the campaign read (as
+  `listWorkMembers`, by a `campaignQualifiedId`-style param the campaign states gained), both
+  dossier halves, the epic's figures and the dispatch press. An instant inside a longer string — an
+  audit entry's `snapshot` is JSON held as text — is frozen in place and the string listed under
+  `frozen.strings`. `startWorkRefinement` is recorded as its 409: a room's row id is a database
+  sequence no freezing reaches, and `getWorkDossierAssetContent` serves bytes and has none.
   <br>**The platform publishes it, from `release.yml`'s `contracts:` declaration** (epic qits-620;
   README "What a release publishes"): the jar `eu.wohlben.qits:qits-projects-golden-masters`, the
   npm package `@qits/projects-golden-masters` and the `@contracts/qits-projects` docs bundle, each

@@ -4,11 +4,6 @@ import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
 import eu.wohlben.qits.entities.campaign.CampaignService;
-import eu.wohlben.qits.entities.control.WorkEntityService;
-import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.projects.api.CampaignInFlight;
-import eu.wohlben.qits.projects.api.ProjectChangeHint;
-import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -54,24 +49,10 @@ import java.util.Map;
 @jakarta.annotation.security.RolesAllowed("qits:admin")
 public class CampaignController {
 
-  @Inject CampaignService campaigns;
-
-  @Inject CampaignViews views;
-
-  @Inject WorkEntityService workEntities;
-
-  @Inject EntityResolutions resolutions;
-
-  @Inject CampaignInFlight inFlight;
-
-  @Inject ProjectChangePublisher publisher;
+  /** Every rule behind these routes, shared with the {@code /work} family (qits-970). */
+  @Inject CampaignDoors doors;
 
   @Inject SecurityIdentity identity;
-
-  @Inject PersonCheck persons;
-
-  /** The caller as a mover (qits-887): a campaign's scheduling is a person's too. */
-  @Inject EntityMovers movers;
 
   public record CampaignResponse(CampaignDto campaign) {}
 
@@ -88,7 +69,7 @@ public class CampaignController {
       description = "One campaign with its members in campaign order.")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CampaignResponse get(@PathParam("id") String id) {
-    return new CampaignResponse(views.campaign(campaigns.get(id)));
+    return new CampaignResponse(doors.campaign(id));
   }
 
   /**
@@ -100,7 +81,7 @@ public class CampaignController {
   @Path("/{id}/progress")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CampaignProgressResponse progress(@PathParam("id") String id) {
-    return new CampaignProgressResponse(views.progress(campaigns.progress(id)));
+    return new CampaignProgressResponse(doors.progress(id));
   }
 
   public record TransitionCampaignRequest(@NotBlank String target) {}
@@ -118,10 +99,7 @@ public class CampaignController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CampaignResponse transition(
       @PathParam("id") String id, @Valid TransitionCampaignRequest request) {
-    String projectId = bind(id);
-    resolutions.transition(Archetype.CAMPAIGN, id, request.target(), movers.of(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return new CampaignResponse(views.campaign(campaigns.get(id)));
+    return new CampaignResponse(doors.transition(identity, id, request.target()));
   }
 
   /**
@@ -137,17 +115,9 @@ public class CampaignController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public CampaignMemberResponse addMember(
       @PathParam("id") String id, @Valid AddCampaignMemberRequest request) {
-    String projectId = bind(id);
-    boolean running = inFlight.resolve(request.inFlight(), campaigns.entity(request.entityId()));
-    CampaignService.Member added =
-        campaigns.addMember(
-            id,
-            request.entityId(),
-            request.position(),
-            running,
-            EntitiesPrincipal.changedBy(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return new CampaignMemberResponse(views.member(added));
+    return new CampaignMemberResponse(
+        doors.addMember(
+            identity, id, request.entityId(), request.position(), request.inFlight()));
   }
 
   public record MoveCampaignMemberRequest(@NotNull Integer position) {}
@@ -159,12 +129,7 @@ public class CampaignController {
       @PathParam("id") String id,
       @PathParam("membershipId") String membershipId,
       @Valid MoveCampaignMemberRequest request) {
-    String projectId = bind(id);
-    CampaignService.Campaign moved =
-        campaigns.moveMember(
-            id, membershipId, request.position(), EntitiesPrincipal.changedBy(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return new CampaignResponse(views.campaign(moved));
+    return new CampaignResponse(doors.moveMember(identity, id, membershipId, request.position()));
   }
 
   /** 204. 409 once claimed, and while another member's criterion targets this one. */
@@ -173,9 +138,7 @@ public class CampaignController {
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public void removeMember(
       @PathParam("id") String id, @PathParam("membershipId") String membershipId) {
-    String projectId = bind(id);
-    campaigns.removeMember(id, membershipId, EntitiesPrincipal.changedBy(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
+    doors.removeMember(identity, id, membershipId);
   }
 
   /** One criterion of a condition: {@code id} restates an existing one and keeps its latch. */
@@ -222,13 +185,9 @@ public class CampaignController {
       @PathParam("id") String id,
       @PathParam("membershipId") String membershipId,
       SetCampaignMemberConditionRequest request) {
-    String projectId = bind(id);
     List<CampaignService.GroupSpec> groups =
         toGroupSpecs(request == null ? null : request.groups());
-    CampaignService.Member member =
-        campaigns.setCondition(id, membershipId, groups, EntitiesPrincipal.changedBy(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return new CampaignMemberResponse(views.member(member));
+    return new CampaignMemberResponse(doors.setCondition(identity, id, membershipId, groups));
   }
 
   public record ApproveCampaignCriterionRequest(String note) {}
@@ -246,19 +205,7 @@ public class CampaignController {
       @PathParam("membershipId") String membershipId,
       @PathParam("criterionId") String criterionId,
       ApproveCampaignCriterionRequest request) {
-    String approver = persons.requireAdmin();
-    String projectId = workEntities.get(Archetype.CAMPAIGN, id).projectId;
-    CampaignService.Approved approved =
-        campaigns.approve(
-            id, membershipId, criterionId, request == null ? null : request.note(), approver);
-    publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return new CampaignMemberResponse(views.member(approved.member()));
-  }
-
-  /** The campaign's project — its 404 first — with a bound agent held to it. */
-  private String bind(String campaignId) {
-    String projectId = workEntities.get(Archetype.CAMPAIGN, campaignId).projectId;
-    EntitiesAgentAccess.requireProject(identity, projectId);
-    return projectId;
+    return new CampaignMemberResponse(
+        doors.approve(id, membershipId, criterionId, request == null ? null : request.note()));
   }
 }

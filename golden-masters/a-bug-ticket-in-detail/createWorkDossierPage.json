@@ -1,0 +1,12 @@
+{
+  "id": "00000000-0000-4000-8000-000000000013",
+  "epicId": null,
+  "ticketId": "00000000-0000-4000-8000-000000000001",
+  "slug": "rollback-plan",
+  "title": "Rollback plan",
+  "position": 2,
+  "body": "Revert billing-service to the previous version; no data moves.",
+  "version": 0,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z"
+}

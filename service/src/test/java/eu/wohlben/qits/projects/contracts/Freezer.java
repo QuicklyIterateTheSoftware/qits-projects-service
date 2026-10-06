@@ -27,7 +27,9 @@ import java.util.regex.Pattern;
  *       appearance. The mapping is seeded with the state's params first ({@link #seed}), which is
  *       how a state's {@code projectId} is {@code …0001}.
  *   <li><b>Instants.</b> Every string value that is an ISO-8601 instant becomes {@value
- *       #FROZEN_INSTANT} — by shape, not by a list of field names.
+ *       #FROZEN_INSTANT} — by shape, not by a list of field names. An instant inside a longer
+ *       string (the JSON text of an audit snapshot) is frozen in place, and that string's path goes
+ *       in {@link #stringPaths}.
  *   <li><b>Unique tokens.</b> A random token a state had to put into a name to keep it unique (a
  *       project slug is unique service-wide) becomes the same-length hex counter {@code 0…0N},
  *       numbered by first appearance.
@@ -164,7 +166,10 @@ public final class Freezer {
       instantPaths.add(path);
       return FROZEN_INSTANT;
     }
-    String result = freezeTokens(freezeIds(value));
+    // An instant inside a longer string — an audit snapshot is JSON held as text — is frozen in
+    // place, and the string is recorded as one that merely contains frozen values.
+    String result =
+        INSTANT.matcher(freezeTokens(freezeIds(value))).replaceAll(FROZEN_INSTANT);
     if (result.equals(value)) {
       return result;
     }

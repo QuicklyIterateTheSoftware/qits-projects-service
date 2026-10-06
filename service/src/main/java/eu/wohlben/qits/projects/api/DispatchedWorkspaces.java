@@ -3,6 +3,8 @@ package eu.wohlben.qits.projects.api;
 import eu.wohlben.qits.entities.dto.EpicDto;
 import eu.wohlben.qits.entities.dto.TicketDto;
 import eu.wohlben.qits.entities.dto.WorkspaceReferenceDto;
+import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -88,6 +90,28 @@ public class DispatchedWorkspaces {
   /** One epic. */
   public EpicDto decorate(EpicDto epic) {
     return decorateEpics(List.of(epic)).get(0);
+  }
+
+  /**
+   * The workspaces naming one work entity, live and resolved alike — what {@code workspaces} on its
+   * per-archetype read carries, for {@code GET /work/{qualifiedId}/workspaces} (qits-970). Only a
+   * ticket and an epic are dispatched onto a branch, so every other archetype has none.
+   */
+  public List<WorkspaceReferenceDto> referencing(WorkEntity entity) {
+    boolean ticket = entity.archetype == Archetype.TICKET;
+    if ((!ticket && entity.archetype != Archetype.EPIC) || dispatch.isUnsatisfied()) {
+      return List.of();
+    }
+    return byRow(
+            dispatch
+                .get()
+                .workspacesReferencing(
+                    ticket ? List.of(entity.id) : List.of(),
+                    ticket ? List.of() : List.of(entity.id)),
+            ticket
+                ? WorkspaceAgentDispatch.Reference::ticketId
+                : WorkspaceAgentDispatch.Reference::epicId)
+        .getOrDefault(entity.id, List.of());
   }
 
   /**

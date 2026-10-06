@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.api;
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
 import eu.wohlben.qits.entities.control.ArchetypeViolation;
+import eu.wohlben.qits.entities.control.AuditService;
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityCommentService;
@@ -16,14 +17,19 @@ import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.control.TransitionGate;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.dto.AuditEntryDto;
 import eu.wohlben.qits.entities.dto.CommentDto;
+import eu.wohlben.qits.entities.entity.AuditEntityType;
+import eu.wohlben.qits.entities.entity.AuditEntry;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
+import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.ForbiddenException;
 import eu.wohlben.qits.entities.error.NotFoundException;
+import eu.wohlben.qits.entities.mapper.AuditEntryMapper;
 import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
 import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
@@ -133,6 +139,10 @@ public class WorkEntityDoors {
   @Inject EntityRoutes routes;
 
   @Inject EntityBlocks blocks;
+
+  @Inject AuditService audits;
+
+  @Inject AuditEntryMapper auditMapper;
 
   /** Every quality gate (qits-887), so each served move names the gates it has to pass. */
   @Inject Instance<TransitionGate> gates;
@@ -701,6 +711,139 @@ public class WorkEntityDoors {
     for (TransitionedEntity resolved : catalog.byIds(named).values()) {
       EntitiesAgentAccess.requireProject(identity, resolved.projectId());
     }
+  }
+
+  // --- the delete ------------------------------------------------------------------------------
+
+  /**
+   * Deletes {@code row} and its subtree (qits-970), by the rules the per-archetype deletes kept: a
+   * root's delete — an epic's, a ticket's — is {@code qits:admin} alone, as {@code DELETE
+   * /epics/{id}} and {@code DELETE /tickets/{id}} are (deleting is on no agent's surface: an agent
+   * that could delete what it disagrees with could erase the record of its own mistake); a feature's
+   * and a task's admit the agent bound to its project, as {@code remove_feature}/{@code remove_task}
+   * do over MCP. No door has ever deleted a campaign: it is dropped, through its status. The project
+   * is read before the write — afterwards there is no row to read it from.
+   */
+  public void delete(SecurityIdentity identity, WorkEntity row) {
+    Archetype archetype = row.archetype;
+    if (archetype == Archetype.CAMPAIGN) {
+      throw new ConflictException(
+          "A campaign is not deleted: drop it — POST /projects/api/work/{qualifiedId}/status"
+              + " {\"target\":\"DROPPED\"}.");
+    }
+    if ((archetype == Archetype.EPIC || archetype == Archetype.TICKET)
+        && !identity.hasRole(AgentAccess.ADMIN_ROLE)) {
+      throw new ForbiddenException(
+          "Deleting "
+              + (archetype == Archetype.EPIC ? "an epic" : "a ticket")
+              + " is qits:admin alone, as DELETE /projects/api/"
+              + (archetype == Archetype.EPIC ? "epics" : "tickets")
+              + "/{id} is.");
+    }
+    EntitiesAgentAccess.requireProject(identity, row.projectId);
+    entities.delete(archetype, row.id, EntitiesPrincipal.changedBy(identity));
+    publisher.fire(row.projectId, ProjectChangeHint.Topic.of(archetype));
+  }
+
+  // --- the children ----------------------------------------------------------------------------
+
+  /** The archetype whose rows hang under {@code parent}: an epic's features, a feature's tasks. */
+  private static Archetype childKindOf(Archetype parent) {
+    for (Archetype candidate : Archetype.values()) {
+      if (WorkEntityService.parentKindOf(candidate) == parent) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The direct children of {@code parent} in membership order, in the merged shape and qualified —
+   * an epic's features, a feature's tasks (qits-970). A kind nothing hangs under has none: the empty
+   * list is the true answer, not a refusal.
+   */
+  public List<TransitionedEntity> children(WorkEntity parent) {
+    Archetype kind = childKindOf(parent.archetype);
+    if (kind == null) {
+      return List.of();
+    }
+    List<String> childIds =
+        entities.listChildren(kind, parent.id).stream().map(child -> child.entity().id).toList();
+    Map<String, TransitionedEntity> found = catalog.byIds(childIds);
+    return qualifiedIds.qualifyEntities(
+        childIds.stream().map(found::get).filter(Objects::nonNull).toList());
+  }
+
+  /**
+   * A new child of {@code parent}: the create of its child kind with the parent the path names
+   * (qits-970). The body is the child archetype's create schema minus {@code archetype}, {@code
+   * parent} and {@code project}, which the path decides — so every rule is {@link #create}'s, and a
+   * dependency takes a qualified id there too. A kind nothing hangs under is a 409.
+   */
+  public TransitionedEntity createChild(SecurityIdentity identity, WorkEntity parent, JsonNode body) {
+    Archetype kind = childKindOf(parent.archetype);
+    if (kind == null) {
+      throw new ConflictException(
+          "A "
+              + WorkEntityService.nounOf(parent.archetype).toLowerCase(Locale.ROOT)
+              + " has no children: only an epic (its features) and a feature (its tasks) do.");
+    }
+    if (body == null || !body.isObject()) {
+      throw new BadRequestException("a child must be a JSON object");
+    }
+    List<String> named = new ArrayList<>();
+    for (String decided : List.of("archetype", EntitySchemas.PARENT, EntitySchemas.PROJECT)) {
+      if (body.has(decided)) {
+        named.add(decided);
+      }
+    }
+    if (!named.isEmpty()) {
+      throw new BadRequestException(
+          String.join(", ", named)
+              + (named.size() == 1 ? " is" : " are")
+              + " decided by the path: the parent is the entity it names, and the child's"
+              + " archetype is "
+              + kind);
+    }
+    com.fasterxml.jackson.databind.node.ObjectNode create =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    create.put("archetype", kind.name());
+    create.put(EntitySchemas.PARENT, parent.id);
+    create.setAll((com.fasterxml.jackson.databind.node.ObjectNode) body);
+    return create(identity, create);
+  }
+
+  // --- the history -----------------------------------------------------------------------------
+
+  /**
+   * The change history behind {@code named}, newest first (qits-970). A root — an epic, a ticket, a
+   * campaign — answers its whole subtree, every row stamped with its id as the subtree key (an epic's
+   * features, tasks and every thread under it), which is what {@code GET /epics/{id}/audit} answers;
+   * a feature or a task answers its own rows. The log outlives the rows, so a UUID that names no
+   * entity any more is still read as a subtree key, exactly as the epic route reads it; a qualified
+   * id naming nothing is the resolver's 404, since nothing is left to resolve it through.
+   */
+  public List<AuditEntryDto> audit(String named) {
+    WorkEntity row;
+    try {
+      row = ids.resolve(named);
+    } catch (NotFoundException unknown) {
+      if (named == null
+          || named.isBlank()
+          || eu.wohlben.qits.projects.entitieshost.CommitSubjectEntities.parse(named).isPresent()) {
+        throw unknown;
+      }
+      return auditEntries(audits.listForEpic(named.trim()));
+    }
+    if (Archetypes.mayBeRoot(row.archetype)) {
+      return auditEntries(audits.listForEpic(row.id));
+    }
+    return auditEntries(
+        audits.listForEntity(AuditEntityType.valueOf(row.archetype.name()), row.id));
+  }
+
+  private List<AuditEntryDto> auditEntries(List<AuditEntry> entries) {
+    return entries.stream().map(auditMapper::toDto).toList();
   }
 
   // --- the project's listing -------------------------------------------------------------------

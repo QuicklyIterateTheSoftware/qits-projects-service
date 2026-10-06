@@ -82,6 +82,20 @@ class GoldenMasterMachineryTest {
   }
 
   @Test
+  void anInstantInsideALongerStringIsFrozenInPlaceAndTheStringIsAStringPath() throws Exception {
+    Freezer freezer = new Freezer();
+    JsonNode frozen =
+        freezer.freeze(
+            json(
+                "{\"snapshot\":\"{\\\"createdAt\\\":\\\"2026-10-06T16:22:27.123456Z\\\"}\"}"));
+    assertEquals(
+        "{\"snapshot\":\"{\\\"createdAt\\\":\\\"2026-01-01T00:00:00Z\\\"}\"}",
+        frozen.toString());
+    assertEquals(List.of("$.snapshot"), freezer.stringPaths());
+    assertEquals(List.of(), freezer.instantPaths());
+  }
+
+  @Test
   void numbersAreHexInATwelveDigitLastGroup() {
     assertEquals("00000000-0000-4000-8000-00000000000a", Freezer.frozenId(10));
     assertEquals("00000000-0000-4000-8000-000000000010", Freezer.frozenId(16));

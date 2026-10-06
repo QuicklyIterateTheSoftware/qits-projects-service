@@ -127,6 +127,16 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_TICKET_WITH_A_COMMENT);
   }
 
+  @State(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT)
+  Map<String, String> aCampaignWithMembersToEdit() {
+    return states.params(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT);
+  }
+
+  @State(ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE)
+  Map<String, String> anEpicWithASketchToInline() {
+    return states.params(ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE);
+  }
+
   @State(ProviderStates.A_PROJECT_EXISTS)
   Map<String, String> aProjectExists() {
     return states.params(ProviderStates.A_PROJECT_EXISTS);

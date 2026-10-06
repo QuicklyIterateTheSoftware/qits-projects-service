@@ -11,6 +11,7 @@ import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
@@ -37,8 +38,13 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * <p>One family for every archetype, with no archetype in any path: {@code GET}, {@code PUT} and
  * {@code PATCH /work/{qualifiedId}}, the create {@code POST /work}, the bulk {@code POST
  * /work/transition}, and the lifecycle and block moves {@code POST /work/{qualifiedId}/status} and
- * {@code …/blocked}. The thread is {@link WorkCommentController}'s, the registry {@link
- * WorkArchetypesController}'s and a project's listing {@link ProjectWorkController}'s.
+ * {@code …/blocked}, and the delete {@code DELETE /work/{qualifiedId}} (qits-970). The thread is
+ * {@link WorkCommentController}'s, the registry {@link WorkArchetypesController}'s and a project's
+ * listing {@link ProjectWorkController}'s; the sub-resources (qits-970) each have a class of their
+ * own — {@link WorkDossierController}, {@link WorkDossierAssetController}, {@link
+ * WorkChildrenController}, {@link WorkAuditController}, {@link WorkProgressController}, {@link
+ * WorkMembersController}, and in {@code projects.api} the dispatch, the refinement room and the
+ * workspaces.
  *
  * <p><b>It is served beside {@code /entities} and the per-archetype routes, and shares their
  * implementation</b>: every route body here is one call into {@link WorkEntityDoors}, which is also
@@ -485,5 +491,39 @@ public class WorkController {
             ids.resolve(qualifiedId),
             request != null && request.blocked(),
             request == null ? null : request.reason()));
+  }
+
+  @Schema(name = "WorkDeleted", description = "The entity and its subtree are gone.")
+  public record WorkDeleted(boolean success) {}
+
+  @DELETE
+  @Path("/{qualifiedId}")
+  @RolesAllowed({"qits:admin", "qits:agent"})
+  @Operation(
+      operationId = "deleteWork",
+      summary = "Delete a work entity and its subtree",
+      description =
+          "Removes the entity, its descendants and their threads, each audited; the audit log"
+              + " outlives them. An epic's or a ticket's delete is qits:admin alone; a feature's or a"
+              + " task's admits an agent bound to its project and obeys its epic's freeze. A campaign"
+              + " is not deleted but dropped. The path names the entity by qualified id"
+              + " (<projectSlug>-<n>) or UUID.")
+  @APIResponse(
+      responseCode = "200",
+      description = "The entity is gone",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_JSON,
+              schema = @Schema(implementation = WorkDeleted.class)))
+  @APIResponse(
+      responseCode = "403",
+      description = "An agent deleting an epic or a ticket, or outside its own project")
+  @APIResponse(responseCode = "404", description = "No entity with this id")
+  @APIResponse(
+      responseCode = "409",
+      description = "A campaign, or a feature or a task whose epic is no longer REPORTED")
+  public WorkDeleted delete(@PathParam("qualifiedId") String qualifiedId) {
+    doors.delete(identity, ids.resolve(qualifiedId));
+    return new WorkDeleted(true);
   }
 }

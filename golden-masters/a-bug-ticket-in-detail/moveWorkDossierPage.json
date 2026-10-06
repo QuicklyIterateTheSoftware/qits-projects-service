@@ -1,0 +1,12 @@
+{
+  "id": "00000000-0000-4000-8000-000000000013",
+  "epicId": null,
+  "ticketId": "00000000-0000-4000-8000-000000000001",
+  "slug": "affected-invoices",
+  "title": "Affected invoices",
+  "position": 0,
+  "body": "| Invoice | Total | Expected |\n|---|---|---|\n| 2026-0412 | 1.01 | 1.00 |\n| 2026-0418 | 20.04 | 20.03 |\n| 2026-0533 | 7.11 | 7.10 |\n",
+  "version": 1,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z"
+}

@@ -3293,6 +3293,14 @@ components:
       properties:
         reason:
           type: string
+    WorkAudit:
+      type: object
+      description: "A work entity's change history, newest first."
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEntryDto"
     WorkBlockAnswer:
       type: object
       description: A work entity's block flag as the write left it.
@@ -3312,6 +3320,35 @@ components:
           type: string
           description: what is in the way — required when blocking; lands on the entity's
             thread
+    WorkChildCreate:
+      type: object
+      required:
+      - title
+      description: "A new child: the child archetype's create schema (FEATURE under\
+        \ an epic, TASK under a feature) without archetype, parent and project, which\
+        \ the path decides."
+      properties:
+        title:
+          type: string
+          description: The label.
+        description:
+          type: string
+          description: The long-form Markdown body.
+        repositoryId:
+          type: string
+          description: "A task's repository, in the parent's project. Required for\
+            \ a task."
+        dependsOn:
+          type: string
+          description: "A sibling dependency, by qualified id or UUID."
+    WorkChildren:
+      type: object
+      description: "A work entity's direct children, in membership order."
+      properties:
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransitionedEntity"
     WorkCommentAnswer:
       type: object
       description: One comment on a work entity's thread.
@@ -3359,6 +3396,30 @@ components:
         body:
           type: string
           description: "The remark as it should now read, Markdown."
+    WorkConditionCriterion:
+      type: object
+      description: One criterion of a member's condition.
+      properties:
+        id:
+          type: string
+          description: "An existing criterion's id, to keep its latch; omitted mints\
+            \ one."
+        kind:
+          type: string
+          description: "ENTITY_STATUS, APPROVAL, …"
+        predicate:
+          type: object
+          additionalProperties: {}
+          description: The kind's predicate; an ENTITY_STATUS predicate's entityId
+            takes a qualified id or a UUID.
+    WorkConditionGroup:
+      type: object
+      description: One OR'd group of a member's condition.
+      properties:
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkConditionCriterion"
     WorkCreate:
       type: object
       required:
@@ -3408,6 +3469,156 @@ components:
           items:
             type: string
           description: "An epic's or a ticket's acceptance criteria, in order."
+    WorkCriterionApproval:
+      type: object
+      description: A person's yes on an APPROVAL criterion.
+      properties:
+        note:
+          type: string
+          description: "Why, optionally."
+    WorkDeleted:
+      type: object
+      description: The entity and its subtree are gone.
+      properties:
+        success:
+          type: boolean
+    WorkDispatchAnswer:
+      type: object
+      description: The dispatch a press made.
+      properties:
+        dispatch:
+          $ref: "#/components/schemas/EntityDispatchDto"
+    WorkDispatchRequest:
+      type: object
+      required:
+      - mode
+      description: Which of the two dispatch actions to press.
+      properties:
+        mode:
+          type: string
+          description: "FLOW (Dispatch: run the whole flow) or PHASE (Run the next\
+            \ phase: one, then stop)"
+    WorkDispatchState:
+      type: object
+      description: What a press would start now.
+      properties:
+        state:
+          $ref: "#/components/schemas/EntityDispatchStateDto"
+    WorkDossier:
+      type: object
+      description: "A work entity's dossier pages, in position order."
+      properties:
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/DossierPageDto"
+    WorkDossierAssetEntry:
+      type: object
+      description: "One inlined figure: what it is, the URL and markdown line that\
+        \ render it, and the pages that name it."
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        mimeType:
+          type: string
+        label:
+          type: string
+        url:
+          type: string
+        markdown:
+          type: string
+        pageIds:
+          type: array
+          items:
+            type: string
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+    WorkDossierAssetInline:
+      type: object
+      required:
+      - sourceId
+      - kind
+      description: A figure of the entity's refinement to copy into its dossier.
+      properties:
+        sourceId:
+          type: string
+          pattern: \S
+          description: The sketch's or the design's id.
+        kind:
+          type: string
+          pattern: \S
+          description: IMAGE (a sketch) or DESIGN
+    WorkDossierAssetInlined:
+      type: object
+      description: "What was inlined, and the markdown line that renders it."
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        mimeType:
+          type: string
+        label:
+          type: string
+        url:
+          type: string
+        markdown:
+          type: string
+    WorkDossierAssetList:
+      type: object
+      description: "The figures a dossier inlines, by label."
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkDossierAssetEntry"
+    WorkDossierPageCreate:
+      type: object
+      required:
+      - title
+      description: "A new page, appended to the dossier."
+      properties:
+        title:
+          type: string
+          pattern: \S
+          description: The title; the slug is minted from it.
+        body:
+          type: string
+          description: The Markdown body.
+    WorkDossierPageDeleted:
+      type: object
+      description: The page is gone.
+      properties:
+        success:
+          type: boolean
+    WorkDossierPageMove:
+      type: object
+      required:
+      - position
+      description: Where a page should now sit.
+      properties:
+        position:
+          type: integer
+          format: int32
+          description: "The new position, 0-based."
+    WorkDossierPageWrite:
+      type: object
+      required:
+      - version
+      description: "A retitle, a rewrite, or both — with the version the writer read."
+      properties:
+        title:
+          type: string
+          description: The new title; omitted keeps it. The slug never moves.
+        body:
+          type: string
+          description: The new Markdown body; omitted keeps it.
+        version:
+          type: integer
+          format: int64
+          description: The version read before the write; a stale one is a 409.
     WorkList:
       type: object
       description: "A project's work entities, in tree order."
@@ -3416,6 +3627,57 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntitySummary"
+    WorkMemberAdd:
+      type: object
+      required:
+      - entityId
+      description: An entity to gather into the campaign.
+      properties:
+        entityId:
+          type: string
+          pattern: \S
+          description: "The entity to gather, by qualified id (<projectSlug>-<n>)\
+            \ or UUID."
+        position:
+          type: integer
+          format: int32
+          description: "Where it goes, 0-based; omitted appends."
+        inFlight:
+          type: boolean
+          description: Whether it joins already running; omitted lets the service
+            decide from its status and its workspace.
+    WorkMemberAnswer:
+      type: object
+      description: One membership of a campaign.
+      properties:
+        member:
+          $ref: "#/components/schemas/CampaignMemberDto"
+    WorkMemberCondition:
+      type: object
+      description: "A member's whole condition: groups OR'd, criteria in a group AND'd."
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkConditionGroup"
+    WorkMemberList:
+      type: object
+      description: "A campaign's members, in campaign order."
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignMemberDto"
+    WorkMemberMove:
+      type: object
+      required:
+      - position
+      description: Where a membership should now sit.
+      properties:
+        position:
+          type: integer
+          format: int32
+          description: "The new position, 0-based."
     WorkPatch:
       type: object
       description: "A JSON merge patch (RFC 7396) of one work entity. An absent property\
@@ -3488,6 +3750,18 @@ components:
             \ 20 whitespace characters. Editable at REFINED (outside an epic's scope\
             \ freeze); from READY_FOR_DEV on a changed list is a 409, and restating\
             \ the same list passes."
+    WorkProgressAnswer:
+      type: object
+      description: "A campaign's progress, derived on the read."
+      properties:
+        progress:
+          $ref: "#/components/schemas/CampaignProgressDto"
+    WorkRefinementAnswer:
+      type: object
+      description: A work entity's refinement room; null on a read that found none.
+      properties:
+        refinement:
+          $ref: "#/components/schemas/RefinementDto"
     WorkStatusMove:
       type: object
       required:
@@ -3502,6 +3776,14 @@ components:
             \ and READY_FOR_DEV none to REPORTED), or IMPLEMENTED from READY_FOR_DEV\
             \ or VERIFIED from IMPLEMENTED (the skips). A campaign never moves to\
             \ IMPLEMENTING or VERIFYING."
+    WorkWorkspaces:
+      type: object
+      description: The workspaces a dispatch stood on a work entity's branch.
+      properties:
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceReferenceDto"
     WorkspaceReferenceDto:
       type: object
       properties:
@@ -8866,6 +9148,77 @@ paths:
         - qits:admin
         - qits:agent
         - qits:system
+    delete:
+      summary: Delete a work entity and its subtree
+      description: "Removes the entity, its descendants and their threads, each audited;\
+        \ the audit log outlives them. An epic's or a ticket's delete is qits:admin\
+        \ alone; a feature's or a task's admits an agent bound to its project and\
+        \ obeys its epic's freeze. A campaign is not deleted but dropped. The path\
+        \ names the entity by qualified id (<projectSlug>-<n>) or UUID."
+      operationId: deleteWork
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The entity is gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkDeleted"
+        "403":
+          description: "An agent deleting an epic or a ticket, or outside its own\
+            \ project"
+        "404":
+          description: No entity with this id
+        "409":
+          description: "A campaign, or a feature or a task whose epic is no longer\
+            \ REPORTED"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/audit:
+    get:
+      summary: A work entity's change history
+      description: "Newest first. A root (epic, ticket, campaign) answers its whole\
+        \ subtree — its features, tasks and every thread under it, deleted rows included;\
+        \ a feature or a task its own rows. The path names the entity by qualified\
+        \ id (<projectSlug>-<n>) or UUID; a UUID still answers after the entity is\
+        \ deleted."
+      operationId: getWorkAudit
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkAudit"
+        "404":
+          description: A qualified id naming no entity
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Audit Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
   /projects/api/work/{qualifiedId}/blocked:
     post:
       summary: Block or unblock a work entity
@@ -8906,6 +9259,82 @@ paths:
           description: Not Authorized
       tags:
       - Work Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/children:
+    get:
+      summary: A work entity's children
+      description: "An epic's features or a feature's tasks, in membership order,\
+        \ in the merged shape with their qualified ids; empty for a kind nothing hangs\
+        \ under. The path names the parent by qualified id (<projectSlug>-<n>) or\
+        \ UUID."
+      operationId: listWorkChildren
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The children
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkChildren"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Children Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      summary: Add a child to a work entity
+      description: "A feature under an epic, a task under a feature: the child kind's\
+        \ create, placed under the entity the path names. Its status starts REPORTED;\
+        \ the parent's plan must still be REPORTED. Answers the child in the merged\
+        \ shape, with its qualified id."
+      operationId: createWorkChild
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkChildCreate"
+        required: true
+      responses:
+        "201":
+          description: The child as created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransitionedEntity"
+        "400":
+          description: "A body the child's create schema refuses, or one naming archetype,\
+            \ parent or project"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No entity, repository or dependency"
+        "409":
+          description: "A kind nothing hangs under, or a parent whose plan is frozen"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Children Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -9066,6 +9495,777 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+  /projects/api/work/{qualifiedId}/dispatch:
+    get:
+      summary: What a dispatch press would start now
+      description: "The entity's status, the phase a press would start (or null),\
+        \ whether it is blocked and dispatchable, and the mode the last press recorded.\
+        \ The path names the entity by qualified id or UUID."
+      operationId: getWorkDispatch
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The dispatch state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkDispatchState"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Dispatch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      summary: "Put an agent on an epic or a ticket, or start a campaign"
+      description: mode PHASE runs the one phase the entity's status starts; mode
+        FLOW runs that phase and the ones after it until a status starts none. On
+        a campaign the press is its start. The path names the entity by qualified
+        id (<projectSlug>-<n>) or UUID.
+      operationId: dispatchWork
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkDispatchRequest"
+        required: true
+      responses:
+        "200":
+          description: "The dispatch made, or — for a campaign — its progress as the\
+            \ start press left it"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/WorkDispatchAnswer"
+                - $ref: "#/components/schemas/WorkProgressAnswer"
+        "400":
+          description: A missing or unknown mode
+        "404":
+          description: No entity with this id
+        "409":
+          description: "A status that starts no phase, a feature or a task, a blocked\
+            \ entity, a project with no wrapper"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Dispatch Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/work/{qualifiedId}/dossier:
+    get:
+      summary: Read a work entity's dossier
+      description: "The dossier pages of an epic or a ticket in position order, bodies\
+        \ included; empty, never 404, for an entity that has a dossier. The path names\
+        \ the entity by qualified id (<projectSlug>-<n>) or UUID."
+      operationId: listWorkDossier
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The pages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkDossier"
+        "404":
+          description: "No entity with this id, or one with no dossier"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      summary: Add a page to a work entity's dossier
+      description: Appends a page; its slug is minted from the title and never changes.
+        An epic's dossier is writable while the epic is REPORTED; a ticket's at every
+        status.
+      operationId: createWorkDossierPage
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkDossierPageCreate"
+        required: true
+      responses:
+        "201":
+          description: The page as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "400":
+          description: A blank title
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No entity with this id, or one with no dossier"
+        "409":
+          description: "An epic past REPORTED: its plan is frozen"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/dossier-assets:
+    get:
+      summary: List the figures a work entity's dossier inlines
+      description: "Each asset's kind, mime type, label, content URL, markdown line\
+        \ and the pages that name it, by label. No bytes: getWorkDossierAssetContent\
+        \ serves those."
+      operationId: listWorkDossierAssets
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The figures
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkDossierAssetList"
+        "404":
+          description: "No entity with this id, or one whose dossier inlines nothing"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Dossier Asset Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      summary: Copy a figure of the refinement into an epic's dossier
+      description: "Copies a sketch or a design of the epic's own refinement in, keeping\
+        \ its id, and answers the markdown line to paste. Inlining the same figure\
+        \ again answers the same line. The path names the epic by qualified id (<projectSlug>-<n>)\
+        \ or UUID."
+      operationId: inlineWorkDossierAsset
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkDossierAssetInline"
+        required: true
+      responses:
+        "200":
+          description: The inlined figure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkDossierAssetInlined"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No entity with this id, one whose dossier inlines nothing,\
+            \ or no such figure in its refinement"
+        "401":
+          description: Not Authorized
+        "400":
+          description: Bad Request
+      tags:
+      - Work Dossier Asset Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/dossier-assets/{assetId}/content:
+    get:
+      summary: "The bytes of one figure a work entity's dossier inlines, sandboxed"
+      description: "Served under the row's own mime type with Content-Security-Policy:\
+        \ sandbox, X-Content-Type-Options: nosniff and private caching, on every response."
+      operationId: getWorkDossierAssetContent
+      parameters:
+      - name: assetId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The figure's bytes
+          content:
+            application/json:
+              schema: {}
+        "404":
+          description: "No such entity, or no such figure in its dossier"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Dossier Asset Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/dossier/{page}:
+    put:
+      summary: Retitle or rewrite a page
+      description: "Writes the title, the body, or both. version is required: a stale\
+        \ one is a 409 carrying the page as it stands (under current), never a merge.\
+        \ The slug never moves."
+      operationId: putWorkDossierPage
+      parameters:
+      - name: page
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkDossierPageWrite"
+        required: true
+      responses:
+        "200":
+          description: The page as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "400":
+          description: No version
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No such entity, or no such page in its dossier"
+        "409":
+          description: "A stale version (the current page is in the body), or a frozen\
+            \ epic"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    get:
+      summary: Read one page of a work entity's dossier
+      description: "The page named by its slug (or, as a fallback, its id)."
+      operationId: getWorkDossierPage
+      parameters:
+      - name: page
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "404":
+          description: "No such entity, or no such page in its dossier"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    delete:
+      summary: Remove a page from its dossier
+      description: The pages after it close the gap.
+      operationId: deleteWorkDossierPage
+      parameters:
+      - name: page
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The page is gone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkDossierPageDeleted"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No such entity, or no such page in its dossier"
+        "409":
+          description: A frozen epic
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/dossier/{page}/move:
+    post:
+      summary: Move a page within its dossier
+      description: Positions stay dense and 0-based.
+      operationId: moveWorkDossierPage
+      parameters:
+      - name: page
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkDossierPageMove"
+        required: true
+      responses:
+        "200":
+          description: The page in its new position
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DossierPageDto"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No such entity, or no such page in its dossier"
+        "409":
+          description: A frozen epic
+        "401":
+          description: Not Authorized
+        "400":
+          description: Bad Request
+      tags:
+      - Work Dossier Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/members:
+    get:
+      summary: A campaign's members
+      description: "Every membership in campaign order: the entity it gathers, its\
+        \ run record and its condition. The path names the campaign by qualified id\
+        \ (<projectSlug>-<n>) or UUID."
+      operationId: listWorkMembers
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMemberList"
+        "404":
+          description: No campaign with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+    post:
+      summary: Gather an entity into a campaign
+      description: "Adds a membership — at position, or at the end — for an entity\
+        \ named by qualified id or UUID. A bound agent adds only in its own project."
+      operationId: addWorkMember
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkMemberAdd"
+        required: true
+      responses:
+        "201":
+          description: The membership as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMemberAnswer"
+        "400":
+          description: No entityId
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No campaign, or no entity, with this id"
+        "409":
+          description: "The entity cannot join: already a member, a feature or a task,\
+            \ a closed campaign"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/members/{membershipId}:
+    delete:
+      summary: Remove a membership from its campaign
+      description: "Refused once the member was claimed, and while another member's\
+        \ criterion targets it. Answers the members that remain."
+      operationId: removeWorkMember
+      parameters:
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The members that remain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMemberList"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No campaign, or no such membership on it"
+        "409":
+          description: "Claimed, or targeted by another member"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/members/{membershipId}/condition:
+    put:
+      summary: Replace a membership's condition
+      description: "PUT semantics: the whole condition, groups OR'd and criteria in\
+        \ a group AND'd; an empty list waits on nothing. A criterion restating an\
+        \ existing id keeps its latch. An ENTITY_STATUS predicate's entityId takes\
+        \ a qualified id or a UUID."
+      operationId: setWorkMemberCondition
+      parameters:
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkMemberCondition"
+        required: true
+      responses:
+        "200":
+          description: The member with its condition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMemberAnswer"
+        "400":
+          description: A criterion the service cannot read
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No campaign, or no such membership on it"
+        "401":
+          description: Not Authorized
+      tags:
+      - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/members/{membershipId}/criteria/{criterionId}/approve:
+    post:
+      summary: A person's yes on a member's APPROVAL criterion
+      description: "qits:admin, and then a person this service verified itself; the\
+        \ name recorded is the proof's. Refused when the criterion is not APPROVAL,\
+        \ is already satisfied, or the campaign is DONE or DROPPED."
+      operationId: approveWorkMemberCriterion
+      parameters:
+      - name: criterionId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkCriterionApproval"
+        required: true
+      responses:
+        "200":
+          description: The member with the criterion satisfied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMemberAnswer"
+        "403":
+          description: Not a verified person
+        "404":
+          description: "No campaign, membership or criterion"
+        "409":
+          description: "Not an APPROVAL, already satisfied, or closed"
+        "401":
+          description: Not Authorized
+        "400":
+          description: Bad Request
+      tags:
+      - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+  /projects/api/work/{qualifiedId}/members/{membershipId}/position:
+    put:
+      summary: Move a membership within its campaign
+      description: Answers the members as the move left them.
+      operationId: moveWorkMember
+      parameters:
+      - name: membershipId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkMemberMove"
+        required: true
+      responses:
+        "200":
+          description: "The members, in their new order"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkMemberList"
+        "403":
+          description: An agent outside its own project
+        "404":
+          description: "No campaign, or no such membership on it"
+        "401":
+          description: Not Authorized
+        "400":
+          description: Bad Request
+      tags:
+      - Work Members Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/progress:
+    get:
+      summary: How a campaign is doing
+      description: "Every member's derived state, what it waits for, each criterion\
+        \ judged (the sentence that would latch it, whether it still can, its evidence),\
+        \ and whether the criteria evaluator is listening. The path names the campaign\
+        \ by qualified id (<projectSlug>-<n>) or UUID."
+      operationId: getWorkProgress
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkProgressAnswer"
+        "404":
+          description: No campaign with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Progress Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
+  /projects/api/work/{qualifiedId}/refinement:
+    post:
+      summary: Open (or find) a work entity's refinement room
+      description: "Find-or-create: an entity has at most one room, and a second open\
+        \ answers the first. Refused for a feature or a task, an entity not at REPORTED,\
+        \ one an ACTIVE workspace names, and a project with no wrapper. The path names\
+        \ the entity by qualified id (<projectSlug>-<n>) or UUID."
+      operationId: startWorkRefinement
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkRefinementAnswer"
+        "404":
+          description: No entity with this id
+        "409":
+          description: The entity cannot be refined now
+        "502":
+          description: The git host would not cut the branch
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Refinement Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+    get:
+      summary: Find a work entity's refinement room
+      description: "The entity's room, or null when it has none; never creates one.\
+        \ The path names the entity by qualified id or UUID."
+      operationId: getWorkRefinement
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The room, or null"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkRefinementAnswer"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Refinement Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
   /projects/api/work/{qualifiedId}/status:
     post:
       summary: Move a work entity through its lifecycle
@@ -9118,6 +10318,39 @@ paths:
         - qits:admin
         - qits:agent
         - qits:system
+  /projects/api/work/{qualifiedId}/workspaces:
+    get:
+      summary: The workspaces naming a work entity
+      description: "Every workspace a dispatch stood on the entity's branch, live\
+        \ and resolved alike, each with its status; empty when qits-workspaces cannot\
+        \ be asked. The path names the entity by qualified id (<projectSlug>-<n>)\
+        \ or UUID."
+      operationId: listWorkWorkspaces
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The workspaces
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkWorkspaces"
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Workspaces Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:agent
 info:
   title: qits-projects API
   version: 2026.1006.121753

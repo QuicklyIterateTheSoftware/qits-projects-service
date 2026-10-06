@@ -91,12 +91,19 @@ class GoldenMasterRecordingTest {
 
   /** The generic entity operations whose {@code /work} twin is recorded beside them. */
   private static final Map<String, String> WORK_TWINS =
-      Map.of(
-          "getEntity", "getWork",
-          "listEntityComments", "listWorkComments",
-          "listProjectEntities", "listProjectWork",
-          "listArchetypes", "listWorkArchetypes",
-          "moveEntityStatus", "setWorkStatus");
+      Map.ofEntries(
+          Map.entry("getEntity", "getWork"),
+          Map.entry("listEntityComments", "listWorkComments"),
+          Map.entry("listProjectEntities", "listProjectWork"),
+          Map.entry("listArchetypes", "listWorkArchetypes"),
+          Map.entry("moveEntityStatus", "setWorkStatus"),
+          // The work sub-resources (qits-970): a campaign's members, both dossier halves, the
+          // epic's figures and the dispatch press.
+          Map.entry("getCampaign", "listWorkMembers"),
+          Map.entry("listEpicDossierPages", "listWorkDossier"),
+          Map.entry("listTicketDossierPages", "listWorkDossier"),
+          Map.entry("listEpicDossierAssets", "listWorkDossierAssets"),
+          Map.entry("dispatchEntity", "dispatchWork"));
 
   /**
    * The whole state of {@link ProviderStates#A_REPORTED_TICKET}'s ticket, restated with a new title
@@ -112,6 +119,16 @@ class GoldenMasterRecordingTest {
           + "\"impetus\":\"A new container fails its migration at boot: the database refuses the"
           + " connection.\","
           + "\"acceptanceCriteria\":[\"It does what it says.\"]}";
+
+  // Declared before INTERACTIONS, whose initializer reads them through workPath.
+
+  /** {@code GET /campaigns/{<name>Id}}, the campaign's read the members twin replaces. */
+  private static final Pattern CAMPAIGN_READ =
+      Pattern.compile("/projects/api/campaigns/\\{([A-Za-z]+)Id}");
+
+  /** A per-archetype dossier half or the epic's figures, under the entity's id param. */
+  private static final Pattern DOSSIER =
+      Pattern.compile("/projects/api/(?:epics|tickets)/\\{[A-Za-z]+}/(dossier|dossier-assets)");
 
   static final List<Interaction> INTERACTIONS =
       withWorkFamily(
@@ -542,10 +559,174 @@ class GoldenMasterRecordingTest {
             200,
             null,
             null));
-    return List.copyOf(all);
+    return withWorkSubresources(all);
   }
 
-
+  /**
+   * The work family's sub-resources (qits-970): every operation recorded once at least — the
+   * dossier's reads and writes (a ticket's, writable at every status; pages by slug), the epic's
+   * figures, the children, the history, a campaign's progress and membership writes, the dispatch
+   * read, the workspaces, the refinement room and the delete. The twins of the routes they replace are {@link
+   * #WORK_TWINS}'. {@code getWorkDossierAssetContent} serves bytes and has no golden master, as
+   * {@code getDossierAssetContent} has none.
+   */
+  private static List<Interaction> withWorkSubresources(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    all.add(
+        read(
+            ProviderStates.AN_EPIC_IN_DETAIL,
+            "getWorkDossierPage",
+            "/projects/api/work/{qualifiedId}/dossier/data-flow"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            "createWorkDossierPage",
+            "POST",
+            "/projects/api/work/{qualifiedId}/dossier",
+            201,
+            null,
+            null,
+            "{\"title\":\"Rollback plan\","
+                + "\"body\":\"Revert billing-service to the previous version; no data moves.\"}"));
+    all.add(
+        write(
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            "putWorkDossierPage",
+            "PUT",
+            "/projects/api/work/{qualifiedId}/dossier/reproduction",
+            "{\"body\":\"1. Create an invoice with three lines of 0.335 EUR each.\\n"
+                + "2. Read its total: 1.02 EUR.\",\"version\":0}"));
+    all.add(
+        write(
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            "moveWorkDossierPage",
+            "POST",
+            "/projects/api/work/{qualifiedId}/dossier/affected-invoices/move",
+            "{\"position\":0}"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            "deleteWorkDossierPage",
+            "DELETE",
+            "/projects/api/work/{qualifiedId}/dossier/affected-invoices",
+            200,
+            null,
+            null));
+    all.add(
+        write(
+            ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE,
+            "inlineWorkDossierAsset",
+            "POST",
+            "/projects/api/work/{qualifiedId}/dossier-assets",
+            "{\"sourceId\":\"{sketchId}\",\"kind\":\"IMAGE\"}"));
+    all.add(
+        read(
+            ProviderStates.AN_EPIC_IN_DETAIL,
+            "listWorkChildren",
+            "/projects/api/work/{qualifiedId}/children"));
+    all.add(
+        read(
+            ProviderStates.A_FEATURE_IN_DETAIL,
+            "listWorkChildren",
+            "/projects/api/work/{qualifiedId}/children"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_REPORTED_EPIC,
+            "createWorkChild",
+            "POST",
+            "/projects/api/work/{qualifiedId}/children",
+            201,
+            null,
+            null,
+            "{\"title\":\"CSV export\","
+                + "\"description\":\"Stream a date range of invoices as CSV.\"}"));
+    all.add(
+        read(ProviderStates.A_REPORTED_TICKET, "getWorkAudit", "/projects/api/work/{qualifiedId}/audit"));
+    all.add(
+        read(
+            ProviderStates.A_CAMPAIGN_IN_DETAIL,
+            "getWorkProgress",
+            "/projects/api/work/{qualifiedId}/progress"));
+    String members = "/projects/api/work/{qualifiedId}/members";
+    all.add(read(ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, "listWorkMembers", members));
+    all.add(
+        new Interaction(
+            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
+            "addWorkMember",
+            "POST",
+            members,
+            201,
+            null,
+            null,
+            "{\"entityId\":\"{outsideTicketQualifiedId}\"}"));
+    all.add(
+        write(
+            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
+            "moveWorkMember",
+            "PUT",
+            members + "/{lastMembershipId}/position",
+            "{\"position\":0}"));
+    all.add(
+        new Interaction(
+            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
+            "removeWorkMember",
+            "DELETE",
+            members + "/{lastMembershipId}",
+            200,
+            null,
+            null));
+    all.add(
+        write(
+            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
+            "setWorkMemberCondition",
+            "PUT",
+            members + "/{firstMembershipId}/condition",
+            "{\"groups\":[{\"criteria\":[{\"kind\":\"ENTITY_STATUS\","
+                + "\"predicate\":{\"entityId\":\"{epicQualifiedId}\",\"status\":\"VERIFIED\"}}]}]}"));
+    all.add(
+        write(
+            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
+            "approveWorkMemberCriterion",
+            "POST",
+            members + "/{lastMembershipId}/criteria/{approvalCriterionId}/approve",
+            "{\"note\":\"Finance signed the totals off.\"}"));
+    all.add(
+        read(
+            ProviderStates.A_REPORTED_TICKET,
+            "getWorkDispatch",
+            "/projects/api/work/{qualifiedId}/dispatch"));
+    all.add(
+        read(
+            ProviderStates.A_REPORTED_TICKET,
+            "listWorkWorkspaces",
+            "/projects/api/work/{qualifiedId}/workspaces"));
+    all.add(
+        read(
+            ProviderStates.A_REPORTED_TICKET,
+            "getWorkRefinement",
+            "/projects/api/work/{qualifiedId}/refinement"));
+    // A room's row id is a database sequence no freezing reaches, so the open is recorded where it
+    // is refused: a REFINED ticket's refine phase has run.
+    all.add(
+        new Interaction(
+            ProviderStates.A_REFINED_TICKET,
+            "startWorkRefinement",
+            "POST",
+            "/projects/api/work/{qualifiedId}/refinement",
+            409,
+            null,
+            null));
+    all.add(
+        new Interaction(
+            ProviderStates.A_REPORTED_TICKET,
+            "deleteWork",
+            "DELETE",
+            "/projects/api/work/{qualifiedId}",
+            200,
+            null,
+            null));
+    return List.copyOf(all);
+  }
 
   /**
    * An entity route's {@code /work} address: the archetype registry and a project's listing move
@@ -553,6 +734,14 @@ class GoldenMasterRecordingTest {
    * qualified id — every state recording one returns it as {@code qualifiedId}.
    */
   private static String workPath(String path) {
+    // A campaign's read becomes its members, by the campaign's qualified id ({campaignId} →
+    // {campaignQualifiedId}); a dossier half and the epic's figures move under the entity the
+    // state focuses on, which is its {qualifiedId}.
+    Matcher campaign = CAMPAIGN_READ.matcher(path);
+    if (campaign.matches()) {
+      return "/projects/api/work/{" + campaign.group(1) + "QualifiedId}/members";
+    }
+    path = DOSSIER.matcher(path).replaceFirst("/projects/api/work/{qualifiedId}/$1");
     return path.replace("/projects/api/projects/{projectId}/entities", "/projects/api/projects/{projectId}/work")
         .replace("/projects/api/entities/{ticketId}", "/projects/api/work/{qualifiedId}")
         .replace("/projects/api/entities/{epicId}", "/projects/api/work/{qualifiedId}")

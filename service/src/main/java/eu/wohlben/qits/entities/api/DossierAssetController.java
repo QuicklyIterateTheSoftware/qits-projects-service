@@ -1,7 +1,6 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.DossierAssetService;
-import eu.wohlben.qits.entities.entity.DossierAsset;
 import eu.wohlben.qits.projects.refinementhost.DossierFigures;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
@@ -50,8 +49,7 @@ public class DossierAssetController {
    * by a person at the edge. {@code sandbox} with no allow-list: no scripts, no forms, no same
    * origin, no top-level navigation.
    */
-  static final String SANDBOX_CSP =
-      "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'";
+  static final String SANDBOX_CSP = DossierAssetContent.SANDBOX_CSP;
 
   @Inject DossierAssetService assets;
 
@@ -154,11 +152,6 @@ public class DossierAssetController {
       summary = "The bytes of one figure an epic's dossier inlines, sandboxed")
   public Response content(
       @PathParam("epicId") String epicId, @PathParam("assetId") String assetId) {
-    DossierAsset asset = assets.get(epicId, assetId);
-    return Response.ok(asset.bytes, asset.mimeType)
-        .header("Content-Security-Policy", SANDBOX_CSP)
-        .header("X-Content-Type-Options", "nosniff")
-        .header("Cache-Control", "private, max-age=3600")
-        .build();
+    return DossierAssetContent.serve(assets.get(epicId, assetId));
   }
 }

@@ -92,6 +92,8 @@ public class ProviderStates {
       "the second campaign of an epic in two campaigns";
   public static final String THE_ARCHETYPE_REGISTRY = "the archetype registry";
   public static final String A_TICKET_WITH_A_COMMENT = "a ticket with a comment";
+  public static final String A_CAMPAIGN_WITH_MEMBERS_TO_EDIT = "a campaign with members to edit";
+  public static final String AN_EPIC_WITH_A_SKETCH_TO_INLINE = "an epic with a sketch to inline";
   public static final String A_REPORTED_TICKET = "a reported ticket";
   public static final String A_REFINED_TICKET = "a refined ticket";
   public static final String A_READY_FOR_DEV_TICKET = "a ready for dev ticket";
@@ -168,6 +170,11 @@ public class ProviderStates {
 
   @Inject eu.wohlben.qits.projects.api.EntityBlocks blocks;
 
+  /** Opens a refinement room, for the state whose epic inlines one of its sketches. */
+  @Inject eu.wohlben.qits.projects.refinementhost.RefinementService refinements;
+
+  @Inject eu.wohlben.qits.projects.refinementhost.RefinementPromptAttachments attachments;
+
   /**
    * The test suite's dispatch port: a dispatch press records here and starts no agent. An {@code
    * Instance} because a test profile may take the port away ({@code
@@ -236,6 +243,8 @@ public class ProviderStates {
     states.put(THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(THE_ARCHETYPE_REGISTRY, ProviderStates::theArchetypeRegistry);
     states.put(A_TICKET_WITH_A_COMMENT, this::aTicketWithAComment);
+    states.put(A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, this::aCampaignWithMembersToEdit);
+    states.put(AN_EPIC_WITH_A_SKETCH_TO_INLINE, this::anEpicWithASketchToInline);
     TICKET_IN_STATUS.forEach(
         (name, status) -> {
           if (!name.equals(A_VERIFIED_TICKET)) {
@@ -596,7 +605,14 @@ public class ProviderStates {
     }
     work.transition(Archetype.CAMPAIGN, campaign, "REFINED", SEEDER);
     return new Setup(
-        params("campaignId", campaign, "projectId", project.id), List.of(token));
+        params(
+            "campaignId",
+            campaign,
+            "campaignQualifiedId",
+            qualified(project, campaign),
+            "projectId",
+            project.id),
+        List.of(token));
   }
 
   /**
@@ -749,6 +765,7 @@ public class ProviderStates {
     return new Setup(
         params(
             "campaignId", campaign,
+            "campaignQualifiedId", qualified(project, campaign),
             "doneEpicId", doneEpic,
             "doneTicketId", doneTicket,
             "implementingEpicId", implementingEpic,
@@ -903,6 +920,102 @@ public class ProviderStates {
         List.of(token));
   }
 
+  /**
+   * A REPORTED campaign of three members — a REFINED ticket, a REFINED epic, and a REPORTED ticket
+   * gated on the epic being VERIFIED and on an approval — plus one ticket outside it, for the
+   * membership writes of the work family (qits-970): the add (the outside ticket, by qualified id),
+   * the move, the remove, the condition (on the epic, by qualified id) and the approve. Each
+   * membership and the approval criterion are params, and the campaign is the {@code qualifiedId}.
+   */
+  private Setup aCampaignWithMembersToEdit() {
+    String token = token();
+    Project project = project(token, A_CAMPAIGN_WITH_MEMBERS_TO_EDIT);
+    String campaign =
+        work.createCampaign(project.id, "Close the quarter", "Seeded work.", PERSON).id;
+    String first = ticket(project, "Export the quarter as CSV");
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Tax rates per country", "Seeded.")
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    String last = ticket(project, "Credit notes show the wrong sign");
+    String outside = ticket(project, "Remember the last export format");
+    work.transition(Archetype.TICKET, first, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    List<String> memberships = new ArrayList<>();
+    for (String member : List.of(first, epic, last)) {
+      memberships.add(campaigns.addMember(campaign, member, null, false, PERSON).membership().id);
+    }
+    var gated =
+        campaigns.setCondition(
+            campaign,
+            memberships.get(2),
+            List.of(
+                new eu.wohlben.qits.entities.campaign.CampaignService.GroupSpec(
+                    List.of(
+                        new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
+                            null, "ENTITY_STATUS", Map.of("entityId", epic, "status", "VERIFIED")),
+                        new eu.wohlben.qits.entities.campaign.CampaignService.CriterionSpec(
+                            null, "APPROVAL", null)))),
+            PERSON);
+    String approval =
+        gated.groups().get(0).criteria().stream()
+            .filter(c -> c.kind.name().equals("APPROVAL"))
+            .findFirst()
+            .orElseThrow()
+            .id;
+    return new Setup(
+        params(
+            "approvalCriterionId", approval,
+            "campaignId", campaign,
+            "epicId", epic,
+            "epicMembershipId", memberships.get(1),
+            "epicQualifiedId", qualified(project, epic),
+            "firstMembershipId", memberships.get(0),
+            "firstTicketId", first,
+            "lastMembershipId", memberships.get(2),
+            "lastTicketId", last,
+            "outsideTicketId", outside,
+            "outsideTicketQualifiedId", qualified(project, outside),
+            "projectId", project.id,
+            "qualifiedId", qualified(project, campaign)),
+        List.of(token));
+  }
+
+  /**
+   * A REPORTED epic whose refinement room holds one sketch, for the inline door of the work family
+   * (qits-970): the sketch is the {@code sketchId} param, the epic the {@code qualifiedId}. The room
+   * is opened the way the refine press opens it, against the suite's refinement fakes.
+   */
+  private Setup anEpicWithASketchToInline() {
+    resetDispatchPorts();
+    String token = token();
+    Project project = project(token, AN_EPIC_WITH_A_SKETCH_TO_INLINE);
+    String epic =
+        create(
+            Archetype.EPIC,
+            project,
+            EntityWrite.epic("Export invoices for the accountants", "Seeded.")
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    long room = refinements.findOrCreate(epic).id;
+    String sketch =
+        attachments
+            .add(
+                room,
+                "Export data flow",
+                "SKETCH",
+                java.util.Base64.getEncoder().encodeToString(FIGURE_PNG))
+            .id;
+    return new Setup(
+        params(
+            "epicId", epic,
+            "projectId", project.id,
+            "qualifiedId", qualified(project, epic),
+            "sketchId", sketch),
+        List.of(token));
+  }
+
   /** The qualified id of entity {@code id} in {@code project}: {@code <slug>-<number>}. */
   private String qualified(Project project, String id) {
     return eu.wohlben.qits.projects.api.QualifiedEntityIds.render(
@@ -986,6 +1099,7 @@ public class ProviderStates {
     return new Setup(
         params(
             "campaignId", campaign,
+            "campaignQualifiedId", qualified(project, campaign),
             "doneTicketId", done,
             "outsideTicketId", outside,
             "projectId", project.id,
@@ -1020,8 +1134,10 @@ public class ProviderStates {
         params(
             "epicId", epic,
             "firstCampaignId", first,
+            "firstCampaignQualifiedId", qualified(project, first),
             "projectId", project.id,
-            "secondCampaignId", second),
+            "secondCampaignId", second,
+            "secondCampaignQualifiedId", qualified(project, second)),
         List.of(token));
   }
 
@@ -1351,6 +1467,7 @@ public class ProviderStates {
 
     Map<String, String> ids = new TreeMap<>();
     ids.put("campaignId", campaign);
+    ids.put("campaignQualifiedId", qualified(project, campaign));
     ids.put("epicId", epic);
     ids.put("featureId", pdf);
     ids.put("taskId", button);

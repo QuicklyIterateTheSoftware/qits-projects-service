@@ -1,0 +1,44 @@
+{
+  "member": {
+    "membershipId": "00000000-0000-4000-8000-00000000000b",
+    "position": 3,
+    "entity": {
+      "id": "00000000-0000-4000-8000-000000000009",
+      "archetype": "TICKET",
+      "qualifiedId": "contract-00000001-5",
+      "title": "Remember the last export format",
+      "status": "REPORTED",
+      "blocked": false
+    },
+    "claimedAt": null,
+    "joinedRunning": false,
+    "dispatchedAt": null,
+    "dispatch": {
+      "workspaceId": null,
+      "branch": null,
+      "agentLaunch": null
+    },
+    "dispatchRefusal": null,
+    "dispatchRefusedAt": null,
+    "dispatchError": null,
+    "groups": [
+      {
+        "id": "00000000-0000-4000-8000-00000000000c",
+        "criteria": [
+          {
+            "id": "00000000-0000-4000-8000-00000000000d",
+            "kind": "ENTITY_STATUS",
+            "predicate": {
+              "entityId": "00000000-0000-4000-8000-000000000008",
+              "status": "VERIFIED"
+            },
+            "seeded": true,
+            "satisfiedAt": null,
+            "evidence": null,
+            "approval": null
+          }
+        ]
+      }
+    ]
+  }
+}

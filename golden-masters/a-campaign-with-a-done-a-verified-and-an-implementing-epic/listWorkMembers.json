@@ -1,0 +1,142 @@
+{
+  "members": [
+    {
+      "membershipId": "00000000-0000-4000-8000-000000000008",
+      "position": 0,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "archetype": "TICKET",
+        "qualifiedId": "contract-00000001-2",
+        "title": "Done ticket",
+        "status": "DONE",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": []
+    },
+    {
+      "membershipId": "00000000-0000-4000-8000-000000000009",
+      "position": 1,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "archetype": "EPIC",
+        "qualifiedId": "contract-00000001-4",
+        "title": "Done epic",
+        "status": "DONE",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": []
+    },
+    {
+      "membershipId": "00000000-0000-4000-8000-00000000000a",
+      "position": 2,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "archetype": "EPIC",
+        "qualifiedId": "contract-00000001-8",
+        "title": "Verified epic",
+        "status": "VERIFIED",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": []
+    },
+    {
+      "membershipId": "00000000-0000-4000-8000-00000000000b",
+      "position": 3,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "archetype": "EPIC",
+        "qualifiedId": "contract-00000001-12",
+        "title": "Epic with mixed features",
+        "status": "IMPLEMENTING",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": []
+    },
+    {
+      "membershipId": "00000000-0000-4000-8000-00000000000c",
+      "position": 4,
+      "entity": {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "archetype": "TICKET",
+        "qualifiedId": "contract-00000001-3",
+        "title": "Refined ticket",
+        "status": "REFINED",
+        "blocked": false
+      },
+      "claimedAt": null,
+      "joinedRunning": false,
+      "dispatchedAt": null,
+      "dispatch": {
+        "workspaceId": null,
+        "branch": null,
+        "agentLaunch": null
+      },
+      "dispatchRefusal": null,
+      "dispatchRefusedAt": null,
+      "dispatchError": null,
+      "groups": [
+        {
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "criteria": [
+            {
+              "id": "00000000-0000-4000-8000-00000000000e",
+              "kind": "ENTITY_STATUS",
+              "predicate": {
+                "entityId": "00000000-0000-4000-8000-000000000004",
+                "status": "VERIFIED"
+              },
+              "seeded": true,
+              "satisfiedAt": null,
+              "evidence": null,
+              "approval": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

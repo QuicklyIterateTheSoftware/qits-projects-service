@@ -85,12 +85,22 @@ class AgentReadAccessTest {
           eu.wohlben.qits.entities.api.WorkCommentController.class,
           eu.wohlben.qits.entities.api.WorkArchetypesController.class,
           eu.wohlben.qits.entities.api.ProjectWorkController.class,
+          eu.wohlben.qits.entities.api.WorkDossierController.class,
+          eu.wohlben.qits.entities.api.WorkDossierAssetController.class,
+          eu.wohlben.qits.entities.api.WorkChildrenController.class,
+          eu.wohlben.qits.entities.api.WorkAuditController.class,
+          eu.wohlben.qits.entities.api.WorkProgressController.class,
+          eu.wohlben.qits.entities.api.WorkMembersController.class,
+          WorkDispatchController.class,
+          WorkRefinementController.class,
+          WorkWorkspacesController.class,
           AgentCapabilityController.class,
           AgentConfigurationController.class,
           AgentContainerController.class,
           AgentMcpCatalogController.class,
           AgentSurfaceConfigurationController.class,
           EntityDispatchController.class,
+          EntityRefinementController.class,
           GcController.class,
           PinsController.class,
           ProjectController.class,
@@ -193,7 +203,19 @@ class AgentReadAccessTest {
           "WorkController.setStatus",
           "WorkController.setBlocked",
           "WorkCommentController.add",
-          "WorkCommentController.edit");
+          "WorkCommentController.edit",
+          // The work sub-resources (qits-970) mirror theirs the same way: the dossier's four writes
+          // and the figure's inline (both halves' and inline_figure's grants), a child's add
+          // (add_feature, add_task), and the delete — which admits the agent for a feature or a
+          // task (remove_feature, remove_task) and refuses it an epic or a ticket inside the door,
+          // as EpicController.delete and TicketController.delete refuse it at theirs.
+          "WorkDossierController.create",
+          "WorkDossierController.put",
+          "WorkDossierController.move",
+          "WorkDossierController.delete",
+          "WorkDossierAssetController.inline",
+          "WorkChildrenController.create",
+          "WorkController.delete");
 
   /**
    * <b>The catalogue write an agent reaches: adding a component to a project.</b> Its own group
@@ -226,7 +248,13 @@ class AgentReadAccessTest {
           "CampaignController.addMember",
           "CampaignController.moveMember",
           "CampaignController.removeMember",
-          "CampaignController.setCondition");
+          "CampaignController.setCondition",
+          // The same four membership writes on the work family (qits-970); the campaign's
+          // transition there is WorkController.setStatus.
+          "WorkMembersController.add",
+          "WorkMembersController.move",
+          "WorkMembersController.remove",
+          "WorkMembersController.setCondition");
 
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =
@@ -254,7 +282,13 @@ class AgentReadAccessTest {
           "CommentController.delete",
           "WorkCommentController.delete",
           // Approving a campaign criterion is the sign-off on a gated member (qits-413).
-          "CampaignController.approve");
+          "CampaignController.approve",
+          "WorkMembersController.approve",
+          // Standing a workspace or a refinement room up is a person's press, on either family.
+          "EntityDispatchController.dispatch",
+          "WorkDispatchController.dispatch",
+          "EntityRefinementController.open",
+          "WorkRefinementController.open");
 
   /**
    * <b>The generic entity doors a platform service reaches</b> (qits-667): qits-maintenance files a

@@ -1,0 +1,223 @@
+{
+  "progress": {
+    "campaign": {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "qualifiedId": "contract-00000001-1",
+      "title": "Invoicing for the Q4 close",
+      "status": "REFINED",
+      "blocked": false,
+      "start": null
+    },
+    "evaluator": {
+      "connected": false,
+      "lastSweepCompletedAt": null,
+      "stalled": false,
+      "consumerFailing": false,
+      "lastError": null,
+      "lastErrorAt": null,
+      "watermarkAt": null
+    },
+    "members": [
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000013",
+        "position": 0,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "archetype": "EPIC",
+          "qualifiedId": "contract-00000001-9",
+          "title": "Tax rates per country",
+          "status": "VERIFIED",
+          "blocked": false
+        },
+        "state": "DONE",
+        "waitsFor": [],
+        "joinedRunning": false,
+        "groups": [],
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000014",
+        "position": 1,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000006",
+          "archetype": "EPIC",
+          "qualifiedId": "contract-00000001-2",
+          "title": "Export invoices for the accountants",
+          "status": "IMPLEMENTING",
+          "blocked": false
+        },
+        "state": "READY",
+        "waitsFor": [],
+        "joinedRunning": false,
+        "groups": [],
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000015",
+        "position": 2,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-10",
+          "title": "Invoice totals are off by one cent",
+          "status": "IMPLEMENTING",
+          "blocked": true
+        },
+        "state": "WAITING",
+        "waitsFor": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "joinedRunning": false,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-000000000016",
+            "satisfied": false,
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-000000000017",
+                "kind": "ENTITY_STATUS",
+                "seeded": true,
+                "satisfied": false,
+                "wouldBeSatisfiedBy": "contract-00000001-2 (Export invoices for the accountants) reaches VERIFIED",
+                "satisfiable": true,
+                "reason": null,
+                "evidence": null,
+                "approval": null,
+                "satisfiedAt": null
+              }
+            ]
+          }
+        ],
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-000000000018",
+        "position": 3,
+        "entity": {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-13",
+          "title": "Credit notes show the wrong sign",
+          "status": "DONE",
+          "blocked": false
+        },
+        "state": "DONE",
+        "waitsFor": [
+          "00000000-0000-4000-8000-000000000001"
+        ],
+        "joinedRunning": false,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-000000000019",
+            "satisfied": false,
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-00000000001a",
+                "kind": "ENTITY_STATUS",
+                "seeded": true,
+                "satisfied": false,
+                "wouldBeSatisfiedBy": "contract-00000001-10 (Invoice totals are off by one cent) reaches VERIFIED",
+                "satisfiable": true,
+                "reason": null,
+                "evidence": null,
+                "approval": null,
+                "satisfiedAt": null
+              }
+            ]
+          }
+        ],
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null
+      },
+      {
+        "membershipId": "00000000-0000-4000-8000-00000000001b",
+        "position": 4,
+        "entity": {
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "archetype": "TICKET",
+          "qualifiedId": "contract-00000001-11",
+          "title": "Remember the last export format",
+          "status": "REFINED",
+          "blocked": false
+        },
+        "state": "WAITING",
+        "waitsFor": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "joinedRunning": false,
+        "groups": [
+          {
+            "id": "00000000-0000-4000-8000-00000000001c",
+            "satisfied": false,
+            "criteria": [
+              {
+                "id": "00000000-0000-4000-8000-00000000001d",
+                "kind": "ENTITY_STATUS",
+                "seeded": false,
+                "satisfied": false,
+                "wouldBeSatisfiedBy": "contract-00000001-2 (Export invoices for the accountants) reaches VERIFIED",
+                "satisfiable": true,
+                "reason": null,
+                "evidence": null,
+                "approval": null,
+                "satisfiedAt": null
+              },
+              {
+                "id": "00000000-0000-4000-8000-00000000001e",
+                "kind": "APPROVAL",
+                "seeded": false,
+                "satisfied": false,
+                "wouldBeSatisfiedBy": "a person approves",
+                "satisfiable": true,
+                "reason": null,
+                "evidence": null,
+                "approval": null,
+                "satisfiedAt": null
+              }
+            ]
+          }
+        ],
+        "dispatchedAt": null,
+        "dispatch": {
+          "workspaceId": null,
+          "branch": null,
+          "agentLaunch": null
+        },
+        "dispatchRefusal": null,
+        "dispatchRefusedAt": null,
+        "dispatchError": null
+      }
+    ]
+  }
+}
