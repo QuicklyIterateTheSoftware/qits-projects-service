@@ -6,14 +6,13 @@ import static org.hamcrest.Matchers.notNullValue;
 
 import eu.wohlben.qits.projects.control.GitHostRepositories;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.security.NoDevUserProfile;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -31,18 +30,13 @@ import org.junit.jupiter.api.Test;
  * anonymous rather than the synthetic {@code dev} identity that holds every platform role. The
  * route is {@code qits:system} alone, so a browser session is refused here — which is what the
  * method-level annotation replacing the class-level one is for, and the defect class this repo
- * watches.
+ * watches. It is {@link NoDevUserProfile} itself rather than a copy of it: a profile is keyed by
+ * its class, so an identical one of this class's own was a whole second app boot — ~125 MB of
+ * metaspace retained for the rest of the run (qits-965, the test-profile budget rule).
  */
 @QuarkusTest
-@TestProfile(ProjectRepositoryAdoptTest.DeployedPosture.class)
+@TestProfile(NoDevUserProfile.class)
 public class ProjectRepositoryAdoptTest {
-
-  public static class DeployedPosture implements QuarkusTestProfile {
-    @Override
-    public Map<String, String> getConfigOverrides() {
-      return Map.of("qits.auth.forward.dev-user", "");
-    }
-  }
 
   /** The fake git host of the domain suite: {@code ensure} is {@code PUT /git/<repoId>}. */
   @Inject GitHostRepositories gitHost;

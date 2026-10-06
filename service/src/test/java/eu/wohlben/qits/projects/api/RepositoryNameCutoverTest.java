@@ -5,12 +5,11 @@ import static org.hamcrest.Matchers.equalTo;
 
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
+import io.restassured.specification.RequestSpecification;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
-import java.util.Set;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,31 +29,41 @@ import org.junit.jupiter.api.Test;
  * two apart would turn every mistyped submodule url into a 15-second wait.
  */
 @QuarkusTest
-@TestProfile(RepositoryNameCutoverTest.OneLostConnection.class)
+@TestProfile(RepositoryCatalogueTest.DeployedPosture.class)
 public class RepositoryNameCutoverTest {
 
-  /**
-   * Enables the failing alias table for this class alone. A {@code QuarkusTestProfile} is the only
-   * way to scope an {@code @Alternative}: one carrying {@code @Priority} is enabled for the whole
-   * suite, and every repository read in it would go through the stand-in.
+  /*
+   * The failing alias table is enabled by a profile, the only way to scope an {@code @Alternative}:
+   * one carrying {@code @Priority} is enabled for the whole suite, and every repository read in it
+   * would go through the stand-in. It is RepositoryCatalogueTest's profile rather than one of this
+   * class's own — a second profile is a second app boot and ~125 MB of retained metaspace
+   * (qits-965) — so this class runs in the deployed posture and says who is calling.
    */
-  public static class OneLostConnection implements QuarkusTestProfile {
-    @Override
-    public Set<Class<?>> getEnabledAlternatives() {
-      return Set.of(ConnectionLosingRepositoryNames.class);
-    }
-  }
 
   @Inject ConnectionLosingRepositoryNames names;
 
   @BeforeEach
   public void healthy() {
     names.loseTheConnection(0);
+    names.loseTheConnectionNaming(0);
+    names.failNamingOutright(0);
+  }
+
+  /** A browser session as the edge forwards it. */
+  private RequestSpecification session() {
+    return given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", "alice")
+        .header("X-Qits-Roles", "qits:admin");
+  }
+
+  /** The git host as it presents itself: it resolves every name-addressed clone with these roles. */
+  private RequestSpecification gitHost() {
+    return given().header("X-Qits-User", "dev-qits-githost").header("X-Qits-Roles", "qits:system");
   }
 
   private String createProject(String name) {
-    return given()
-        .contentType(ContentType.JSON)
+    return session()
         .body(new ProjectController.CreateProjectRequest(name, null, null, null, ProjectRequests.DNS))
         .when()
         .post("/projects/api/projects")
@@ -65,8 +74,7 @@ public class RepositoryNameCutoverTest {
   }
 
   private String createRepository(String projectId, String name) {
-    return given()
-        .contentType(ContentType.JSON)
+    return session()
         .body(
             new ProjectController.CreateProjectRepositoryRequest(
                 null, name, RepositoryArchetype.SERVICE, null))
@@ -79,7 +87,7 @@ public class RepositoryNameCutoverTest {
   }
 
   private io.restassured.response.Response resolveByName(String projectId, String repoName) {
-    return given()
+    return gitHost()
         .when()
         .get("/projects/api/projects/" + projectId + "/repositories/by-name/" + repoName);
   }

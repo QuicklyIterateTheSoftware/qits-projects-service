@@ -19,9 +19,9 @@ import org.hibernate.exception.JDBCConnectionException;
  * what to retry by walking that cause chain, so a stand-in exception would prove the retry runs and
  * not that it fires on a cutover.
  *
- * <p><b>{@code @Alternative} with no {@code @Priority}</b>: it is enabled by two test profiles
- * (`RepositoryNameCutoverTest.OneLostConnection` and `RepositoryCatalogueTest.DeployedPosture`) and
- * is inert in every other class of this suite. A globally enabled one would sit in the path of every
+ * <p><b>{@code @Alternative} with no {@code @Priority}</b>: it is enabled by one test profile,
+ * `RepositoryCatalogueTest.DeployedPosture`, which `RepositoryNameCutoverTest` shares, and is inert
+ * in every other class of this suite. A globally enabled one would sit in the path of every
  * repository read here, armed or not.
  *
  * <p><b>The two reads are armed separately</b> — {@link #loseTheConnection} for name resolution,

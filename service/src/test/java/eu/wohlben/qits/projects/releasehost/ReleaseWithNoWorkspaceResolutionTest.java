@@ -12,15 +12,14 @@ import eu.wohlben.qits.projects.control.ReleasedBranchWorkspaces;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.workspacehost.NoWorkspacesContextProfile;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import io.restassured.http.ContentType;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -34,25 +33,15 @@ import org.junit.jupiter.api.Test;
  * point is always resolvable there.
  *
  * <p>The absence is made by config rather than by a missing class — {@code quarkus.arc.exclude-types}
- * naming both implementations, which costs one extra augmentation and is why this is one small class
- * and not a second copy of the flow suite. What it proves is the sentence in the port's javadoc: a
+ * naming both implementations, in {@link NoWorkspacesContextProfile}, which {@code
+ * EntityDispatchWithNoWorkspacesTest} shares — which costs one extra augmentation and is why this is
+ * one small class and not a second copy of the flow suite. What it proves is the sentence in the port's javadoc: a
  * release with nowhere to report its deleted branches still stamps, tags, deletes and settles
  * RELEASED, and the workspaces linger exactly as they did before the port existed.
  */
 @QuarkusTest
-@TestProfile(ReleaseWithNoWorkspaceResolutionTest.NoReleasedBranchWorkspacesProfile.class)
+@TestProfile(NoWorkspacesContextProfile.class)
 public class ReleaseWithNoWorkspaceResolutionTest {
-
-  /** Both implementations gone, so the {@code Instance<T>} is genuinely unresolvable. */
-  public static class NoReleasedBranchWorkspacesProfile implements QuarkusTestProfile {
-    @Override
-    public Map<String, String> getConfigOverrides() {
-      return Map.of(
-          "quarkus.arc.exclude-types",
-          "eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces,"
-              + "eu.wohlben.qits.projects.workspacehost.HttpReleasedBranchWorkspaces");
-    }
-  }
 
   /** The premise of every assertion below, so a config override that stopped working says so. */
   @Inject Instance<ReleasedBranchWorkspaces> port;

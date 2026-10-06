@@ -3003,6 +3003,19 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   has to relaunch under `setsid`, because a JVM that is not a session leader passes on the broken
   code too, which is exactly why the suite stayed green while production died. `HangupImmunity` is
   the backstop: SIGHUP is a WARN here, never a shutdown.
+- **The test-profile budget rule: every distinct `@TestProfile` class is a whole app that is never
+  unloaded.** Quarkus' `FacadeClassLoader` loads each test class into its profile's runtime class
+  loader at discovery, and JUnit's discovery request holds those `Class` objects until the fork
+  exits — so every app that has booted keeps its ~16k classes (~125 MB of metaspace, measured with
+  `jcmd <pid> VM.classloader_stats`) for the rest of the run. That retained metaspace is the
+  largest single term of the surefire fork's footprint (~1.2 GB of a ~2.7 GB RSS), and the release
+  gate's step container is capped at 4g memory+swap, maven and postgres included, which the suite
+  sits close to. A profile is keyed by its **class**, not its content: two classes returning the
+  same overrides are two boots. So reuse an existing profile (`NoDevUserProfile`,
+  `RepositoryCatalogueTest.DeployedPosture`, `workspacehost.NoWorkspacesContextProfile`) before
+  writing one, and make a new one only for config no existing one can carry. qits-965 hit the cap
+  (`OutOfMemoryError: unable to create native thread` ~1025 tests in, twice) by adding tests rather
+  than a profile, and was fixed by folding three duplicate profiles into those three.
 - A `Failed to start quarkus` / `Port already bound: 8081` failure is the known flake
   (`migration-plan.md` §9 item 14) — `@QuarkusTest` restarts racing for the test port. Re-run first.
 - `GitFixtures.path("<name>.git")` is how a test gets a git origin to clone. It returns the
