@@ -169,16 +169,16 @@ public class EntityPatchController {
               nullable = true,
               description =
                   "A feature's or task's implemented marker (ISO-8601 instant); null clears it."
-                      + " Moves only while the owning epic is REFINED or IMPLEMENTING. Setting it"
-                      + " moves the item's status to IMPLEMENTED; clearing it takes an IMPLEMENTED"
-                      + " item back to IMPLEMENTING (or REFINED when it was never marked"
-                      + " implementing).")
+                      + " Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING. Setting"
+                      + " it moves the item's status to IMPLEMENTED; clearing it takes an"
+                      + " IMPLEMENTED item back to IMPLEMENTING (or READY_FOR_DEV when it was never"
+                      + " marked implementing).")
           Instant implementedAt,
       @Schema(
               description =
                   "A feature's or task's implementing marker (ISO-8601 instant): when its"
                       + " implementation was started. Cannot be cleared. Moves only while the"
-                      + " owning epic is REFINED or IMPLEMENTING, and moves the item's status to"
+                      + " owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's status to"
                       + " IMPLEMENTING when it is not already there or further.")
           Instant implementingAt) {}
 
@@ -203,7 +203,7 @@ public class EntityPatchController {
               + " /{id}/transition), and a reshape, reparent or"
               + " supersede through POST /projects/api/entities/transition. An epic's, feature's or"
               + " task's scope follows the epic's freeze: scope edits need the epic REPORTED, the"
-              + " markers need it REFINED or IMPLEMENTING, and a marker moves the item's status with"
+              + " markers need it READY_FOR_DEV or IMPLEMENTING, and a marker moves the item's status with"
               + " it. Answers the entity in the merged shape.")
   @APIResponse(
       responseCode = "200",

@@ -91,12 +91,14 @@ public class ProviderStates {
   public static final String THE_ARCHETYPE_REGISTRY = "the archetype registry";
   public static final String A_REPORTED_TICKET = "a reported ticket";
   public static final String A_REFINED_TICKET = "a refined ticket";
+  public static final String A_READY_FOR_DEV_TICKET = "a ready for dev ticket";
   public static final String AN_IMPLEMENTING_TICKET = "an implementing ticket";
   public static final String AN_IMPLEMENTED_TICKET = "an implemented ticket";
   public static final String A_VERIFYING_TICKET = "a verifying ticket";
   public static final String A_DROPPED_TICKET = "a dropped ticket";
   public static final String A_REPORTED_EPIC = "a reported epic";
   public static final String A_REFINED_EPIC = "a refined epic";
+  public static final String A_READY_FOR_DEV_EPIC = "a ready for dev epic";
   public static final String AN_IMPLEMENTING_EPIC = "an implementing epic";
   public static final String AN_IMPLEMENTED_EPIC = "an implemented epic";
   public static final String A_VERIFYING_EPIC = "a verifying epic";
@@ -389,10 +391,11 @@ public class ProviderStates {
 
   /** A project and nothing in it: every work list answers empty. */
   /**
-   * One epic and one ticket in each status, IMPLEMENTING, VERIFYING and DROPPED included: the Work
+   * One epic and one ticket in each status, READY_FOR_DEV, IMPLEMENTING, VERIFYING and DROPPED
+   * included: the Work
    * page's board, backlog and archive all have something to show. Each item is moved through the
    * lifecycle to its status, through IMPLEMENTING and VERIFYING wherever its path passes them
-   * (qits-749). Plus one REFINED epic whose
+   * (qits-749). Plus one scheduled (READY_FOR_DEV) epic whose
    * one feature holds a task marked implementing and not implemented, so a feature and a task in
    * the IMPLEMENTING column are on the record too.
    */
@@ -402,14 +405,15 @@ public class ProviderStates {
     Map<String, List<String>> paths = new LinkedHashMap<>();
     paths.put("Reported", List.of());
     paths.put("Refined", List.of("REFINED"));
-    paths.put("Implementing", List.of("REFINED", "IMPLEMENTING"));
-    paths.put("Implemented", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED"));
-    paths.put("Verifying", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"));
+    paths.put("Ready for dev", List.of("REFINED", "READY_FOR_DEV"));
+    paths.put("Implementing", List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING"));
+    paths.put("Implemented", List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED"));
+    paths.put("Verifying", List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING"));
     paths.put(
-        "Verified", List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED"));
+        "Verified", List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED"));
     paths.put(
         "Done",
-        List.of("REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE"));
+        List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE"));
     paths.put("Dropped", List.of("DROPPED"));
     for (Map.Entry<String, List<String>> path : paths.entrySet()) {
       String epic =
@@ -428,13 +432,15 @@ public class ProviderStates {
     String task =
         node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "Started task", "Seeded.", null));
     work.transition(Archetype.EPIC, started, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, started, "READY_FOR_DEV", SEEDER);
     // The tool's own path: stamps the task and its feature, and moves the epic to IMPLEMENTING.
     work.markImplementing(task, SEEDER);
     return new Setup(params("projectId", project.id), List.of(token));
   }
 
   /**
-   * A REFINED epic with two features: one implemented (one of its two tasks implemented too), one
+   * A READY_FOR_DEV epic (refined and scheduled, so its markers move — qits-887) with two features:
+   * one implemented (one of its two tasks implemented too), one
    * not (with one open task). The implemented feature runs ahead of its epic, so the epic's lane on
    * a board spans two columns, and so does the feature's. Children are created while the epic is still REPORTED, as the domain demands.
    */
@@ -450,6 +456,7 @@ public class ProviderStates {
     String open = node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded.", null));
     node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Open task", "Seeded.", null));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
     implemented(shippedTask);
     implemented(done);
     return new Setup(params("projectId", project.id), List.of(token));
@@ -458,12 +465,13 @@ public class ProviderStates {
   /**
    * <b>One epic whose tasks stand in every status</b> (qits-763): a feature and a task hold the one
    * lifecycle of their own, so a board draws each task in its own column rather than its epic's. One
-   * feature with eight tasks, one per word, each brought there the way the platform moves one:
-   * created while the epic is REPORTED, carried to REFINED by the epic's freeze, then — the REPORTED
-   * one moved back by its own door, the IMPLEMENTING one through {@code mark_task_implementing}
-   * (which also moves its feature and the epic to IMPLEMENTING), the IMPLEMENTED one through its
-   * marker, the three beyond through their marker and then their own moves, and the DROPPED one
-   * dropped. The epic stays IMPLEMENTING: verifying three of its tasks moved nothing above them.
+   * feature with nine tasks, one per word, each brought there the way the platform moves one:
+   * created while the epic is REPORTED, carried to REFINED by the epic's freeze and to READY_FOR_DEV
+   * by its scheduling (qits-887), then — the REPORTED one moved back by its own door before the
+   * scheduling, the IMPLEMENTING one through {@code mark_task_implementing} (which also moves its
+   * feature and the epic to IMPLEMENTING), the REFINED one moved back by its own door once the epic
+   * is under way, the IMPLEMENTED one through its marker, the three beyond through their marker and
+   * then their own moves, and the DROPPED one dropped. The epic stays IMPLEMENTING: verifying three of its tasks moved nothing above them.
    */
   private Setup anEpicWithTasksInEveryStatus() {
     String token = token();
@@ -485,7 +493,9 @@ public class ProviderStates {
     }
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.TASK, tasks.get(EntityStatus.REPORTED), "REPORTED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
     work.markImplementing(tasks.get(EntityStatus.IMPLEMENTING), SEEDER);
+    work.transition(Archetype.TASK, tasks.get(EntityStatus.REFINED), "REFINED", SEEDER);
     for (EntityStatus status :
         List.of(
             EntityStatus.IMPLEMENTED,
@@ -502,11 +512,12 @@ public class ProviderStates {
 
   /**
    * <b>An IMPLEMENTING epic with a feature whose tasks are all VERIFIED</b>: a board draws that
-   * feature's row with empty lanes. A second feature keeps one REFINED task and one IMPLEMENTING
-   * task, for contrast. The IMPLEMENTING task moves the epic to IMPLEMENTING; each verified task
-   * gets its marker and then its own moves, which move nothing above it.
+   * feature's row with empty lanes. A second feature keeps one REFINED task (moved back by its own
+   * door once the epic is under way) and one IMPLEMENTING task, for contrast. The epic is scheduled
+   * (READY_FOR_DEV, which carries its pieces), and the IMPLEMENTING task moves it to IMPLEMENTING;
+   * each verified task gets its marker and then its own moves, which move nothing above it.
    *
-   * <p>The feature keeps its own status: REFINED, titled "Feature pending verification". For
+   * <p>The feature keeps its own status: READY_FOR_DEV, titled "Feature pending verification". For
    * {@link #AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED} it is titled "Verified
    * feature" and, after its tasks, gets its own marker and moves to VERIFIED too.
    */
@@ -536,14 +547,17 @@ public class ProviderStates {
     }
     String open =
         node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded.", null));
-    node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Refined task", "Seeded.", null));
+    String refinedTask =
+        node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Refined task", "Seeded.", null));
     String started =
         node(
             Archetype.TASK,
             open,
             EntityWrite.task(repositoryId, "Implementing task", "Seeded.", null));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
     work.markImplementing(started, SEEDER);
+    work.transition(Archetype.TASK, refinedTask, "REFINED", SEEDER);
     for (String task : verifiedTasks) {
       implemented(task);
       walk(Archetype.TASK, task, EntityStatus.VERIFIED);
@@ -621,10 +635,11 @@ public class ProviderStates {
                 repositoryId, "Verified task of an implemented feature", "Seeded.", null));
     String refinedFeature =
         node(Archetype.FEATURE, epic, EntityWrite.feature("Refined feature", "Seeded.", null));
-    node(
-        Archetype.TASK,
-        refinedFeature,
-        EntityWrite.task(repositoryId, "Refined task", "Seeded.", null));
+    String refinedTask =
+        node(
+            Archetype.TASK,
+            refinedFeature,
+            EntityWrite.task(repositoryId, "Refined task", "Seeded.", null));
     String implementingFeature =
         node(
             Archetype.FEATURE, epic, EntityWrite.feature("Implementing feature", "Seeded.", null));
@@ -639,7 +654,12 @@ public class ProviderStates {
             implementingFeature,
             EntityWrite.task(repositoryId, "Verifying task", "Seeded.", null));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
     work.markImplementing(implementingTask, SEEDER);
+    // The epic's scheduling carried every piece to READY_FOR_DEV (qits-887); the REFINED pair is
+    // moved back by its own doors once the epic is under way.
+    work.transition(Archetype.TASK, refinedTask, "REFINED", SEEDER);
+    work.transition(Archetype.FEATURE, refinedFeature, "REFINED", SEEDER);
     for (String task : List.of(verifiedTask, taskOfImplemented)) {
       implemented(task);
       walk(Archetype.TASK, task, EntityStatus.VERIFIED);
@@ -655,7 +675,8 @@ public class ProviderStates {
 
   /**
    * Seeds an epic with one feature and its tasks, each moved to {@code target} along the walk:
-   * the epic is made REFINED, then the tasks, then the feature, then the epic itself are moved.
+   * the epic is made REFINED and scheduled (READY_FOR_DEV), then the tasks, then the feature, then
+   * the epic itself are moved.
    */
   private String epicWithEverything(
       Project project, String repositoryId, String title, String prefix, EntityStatus target) {
@@ -675,6 +696,7 @@ public class ProviderStates {
                   null)));
     }
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
     for (String task : tasks) {
       implemented(task);
       walk(Archetype.TASK, task, target);
@@ -751,6 +773,7 @@ public class ProviderStates {
     Map<String, EntityStatus> out = new LinkedHashMap<>();
     out.put(A_REPORTED_TICKET, EntityStatus.REPORTED);
     out.put(A_REFINED_TICKET, EntityStatus.REFINED);
+    out.put(A_READY_FOR_DEV_TICKET, EntityStatus.READY_FOR_DEV);
     out.put(AN_IMPLEMENTING_TICKET, EntityStatus.IMPLEMENTING);
     out.put(AN_IMPLEMENTED_TICKET, EntityStatus.IMPLEMENTED);
     out.put(A_VERIFYING_TICKET, EntityStatus.VERIFYING);
@@ -763,6 +786,7 @@ public class ProviderStates {
     Map<String, EntityStatus> out = new LinkedHashMap<>();
     out.put(A_REPORTED_EPIC, EntityStatus.REPORTED);
     out.put(A_REFINED_EPIC, EntityStatus.REFINED);
+    out.put(A_READY_FOR_DEV_EPIC, EntityStatus.READY_FOR_DEV);
     out.put(AN_IMPLEMENTING_EPIC, EntityStatus.IMPLEMENTING);
     out.put(AN_IMPLEMENTED_EPIC, EntityStatus.IMPLEMENTED);
     out.put(A_VERIFYING_EPIC, EntityStatus.VERIFYING);
@@ -863,7 +887,7 @@ public class ProviderStates {
 
   /**
    * An epic whose work is complete: one feature with two tasks, all three implemented while the
-   * epic is REFINED, then the epic moved to VERIFIED, or on to DONE for {@link
+   * epic is READY_FOR_DEV, then the epic moved to VERIFIED, or on to DONE for {@link
    * #A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED}. The children are created while the epic is still
    * REPORTED, as the domain demands.
    */
@@ -884,8 +908,9 @@ public class ProviderStates {
       tasks.add(
           node(Archetype.TASK, feature, EntityWrite.task(repositoryId, title, "Seeded.", null)));
     }
-    // Task markers move only while the epic is REFINED or IMPLEMENTING.
+    // Task markers move only while the epic is READY_FOR_DEV or IMPLEMENTING.
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
     tasks.forEach(this::implemented);
     implemented(feature);
     walk(Archetype.EPIC, epic, done ? EntityStatus.DONE : EntityStatus.VERIFIED);
@@ -1227,8 +1252,9 @@ public class ProviderStates {
                 null));
 
     // Work: the epic's markers, then every status. Task markers move only while the epic is
-    // REFINED or IMPLEMENTING; marking a task implementing moves the epic to IMPLEMENTING.
+    // READY_FOR_DEV or IMPLEMENTING; marking a task implementing moves the epic to IMPLEMENTING.
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
     work.markImplementing(stream, AGENT);
     implemented(stream);
     work.markImplementing(button, AGENT);
@@ -1335,7 +1361,12 @@ public class ProviderStates {
    */
   private void walk(Archetype archetype, String id, EntityStatus target) {
     List<EntityStatus> walk = EntityStateMachine.walk();
-    int from = walk.indexOf(EntityStatus.valueOf(work.find(id).status));
+    // Read in a transaction of its own: outside one the seeder keeps one persistence context, and a
+    // row it read before a cascade or a marker moved it answers the old status. Before qits-887 a
+    // stale REFINED walked a marked task IMPLEMENTED → IMPLEMENTING and back by accident; now that
+    // step is READY_FOR_DEV, which no IMPLEMENTED row may move to.
+    String current = QuarkusTransaction.requiringNew().call(() -> work.find(id).status);
+    int from = walk.indexOf(EntityStatus.valueOf(current));
     for (int step = from + 1; step <= walk.indexOf(target); step++) {
       work.transition(archetype, id, walk.get(step).name(), SEEDER);
     }

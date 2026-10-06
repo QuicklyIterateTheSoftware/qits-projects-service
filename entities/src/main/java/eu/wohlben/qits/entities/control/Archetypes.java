@@ -118,7 +118,7 @@ import java.util.stream.Collectors;
 public final class Archetypes {
 
   /**
-   * {@link EntityStatus}' eight words, as stored — <b>the one vocabulary</b> of every kind but the
+   * {@link EntityStatus}' nine words, as stored — <b>the one vocabulary</b> of every kind but the
    * campaign. There were two sets here, one per enum, until qits-392 deleted {@code EpicStatus};
    * an epic and a ticket declared the same set from then on, a feature and a task joined them at
    * qits-763, and the served registry document carries it.
@@ -126,7 +126,7 @@ public final class Archetypes {
   private static final Set<String> STATUSES = names(EntityStatus.values());
 
   /**
-   * A campaign's words: the one vocabulary less IMPLEMENTING, which a campaign never enters
+   * A campaign's words: the one vocabulary less IMPLEMENTING and VERIFYING, which a campaign never enters
    * (qits-749) — read off the state machine's campaign lifecycle rather than listed.
    */
   private static final Set<String> CAMPAIGN_STATUSES =
@@ -381,7 +381,7 @@ public final class Archetypes {
    *
    * <p>Three questions, asked of every candidate and all three always asked: is every required
    * property there, is every property it carries one this kind has a slot for, and — when it carries
-   * a status — is that word in this kind's lifecycle. The database spells the same eight words in
+   * a status — is that word in this kind's lifecycle. The database spells the same nine words in
    * {@code ck_entity_status}, but cannot say that a campaign never holds IMPLEMENTING or VERIFYING.
    *
    * <p>{@code demand} is which required set the first question is asked against — see {@link

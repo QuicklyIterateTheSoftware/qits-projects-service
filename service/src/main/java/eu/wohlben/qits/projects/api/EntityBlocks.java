@@ -2,8 +2,10 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityCommentService;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
@@ -158,9 +160,10 @@ public class EntityBlocks {
    * there is nothing for a block to be about. The first is asked <b>explicitly</b>, by archetype,
    * and before the second, even though {@code phaseOf} also answers a piece with nothing: the
    * refusal is about the kind, and it must say so — "a REFINED task starts no phase" would read as a
-   * status a caller could move away from. The second is VERIFIED and DONE — the work is over and what is
-   * left is a person's judgement — and DROPPED, where the work was decided against and no phase
-   * will ever run again.
+   * status a caller could move away from. The second is REFINED — it waits for a person to schedule
+   * it (qits-887) — VERIFIED and DONE — the work is over and what is left is a person's judgement —
+   * and DROPPED, where the work was decided against and no phase will ever run again. A campaign
+   * runs no phase but its executor, so it is asked by status instead ({@link #campaignBlockable}).
    *
    * <p>The message names what is missing rather than the status alone, because "409" on an entity
    * that plainly exists leaves the caller guessing whether the block was rejected or the entity was.
@@ -183,7 +186,14 @@ public class EntityBlocks {
               + " runs no phase of its own, so there is nothing to block — its phase is its"
               + " epic's; block the epic instead.");
     }
-    if (PhasePrompts.phaseOf(entity).isEmpty()) {
+    // A campaign runs no phase of its own; its block is about its executor (qits-592). Asked by
+    // status rather than through phaseOf, because since qits-887 REFINED starts no phase, and a
+    // REFINED campaign is exactly the one that runs.
+    boolean blockable =
+        entity.archetype == Archetype.CAMPAIGN
+            ? campaignBlockable(entity.status)
+            : PhasePrompts.phaseOf(entity).isPresent();
+    if (!blockable) {
       throw new ConflictException(
           noun
               + " "
@@ -193,6 +203,25 @@ public class EntityBlocks {
               + ", so no phase is running and there is nothing to block — a block says the work"
               + " that runs now cannot finish, and no work runs while this status holds.");
     }
+  }
+
+  /**
+   * Whether a campaign at {@code status} may be blocked: on the walk and short of VERIFIED — the
+   * statuses a campaign could be blocked at before qits-887 (REPORTED, REFINED, IMPLEMENTED), plus
+   * READY_FOR_DEV, the one it gained.
+   */
+  private static boolean campaignBlockable(String status) {
+    if (status == null) {
+      return false;
+    }
+    EntityStatus word;
+    try {
+      word = EntityStatus.valueOf(status);
+    } catch (IllegalArgumentException unknown) {
+      return false;
+    }
+    return !EntityStateMachine.isOffWalk(word)
+        && !EntityStateMachine.isAtOrPast(word, EntityStatus.VERIFIED);
   }
 
   /**

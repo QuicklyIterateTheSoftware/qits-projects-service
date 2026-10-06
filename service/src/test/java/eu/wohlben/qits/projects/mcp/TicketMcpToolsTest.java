@@ -478,7 +478,7 @@ public class TicketMcpToolsTest {
     String projectId = createProject("Ticket Cycle");
     String ticketId = createTicket(projectId, "Round trip", "BUG");
 
-    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       call(
           projectId,
           "transition_ticket",
@@ -510,7 +510,7 @@ public class TicketMcpToolsTest {
   public void aMoveToVerifiedPublishesOneEntityTransitionedWithTheStatusItLeftAndTheActor() {
     String projectId = createProject("Ticket Announced");
     String ticketId = createTicket(projectId, "Announce me", "BUG");
-    for (String target : List.of("REFINED", "IMPLEMENTED")) {
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED")) {
       call(
           projectId,
           "transition_ticket",
@@ -595,7 +595,7 @@ public class TicketMcpToolsTest {
     // edit. Closing a ticket commits to nothing, so nothing about it is frozen.
     String projectId = createProject("Ticket Thawed");
     String ticketId = createTicket(projectId, "Done for now", "BUG");
-    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       call(
           projectId,
           "transition_ticket",
@@ -792,7 +792,7 @@ public class TicketMcpToolsTest {
         Map.of("id", ticketId),
         response -> {
           String body = text(response);
-          assertTrue(body.contains("Started the implement phase"), body);
+          assertTrue(body.contains("Started the verify phase"), body);
           assertFalse(body.contains("\"author\":null"), "the comment is stamped: " + body);
         });
   }

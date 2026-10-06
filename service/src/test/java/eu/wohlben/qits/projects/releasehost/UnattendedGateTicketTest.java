@@ -249,7 +249,7 @@ public class UnattendedGateTicketTest {
     awaitState(id, "REJECTED");
     String first = awaitTicketOn(id);
 
-    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       given()
           .contentType(ContentType.JSON)
           .body("{\"target\":\"" + target + "\"}")
@@ -502,7 +502,7 @@ public class UnattendedGateTicketTest {
   @Test
   public void anAlreadyClosedTicketIsLeftAloneAndTheStampIsWritten() {
     List<List<String>> walks =
-        List.of(List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE"), List.of("DROPPED"));
+        List.of(List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE"), List.of("DROPPED"));
     for (List<String> walk : walks) {
       String id = create("maintenance/dependencies", ROBOT);
       verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");

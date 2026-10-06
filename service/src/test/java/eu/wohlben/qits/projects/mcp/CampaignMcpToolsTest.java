@@ -346,6 +346,7 @@ public class CampaignMcpToolsTest {
     String projectId = createProject("Campaign claimed");
     WorkEntity implemented = ticket(projectId, "Already under way");
     workEntities.transition(Archetype.TICKET, implemented.id, "REFINED", "t");
+    workEntities.transition(Archetype.TICKET, implemented.id, "READY_FOR_DEV", "t");
     workEntities.transition(Archetype.TICKET, implemented.id, "IMPLEMENTED", "t");
 
     String[] campaignId = new String[1];

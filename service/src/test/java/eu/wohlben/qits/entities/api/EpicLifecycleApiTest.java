@@ -146,7 +146,7 @@ class EpicLifecycleApiTest {
   @Test
   void anEpicWalksToVerifiedAndDone() {
     String epicId = createEpic(createProject(), "Planning domain");
-    for (String target : new String[] {"REFINED", "IMPLEMENTED", "VERIFIED", "DONE"}) {
+    for (String target : new String[] {"REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE"}) {
       transition(epicId, target).statusCode(200).body("epic.status", equalTo(target));
     }
     given()
@@ -165,11 +165,11 @@ class EpicLifecycleApiTest {
   @Test
   void aDoneEpicRefusesEveryTarget() {
     String epicId = createEpic(createProject(), "Planning domain");
-    for (String target : new String[] {"REFINED", "IMPLEMENTED", "VERIFIED", "DONE"}) {
+    for (String target : new String[] {"REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE"}) {
       transition(epicId, target).statusCode(200);
     }
     for (String target :
-        new String[] {"REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED",
+        new String[] {"REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED",
             "SUPERSEDED"}) {
       transition(epicId, target)
           .statusCode(Response.Status.CONFLICT.getStatusCode())
@@ -243,8 +243,19 @@ class EpicLifecycleApiTest {
         .statusCode(Response.Status.CONFLICT.getStatusCode());
 
     transition(epicId, "REFINED").statusCode(200);
+    // Frozen, but not yet scheduled: the marker waits for a person (qits-887).
+    given()
+        .contentType(ContentType.JSON)
+        .body(
+            new FeatureController.UpdateFeatureRequest(
+                null, null, null, false, Instant.parse("2026-07-25T10:15:30Z"), false))
+        .when()
+        .put("/projects/api/features/" + featureId)
+        .then()
+        .statusCode(Response.Status.CONFLICT.getStatusCode());
+    transition(epicId, "READY_FOR_DEV").statusCode(200);
 
-    // Frozen: a structural write is refused and the marker goes through.
+    // Frozen and scheduled: a structural write is refused and the marker goes through.
     given()
         .contentType(ContentType.JSON)
         .body(new EpicController.CreateFeatureRequest("Feature B", null, null))

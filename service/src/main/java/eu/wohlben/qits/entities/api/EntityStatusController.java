@@ -82,9 +82,11 @@ public class EntityStatusController {
       @Schema(
               required = true,
               description =
-                  "REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED, DONE or"
-                      + " DROPPED — one the entity's current status may move to: a neighbour on the"
-                      + " walk, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED (the skips)."
+                  "REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED,"
+                      + " DONE or DROPPED — one the entity's current status may move to: a"
+                      + " neighbour on the walk (IMPLEMENTING has no move back, and READY_FOR_DEV"
+                      + " none to REPORTED), or IMPLEMENTED from READY_FOR_DEV or VERIFIED from"
+                      + " IMPLEMENTED (the skips)."
                       + " A campaign never moves to IMPLEMENTING or VERIFYING.")
           String target) {}
 

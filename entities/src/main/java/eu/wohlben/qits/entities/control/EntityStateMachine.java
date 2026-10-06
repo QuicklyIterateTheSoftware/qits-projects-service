@@ -20,33 +20,44 @@ import java.util.Set;
  * and the phase a status starts ({@code PhasePrompts}) — asks this class and restates nothing.
  *
  * <pre>
- *   REPORTED ─▶ REFINED ─▶ IMPLEMENTING ─▶ IMPLEMENTED ─▶ VERIFYING ─▶ VERIFIED ─▶ DONE (final)
- *            ◀─         ◀─              ◀─             ◀─           ◀─
- *                     └──────── SKIP ────────▶ └──────── SKIP ───────▶
- *   FORWARD one step right, BACK one step left (below DONE), the two SKIPs over an "-ING" status,
- *   DROP from every open state to DROPPED, and DROPPED REOPENs to REPORTED.
+ *   REPORTED ─▶ REFINED ─▶ READY_FOR_DEV ─▶ IMPLEMENTING ─▶ IMPLEMENTED ─▶ VERIFYING ─▶ VERIFIED ─▶ DONE
+ *            ◀─         ◀─                                ◀─             ◀─           ◀─       (final)
+ *                                 └──────── SKIP ─────────▶ └──────── SKIP ───────▶
+ *   FORWARD one step right, BACK one step left (below DONE, and never out of IMPLEMENTING), the two
+ *   SKIPs over an "-ING" status, DROP from every open state to DROPPED, and DROPPED REOPENs to
+ *   REPORTED.
  *
- *   starts phase:  REPORTED → refine,  REFINED and IMPLEMENTING → implement,
- *                  IMPLEMENTED and VERIFYING → verify;  VERIFIED, DONE and DROPPED start nothing.
+ *   starts phase:  REPORTED → refine,  READY_FOR_DEV and IMPLEMENTING → implement,
+ *                  IMPLEMENTED and VERIFYING → verify;  REFINED (it waits for a person), VERIFIED,
+ *                  DONE and DROPPED start nothing.
  *   ends in:       refine → REFINED, implement → IMPLEMENTED, verify → VERIFIED ({@link #endOf}).
  *   runs phases:   EPIC and TICKET only ({@link #runsPhases}); a FLOW press chains the phases
- *                  ({@link #flowFrom}) until a status starts none.
+ *                  ({@link #flowFrom}) until a status starts none — so a FLOW from REPORTED stops
+ *                  at REFINED.
  * </pre>
  *
- * <p><b>The walk</b> — REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED →
- * DONE — is taken
+ * <p><b>The walk</b> — REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED → VERIFYING
+ * → VERIFIED → DONE — is taken
  * one step at a time: forward as each phase finishes, back when a claim turns out wrong. Asking for
  * the status an entity already has is refused rather than read as a no-op. A BACK move is a
  * correction, not how a phase reports failure: a phase that cannot finish, a failed verification
  * included, blocks the entity where it stands (qits-592).
  *
+ * <p><b>READY_FOR_DEV is a person's scheduling decision</b> (qits-887). REFINED says the entity
+ * says what to do; it starts no phase and waits until a person schedules it, REFINED →
+ * READY_FOR_DEV, and only from there does implement run. Scheduling can be taken back — READY_FOR_DEV
+ * → REFINED — until the work starts, but not further: there is no READY_FOR_DEV → REPORTED, and
+ * once the platform moved the entity to IMPLEMENTING it has no BACK move at all; the way out of
+ * started work is DROP.
+ *
  * <p><b>IMPLEMENTING and VERIFYING are the two steps that may be skipped</b> (qits-749). The
  * platform enters each at the press (or the FLOW hand-off) that starts its phase, so each records a
  * fact rather than a claim kept by hand — but an agent that finished work nobody moved to the "-ING"
- * status first must still be able to say so, so REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED stay
- * legal as {@link TransitionKind#SKIP}s: two steps along the walk, and from REFINED or IMPLEMENTED
- * only. FORWARD stays one step; the skip is its own kind rather than a loosened FORWARD, so no other
- * step can be jumped.
+ * status first must still be able to say so, so READY_FOR_DEV → IMPLEMENTED and IMPLEMENTED →
+ * VERIFIED stay legal as {@link TransitionKind#SKIP}s: two steps along the walk, and from
+ * READY_FOR_DEV or IMPLEMENTED only — never from REFINED, so the skip cannot bypass the person's
+ * scheduling. FORWARD stays one step; the skip is its own kind rather than a loosened FORWARD, so
+ * no other step can be jumped.
  *
  * <p><b>DONE is final: it has no exits</b> — not back to VERIFIED, not to DROPPED, not anywhere.
  * Acceptance could only ever throw a done item further back than VERIFIED, which is not a flow to
@@ -54,17 +65,18 @@ import java.util.Set;
  * refer to the done one. Below DONE the walk stays reversible.
  *
  * <p><b>DROPPED is off the walk.</b> It is reachable (DROP) from every state that is still open —
- * REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED — because a decision not to do the work can
+ * REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED — because a decision not to do the work can
  * be taken at any point while the work is open, and from nowhere else. It reopens (REOPEN) to
  * REPORTED and to nothing else: somebody who has changed their mind about abandoned work is asking
  * what it is for again, which is the refine phase.
  *
  * <p><b>A campaign walks the same machine with IMPLEMENTING and VERIFYING elided</b> (qits-749). A
- * campaign enters neither — its press starts it and REFINED is what running means — so for that
- * archetype the two are taken out and the walk closed over each gap: the moves into and out of them
- * go, each SKIP over one is a FORWARD step (REFINED → IMPLEMENTED, IMPLEMENTED → VERIFIED), and a
- * BACK into one lands on the state before it (IMPLEMENTED → REFINED, VERIFIED → IMPLEMENTED — the
- * campaign's BACK moves as they always were).
+ * campaign enters neither — its press starts it — so for that archetype the two are taken out and
+ * its lifecycle is <em>the walk with the elided states removed</em>: REPORTED → REFINED →
+ * READY_FOR_DEV → IMPLEMENTED → VERIFIED → DONE (qits-887, decision 19 — a campaign's
+ * READY_FOR_DEV says it is ready for development, not that it runs). A kept state's FORWARD (or a
+ * SKIP that lands on the same state) goes to the next kept state, its BACK to the previous kept
+ * state, and DROP/REOPEN are unchanged; however many elided states sit side by side, the gap closes.
  * It is derived from {@link #TRANSITIONS}, never declared a second time — see {@link
  * #transitionsFrom(Archetype, EntityStatus)}.
  *
@@ -81,7 +93,7 @@ public final class EntityStateMachine {
     /** The next step along the walk. */
     FORWARD,
     /**
-     * Two steps along the walk, over an "-ING" status: REFINED → IMPLEMENTED or IMPLEMENTED →
+     * Two steps along the walk, over an "-ING" status: READY_FOR_DEV → IMPLEMENTED or IMPLEMENTED →
      * VERIFIED, for work finished without being marked started. Legal from those two only.
      */
     SKIP,
@@ -122,6 +134,7 @@ public final class EntityStateMachine {
       List.of(
           EntityStatus.REPORTED,
           EntityStatus.REFINED,
+          EntityStatus.READY_FOR_DEV,
           EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED,
           EntityStatus.VERIFYING,
@@ -146,12 +159,14 @@ public final class EntityStateMachine {
       List.of(
           t(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
           t(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP),
-          t(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
-          t(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
+          t(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
           t(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
           t(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP),
+          t(EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
+          t(EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
+          t(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+          t(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
-          t(EntityStatus.IMPLEMENTING, EntityStatus.REFINED, TransitionKind.BACK),
           t(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING, TransitionKind.FORWARD),
           t(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP),
@@ -165,23 +180,26 @@ public final class EntityStateMachine {
           t(EntityStatus.VERIFIED, EntityStatus.DROPPED, TransitionKind.DROP),
           t(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN));
 
-  /** The phase each state starts; a state absent here starts none. */
+  /**
+   * The phase each state starts; a state absent here starts none. REFINED is absent on purpose
+   * (qits-887): it waits for a person to schedule it, and implement runs from READY_FOR_DEV.
+   */
   private static final Map<EntityStatus, Phase> PHASES =
       Map.of(
           EntityStatus.REPORTED, Phase.REFINE,
-          EntityStatus.REFINED, Phase.IMPLEMENT,
+          EntityStatus.READY_FOR_DEV, Phase.IMPLEMENT,
           EntityStatus.IMPLEMENTING, Phase.IMPLEMENT,
           EntityStatus.IMPLEMENTED, Phase.VERIFY,
           EntityStatus.VERIFYING, Phase.VERIFY);
 
   /**
    * The "-ING" status the platform moves an entity into when the phase its status starts is
-   * started (qits-749): REFINED → IMPLEMENTING, IMPLEMENTED → VERIFYING. Checked at load: each is a
-   * FORWARD move into a state that runs the same phase.
+   * started (qits-749): READY_FOR_DEV → IMPLEMENTING, IMPLEMENTED → VERIFYING. Checked at load:
+   * each is a FORWARD move into a state that runs the same phase.
    */
   private static final Map<EntityStatus, EntityStatus> STARTED =
       Map.of(
-          EntityStatus.REFINED, EntityStatus.IMPLEMENTING,
+          EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING);
 
   /**
@@ -195,7 +213,10 @@ public final class EntityStateMachine {
   /** {@link #TRANSITIONS} indexed by source, order kept; every state has an entry. */
   private static final Map<EntityStatus, List<Transition>> OUTGOING = index();
 
-  /** The states an archetype's lifecycle elides from the walk; absent means none. */
+  /**
+   * The states an archetype's lifecycle elides from the walk; absent means none. A campaign keeps
+   * READY_FOR_DEV (qits-887, decision 19) and elides the two "-ING" statuses.
+   */
   private static final Map<Archetype, Set<EntityStatus>> ELIDED =
       Map.of(Archetype.CAMPAIGN, EnumSet.of(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
 
@@ -208,16 +229,16 @@ public final class EntityStateMachine {
   // --- the operations ---------------------------------------------------------------------------
 
   /**
-   * Every state, in lifecycle order: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,
-   * VERIFIED, DONE, DROPPED.
+   * Every state, in lifecycle order: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED,
+   * VERIFYING, VERIFIED, DONE, DROPPED.
    */
   public static List<EntityStatus> states() {
     return STATES;
   }
 
   /**
-   * The walk alone, in order: REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING →
-   * VERIFIED → DONE.
+   * The walk alone, in order: REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED →
+   * VERIFYING → VERIFIED → DONE.
    */
   public static List<EntityStatus> walk() {
     return WALK;
@@ -255,7 +276,7 @@ public final class EntityStateMachine {
     return Optional.of(isTerminal(from) ? refused + ": " + finality(from) : refused);
   }
 
-  // --- per archetype (a campaign elides IMPLEMENTING) ---------------------------------------------
+  // --- per archetype (a campaign elides IMPLEMENTING and VERIFYING) ------------------------------
 
   /** The states {@code archetype}'s lifecycle holds, in lifecycle order. */
   public static List<EntityStatus> states(Archetype archetype) {
@@ -265,9 +286,12 @@ public final class EntityStateMachine {
 
   /**
    * The legal moves out of {@code from} for {@code archetype}: {@link #transitionsFrom(EntityStatus)}
-   * with the archetype's elided states closed over — a move into or out of one goes, a SKIP over one
-   * becomes a FORWARD step, and a BACK into one lands on the walk's state before it. Empty for a
-   * state the archetype does not hold. The order (FORWARD, SKIP, BACK, DROP/REOPEN) is kept.
+   * read over <em>the walk with the archetype's elided states removed</em>. A kept state that has a
+   * FORWARD (or a SKIP landing on the same place) moves FORWARD to the next kept state; a SKIP to a
+   * kept state further on stays a SKIP; one that has a BACK moves BACK to the previous kept state;
+   * DROP and REOPEN are unchanged. So however many elided states sit next to each other, the walk
+   * stays closed over the gap. Empty for a state the archetype does not hold. The order (FORWARD,
+   * SKIP, BACK, DROP/REOPEN) is kept.
    */
   public static List<Transition> transitionsFrom(Archetype archetype, EntityStatus from) {
     Set<EntityStatus> elided = elided(archetype);
@@ -277,23 +301,31 @@ public final class EntityStateMachine {
     if (elided.contains(from)) {
       return List.of();
     }
+    List<EntityStatus> kept = WALK.stream().filter(state -> !elided.contains(state)).toList();
+    int at = kept.indexOf(from);
+    EntityStatus next = at >= 0 && at + 1 < kept.size() ? kept.get(at + 1) : null;
+    EntityStatus previous = at > 0 ? kept.get(at - 1) : null;
     List<Transition> moves = new ArrayList<>();
     for (Transition move : transitionsFrom(from)) {
-      EntityStatus to = move.to();
-      TransitionKind kind = move.kind();
-      if (elided.contains(to)) {
-        if (kind != TransitionKind.BACK) {
-          continue;
-        }
-        to = WALK.get(WALK.indexOf(to) - 1);
-      } else if (kind == TransitionKind.SKIP) {
-        kind = TransitionKind.FORWARD;
-      }
-      Transition collapsed = new Transition(from, to, kind);
-      if (!moves.contains(collapsed)) {
+      Transition collapsed =
+          switch (move.kind()) {
+            case FORWARD -> next == null ? null : new Transition(from, next, TransitionKind.FORWARD);
+            case SKIP ->
+                elided.contains(move.to()) || next == null
+                    ? null
+                    : move.to() == next
+                        ? new Transition(from, next, TransitionKind.FORWARD)
+                        : move;
+            case BACK ->
+                previous == null ? null : new Transition(from, previous, TransitionKind.BACK);
+            case DROP, REOPEN -> elided.contains(move.to()) ? null : move;
+          };
+      if (collapsed != null && !moves.contains(collapsed)) {
         moves.add(collapsed);
       }
     }
+    // FORWARD before SKIP before BACK before DROP/REOPEN, as the declaration orders them.
+    moves.sort((a, b) -> Integer.compare(rank(a.kind()), rank(b.kind())));
     return List.copyOf(moves);
   }
 
@@ -317,7 +349,7 @@ public final class EntityStateMachine {
 
   /**
    * The status the platform moves {@code status} into when the phase {@code status} starts is
-   * started — IMPLEMENTING from REFINED, VERIFYING from IMPLEMENTED — or empty where there is none
+   * started — IMPLEMENTING from READY_FOR_DEV, VERIFYING from IMPLEMENTED — or empty where there is none
    * (an "-ING" status itself, which already says its phase was started, among them).
    */
   public static Optional<EntityStatus> startedStatusOf(EntityStatus status) {
@@ -384,7 +416,8 @@ public final class EntityStateMachine {
 
   /**
    * The status {@code phase} ends in: the first status on the walk past the statuses that start it.
-   * REFINE ends in REFINED, IMPLEMENT in IMPLEMENTED, VERIFY in VERIFIED. Derived from {@link
+   * REFINE ends in REFINED, IMPLEMENT in IMPLEMENTED (it is started by READY_FOR_DEV and
+   * IMPLEMENTING), VERIFY in VERIFIED. Derived from {@link
    * #PHASES} and the walk, so it moves with them.
    */
   public static EntityStatus endOf(Phase phase) {
@@ -401,8 +434,9 @@ public final class EntityStateMachine {
 
   /**
    * The phase one dispatch press runs on {@code archetype} from {@code status} — a PHASE press, and
-   * the first phase of a FLOW press — or empty where a press starts nothing: VERIFIED, DONE,
-   * DROPPED, and every status of an archetype that runs no phases ({@link #runsPhases}).
+   * the first phase of a FLOW press — or empty where a press starts nothing: REFINED (it waits for
+   * a person to schedule it), VERIFIED, DONE, DROPPED, and every status of an archetype that runs
+   * no phases ({@link #runsPhases}).
    */
   public static Optional<PhaseRun> phaseRunFrom(Archetype archetype, EntityStatus status) {
     if (!runsPhases(archetype) || status == null) {
@@ -415,7 +449,8 @@ public final class EntityStateMachine {
   /**
    * The phases a FLOW press runs on {@code archetype} from {@code status}, in order, until the flow
    * stops: each phase ends in its {@link PhaseRun#endsIn}, and the next one runs from there, until a
-   * status starts no phase (VERIFIED, where the release is asked for). Empty where a press starts
+   * status starts no phase (REFINED, where a person schedules it, or VERIFIED, where the release is
+   * asked for). Empty where a press starts
    * nothing. The run also stops early when an agent blocks the entity; that is not in the data.
    */
   public static List<PhaseRun> flowFrom(Archetype archetype, EntityStatus status) {
@@ -543,7 +578,7 @@ public final class EntityStateMachine {
     return switch (move.kind()) {
       case FORWARD -> from >= 0 && to == from + 1;
       case SKIP ->
-          (move.from() == EntityStatus.REFINED || move.from() == EntityStatus.IMPLEMENTED)
+          (move.from() == EntityStatus.READY_FOR_DEV || move.from() == EntityStatus.IMPLEMENTED)
               && to == from + 2;
       case BACK -> from >= 0 && to >= 0 && to == from - 1;
       case DROP -> from >= 0 && move.to() == OFF_WALK;

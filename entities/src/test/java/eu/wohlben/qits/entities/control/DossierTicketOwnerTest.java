@@ -116,6 +116,7 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
     assertEquals(EntityStatus.REPORTED.name(), workEntities.get(Archetype.TICKET, t.id).status);
 
     workEntities.transition(Archetype.TICKET, t.id, EntityStatus.REFINED.name(), "t").entity();
+    workEntities.transition(Archetype.TICKET, t.id, EntityStatus.READY_FOR_DEV.name(), "t").entity();
     workEntities.transition(Archetype.TICKET, t.id, EntityStatus.IMPLEMENTED.name(), "t").entity();
     // IMPLEMENTED: the implement phase correcting what it found wrong is the ordinary case.
     DossierPage rewritten = dossier.update(page.id, null, "five, as it turns out", 0L, "t");

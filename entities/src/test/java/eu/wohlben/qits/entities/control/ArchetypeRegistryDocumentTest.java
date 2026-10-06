@@ -84,23 +84,32 @@ class ArchetypeRegistryDocumentTest {
             EntityProperty.STATUS),
         campaign.permitted());
     assertEquals(
-        List.of("DONE", "DROPPED", "IMPLEMENTED", "REFINED", "REPORTED", "VERIFIED"),
+        List.of(
+            "DONE", "DROPPED", "IMPLEMENTED", "READY_FOR_DEV", "REFINED", "REPORTED", "VERIFIED"),
         campaign.legalStatuses());
-    // Its lifecycle elides IMPLEMENTING and VERIFYING (qits-749): IMPLEMENTED -> REFINED and
-    // VERIFIED -> IMPLEMENTED are its BACK moves, as they were.
+    // Its lifecycle elides IMPLEMENTING and VERIFYING (qits-749) and keeps READY_FOR_DEV (qits-887):
+    // the walk with the elided states removed, so IMPLEMENTED -> READY_FOR_DEV and VERIFIED ->
+    // IMPLEMENTED are its BACK moves.
     assertEquals(
-        List.of("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
+        List.of(
+            "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED"),
         campaign.lifecycle());
     assertEquals(
         List.of(
-            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
+            move("READY_FOR_DEV", EntityStateMachine.TransitionKind.FORWARD),
             move("REPORTED", EntityStateMachine.TransitionKind.BACK),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         campaign.transitions().get("REFINED"));
     assertEquals(
         List.of(
-            move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
             move("REFINED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        campaign.transitions().get("READY_FOR_DEV"));
+    assertEquals(
+        List.of(
+            move("VERIFIED", EntityStateMachine.TransitionKind.FORWARD),
+            move("READY_FOR_DEV", EntityStateMachine.TransitionKind.BACK),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         campaign.transitions().get("IMPLEMENTED"));
     assertEquals(false, campaign.transitions().containsKey("IMPLEMENTING"));
@@ -255,6 +264,7 @@ class ArchetypeRegistryDocumentTest {
             "DROPPED",
             "IMPLEMENTED",
             "IMPLEMENTING",
+            "READY_FOR_DEV",
             "REFINED",
             "REPORTED",
             "VERIFIED",
@@ -306,6 +316,7 @@ class ArchetypeRegistryDocumentTest {
         List.of(
             "REPORTED",
             "REFINED",
+            "READY_FOR_DEV",
             "IMPLEMENTING",
             "IMPLEMENTED",
             "VERIFYING",
@@ -318,15 +329,20 @@ class ArchetypeRegistryDocumentTest {
         moves.get("REPORTED"));
     assertEquals(
         List.of(
-            move("IMPLEMENTING", EntityStateMachine.TransitionKind.FORWARD),
-            move("IMPLEMENTED", EntityStateMachine.TransitionKind.SKIP),
+            move("READY_FOR_DEV", EntityStateMachine.TransitionKind.FORWARD),
             move("REPORTED", EntityStateMachine.TransitionKind.BACK),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("REFINED"));
     assertEquals(
         List.of(
-            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTING", EntityStateMachine.TransitionKind.FORWARD),
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.SKIP),
             move("REFINED", EntityStateMachine.TransitionKind.BACK),
+            move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
+        moves.get("READY_FOR_DEV"));
+    assertEquals(
+        List.of(
+            move("IMPLEMENTED", EntityStateMachine.TransitionKind.FORWARD),
             move("DROPPED", EntityStateMachine.TransitionKind.DROP)),
         moves.get("IMPLEMENTING"));
     assertEquals(
@@ -414,7 +430,7 @@ class ArchetypeRegistryDocumentTest {
     var refine = new ArchetypeRegistryDocument.DispatchPhase("refine", "REPORTED", null, "REFINED");
     var implement =
         new ArchetypeRegistryDocument.DispatchPhase(
-            "implement", "REFINED", "IMPLEMENTING", "IMPLEMENTED");
+            "implement", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED");
     var resume =
         new ArchetypeRegistryDocument.DispatchPhase(
             "implement", "IMPLEMENTING", null, "IMPLEMENTED");
@@ -425,9 +441,12 @@ class ArchetypeRegistryDocumentTest {
         new ArchetypeRegistryDocument.DispatchPhase("verify", "VERIFYING", null, "VERIFIED");
 
     assertEquals(refine, phases.get("REPORTED").next());
-    assertEquals(List.of(refine, implement, verify), phases.get("REPORTED").flow());
-    assertEquals(implement, phases.get("REFINED").next());
-    assertEquals(List.of(implement, verify), phases.get("REFINED").flow());
+    // qits-887: a FLOW from REPORTED stops at REFINED, which waits for a person to schedule it.
+    assertEquals(List.of(refine), phases.get("REPORTED").flow());
+    assertEquals(null, phases.get("REFINED").next());
+    assertEquals(List.of(), phases.get("REFINED").flow());
+    assertEquals(implement, phases.get("READY_FOR_DEV").next());
+    assertEquals(List.of(implement, verify), phases.get("READY_FOR_DEV").flow());
     assertEquals(List.of(resume, verify), phases.get("IMPLEMENTING").flow());
     assertEquals(List.of(verify), phases.get("IMPLEMENTED").flow());
     assertEquals(List.of(reverify), phases.get("VERIFYING").flow());

@@ -30,7 +30,7 @@ import java.util.Set;
  *     outside this set is <b>refused</b> on a write and never silently dropped: a caller that sent
  *     it meant something by it, and dropping it would lose the meaning and the complaint together
  * @param legalStatuses the exact status words legal on this kind, as stored — {@code EntityStatus}'
- *     eight for an epic, a ticket, a feature and a task alike (the last two since qits-763), and
+ *     nine for an epic, a ticket, a feature and a task alike (the last two since qits-763), and
  *     the same less IMPLEMENTING and VERIFYING for a campaign. Empty would mean the kind has no
  *     status, and then {@link EntityProperty#STATUS} would be outside its {@link #permitted} set as
  *     well; the two say the same thing from two directions and {@link Archetypes} checks that they

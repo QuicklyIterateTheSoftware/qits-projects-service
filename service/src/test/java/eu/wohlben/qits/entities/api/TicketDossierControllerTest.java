@@ -150,7 +150,7 @@ public class TicketDossierControllerTest {
     String ticketId = createTicket("Dossier unfrozen");
     String slug = addPage(ticketId, "The root cause", "as reported");
 
-    for (String target : new String[] {"REFINED", "IMPLEMENTED", "VERIFIED", "DONE"}) {
+    for (String target : new String[] {"REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE"}) {
       transition(ticketId, target);
     }
 

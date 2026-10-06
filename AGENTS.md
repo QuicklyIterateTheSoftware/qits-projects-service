@@ -1076,9 +1076,10 @@ wanting two callers is why they are two classes, on top of the failure contracts
 ## Epic lifecycle
 
 **One lifecycle for every archetype that has one (qits-392).** An epic holds one of `EntityStatus`'
-eight words, exactly as a ticket does — `REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING →
-VERIFIED → DONE`, plus `DROPPED` — over one explicit state machine, `entities/control/EntityStateMachine`
-(adjacent moves in either direction below `DONE`, plus the two `SKIP`s REFINED → IMPLEMENTED and
+nine words, exactly as a ticket does — `REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED →
+VERIFYING → VERIFIED → DONE`, plus `DROPPED` — over one explicit state machine, `entities/control/EntityStateMachine`
+(adjacent moves in either direction below `DONE` — except that **IMPLEMENTING has no move back** and
+there is no READY_FOR_DEV → REPORTED (qits-887) — plus the two `SKIP`s READY_FOR_DEV → IMPLEMENTED and
 IMPLEMENTED → VERIFIED, `DROPPED` reachable from every status that is not `DONE` and
 reopening only to `REPORTED`, and **`DONE` final, with no exits at all** — a follow-up to done work
 is a new ticket or epic). The machine declares each transition once with its kind
@@ -1093,11 +1094,18 @@ claim, qits-394), both through `refinementhost/EntityResolutions` and both follo
 `api/PhaseAdvance`. **An epic can now be VERIFIED and DONE**, which is what the campaigns epic waits
 on.
 
+**READY_FOR_DEV is a person's scheduling decision (qits-887, epics V25).** REFINED starts no phase any
+more: it waits until a person schedules the entity (REFINED → READY_FOR_DEV), and implement runs from
+READY_FOR_DEV. Unscheduling is READY_FOR_DEV → REFINED, until the work starts; once IMPLEMENTING the
+way out is DROP. V25 backfilled nothing: a REFINED row stays REFINED until somebody schedules it. A
+campaign keeps READY_FOR_DEV and elides only IMPLEMENTING and VERIFYING — its lifecycle is the walk with
+the elided states removed (`EntityStateMachine.transitionsFrom(Archetype, …)`).
+
 **Moving to `IMPLEMENTED` stamps every feature and task still unimplemented**, in the same
 transaction — declaring the epic implemented is declaring its scope implemented. That is why the
 epic implement prompt makes the move conditional on every task already being marked.
 
-**Features and tasks hold the same lifecycle of their own (qits-763, epics V24).** Same eight words,
+**Features and tasks hold the same lifecycle of their own (qits-763, epics V24).** Same nine words,
 same `EntityStateMachine` graph and skips, same registry entry shape (STATUS permitted and minted
 `REPORTED` by the writer, so `requiredOnTransition` carries it), moved through the generic `POST
 /entities/{id}/status` and the `transition_task` MCP tool under a ticket's roles — and refused 409
@@ -1120,8 +1128,9 @@ or skip a feature and a task explicitly; `blocked` stays off their reads.
 now — below DONE; a DONE epic's scope is frozen for good.** `EntityLifecycle` holds the two guards and all three services obey them — a task's phase is
 the phase of its feature's epic. Structural changes (the epic's title/description, any feature/task
 create, update or delete, `dependsOn` included, and every epic-owned dossier write) need `REPORTED`
-(`requireReported`); the task markers (implemented, and since qits-749 implementing) need `REFINED`
-or `IMPLEMENTING` (`requireBeingImplemented`, which was `requireRefined`). Those two rules reject
+(`requireReported`); the task markers (implemented, and since qits-749 implementing) need
+`READY_FOR_DEV` or `IMPLEMENTING` (`requireBeingImplemented`, which was `requireRefined`; REFINED left
+the pair with qits-887 — an unscheduled epic is not being implemented). Those two rules reject
 every write past `IMPLEMENTING`, and a call carrying both kinds always fails. Moving an epic back
 to `REPORTED` is how its scope is reopened — no new door. Deleting an *epic* stays allowed in every
 status: it removes the row rather than editing a frozen scope, and the audit log outlives it.
@@ -1371,10 +1380,11 @@ and each one is a decision rather than a simplification:
 
   **The lifecycle is five phases (V7, 2026-09-14) and one exit off them** — and since qits-392 it
   is the epic's lifecycle too, one `EntityStatus` over one graph (see "Epic lifecycle"): `REPORTED → REFINED →
-  IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE`. **A status is what has been ACHIEVED —
+  READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE`. **A status is what has been ACHIEVED —
   or a fact the platform recorded — and the phase that runs while it holds is what happens next** —
   REPORTED means somebody said what is wrong (refine runs), REFINED means the ticket says what to do
-  (implement runs), IMPLEMENTING means an implementation was started (implement keeps running),
+  (nothing runs: it waits for a person to schedule it, qits-887), READY_FOR_DEV means a person
+  scheduled it (implement runs), IMPLEMENTING means an implementation was started (implement keeps running),
   IMPLEMENTED means the change is released and deployed (verify runs), VERIFYING means a
   verification was started (verify keeps running), VERIFIED means it no longer occurs on the
   platform (a person closes it), DONE means closed. **IMPLEMENTING and VERIFYING are the two statuses
@@ -1382,10 +1392,11 @@ and each one is a decision rather than a simplification:
   the platform sets them — the dispatch press, the FLOW hand-off that delivers the phase's turn, and
   for IMPLEMENTING an agent's first `mark_task_implementing` — so nobody keeps them current by hand,
   and "an implementation / a verification was started" does not go stale. No status a person must
-  maintain is allowed, still. Both are skippable: REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED
-  are legal `SKIP`s. `docs/unified-entity-model.md` § "IMPLEMENTING, and the rule it rewrote" and § "VERIFYING, the mirror one phase later" are the
+  maintain is allowed, still. Both are skippable: READY_FOR_DEV → IMPLEMENTED and IMPLEMENTED →
+  VERIFIED are legal `SKIP`s. `docs/unified-entity-model.md` § "IMPLEMENTING, and the rule it rewrote" and § "VERIFYING, the mirror one phase later" are the
   whole of it.
-  Moves along that pipeline are **adjacent-only in either direction**, asking for the
+  Moves along that pipeline are **adjacent-only in either direction** (but IMPLEMENTING has no move
+  back, and READY_FOR_DEV none to REPORTED), asking for the
   status a ticket already has stays refused, a move back corrects a claim that turned out wrong and
   is not how a phase reports failure — a failed verification blocks the ticket at IMPLEMENTED
   (qits-592) — and **DONE is the one terminal status**: it has
@@ -1394,10 +1405,11 @@ and each one is a decision rather than a simplification:
 
   **`DROPPED` is the sixth word and it is not a sixth step.** It says a decision was taken not to do
   the work: nothing was implemented, nothing was verified, and nothing is expected to be. It exists
-  because without it abandoned work has nowhere to go and sits at REFINED — which is precisely the
-  word `list_tickets` advertises as ready to be picked up — so the next agent asked to take on the
+  because without it abandoned work has nowhere to go and sits where it was left — READY_FOR_DEV
+  being precisely the word `list_tickets` advertises as ready to be picked up — so the next agent asked to take on the
   outstanding work picks up the one thing that was ruled out. It is reachable from **every status
-  that is not already closed** (REPORTED, REFINED, IMPLEMENTED, VERIFIED) and it reopens to
+  that is not already closed** (REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED,
+  VERIFYING, VERIFIED) and it reopens to
   **REPORTED and nothing else**, because reviving abandoned work means asking again what it is for.
   **DONE is offered no drop**, nor any other move: it is final. The whole rule is declared once, in
   `EntityStateMachine`, and every other javadoc points at it rather than restating it. The one door

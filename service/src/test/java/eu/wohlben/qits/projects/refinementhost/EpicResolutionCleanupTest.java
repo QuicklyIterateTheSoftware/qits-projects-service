@@ -101,6 +101,7 @@ public class EpicResolutionCleanupTest {
 
     // The freeze is not a resolution: the epic goes on being refined through it.
     transition(epicId, "REFINED").then().statusCode(200);
+    transition(epicId, "READY_FOR_DEV").then().statusCode(200);
     given().when().get("/projects/api/refinements/" + id).then().statusCode(200);
     assertFalse(runtime.calls().contains("delete:" + id), "the freeze tears nothing down");
 

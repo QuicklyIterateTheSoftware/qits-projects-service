@@ -17,7 +17,7 @@ package eu.wohlben.qits.entities.entity;
  * #DONE}, which it could not before.
  *
  * <p><b>A status says what has been ACHIEVED, or a fact the platform recorded — never a claim
- * somebody keeps up to date by hand.</b> That is what keeps these eight words from drifting into a
+ * somebody keeps up to date by hand.</b> That is what keeps these nine words from drifting into a
  * task board: there is no {@code IN_PROGRESS} that a person sets and forgets, because "somebody is
  * working on it", kept by hand, is out of date the moment it is written. {@link #IMPLEMENTING} and
  * {@link #VERIFYING} are not that word, and they are the two statuses that name something under way
@@ -26,14 +26,16 @@ package eu.wohlben.qits.entities.entity;
  * agent's first {@code mark_task_implementing} — so nobody keeps them current, and what they record
  * — an implementation, a verification, was started — does not go stale. Each phase leaves its
  * "-ING" status by the same transition it always made, to {@link #IMPLEMENTED} or to {@link
- * #VERIFIED}. Both are skippable: REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED stay legal moves
+ * #VERIFIED}. Both are skippable: READY_FOR_DEV → IMPLEMENTED and IMPLEMENTED → VERIFIED stay legal moves
  * (SKIPs in {@code EntityStateMachine}), so work an agent finished without ever being marked started
  * is not stranded.
  *
  * <p><b>Entering a status starts the phase that belongs to it.</b> The two halves are the same
  * line read from either end: a status is entered by the phase that produced it, and it is held
  * while the next one runs. {@link #REPORTED} means somebody said what is wrong, so the refine phase
- * runs; {@link #REFINED} means the entity says what to do, so implement runs; {@link #IMPLEMENTING}
+ * runs; {@link #REFINED} means the entity says what to do, and it starts <b>nothing</b>: it waits
+ * for a person to schedule it (qits-887); {@link #READY_FOR_DEV} means a person scheduled it, so
+ * implement runs; {@link #IMPLEMENTING}
  * means that implementation was started, so implement keeps running (a dispatch resumes it); {@link
  * #IMPLEMENTED} means the change is released and deployed, so verify runs; {@link #VERIFYING} means
  * that verification was started, so verify keeps running (a dispatch resumes it); {@link #VERIFIED} means
@@ -57,7 +59,7 @@ package eu.wohlben.qits.entities.entity;
  * <p><b>What the words freeze is per archetype, and only an epic freezes anything.</b> An epic's
  * scope (title, description, features, tasks) is editable at {@link #REPORTED} and frozen from
  * {@link #REFINED} on; its task markers (implementing, implemented) move only while it is {@link
- * #REFINED} or {@link #IMPLEMENTING}. Moving the epic back
+ * #READY_FOR_DEV} or {@link #IMPLEMENTING}. Moving the epic back
  * to {@link #REPORTED} is how a frozen scope is reopened. A ticket freezes nothing.
  *
  * <p><b>A feature's and a task's word is the same word, and it starts nothing.</b> It records where
@@ -76,13 +78,25 @@ public enum EntityStatus {
    */
   REPORTED,
 
-  /** The entity says what to do: the description is the refinement's output. Implement runs. */
+  /**
+   * The entity says what to do: the description is the refinement's output. It starts no phase: it
+   * waits for a person to schedule it ({@link #READY_FOR_DEV}). Existing REFINED work was not
+   * scheduled by the change that introduced the word, and stays here until a person does.
+   */
   REFINED,
+
+  /**
+   * A person scheduled it (qits-887): implement runs. Reached from {@link #REFINED} only, and
+   * unscheduled back to it until the work starts; there is no move back to {@link #REPORTED}. The
+   * dispatch press (or a campaign's executor) moves it on to {@link #IMPLEMENTING}.
+   */
+  READY_FOR_DEV,
 
   /**
    * An implementation was started — the platform moved it here at the dispatch press, or an agent
    * marked its first task implementing. The implement phase runs, and leaves it through the move to
-   * {@link #IMPLEMENTED}. Skippable: REFINED → IMPLEMENTED is still a legal move.
+   * {@link #IMPLEMENTED}. Skippable: READY_FOR_DEV → IMPLEMENTED is still a legal move. It has no
+   * move back: the way out of started work is {@link #DROPPED}.
    */
   IMPLEMENTING,
 

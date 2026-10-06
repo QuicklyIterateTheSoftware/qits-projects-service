@@ -471,6 +471,7 @@ class TicketServiceTest extends EntitiesTestSupport {
     // tries. There is no rule here for backward moves; there is one rule, and this pins it.
     WorkEntity backward = bug("Blocked while being implemented");
     workEntities.transition(Archetype.TICKET, backward.id, "REFINED", "alice").entity();
+    workEntities.transition(Archetype.TICKET, backward.id, "READY_FOR_DEV", "alice").entity();
     workEntities.transition(Archetype.TICKET, backward.id, "IMPLEMENTED", "alice").entity();
     workEntities.setBlocked(Archetype.TICKET, backward.id, true, "alice");
     assertFalse(

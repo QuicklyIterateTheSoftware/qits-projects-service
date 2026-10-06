@@ -2164,6 +2164,30 @@ IMPLEMENTING, else the nearest structural ancestor's status as it stood before V
 REFINED (REPORTED and DROPPED kept), else REPORTED — and redefined `ck_entity_status` with `status is
 not null`.
 
+## READY_FOR_DEV, a person's scheduling (V25, qits-887)
+
+**The walk is `REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED → VERIFYING →
+VERIFIED → DONE`, plus `DROPPED`, and it supersedes the walks the sections above state.** REFINED
+starts no phase any more: it waits until a person schedules the entity (REFINED → READY_FOR_DEV), and
+the implement phase runs from READY_FOR_DEV (`PHASES`; `STARTED` is READY_FOR_DEV → IMPLEMENTING). So
+a FLOW press from REPORTED stops at REFINED (`flowFrom` = refine).
+
+- **Rows:** REFINED → READY_FOR_DEV `FORWARD`; READY_FOR_DEV → IMPLEMENTING `FORWARD`, →
+  IMPLEMENTED `SKIP` (the skip that left from REFINED, moved so it cannot bypass the scheduling), →
+  REFINED `BACK` (unscheduling), → DROPPED `DROP`. REFINED → IMPLEMENTING, REFINED → IMPLEMENTED and
+  IMPLEMENTING → REFINED are gone: **IMPLEMENTING has no BACK move**, the way out of started work is
+  DROP. There is no READY_FOR_DEV → REPORTED (it falls out of one-step BACK).
+- **The task markers** move while the epic is READY_FOR_DEV or IMPLEMENTING (`requireBeingImplemented`),
+  and the first `mark_task_implementing` moves a READY_FOR_DEV epic to IMPLEMENTING.
+- **A campaign keeps READY_FOR_DEV** (decision 19) and still elides IMPLEMENTING and VERIFYING. Its
+  lifecycle is now derived as *the walk with the elided states removed* — FORWARD to the next kept
+  state, BACK to the previous kept one, DROP/REOPEN unchanged — rather than by closing one SKIP over
+  one elided state, which would have left two adjacent elided states unbridgeable. A campaign walks
+  REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTED → VERIFIED → DONE, and IMPLEMENTED → READY_FOR_DEV
+  is its BACK move.
+- **V25 backfilled nothing.** `ck_entity_status` gains the ninth word; every existing REFINED row
+  stays REFINED and waits for a person to schedule it.
+
 ## Where the code is
 
 | | |

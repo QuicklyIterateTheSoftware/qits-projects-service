@@ -253,14 +253,16 @@ public class EpicMcpTools {
               + " feature/task tree. Start here: call it with status=\"REPORTED\" to find the"
               + " drafts that are open for editing, and decide between extending one of them and"
               + " proposing a new epic. Only REPORTED epics can be changed at all; the other"
-              + " statuses (REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED, DONE, DROPPED) are"
+              + " statuses (REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED, DONE,"
+              + " DROPPED) are"
               + " read-only here.")
   public List<EpicSummary> listEpics(
       @ToolArg(
               required = false,
               description =
-                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED,"
-                      + " VERIFYING, VERIFIED, DONE or DROPPED. Omit for every epic of the project.")
+                  "exact status to filter by: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
+                      + " IMPLEMENTED, VERIFYING, VERIFIED, DONE or DROPPED. Omit for every epic of"
+                      + " the project.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return entities.listByProject(Archetype.EPIC, scope.requireProjectId(), status).stream()
@@ -396,7 +398,9 @@ public class EpicMcpTools {
           "Move an epic along its lifecycle. A status is a claim about what has been ACHIEVED, so"
               + " only move to one you can honestly make: REPORTED — the work is raised and its plan"
               + " is being written; REFINED — the plan is complete: description, feature/task tree"
-              + " and dossier, and moving here FREEZES that scope; IMPLEMENTING — the implementation"
+              + " and dossier, and moving here FREEZES that scope; READY_FOR_DEV — a PERSON scheduled"
+              + " it (scheduling is a person's decision, so do not make this move yourself);"
+              + " IMPLEMENTING — the implementation"
               + " was started (a dispatch press, or your first mark_task_implementing, moves the"
               + " epic here for you); IMPLEMENTED — every task is"
               + " marked with mark_task_implemented and every touched repository is released AND"
@@ -408,8 +412,10 @@ public class EpicMcpTools {
               + " epic to REFINED refines its REPORTED ones, moving it back to REPORTED returns its"
               + " REFINED ones, and moving it to IMPLEMENTED carries them as above — no other move"
               + " touches them, so verifying the epic verifies no task (use transition_task)."
-              + " ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING <->"
-              + " VERIFIED -> DONE, one step at a time, with TWO SKIPS: REFINED -> IMPLEMENTED and"
+              + " ALONG THE PIPELINE MOVES ARE ADJACENT ONLY, forward or back: REPORTED <-> REFINED"
+              + " <-> READY_FOR_DEV -> IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING <-> VERIFIED ->"
+              + " DONE, one step at a time (IMPLEMENTING has no move back: the way out of started"
+              + " work is DROPPED), with TWO SKIPS: READY_FOR_DEV -> IMPLEMENTED and"
               + " IMPLEMENTED -> VERIFIED directly are allowed, for work finished without ever"
               + " being moved to IMPLEMENTING or VERIFYING. DONE IS FINAL: a DONE epic never moves again, and a follow-up is a NEW"
               + " epic (propose_epic). Reopening a frozen scope is the move back from REFINED to"
@@ -421,10 +427,11 @@ public class EpicMcpTools {
       @ToolArg(description = "id of an epic in this project") String id,
       @ToolArg(
               description =
-                  "the status to move to: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,"
-                      + " VERIFIED,"
+                  "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
+                      + " IMPLEMENTED, VERIFYING, VERIFIED,"
                       + " DONE or DROPPED. On the pipeline it must be a neighbour of the epic's"
-                      + " current status, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED"
+                      + " current status, or IMPLEMENTED from READY_FOR_DEV or VERIFIED from"
+                      + " IMPLEMENTED"
                       + " (the skips); DONE is final and moves nowhere")
           String target) {
     requireEpicInProject(id);
@@ -604,8 +611,8 @@ public class EpicMcpTools {
    * <p>The guard is the lifecycle's own and not a second copy of it: this lands on {@code
    * WorkEntityService.update}'s marker arm alone (an {@code EntityWrite} that touches the marker and
    * no scope), so {@code EntityLifecycle.requireBeingImplemented} is what runs and its message is
-   * what a REPORTED or finished epic answers with. Since qits-749 the epic may be REFINED or
-   * IMPLEMENTING, and {@code mark_task_implementing} before this is optional: without it the
+   * what a REPORTED, REFINED or finished epic answers with. The epic may be READY_FOR_DEV or
+   * IMPLEMENTING (qits-749, qits-887), and {@code mark_task_implementing} before this is optional: without it the
    * task's {@code implementingAt} simply stays null.
    *
    * <p><b>This is an interim and it is written to be easy to remove.</b> Nothing on the platform
@@ -621,8 +628,9 @@ public class EpicMcpTools {
       name = "mark_task_implemented",
       description =
           "Record that a task's work has landed. Accepted only while the owning epic is being"
-              + " implemented — REFINED or IMPLEMENTING; a task of a REPORTED epic has nothing to"
-              + " mark yet, and one of a finished epic is already settled. This is the marker a"
+              + " implemented — READY_FOR_DEV or IMPLEMENTING; a task of a REPORTED epic has nothing to"
+              + " mark yet, one of a REFINED epic waits for a person to schedule it, and one of a"
+              + " finished epic is already settled. This is the marker a"
               + " dispatched implementing agent sets as it goes: mark each task as its work lands,"
               + " rather than all of them at the end. It moves the task's own status to IMPLEMENTED"
               + " (a task already further on, say VERIFIED, stays where it is). Calling"
@@ -650,7 +658,8 @@ public class EpicMcpTools {
    * #markTaskImplemented} records that the work landed; this records that it began. It stamps the
    * task's {@code implementingAt} (and its feature's, the first time) when unset and keeps it when
    * set, so a second call is harmless, and since qits-763 it moves the task — and its feature, the
-   * first time — to IMPLEMENTING; on an epic still REFINED it moves the epic to IMPLEMENTING too, so
+   * first time — to IMPLEMENTING; on an epic still READY_FOR_DEV it moves the epic to IMPLEMENTING
+   * too, so
    * an agent that starts without a dispatch press still shows on the board. All of it is {@code
    * WorkEntityService.markImplementing}'s, guarded by {@code
    * EntityLifecycle.requireBeingImplemented} like the sibling. Skippable: a task may be marked
@@ -661,9 +670,10 @@ public class EpicMcpTools {
       name = "mark_task_implementing",
       description =
           "Record that you started a task's work. Accepted only while the owning epic is being"
-              + " implemented — REFINED or IMPLEMENTING. It stamps the task (and its feature, the"
-              + " first time) as implementing and moves its status to IMPLEMENTING, and an epic"
-              + " still REFINED moves to IMPLEMENTING."
+              + " implemented — READY_FOR_DEV or IMPLEMENTING (a REFINED epic waits for a person to"
+              + " schedule it). It stamps the task (and its feature, the first time) as"
+              + " implementing and moves its status to IMPLEMENTING, and an epic still"
+              + " READY_FOR_DEV moves to IMPLEMENTING."
               + " Idempotent: a task already marked keeps its first time. Call it as you start each"
               + " task, then mark_task_implemented as its work lands.")
   public TaskImplementing markTaskImplementing(
@@ -706,7 +716,8 @@ public class EpicMcpTools {
           "Move a feature or a task of this project along its own lifecycle — the same walk an epic"
               + " and a ticket take. A status is a claim about what that piece has ACHIEVED, so only"
               + " move to one you can honestly make: REPORTED — part of a draft plan; REFINED — the"
-              + " plan it belongs to is complete; IMPLEMENTING — its work was started"
+              + " plan it belongs to is complete; READY_FOR_DEV — its epic was scheduled by a person"
+              + " (it moves with its epic, never on its own); IMPLEMENTING — its work was started"
               + " (mark_task_implementing moves a task here for you); IMPLEMENTED — its work is"
               + " released AND deployed (mark_task_implemented moves a task here for you); VERIFYING"
               + " — you started checking it on the platform; VERIFIED — you confirmed on the platform"
@@ -714,9 +725,10 @@ public class EpicMcpTools {
               + " decision was taken not to do this piece at all. A TASK IS VERIFIED ON ITS OWN:"
               + " verify each one as you confirm it, without waiting for its siblings or its epic —"
               + " moving the epic does not move its tasks past IMPLEMENTED. ALONG THE PIPELINE MOVES"
-              + " ARE ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> IMPLEMENTING <->"
-              + " IMPLEMENTED <-> VERIFYING <-> VERIFIED -> DONE, with TWO SKIPS: REFINED ->"
-              + " IMPLEMENTED and IMPLEMENTED -> VERIFIED. DONE IS FINAL. Refused while the owning"
+              + " ARE ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> READY_FOR_DEV ->"
+              + " IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING <-> VERIFIED -> DONE (IMPLEMENTING has"
+              + " no move back), with TWO SKIPS: READY_FOR_DEV -> IMPLEMENTED and IMPLEMENTED ->"
+              + " VERIFIED. DONE IS FINAL. Refused while the owning"
               + " epic is REPORTED: the plan is still a draft, so edit or remove the piece instead."
               + " Moving a feature to IMPLEMENTED carries its tasks that are not there yet. Moving"
               + " back corrects a claim that turned out wrong; it is not how a phase reports"
@@ -730,9 +742,10 @@ public class EpicMcpTools {
           String id,
       @ToolArg(
               description =
-                  "the status to move to: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,"
-                      + " VERIFIED, DONE or DROPPED. On the pipeline it must be a neighbour of the"
-                      + " current status, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED"
+                  "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
+                      + " IMPLEMENTED, VERIFYING, VERIFIED, DONE or DROPPED. On the pipeline it must"
+                      + " be a neighbour of the current status, or IMPLEMENTED from READY_FOR_DEV or"
+                      + " VERIFIED from IMPLEMENTED"
                       + " (the skips); DROPPED is reachable from any status that is not DONE, and"
                       + " reopens only to REPORTED; DONE is final and moves nowhere")
           String target) {

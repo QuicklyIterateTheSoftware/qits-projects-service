@@ -356,6 +356,32 @@
     "message" : "Ticket not found: no-such-ticket"
   }
 }, {
+  "request" : "POST /projects/api/tickets/<id:2>/transition",
+  "body" : {
+    "target" : "READY_FOR_DEV"
+  },
+  "status" : 200,
+  "response" : {
+    "ticket" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "Login button is inert",
+      "slug" : "login-button-does-nothing",
+      "type" : "IMPROVEMENT",
+      "status" : "READY_FOR_DEV",
+      "blocked" : false,
+      "assignee" : "bob",
+      "createdBy" : "dev",
+      "impetus" : null,
+      "description" : "It just sits there",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    }
+  }
+}, {
   "request" : "POST /projects/api/tickets/<id:2>/blocked",
   "body" : {
     "blocked" : true
@@ -380,7 +406,7 @@
       "title" : "Login button is inert",
       "slug" : "login-button-does-nothing",
       "type" : "IMPROVEMENT",
-      "status" : "REFINED",
+      "status" : "READY_FOR_DEV",
       "blocked" : true,
       "assignee" : "bob",
       "createdBy" : "dev",
@@ -403,7 +429,7 @@
       "title" : "Login button is inert",
       "slug" : "login-button-does-nothing",
       "type" : "IMPROVEMENT",
-      "status" : "REFINED",
+      "status" : "READY_FOR_DEV",
       "blocked" : true,
       "assignee" : "bob",
       "createdBy" : "dev",
@@ -429,7 +455,7 @@
       "title" : "Login button is inert",
       "slug" : "login-button-does-nothing",
       "type" : "IMPROVEMENT",
-      "status" : "REFINED",
+      "status" : "READY_FOR_DEV",
       "blocked" : false,
       "assignee" : "bob",
       "createdBy" : "dev",
@@ -823,7 +849,7 @@
         "slug" : "login-button-does-nothing",
         "slugScope" : "<id:1>",
         "description" : "It just sits there",
-        "status" : "REFINED",
+        "status" : "READY_FOR_DEV",
         "blocked" : false,
         "dispatchContinues" : true,
         "ticketType" : "IMPROVEMENT",
@@ -856,7 +882,7 @@
         "slug" : "login-button-does-nothing",
         "slugScope" : "<id:1>",
         "description" : "It just sits there",
-        "status" : "REFINED",
+        "status" : "READY_FOR_DEV",
         "blocked" : false,
         "dispatchContinues" : true,
         "ticketType" : "IMPROVEMENT",
@@ -889,7 +915,7 @@
         "slug" : "login-button-does-nothing",
         "slugScope" : "<id:1>",
         "description" : "It just sits there",
-        "status" : "REFINED",
+        "status" : "READY_FOR_DEV",
         "blocked" : false,
         "dispatchContinues" : true,
         "ticketType" : "IMPROVEMENT",
@@ -922,8 +948,41 @@
         "slug" : "login-button-does-nothing",
         "slugScope" : "<id:1>",
         "description" : "It just sits there",
-        "status" : "REFINED",
+        "status" : "READY_FOR_DEV",
         "blocked" : true,
+        "dispatchContinues" : true,
+        "ticketType" : "IMPROVEMENT",
+        "impetus" : null,
+        "assignee" : "bob",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "implementingAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button is inert",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REFINED",
+        "blocked" : false,
         "dispatchContinues" : true,
         "ticketType" : "IMPROVEMENT",
         "impetus" : null,
@@ -1143,7 +1202,7 @@
       "status" : {
         "type" : "string",
         "description" : "The lifecycle status.",
-        "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+        "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
       },
       "ticketType" : {
         "type" : "string",

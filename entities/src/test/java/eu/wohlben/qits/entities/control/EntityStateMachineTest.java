@@ -55,8 +55,8 @@ class EntityStateMachineTest {
         assertTrue(reason.startsWith("cannot move from " + from + " to " + to), reason);
       }
     }
-    // 64 ordered pairs, 20 declared moves.
-    assertEquals(64 - 20, refused);
+    // 81 ordered pairs, 22 declared moves.
+    assertEquals(81 - 22, refused);
   }
 
   @Test
@@ -65,13 +65,17 @@ class EntityStateMachineTest {
         List.of(
             new Transition(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
             new Transition(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP),
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
+            new Transition(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
             new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
             new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP),
+            new Transition(
                 EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.REFINED, TransitionKind.BACK),
             new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP),
             new Transition(
                 EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING, TransitionKind.FORWARD),
@@ -95,7 +99,8 @@ class EntityStateMachineTest {
   void theTwoSkipsJumpExactlyTheTwoIngStatuses() {
     assertEquals(
         List.of(
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP)),
         EntityStateMachine.transitions().stream()
             .filter(move -> move.kind() == TransitionKind.SKIP)
@@ -104,45 +109,56 @@ class EntityStateMachineTest {
     assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
     assertFalse(EntityStateMachine.allows(EntityStatus.VERIFYING, EntityStatus.DONE));
     assertFalse(EntityStateMachine.allows(EntityStatus.REPORTED, EntityStatus.IMPLEMENTING));
+    // qits-887: the skip cannot bypass the person's scheduling.
+    assertFalse(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.IMPLEMENTED));
+    assertFalse(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.IMPLEMENTING));
   }
 
   @Test
-  void theSelfCheckAcceptsTheSkipOnlyAsTwoStepsFromRefinedOrImplemented() {
+  void theSelfCheckAcceptsTheSkipOnlyAsTwoStepsFromReadyForDevOrImplemented() {
     assertTrue(
         EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.SKIP)));
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP)));
     assertTrue(
         EntityStateMachine.kindMatches(
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.SKIP)));
-    // Two steps, but not from REFINED or IMPLEMENTED.
+    // Two steps, but not from READY_FOR_DEV or IMPLEMENTED.
+    assertFalse(
+        EntityStateMachine.kindMatches(
+            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.SKIP)));
     assertFalse(
         EntityStateMachine.kindMatches(
             new Transition(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING, TransitionKind.SKIP)));
     assertFalse(
         EntityStateMachine.kindMatches(
             new Transition(EntityStatus.VERIFYING, EntityStatus.DONE, TransitionKind.SKIP)));
-    // From REFINED, but one step or three.
+    // From READY_FOR_DEV, but one step or three.
     assertFalse(
         EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTING, TransitionKind.SKIP)));
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.SKIP)));
     assertFalse(
         EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.REFINED, EntityStatus.VERIFIED, TransitionKind.SKIP)));
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.VERIFYING, TransitionKind.SKIP)));
     // FORWARD was not loosened to make room for it.
     assertFalse(
         EntityStateMachine.kindMatches(
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD)));
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD)));
   }
 
   @Test
-  void implementingIsLeftForwardBackOrDroppedAndEnteredBackFromImplemented() {
+  void implementingIsLeftForwardOrDroppedOnlyAndEnteredBackFromImplemented() {
+    // qits-887 (decision 11): IMPLEMENTING has no BACK move; the way out of started work is DROP.
     assertEquals(
         List.of(
             new Transition(
                 EntityStatus.IMPLEMENTING, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.IMPLEMENTING, EntityStatus.REFINED, TransitionKind.BACK),
             new Transition(EntityStatus.IMPLEMENTING, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(EntityStatus.IMPLEMENTING));
+    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.REFINED));
+    assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTING, EntityStatus.READY_FOR_DEV));
     // IMPLEMENTED -> REFINED was replaced by IMPLEMENTED -> IMPLEMENTING.
     assertFalse(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.REFINED));
     assertTrue(EntityStateMachine.allows(EntityStatus.IMPLEMENTED, EntityStatus.IMPLEMENTING));
@@ -162,30 +178,35 @@ class EntityStateMachineTest {
     // The platform's "phase started" moves, one per "-ING" status.
     assertEquals(
         Optional.of(EntityStatus.IMPLEMENTING),
-        EntityStateMachine.startedStatusOf(EntityStatus.REFINED));
+        EntityStateMachine.startedStatusOf(EntityStatus.READY_FOR_DEV));
     assertEquals(
         Optional.of(EntityStatus.VERIFYING),
         EntityStateMachine.startedStatusOf(EntityStatus.IMPLEMENTED));
     for (EntityStatus none :
         List.of(
             EntityStatus.REPORTED,
+            EntityStatus.REFINED,
             EntityStatus.IMPLEMENTING,
             EntityStatus.VERIFYING,
             EntityStatus.VERIFIED)) {
       assertEquals(Optional.empty(), EntityStateMachine.startedStatusOf(none), none.name());
     }
+    assertTrue(
+        EntityStateMachine.isStartedMove(EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING));
+    assertFalse(EntityStateMachine.isStartedMove(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
     assertTrue(EntityStateMachine.isStartedMove(EntityStatus.IMPLEMENTED, EntityStatus.VERIFYING));
     assertFalse(EntityStateMachine.isStartedMove(EntityStatus.VERIFIED, EntityStatus.VERIFYING));
   }
 
   @Test
   void aCampaignWalksTheMachineWithBothIngStatusesElided() {
-    // qits-749: a campaign never enters IMPLEMENTING or VERIFYING, so its lifecycle is the walk
-    // closed over both — the moves around IMPLEMENTED and VERIFIED are what they were before.
+    // qits-749 elides IMPLEMENTING and VERIFYING; qits-887 (decision 19) keeps READY_FOR_DEV. The
+    // lifecycle is the walk with the elided states removed, and this is its whole table.
     assertEquals(
         List.of(
             EntityStatus.REPORTED,
             EntityStatus.REFINED,
+            EntityStatus.READY_FOR_DEV,
             EntityStatus.IMPLEMENTED,
             EntityStatus.VERIFIED,
             EntityStatus.DONE,
@@ -193,14 +214,27 @@ class EntityStateMachineTest {
         EntityStateMachine.states(Archetype.CAMPAIGN));
     assertEquals(
         List.of(
-            new Transition(EntityStatus.REFINED, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.REPORTED, EntityStatus.REFINED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.REPORTED, EntityStatus.DROPPED, TransitionKind.DROP)),
+        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.REPORTED));
+    assertEquals(
+        List.of(
+            new Transition(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, TransitionKind.FORWARD),
             new Transition(EntityStatus.REFINED, EntityStatus.REPORTED, TransitionKind.BACK),
             new Transition(EntityStatus.REFINED, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.REFINED));
     assertEquals(
         List.of(
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.FORWARD),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP)),
+        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV));
+    assertEquals(
+        List.of(
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.VERIFIED, TransitionKind.FORWARD),
-            new Transition(EntityStatus.IMPLEMENTED, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(
+                EntityStatus.IMPLEMENTED, EntityStatus.READY_FOR_DEV, TransitionKind.BACK),
             new Transition(EntityStatus.IMPLEMENTED, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTED));
     assertEquals(
@@ -209,15 +243,29 @@ class EntityStateMachineTest {
             new Transition(EntityStatus.VERIFIED, EntityStatus.IMPLEMENTED, TransitionKind.BACK),
             new Transition(EntityStatus.VERIFIED, EntityStatus.DROPPED, TransitionKind.DROP)),
         EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.VERIFIED));
+    assertEquals(List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.DONE));
+    assertEquals(
+        List.of(new Transition(EntityStatus.DROPPED, EntityStatus.REPORTED, TransitionKind.REOPEN)),
+        EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.DROPPED));
+    // The elided states hold no moves at all.
+    assertEquals(
+        List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTING));
+    assertEquals(
+        List.of(), EntityStateMachine.transitionsFrom(Archetype.CAMPAIGN, EntityStatus.VERIFYING));
     assertTrue(
-        EntityStateMachine.refusal(Archetype.CAMPAIGN, EntityStatus.IMPLEMENTED, EntityStatus.REFINED)
-            .isEmpty());
+        EntityStateMachine.refusal(Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.IMPLEMENTED)
+            .isPresent());
     assertTrue(
         EntityStateMachine.refusal(
-                Archetype.CAMPAIGN, EntityStatus.REFINED, EntityStatus.IMPLEMENTING)
+                Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING)
+            .isPresent());
+    assertTrue(
+        EntityStateMachine.refusal(
+                Archetype.CAMPAIGN, EntityStatus.READY_FOR_DEV, EntityStatus.REPORTED)
             .isPresent());
     // Every other archetype reads the machine unchanged.
-    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
+    for (Archetype archetype :
+        List.of(Archetype.EPIC, Archetype.TICKET, Archetype.FEATURE, Archetype.TASK)) {
       assertEquals(EntityStateMachine.states(), EntityStateMachine.states(archetype));
       for (EntityStatus state : EntityStatus.values()) {
         assertEquals(
@@ -225,6 +273,55 @@ class EntityStateMachineTest {
             EntityStateMachine.transitionsFrom(archetype, state));
       }
     }
+  }
+
+  // ---- READY_FOR_DEV (qits-887) ----------------------------------------------------------------
+
+  @Test
+  void readyForDevIsScheduledByAPersonAndUnscheduledOnlyToRefined() {
+    assertEquals(
+        List.of(
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTING, TransitionKind.FORWARD),
+            new Transition(
+                EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED, TransitionKind.SKIP),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.REFINED, TransitionKind.BACK),
+            new Transition(EntityStatus.READY_FOR_DEV, EntityStatus.DROPPED, TransitionKind.DROP)),
+        EntityStateMachine.transitionsFrom(EntityStatus.READY_FOR_DEV));
+    assertTrue(EntityStateMachine.allows(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV));
+    // Decision 6: once scheduled it is not sent back to REPORTED.
+    assertFalse(EntityStateMachine.allows(EntityStatus.READY_FOR_DEV, EntityStatus.REPORTED));
+    assertEquals(
+        "cannot move from READY_FOR_DEV to REPORTED",
+        EntityStateMachine.refusal(EntityStatus.READY_FOR_DEV, EntityStatus.REPORTED).orElseThrow());
+  }
+
+  @Test
+  void refinedStartsNoPhaseAndAFlowFromReportedStopsThere() {
+    assertEquals(
+        Optional.empty(), EntityStateMachine.phaseRunFrom(Archetype.EPIC, EntityStatus.REFINED));
+    assertEquals(
+        Optional.empty(), EntityStateMachine.phaseRunFrom(Archetype.TICKET, EntityStatus.REFINED));
+    assertEquals(
+        List.of(Phase.REFINE),
+        EntityStateMachine.flowFrom(Archetype.EPIC, EntityStatus.REPORTED).stream()
+            .map(EntityStateMachine.PhaseRun::phase)
+            .toList());
+    assertEquals(
+        List.of(
+            new EntityStateMachine.PhaseRun(
+                Phase.IMPLEMENT,
+                EntityStatus.READY_FOR_DEV,
+                EntityStatus.IMPLEMENTING,
+                EntityStatus.IMPLEMENTED),
+            new EntityStateMachine.PhaseRun(
+                Phase.VERIFY,
+                EntityStatus.IMPLEMENTED,
+                EntityStatus.VERIFYING,
+                EntityStatus.VERIFIED)),
+        EntityStateMachine.flowFrom(Archetype.EPIC, EntityStatus.READY_FOR_DEV));
+    assertEquals(EntityStatus.REFINED, EntityStateMachine.endOf(Phase.REFINE));
+    assertEquals(EntityStatus.IMPLEMENTED, EntityStateMachine.endOf(Phase.IMPLEMENT));
   }
 
   // ---- DONE is final ---------------------------------------------------------------------------
@@ -300,6 +397,7 @@ class EntityStateMachineTest {
         List.of(
             EntityStatus.REPORTED,
             EntityStatus.REFINED,
+            EntityStatus.READY_FOR_DEV,
             EntityStatus.IMPLEMENTING,
             EntityStatus.IMPLEMENTED,
             EntityStatus.VERIFYING,
@@ -310,6 +408,7 @@ class EntityStateMachineTest {
         List.of(
             EntityStatus.REPORTED,
             EntityStatus.REFINED,
+            EntityStatus.READY_FOR_DEV,
             EntityStatus.IMPLEMENTING,
             EntityStatus.IMPLEMENTED,
             EntityStatus.VERIFYING,
@@ -322,10 +421,11 @@ class EntityStateMachineTest {
   // ---- the derived readings --------------------------------------------------------------------
 
   @Test
-  void theFirstFiveStatesStartAPhaseAndTheRestStartNone() {
+  void fiveStatesStartAPhaseAndRefinedAndTheRestStartNone() {
     assertEquals(Optional.of(Phase.REFINE), EntityStateMachine.phaseStartedBy(EntityStatus.REPORTED));
+    assertEquals(Optional.empty(), EntityStateMachine.phaseStartedBy(EntityStatus.REFINED));
     assertEquals(
-        Optional.of(Phase.IMPLEMENT), EntityStateMachine.phaseStartedBy(EntityStatus.REFINED));
+        Optional.of(Phase.IMPLEMENT), EntityStateMachine.phaseStartedBy(EntityStatus.READY_FOR_DEV));
     assertEquals(
         Optional.of(Phase.IMPLEMENT), EntityStateMachine.phaseStartedBy(EntityStatus.IMPLEMENTING));
     assertEquals(

@@ -497,9 +497,13 @@ class GoldenMasterRecordingTest {
     moves(all, ProviderStates.TICKET_IN_STATUS, "ticketId");
     moves(all, ProviderStates.EPIC_IN_STATUS, "epicId");
     all.add(dispatch(ProviderStates.AN_IMPLEMENTED_TICKET, "ticketId", "PHASE"));
-    all.add(dispatch(ProviderStates.A_REFINED_TICKET, "ticketId", "FLOW"));
+    // qits-887: implement runs from READY_FOR_DEV; a REFINED entity waits for a person to schedule
+    // it, and its press is the 409 that says so.
+    all.add(dispatch(ProviderStates.A_REFINED_TICKET, "ticketId", "FLOW", 409));
+    all.add(dispatch(ProviderStates.A_READY_FOR_DEV_TICKET, "ticketId", "FLOW"));
     all.add(dispatch(ProviderStates.A_REPORTED_EPIC, "epicId", "PHASE"));
-    all.add(dispatch(ProviderStates.A_REFINED_EPIC, "epicId", "FLOW"));
+    all.add(dispatch(ProviderStates.A_REFINED_EPIC, "epicId", "FLOW", 409));
+    all.add(dispatch(ProviderStates.A_READY_FOR_DEV_EPIC, "epicId", "FLOW"));
     all.add(
         new Interaction(
             ProviderStates.AN_IMPLEMENTED_TICKET,
@@ -552,12 +556,16 @@ class GoldenMasterRecordingTest {
   }
 
   private static Interaction dispatch(String state, String idParam, String mode) {
+    return dispatch(state, idParam, mode, 200);
+  }
+
+  private static Interaction dispatch(String state, String idParam, String mode, int status) {
     return new Interaction(
         state,
         "dispatchEntity",
         "POST",
         "/projects/api/entities/{" + idParam + "}/dispatch",
-        200,
+        status,
         null,
         null,
         "{\"mode\":\"" + mode + "\"}");

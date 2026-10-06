@@ -193,7 +193,7 @@
       "title": "Preview the PDF before download",
       "slug": "preview-the-pdf-before-download",
       "slugScope": "00000000-0000-4000-8000-000000000007",
-      "status": "REFINED",
+      "status": "READY_FOR_DEV",
       "statusBefore": null,
       "ticketType": null,
       "impetus": null,

@@ -47,7 +47,7 @@ public class ReadOnlyRepositoryToolFilter implements ToolFilter {
    * message must not be able to make it. The implementing agent that owns it is dispatched through
    * {@code EntityDispatch} and connects without the marker, exactly as the refinement agent does.
    * {@code mark_task_implementing} (qits-749) sits beside it for the same reason: it says work
-   * started, and on a REFINED epic it moves the epic to IMPLEMENTING.
+   * started, and on a READY_FOR_DEV epic it moves the epic to IMPLEMENTING.
    * {@code transition_epic} (qits-394) joins them on the strongest reading of all: it freezes a
    * plan or declares it implemented, and an implemented move stamps every unmarked task. {@code
    * transition_task} (qits-763) is the same statement about one feature or task — that it is

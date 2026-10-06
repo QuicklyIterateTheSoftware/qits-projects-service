@@ -147,7 +147,7 @@ public record EntityWrite(
 
   /**
    * Whether this edit touches a task marker, implemented or implementing — the properties whose
-   * phase is the epic being implemented (REFINED or IMPLEMENTING) rather than REPORTED, see {@code
+   * phase is the epic being implemented (READY_FOR_DEV or IMPLEMENTING) rather than REPORTED, see {@code
    * EntityLifecycle.requireBeingImplemented}.
    */
   boolean touchesMarker() {

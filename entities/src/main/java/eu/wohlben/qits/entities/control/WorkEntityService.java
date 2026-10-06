@@ -63,7 +63,7 @@ import java.util.stream.Collectors;
  *   <li><b>The scope freeze is the owner's phase.</b> A kind whose {@link Kind#freezeOwner} is set
  *       has its scope frozen by that ancestor's status — an epic by its own, a feature by its epic's,
  *       a task by the epic two hops up ({@link EntityLifecycle#requireReported}); the task
- *       markers move only while the epic is REFINED or IMPLEMENTING ({@link
+ *       markers move only while the epic is READY_FOR_DEV or IMPLEMENTING ({@link
  *       EntityLifecycle#requireBeingImplemented}). A ticket names no
  *       owner, so nothing about it freezes. Deleting a <em>root</em> is allowed in every status — it
  *       removes the scope rather than changing it — while deleting a node is a scope change.
@@ -664,7 +664,7 @@ public class WorkEntityService {
 
   /**
    * <b>Marks a task's implementation started</b> (qits-749) — what {@code mark_task_implementing}
-   * does, and since qits-763 a status move: the task goes REFINED → IMPLEMENTING with its marker.
+   * does, and since qits-763 a status move: the task goes to IMPLEMENTING with its marker.
    *
    * <ul>
    *   <li>The task's {@code implementingAt} is stamped now if it is unset, and kept if it is set: the
@@ -675,8 +675,9 @@ public class WorkEntityService {
    *       IMPLEMENTING the same way: a feature reads as implementing once any of its tasks is, and
    *       stamping it here puts {@code implementingOn} and the status on the wire without every
    *       consumer deriving them. A DROPPED feature is left alone rather than refusing its task.
-   *   <li>Legal while the owning epic is REFINED or IMPLEMENTING ({@link
-   *       EntityLifecycle#requireBeingImplemented}); <b>a REFINED epic moves to IMPLEMENTING</b>, so
+   *   <li>Legal while the owning epic is READY_FOR_DEV or IMPLEMENTING ({@link
+   *       EntityLifecycle#requireBeingImplemented}); <b>a READY_FOR_DEV epic moves to
+   *       IMPLEMENTING</b> ({@link EntityStateMachine#startedStatusOf}), so
    *       an agent that starts work without a dispatch press still shows on the board. That move is
    *       an ordinary move ({@link #transitionFrom}), after the stamp, so it is announced like any
    *       other.
@@ -736,9 +737,16 @@ public class WorkEntityService {
     if (!moved.isEmpty()) {
       announce(List.copyOf(moved));
     }
-    if (EntityStatus.REFINED.name().equals(epic[0].status)) {
-      transitionFrom(
-          Archetype.EPIC, epic[0].id, EntityStatus.REFINED, EntityStatus.IMPLEMENTING, changedBy);
+    // The epic's "implementation started" move: READY_FOR_DEV → IMPLEMENTING, read off the machine
+    // rather than spelled here. An epic already IMPLEMENTING has no started move and stays.
+    EntityStatus epicStatus = statusOf(epic[0].status);
+    if (epicStatus != null
+        && EntityStateMachine.phaseStartedBy(epicStatus)
+            .equals(Optional.of(EntityStateMachine.Phase.IMPLEMENT))) {
+      Optional<EntityStatus> started = EntityStateMachine.startedStatusOf(epicStatus);
+      if (started.isPresent()) {
+        transitionFrom(Archetype.EPIC, epic[0].id, epicStatus, started.get(), changedBy);
+      }
     }
     return marked;
   }
@@ -804,7 +812,7 @@ public class WorkEntityService {
    * is still at {@code from} as the write reads it, and nothing happens — no write, no announcement
    * — when it is anywhere else. Empty then. For the platform's own moves into IMPLEMENTING (a
    * dispatch press, a FLOW hand-off, a first {@code mark_task_implementing}), each of which means
-   * "REFINED, and implementation starts now": an agent that got further in the meantime (straight
+   * "READY_FOR_DEV, and implementation starts now": an agent that got further in the meantime (straight
    * to IMPLEMENTED by the skip) must not be moved BACK by a platform that was a moment late.
    */
   public Optional<Transition> transitionFrom(

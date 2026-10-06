@@ -43,7 +43,7 @@ public record ArchetypeViolation(
      * The status word is outside the vocabulary this archetype's lifecycle is written in — a word
      * {@code EntityStatus} does not spell, or one the kind's lifecycle leaves out (IMPLEMENTING or
      * VERIFYING on a campaign). Epics and tickets share the one vocabulary since qits-392, features
-     * and tasks since qits-763; {@code ck_entity_status} spells the same eight words, but cannot say
+     * and tasks since qits-763; {@code ck_entity_status} spells the same nine words, but cannot say
      * that a campaign holds fewer.
      */
     ILLEGAL_STATUS

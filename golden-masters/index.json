@@ -1082,8 +1082,8 @@
       ]
     },
     {
-      "name": "a refined epic",
-      "slug": "a-refined-epic",
+      "name": "a ready for dev epic",
+      "slug": "a-ready-for-dev-epic",
       "params": {
         "epicId": "00000000-0000-4000-8000-000000000001",
         "projectId": "00000000-0000-4000-8000-000000000002"
@@ -1098,7 +1098,7 @@
             "mode": "FLOW"
           },
           "status": 200,
-          "file": "a-refined-epic/dispatchEntity.json",
+          "file": "a-ready-for-dev-epic/dispatchEntity.json",
           "frozen": {
             "ids": [
               "$.dispatch.entityId",
@@ -1115,6 +1115,115 @@
           "path": "/projects/api/entities/{epicId}/status",
           "body": {
             "target": "IMPLEMENTING"
+          },
+          "status": 200,
+          "file": "a-ready-for-dev-epic/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ready for dev ticket",
+      "slug": "a-ready-for-dev-ticket",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "dispatchEntity",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/dispatch",
+          "body": {
+            "mode": "FLOW"
+          },
+          "status": 200,
+          "file": "a-ready-for-dev-ticket/dispatchEntity.json",
+          "frozen": {
+            "ids": [
+              "$.dispatch.entityId",
+              "$.dispatch.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{ticketId}/status",
+          "body": {
+            "target": "IMPLEMENTING"
+          },
+          "status": 200,
+          "file": "a-ready-for-dev-ticket/moveEntityStatus.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a refined epic",
+      "slug": "a-refined-epic",
+      "params": {
+        "epicId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "dispatchEntity",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/dispatch",
+          "body": {
+            "mode": "FLOW"
+          },
+          "status": 409,
+          "file": "a-refined-epic/dispatchEntity.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [
+              "$.message"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "moveEntityStatus",
+          "method": "POST",
+          "path": "/projects/api/entities/{epicId}/status",
+          "body": {
+            "target": "READY_FOR_DEV"
           },
           "status": 200,
           "file": "a-refined-epic/moveEntityStatus.json",
@@ -1152,15 +1261,14 @@
           "body": {
             "mode": "FLOW"
           },
-          "status": 200,
+          "status": 409,
           "file": "a-refined-ticket/dispatchEntity.json",
           "frozen": {
-            "ids": [
-              "$.dispatch.entityId",
-              "$.dispatch.repositoryId"
-            ],
+            "ids": [],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.message"
+            ],
             "listFilteredTo": null
           }
         },
@@ -1169,7 +1277,7 @@
           "method": "POST",
           "path": "/projects/api/entities/{ticketId}/status",
           "body": {
-            "target": "IMPLEMENTING"
+            "target": "READY_FOR_DEV"
           },
           "status": 200,
           "file": "a-refined-ticket/moveEntityStatus.json",

@@ -36,7 +36,7 @@
       "title": "Feature pending verification",
       "slug": "feature-pending-verification",
       "slugScope": "00000000-0000-4000-8000-000000000001",
-      "status": "REFINED",
+      "status": "READY_FOR_DEV",
       "statusBefore": null,
       "ticketType": null,
       "impetus": null,

@@ -139,7 +139,7 @@ class EntityRoutesGoldenTest {
     r.call(
         "PUT",
         "/projects/api/features/" + featureA,
-        map("implementedOn", "2026-01-01T00:00:00Z")); // 409: markers need REFINED
+        map("implementedOn", "2026-01-01T00:00:00Z")); // 409: markers need READY_FOR_DEV
 
     // Tasks under a feature.
     String task1 =
@@ -229,9 +229,13 @@ class EntityRoutesGoldenTest {
     r.call("POST", "/projects/api/epics/" + epicId + "/transition", map("target", "SUPERSEDED"));
     r.call("POST", "/projects/api/epics/" + epicId + "/transition", map("target", "REFINED"));
     r.call(
+        "POST",
+        "/projects/api/epics/" + epicId + "/transition",
+        map("target", "READY_FOR_DEV")); // qits-887: a person schedules it
+    r.call(
         "PUT",
         "/projects/api/tasks/" + task1,
-        map("implementedAt", "2026-01-01T00:00:00Z")); // markers move at REFINED
+        map("implementedAt", "2026-01-01T00:00:00Z")); // markers move at READY_FOR_DEV
     r.call("PUT", "/projects/api/features/" + featureA, map("title", "Frozen")); // 409
     r.call("PUT", "/projects/api/tasks/" + task2, map("title", "Frozen")); // 409
     r.call(
@@ -338,8 +342,10 @@ class EntityRoutesGoldenTest {
         "/projects/api/entities/" + genericFeature + "/status",
         map("target", "REFINED")); // 409: its epic is still REPORTED (qits-763)
     r.call("POST", "/projects/api/entities/" + genericEpic + "/status", map("target", "REFINED"));
-    // The feature's own move, legal since qits-763: the epic's freeze carried it to REFINED, the
-    // skip takes it to IMPLEMENTED, and it carries its task along.
+    r.call(
+        "POST", "/projects/api/entities/" + genericEpic + "/status", map("target", "READY_FOR_DEV"));
+    // The feature's own move, legal since qits-763: the epic's freeze and scheduling carried it to
+    // READY_FOR_DEV (qits-887), the skip takes it to IMPLEMENTED, and it carries its task along.
     r.call(
         "POST",
         "/projects/api/entities/" + genericFeature + "/status",
@@ -407,6 +413,10 @@ class EntityRoutesGoldenTest {
     r.call("POST", "/projects/api/tickets/" + ticketId + "/transition", map("target", "DONE"));
     r.call("POST", "/projects/api/tickets/" + ticketId + "/transition", map("target", "REFINED"));
     r.call("POST", "/projects/api/tickets/no-such-ticket/transition", map("target", "REFINED"));
+    r.call(
+        "POST",
+        "/projects/api/tickets/" + ticketId + "/transition",
+        map("target", "READY_FOR_DEV")); // qits-887: blockable once a phase runs
 
     // Blocking.
     r.call("POST", "/projects/api/tickets/" + ticketId + "/blocked", map("blocked", true)); // 400

@@ -52,6 +52,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
       List.of(
           EntityStatus.REPORTED,
           EntityStatus.REFINED,
+          EntityStatus.READY_FOR_DEV,
           EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED,
           EntityStatus.VERIFYING,
@@ -114,13 +115,27 @@ class TicketLifecycleTest extends EntitiesTestSupport {
 
   @Test
   void aTicketWalksTheWholeLifecycleBackwardFromVerified() {
-    // Below DONE every status moves back one step. DONE itself is final and is asserted on its own.
+    // Below DONE every status moves back one step but IMPLEMENTING (qits-887: started work is left
+    // by DROP). DONE itself is final and is asserted on its own.
     WorkEntity ticket = at(EntityStatus.VERIFIED);
-    for (int step = ORDER.size() - 3; step >= 0; step--) {
+    int implementing = ORDER.indexOf(EntityStatus.IMPLEMENTING);
+    for (int step = ORDER.size() - 3; step >= implementing; step--) {
       assertEquals(
           ORDER.get(step).name(),
           workEntities
               .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), "t")
+              .entity()
+              .status);
+    }
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "READY_FOR_DEV", "t"));
+    WorkEntity scheduled = at(EntityStatus.READY_FOR_DEV);
+    for (int step = implementing - 2; step >= 0; step--) {
+      assertEquals(
+          ORDER.get(step).name(),
+          workEntities
+              .transition(Archetype.TICKET, scheduled.id, ORDER.get(step).name(), "t")
               .entity()
               .status);
     }
@@ -162,10 +177,11 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     for (EntityStatus from : ORDER) {
       for (EntityStatus to : ORDER) {
         if (Math.abs(ORDER.indexOf(from) - ORDER.indexOf(to)) == 1
-            && from != EntityStatus.DONE) {
-          continue;
+            && from != EntityStatus.DONE
+            && !(from == EntityStatus.IMPLEMENTING && to == EntityStatus.READY_FOR_DEV)) {
+          continue; // IMPLEMENTING has no step back (qits-887), so that neighbour is swept too
         }
-        if ((from == EntityStatus.REFINED && to == EntityStatus.IMPLEMENTED)
+        if ((from == EntityStatus.READY_FOR_DEV && to == EntityStatus.IMPLEMENTED)
             || (from == EntityStatus.IMPLEMENTED && to == EntityStatus.VERIFIED)) {
           continue; // the two skips (qits-749), asserted on their own
         }
@@ -179,10 +195,15 @@ class TicketLifecycleTest extends EntitiesTestSupport {
   }
 
   @Test
-  void aRefinedTicketMaySkipImplementingStraightToImplemented() {
+  void aScheduledTicketMaySkipImplementingStraightToImplemented() {
     // qits-749: IMPLEMENTING is skippable, so work finished without ever being marked started is
-    // not stranded at REFINED.
-    WorkEntity ticket = at(EntityStatus.REFINED);
+    // not stranded. qits-887: the skip leaves from READY_FOR_DEV, never from REFINED, so it cannot
+    // bypass the person's scheduling.
+    WorkEntity refined = at(EntityStatus.REFINED);
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TICKET, refined.id, "IMPLEMENTED", "alice"));
+    WorkEntity ticket = at(EntityStatus.READY_FOR_DEV);
     assertEquals(
         EntityStatus.IMPLEMENTED.name(),
         workEntities
@@ -244,6 +265,8 @@ class TicketLifecycleTest extends EntitiesTestSupport {
         List.of(
             EntityStatus.REPORTED,
             EntityStatus.REFINED,
+            EntityStatus.READY_FOR_DEV,
+            EntityStatus.IMPLEMENTING,
             EntityStatus.IMPLEMENTED,
             EntityStatus.VERIFIED)) {
       legal(open, EntityStatus.DROPPED);
@@ -292,6 +315,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     // graph instead of a graph plus a column.
     legal(EntityStatus.DROPPED, EntityStatus.REPORTED);
     refused(EntityStatus.DROPPED, EntityStatus.REFINED);
+    refused(EntityStatus.DROPPED, EntityStatus.READY_FOR_DEV);
     refused(EntityStatus.DROPPED, EntityStatus.IMPLEMENTED);
     refused(EntityStatus.DROPPED, EntityStatus.VERIFIED);
     refused(EntityStatus.DROPPED, EntityStatus.DONE);

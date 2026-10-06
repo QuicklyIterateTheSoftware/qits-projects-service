@@ -113,14 +113,14 @@ public final class EntityWireProperties {
         true,
         dateTime(
             "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is"
-                + " REFINED or IMPLEMENTING."));
+                + " READY_FOR_DEV or IMPLEMENTING."));
     row(
         table,
         EntityProperty.IMPLEMENTING_AT,
         false,
         dateTime(
             "The implementing marker, an ISO-8601 instant: when the implementation was started."
-                + " Moves only while the owning epic is REFINED or IMPLEMENTING; history once"
+                + " Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING; history once"
                 + " implementedAt is set, so it is never cleared."));
     row(
         table,

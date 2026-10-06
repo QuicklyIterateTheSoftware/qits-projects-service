@@ -38,7 +38,7 @@ import java.util.regex.Pattern;
  *   <li><b>create</b> — {@code POST /entities}. The kind's permitted properties, less the
  *       server-owned pair, less what the writer mints or a later move states (the status, starting
  *       REPORTED; a supersede) and less the two task markers, implemented and implementing — which
- *       move only while the owning epic is REFINED or IMPLEMENTING, while a create under it needs
+ *       move only while the owning epic is READY_FOR_DEV or IMPLEMENTING, while a create under it needs
  *       the epic REPORTED, so no create could ever carry one. Plus the placement: {@code project} for a kind that may be a root, {@code parent}
  *       for one that sits below one, described as the id of the kind {@code WorkEntityService} looks
  *       it up as. Required: {@code requiredAtCreate} less the status, plus the placement.
@@ -309,8 +309,8 @@ public final class EntitySchemas {
               + " is REPORTED, and moves through POST /projects/api/entities/{id}/status";
       case IMPLEMENTED_AT, IMPLEMENTING_AT ->
           name
-              + " is not written at create: the marker moves only while the epic is REFINED or"
-              + " IMPLEMENTING, and a create needs it REPORTED";
+              + " is not written at create: the marker moves only while the epic is READY_FOR_DEV"
+              + " or IMPLEMENTING, and a create needs it REPORTED";
       default -> name + " is not written at create";
     };
   }

@@ -46,6 +46,7 @@
         "DROPPED",
         "IMPLEMENTED",
         "IMPLEMENTING",
+        "READY_FOR_DEV",
         "REFINED",
         "REPORTED",
         "VERIFIED",
@@ -64,6 +65,20 @@
         ],
         "REFINED": [
           {
+            "to": "READY_FOR_DEV",
+            "kind": "FORWARD"
+          },
+          {
+            "to": "REPORTED",
+            "kind": "BACK"
+          },
+          {
+            "to": "DROPPED",
+            "kind": "DROP"
+          }
+        ],
+        "READY_FOR_DEV": [
+          {
             "to": "IMPLEMENTING",
             "kind": "FORWARD"
           },
@@ -72,7 +87,7 @@
             "kind": "SKIP"
           },
           {
-            "to": "REPORTED",
+            "to": "REFINED",
             "kind": "BACK"
           },
           {
@@ -84,10 +99,6 @@
           {
             "to": "IMPLEMENTED",
             "kind": "FORWARD"
-          },
-          {
-            "to": "REFINED",
-            "kind": "BACK"
           },
           {
             "to": "DROPPED",
@@ -151,6 +162,7 @@
       "lifecycle": [
         "REPORTED",
         "REFINED",
+        "READY_FOR_DEV",
         "IMPLEMENTING",
         "IMPLEMENTED",
         "VERIFYING",
@@ -172,32 +184,24 @@
               "from": "REPORTED",
               "enters": null,
               "endsIn": "REFINED"
-            },
-            {
-              "phase": "implement",
-              "from": "REFINED",
-              "enters": "IMPLEMENTING",
-              "endsIn": "IMPLEMENTED"
-            },
-            {
-              "phase": "verify",
-              "from": "IMPLEMENTED",
-              "enters": "VERIFYING",
-              "endsIn": "VERIFIED"
             }
           ]
         },
         "REFINED": {
+          "next": null,
+          "flow": []
+        },
+        "READY_FOR_DEV": {
           "next": {
             "phase": "implement",
-            "from": "REFINED",
+            "from": "READY_FOR_DEV",
             "enters": "IMPLEMENTING",
             "endsIn": "IMPLEMENTED"
           },
           "flow": [
             {
               "phase": "implement",
-              "from": "REFINED",
+              "from": "READY_FOR_DEV",
               "enters": "IMPLEMENTING",
               "endsIn": "IMPLEMENTED"
             },
@@ -313,6 +317,7 @@
         "DROPPED",
         "IMPLEMENTED",
         "IMPLEMENTING",
+        "READY_FOR_DEV",
         "REFINED",
         "REPORTED",
         "VERIFIED",
@@ -331,6 +336,20 @@
         ],
         "REFINED": [
           {
+            "to": "READY_FOR_DEV",
+            "kind": "FORWARD"
+          },
+          {
+            "to": "REPORTED",
+            "kind": "BACK"
+          },
+          {
+            "to": "DROPPED",
+            "kind": "DROP"
+          }
+        ],
+        "READY_FOR_DEV": [
+          {
             "to": "IMPLEMENTING",
             "kind": "FORWARD"
           },
@@ -339,7 +358,7 @@
             "kind": "SKIP"
           },
           {
-            "to": "REPORTED",
+            "to": "REFINED",
             "kind": "BACK"
           },
           {
@@ -351,10 +370,6 @@
           {
             "to": "IMPLEMENTED",
             "kind": "FORWARD"
-          },
-          {
-            "to": "REFINED",
-            "kind": "BACK"
           },
           {
             "to": "DROPPED",
@@ -418,6 +433,7 @@
       "lifecycle": [
         "REPORTED",
         "REFINED",
+        "READY_FOR_DEV",
         "IMPLEMENTING",
         "IMPLEMENTED",
         "VERIFYING",
@@ -439,32 +455,24 @@
               "from": "REPORTED",
               "enters": null,
               "endsIn": "REFINED"
-            },
-            {
-              "phase": "implement",
-              "from": "REFINED",
-              "enters": "IMPLEMENTING",
-              "endsIn": "IMPLEMENTED"
-            },
-            {
-              "phase": "verify",
-              "from": "IMPLEMENTED",
-              "enters": "VERIFYING",
-              "endsIn": "VERIFIED"
             }
           ]
         },
         "REFINED": {
+          "next": null,
+          "flow": []
+        },
+        "READY_FOR_DEV": {
           "next": {
             "phase": "implement",
-            "from": "REFINED",
+            "from": "READY_FOR_DEV",
             "enters": "IMPLEMENTING",
             "endsIn": "IMPLEMENTED"
           },
           "flow": [
             {
               "phase": "implement",
-              "from": "REFINED",
+              "from": "READY_FOR_DEV",
               "enters": "IMPLEMENTING",
               "endsIn": "IMPLEMENTED"
             },
@@ -573,6 +581,7 @@
         "DROPPED",
         "IMPLEMENTED",
         "IMPLEMENTING",
+        "READY_FOR_DEV",
         "REFINED",
         "REPORTED",
         "VERIFIED",
@@ -591,6 +600,20 @@
         ],
         "REFINED": [
           {
+            "to": "READY_FOR_DEV",
+            "kind": "FORWARD"
+          },
+          {
+            "to": "REPORTED",
+            "kind": "BACK"
+          },
+          {
+            "to": "DROPPED",
+            "kind": "DROP"
+          }
+        ],
+        "READY_FOR_DEV": [
+          {
             "to": "IMPLEMENTING",
             "kind": "FORWARD"
           },
@@ -599,7 +622,7 @@
             "kind": "SKIP"
           },
           {
-            "to": "REPORTED",
+            "to": "REFINED",
             "kind": "BACK"
           },
           {
@@ -611,10 +634,6 @@
           {
             "to": "IMPLEMENTED",
             "kind": "FORWARD"
-          },
-          {
-            "to": "REFINED",
-            "kind": "BACK"
           },
           {
             "to": "DROPPED",
@@ -678,6 +697,7 @@
       "lifecycle": [
         "REPORTED",
         "REFINED",
+        "READY_FOR_DEV",
         "IMPLEMENTING",
         "IMPLEMENTED",
         "VERIFYING",
@@ -720,6 +740,7 @@
         "DROPPED",
         "IMPLEMENTED",
         "IMPLEMENTING",
+        "READY_FOR_DEV",
         "REFINED",
         "REPORTED",
         "VERIFIED",
@@ -738,6 +759,20 @@
         ],
         "REFINED": [
           {
+            "to": "READY_FOR_DEV",
+            "kind": "FORWARD"
+          },
+          {
+            "to": "REPORTED",
+            "kind": "BACK"
+          },
+          {
+            "to": "DROPPED",
+            "kind": "DROP"
+          }
+        ],
+        "READY_FOR_DEV": [
+          {
             "to": "IMPLEMENTING",
             "kind": "FORWARD"
           },
@@ -746,7 +781,7 @@
             "kind": "SKIP"
           },
           {
-            "to": "REPORTED",
+            "to": "REFINED",
             "kind": "BACK"
           },
           {
@@ -758,10 +793,6 @@
           {
             "to": "IMPLEMENTED",
             "kind": "FORWARD"
-          },
-          {
-            "to": "REFINED",
-            "kind": "BACK"
           },
           {
             "to": "DROPPED",
@@ -825,6 +856,7 @@
       "lifecycle": [
         "REPORTED",
         "REFINED",
+        "READY_FOR_DEV",
         "IMPLEMENTING",
         "IMPLEMENTED",
         "VERIFYING",
@@ -859,6 +891,7 @@
         "DONE",
         "DROPPED",
         "IMPLEMENTED",
+        "READY_FOR_DEV",
         "REFINED",
         "REPORTED",
         "VERIFIED"
@@ -876,11 +909,25 @@
         ],
         "REFINED": [
           {
-            "to": "IMPLEMENTED",
+            "to": "READY_FOR_DEV",
             "kind": "FORWARD"
           },
           {
             "to": "REPORTED",
+            "kind": "BACK"
+          },
+          {
+            "to": "DROPPED",
+            "kind": "DROP"
+          }
+        ],
+        "READY_FOR_DEV": [
+          {
+            "to": "IMPLEMENTED",
+            "kind": "FORWARD"
+          },
+          {
+            "to": "REFINED",
             "kind": "BACK"
           },
           {
@@ -894,7 +941,7 @@
             "kind": "FORWARD"
           },
           {
-            "to": "REFINED",
+            "to": "READY_FOR_DEV",
             "kind": "BACK"
           },
           {
@@ -927,6 +974,7 @@
       "lifecycle": [
         "REPORTED",
         "REFINED",
+        "READY_FOR_DEV",
         "IMPLEMENTED",
         "VERIFIED",
         "DONE",

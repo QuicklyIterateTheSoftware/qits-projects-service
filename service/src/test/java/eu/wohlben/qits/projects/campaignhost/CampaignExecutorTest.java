@@ -111,7 +111,7 @@ class CampaignExecutorTest {
 
   @Test
   void twoConcurrentAttemptsOnOneSatisfiedMembershipDispatchExactlyOnce() throws Exception {
-    Fixture f = campaignOf(refined("Only once"));
+    Fixture f = campaignOf(scheduled("Only once"));
     campaigns.start(f.campaign.id, "dana");
 
     CountingDispatch counting = countingDispatch();
@@ -159,7 +159,7 @@ class CampaignExecutorTest {
 
   @Test
   void aPauseRacingTheClaimDispatchesNothing() throws Exception {
-    Fixture f = campaignOf(refined("Paused under me"));
+    Fixture f = campaignOf(scheduled("Paused under me"));
     campaigns.start(f.campaign.id, "dana");
     CountingDispatch counting = countingDispatch();
 
@@ -181,7 +181,7 @@ class CampaignExecutorTest {
 
   @Test
   void aConditionEditRacingTheClaimDispatchesNothing() throws Exception {
-    Fixture f = campaignOf(refined("Gated under me"));
+    Fixture f = campaignOf(scheduled("Gated under me"));
     campaigns.start(f.campaign.id, "dana");
     CountingDispatch counting = countingDispatch();
     String membershipId = f.membershipIds.get(0);
@@ -219,8 +219,8 @@ class CampaignExecutorTest {
 
   @Test
   void aMemberJoinedInFlightIsNeverDispatchedAndItsSuccessorStartsWhenItIsVerified() {
-    WorkEntity running = walk(ticket("Already running"), "REFINED", "IMPLEMENTED");
-    Fixture f = campaignOf(List.of(running, refined("Waits on it")), List.of(true, false));
+    WorkEntity running = walk(ticket("Already running"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
+    Fixture f = campaignOf(List.of(running, scheduled("Waits on it")), List.of(true, false));
     assertTrue(membership(f, 0).joinedRunning);
 
     press(f.campaign.id);
@@ -238,8 +238,8 @@ class CampaignExecutorTest {
 
   @Test
   void aMemberJoinedInFlightThatWasVerifiedBeforeThePressLetsItsSuccessorStartAtThePress() {
-    WorkEntity running = walk(ticket("Finished early"), "REFINED", "IMPLEMENTED");
-    Fixture f = campaignOf(List.of(running, refined("Next")), List.of(true, false));
+    WorkEntity running = walk(ticket("Finished early"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
+    Fixture f = campaignOf(List.of(running, scheduled("Next")), List.of(true, false));
     walk(running, "VERIFIED");
 
     press(f.campaign.id);
@@ -254,7 +254,7 @@ class CampaignExecutorTest {
   // --- 5. refused visibly, once, then dispatched -----------------------------------------------
 
   @Test
-  void aSatisfiedMemberAtReportedIsRefusedOnceStaysUnclaimedAndIsDispatchedAtRefined() {
+  void aSatisfiedMemberAtReportedIsRefusedOnceStaysUnclaimedAndIsDispatchedOnceScheduled() {
     WorkEntity reported = ticket("Not refined yet");
     Fixture f = campaignOf(reported);
 
@@ -269,6 +269,9 @@ class CampaignExecutorTest {
     assertEquals(refusedAt, membership(f, 0).dispatchRefusedAt, "written once, not every sweep");
 
     walk(reported, "REFINED");
+    // qits-887: REFINED starts no phase, so the member waits for a person to schedule it.
+    assertEquals(0, executor.sweep(f.campaign.id));
+    walk(reported, "READY_FOR_DEV");
     assertEquals(1, executor.sweep(f.campaign.id));
     EntityMembership dispatched = membership(f, 0);
     assertNotNull(dispatched.dispatchedAt);
@@ -283,7 +286,7 @@ class CampaignExecutorTest {
 
   @Test
   void aMemberThatMovesBetweenThePrecheckAndTheClaimIsNotDispatchedAndIsRefused() {
-    WorkEntity member = refined("Moves under me");
+    WorkEntity member = scheduled("Moves under me");
     Fixture f = campaignOf(member);
     campaigns.start(f.campaign.id, "dana");
     CountingDispatch counting = countingDispatch();
@@ -303,8 +306,8 @@ class CampaignExecutorTest {
 
   @Test
   void aRedeliveryOfTheSatisfyingEventAfterTheDispatchChangesNothing() {
-    WorkEntity first = refined("First");
-    Fixture f = campaignOf(List.of(first, refined("Second")), List.of(false, false));
+    WorkEntity first = scheduled("First");
+    Fixture f = campaignOf(List.of(first, scheduled("Second")), List.of(false, false));
     press(f.campaign.id);
     assertEquals(1, port.calls().size(), "the first starts at the press");
 
@@ -329,7 +332,7 @@ class CampaignExecutorTest {
 
   @Test
   void aCampaignMovedToReportedDispatchesNothingUntilPressedAgain() {
-    Fixture f = campaignOf(refined("Gated"));
+    Fixture f = campaignOf(scheduled("Gated"));
     String criterionId = gate(f, 0);
     press(f.campaign.id);
     assertEquals(0, port.calls().size(), "waits for the approval");
@@ -348,7 +351,7 @@ class CampaignExecutorTest {
 
   @Test
   void anApprovalDispatchesWithoutWaitingForTheSweep() {
-    Fixture f = campaignOf(refined("Approve me"));
+    Fixture f = campaignOf(scheduled("Approve me"));
     String criterionId = gate(f, 0);
     press(f.campaign.id);
     assertEquals(0, port.calls().size());
@@ -382,7 +385,7 @@ class CampaignExecutorTest {
    */
   @Test
   void aBlockedCampaignClaimsNoMemberAndItsUnblockDispatches() {
-    Fixture f = campaignOf(refined("Held back"));
+    Fixture f = campaignOf(scheduled("Held back"));
     campaigns.start(f.campaign.id, "dana");
     workEntities.setBlocked(Archetype.CAMPAIGN, f.campaign.id, true, "dana");
 
@@ -408,7 +411,7 @@ class CampaignExecutorTest {
    */
   @Test
   void aBlockLandingBeforeTheClaimClaimsNothing() {
-    Fixture f = campaignOf(refined("Blocked under me"));
+    Fixture f = campaignOf(scheduled("Blocked under me"));
     campaigns.start(f.campaign.id, "dana");
     CountingDispatch counting = countingDispatch();
     counting.onFirstPrecheckPerThread =
@@ -425,7 +428,7 @@ class CampaignExecutorTest {
 
   @Test
   void anExceptionFromThePortKeepsTheClaimAndTheSweepDoesNotRetryIt() {
-    Fixture f = campaignOf(refined("The far side is down"));
+    Fixture f = campaignOf(scheduled("The far side is down"));
     port.willFailWith(new DomainException(502, "qits-workspaces answered 502"));
 
     press(f.campaign.id);
@@ -445,7 +448,7 @@ class CampaignExecutorTest {
 
   @Test
   void aRefusalFromTheDispatchItselfReleasesTheClaim() {
-    Fixture f = campaignOf(refined("Raced after the claim"));
+    Fixture f = campaignOf(scheduled("Raced after the claim"));
     campaigns.start(f.campaign.id, "dana");
     CountingDispatch counting = countingDispatch();
     counting.refuseDispatch = new DispatchRefused(409, "moved on since the claim");
@@ -467,7 +470,7 @@ class CampaignExecutorTest {
 
   @Test
   void thePressRefusesPhaseAndAnUnrefinedCampaignAndAnAgentAndTheReadSaysStartThenRecheck() {
-    Fixture f = campaignOf(refined("Door"), false);
+    Fixture f = campaignOf(scheduled("Door"), false);
     String path = "/projects/api/entities/" + f.campaign.id + "/dispatch";
 
     asAdmin("dana")
@@ -529,7 +532,7 @@ class CampaignExecutorTest {
 
   @Test
   void theInProcessDispatchRefusesACampaign() {
-    Fixture f = campaignOf(refined("Belt"));
+    Fixture f = campaignOf(scheduled("Belt"));
     DispatchRefused refused =
         org.junit.jupiter.api.Assertions.assertThrows(
             DispatchRefused.class,
@@ -598,8 +601,9 @@ class CampaignExecutorTest {
         .entity();
   }
 
-  private WorkEntity refined(String title) {
-    return walk(ticket(title), "REFINED");
+  /** A ticket a person scheduled: READY_FOR_DEV, where its implement phase runs (qits-887). */
+  private WorkEntity scheduled(String title) {
+    return walk(ticket(title), "REFINED", "READY_FOR_DEV");
   }
 
   private WorkEntity walk(WorkEntity row, String... statuses) {

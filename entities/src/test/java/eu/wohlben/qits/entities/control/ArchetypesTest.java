@@ -86,6 +86,7 @@ class ArchetypesTest {
         Set.of(
             "REPORTED",
             "REFINED",
+            "READY_FOR_DEV",
             "IMPLEMENTING",
             "IMPLEMENTED",
             "VERIFYING",
@@ -95,10 +96,11 @@ class ArchetypesTest {
         six);
     assertEquals(six, Archetypes.legalStatuses(Archetype.EPIC));
     assertEquals(six, Archetypes.legalStatuses(Archetype.TICKET));
-    // A feature and a task hold the same eight since qits-763 — one lifecycle, whatever the kind.
+    // A feature and a task hold the same nine since qits-763 and qits-887 — one lifecycle, whatever the kind.
     assertEquals(six, Archetypes.legalStatuses(Archetype.FEATURE));
     assertEquals(six, Archetypes.legalStatuses(Archetype.TASK));
-    // A campaign never enters IMPLEMENTING (qits-749): its words are the rest.
+    // A campaign never enters IMPLEMENTING or VERIFYING (qits-749), and keeps READY_FOR_DEV
+    // (qits-887): its words are the rest.
     var campaign = new java.util.HashSet<>(six);
     campaign.remove("IMPLEMENTING");
     campaign.remove("VERIFYING");

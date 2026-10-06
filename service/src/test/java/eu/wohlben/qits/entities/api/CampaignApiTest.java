@@ -183,9 +183,10 @@ class CampaignApiTest {
         .then()
         .statusCode(409)
         .body("message", containsString("never moves to IMPLEMENTING"));
-    // ... and its BACK moves are still IMPLEMENTED -> REFINED and VERIFIED -> IMPLEMENTED, with
-    // VERIFYING refused the same way (qits-749), through the same door.
-    for (String target : List.of("IMPLEMENTED", "VERIFIED", "IMPLEMENTED", "REFINED")) {
+    // ... it walks READY_FOR_DEV (qits-887), and its BACK moves are IMPLEMENTED -> READY_FOR_DEV and
+    // VERIFIED -> IMPLEMENTED, with VERIFYING refused the same way (qits-749), through the same door.
+    for (String target :
+        List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "IMPLEMENTED", "READY_FOR_DEV", "REFINED")) {
       if (target.equals("VERIFIED")) {
         given()
             .contentType(ContentType.JSON)
@@ -403,9 +404,11 @@ class CampaignApiTest {
     WorkEntity campaign = workEntities.createCampaign(PROJECT, "In flight", null, "t");
     WorkEntity implemented = ticket("Implemented");
     workEntities.transition(Archetype.TICKET, implemented.id, "REFINED", "t");
+    workEntities.transition(Archetype.TICKET, implemented.id, "READY_FOR_DEV", "t");
     workEntities.transition(Archetype.TICKET, implemented.id, "IMPLEMENTED", "t");
     WorkEntity overridden = ticket("Overridden");
     workEntities.transition(Archetype.TICKET, overridden.id, "REFINED", "t");
+    workEntities.transition(Archetype.TICKET, overridden.id, "READY_FOR_DEV", "t");
     workEntities.transition(Archetype.TICKET, overridden.id, "IMPLEMENTED", "t");
 
     CampaignMemberDto joined =

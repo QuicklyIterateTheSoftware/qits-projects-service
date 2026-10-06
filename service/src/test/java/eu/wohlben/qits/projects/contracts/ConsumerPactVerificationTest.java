@@ -247,6 +247,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_REFINED_TICKET);
   }
 
+  @State(ProviderStates.A_READY_FOR_DEV_TICKET)
+  Map<String, String> aReadyForDevTicket() {
+    return states.params(ProviderStates.A_READY_FOR_DEV_TICKET);
+  }
+
   @State(ProviderStates.AN_IMPLEMENTING_TICKET)
   Map<String, String> anImplementingTicket() {
     return states.params(ProviderStates.AN_IMPLEMENTING_TICKET);
@@ -275,6 +280,11 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_REFINED_EPIC)
   Map<String, String> aRefinedEpic() {
     return states.params(ProviderStates.A_REFINED_EPIC);
+  }
+
+  @State(ProviderStates.A_READY_FOR_DEV_EPIC)
+  Map<String, String> aReadyForDevEpic() {
+    return states.params(ProviderStates.A_READY_FOR_DEV_EPIC);
   }
 
   @State(ProviderStates.AN_IMPLEMENTING_EPIC)

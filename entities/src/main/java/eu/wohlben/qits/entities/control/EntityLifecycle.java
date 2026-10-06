@@ -29,7 +29,7 @@ import java.util.Optional;
  *       #requireReported});
  *   <li>the task markers — implemented ({@code implementedOn}/{@code implementedAt}) and, since
  *       qits-749, implementing ({@code implementingOn}/{@code implementingAt}) — need the epic being
- *       implemented: {@link EntityStatus#REFINED} or {@link EntityStatus#IMPLEMENTING} ({@link
+ *       implemented: {@link EntityStatus#READY_FOR_DEV} or {@link EntityStatus#IMPLEMENTING} ({@link
  *       #requireBeingImplemented}). IMPLEMENTING is included because an implementing agent marks
  *       its tasks while its epic is IMPLEMENTING.
  * </ul>
@@ -145,20 +145,27 @@ final class EntityLifecycle {
 
   /**
    * Rejects a task-marker change (implemented or implementing) to an epic that is not being
-   * implemented: the markers move only at {@link EntityStatus#REFINED} or {@link
+   * implemented: the markers move only at {@link EntityStatus#READY_FOR_DEV} or {@link
    * EntityStatus#IMPLEMENTING}, the two statuses the implement phase runs in. (It was {@code
-   * requireRefined} until qits-749 put IMPLEMENTING between REFINED and IMPLEMENTED.)
+   * requireRefined} until qits-749 put IMPLEMENTING between REFINED and IMPLEMENTED, and REFINED
+   * left the pair when qits-887 made scheduling a person's move: a REFINED epic is not being
+   * implemented until somebody schedules it.)
    */
   static void requireBeingImplemented(WorkEntity epic) {
-    if (!EntityStatus.REFINED.name().equals(epic.status)
+    if (!EntityStatus.READY_FOR_DEV.name().equals(epic.status)
         && !EntityStatus.IMPLEMENTING.name().equals(epic.status)) {
+      String hint =
+          EntityStatus.REFINED.name().equals(epic.status)
+              ? " A REFINED epic waits for a person to schedule it (READY_FOR_DEV) first."
+              : "";
       throw new ConflictException(
-          "Task markers move only while an epic is REFINED or IMPLEMENTING (being implemented):"
-              + " epic "
+          "Task markers move only while an epic is READY_FOR_DEV or IMPLEMENTING (being"
+              + " implemented): epic "
               + epic.id
               + " is "
               + epic.status
-              + ".");
+              + "."
+              + hint);
     }
   }
 }

@@ -108,20 +108,18 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     assertEquals("REFINED", status(Archetype.TASK, plan.task()));
     assertEquals("REFINED", status(Archetype.TASK, plan.sibling()));
 
-    // A piece further on is not dragged back by the reopen: only REFINED pieces return.
-    workEntities.markImplementing(plan.task(), "agent");
-    moveEpic(plan, "REFINED"); // IMPLEMENTING -> REFINED, which carries nothing
-    assertEquals("IMPLEMENTING", status(Archetype.TASK, plan.task()));
+    // A piece no longer REFINED is not dragged back by the reopen: only REFINED pieces return.
+    workEntities.transition(Archetype.TASK, plan.task(), "DROPPED", "agent");
     moveEpic(plan, "REPORTED");
 
-    assertEquals("IMPLEMENTING", status(Archetype.TASK, plan.task()), "further on, left alone");
+    assertEquals("DROPPED", status(Archetype.TASK, plan.task()), "not REFINED, left alone");
     assertEquals("REPORTED", status(Archetype.TASK, plan.sibling()));
   }
 
   @Test
   void theEpicsMoveToImplementedCarriesEveryPieceBeforeItAndStampsTheMarkers() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     // One task already further on, verified on its own; the sibling never started.
     workEntities.update(Archetype.TASK, plan.task(), EntityWrite.implementedAt(WHEN), "agent");
     moveEpic(plan, "IMPLEMENTING");
@@ -139,7 +137,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void aDroppedPieceIsNeitherCarriedNorStampedByTheMoveToImplemented() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     workEntities.transition(Archetype.TASK, plan.sibling(), "DROPPED", "t");
 
     moveEpic(plan, "IMPLEMENTED");
@@ -154,7 +152,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void theEpicGoingToVerifyingAndVerifiedLeavesItsTasksWhereTheyAre() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED", "IMPLEMENTED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
 
     moveEpic(plan, "VERIFYING", "VERIFIED", "DONE");
 
@@ -166,7 +164,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void noOtherEpicMoveTouchesAChild() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED", "IMPLEMENTING");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTING");
     assertEquals("REFINED", status(Archetype.TASK, plan.task()), "entering IMPLEMENTING moves none");
     moveEpic(plan, "DROPPED");
     assertEquals("REFINED", status(Archetype.TASK, plan.task()), "dropping the epic moves none");
@@ -179,7 +177,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void aTaskIsVerifiedOnItsOwnWhileItsEpicAndSiblingStayImplemented() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED", "IMPLEMENTED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
     announcer.clear();
 
     workEntities.transition(Archetype.TASK, plan.task(), "VERIFYING", "agent");
@@ -222,13 +220,18 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void aPiecesOwnMoveFollowsTheEpicsGraph() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     ConflictException refused =
         assertThrows(
             ConflictException.class,
             () -> workEntities.transition(Archetype.TASK, plan.task(), "VERIFIED", "agent"));
     assertTrue(refused.getMessage().startsWith("A task"), refused.getMessage());
-    // The skip REFINED -> IMPLEMENTED is the epic's, and so a task's.
+    // No skip from REFINED (qits-887): the skip READY_FOR_DEV -> IMPLEMENTED is the epic's, and so
+    // a task's.
+    assertThrows(
+        ConflictException.class,
+        () -> workEntities.transition(Archetype.TASK, plan.task(), "IMPLEMENTED", "agent"));
+    workEntities.transition(Archetype.TASK, plan.task(), "READY_FOR_DEV", "agent");
     workEntities.transition(Archetype.TASK, plan.task(), "IMPLEMENTED", "agent");
     WorkEntity task = row(Archetype.TASK, plan.task());
     assertEquals("IMPLEMENTED", task.status);
@@ -238,14 +241,16 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void aFeaturesOwnMoveToImplementedCarriesItsTasks() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
+    workEntities.transition(Archetype.FEATURE, plan.feature(), "READY_FOR_DEV", "t");
     announcer.clear();
 
     workEntities.transition(Archetype.FEATURE, plan.feature(), "IMPLEMENTED", "t");
 
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.task()));
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.sibling()));
-    assertEquals("REFINED", status(Archetype.EPIC, plan.epic()), "nothing is derived upwards");
+    assertEquals(
+        "READY_FOR_DEV", status(Archetype.EPIC, plan.epic()), "nothing is derived upwards");
     List<TransitionedEntity> batch = announcer.batches().get(0).entities();
     assertEquals(
         List.of(plan.feature(), plan.task(), plan.sibling()),
@@ -257,7 +262,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void markingATaskImplementingMovesItAndItsFeatureAndTheEpic() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     announcer.clear();
 
     workEntities.markImplementing(plan.task(), "agent");
@@ -280,14 +285,15 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void theImplementedMarkerMovesTheTaskForwardOrBySkipAndNeverBack() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     workEntities.markImplementing(plan.task(), "agent");
 
     workEntities.update(Archetype.TASK, plan.task(), EntityWrite.implementedAt(WHEN), "agent");
     workEntities.update(Archetype.TASK, plan.sibling(), EntityWrite.implementedAt(WHEN), "agent");
 
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.task()), "forward from IMPLEMENTING");
-    assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.sibling()), "the skip from REFINED");
+    assertEquals(
+        "IMPLEMENTED", status(Archetype.TASK, plan.sibling()), "the marker settles it from REFINED");
 
     workEntities.transition(Archetype.TASK, plan.task(), "VERIFIED", "agent");
     workEntities.update(Archetype.TASK, plan.task(), EntityWrite.implementedAt(WHEN), "agent");
@@ -297,7 +303,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void theImplementedMarkerThroughAFeatureEditMovesTheFeatureAndIsAnnounced() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     announcer.clear();
 
     workEntities.update(
@@ -317,7 +323,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void clearingTheImplementedMarkerTakesTheStatusBackToWhereTheOtherMarkerSays() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     workEntities.markImplementing(plan.task(), "agent");
     workEntities.update(Archetype.TASK, plan.task(), EntityWrite.implementedAt(WHEN), "agent");
     workEntities.update(Archetype.TASK, plan.sibling(), EntityWrite.implementedAt(WHEN), "agent");
@@ -333,7 +339,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void aDroppedTaskTakesNoMarker() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     workEntities.transition(Archetype.TASK, plan.task(), "DROPPED", "t");
 
     assertThrows(
@@ -351,7 +357,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void aSupersededPlansCopiedPiecesAreReported() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED", "IMPLEMENTED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
 
     WorkEntity successor =
         workEntities
@@ -370,7 +376,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   @Test
   void aCarriedPieceIsAuditedOnceAndJoinsTheEpicsAnnouncement() {
     Plan plan = plan();
-    moveEpic(plan, "REFINED");
+    moveEpic(plan, "REFINED", "READY_FOR_DEV");
     announcer.clear();
     int before = auditService.listForEpic(plan.epic()).size();
 

@@ -113,7 +113,7 @@ public interface WorkEntityMapper {
    * lifecycle does not spell is an exception at the boundary rather than a status a client has to
    * guess at. There were two of these, one per enum, until qits-392 made the epic and the ticket
    * one vocabulary; a feature and a task joined it at qits-763, and {@code ck_entity_status} spells
-   * the same eight words.
+   * the same nine words.
    *
    * <p>Null in, null out: the column is {@code not null} since epics V24, but a row built in memory
    * and mapped before it is written may still hold none, and {@code valueOf(null)} would be a

@@ -68,9 +68,9 @@ class CampaignServiceTest extends EntitiesTestSupport {
   @Test
   void aPredecessorAlreadyVerifiedOrDoneSeedsNothing() {
     WorkEntity campaign = campaign();
-    WorkEntity verified = walk(ticket("Verified"), "REFINED", "IMPLEMENTED", "VERIFIED");
+    WorkEntity verified = walk(ticket("Verified"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
     WorkEntity afterVerified = ticket("After verified");
-    WorkEntity done = walk(ticket("Done"), "REFINED", "IMPLEMENTED", "VERIFIED", "DONE");
+    WorkEntity done = walk(ticket("Done"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
     WorkEntity afterDone = ticket("After done");
 
     campaigns.addMember(campaign.id, verified.id, null, false, WHO);
@@ -179,7 +179,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
     walk(campaign, "REFINED");
     // Running or not, REFINED is still editable.
     campaigns.addMember(campaign.id, ticket("B").id, null, false, WHO);
-    walk(campaign, "IMPLEMENTED");
+    walk(campaign, "READY_FOR_DEV", "IMPLEMENTED");
 
     conflict(() -> campaigns.addMember(campaign.id, ticket("C").id, null, false, WHO), "IMPLEMENTED");
     conflict(() -> campaigns.moveMember(campaign.id, member.membership().id, 1, WHO), "IMPLEMENTED");
@@ -336,8 +336,8 @@ class CampaignServiceTest extends EntitiesTestSupport {
   @Test
   void theCurrentStateLatchesAtOrPastTheWantedStatusAndNeverFromDropped() {
     WorkEntity campaign = campaign();
-    WorkEntity verified = walk(ticket("Verified"), "REFINED", "IMPLEMENTED", "VERIFIED");
-    WorkEntity done = walk(ticket("Done"), "REFINED", "IMPLEMENTED", "VERIFIED", "DONE");
+    WorkEntity verified = walk(ticket("Verified"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
+    WorkEntity done = walk(ticket("Done"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
     WorkEntity dropped = walk(ticket("Dropped"), "DROPPED");
     WorkEntity refined = walk(ticket("Refined"), "REFINED");
     WorkEntity waiter = ticket("Waiter");
@@ -386,7 +386,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
     WorkEntity a = ticket("A");
     campaigns.addMember(campaign.id, a.id, null, false, WHO);
     CampaignService.Member b = campaigns.addMember(campaign.id, ticket("B").id, null, false, WHO);
-    walk(a, "REFINED", "IMPLEMENTED", "VERIFIED");
+    walk(a, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -400,7 +400,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
   @Test
   void anActiveStartLatchesANewMembersSeedAtOnce() {
     WorkEntity campaign = campaign();
-    WorkEntity a = walk(ticket("A"), "REFINED", "IMPLEMENTED");
+    WorkEntity a = walk(ticket("A"), "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
     campaigns.addMember(campaign.id, a.id, null, false, WHO);
     walk(campaign, "REFINED");
     start(campaign.id);

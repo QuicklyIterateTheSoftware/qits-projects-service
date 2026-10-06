@@ -91,8 +91,14 @@ class EntityArchetypesApiTest {
         .body(at("TICKET") + "gathers", equalTo(false))
         .body(at("FEATURE") + "gathers", equalTo(false))
         .body(at("TASK") + "gathers", equalTo(false))
-        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(6))
-        .body(at("CAMPAIGN") + "transitions.IMPLEMENTED.to", contains("VERIFIED", "REFINED", "DROPPED"))
+        .body(at("CAMPAIGN") + "legalStatuses.size()", equalTo(7))
+        .body(at("CAMPAIGN") + "transitions.REFINED.to", contains("READY_FOR_DEV", "REPORTED", "DROPPED"))
+        .body(
+            at("CAMPAIGN") + "transitions.READY_FOR_DEV.to",
+            contains("IMPLEMENTED", "REFINED", "DROPPED"))
+        .body(
+            at("CAMPAIGN") + "transitions.IMPLEMENTED.to",
+            contains("VERIFIED", "READY_FOR_DEV", "DROPPED"))
         .body(at("CAMPAIGN") + "transitions.VERIFIED.to", contains("DONE", "IMPLEMENTED", "DROPPED"))
         .body(at("CAMPAIGN") + "permitted", contains("TITLE", "SLUG", "DESCRIPTION", "STATUS"));
   }
@@ -131,6 +137,7 @@ class EntityArchetypesApiTest {
                 "DROPPED",
                 "IMPLEMENTED",
                 "IMPLEMENTING",
+                "READY_FOR_DEV",
                 "REFINED",
                 "REPORTED",
                 "VERIFIED",
@@ -140,6 +147,7 @@ class EntityArchetypesApiTest {
                 "DROPPED",
                 "IMPLEMENTED",
                 "IMPLEMENTING",
+                "READY_FOR_DEV",
                 "REFINED",
                 "REPORTED",
                 "VERIFIED",
@@ -160,6 +168,7 @@ class EntityArchetypesApiTest {
                 "DROPPED",
                 "IMPLEMENTED",
                 "IMPLEMENTING",
+                "READY_FOR_DEV",
                 "REFINED",
                 "REPORTED",
                 "VERIFIED",
@@ -195,14 +204,16 @@ class EntityArchetypesApiTest {
         "REPORTED", List.of(move("REFINED", "FORWARD"), move("DROPPED", "DROP")));
     expected.put(
         "REFINED",
+        List.of(move("READY_FOR_DEV", "FORWARD"), move("REPORTED", "BACK"), move("DROPPED", "DROP")));
+    expected.put(
+        "READY_FOR_DEV",
         List.of(
             move("IMPLEMENTING", "FORWARD"),
             move("IMPLEMENTED", "SKIP"),
-            move("REPORTED", "BACK"),
+            move("REFINED", "BACK"),
             move("DROPPED", "DROP")));
     expected.put(
-        "IMPLEMENTING",
-        List.of(move("IMPLEMENTED", "FORWARD"), move("REFINED", "BACK"), move("DROPPED", "DROP")));
+        "IMPLEMENTING", List.of(move("IMPLEMENTED", "FORWARD"), move("DROPPED", "DROP")));
     expected.put(
         "IMPLEMENTED",
         List.of(
@@ -230,6 +241,7 @@ class EntityArchetypesApiTest {
             contains(
                 "REPORTED",
                 "REFINED",
+                "READY_FOR_DEV",
                 "IMPLEMENTING",
                 "IMPLEMENTED",
                 "VERIFYING",
@@ -241,6 +253,7 @@ class EntityArchetypesApiTest {
             contains(
                 "REPORTED",
                 "REFINED",
+                "READY_FOR_DEV",
                 "IMPLEMENTING",
                 "IMPLEMENTED",
                 "VERIFYING",
@@ -256,6 +269,7 @@ class EntityArchetypesApiTest {
                 "DROPPED",
                 "IMPLEMENTED",
                 "IMPLEMENTING",
+                "READY_FOR_DEV",
                 "REFINED",
                 "REPORTED",
                 "VERIFIED",

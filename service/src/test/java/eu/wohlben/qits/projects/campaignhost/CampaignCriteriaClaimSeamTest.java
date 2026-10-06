@@ -117,8 +117,8 @@ class CampaignCriteriaClaimSeamTest {
 
   @Test
   void aFrameOfferedThroughTheRealClaimLatchesTheCriterionAndCommitsTheClaim() {
-    WorkEntity first = refined("First");
-    WorkEntity second = refined("Second");
+    WorkEntity first = scheduled("First");
+    WorkEntity second = scheduled("Second");
     WorkEntity campaign = campaignOf(first, second);
     campaigns.start(campaign.id, "dana");
     walk(first, "IMPLEMENTED", "VERIFIED");
@@ -159,7 +159,7 @@ class CampaignCriteriaClaimSeamTest {
 
   @Test
   void aFailingFrameIsReportedStalledUntilALaterFrameGetsThrough() {
-    WorkEntity only = refined("Only");
+    WorkEntity only = scheduled("Only");
     WorkEntity campaign = campaignOf(only);
     FlakyEvaluator flaky = new FlakyEvaluator();
     QuarkusMock.installMockForType(flaky, CampaignEvaluator.class);
@@ -237,7 +237,8 @@ class CampaignCriteriaClaimSeamTest {
         .get(0);
   }
 
-  private WorkEntity refined(String title) {
+  /** A ticket a person scheduled: READY_FOR_DEV, where its implement phase runs (qits-887). */
+  private WorkEntity scheduled(String title) {
     WorkEntity ticket =
         workEntities
             .create(
@@ -246,7 +247,7 @@ class CampaignCriteriaClaimSeamTest {
                 EntityWrite.ticket(title, "it occurs", null, "BUG", null),
                 "setup")
             .entity();
-    return walk(ticket, "REFINED");
+    return walk(ticket, "REFINED", "READY_FOR_DEV");
   }
 
   private WorkEntity walk(WorkEntity row, String... statuses) {

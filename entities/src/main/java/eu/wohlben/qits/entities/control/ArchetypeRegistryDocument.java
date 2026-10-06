@@ -144,7 +144,7 @@ public record ArchetypeRegistryDocument(
    *     the dispatch door answers in {@code phase} and {@code GET /entities/{id}/dispatch} in {@code
    *     nextPhase}
    * @param from the status the phase runs from
-   * @param enters the status the platform moves the entity into when the phase starts (REFINED →
+   * @param enters the status the platform moves the entity into when the phase starts (READY_FOR_DEV →
    *     IMPLEMENTING, IMPLEMENTED → VERIFYING), or null where it moves nothing
    * @param endsIn the status the phase's agent moves the entity to when the phase is done
    */

@@ -94,6 +94,7 @@ class EntityStatusApiTest {
     String task = EntityFixtures.task(feature, repository);
     String sibling = EntityFixtures.task(feature, repository);
     move(epic, "REFINED").statusCode(200);
+    move(epic, "READY_FOR_DEV").statusCode(200);
     move(epic, "IMPLEMENTED").statusCode(200);
 
     move(EntityFixtures.qualifiedId(task), "VERIFYING")

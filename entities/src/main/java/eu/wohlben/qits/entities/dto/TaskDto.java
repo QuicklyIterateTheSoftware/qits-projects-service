@@ -10,7 +10,7 @@ import java.time.Instant;
  * @param qualifiedId {@code <project-slug>-<number>} — {@code qits-1337}. Null until the project
  *     slug is resolved, which happens in {@code projects/api/QualifiedEntityIds} and nowhere else;
  *     see {@link EpicDto#qualifiedId}.
- * @param status where this task stands — one of the entity lifecycle's eight words, as an epic's
+ * @param status where this task stands — one of the entity lifecycle's nine words, as an epic's
  *     and a ticket's (qits-763). Its own, not its epic's: a task is verified on its own, and an
  *     epic's move carries it only REPORTED → REFINED, back, and to IMPLEMENTED. The markers below
  *     say when it got where this says it is

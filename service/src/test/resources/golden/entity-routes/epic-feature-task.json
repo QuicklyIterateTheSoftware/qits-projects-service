@@ -334,7 +334,7 @@
   },
   "status" : 409,
   "response" : {
-    "message" : "Task markers move only while an epic is REFINED or IMPLEMENTING (being implemented): epic <id:2> is REPORTED."
+    "message" : "Task markers move only while an epic is READY_FOR_DEV or IMPLEMENTING (being implemented): epic <id:2> is REPORTED."
   }
 }, {
   "request" : "POST /projects/api/features/<id:3>/tasks",
@@ -818,6 +818,30 @@
     "successor" : null
   }
 }, {
+  "request" : "POST /projects/api/epics/<id:2>/transition",
+  "body" : {
+    "target" : "READY_FOR_DEV"
+  },
+  "status" : 200,
+  "response" : {
+    "epic" : {
+      "id" : "<id:2>",
+      "projectId" : "<id:1>",
+      "number" : 1,
+      "qualifiedId" : "<project>-1",
+      "title" : "The plan, restated",
+      "slug" : "the-plan",
+      "status" : "READY_FOR_DEV",
+      "blocked" : false,
+      "supersededByEpicId" : null,
+      "description" : "The spine, restated",
+      "createdAt" : "<instant>",
+      "updatedAt" : "<instant>",
+      "workspaces" : [ ]
+    },
+    "successor" : null
+  }
+}, {
   "request" : "PUT /projects/api/tasks/<id:6>",
   "body" : {
     "implementedAt" : "<instant>"
@@ -849,7 +873,7 @@
   },
   "status" : 409,
   "response" : {
-    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+    "message" : "The scope of epic <id:2> is frozen: it is READY_FOR_DEV, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
   }
 }, {
   "request" : "PUT /projects/api/tasks/<id:7>",
@@ -858,7 +882,7 @@
   },
   "status" : 409,
   "response" : {
-    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+    "message" : "The scope of epic <id:2> is frozen: it is READY_FOR_DEV, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
   }
 }, {
   "request" : "POST /projects/api/features/<id:3>/tasks",
@@ -868,19 +892,19 @@
   },
   "status" : 409,
   "response" : {
-    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+    "message" : "The scope of epic <id:2> is frozen: it is READY_FOR_DEV, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
   }
 }, {
   "request" : "DELETE /projects/api/tasks/<id:7>",
   "status" : 409,
   "response" : {
-    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+    "message" : "The scope of epic <id:2> is frozen: it is READY_FOR_DEV, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
   }
 }, {
   "request" : "DELETE /projects/api/features/<id:4>",
   "status" : 409,
   "response" : {
-    "message" : "The scope of epic <id:2> is frozen: it is REFINED, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
+    "message" : "The scope of epic <id:2> is frozen: it is READY_FOR_DEV, and scope is editable only at REPORTED. Move the epic back to REPORTED to reopen its scope."
   }
 }, {
   "request" : "POST /projects/api/epics/<id:2>/transition",
@@ -1555,6 +1579,39 @@
         "slug" : "the-plan",
         "slugScope" : "<id:1>",
         "description" : "The spine, restated",
+        "status" : "READY_FOR_DEV",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "implementingAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 1,
+        "title" : "The plan, restated",
+        "slug" : "the-plan",
+        "slugScope" : "<id:1>",
+        "description" : "The spine, restated",
         "status" : "REFINED",
         "blocked" : false,
         "dispatchContinues" : true,
@@ -1687,6 +1744,39 @@
         "slug" : "part-a",
         "slugScope" : "<id:2>",
         "description" : "First part",
+        "status" : "READY_FOR_DEV",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "implementingAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:3>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:3>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 2,
+        "title" : "Part A",
+        "slug" : "part-a",
+        "slugScope" : "<id:2>",
+        "description" : "First part",
         "status" : "REFINED",
         "blocked" : false,
         "dispatchContinues" : true,
@@ -1786,6 +1876,39 @@
         "slug" : "part-b",
         "slugScope" : "<id:2>",
         "description" : "Now described",
+        "status" : "READY_FOR_DEV",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "implementingAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "FEATURE",
+      "entityId" : "<id:4>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:4>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "FEATURE",
+        "number" : 3,
+        "title" : "Part B, renamed",
+        "slug" : "part-b",
+        "slugScope" : "<id:2>",
+        "description" : "Now described",
         "status" : "REFINED",
         "blocked" : false,
         "dispatchContinues" : true,
@@ -1951,6 +2074,39 @@
         "slug" : "task-one",
         "slugScope" : "<id:3>",
         "description" : "Do the thing",
+        "status" : "READY_FOR_DEV",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
+        "implementingAt" : null,
+        "dependsOnEntityId" : null,
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:6>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:6>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 4,
+        "title" : "Task one",
+        "slug" : "task-one",
+        "slugScope" : "<id:3>",
+        "description" : "Do the thing",
         "status" : "REFINED",
         "blocked" : false,
         "dispatchContinues" : true,
@@ -2027,6 +2183,39 @@
         "supersededByEntityId" : null,
         "repositoryId" : "<id:5>",
         "implementedAt" : "<instant>",
+        "implementingAt" : null,
+        "dependsOnEntityId" : "<id:6>",
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TASK",
+      "entityId" : "<id:7>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:7>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TASK",
+        "number" : 5,
+        "title" : "Task two, renamed",
+        "slug" : "task-two",
+        "slugScope" : "<id:3>",
+        "description" : null,
+        "status" : "READY_FOR_DEV",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : "<id:5>",
+        "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:6>",
         "createdAt" : "<instant>",
@@ -2551,12 +2740,12 @@
       },
       "implementedAt" : {
         "type" : [ "string", "null" ],
-        "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED or IMPLEMENTING.",
+        "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.",
         "format" : "date-time"
       },
       "implementingAt" : {
         "type" : "string",
-        "description" : "The implementing marker, an ISO-8601 instant: when the implementation was started. Moves only while the owning epic is REFINED or IMPLEMENTING; history once implementedAt is set, so it is never cleared.",
+        "description" : "The implementing marker, an ISO-8601 instant: when the implementation was started. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING; history once implementedAt is set, so it is never cleared.",
         "format" : "date-time"
       },
       "dependsOn" : {
@@ -2589,7 +2778,7 @@
       "status" : {
         "type" : "string",
         "description" : "The lifecycle status.",
-        "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+        "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
       },
       "repositoryId" : {
         "type" : "string",
@@ -2598,7 +2787,7 @@
       },
       "implementedAt" : {
         "type" : "string",
-        "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED or IMPLEMENTING.",
+        "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.",
         "format" : "date-time"
       },
       "dependsOn" : {
@@ -2959,6 +3148,40 @@
     "blocked" : false
   }
 }, {
+  "request" : "POST /projects/api/entities/<id:18>/status",
+  "body" : {
+    "target" : "READY_FOR_DEV"
+  },
+  "status" : 200,
+  "response" : {
+    "id" : "<id:18>",
+    "archetype" : "EPIC",
+    "projectId" : "<id:1>",
+    "number" : 11,
+    "qualifiedId" : "<project>-11",
+    "title" : "The generic plan",
+    "slug" : "the-generic-plan",
+    "slugScope" : "<id:1>",
+    "description" : null,
+    "status" : "READY_FOR_DEV",
+    "statusBefore" : "REFINED",
+    "ticketType" : null,
+    "impetus" : null,
+    "assignee" : null,
+    "createdBy" : null,
+    "supersededBy" : null,
+    "repositoryId" : null,
+    "implementedAt" : null,
+    "implementingAt" : null,
+    "dependsOn" : null,
+    "parent" : null,
+    "position" : null,
+    "createdAt" : "<instant>",
+    "updatedAt" : "<instant>",
+    "changedBy" : "dev",
+    "blocked" : false
+  }
+}, {
   "request" : "POST /projects/api/entities/<id:19>/status",
   "body" : {
     "target" : "IMPLEMENTED"
@@ -2975,7 +3198,7 @@
     "slugScope" : "<id:18>",
     "description" : null,
     "status" : "IMPLEMENTED",
-    "statusBefore" : "REFINED",
+    "statusBefore" : "READY_FOR_DEV",
     "ticketType" : null,
     "impetus" : null,
     "assignee" : null,
@@ -3079,6 +3302,6 @@
   },
   "status" : 409,
   "response" : {
-    "message" : "An epic cannot move from REFINED to DONE"
+    "message" : "An epic cannot move from READY_FOR_DEV to DONE"
   }
 } ]

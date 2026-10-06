@@ -191,6 +191,14 @@ class TicketApiTest {
         .body("ticket.status", equalTo("REFINED"));
     given()
         .contentType(ContentType.JSON)
+        .body(new TicketController.TransitionTicketRequest("READY_FOR_DEV"))
+        .when()
+        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .then()
+        .statusCode(200)
+        .body("ticket.status", equalTo("READY_FOR_DEV"));
+    given()
+        .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("IMPLEMENTED"))
         .when()
         .post("/projects/api/tickets/" + ticketId + "/transition")
@@ -450,10 +458,10 @@ class TicketApiTest {
   void aDoneTicketRefusesEveryTarget() {
     String projectId = createProject();
     String ticketId = createTicket(projectId, "Closed for good", "BUG");
-    walkTo(ticketId, "REFINED", "IMPLEMENTED", "VERIFIED", "DONE");
+    walkTo(ticketId, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
 
     for (String target :
-        List.of("REPORTED", "REFINED", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED")) {
+        List.of("REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED")) {
       given()
           .contentType(ContentType.JSON)
           .body(new TicketController.TransitionTicketRequest(target))
@@ -636,10 +644,10 @@ class TicketApiTest {
 
   @Test
   @TestSecurity(user = "dev", roles = "qits:admin")
-  void blockingARefinedTicketIsAnsweredBlockedAndReadsBackBlocked() {
+  void blockingAScheduledTicketIsAnsweredBlockedAndReadsBackBlocked() {
     String projectId = createProject();
     String ticketId = createTicket(projectId, "Stuck on a sibling", "BUG");
-    walkTo(ticketId, "REFINED");
+    walkTo(ticketId, "REFINED", "READY_FOR_DEV");
 
     // Two claims in one walk, because they are two different ways to be wrong. The door answers
     // the row it just wrote, so a caller never has to re-read to learn what it did; and the flag
@@ -649,14 +657,14 @@ class TicketApiTest {
         .statusCode(Response.Status.OK.getStatusCode())
         .body("ticket.blocked", equalTo(true))
         // A block is not a status: the status still names the phase to resume.
-        .body("ticket.status", equalTo("REFINED"));
+        .body("ticket.status", equalTo("READY_FOR_DEV"));
     given()
         .when()
         .get("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(200)
         .body("ticket.blocked", equalTo(true))
-        .body("ticket.status", equalTo("REFINED"));
+        .body("ticket.status", equalTo("READY_FOR_DEV"));
 
     setBlocked(ticketId, false, "it released this morning")
         .statusCode(Response.Status.OK.getStatusCode())
@@ -680,13 +688,16 @@ class TicketApiTest {
     // touching either. A block there would name a phase that is not running and that nothing will
     // ever resume, so the ticket would read as waiting on something for good.
     String verified = createTicket(projectId, "Verified already", "BUG");
-    walkTo(verified, "REFINED", "IMPLEMENTED", "VERIFIED");
+    walkTo(verified, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
     String done = createTicket(projectId, "Closed", "BUG");
-    walkTo(done, "REFINED", "IMPLEMENTED", "VERIFIED", "DONE");
+    walkTo(done, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE");
     String dropped = createTicket(projectId, "Decided against", "IMPROVEMENT");
     walkTo(dropped, "DROPPED");
+    // qits-887: REFINED starts no phase either — it waits for a person to schedule it.
+    String refined = createTicket(projectId, "Not scheduled yet", "IMPROVEMENT");
+    walkTo(refined, "REFINED");
 
-    for (String ticketId : List.of(verified, done, dropped)) {
+    for (String ticketId : List.of(verified, done, dropped, refined)) {
       // The message names what is missing rather than the status alone: a 409 on a ticket that
       // plainly exists otherwise leaves the caller guessing whether the block was refused or the
       // ticket was.
@@ -732,7 +743,7 @@ class TicketApiTest {
   void theBlockerAndTheUnblockAreBothSaidOnTheThread() {
     String projectId = createProject();
     String ticketId = createTicket(projectId, "Waiting on the registry", "BUG");
-    walkTo(ticketId, "REFINED");
+    walkTo(ticketId, "REFINED", "READY_FOR_DEV");
 
     setBlocked(ticketId, true, "the npm registry refuses the scope, only an operator can add it")
         .statusCode(Response.Status.OK.getStatusCode());
@@ -765,7 +776,7 @@ class TicketApiTest {
   void aTransitionClearsTheBlockTheDoorSet() {
     String projectId = createProject();
     String ticketId = createTicket(projectId, "Blocked then moved on", "BUG");
-    walkTo(ticketId, "REFINED");
+    walkTo(ticketId, "REFINED", "READY_FOR_DEV");
     setBlocked(ticketId, true, "the change it depends on is not released")
         .statusCode(Response.Status.OK.getStatusCode());
 
@@ -795,7 +806,7 @@ class TicketApiTest {
   void unblockingIsAllowedAtAStatusThatCouldNotHaveBeenBlocked() {
     String projectId = createProject();
     String ticketId = createTicket(projectId, "Blocked on the way to verified", "BUG");
-    walkTo(ticketId, "REFINED", "IMPLEMENTED");
+    walkTo(ticketId, "REFINED", "READY_FOR_DEV", "IMPLEMENTED");
     setBlocked(ticketId, true, "the deployment has not gone out")
         .statusCode(Response.Status.OK.getStatusCode());
     walkTo(ticketId, "VERIFIED");

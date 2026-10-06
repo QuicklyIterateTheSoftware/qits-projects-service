@@ -207,14 +207,14 @@ public class CampaignMcpTools {
   @Tool(
       name = "transition_campaign",
       description =
-          "Move a campaign along its lifecycle: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
-              + " DROPPED, by the rule transition_epic states for an epic — adjacent moves only, one"
-              + " step at a time — except that a campaign NEVER enters IMPLEMENTING or VERIFYING"
-              + " (refused with a 409: REFINED is what running means for a campaign, and its members"
-              + " are what is implemented and verified), so its walk is REPORTED <-> REFINED <->"
-              + " IMPLEMENTED <-> VERIFIED -> DONE with both left out: REFINED -> IMPLEMENTED and"
-              + " IMPLEMENTED -> VERIFIED are one step forward, VERIFIED -> IMPLEMENTED and"
-              + " IMPLEMENTED -> REFINED one step back. Its membership and conditions are editable only while it is"
+          "Move a campaign along its lifecycle: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTED,"
+              + " VERIFIED, DONE or DROPPED, by the rule transition_epic states for an epic —"
+              + " adjacent moves only, one step at a time — except that a campaign NEVER enters"
+              + " IMPLEMENTING or VERIFYING (refused with a 409: its members are what is implemented"
+              + " and verified), so its walk is REPORTED <-> REFINED <-> READY_FOR_DEV <->"
+              + " IMPLEMENTED <-> VERIFIED -> DONE with both left out: READY_FOR_DEV -> IMPLEMENTED"
+              + " and IMPLEMENTED -> VERIFIED are one step forward, VERIFIED -> IMPLEMENTED and"
+              + " IMPLEMENTED -> READY_FOR_DEV one step back. Its membership and conditions are editable only while it is"
               + " REPORTED or REFINED — add_campaign_member, move_campaign_member,"
               + " remove_campaign_member and set_campaign_member_condition are all refused once it"
               + " moves past REFINED. Moving out of REFINED pauses a campaign that is currently"
@@ -224,8 +224,8 @@ public class CampaignMcpTools {
       @ToolArg(description = "id of a campaign in this project") String id,
       @ToolArg(
               description =
-                  "the status to move to: REPORTED, REFINED, IMPLEMENTED, VERIFIED, DONE or"
-                      + " DROPPED (never IMPLEMENTING or VERIFYING). It must be a neighbour of the campaign's"
+                  "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTED, VERIFIED,"
+                      + " DONE or DROPPED (never IMPLEMENTING or VERIFYING). It must be a neighbour of the campaign's"
                       + " current status on that walk; DONE is final and moves nowhere")
           String target) {
     requireCampaignInProject(id);

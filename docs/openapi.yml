@@ -1211,8 +1211,8 @@ components:
         enters:
           type: string
           description: "The status the platform moves the entity into when the phase\
-            \ starts (REFINED to IMPLEMENTING, IMPLEMENTED to VERIFYING). Null where\
-            \ it moves nothing."
+            \ starts (READY_FOR_DEV to IMPLEMENTING, IMPLEMENTED to VERIFYING). Null\
+            \ where it moves nothing."
         endsIn:
           type: string
           description: The status the phase's agent moves the entity to when the phase
@@ -1500,10 +1500,10 @@ components:
           - string
           - "null"
           description: A feature's or task's implemented marker (ISO-8601 instant);
-            null clears it. Moves only while the owning epic is REFINED or IMPLEMENTING.
+            null clears it. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.
             Setting it moves the item's status to IMPLEMENTED; clearing it takes an
-            IMPLEMENTED item back to IMPLEMENTING (or REFINED when it was never marked
-            implementing).
+            IMPLEMENTED item back to IMPLEMENTING (or READY_FOR_DEV when it was never
+            marked implementing).
           anyOf:
           - $ref: "#/components/schemas/Instant"
           - type: "null"
@@ -1512,8 +1512,8 @@ components:
           type: string
           description: "A feature's or task's implementing marker (ISO-8601 instant):\
             \ when its implementation was started. Cannot be cleared. Moves only while\
-            \ the owning epic is REFINED or IMPLEMENTING, and moves the item's status\
-            \ to IMPLEMENTING when it is not already there or further."
+            \ the owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's\
+            \ status to IMPLEMENTING when it is not already there or further."
     EntityProperty:
       type: string
       enum:
@@ -1543,10 +1543,12 @@ components:
       properties:
         target:
           type: string
-          description: "REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING, VERIFIED,\
-            \ DONE or DROPPED — one the entity's current status may move to: a neighbour\
-            \ on the walk, or IMPLEMENTED from REFINED or VERIFIED from IMPLEMENTED\
-            \ (the skips). A campaign never moves to IMPLEMENTING or VERIFYING."
+          description: "REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED,\
+            \ VERIFYING, VERIFIED, DONE or DROPPED — one the entity's current status\
+            \ may move to: a neighbour on the walk (IMPLEMENTING has no move back,\
+            \ and READY_FOR_DEV none to REPORTED), or IMPLEMENTED from READY_FOR_DEV\
+            \ or VERIFIED from IMPLEMENTED (the skips). A campaign never moves to\
+            \ IMPLEMENTING or VERIFYING."
     EntitySummary:
       type: object
       properties:
@@ -1714,6 +1716,7 @@ components:
           enum:
           - REPORTED
           - REFINED
+          - READY_FOR_DEV
           - IMPLEMENTING
           - IMPLEMENTED
           - VERIFYING
@@ -1759,6 +1762,7 @@ components:
           enum:
           - REPORTED
           - REFINED
+          - READY_FOR_DEV
           - IMPLEMENTING
           - IMPLEMENTED
           - VERIFYING
@@ -2994,6 +2998,7 @@ components:
           enum:
           - REPORTED
           - REFINED
+          - READY_FOR_DEV
           - IMPLEMENTING
           - IMPLEMENTED
           - VERIFYING
@@ -3066,6 +3071,7 @@ components:
           enum:
           - REPORTED
           - REFINED
+          - READY_FOR_DEV
           - IMPLEMENTING
           - IMPLEMENTED
           - VERIFYING
@@ -4049,8 +4055,8 @@ paths:
         \ (or the archetype's own /{id}/transition), and a reshape, reparent or supersede\
         \ through POST /projects/api/entities/transition. An epic's, feature's or\
         \ task's scope follows the epic's freeze: scope edits need the epic REPORTED,\
-        \ the markers need it REFINED or IMPLEMENTING, and a marker moves the item's\
-        \ status with it. Answers the entity in the merged shape."
+        \ the markers need it READY_FOR_DEV or IMPLEMENTING, and a marker moves the\
+        \ item's status with it. Answers the entity in the merged shape."
       parameters:
       - name: id
         in: path

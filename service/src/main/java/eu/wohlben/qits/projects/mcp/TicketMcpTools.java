@@ -32,7 +32,8 @@ import org.jboss.logging.Logger;
  * notices something wrong that is not what it was asked to do. Filing it as an epic would put a
  * plan on the board where a note belongs; {@code create_ticket} is the note. The same surface reads
  * the project's tickets by status, so an agent asked to "fix the outstanding bugs" has somewhere to
- * look — REFINED is the work that is ready to be picked up, and IMPLEMENTING the work an agent was
+ * look — READY_FOR_DEV is the work a person scheduled and so is ready to be picked up, and
+ * IMPLEMENTING the work an agent was
  * already started on.
  *
  * <p><strong>Unlike epics, the transition IS here.</strong> {@code EpicMcpTools} deliberately
@@ -163,13 +164,14 @@ public class TicketMcpTools {
               + " closes itself when that request ends —"
               + " that is not big enough to be an epic. Its status says what has been achieved so"
               + " far: REPORTED (somebody said what is wrong), REFINED (the ticket says what to"
-              + " do), IMPLEMENTING (an implementation was started — the platform sets it when an"
+              + " do, and waits for a person to schedule it), READY_FOR_DEV (a person scheduled it:"
+              + " implementation may start), IMPLEMENTING (an implementation was started — the platform sets it when an"
               + " agent is dispatched), IMPLEMENTED (the change is released and deployed), VERIFYING"
               + " (a verification was started — set the same way), VERIFIED"
               + " (it no longer"
               + " occurs on the platform), DONE (closed), DROPPED (a decision was taken not to do"
               + " this work, and nothing about it was implemented or verified). Call it with"
-              + " status=\"REFINED\" to find the work that is ready to be picked up, or"
+              + " status=\"READY_FOR_DEV\" to find the work that is ready to be picked up, or"
               + " status=\"REPORTED\" to find what still needs refining. Read `blocked` beside the"
               + " status: it is a flag and not a status, and a blocked ticket is one somebody"
               + " already found something in the way of — its thread says what — so it is the wrong"
@@ -178,8 +180,8 @@ public class TicketMcpTools {
       @ToolArg(
               required = false,
               description =
-                  "exact status to filter by: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED,"
-                      + " VERIFYING, VERIFIED, DONE or DROPPED. Omit for every ticket.")
+                  "exact status to filter by: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
+                      + " IMPLEMENTED, VERIFYING, VERIFIED, DONE or DROPPED. Omit for every ticket.")
           String status) {
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return entities.listByProject(Archetype.TICKET, scope.requireProjectId(), status).stream()
@@ -317,8 +319,9 @@ public class TicketMcpTools {
 
   /**
    * <b>"Transition" here is a LIFECYCLE move, and it is not the other transition.</b> This tool
-   * moves one ticket along {@code REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFIED →
-   * VERIFYING → DONE} (with the two skips, REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED), or
+   * moves one ticket along {@code REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED →
+   * VERIFYING → VERIFIED → DONE} (with the two skips, READY_FOR_DEV → IMPLEMENTED and IMPLEMENTED →
+   * VERIFIED), or
    * off that
    * line into {@code DROPPED}: it writes {@code entity.status} and nothing else, and which moves
    * are legal is {@code EntityStateMachine}'s to say and argued there — DONE, the last, has no exits.
@@ -336,20 +339,24 @@ public class TicketMcpTools {
       description =
           "Move a ticket along its lifecycle. A status is a claim about what has been ACHIEVED, so"
               + " only move to one you can honestly make: REPORTED — somebody said what is wrong;"
-              + " REFINED — the ticket now says what to do; IMPLEMENTING — the implementation was"
+              + " REFINED — the ticket now says what to do; READY_FOR_DEV — a PERSON scheduled it"
+              + " (scheduling is a person's decision, so do not make this move yourself);"
+              + " IMPLEMENTING — the implementation was"
               + " started (a dispatch moves the ticket here for you); IMPLEMENTED — the change is"
               + " released AND deployed, not merely merged; VERIFYING — the verification was started"
               + " (a dispatch moves the ticket here for you); VERIFIED — you checked the platform and it no"
               + " longer occurs; DONE — closed, which is a person's call; DROPPED — a decision was"
               + " taken not to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY,"
-              + " forward or back: REPORTED <-> REFINED <-> IMPLEMENTING <-> IMPLEMENTED <-> VERIFYING"
-              + " <-> VERIFIED -> DONE, one step at a time, with TWO SKIPS: REFINED -> IMPLEMENTED"
-              + " and IMPLEMENTED -> VERIFIED directly are allowed, for work finished without ever"
-              + " being moved to IMPLEMENTING or VERIFYING. Asking for"
+              + " forward or back: REPORTED <-> REFINED <-> READY_FOR_DEV -> IMPLEMENTING <->"
+              + " IMPLEMENTED <-> VERIFYING <-> VERIFIED -> DONE, one step at a time (IMPLEMENTING"
+              + " has no move back: the way out of started work is DROPPED), with TWO SKIPS:"
+              + " READY_FOR_DEV -> IMPLEMENTED and IMPLEMENTED -> VERIFIED directly are allowed, for"
+              + " work finished without ever being moved to IMPLEMENTING or VERIFYING. Asking for"
               + " the status the ticket already has is refused."
               + " DONE IS FINAL: it has no exits at all, so a DONE ticket never moves again — if"
               + " a done change later turns out wrong, file a NEW ticket with create_ticket."
-              + " DROPPED is off that line: it is reachable from REPORTED, REFINED, IMPLEMENTING,"
+              + " DROPPED is off that line: it is reachable from REPORTED, REFINED, READY_FOR_DEV,"
+              + " IMPLEMENTING,"
               + " IMPLEMENTED, VERIFYING and VERIFIED — any status that is not already closed — and it goes back only to"
               + " REPORTED. DROP A TICKET WHEN THE WORK IT ASKS FOR SHOULD NOT BE DONE: it"
               + " describes something that turned out not to be a problem, or that the platform"
@@ -359,8 +366,8 @@ public class TicketMcpTools {
               + " DROPPED claims a decision that nobody took. Do not drop one that is DONE either;"
               + " that move does not exist, because DONE is final. Moving back corrects a claim"
               + " that turned out wrong. It is not how a phase reports failure: a phase that cannot"
-              + " finish, or a verification that fails, is block_entity. Below DONE every move is"
-              + " reversible, and DROPPED reopens to REPORTED, so a wrong answer costs one more"
+              + " finish, or a verification that fails, is block_entity. Below DONE every move but"
+              + " IMPLEMENTING's is reversible, and DROPPED reopens to REPORTED, so a wrong answer costs one more"
               + " call.")
   public TicketSummary transitionTicket(
       @ToolArg(
@@ -369,10 +376,10 @@ public class TicketMcpTools {
           String id,
       @ToolArg(
               description =
-                  "the status to move to: REPORTED, REFINED, IMPLEMENTING, IMPLEMENTED, VERIFYING,"
-                      + " VERIFIED, DONE or DROPPED. On the pipeline it must be a neighbour of the"
-                      + " ticket's current status, or IMPLEMENTED from REFINED or VERIFIED from"
-                      + " IMPLEMENTED (the skips); DROPPED is reachable from any status that is not DONE, and"
+                  "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
+                      + " IMPLEMENTED, VERIFYING, VERIFIED, DONE or DROPPED. On the pipeline it must"
+                      + " be a neighbour of the ticket's current status, or IMPLEMENTED from"
+                      + " READY_FOR_DEV or VERIFIED from IMPLEMENTED (the skips); DROPPED is reachable from any status that is not DONE, and"
                       + " reopens only to REPORTED; DONE is final and moves nowhere")
           String target) {
     requireTicketInProject(id);

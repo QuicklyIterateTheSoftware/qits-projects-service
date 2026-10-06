@@ -139,8 +139,10 @@ class UnifiedDescendantsTest extends EntitiesTestSupport {
     assertEquals(
         feature.entity().id, workEntities.nested(Archetype.TASK, task.entity().id).parentId());
 
-    // The marker is only writable at REFINED, and the only way to know the phase is the walk.
+    // The marker is only writable at READY_FOR_DEV or IMPLEMENTING, and the only way to know the
+    // phase is the walk.
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", "t");
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     assertEquals(
         when,

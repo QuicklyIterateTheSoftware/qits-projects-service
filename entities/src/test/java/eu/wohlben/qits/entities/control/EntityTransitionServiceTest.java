@@ -274,7 +274,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   private WorkEntity doneEpic(String title) {
     WorkEntity epic =
         workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic(title, null), WHO).entity();
-    for (String target : List.of("REFINED", "IMPLEMENTED", "VERIFIED", "DONE")) {
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       workEntities.transition(Archetype.EPIC, epic.id, target, WHO);
     }
     return epic;

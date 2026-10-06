@@ -714,7 +714,7 @@ public class CampaignService {
    * EntityTransitioned is then in the past, where event criteria never look.
    *
    * <p>For every unsatisfied ENTITY_STATUS criterion of an unclaimed membership whose target's
-   * current status is at or past the wanted one along {@code REPORTED < REFINED < IMPLEMENTING <
+   * current status is at or past the wanted one along {@code REPORTED < REFINED < READY_FOR_DEV < IMPLEMENTING <
    * IMPLEMENTED < VERIFIED < DONE} (DROPPED is never past anything), the criterion latches with {@code
    * evidence_signature = 'STATE_AT_START'}, no event id, and the summary {@code "<qid> was already
    * <status> when the campaign started"}. Not history: it reads a row this service owns.

@@ -215,6 +215,7 @@ class TaskServiceTest extends EntitiesTestSupport {
     assertNull(t.entity().implementedAt);
     // The marker only moves once the epic's scope is frozen.
     workEntities.transition(Archetype.EPIC, f.parentId(), "REFINED", "t");
+    workEntities.transition(Archetype.EPIC, f.parentId(), "READY_FOR_DEV", "t");
 
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     Nested done =

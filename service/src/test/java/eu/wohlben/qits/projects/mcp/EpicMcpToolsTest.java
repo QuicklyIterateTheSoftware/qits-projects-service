@@ -105,6 +105,18 @@ public class EpicMcpToolsTest {
         .statusCode(Response.Status.OK.getStatusCode());
   }
 
+  /** Freeze an epic and schedule it (qits-887: READY_FOR_DEV), a person's two moves. */
+  private void schedule(String epicId) {
+    freeze(epicId);
+    authenticated()
+        .contentType(ContentType.JSON)
+        .body(new EpicController.TransitionEpicRequest("READY_FOR_DEV"))
+        .when()
+        .post("/projects/api/epics/" + epicId + "/transition")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode());
+  }
+
   // --- MCP plumbing ---------------------------------------------------------
 
   /** All text content of a tool response joined — list tools emit one content item per element. */
@@ -582,7 +594,7 @@ public class EpicMcpToolsTest {
     String repoId = createRepository(projectId);
     String epicId = proposeEpic(projectId, "Ship it");
     String taskId = addTask(projectId, epicId, repoId, "Land the column");
-    freeze(epicId);
+    schedule(epicId);
 
     call(
         projectId,
@@ -609,16 +621,16 @@ public class EpicMcpToolsTest {
 
   /**
    * <b>{@code mark_task_implementing} (qits-749)</b>: it stamps the task, it is idempotent, and on a
-   * REFINED epic it moves the epic to IMPLEMENTING — so an agent that starts without a press still
-   * shows on the board. Its feature reads as implementing on the wire too.
+   * READY_FOR_DEV epic it moves the epic to IMPLEMENTING — so an agent that starts without a press
+   * still shows on the board. Its feature reads as implementing on the wire too.
    */
   @Test
-  public void marksATaskImplementingStampsItOnceAndMovesARefinedEpic() {
+  public void marksATaskImplementingStampsItOnceAndMovesAScheduledEpic() {
     String projectId = createProject("MarkingImplementing");
     String repoId = createRepository(projectId);
     String epicId = proposeEpic(projectId, "Start it");
     String taskId = addTask(projectId, epicId, repoId, "Begin the column");
-    freeze(epicId);
+    schedule(epicId);
 
     call(
         projectId,
@@ -684,7 +696,7 @@ public class EpicMcpToolsTest {
     String epicId = proposeEpic(projectId, "Under way");
     String started = addTask(projectId, epicId, repoId, "Started first");
     String skipped = addTask(projectId, epicId, repoId, "Never marked started");
-    freeze(epicId);
+    schedule(epicId);
     call(
         projectId,
         "mark_task_implementing",
@@ -937,7 +949,8 @@ public class EpicMcpToolsTest {
           assertTrue(response.isError(), "a draft's task has nothing shipped to record");
           assertTrue(
               text(response)
-                  .contains("Task markers move only while an epic is REFINED or IMPLEMENTING"),
+                  .contains(
+                      "Task markers move only while an epic is READY_FOR_DEV or IMPLEMENTING"),
               text(response));
         });
     // Its sibling answers a draft the same way: nothing has started on a plan still being written.
@@ -947,7 +960,7 @@ public class EpicMcpToolsTest {
         Map.of("id", taskId),
         response -> {
           assertTrue(response.isError(), "a draft's task has nothing started to record");
-          assertTrue(text(response).contains("REFINED or IMPLEMENTING"), text(response));
+          assertTrue(text(response).contains("READY_FOR_DEV or IMPLEMENTING"), text(response));
         });
   }
 
@@ -999,7 +1012,7 @@ public class EpicMcpToolsTest {
           assertTrue(text(response).contains("is REPORTED"), text(response));
         });
 
-    freeze(epicId);
+    schedule(epicId);
     for (String id : List.of(taskId, siblingId)) {
       call(
           projectId,
@@ -1036,7 +1049,7 @@ public class EpicMcpToolsTest {
     authenticated()
         .get("/projects/api/epics/" + epicId)
         .then()
-        .body("epic.status", org.hamcrest.Matchers.equalTo("REFINED"));
+        .body("epic.status", org.hamcrest.Matchers.equalTo("READY_FOR_DEV"));
     call(
         projectId,
         "get_epic",

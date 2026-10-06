@@ -211,12 +211,14 @@ class EntitySchemaApiTest {
                       assertEquals(200, patched.statusCode(), archetype + ": " + patched.asString());
 
                       if (!markers.isEmpty()) {
-                        given()
-                            .contentType(ContentType.JSON)
-                            .body(map("target", "REFINED"))
-                            .post("/projects/api/epics/" + rows.epic + "/transition")
-                            .then()
-                            .statusCode(200);
+                        for (String target : List.of("REFINED", "READY_FOR_DEV")) {
+                          given()
+                              .contentType(ContentType.JSON)
+                              .body(map("target", target))
+                              .post("/projects/api/epics/" + rows.epic + "/transition")
+                              .then()
+                              .statusCode(200);
+                        }
                         Response marked = patch(id, markers);
                         assertEquals(200, marked.statusCode(), archetype + ": " + marked.asString());
                       }
@@ -430,7 +432,7 @@ class EntitySchemaApiTest {
           "status" : {
             "type" : "string",
             "description" : "The lifecycle status.",
-            "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+            "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
           },
           "ticketType" : {
             "type" : "string",
@@ -530,12 +532,12 @@ class EntitySchemaApiTest {
           },
           "implementedAt" : {
             "type" : [ "string", "null" ],
-            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED or IMPLEMENTING.",
+            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.",
             "format" : "date-time"
           },
           "implementingAt" : {
             "type" : "string",
-            "description" : "The implementing marker, an ISO-8601 instant: when the implementation was started. Moves only while the owning epic is REFINED or IMPLEMENTING; history once implementedAt is set, so it is never cleared.",
+            "description" : "The implementing marker, an ISO-8601 instant: when the implementation was started. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING; history once implementedAt is set, so it is never cleared.",
             "format" : "date-time"
           },
           "dependsOn" : {
@@ -569,7 +571,7 @@ class EntitySchemaApiTest {
           "status" : {
             "type" : "string",
             "description" : "The lifecycle status.",
-            "enum" : [ "REPORTED", "REFINED", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
+            "enum" : [ "REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTING", "IMPLEMENTED", "VERIFYING", "VERIFIED", "DONE", "DROPPED" ]
           },
           "repositoryId" : {
             "type" : "string",
@@ -578,7 +580,7 @@ class EntitySchemaApiTest {
           },
           "implementedAt" : {
             "type" : "string",
-            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is REFINED or IMPLEMENTING.",
+            "description" : "The implemented marker, an ISO-8601 instant. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.",
             "format" : "date-time"
           },
           "dependsOn" : {

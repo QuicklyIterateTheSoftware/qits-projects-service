@@ -174,8 +174,8 @@ public class EntityMcpTools {
    * this restates is what KIND a row is ({@code entity.archetype}) and whose child it is ({@code
    * entity_membership}). {@code transition_ticket} ({@link TicketMcpTools}, over {@code
    * EntityLifecycle}) is the LIFECYCLE transition: one ticket, one adjacent step along {@code
-   * REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE} (or one of the
-   * two skips, REFINED → IMPLEMENTED and IMPLEMENTED → VERIFIED), writing {@code entity.status} alone. The
+   * REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE}
+   * (or one of the two skips, READY_FOR_DEV → IMPLEMENTED and IMPLEMENTED → VERIFIED), writing {@code entity.status} alone. The
    * two share a word and share nothing else — this one never applies a lifecycle's adjacency rule
    * (a status it carries is judged only against the TARGET archetype's vocabulary; the one lifecycle
    * rule it keeps is that DONE is final, so a DONE entity keeps its status and archetype), and that one
@@ -238,8 +238,8 @@ public class EntityMcpTools {
                       + " null parent to make the entity a root, and a parent may be another entity"
                       + " in this same map); title; description; status (required for every kind:"
                       + " an EPIC, a TICKET, a FEATURE and a TASK each hold their own —"
-                      + " REPORTED/REFINED/IMPLEMENTING/IMPLEMENTED/VERIFYING/VERIFIED/DONE/DROPPED,"
-                      + " the same eight words for all four, and any of them may be stated: this"
+                      + " REPORTED/REFINED/READY_FOR_DEV/IMPLEMENTING/IMPLEMENTED/VERIFYING/VERIFIED/DONE/DROPPED,"
+                      + " the same nine words for all four, and any of them may be stated: this"
                       + " tool keeps no adjacency, so the walk's two skips need nothing here); ticketType (BUG or IMPROVEMENT;"
                       + " MAINTENANCE is reserved for the tickets the platform files itself);"
                       + " impetus;"

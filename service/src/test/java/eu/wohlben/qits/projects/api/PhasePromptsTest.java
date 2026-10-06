@@ -64,16 +64,22 @@ public class PhasePromptsTest {
   // ---- the mapping ----------------------------------------------------------------------------
 
   /**
-   * The status picks the phase and nothing else does. The three that render <b>nothing</b> are half
-   * of this assertion and are what the dispatch door refuses on: VERIFIED and DONE are past the
-   * work and DROPPED is work that will not happen, so there is no phase to start and no workspace
-   * to stand up for one.
+   * The status picks the phase and nothing else does. The four that render <b>nothing</b> are half
+   * of this assertion and are what the dispatch door refuses on: REFINED waits for a person to
+   * schedule it (qits-887), VERIFIED and DONE are past the work and DROPPED is work that will not
+   * happen, so there is no phase to start and no workspace to stand up for one.
    */
   @Test
-  public void eachStatusStartsItsOwnPhaseAndThreeStartNone() {
+  public void eachStatusStartsItsOwnPhaseAndFourStartNone() {
     assertTrue(promptFor(EntityStatus.REPORTED).contains("Refine ticket \""));
-    assertTrue(promptFor(EntityStatus.REFINED).contains("Implement ticket \""));
+    assertTrue(promptFor(EntityStatus.READY_FOR_DEV).contains("Implement ticket \""));
     assertTrue(promptFor(EntityStatus.IMPLEMENTED).contains("Verify ticket \""));
+
+    assertEquals(
+        Optional.empty(),
+        prompt(ticket(EntityStatus.REFINED)),
+        "REFINED waits for a person to schedule it: nothing runs until somebody does");
+    assertEquals(Optional.empty(), PhasePrompts.nextPhase(epic(EntityStatus.REFINED)));
 
     assertEquals(
         Optional.empty(),
@@ -97,7 +103,7 @@ public class PhasePromptsTest {
         "refine", started(ticket(EntityStatus.REPORTED)).orElseThrow().phase());
     assertEquals(
         "implement",
-        started(ticket(EntityStatus.REFINED)).orElseThrow().phase());
+        started(ticket(EntityStatus.READY_FOR_DEV)).orElseThrow().phase());
     assertEquals(
         "verify",
         started(ticket(EntityStatus.IMPLEMENTED)).orElseThrow().phase());
@@ -117,7 +123,7 @@ public class PhasePromptsTest {
   public void everyTemplateNamesTheTicketAndSendsTheAgentToReadItLive() {
     for (EntityStatus status :
         new EntityStatus[] {
-          EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED
+          EntityStatus.REPORTED, EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED
         }) {
       String prompt = promptFor(status);
       assertTrue(prompt.contains("id tkt-123)") && prompt.contains("get_ticket"), status + ": " + prompt);
@@ -171,7 +177,7 @@ public class PhasePromptsTest {
   /** The platform's definition of done, with the two answers that read like done and are not. */
   @Test
   public void implementSaysReleasedAndDeployedRatherThanMergedOrBuilt() {
-    String prompt = promptFor(EntityStatus.REFINED);
+    String prompt = promptFor(EntityStatus.READY_FOR_DEV);
     assertTrue(
         prompt.contains("Done means released and deployed, not merged and not green"), prompt);
   }
@@ -182,7 +188,7 @@ public class PhasePromptsTest {
    */
   @Test
   public void implementForbidsIntegratingTheWorkspace() {
-    String prompt = promptFor(EntityStatus.REFINED);
+    String prompt = promptFor(EntityStatus.READY_FOR_DEV);
     assertTrue(
         prompt.contains("Do not integrate the workspace, because verification runs here next"),
         "a phase that integrates destroys the workspace the verify phase needs: " + prompt);
@@ -194,7 +200,7 @@ public class PhasePromptsTest {
   /** A thread and not a scratchpad; a contradiction goes on it, not into the brief. */
   @Test
   public void implementCommentsAsTheWorkGoesAndKeepsTheBrief() {
-    String prompt = promptFor(EntityStatus.REFINED);
+    String prompt = promptFor(EntityStatus.READY_FOR_DEV);
     assertTrue(prompt.contains("Comment with add_ticket_comment as the work goes"), prompt);
     assertFalse(prompt.contains("update_ticket_comment"), prompt);
     assertTrue(
@@ -249,10 +255,10 @@ public class PhasePromptsTest {
   @Test
   public void eachTemplateClaimsItsOwnPhaseAndNoOther() {
     assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REPORTED), "ticket", "REFINED");
-    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.REFINED), "ticket", "IMPLEMENTED");
+    assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.READY_FOR_DEV), "ticket", "IMPLEMENTED");
     assertNamesExactlyOneForwardTarget(promptFor(EntityStatus.IMPLEMENTED), "ticket", "VERIFIED");
     assertNamesExactlyOneForwardTarget(epicPromptFor(EntityStatus.REPORTED), "epic", "REFINED");
-    assertNamesExactlyOneForwardTarget(epicPromptFor(EntityStatus.REFINED), "epic", "IMPLEMENTED");
+    assertNamesExactlyOneForwardTarget(epicPromptFor(EntityStatus.READY_FOR_DEV), "epic", "IMPLEMENTED");
     assertNamesExactlyOneForwardTarget(epicPromptFor(EntityStatus.IMPLEMENTED), "epic", "VERIFIED");
   }
 
@@ -386,10 +392,10 @@ public class PhasePromptsTest {
   private static WorkEntity[] everyPhaseOfBothArchetypes() {
     return new WorkEntity[] {
       ticket(EntityStatus.REPORTED),
-      ticket(EntityStatus.REFINED),
+      ticket(EntityStatus.READY_FOR_DEV),
       ticket(EntityStatus.IMPLEMENTED),
       epic(EntityStatus.REPORTED),
-      epic(EntityStatus.REFINED),
+      epic(EntityStatus.READY_FOR_DEV),
       epic(EntityStatus.IMPLEMENTED)
     };
   }
@@ -397,7 +403,7 @@ public class PhasePromptsTest {
   private static String forwardOf(String status) {
     return switch (EntityStatus.valueOf(status)) {
       case REPORTED -> "REFINED";
-      case REFINED -> "IMPLEMENTED";
+      case READY_FOR_DEV -> "IMPLEMENTED";
       case IMPLEMENTED -> "VERIFIED";
       default -> throw new AssertionError(status + " starts no phase");
     };
@@ -490,7 +496,7 @@ public class PhasePromptsTest {
     for (EntityStatus status :
         new EntityStatus[] {
           EntityStatus.REPORTED,
-          EntityStatus.REFINED,
+          EntityStatus.READY_FOR_DEV,
           EntityStatus.IMPLEMENTING,
           EntityStatus.IMPLEMENTED
         }) {
@@ -556,7 +562,7 @@ public class PhasePromptsTest {
    */
   @Test
   public void theEpicImplementTurnMarksReleasesAndClaimsImplemented() {
-    String turn = epicPromptFor(EntityStatus.REFINED);
+    String turn = epicPromptFor(EntityStatus.READY_FOR_DEV);
     assertTrue(turn.contains("Implement epic \"Planning domain\""), turn);
     assertTrue(turn.contains("get_epic: its tree and dossier are the brief"), turn);
     assertTrue(turn.contains("Both are read-only now"), turn);
@@ -576,13 +582,13 @@ public class PhasePromptsTest {
 
   /**
    * <b>IMPLEMENTING resumes the implement phase</b> (qits-749): a press on an entity whose
-   * implementation was started is handed the same implement turn as at REFINED, not a 409.
+   * implementation was started is handed the same implement turn as at READY_FOR_DEV, not a 409.
    */
   @Test
-  public void implementingStartsTheImplementPhaseWithTheSameTurnAsRefined() {
+  public void implementingStartsTheImplementPhaseWithTheSameTurnAsReadyForDev() {
     assertEquals(Optional.of("implement"), PhasePrompts.nextPhase(ticket(EntityStatus.IMPLEMENTING)));
     assertEquals(Optional.of("implement"), PhasePrompts.nextPhase(epic(EntityStatus.IMPLEMENTING)));
-    assertEquals(epicPromptFor(EntityStatus.REFINED), epicPromptFor(EntityStatus.IMPLEMENTING));
+    assertEquals(epicPromptFor(EntityStatus.READY_FOR_DEV), epicPromptFor(EntityStatus.IMPLEMENTING));
   }
 
   /** The epic verify turn: the live platform first, the code second, VERIFIED or a block. */
@@ -608,7 +614,7 @@ public class PhasePromptsTest {
   public void everyEpicTemplateRecordsOnTheThreadAndNeverInAReport() {
     for (EntityStatus status :
         new EntityStatus[] {
-          EntityStatus.REPORTED, EntityStatus.REFINED, EntityStatus.IMPLEMENTED
+          EntityStatus.REPORTED, EntityStatus.READY_FOR_DEV, EntityStatus.IMPLEMENTED
         }) {
       String turn = epicPromptFor(status);
       assertTrue(
@@ -644,13 +650,13 @@ public class PhasePromptsTest {
    */
   @Test
   public void bothImplementTurnsGiveTheCommitSubjectFormWithTheRealId() {
-    String ticketTurn = promptFor(EntityStatus.REFINED);
+    String ticketTurn = promptFor(EntityStatus.READY_FOR_DEV);
     assertTrue(
         ticketTurn.contains(
             "Each commit subject names the work: term(qits-123): message, e.g. feat(qits-123): add"
                 + " the export."),
         ticketTurn);
-    String epicTurn = epicPromptFor(EntityStatus.REFINED);
+    String epicTurn = epicPromptFor(EntityStatus.READY_FOR_DEV);
     assertTrue(
         epicTurn.contains(
             "Each commit subject names the work: term(qits-9): message, e.g. feat(qits-9): add the"

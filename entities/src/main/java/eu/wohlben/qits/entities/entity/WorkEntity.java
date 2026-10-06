@@ -170,7 +170,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    * <p><b>It is a String and not an enum</b>, which means a comparison against a word nobody spells
    * any more compiles and fails silently at runtime — compare against {@link EntityStatus#name()},
    * never a literal. The stored word is the enum's own {@code name()}, {@code ck_entity_status}
-   * spells exactly the eight, and {@code control/Archetypes} is what refuses a word a kind's
+   * spells exactly the nine, and {@code control/Archetypes} is what refuses a word a kind's
    * lifecycle does not hold — a split the database cannot make.
    */
   @Column(length = 32)

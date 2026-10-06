@@ -46,8 +46,8 @@ public class ArchetypeRegistrySchemaFilter implements OASFilter {
               "from",
               "The status the phase runs from.",
               "enters",
-              "The status the platform moves the entity into when the phase starts (REFINED to"
-                  + " IMPLEMENTING, IMPLEMENTED to VERIFYING). Null where it moves nothing.",
+              "The status the platform moves the entity into when the phase starts (READY_FOR_DEV"
+                  + " to IMPLEMENTING, IMPLEMENTED to VERIFYING). Null where it moves nothing.",
               "endsIn",
               "The status the phase's agent moves the entity to when the phase is done."));
 

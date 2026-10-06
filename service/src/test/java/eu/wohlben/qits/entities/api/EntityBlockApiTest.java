@@ -85,20 +85,20 @@ class EntityBlockApiTest {
   void anEpicIsBlockedAndUnblockedByItsQualifiedId() {
     EntityFixtures.Project project = EntityFixtures.project("Block Epic");
     String epic = EntityFixtures.epic(project.id());
-    walk(epic, "REFINED");
+    walk(epic, "REFINED", "READY_FOR_DEV");
     String qualified = EntityFixtures.qualifiedId(epic);
 
     setBlocked(qualified, true, "the sibling library has not released")
         .statusCode(200)
         .body("block.entityId", equalTo(epic))
         .body("block.archetype", equalTo("EPIC"))
-        .body("block.status", equalTo("REFINED"))
+        .body("block.status", equalTo("READY_FOR_DEV"))
         .body("block.blocked", equalTo(true));
     given()
         .get("/projects/api/epics/" + epic)
         .then()
         .body("epic.blocked", equalTo(true))
-        .body("epic.status", equalTo("REFINED"));
+        .body("epic.status", equalTo("READY_FOR_DEV"));
     given().get("/projects/api/entities/" + epic).then().body("blocked", equalTo(true));
     thread(epic)
         .body("entries", hasSize(1))
@@ -155,7 +155,7 @@ class EntityBlockApiTest {
   void aVerifiedEpicIsA409() {
     EntityFixtures.Project project = EntityFixtures.project("Block Verified");
     String epic = EntityFixtures.epic(project.id());
-    walk(epic, "REFINED", "IMPLEMENTED", "VERIFIED");
+    walk(epic, "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED");
     // The move into VERIFIED says its own sentence on the thread; the refusal must add nothing.
     int before = thread(epic).extract().path("entries.size()");
 
@@ -168,20 +168,15 @@ class EntityBlockApiTest {
 
   /**
    * A feature holds a status since qits-763 but runs no phase of its own: its phase is its epic's.
-   * Refused even at a status that would start a phase on an epic (REFINED), because the refusal is
-   * about the kind — it must not read as a status the caller could move away from.
+   * Refused even while its epic is at a status that starts a phase (READY_FOR_DEV), because the
+   * refusal is about the kind — it must not read as a status the caller could move away from.
    */
   @Test
   void aFeatureIsA409() {
     EntityFixtures.Project project = EntityFixtures.project("Block Feature");
     String epic = EntityFixtures.epic(project.id());
     String feature = EntityFixtures.feature(epic);
-    given()
-        .contentType(ContentType.JSON)
-        .body(map("target", "REFINED"))
-        .post("/projects/api/entities/" + epic + "/status")
-        .then()
-        .statusCode(200);
+    walk(epic, "REFINED", "READY_FOR_DEV");
 
     setBlocked(feature, true, "waiting on somebody")
         .statusCode(409)
@@ -203,7 +198,7 @@ class EntityBlockApiTest {
   void aBlockedEpicIsNotDispatchable() {
     EntityFixtures.Project project = EntityFixtures.project("Block Dispatch Epic");
     String epic = EntityFixtures.epic(project.id());
-    walk(epic, "REFINED");
+    walk(epic, "REFINED", "READY_FOR_DEV");
     setBlocked(epic, true, "the dossier owes a decision only a person can take").statusCode(200);
 
     given()
@@ -267,11 +262,11 @@ class EntityBlockApiTest {
   void anEpicsAgentsAreToldWhenTheFlagChangesAndOnlyThen() {
     EntityFixtures.Project project = EntityFixtures.project("Block Tells Epic");
     String epic = EntityFixtures.epic(project.id());
-    walk(epic, "REFINED");
+    walk(epic, "REFINED", "READY_FOR_DEV");
     agents.reset(); // the walk told them too; that is the transition test's business
 
     setBlocked(epic, true, "the sibling library has not released").statusCode(200);
-    assertEquals(List.of(told(project.id(), epic, "REFINED", true)), agents.calls());
+    assertEquals(List.of(told(project.id(), epic, "READY_FOR_DEV", true)), agents.calls());
 
     setBlocked(epic, true, "and still has not").statusCode(200);
     assertEquals(1, agents.calls().size(), "a block that changed nothing renames nothing");
@@ -279,7 +274,8 @@ class EntityBlockApiTest {
     setBlocked(epic, false, null).statusCode(200);
     assertEquals(
         List.of(
-            told(project.id(), epic, "REFINED", true), told(project.id(), epic, "REFINED", false)),
+            told(project.id(), epic, "READY_FOR_DEV", true),
+            told(project.id(), epic, "READY_FOR_DEV", false)),
         agents.calls());
 
     setBlocked(epic, false, null).statusCode(200);
@@ -324,7 +320,7 @@ class EntityBlockApiTest {
   void aThrowingPortNeverFailsTheBlock() {
     EntityFixtures.Project project = EntityFixtures.project("Block Tells Throwing");
     String epic = EntityFixtures.epic(project.id());
-    walk(epic, "REFINED");
+    walk(epic, "REFINED", "READY_FOR_DEV");
     agents.reset();
     agents.willThrow(new IllegalStateException("a port bug"));
 
@@ -348,7 +344,12 @@ class EntityBlockApiTest {
     String epic = EntityFixtures.epic(project.id());
 
     walk(epic, "REFINED");
-    assertEquals(List.of(told(project.id(), epic, "REFINED", false)), agents.calls());
+    walk(epic, "READY_FOR_DEV");
+    assertEquals(
+        List.of(
+            told(project.id(), epic, "REFINED", false),
+            told(project.id(), epic, "READY_FOR_DEV", false)),
+        agents.calls());
 
     setBlocked(epic, true, "the dossier owes a decision").statusCode(200);
     walk(epic, "IMPLEMENTED");
@@ -357,7 +358,8 @@ class EntityBlockApiTest {
     assertEquals(
         List.of(
             told(project.id(), epic, "REFINED", false),
-            told(project.id(), epic, "REFINED", true),
+            told(project.id(), epic, "READY_FOR_DEV", false),
+            told(project.id(), epic, "READY_FOR_DEV", true),
             told(project.id(), epic, "IMPLEMENTED", false),
             told(project.id(), epic, "VERIFIED", false)),
         agents.calls());
