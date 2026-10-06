@@ -4371,9 +4371,11 @@ paths:
         \ under its roles: an agent may move a ticket or a campaign of its own project,\
         \ a platform service (qits:system) one of any project, and an epic is qits:admin\
         \ alone. A feature or a task moves under a ticket's roles, and only once its\
-        \ epic is past REPORTED; the epic's moves to REFINED, back to REPORTED and\
-        \ to IMPLEMENTED carry it, no other does. The id is the UUID or the qualified\
-        \ id. Answers the entity in the merged shape, with statusBefore."
+        \ epic is past REPORTED; the epic's moves to REFINED, back to REPORTED, to\
+        \ READY_FOR_DEV, back to REFINED and to IMPLEMENTED carry it, no other does,\
+        \ and its own scheduling (to READY_FOR_DEV, or back) is refused — that is\
+        \ the epic's. The id is the UUID or the qualified id. Answers the entity in\
+        \ the merged shape, with statusBefore."
       operationId: moveEntityStatus
       parameters:
       - name: id
@@ -4846,11 +4848,13 @@ paths:
     post:
       summary: Transition
       description: "Moves the epic to the target status. Its features and tasks hold\
-        \ statuses of their own and follow it on three moves only: REPORTED to REFINED\
+        \ statuses of their own and follow it on five moves only: REPORTED to REFINED\
         \ (each REPORTED piece is refined), REFINED back to REPORTED (each REFINED\
-        \ piece returns) and the move to IMPLEMENTED (each piece still before IMPLEMENTED\
+        \ piece returns), REFINED to READY_FOR_DEV (each REFINED piece is scheduled\
+        \ with it), READY_FOR_DEV back to REFINED (each piece still READY_FOR_DEV\
+        \ returns) and the move to IMPLEMENTED (each piece still before IMPLEMENTED\
         \ is carried there). No other move touches them: a task is verified on its\
-        \ own."
+        \ own, and a piece is never scheduled on its own."
       operationId: transitionEpic
       parameters:
       - name: id

@@ -622,10 +622,11 @@ public class WorkEntityService {
   /**
    * <b>The status half of a marker write</b> (qits-763): a feature or a task still before {@code
    * target} on the walk moves to it, and one at or past it stays where it is — a second marking does
-   * not move a VERIFIED task back. Before means REPORTED or REFINED for IMPLEMENTING, and those or
-   * IMPLEMENTING for IMPLEMENTED: the forward move and the skip the graph declares, and from
-   * REPORTED (a piece somebody moved back while its epic was being implemented) the marker is the
-   * statement that settles it, so it lands there all the same rather than refusing a fact.
+   * not move a VERIFIED task back. Before means REPORTED, REFINED or READY_FOR_DEV for IMPLEMENTING,
+   * and those or IMPLEMENTING for IMPLEMENTED: the forward move and the skip the graph declares, and
+   * from REPORTED or REFINED (a piece somebody moved back, or one that was left unscheduled while its
+   * epic was being implemented) the marker is the statement that settles it, so it lands there all
+   * the same rather than refusing a fact.
    *
    * <p>A DROPPED piece is a 409: it was decided against, and a marker on it would claim work on
    * something nobody is to do. Reopening it is a move of its own. Answers whether the row moved.
@@ -651,14 +652,17 @@ public class WorkEntityService {
 
   /**
    * <b>A cleared {@code implementedAt} takes an IMPLEMENTED piece back</b> — to IMPLEMENTING when its
-   * implementing marker says the work was started, else to REFINED — so the status does not go on
+   * implementing marker says the work was started, else to READY_FOR_DEV (scheduled with its epic and
+   * not started; markers only move while the epic is READY_FOR_DEV or IMPLEMENTING, qits-887) — so
+   * the status does not go on
    * claiming what the marker no longer does. A piece past IMPLEMENTED (somebody verified it) keeps
    * its status: the clear is a correction of the marker's history, not of a verification.
    */
   private static void retreatFromImplemented(WorkEntity row) {
     if (EntityStatus.IMPLEMENTED.name().equals(row.status)) {
       row.status =
-          (row.implementingAt != null ? EntityStatus.IMPLEMENTING : EntityStatus.REFINED).name();
+          (row.implementingAt != null ? EntityStatus.IMPLEMENTING : EntityStatus.READY_FOR_DEV)
+              .name();
     }
   }
 
@@ -775,13 +779,15 @@ public class WorkEntityService {
    * <ul>
    *   <li><b>{@link #SUPERSEDE}</b> lands the row DROPPED, spawns the successor draft ({@link
    *       #supersede}) and points the old row at it.
-   *   <li><b>Three moves carry the descendants</b> ({@link #carryDescendants}, qits-763): an epic
-   *       REPORTED → REFINED and back, and any move to {@link EntityStatus#IMPLEMENTED}, which also
+   *   <li><b>Five moves carry the descendants</b> ({@link #carryDescendants}, qits-763, qits-887):
+   *       an epic REPORTED → REFINED and back, REFINED → READY_FOR_DEV and back, and any move to
+   *       {@link EntityStatus#IMPLEMENTED}, which also
    *       stamps every descendant still unimplemented ({@link #stampImplemented}) — declaring the
    *       work done is declaring its scope done. Every carried child joins the announcement. No
    *       other move touches a child.
    *   <li><b>A feature's or a task's own move waits for its epic</b>: refused while the epic is
-   *       REPORTED ({@link #requireOwnerPastDraft}).
+   *       REPORTED ({@link #requireOwnerPastDraft}), and its own scheduling and unscheduling are the
+   *       epic's ({@link #requirePieceScheduledWithItsEpic}, qits-887).
    *   <li><b>Every move clears {@code blocked}</b>, which is what makes the flag temporary rather
    *       than a second lifecycle: a block says the phase the <em>current</em> status starts cannot
    *       finish, and the moment the status moves that phase is over and the next one has not been
@@ -855,6 +861,7 @@ public class WorkEntityService {
     requireSupersedable(kind, row, target);
     if (Archetypes.isPlanPiece(archetype)) {
       requireOwnerPastDraft(kind, row);
+      requirePieceScheduledWithItsEpic(kind, row, to);
     }
 
     WorkEntity successor =
@@ -920,9 +927,58 @@ public class WorkEntityService {
   }
 
   /**
-   * <b>The downward cascades of a move</b> (qits-763), in the move's transaction, each child
-   * audited and handed back to join the move's announcement. Three moves carry descendants, and no
-   * other does:
+   * <b>A piece is not scheduled on its own</b> (qits-887): scheduling is the epic's, and its move
+   * carries the pieces ({@link #carryDescendants}). So a feature's or a task's own move to
+   * READY_FOR_DEV is refused while its epic is not READY_FOR_DEV or past it, and its own READY_FOR_DEV
+   * → REFINED while the epic is still READY_FOR_DEV. A 409 naming the epic. Once the epic is past
+   * READY_FOR_DEV (work started), a piece may catch up on its own — that is not scheduling anything.
+   */
+  private void requirePieceScheduledWithItsEpic(Kind kind, WorkEntity row, EntityStatus to) {
+    EntityStatus from = statusOf(row.status);
+    boolean scheduling = from == EntityStatus.REFINED && to == EntityStatus.READY_FOR_DEV;
+    boolean unscheduling = from == EntityStatus.READY_FOR_DEV && to == EntityStatus.REFINED;
+    if (!scheduling && !unscheduling) {
+      return;
+    }
+    WorkEntity epic = owner(kind, row, parentOf(row.id));
+    if (epic == null) {
+      return;
+    }
+    EntityStatus epicStatus = statusOf(epic.status);
+    boolean epicScheduled =
+        epicStatus != null
+            && !EntityStateMachine.isOffWalk(epicStatus)
+            && EntityStateMachine.isAtOrPast(epicStatus, EntityStatus.READY_FOR_DEV);
+    if (scheduling && !epicScheduled) {
+      throw new ConflictException(
+          kind.noun()
+              + " "
+              + row.id
+              + " is not scheduled on its own: its epic "
+              + epic.id
+              + " is "
+              + epic.status
+              + " — schedule the epic, and its move to READY_FOR_DEV carries the "
+              + kind.word()
+              + " with it.");
+    }
+    if (unscheduling && epicStatus == EntityStatus.READY_FOR_DEV) {
+      throw new ConflictException(
+          kind.noun()
+              + " "
+              + row.id
+              + " is not unscheduled on its own while its epic "
+              + epic.id
+              + " is READY_FOR_DEV — unschedule the epic, and its move back to REFINED carries the "
+              + kind.word()
+              + " with it.");
+    }
+  }
+
+  /**
+   * <b>The downward cascades of a move</b> (qits-763, qits-887), in the move's transaction, each
+   * child audited under the move's own {@code changedBy} and handed back to join the move's one
+   * announcement. Five moves carry descendants, and no other does:
    *
    * <ul>
    *   <li><b>An epic REPORTED → REFINED</b> moves its REPORTED descendants to REFINED. Scope
@@ -931,6 +987,14 @@ public class WorkEntityService {
    *   <li><b>An epic REFINED → REPORTED</b> moves its REFINED descendants back, the same rule read
    *       the other way: the scope is a draft again, and so are its pieces. A piece already further
    *       on stays where it is.
+   *   <li><b>An epic REFINED → READY_FOR_DEV</b> (qits-887) moves its REFINED descendants to
+   *       READY_FOR_DEV: scheduling the epic schedules its plan. A piece is never scheduled on its own
+   *       ({@link #requirePieceScheduledWithItsEpic}); a DROPPED one stays dropped. A person's gate on
+   *       the scheduling is judged once, on the epic, never per piece.
+   *   <li><b>An epic READY_FOR_DEV → REFINED</b> (qits-887, unscheduling) moves its descendants
+   *       still READY_FOR_DEV — not started — back to REFINED. A piece at IMPLEMENTING or further, and
+   *       a DROPPED one, stays. An epic back at REFINED can never go on to REPORTED with a piece
+   *       still READY_FOR_DEV behind it, because READY_FOR_DEV → REPORTED is not a move.
    *   <li><b>Any move to IMPLEMENTED</b> — the epic's, or a feature's own — moves every descendant
    *       still before IMPLEMENTED on the walk to IMPLEMENTED, and stamps every unimplemented marker
    *       ({@link #stampImplemented}): declaring the work done is declaring its scope done. A
@@ -949,8 +1013,10 @@ public class WorkEntityService {
     boolean epic = row.archetype == Archetype.EPIC;
     boolean refining = epic && from == EntityStatus.REPORTED && to == EntityStatus.REFINED;
     boolean reopening = epic && from == EntityStatus.REFINED && to == EntityStatus.REPORTED;
+    boolean scheduling = epic && from == EntityStatus.REFINED && to == EntityStatus.READY_FOR_DEV;
+    boolean unscheduling = epic && from == EntityStatus.READY_FOR_DEV && to == EntityStatus.REFINED;
     boolean implementing = to == EntityStatus.IMPLEMENTED;
-    if (!refining && !reopening && !implementing) {
+    if (!refining && !reopening && !scheduling && !unscheduling && !implementing) {
       return List.of();
     }
     Subtree subtree = subtreeOf(row.id);
@@ -966,6 +1032,10 @@ public class WorkEntityService {
         next = EntityStatus.REFINED;
       } else if (reopening && current == EntityStatus.REFINED) {
         next = EntityStatus.REPORTED;
+      } else if (scheduling && current == EntityStatus.REFINED) {
+        next = EntityStatus.READY_FOR_DEV;
+      } else if (unscheduling && current == EntityStatus.READY_FOR_DEV) {
+        next = EntityStatus.REFINED;
       } else if (implementing
           && current != null
           && !EntityStateMachine.isOffWalk(current)

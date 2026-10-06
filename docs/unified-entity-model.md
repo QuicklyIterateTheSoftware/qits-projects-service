@@ -2187,6 +2187,11 @@ a FLOW press from REPORTED stops at REFINED (`flowFrom` = refine).
   is its BACK move.
 - **V25 backfilled nothing.** `ck_entity_status` gains the ninth word; every existing REFINED row
   stays REFINED and waits for a person to schedule it.
+- **Scheduling carries the plan.** An epic REFINED → READY_FOR_DEV moves its REFINED features and
+  tasks to READY_FOR_DEV, and READY_FOR_DEV → REFINED takes back the ones still READY_FOR_DEV (a
+  started or DROPPED piece stays): five epic moves carry descendants now. A piece is never scheduled
+  or unscheduled on its own — a 409 naming the epic. The carried rows are the person's move, audited
+  under their name and announced in the epic's one batch.
 
 ## Where the code is
 

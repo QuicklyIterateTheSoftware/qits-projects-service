@@ -14,7 +14,8 @@ import java.time.Instant;
  *     see {@link EpicDto#qualifiedId}.
  * @param status where this feature stands — one of the entity lifecycle's nine words, as an
  *     epic's and a ticket's (qits-763). Its own, never derived from its tasks: an epic's move carries
- *     it only REPORTED → REFINED, back, and to IMPLEMENTED, and its first task marked implementing
+ *     it only REPORTED → REFINED, back, REFINED → READY_FOR_DEV, back, and to IMPLEMENTED, and its
+ *     first task marked implementing
  *     moves it to IMPLEMENTING. The markers below say when it got there
  * @param implementingOn when the implementation of this feature was started, or null — the
  *     implementing marker (qits-749), stamped by {@code mark_task_implementing} on the first of its

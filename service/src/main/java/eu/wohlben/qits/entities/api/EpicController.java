@@ -87,10 +87,12 @@ public class EpicController {
       summary = "Transition",
       description =
           "Moves the epic to the target status. Its features and tasks hold statuses of their own"
-              + " and follow it on three moves only: REPORTED to REFINED (each REPORTED piece is"
-              + " refined), REFINED back to REPORTED (each REFINED piece returns) and the move to"
-              + " IMPLEMENTED (each piece still before IMPLEMENTED is carried there). No other move"
-              + " touches them: a task is verified on its own.")
+              + " and follow it on five moves only: REPORTED to REFINED (each REPORTED piece is"
+              + " refined), REFINED back to REPORTED (each REFINED piece returns), REFINED to"
+              + " READY_FOR_DEV (each REFINED piece is scheduled with it), READY_FOR_DEV back to"
+              + " REFINED (each piece still READY_FOR_DEV returns) and the move to IMPLEMENTED (each"
+              + " piece still before IMPLEMENTED is carried there). No other move touches them: a"
+              + " task is verified on its own, and a piece is never scheduled on its own.")
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
     var moved = routes.transition(routes.epics(), id, request.target(), false, identity);

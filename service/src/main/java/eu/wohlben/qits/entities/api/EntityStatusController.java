@@ -102,7 +102,9 @@ public class EntityStatusController {
               + " ticket or a campaign of its own project, a platform service (qits:system) one of any"
               + " project, and an epic is qits:admin alone. A feature or a task moves under a ticket's"
               + " roles, and only once its epic is past REPORTED; the epic's moves to REFINED, back"
-              + " to REPORTED and to IMPLEMENTED carry it, no other does. The id is the UUID or the"
+              + " to REPORTED, to READY_FOR_DEV, back to REFINED and to IMPLEMENTED carry it, no"
+              + " other does, and its own scheduling (to READY_FOR_DEV, or back) is refused — that is"
+              + " the epic's. The id is the UUID or the"
               + " qualified id. Answers the entity in the merged shape, with statusBefore.")
   @APIResponse(
       responseCode = "200",

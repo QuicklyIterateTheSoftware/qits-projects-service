@@ -66,8 +66,10 @@ package eu.wohlben.qits.entities.entity;
  * that piece of the plan stands — so one task can be VERIFIED while a sibling is still IMPLEMENTED —
  * but the phase every sentence above speaks of runs on the epic, never on a piece of it. The
  * markers move a task's status ({@code mark_task_implementing} to IMPLEMENTING, {@code
- * mark_task_implemented} to IMPLEMENTED), and three of the epic's own moves carry its pieces with
- * it: REPORTED → REFINED, back again, and the move to IMPLEMENTED (qits-763).
+ * mark_task_implemented} to IMPLEMENTED), and five of the epic's own moves carry its pieces with
+ * it: REPORTED → REFINED, back again, REFINED → READY_FOR_DEV (scheduling the epic schedules its
+ * plan; a piece is never scheduled on its own), back again for the pieces not yet started (qits-887),
+ * and the move to IMPLEMENTED (qits-763).
  */
 public enum EntityStatus {
 

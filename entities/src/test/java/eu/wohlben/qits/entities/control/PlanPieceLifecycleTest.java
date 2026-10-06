@@ -23,7 +23,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A feature's and a task's own status (qits-763): minted REPORTED, moved by the markers and by its
- * own door, carried by three of its epic's moves and by no other, refused while its epic is a draft
+ * own door, carried by five of its epic's moves (two of them the scheduling, qits-887 — see {@code
+ * ScheduleCascadeTest}) and by no other, refused while its epic is a draft
  * — and every move of one announced like any other move.
  *
  * <p>The epic's side of the same rules — that VERIFYING and VERIFIED no longer drag the tasks along —
@@ -165,11 +166,16 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   void noOtherEpicMoveTouchesAChild() {
     Plan plan = plan();
     moveEpic(plan, "REFINED", "READY_FOR_DEV", "IMPLEMENTING");
-    assertEquals("REFINED", status(Archetype.TASK, plan.task()), "entering IMPLEMENTING moves none");
+    assertEquals(
+        "READY_FOR_DEV", status(Archetype.TASK, plan.task()), "entering IMPLEMENTING moves none");
     moveEpic(plan, "DROPPED");
-    assertEquals("REFINED", status(Archetype.TASK, plan.task()), "dropping the epic moves none");
+    assertEquals(
+        "READY_FOR_DEV", status(Archetype.TASK, plan.task()), "dropping the epic moves none");
     moveEpic(plan, "REPORTED");
-    assertEquals("REFINED", status(Archetype.TASK, plan.task()), "nor does reopening it from DROPPED");
+    assertEquals(
+        "READY_FOR_DEV",
+        status(Archetype.TASK, plan.task()),
+        "nor does reopening it from DROPPED");
   }
 
   // --- a piece's own move ----------------------------------------------------------------------
@@ -226,12 +232,9 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
             ConflictException.class,
             () -> workEntities.transition(Archetype.TASK, plan.task(), "VERIFIED", "agent"));
     assertTrue(refused.getMessage().startsWith("A task"), refused.getMessage());
-    // No skip from REFINED (qits-887): the skip READY_FOR_DEV -> IMPLEMENTED is the epic's, and so
-    // a task's.
-    assertThrows(
-        ConflictException.class,
-        () -> workEntities.transition(Archetype.TASK, plan.task(), "IMPLEMENTED", "agent"));
-    workEntities.transition(Archetype.TASK, plan.task(), "READY_FOR_DEV", "agent");
+    // Scheduled with its epic (qits-887); the skip READY_FOR_DEV -> IMPLEMENTED is the epic's, and
+    // so a task's.
+    assertEquals("READY_FOR_DEV", status(Archetype.TASK, plan.task()));
     workEntities.transition(Archetype.TASK, plan.task(), "IMPLEMENTED", "agent");
     WorkEntity task = row(Archetype.TASK, plan.task());
     assertEquals("IMPLEMENTED", task.status);
@@ -242,7 +245,6 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   void aFeaturesOwnMoveToImplementedCarriesItsTasks() {
     Plan plan = plan();
     moveEpic(plan, "REFINED", "READY_FOR_DEV");
-    workEntities.transition(Archetype.FEATURE, plan.feature(), "READY_FOR_DEV", "t");
     announcer.clear();
 
     workEntities.transition(Archetype.FEATURE, plan.feature(), "IMPLEMENTED", "t");
@@ -269,13 +271,13 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
 
     assertEquals("IMPLEMENTING", status(Archetype.TASK, plan.task()));
     assertEquals("IMPLEMENTING", status(Archetype.FEATURE, plan.feature()));
-    assertEquals("REFINED", status(Archetype.TASK, plan.sibling()));
+    assertEquals("READY_FOR_DEV", status(Archetype.TASK, plan.sibling()));
     assertEquals("IMPLEMENTING", status(Archetype.EPIC, plan.epic()));
     // The pieces' moves first, in one announcement; then the epic's own.
     List<RecordingTransitionAnnouncer.Batch> batches = announcer.batches();
     assertEquals(2, batches.size());
     assertEquals(
-        Map.of(plan.task(), "REFINED", plan.feature(), "REFINED"),
+        Map.of(plan.task(), "READY_FOR_DEV", plan.feature(), "READY_FOR_DEV"),
         batches.get(0).entities().stream()
             .collect(
                 Collectors.toMap(TransitionedEntity::id, TransitionedEntity::statusBefore)));
@@ -293,7 +295,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
 
     assertEquals("IMPLEMENTED", status(Archetype.TASK, plan.task()), "forward from IMPLEMENTING");
     assertEquals(
-        "IMPLEMENTED", status(Archetype.TASK, plan.sibling()), "the marker settles it from REFINED");
+        "IMPLEMENTED", status(Archetype.TASK, plan.sibling()), "the skip from READY_FOR_DEV");
 
     workEntities.transition(Archetype.TASK, plan.task(), "VERIFIED", "agent");
     workEntities.update(Archetype.TASK, plan.task(), EntityWrite.implementedAt(WHEN), "agent");
@@ -315,7 +317,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     assertEquals("IMPLEMENTED", status(Archetype.FEATURE, plan.feature()));
     assertEquals(1, announcer.batches().size());
     TransitionedEntity moved = announcer.batches().get(0).entities().get(0);
-    assertEquals("REFINED", moved.statusBefore());
+    assertEquals("READY_FOR_DEV", moved.statusBefore());
     assertEquals("IMPLEMENTED", moved.status());
     assertEquals("person", moved.changedBy());
   }
@@ -333,7 +335,10 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     workEntities.update(Archetype.TASK, plan.sibling(), clear, "person");
 
     assertEquals("IMPLEMENTING", status(Archetype.TASK, plan.task()));
-    assertEquals("REFINED", status(Archetype.TASK, plan.sibling()));
+    assertEquals(
+        "READY_FOR_DEV",
+        status(Archetype.TASK, plan.sibling()),
+        "never started, so back to where its epic's scheduling put it");
   }
 
   @Test
@@ -395,7 +400,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
         batch.subList(1, batch.size()).stream()
             .allMatch(
                 child ->
-                    "REFINED".equals(child.statusBefore())
+                    "READY_FOR_DEV".equals(child.statusBefore())
                         && EntityStatus.IMPLEMENTED.name().equals(child.status())));
   }
 }

@@ -1113,10 +1113,13 @@ while the owning epic is `REPORTED` (a draft is edited, not moved; `requireRepor
 structural writes only). The markers are status moves: `mark_task_implementing` moves the task (and
 its feature, the first time) to IMPLEMENTING, `implementedAt` — `mark_task_implemented`, `PUT
 /tasks`, `PUT /features`, `PATCH /entities` — moves the item to IMPLEMENTED, clearing it moves an
-IMPLEMENTED item back, so marker and status never disagree; the timestamps stay as history. **Three
+IMPLEMENTED item back, so marker and status never disagree; the timestamps stay as history. **Five
 epic moves carry the descendants and no other does** (`WorkEntityService.carryDescendants`):
-REPORTED → REFINED refines the REPORTED ones, REFINED → REPORTED returns the REFINED ones, and any
-move to IMPLEMENTED (an epic's or a feature's own) carries everything still before IMPLEMENTED there.
+REPORTED → REFINED refines the REPORTED ones, REFINED → REPORTED returns the REFINED ones, REFINED →
+READY_FOR_DEV schedules the REFINED ones and READY_FOR_DEV → REFINED returns those still
+READY_FOR_DEV (qits-887 — a piece is never scheduled or unscheduled on its own, a 409 naming the
+epic), and any move to IMPLEMENTED (an epic's or a feature's own) carries everything still before
+IMPLEMENTED there.
 VERIFYING and VERIFIED leave the tasks alone — a task is verified on its own — and nothing derives a
 parent's status from its children. Each carried child joins the move's one `EntityTransitioned`. **No
 phase machinery**: `Archetypes.isPlanPiece` is the question every phase door asks now that "has
