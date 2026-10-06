@@ -5,6 +5,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
@@ -89,7 +91,7 @@ public class TicketDossierControllerTest {
   }
 
   private void transition(String ticketId, String target) {
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(Map.of("target", target))
         .when()

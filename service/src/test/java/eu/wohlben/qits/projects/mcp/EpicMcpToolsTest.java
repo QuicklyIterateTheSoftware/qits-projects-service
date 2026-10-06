@@ -4,6 +4,8 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.EpicController;
 import eu.wohlben.qits.projects.api.ProjectController;
@@ -110,6 +112,8 @@ public class EpicMcpToolsTest {
   private void schedule(String epicId) {
     freeze(epicId);
     authenticated()
+        // Scheduling is a person's (qits-887): the session a browser keeps beside the headers.
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
         .contentType(ContentType.JSON)
         .body(new EpicController.TransitionEpicRequest("READY_FOR_DEV"))
         .when()
@@ -1120,5 +1124,47 @@ public class EpicMcpToolsTest {
         "transition_epic",
         Map.of("id", epicId, "target", "VERIFIED"),
         response -> assertTrue(response.isError(), "moves are adjacent only"));
+  }
+
+  /**
+   * Scheduling is a person's decision (qits-887): the agent surface is a machine, so
+   * transition_epic to READY_FOR_DEV is refused naming the gate and the epic stays REFINED, while
+   * unscheduling a scheduled epic through the same tool passes.
+   */
+  @Test
+  public void transitionEpicIsRefusedSchedulingAndMayUnschedule() {
+    String projectId = createProject("EpicScheduleTool");
+    String epicId = proposeEpic(projectId, "Scheduled by a person");
+    freeze(epicId);
+
+    call(
+        projectId,
+        "transition_epic",
+        Map.of("id", epicId, "target", "READY_FOR_DEV"),
+        response -> {
+          assertTrue(response.isError(), "an agent may not schedule");
+          assertTrue(text(response).contains("PERSON_APPROVAL"), text(response));
+          assertTrue(text(response).contains("is a machine credential"), text(response));
+        });
+    authenticated()
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .body("epic.status", org.hamcrest.Matchers.equalTo("REFINED"));
+
+    authenticated()
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
+        .contentType(ContentType.JSON)
+        .body(new EpicController.TransitionEpicRequest("READY_FOR_DEV"))
+        .when()
+        .post("/projects/api/epics/" + epicId + "/transition")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode());
+    call(
+        projectId,
+        "transition_epic",
+        Map.of("id", epicId, "target", "REFINED"),
+        response -> assertFalse(response.isError(), text(response)));
   }
 }

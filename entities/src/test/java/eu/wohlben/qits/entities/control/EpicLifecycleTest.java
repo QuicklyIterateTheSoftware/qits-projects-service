@@ -52,7 +52,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   /** A frozen epic a person scheduled (qits-887): READY_FOR_DEV, where implement runs. */
   private WorkEntity scheduled() {
     WorkEntity epic = frozen();
-    return workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", "t").entity();
+    return workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t")).entity();
   }
 
   // --- legal moves ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       assertEquals(
-          target, workEntities.transition(Archetype.EPIC, epic.id, target, "t").entity().status);
+          target, workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t")).entity().status);
     }
     // DONE is final: every target is refused, the step back to VERIFIED and supersede included.
     for (String target :
@@ -105,7 +105,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
       ConflictException refusal =
           assertThrows(
               ConflictException.class,
-              () -> workEntities.transition(Archetype.EPIC, epic.id, target, "t"),
+              () -> workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t")),
               "DONE -> " + target);
       assertTrue(refusal.getMessage().contains("DONE is final"), refusal.getMessage());
     }
@@ -117,7 +117,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   void aDoneEpicsScopeIsFrozenForGoodAndTheRefusalSaysSo() {
     WorkEntity epic = epic();
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      workEntities.transition(Archetype.EPIC, epic.id, target, "t");
+      workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t"));
     }
     ConflictException refusal =
         assertThrows(
@@ -134,7 +134,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED")) {
       assertThrows(
           ConflictException.class,
-          () -> workEntities.transition(Archetype.EPIC, epic.id, target, "t"));
+          () -> workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t")));
     }
     assertEquals(
         "REPORTED",
@@ -183,7 +183,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             EntityWrite.task("repo-1", "Loose end", null, null),
             "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
     java.time.Instant june = java.time.Instant.parse("2026-06-01T12:00:00Z");
     workEntities.update(
         Archetype.FEATURE,
@@ -208,7 +208,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.FEATURE, epic.id, EntityWrite.feature("The one feature", null, null), "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTED", "t");
 
     // Structural changes and marker changes are both rejected — the guards' status checks.
@@ -229,7 +229,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     for (String target : List.of("REPORTED", "IMPLEMENTED", "DONE")) {
       assertThrows(
           ConflictException.class,
-          () -> workEntities.transition(Archetype.EPIC, epic.id, target, "t"));
+          () -> workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t")));
     }
     var superseded =
         workEntities.transition(Archetype.EPIC, epic.id, WorkEntityService.SUPERSEDE, "t");
@@ -281,7 +281,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED", WorkEntityService.SUPERSEDE)) {
       assertThrows(
           ConflictException.class,
-          () -> workEntities.transition(Archetype.EPIC, superseded.id, target, "t"));
+          () -> workEntities.transition(Archetype.EPIC, superseded.id, target, Mover.person("t")));
     }
   }
 
@@ -292,7 +292,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     for (String retired : List.of("REFINING", "IMPLEMENTATION", "ABANDONED")) {
       assertThrows(
           ConflictException.class,
-          () -> workEntities.transition(Archetype.EPIC, epic.id, retired, "t"));
+          () -> workEntities.transition(Archetype.EPIC, epic.id, retired, Mover.person("t")));
     }
     assertThrows(
         ConflictException.class,
@@ -368,7 +368,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             EntityWrite.task("repo-2", "Task two", null, t1.entity().id),
             "t");
     workEntities.transition(Archetype.EPIC, old.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, old.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, old.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.update(
         Archetype.FEATURE,
         a.entity().id,
@@ -625,7 +625,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   private Nested scheduledTask(WorkEntity epic) {
     Nested task = plannedTask(epic);
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
     return task;
   }
 
@@ -720,7 +720,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             EntityWrite.task("repo-1", "Skipped the mark", null, null),
             "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
     // An agent may move the epic itself; the platform's moves are tested one module up.
     workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", "t");
 
@@ -742,7 +742,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
         workEntities.create(
             Archetype.TASK, task.parentId(), EntityWrite.task("repo-1", "Other", null, null), "t");
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", "t");
     assertNull(workEntities.nested(Archetype.TASK, other.entity().id).entity().implementingAt);
 
@@ -790,7 +790,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertThrows(
         ConflictException.class,
         () -> workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t"));
-    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", Mover.person("t"));
     assertEquals(
         EntityStatus.IMPLEMENTED.name(),
         workEntities.transition(Archetype.CAMPAIGN, campaign.id, "IMPLEMENTED", "t").entity().status);
@@ -800,7 +800,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertEquals(
         EntityStatus.READY_FOR_DEV.name(),
         workEntities
-            .transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", "t")
+            .transition(Archetype.CAMPAIGN, campaign.id, "READY_FOR_DEV", Mover.person("t"))
             .entity()
             .status);
     // VERIFYING the same (qits-749), and VERIFIED -> IMPLEMENTED stays its BACK move.
@@ -855,7 +855,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
               "t");
       workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
       for (String target : walk) {
-        workEntities.transition(Archetype.EPIC, epic.id, target, "t");
+        workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t"));
       }
 
       assertThrows(
@@ -908,7 +908,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
       WorkEntity epic = epic();
       workEntities.create(
           Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
-      workEntities.transition(Archetype.EPIC, epic.id, target, "t");
+      workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t"));
       // Deleting removes the row rather than editing a frozen scope; the audit log outlives it.
       workEntities.delete(Archetype.EPIC, epic.id, "t");
       inFreshTx(

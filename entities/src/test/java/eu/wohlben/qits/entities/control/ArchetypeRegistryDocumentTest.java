@@ -420,6 +420,18 @@ class ArchetypeRegistryDocumentTest {
     // A feature and a task hold no criteria, so the criteria gate names none of their moves.
     assertEquals(List.of(), gatesOf(gates, Archetype.FEATURE, "REPORTED", "REFINED"));
     assertEquals(List.of(), gatesOf(gates, Archetype.TASK, "REFINED", "READY_FOR_DEV"));
+    // With the person gate beside it (qits-937): scheduling needs both, a piece's needs a person.
+    List<TransitionGate> both = List.of(new PersonApprovalGate(), new AcceptanceCriteriaGate());
+    assertEquals(
+        List.of("ACCEPTANCE_CRITERIA", "PERSON_APPROVAL"),
+        gatesOf(both, Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
+    assertEquals(
+        List.of("ACCEPTANCE_CRITERIA", "PERSON_APPROVAL"),
+        gatesOf(both, Archetype.TICKET, "REFINED", "READY_FOR_DEV"));
+    assertEquals(List.of("PERSON_APPROVAL"), gatesOf(both, Archetype.TASK, "REFINED", "READY_FOR_DEV"));
+    assertEquals(
+        List.of("PERSON_APPROVAL"), gatesOf(both, Archetype.CAMPAIGN, "REFINED", "READY_FOR_DEV"));
+    assertEquals(List.of(), gatesOf(both, Archetype.EPIC, "READY_FOR_DEV", "REFINED"));
     // With no gate handed in, nothing is named.
     assertEquals(List.of(), gatesOf(List.of(), Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
   }

@@ -1,10 +1,13 @@
 package eu.wohlben.qits.projects.security;
 
 import eu.wohlben.qits.projects.error.DomainException;
+import io.quarkus.arc.Arc;
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.security.identity.SecurityIdentity;
+import io.quarkus.vertx.http.runtime.CurrentVertxRequest;
 import io.vertx.core.http.Cookie;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.ext.web.RoutingContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.json.JsonString;
@@ -73,6 +76,9 @@ public class PersonCheck {
 
   @Inject HttpServerRequest request;
 
+  /** The current HTTP request, if any, for {@link #verifiedAdmin(SecurityIdentity)}. */
+  @Inject CurrentVertxRequest currentRequest;
+
   /**
    * The verified person's name, or a 403 saying what would have counted.
    *
@@ -93,6 +99,29 @@ public class PersonCheck {
   public Optional<String> verifiedAdmin() {
     Cookie cookie = request.getCookie(SESSION_COOKIE);
     return verify(identity, cookie == null ? null : cookie.getValue(), LaunchMode.current());
+  }
+
+  /**
+   * The verified person behind {@code caller}, or empty — {@link #verifiedAdmin()} for a door that
+   * is handed its caller's identity rather than injecting it (qits-887's lifecycle doors, which a
+   * suite also drives in process). The same decision: the session cookie is read off the current
+   * HTTP request when there is one, and a call with no request in flight has none to offer.
+   */
+  public Optional<String> verifiedAdmin(SecurityIdentity caller) {
+    return verify(caller, currentSessionCookie(), LaunchMode.current());
+  }
+
+  /** The {@code qits-session} cookie of the HTTP request in flight, or null when there is none. */
+  private String currentSessionCookie() {
+    if (!Arc.container().requestContext().isActive()) {
+      return null;
+    }
+    RoutingContext context = currentRequest.getCurrent();
+    if (context == null) {
+      return null;
+    }
+    Cookie cookie = context.request().getCookie(SESSION_COOKIE);
+    return cookie == null ? null : cookie.getValue();
   }
 
   /** The whole decision, with the request's parts handed in — what the unit test drives. */

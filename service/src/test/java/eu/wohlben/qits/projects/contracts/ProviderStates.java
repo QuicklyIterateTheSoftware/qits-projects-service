@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.contracts;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityWrite;
@@ -421,8 +422,8 @@ public class ProviderStates {
           create(Archetype.EPIC, project, EntityWrite.epic(path.getKey() + " epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
       String ticket = ticket(project, path.getKey() + " ticket");
       for (String status : path.getValue()) {
-        work.transition(Archetype.EPIC, epic, status, SEEDER);
-        work.transition(Archetype.TICKET, ticket, status, SEEDER);
+        work.transition(Archetype.EPIC, epic, status, Mover.person(SEEDER));
+        work.transition(Archetype.TICKET, ticket, status, Mover.person(SEEDER));
       }
     }
     String repositoryId = repository(project, "contract-service");
@@ -433,7 +434,7 @@ public class ProviderStates {
     String task =
         node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "Started task", "Seeded.", null));
     work.transition(Archetype.EPIC, started, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, started, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, started, "READY_FOR_DEV", Mover.person(SEEDER));
     // The tool's own path: stamps the task and its feature, and moves the epic to IMPLEMENTING.
     work.markImplementing(task, SEEDER);
     return new Setup(params("projectId", project.id), List.of(token));
@@ -457,7 +458,7 @@ public class ProviderStates {
     String open = node(Archetype.FEATURE, epic, EntityWrite.feature("Open feature", "Seeded.", null));
     node(Archetype.TASK, open, EntityWrite.task(repositoryId, "Open task", "Seeded.", null));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     implemented(shippedTask);
     implemented(done);
     return new Setup(params("projectId", project.id), List.of(token));
@@ -494,7 +495,7 @@ public class ProviderStates {
     }
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     work.transition(Archetype.TASK, tasks.get(EntityStatus.REPORTED), "REPORTED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     work.markImplementing(tasks.get(EntityStatus.IMPLEMENTING), SEEDER);
     work.transition(Archetype.TASK, tasks.get(EntityStatus.REFINED), "REFINED", SEEDER);
     for (EntityStatus status :
@@ -556,7 +557,7 @@ public class ProviderStates {
             open,
             EntityWrite.task(repositoryId, "Implementing task", "Seeded.", null));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     work.markImplementing(started, SEEDER);
     work.transition(Archetype.TASK, refinedTask, "REFINED", SEEDER);
     for (String task : verifiedTasks) {
@@ -655,7 +656,7 @@ public class ProviderStates {
             implementingFeature,
             EntityWrite.task(repositoryId, "Verifying task", "Seeded.", null));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     work.markImplementing(implementingTask, SEEDER);
     // The epic's scheduling carried every piece to READY_FOR_DEV (qits-887); the REFINED pair is
     // moved back by its own doors once the epic is under way.
@@ -697,7 +698,7 @@ public class ProviderStates {
                   null)));
     }
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     for (String task : tasks) {
       implemented(task);
       walk(Archetype.TASK, task, target);
@@ -846,7 +847,7 @@ public class ProviderStates {
 
   private void moveTo(Archetype archetype, String id, EntityStatus status) {
     if (status == EntityStatus.DROPPED) {
-      work.transition(archetype, id, status.name(), SEEDER);
+      work.transition(archetype, id, status.name(), Mover.person(SEEDER));
     } else {
       walk(archetype, id, status);
     }
@@ -911,7 +912,7 @@ public class ProviderStates {
     }
     // Task markers move only while the epic is READY_FOR_DEV or IMPLEMENTING.
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     tasks.forEach(this::implemented);
     implemented(feature);
     walk(Archetype.EPIC, epic, done ? EntityStatus.DONE : EntityStatus.VERIFIED);
@@ -1255,7 +1256,7 @@ public class ProviderStates {
     // Work: the epic's markers, then every status. Task markers move only while the epic is
     // READY_FOR_DEV or IMPLEMENTING; marking a task implementing moves the epic to IMPLEMENTING.
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
-    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", SEEDER);
+    work.transition(Archetype.EPIC, epic, "READY_FOR_DEV", Mover.person(SEEDER));
     work.markImplementing(stream, AGENT);
     implemented(stream);
     work.markImplementing(button, AGENT);
@@ -1369,7 +1370,7 @@ public class ProviderStates {
     String current = QuarkusTransaction.requiringNew().call(() -> work.find(id).status);
     int from = walk.indexOf(EntityStatus.valueOf(current));
     for (int step = from + 1; step <= walk.indexOf(target); step++) {
-      work.transition(archetype, id, walk.get(step).name(), SEEDER);
+      work.transition(archetype, id, walk.get(step).name(), Mover.person(SEEDER));
     }
   }
 

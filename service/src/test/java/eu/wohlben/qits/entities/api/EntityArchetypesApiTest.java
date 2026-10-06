@@ -232,7 +232,7 @@ class EntityArchetypesApiTest {
     expected.put(
         "REFINED",
         List.of(
-            move("READY_FOR_DEV", "FORWARD", "ACCEPTANCE_CRITERIA"),
+            move("READY_FOR_DEV", "FORWARD", "ACCEPTANCE_CRITERIA", "PERSON_APPROVAL"),
             move("REPORTED", "BACK"),
             move("DROPPED", "DROP")));
     expected.put(

@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
@@ -115,6 +117,8 @@ public class EntityDispatchControllerTest {
 
   private RequestSpecification asAdmin(String user) {
     return given()
+        // A person behind the press: the session the edge keeps, as a browser sends it (qits-887).
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user))
         .contentType(ContentType.JSON)
         .header("X-Qits-User", user)
         .header("X-Qits-Roles", "qits:admin");

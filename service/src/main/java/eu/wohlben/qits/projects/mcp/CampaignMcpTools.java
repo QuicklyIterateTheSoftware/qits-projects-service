@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.mcp;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.CampaignController;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberDto;
@@ -230,7 +231,8 @@ public class CampaignMcpTools {
           String target) {
     requireCampaignInProject(id);
     String projectId = scope.requireProjectId();
-    resolutions.transition(Archetype.CAMPAIGN, id, target, changedBy());
+    // The agent surface: a machine, whatever the session says (qits-887).
+    resolutions.transition(Archetype.CAMPAIGN, id, target, Mover.machine(changedBy()));
     announce(projectId);
     return views.campaign(campaigns.get(id));
   }

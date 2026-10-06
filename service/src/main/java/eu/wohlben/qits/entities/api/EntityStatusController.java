@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.EntityCatalogService;
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -124,8 +125,11 @@ public class EntityStatusController {
   @APIResponse(
       responseCode = "409",
       description =
-          "A move the lifecycle does not allow, a target naming no status, or a feature or a task"
-              + " whose epic is still REPORTED")
+          "A move the lifecycle does not allow, a target naming no status, a feature or a task"
+              + " whose epic is still REPORTED, or a quality gate refusing a forward move — no"
+              + " acceptance criteria into REFINED or READY_FOR_DEV (ACCEPTANCE_CRITERIA), or REFINED"
+              + " to READY_FOR_DEV by a caller this service did not verify as a person"
+              + " (PERSON_APPROVAL)")
   public TransitionedEntity move(@PathParam("id") String id, EntityStatusMove request) {
     WorkEntity row = ids.resolve(id);
     Archetype archetype = row.archetype;
@@ -137,11 +141,13 @@ public class EntityStatusController {
     EntitiesAgentAccess.requireProject(identity, row.projectId);
 
     TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
-    String changedBy = EntitiesPrincipal.changedBy(identity);
+    // The mover's name is the audit's: a verified person's own, never a header (qits-887).
+    Mover mover = routes.moverOf(identity);
     // Bound above, in this door's refusal order, so the move is asked not to bind again.
     WorkEntityService.Transition moved =
-        routes.move(archetype, row.id, request == null ? null : request.target(), false, identity);
+        routes.move(
+            archetype, row.id, request == null ? null : request.target(), false, identity, mover);
     return qualifiedIds.qualify(
-        TransitionedEntity.moved(moved.entity(), before, moved.statusBefore(), changedBy));
+        TransitionedEntity.moved(moved.entity(), before, moved.statusBefore(), mover.name()));
   }
 }

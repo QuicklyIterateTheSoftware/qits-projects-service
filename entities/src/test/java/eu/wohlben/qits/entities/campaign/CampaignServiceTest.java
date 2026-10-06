@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.control.EntitiesTestSupport;
 import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
@@ -475,7 +476,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
   private WorkEntity walk(WorkEntity row, String... statuses) {
     WorkEntity moved = row;
     for (String status : statuses) {
-      moved = workEntities.transition(row.archetype, row.id, status, WHO).entity();
+      moved = workEntities.transition(row.archetype, row.id, status, Mover.person(WHO)).entity();
     }
     return moved;
   }

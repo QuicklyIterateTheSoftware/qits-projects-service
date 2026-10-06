@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.mcp;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -421,8 +422,9 @@ public class EpicMcpTools {
           "Move an epic along its lifecycle. A status is a claim about what has been ACHIEVED, so"
               + " only move to one you can honestly make: REPORTED — the work is raised and its plan"
               + " is being written; REFINED — the plan is complete: description, feature/task tree"
-              + " and dossier, and moving here FREEZES that scope; READY_FOR_DEV — a PERSON scheduled"
-              + " it (scheduling is a person's decision, so do not make this move yourself);"
+              + " and dossier, and moving here FREEZES that scope and needs acceptanceCriteria"
+              + " (update_epic); READY_FOR_DEV — a PERSON scheduled"
+              + " it (scheduling is a person's decision: this tool is refused it, PERSON_APPROVAL);"
               + " IMPLEMENTING — the implementation"
               + " was started (a dispatch press, or your first mark_task_implementing, moves the"
               + " epic here for you); IMPLEMENTED — every task is"
@@ -467,7 +469,7 @@ public class EpicMcpTools {
     }
     String changedBy = changedBy();
     WorkEntityService.Transition moved =
-        resolutions.transition(Archetype.EPIC, id, target, changedBy);
+        resolutions.transition(Archetype.EPIC, id, target, Mover.machine(changedBy));
     WorkEntity epic = moved.entity();
     announce();
     // The agent's claim IS the trigger for the next phase: after the move, outside its transaction.
@@ -778,7 +780,7 @@ public class EpicMcpTools {
     WorkEntity piece = requirePieceInProject(id);
     String changedBy = changedBy();
     WorkEntityService.Transition moved =
-        resolutions.transition(piece.archetype, piece.id, target, changedBy);
+        resolutions.transition(piece.archetype, piece.id, target, Mover.machine(changedBy));
     WorkEntity row = moved.entity();
     announce();
     try {

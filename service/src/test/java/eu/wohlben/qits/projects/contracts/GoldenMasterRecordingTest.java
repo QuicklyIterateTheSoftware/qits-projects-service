@@ -2,6 +2,8 @@ package eu.wohlben.qits.projects.contracts;
 
 import static io.restassured.RestAssured.given;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -681,7 +683,10 @@ class GoldenMasterRecordingTest {
 
     Response response;
     try {
-      var request = given();
+      // The consumers are browsers: a session rides with every call, which is what lets a person's
+      // door — the scheduling move (qits-887) — answer as it does for them.
+      var request =
+          given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"));
       if (interaction.requestBody() != null) {
         request = request.contentType("application/json").body(interaction.requestBody());
       }

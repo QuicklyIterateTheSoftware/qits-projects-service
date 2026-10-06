@@ -92,7 +92,12 @@ public class EpicController {
               + " READY_FOR_DEV (each REFINED piece is scheduled with it), READY_FOR_DEV back to"
               + " REFINED (each piece still READY_FOR_DEV returns) and the move to IMPLEMENTED (each"
               + " piece still before IMPLEMENTED is carried there). No other move touches them: a"
-              + " task is verified on its own, and a piece is never scheduled on its own.")
+              + " task is verified on its own, and a piece is never scheduled on its own. Two quality"
+              + " gates judge forward moves: REFINED and READY_FOR_DEV need acceptance criteria"
+              + " (ACCEPTANCE_CRITERIA), and REFINED to READY_FOR_DEV needs a person"
+              + " (PERSON_APPROVAL: a browser session or a person's qits CLI, verified here — never"
+              + " asserted headers or a machine bearer); a failing gate is a 409 naming it, and the"
+              + " scheduling move is recorded under the verified person's name.")
   public TransitionEpicRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionEpicRequest request) {
     var moved = routes.transition(routes.epics(), id, request.target(), false, identity);

@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.entitieshost;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -249,7 +250,8 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     // The move FIRST and the comment after it: a failed move then leaves nothing written, so the
     // retry cannot say the same sentence twice; a failed comment after a move that landed is one
     // WARN, and the ticket is closed all the same — a retry would find it DROPPED and do nothing.
-    resolutions.transition(Archetype.TICKET, ticket.id, EntityStatus.DROPPED.name(), REPORTER);
+    resolutions.transition(
+        Archetype.TICKET, ticket.id, EntityStatus.DROPPED.name(), Mover.machine(REPORTER));
     try {
       tickets.addComment(
           ticket.id,

@@ -69,6 +69,9 @@ public class CampaignController {
 
   @Inject PersonCheck persons;
 
+  /** The caller as a mover (qits-887): a campaign's scheduling is a person's too. */
+  @Inject EntityMovers movers;
+
   public record CampaignResponse(CampaignDto campaign) {}
 
   public record CampaignMemberResponse(CampaignMemberDto member) {}
@@ -104,6 +107,8 @@ public class CampaignController {
   /**
    * A lifecycle move of the campaign — {@code REFINED} readies it to be started, leaving REFINED
    * pauses a started one, {@code DROPPED} stops it. A move the lifecycle does not allow is a 409.
+   * REFINED → READY_FOR_DEV is a person's move (qits-887, {@code PERSON_APPROVAL}): the caller is
+   * built into a {@code Mover} by {@link EntityMovers}, and a machine is refused with a 409.
    */
   @POST
   @Path("/{id}/transition")
@@ -111,8 +116,7 @@ public class CampaignController {
   public CampaignResponse transition(
       @PathParam("id") String id, @Valid TransitionCampaignRequest request) {
     String projectId = bind(id);
-    resolutions.transition(
-        Archetype.CAMPAIGN, id, request.target(), EntitiesPrincipal.changedBy(identity));
+    resolutions.transition(Archetype.CAMPAIGN, id, request.target(), movers.of(identity));
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
     return new CampaignResponse(views.campaign(campaigns.get(id)));
   }

@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.EntityPatchController;
 import eu.wohlben.qits.eventstream.control.EventFrame;
@@ -251,7 +253,7 @@ public class UnattendedGateTicketTest {
     String first = TestCriteria.give(awaitTicketOn(id));
 
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
-      given()
+      given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
           .body("{\"target\":\"" + target + "\"}")
           .post("/projects/api/tickets/" + first + "/transition")
@@ -292,7 +294,7 @@ public class UnattendedGateTicketTest {
     // DROPPED is reachable from every open status, so the ticket goes there from the REPORTED it
     // was filed at — which is also the likeliest way a real one gets there: somebody reads the
     // report and rules the work out before any of it is refined.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body("{\"target\":\"DROPPED\"}")
         .post("/projects/api/tickets/" + first + "/transition")
@@ -510,7 +512,7 @@ public class UnattendedGateTicketTest {
       awaitState(id, "REJECTED");
       String ticketId = TestCriteria.give(awaitTicketOn(id));
       for (String target : walk) {
-        given()
+        given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
             .contentType(ContentType.JSON)
             .body("{\"target\":\"" + target + "\"}")
             .post("/projects/api/tickets/" + ticketId + "/transition")

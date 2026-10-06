@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.campaign.CampaignCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignService;
@@ -610,7 +611,7 @@ class CampaignExecutorTest {
   private WorkEntity walk(WorkEntity row, String... statuses) {
     WorkEntity moved = row;
     for (String status : statuses) {
-      moved = workEntities.transition(row.archetype, row.id, status, "setup").entity();
+      moved = workEntities.transition(row.archetype, row.id, status, Mover.person("setup")).entity();
     }
     return moved;
   }

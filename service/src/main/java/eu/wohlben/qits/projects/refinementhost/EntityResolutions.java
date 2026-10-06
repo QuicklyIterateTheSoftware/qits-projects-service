@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.refinementhost;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.entity.Refinement;
@@ -71,12 +72,13 @@ public class EntityResolutions {
    * entity's agents are told by the transition's own announcement — see the class javadoc.
    */
   public WorkEntityService.Transition transition(
-      Archetype archetype, String id, String target, String changedBy) {
-    WorkEntityService.PlannedTransition planned = entities.planTransition(archetype, id, target);
+      Archetype archetype, String id, String target, Mover mover) {
+    WorkEntityService.PlannedTransition planned =
+        entities.planTransition(archetype, id, target, mover);
     if (planned.resolving()) {
       discardHeldBy(id, noun(archetype), planned.target().name());
     }
-    return entities.transition(archetype, id, target, changedBy);
+    return entities.transition(archetype, id, target, mover);
   }
 
   /** "Epic" / "Ticket", for the log line. */

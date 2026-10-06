@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.EntityWrite;
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.Nested;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.dto.EpicDto;
@@ -96,6 +97,9 @@ public class EntityRoutes {
    * the entity's branch was dispatched as a flow, and the release asked for at VERIFIED either way.
    */
   @Inject PhaseAdvance phaseAdvance;
+
+  /** Who is moving, as qits-891's person check says (qits-887) — see {@link EntityMovers}. */
+  @Inject EntityMovers movers;
 
   /**
    * <b>One archetype as the wire sees it.</b>
@@ -344,11 +348,30 @@ public class EntityRoutes {
    */
   public WorkEntityService.Transition move(
       Archetype archetype, String id, String target, boolean bound, SecurityIdentity identity) {
+    return move(archetype, id, target, bound, identity, moverOf(identity));
+  }
+
+  /**
+   * The caller as a {@link Mover}: a person only when qits-891's check verified one, under the name
+   * the proof carries — what the PERSON_APPROVAL gate judges and what the move is audited under.
+   */
+  public Mover moverOf(SecurityIdentity identity) {
+    return movers.of(identity);
+  }
+
+  /** {@link #move(Archetype, String, String, boolean, SecurityIdentity)} by a mover already built. */
+  public WorkEntityService.Transition move(
+      Archetype archetype,
+      String id,
+      String target,
+      boolean bound,
+      SecurityIdentity identity,
+      Mover mover) {
     if (bound) {
       EntitiesAgentAccess.requireProject(identity, entities.get(archetype, id).projectId);
     }
-    String changedBy = EntitiesPrincipal.changedBy(identity);
-    WorkEntityService.Transition moved = resolutions.transition(archetype, id, target, changedBy);
+    String changedBy = mover.name();
+    WorkEntityService.Transition moved = resolutions.transition(archetype, id, target, mover);
     // A supersede spawns a second row in the same project, so one hint covers both.
     publisher.fire(moved.entity().projectId, ProjectChangeHint.Topic.of(archetype));
     try {

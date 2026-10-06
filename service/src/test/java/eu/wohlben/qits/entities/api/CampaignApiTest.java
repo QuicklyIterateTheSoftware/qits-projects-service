@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberDto;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.control.EntityWrite;
@@ -168,7 +169,7 @@ class CampaignApiTest {
         .statusCode(200)
         .body("campaign.members[0].membershipId", equalTo(second));
 
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(Map.of("target", "REFINED"))
         .post(base + "/transition")
@@ -176,7 +177,7 @@ class CampaignApiTest {
         .statusCode(200)
         .body("campaign.status", equalTo("REFINED"));
     // A campaign never enters IMPLEMENTING (qits-749): a 409, and it stays REFINED.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(Map.of("target", "IMPLEMENTING"))
         .post(base + "/transition")
@@ -188,7 +189,7 @@ class CampaignApiTest {
     for (String target :
         List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "IMPLEMENTED", "READY_FOR_DEV", "REFINED")) {
       if (target.equals("VERIFIED")) {
-        given()
+        given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
             .contentType(ContentType.JSON)
             .body(Map.of("target", "VERIFYING"))
             .post(base + "/transition")
@@ -196,7 +197,7 @@ class CampaignApiTest {
             .statusCode(409)
             .body("message", containsString("never moves to VERIFYING"));
       }
-      given()
+      given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
           .body(Map.of("target", target))
           .post(base + "/transition")
@@ -270,7 +271,7 @@ class CampaignApiTest {
         .statusCode(400)
         .body("message", containsString("group 1 has no criteria"))
         .body("message", containsString("group 2, criterion 1: repositoryName is required"));
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(Map.of("target", "SOMEWHERE"))
         .post(base + "/transition")
@@ -404,11 +405,11 @@ class CampaignApiTest {
     WorkEntity campaign = workEntities.createCampaign(PROJECT, "In flight", null, "t");
     WorkEntity implemented = ticket("Implemented");
     workEntities.transition(Archetype.TICKET, implemented.id, "REFINED", "t");
-    workEntities.transition(Archetype.TICKET, implemented.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.TICKET, implemented.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.transition(Archetype.TICKET, implemented.id, "IMPLEMENTED", "t");
     WorkEntity overridden = ticket("Overridden");
     workEntities.transition(Archetype.TICKET, overridden.id, "REFINED", "t");
-    workEntities.transition(Archetype.TICKET, overridden.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.TICKET, overridden.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.transition(Archetype.TICKET, overridden.id, "IMPLEMENTED", "t");
 
     CampaignMemberDto joined =

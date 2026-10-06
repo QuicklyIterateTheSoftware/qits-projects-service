@@ -34,9 +34,11 @@ public class ArchetypeRegistrySchemaFilter implements OASFilter {
           Map.of(
               "gates",
               "The quality gates the move has to pass, by name (ACCEPTANCE_CRITERIA: the entity"
-                  + " carries acceptance criteria). Only a FORWARD or SKIP move has any, and the key"
-                  + " is absent when there are none. A move that fails one is a 409 naming every"
-                  + " failing gate."),
+                  + " carries acceptance criteria; PERSON_APPROVAL: a person makes the move — a"
+                  + " browser session or a person's qits CLI, never an agent, a service client or"
+                  + " asserted headers). Only a FORWARD or SKIP move has any, and the key is absent"
+                  + " when there are none. A move that fails one is a 409 naming every failing"
+                  + " gate."),
           "DispatchPhases",
           Map.of(
               "next",

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
@@ -179,6 +181,18 @@ public class TicketMcpToolsTest {
           id[0] = idIn(body);
         });
     return id[0];
+  }
+
+  /** A person schedules the ticket at the status door: REFINED → READY_FOR_DEV (qits-887). */
+  private void scheduleAsAPerson(String ticketId) {
+    authenticated()
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
+        .contentType(ContentType.JSON)
+        .body(Map.of("target", "READY_FOR_DEV"))
+        .when()
+        .post("/projects/api/entities/" + ticketId + "/status")
+        .then()
+        .statusCode(200);
   }
 
   /** The {@code "id"} field of a tool's JSON result — the first one, which is the row's own. */
@@ -486,8 +500,33 @@ public class TicketMcpToolsTest {
   public void walksATicketForwardOneStepAtATimeAndDoneIsFinal() {
     String projectId = createProject("Ticket Cycle");
     String ticketId = createTicket(projectId, "Round trip", "BUG");
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "REFINED"),
+        response -> assertFalse(response.isError(), text(response)));
+    // Scheduling is a person's decision (qits-887): the agent surface is refused it, readably.
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "READY_FOR_DEV"),
+        response -> {
+          assertTrue(response.isError(), "an agent may not schedule");
+          assertTrue(text(response).contains("PERSON_APPROVAL"), text(response));
+        });
+    // Unscheduling is anybody's.
+    scheduleAsAPerson(ticketId);
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "REFINED"),
+        response -> assertFalse(response.isError(), text(response)));
 
-    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+    for (String target : List.of("READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      if (target.equals("READY_FOR_DEV")) {
+        scheduleAsAPerson(ticketId); // a person's move: the tool is refused it (qits-887)
+        continue;
+      }
       call(
           projectId,
           "transition_ticket",
@@ -520,6 +559,10 @@ public class TicketMcpToolsTest {
     String projectId = createProject("Ticket Announced");
     String ticketId = createTicket(projectId, "Announce me", "BUG");
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED")) {
+      if (target.equals("READY_FOR_DEV")) {
+        scheduleAsAPerson(ticketId); // a person's move: the tool is refused it (qits-887)
+        continue;
+      }
       call(
           projectId,
           "transition_ticket",
@@ -605,6 +648,10 @@ public class TicketMcpToolsTest {
     String projectId = createProject("Ticket Thawed");
     String ticketId = createTicket(projectId, "Done for now", "BUG");
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
+      if (target.equals("READY_FOR_DEV")) {
+        scheduleAsAPerson(ticketId); // a person's move: the tool is refused it (qits-887)
+        continue;
+      }
       call(
           projectId,
           "transition_ticket",
@@ -791,6 +838,7 @@ public class TicketMcpToolsTest {
 
     // A person schedules it; the scheduling is an approval, not a hand-off, so it pushes nothing.
     authenticated()
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
         .contentType(ContentType.JSON)
         .body(Map.of("target", "READY_FOR_DEV"))
         .when()

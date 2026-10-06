@@ -4,6 +4,8 @@ import static eu.wohlben.qits.entities.api.EntityFixtures.map;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -212,7 +214,7 @@ class EntitySchemaApiTest {
 
                       if (!markers.isEmpty()) {
                         for (String target : List.of("REFINED", "READY_FOR_DEV")) {
-                          given()
+                          given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
                               .contentType(ContentType.JSON)
                               .body(map("target", target))
                               .post("/projects/api/epics/" + rows.epic + "/transition")

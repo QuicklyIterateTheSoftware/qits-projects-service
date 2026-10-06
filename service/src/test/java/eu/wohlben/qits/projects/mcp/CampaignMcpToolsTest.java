@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -347,7 +348,7 @@ public class CampaignMcpToolsTest {
     String projectId = createProject("Campaign claimed");
     WorkEntity implemented = ticket(projectId, "Already under way");
     workEntities.transition(Archetype.TICKET, implemented.id, "REFINED", "t");
-    workEntities.transition(Archetype.TICKET, implemented.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.TICKET, implemented.id, "READY_FOR_DEV", Mover.person("t"));
     workEntities.transition(Archetype.TICKET, implemented.id, "IMPLEMENTED", "t");
 
     String[] campaignId = new String[1];

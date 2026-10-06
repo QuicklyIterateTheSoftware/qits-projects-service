@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.mcp;
 
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -362,8 +363,9 @@ public class TicketMcpTools {
       description =
           "Move a ticket along its lifecycle. A status is a claim about what has been ACHIEVED, so"
               + " only move to one you can honestly make: REPORTED — somebody said what is wrong;"
-              + " REFINED — the ticket now says what to do; READY_FOR_DEV — a PERSON scheduled it"
-              + " (scheduling is a person's decision, so do not make this move yourself);"
+              + " REFINED — the ticket now says what to do and has acceptanceCriteria (update_ticket);"
+              + " READY_FOR_DEV — a PERSON scheduled it"
+              + " (scheduling is a person's decision: this tool is refused it, PERSON_APPROVAL);"
               + " IMPLEMENTING — the implementation was"
               + " started (a dispatch moves the ticket here for you); IMPLEMENTED — the change is"
               + " released AND deployed, not merely merged; VERIFYING — the verification was started"
@@ -409,7 +411,7 @@ public class TicketMcpTools {
     String changedBy = changedBy();
     // Through EntityResolutions (qits-395): a resolving move discards the ticket's refinement first.
     WorkEntityService.Transition moved =
-        resolutions.transition(Archetype.TICKET, id, target, changedBy);
+        resolutions.transition(Archetype.TICKET, id, target, Mover.machine(changedBy));
     WorkEntity ticket = moved.entity();
     announce();
     // The agent's claim IS the trigger for the next phase, and this is where it lands: after the

@@ -145,7 +145,7 @@ class FeatureServiceTest extends EntitiesTestSupport {
 
     // The ship date needs a frozen scope, and setting it must not drop title or dependency.
     workEntities.transition(Archetype.EPIC, e.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, e.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, e.id, "READY_FOR_DEV", Mover.person("t"));
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     Nested shipped =
         workEntities.update(
@@ -230,7 +230,7 @@ class FeatureServiceTest extends EntitiesTestSupport {
     assertNull(f.entity().implementedAt);
     // The marker only moves once the epic's scope is frozen.
     workEntities.transition(Archetype.EPIC, e.id, "REFINED", "t");
-    workEntities.transition(Archetype.EPIC, e.id, "READY_FOR_DEV", "t");
+    workEntities.transition(Archetype.EPIC, e.id, "READY_FOR_DEV", Mover.person("t"));
 
     Instant when = Instant.parse("2026-07-25T10:15:30.00Z");
     Nested shipped =

@@ -73,7 +73,7 @@ class ScheduleCascadeTest extends EntitiesTestSupport {
     workEntities.transition(Archetype.TASK, plan.sibling(), "DROPPED", "t");
     announcer.clear();
 
-    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", "dana");
+    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", Mover.person("dana"));
 
     assertEquals("READY_FOR_DEV", status(Archetype.EPIC, plan.epic()));
     assertEquals("READY_FOR_DEV", status(Archetype.FEATURE, plan.feature()));
@@ -86,7 +86,7 @@ class ScheduleCascadeTest extends EntitiesTestSupport {
     Plan plan = refinedPlan();
     int audited = auditService.listForEpic(plan.epic()).size();
 
-    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", "dana");
+    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", Mover.person("dana"));
 
     assertEquals(1, announcer.batches().size(), "one move, one announcement");
     List<TransitionedEntity> batch = announcer.batches().get(0).entities();
@@ -112,7 +112,7 @@ class ScheduleCascadeTest extends EntitiesTestSupport {
   @Test
   void unschedulingReturnsThePiecesNotYetStartedAndLeavesAStartedOne() {
     Plan plan = refinedPlan();
-    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", "dana");
+    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", Mover.person("dana"));
     // One task started on its own (its move to IMPLEMENTING is not scheduling anything).
     workEntities.transition(Archetype.TASK, plan.task(), "IMPLEMENTING", "agent");
     announcer.clear();
@@ -135,7 +135,7 @@ class ScheduleCascadeTest extends EntitiesTestSupport {
   @Test
   void aScheduledEpicIsNeverSentBackToReported() {
     Plan plan = refinedPlan();
-    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", "dana");
+    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", Mover.person("dana"));
 
     assertThrows(
         ConflictException.class,
@@ -150,16 +150,16 @@ class ScheduleCascadeTest extends EntitiesTestSupport {
     ConflictException schedule =
         assertThrows(
             ConflictException.class,
-            () -> workEntities.transition(Archetype.TASK, plan.task(), "READY_FOR_DEV", "agent"));
+            () -> workEntities.transition(Archetype.TASK, plan.task(), "READY_FOR_DEV", Mover.person("agent")));
     assertTrue(schedule.getMessage().contains(plan.epic()), schedule.getMessage());
     assertTrue(schedule.getMessage().contains("schedule the epic"), schedule.getMessage());
     assertThrows(
         ConflictException.class,
         () ->
-            workEntities.transition(Archetype.FEATURE, plan.feature(), "READY_FOR_DEV", "agent"));
+            workEntities.transition(Archetype.FEATURE, plan.feature(), "READY_FOR_DEV", Mover.person("agent")));
     assertEquals("REFINED", status(Archetype.TASK, plan.task()));
 
-    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", "dana");
+    workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", Mover.person("dana"));
     ConflictException unschedule =
         assertThrows(
             ConflictException.class,

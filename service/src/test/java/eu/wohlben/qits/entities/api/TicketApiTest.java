@@ -10,6 +10,8 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
@@ -78,7 +80,7 @@ class TicketApiTest {
   /** Walk a ticket along the pipeline, one adjacent move per step, asserting nothing else. */
   private void walkTo(String ticketId, String... targets) {
     for (String target : targets) {
-      given()
+      given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
           .body(new TicketController.TransitionTicketRequest(target))
           .when()
@@ -183,7 +185,7 @@ class TicketApiTest {
         .body("ticket.slug", equalTo("login-button-does-nothing"));
 
     // Transition, one adjacent step at a time, and back again.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("REFINED"))
         .when()
@@ -191,7 +193,7 @@ class TicketApiTest {
         .then()
         .statusCode(200)
         .body("ticket.status", equalTo("REFINED"));
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("READY_FOR_DEV"))
         .when()
@@ -199,7 +201,7 @@ class TicketApiTest {
         .then()
         .statusCode(200)
         .body("ticket.status", equalTo("READY_FOR_DEV"));
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("IMPLEMENTED"))
         .when()
@@ -209,7 +211,7 @@ class TicketApiTest {
         .body("ticket.status", equalTo("IMPLEMENTED"));
     // A claim that turned out wrong is this ordinary backward move (to IMPLEMENTING since qits-749)
     // and not a verb of its own.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("IMPLEMENTING"))
         .when()
@@ -312,7 +314,7 @@ class TicketApiTest {
     String projectId = createProject();
     String reported = createTicket(projectId, "Still broken", "BUG");
     String refined = createTicket(projectId, "Described", "BUG");
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("REFINED"))
         .when()
@@ -415,7 +417,7 @@ class TicketApiTest {
     String ticketId = createTicket(projectId, "Reported already", "BUG");
 
     // Already REPORTED: the move is refused rather than being a no-op.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("REPORTED"))
         .when()
@@ -424,7 +426,7 @@ class TicketApiTest {
         .statusCode(Response.Status.CONFLICT.getStatusCode());
 
     // And so is a status that exists but is not a neighbour: moves are one step at a time.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("IMPLEMENTED"))
         .when()
@@ -433,7 +435,7 @@ class TicketApiTest {
         .statusCode(Response.Status.CONFLICT.getStatusCode());
 
     // A target naming no status at all is the same kind of answer.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("CLOSED"))
         .when()
@@ -442,7 +444,7 @@ class TicketApiTest {
         .statusCode(Response.Status.CONFLICT.getStatusCode());
 
     // An absent one is malformed, not refused.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest(null))
         .when()
@@ -465,7 +467,7 @@ class TicketApiTest {
 
     for (String target :
         List.of("REPORTED", "REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED")) {
-      given()
+      given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
           .body(new TicketController.TransitionTicketRequest(target))
           .when()
@@ -787,7 +789,7 @@ class TicketApiTest {
     // Read through the door rather than off the row, because the flag reaching the wire is what a
     // board draws from: a transition that cleared the column while the DTO went on reporting the
     // old value would leave every screen showing work as stuck after it moved.
-    given()
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body(new TicketController.TransitionTicketRequest("IMPLEMENTED"))
         .when()

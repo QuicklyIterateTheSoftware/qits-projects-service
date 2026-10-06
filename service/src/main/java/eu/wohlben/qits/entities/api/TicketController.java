@@ -98,7 +98,12 @@ public class TicketController {
   @org.eclipse.microprofile.openapi.annotations.Operation(
       operationId = "transitionTicket",
       summary = "Transition",
-      description = "Moves the ticket to the target status.")
+      description =
+          "Moves the ticket to the target status. REFINED and READY_FOR_DEV need acceptance"
+              + " criteria (ACCEPTANCE_CRITERIA), and REFINED to READY_FOR_DEV needs a person"
+              + " (PERSON_APPROVAL: a browser session or a person's qits CLI, verified here — an"
+              + " agent's or a service's bearer and asserted headers are refused); a failing gate is"
+              + " a 409 naming it.")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
   public TransitionTicketRequest.Response transition(
       @PathParam("id") String id, @Valid TransitionTicketRequest request) {

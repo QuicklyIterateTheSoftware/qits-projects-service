@@ -1932,9 +1932,11 @@ components:
           items:
             type: string
           description: "The quality gates the move has to pass, by name (ACCEPTANCE_CRITERIA:\
-            \ the entity carries acceptance criteria). Only a FORWARD or SKIP move\
-            \ has any, and the key is absent when there are none. A move that fails\
-            \ one is a 409 naming every failing gate."
+            \ the entity carries acceptance criteria; PERSON_APPROVAL: a person makes\
+            \ the move — a browser session or a person's qits CLI, never an agent,\
+            \ a service client or asserted headers). Only a FORWARD or SKIP move has\
+            \ any, and the key is absent when there are none. A move that fails one\
+            \ is a 409 naming every failing gate."
     ListPagesResponse:
       type: object
       properties:
@@ -4446,7 +4448,10 @@ paths:
           description: No entity with this id
         "409":
           description: "A move the lifecycle does not allow, a target naming no status,\
-            \ or a feature or a task whose epic is still REPORTED"
+            \ a feature or a task whose epic is still REPORTED, or a quality gate\
+            \ refusing a forward move — no acceptance criteria into REFINED or READY_FOR_DEV\
+            \ (ACCEPTANCE_CRITERIA), or REFINED to READY_FOR_DEV by a caller this\
+            \ service did not verify as a person (PERSON_APPROVAL)"
         "401":
           description: Not Authorized
       tags:
@@ -4895,7 +4900,12 @@ paths:
         \ with it), READY_FOR_DEV back to REFINED (each piece still READY_FOR_DEV\
         \ returns) and the move to IMPLEMENTED (each piece still before IMPLEMENTED\
         \ is carried there). No other move touches them: a task is verified on its\
-        \ own, and a piece is never scheduled on its own."
+        \ own, and a piece is never scheduled on its own. Two quality gates judge\
+        \ forward moves: REFINED and READY_FOR_DEV need acceptance criteria (ACCEPTANCE_CRITERIA),\
+        \ and REFINED to READY_FOR_DEV needs a person (PERSON_APPROVAL: a browser\
+        \ session or a person's qits CLI, verified here — never asserted headers or\
+        \ a machine bearer); a failing gate is a 409 naming it, and the scheduling\
+        \ move is recorded under the verified person's name."
       operationId: transitionEpic
       parameters:
       - name: id
@@ -8007,7 +8017,11 @@ paths:
   /projects/api/tickets/{id}/transition:
     post:
       summary: Transition
-      description: Moves the ticket to the target status.
+      description: "Moves the ticket to the target status. REFINED and READY_FOR_DEV\
+        \ need acceptance criteria (ACCEPTANCE_CRITERIA), and REFINED to READY_FOR_DEV\
+        \ needs a person (PERSON_APPROVAL: a browser session or a person's qits CLI,\
+        \ verified here — an agent's or a service's bearer and asserted headers are\
+        \ refused); a failing gate is a 409 naming it."
       operationId: transitionTicket
       parameters:
       - name: id

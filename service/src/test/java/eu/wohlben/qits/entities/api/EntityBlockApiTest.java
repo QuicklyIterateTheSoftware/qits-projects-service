@@ -9,6 +9,8 @@ import static org.hamcrest.Matchers.not;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentEntities.Told;
@@ -63,7 +65,7 @@ class EntityBlockApiTest {
 
   private static void walk(String id, String... targets) {
     for (String target : targets) {
-      given()
+      given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
           .body(map("target", target))
           .when()

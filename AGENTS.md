@@ -1134,6 +1134,22 @@ status that differs from the row's when either side is READY_FOR_DEV, when it en
 from before READY_FOR_DEV, or when a gate applies — after its 400s, so DONE-is-final still speaks
 first. Restating the status a row holds passes, at READY_FOR_DEV too.
 
+**Scheduling needs a person (qits-937): `PersonApprovalGate` (`PERSON_APPROVAL`)** refuses REFINED →
+READY_FOR_DEV, for every archetype, unless the `control/Mover` is a person — and the entities module
+never decides that. `entities/api/EntityMovers` builds the Mover at the REST lifecycle doors
+(`EntityRoutes.move` behind `/entities/{id}/status`, `/epics/{id}/transition`,
+`/tickets/{id}/transition`; `CampaignController.transition`) from `security/PersonCheck`
+alone (`verifiedAdmin(SecurityIdentity)`, the identity-taking twin of qits-891's check): a person
+under the proof's name — which is also the move's `changedBy` — and a machine otherwise. Asserted
+`X-Qits-*` headers, an agent's or a service client's bearer, and headers beside a machine bearer are
+machines. The MCP tools and every in-process caller (`PhaseAdvance`, `EntityDispatch`,
+`TicketUnattendedGateTickets`, the campaign executor) pass `Mover.machine`, and
+`WorkEntityService.transition(…, String changedBy)` IS a machine, so a door that forgets to say who
+moves fails closed. Unscheduling is a BACK move and anybody's. In the suite a person is the
+`qits-session` cookie of `FakeSessionIntrospection` beside the request, as a browser sends it;
+`ScheduleNeedsAPersonDoorTest` drives the session, the CLI bearer, the agent and service bearers and
+asserted headers against a mock idp (`PersonGateIdpTenant`).
+
 **Moving to `IMPLEMENTED` stamps every feature and task still unimplemented**, in the same
 transaction — declaring the epic implemented is declaring its scope implemented. That is why the
 epic implement prompt makes the move conditional on every task already being marked.

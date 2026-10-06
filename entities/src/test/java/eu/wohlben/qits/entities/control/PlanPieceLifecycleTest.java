@@ -73,7 +73,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
 
   private void moveEpic(Plan plan, String... targets) {
     for (String target : targets) {
-      workEntities.transition(Archetype.EPIC, plan.epic(), target, "t");
+      workEntities.transition(Archetype.EPIC, plan.epic(), target, Mover.person("t"));
     }
   }
 

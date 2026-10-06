@@ -90,7 +90,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     for (int step = 1; step <= ORDER.indexOf(status); step++) {
       ticket =
           workEntities
-              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), "t")
+              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), Mover.person("t"))
               .entity();
     }
     return ticket;
@@ -107,7 +107,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
       assertEquals(
           ORDER.get(step).name(),
           workEntities
-              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), "t")
+              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), Mover.person("t"))
               .entity()
               .status);
     }
@@ -123,19 +123,19 @@ class TicketLifecycleTest extends EntitiesTestSupport {
       assertEquals(
           ORDER.get(step).name(),
           workEntities
-              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), "t")
+              .transition(Archetype.TICKET, ticket.id, ORDER.get(step).name(), Mover.person("t"))
               .entity()
               .status);
     }
     assertThrows(
         ConflictException.class,
-        () -> workEntities.transition(Archetype.TICKET, ticket.id, "READY_FOR_DEV", "t"));
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "READY_FOR_DEV", Mover.person("t")));
     WorkEntity scheduled = at(EntityStatus.READY_FOR_DEV);
     for (int step = implementing - 2; step >= 0; step--) {
       assertEquals(
           ORDER.get(step).name(),
           workEntities
-              .transition(Archetype.TICKET, scheduled.id, ORDER.get(step).name(), "t")
+              .transition(Archetype.TICKET, scheduled.id, ORDER.get(step).name(), Mover.person("t"))
               .entity()
               .status);
     }
@@ -188,7 +188,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
         WorkEntity ticket = at(from);
         assertThrows(
             ConflictException.class,
-            () -> workEntities.transition(Archetype.TICKET, ticket.id, to.name(), "t").entity(),
+            () -> workEntities.transition(Archetype.TICKET, ticket.id, to.name(), Mover.person("t")).entity(),
             from + " -> " + to + " is not one step and must be refused");
       }
     }
@@ -236,7 +236,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
       WorkEntity ticket = at(status);
       assertThrows(
           ConflictException.class,
-          () -> workEntities.transition(Archetype.TICKET, ticket.id, status.name(), "t").entity());
+          () -> workEntities.transition(Archetype.TICKET, ticket.id, status.name(), Mover.person("t")).entity());
     }
   }
 
@@ -296,7 +296,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     for (EntityStatus target : EntityStatus.values()) {
       assertThrows(
           ConflictException.class,
-          () -> workEntities.transition(Archetype.TICKET, ticket.id, target.name(), "t"),
+          () -> workEntities.transition(Archetype.TICKET, ticket.id, target.name(), Mover.person("t")),
           "DONE -> " + target + " must be refused");
     }
     assertEquals(EntityStatus.DONE.name(), workEntities.get(Archetype.TICKET, ticket.id).status);
@@ -394,7 +394,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     // A malformed request rather than a refused move, and the split matters to the surfaces above.
     assertThrows(
         BadRequestException.class,
-        () -> workEntities.transition(Archetype.TICKET, ticket.id, null, "t").entity());
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, null, Mover.person("t")).entity());
     assertThrows(
         BadRequestException.class,
         () -> workEntities.transition(Archetype.TICKET, ticket.id, "  ", "t").entity());

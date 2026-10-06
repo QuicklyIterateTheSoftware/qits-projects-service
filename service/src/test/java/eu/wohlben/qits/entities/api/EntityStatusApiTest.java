@@ -8,6 +8,8 @@ import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import io.restassured.response.ValidatableResponse;
@@ -29,8 +31,12 @@ class EntityStatusApiTest {
         .then();
   }
 
+  /** The dev user's move, as a person: the session a browser keeps beside it (qits-887). */
   private static ValidatableResponse move(String id, Object target) {
-    return move(given(), id, target);
+    return move(
+        given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev")),
+        id,
+        target);
   }
 
   /** What the edge sends for an agent: the role, and no token — see {@code EntityAgentBoundsTest}. */
