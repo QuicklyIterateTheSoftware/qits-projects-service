@@ -17,7 +17,7 @@ import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import eu.wohlben.qits.projects.entity.RepositoryName;
-import eu.wohlben.qits.projects.maintenancehost.FakeEstatePins;
+import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import eu.wohlben.qits.projects.testsupport.RecordingReleasedBranchWorkspaces;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -44,12 +44,11 @@ import org.junit.jupiter.api.Test;
  * second ask joins the request the first opened rather than minting a rival — one calver tag, one
  * build, one approval, one deployment for one night's work.
  *
- * <p>{@code WrapperEstatePinGateTest} is the template, and the fixture is deliberately its shape: a
- * {@link RepositoryArchetype#PROJECT} wrapper and a plain {@link RepositoryArchetype#SERVICE}
- * repository, because the rule used to be scoped to the wrapper and qits-552 is that the plain one
- * converges exactly the same way. Nothing reaches a git host or qits-maintenance — the wrapper's
- * branches are staged with no submodules at all, so the estate gate finds nothing stale and what
- * holds a request here is only ever the CI gate.
+ * <p>The fixture is a {@link RepositoryArchetype#PROJECT} wrapper and a plain {@link
+ * RepositoryArchetype#SERVICE} repository, because the rule used to be scoped to the wrapper and
+ * qits-552 is that the plain one converges exactly the same way. Nothing reaches a git host or
+ * qits-maintenance — {@link FakeReleaseRequestAutomations} answers that no automation applies, so
+ * the automations gate passes and what holds a request here is only ever the CI gate.
  */
 @QuarkusTest
 public class ReleaseConvergenceTest {
@@ -64,7 +63,7 @@ public class ReleaseConvergenceTest {
 
   @Inject RecordingReleaseGitHost gitHost;
 
-  @Inject FakeEstatePins estatePins;
+  @Inject FakeReleaseRequestAutomations automations;
 
   @Inject RecordingReleasedBranchWorkspaces releasedBranchWorkspaces;
 
@@ -78,7 +77,7 @@ public class ReleaseConvergenceTest {
     executor.reset();
     merger.reset();
     gitHost.reset();
-    estatePins.reset();
+    automations.reset();
     releasedBranchWorkspaces.reset();
     // A green build with nothing still in flight, so a verdict is all a request waits for.
     activeBuilds.answer(Optional.of(0));
@@ -102,8 +101,7 @@ public class ReleaseConvergenceTest {
                   "converge-plain");
             });
 
-    // The wrapper's branches, declaring no submodules: there is no estate to be stale about, so the
-    // estate gate passes with nothing asked of qits-maintenance. Every branch this class names.
+    // The wrapper's branches, declaring no submodules. Every branch this class names.
     for (String branch : List.of("main", "alpha", "beta", "gamma")) {
       gitHost.gatedTree("refs/heads/" + branch, Map.of(".gitmodules", ""));
     }

@@ -104,9 +104,10 @@ class AgentReadAccessTest {
 
   /**
    * <b>The release-request writes an agent reaches.</b> The first four are bound to the agent's
-   * project and {@code git_refs}; the fifth, {@code rerunPhase}, is deliberately unbound — it
-   * decides nothing, so there is nothing to bind. {@code approve} and {@code decline} are not here
-   * and must not arrive: those are the sign-off, and that distinction is what this set is a list of.
+   * project and {@code git_refs}; the last two, {@code rerunPhase} and {@code rerunAutomation}
+   * (qits-978), are deliberately unbound — they decide nothing, so there is nothing to bind. {@code
+   * approve}, {@code decline} and {@code waiveAutomations} are not here and must not arrive: those
+   * are the sign-off, and that distinction is what this set is a list of.
    */
   private static final Set<String> RELEASE_REQUEST_AGENT_WRITES =
       Set.of(
@@ -114,7 +115,8 @@ class AgentReadAccessTest {
           "ReleaseRequestController.addSource",
           "ReleaseRequestController.setSourcePriority",
           "ReleaseRequestController.withdraw",
-          "ReleaseRequestController.rerunPhase");
+          "ReleaseRequestController.rerunPhase",
+          "ReleaseRequestController.rerunAutomation");
 
   /**
    * <b>The entity writes an agent reaches, and the MCP tool surface is the test for membership.</b>
@@ -237,7 +239,9 @@ class AgentReadAccessTest {
           "TicketCommentController.delete",
           "CommentController.delete",
           // Approving a campaign criterion is the sign-off on a gated member (qits-413).
-          "CampaignController.approve");
+          "CampaignController.approve",
+          // Letting a fold through without its automations is a sign-off too (qits-978).
+          "ReleaseRequestController.waiveAutomations");
 
   /**
    * <b>The generic entity doors a platform service reaches</b> (qits-667): qits-maintenance files a

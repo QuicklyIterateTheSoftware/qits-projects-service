@@ -6,6 +6,7 @@ import eu.wohlben.qits.projects.dto.CommitDto;
 import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.MergeConflictDto;
+import eu.wohlben.qits.projects.dto.ReleaseAutomationDto;
 import eu.wohlben.qits.projects.dto.ReleaseGateDto;
 import eu.wohlben.qits.projects.dto.ReleasePipelineDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
@@ -19,6 +20,7 @@ import eu.wohlben.qits.projects.entity.ReleasePipelineRun;
 import eu.wohlben.qits.projects.entity.ReleasePriority;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
+import eu.wohlben.qits.projects.entity.ReleaseRequestAutomationWaiver;
 import eu.wohlben.qits.projects.entity.ReleaseRequestSource;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
@@ -27,6 +29,7 @@ import eu.wohlben.qits.projects.error.BadRequestException;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.NotFoundException;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestApprovalRepository;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestAutomationWaiverRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import eu.wohlben.qits.projects.persistence.ReleaseRequestSourceRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
@@ -282,17 +285,23 @@ public class ReleaseRequests {
   @Inject ReleaseGates gates;
 
   /**
-   * The estate gate's two halves, in the approval gate's own shape one field up — the thing that
-   * refreshes a wrapper's gitlink pins, and the memory of what the last refresh established about the
-   * fold it established it for. Both are this module's own beans rather than ports: the port is
-   * {@link EstatePins}, and it is behind {@link EstatePinRefresh} where its absence is a hold rather
-   * than a decision this class has to make.
+   * The automations gate's halves, in the approval gate's own shape one field up — the thing that
+   * asks qits-maintenance where a fold's automations stand, the memory of what the last ask
+   * established about the fold it established it for, and the durable waivers a person can give
+   * one fold. The first two are this module's own beans rather than ports: the port is {@link
+   * ReleaseRequestAutomations}, and it is behind {@link AutomationRefresh} where its absence is a
+   * decision made once rather than at every call site here.
    */
-  @Inject EstatePinRefresh estatePinRefresh;
+  @Inject AutomationRefresh automationRefresh;
 
   @Inject ConflictResolver conflictResolver;
 
-  @Inject EstatePinLedger estatePinLedger;
+  @Inject AutomationLedger automationLedger;
+
+  @Inject ReleaseRequestAutomationWaiverRepository waivers;
+
+  /** The re-run door's way out; the trigger and the read go through {@link #automationRefresh}. */
+  @Inject Instance<ReleaseRequestAutomations> automationPort;
 
   @Inject RepositoryRepository repositories;
 
@@ -650,10 +659,10 @@ public class ReleaseRequests {
   /**
    * Nothing is left to finalize for an obsoleted request, so say it once where a reader will look.
    * The abandoning itself is one field written in the transaction above — this is the log line and
-   * the estate note, both of which belong outside it.
+   * the automations note, both of which belong outside it.
    */
   private void stopFinalizing(Obsoleted earlier) {
-    estatePinLedger.forget(earlier.requestId());
+    automationLedger.forget(earlier.requestId());
     if (earlier.version() != null) {
       LOG.infof(
           "The released tag %s is abandoned: its request was superseded before it reached main, and"
@@ -824,7 +833,7 @@ public class ReleaseRequests {
                   row.updatedAt = Instant.now();
                   return new Withdrawn(row.repoId, row.repoName, row.gateTicketId, row.detail);
                 });
-    estatePinLedger.forget(id);
+    automationLedger.forget(id);
     cancel(withdrawn.repoId(), id, "was withdrawn");
     closeGateTicket(
         id,
@@ -1052,6 +1061,152 @@ public class ReleaseRequests {
   }
 
   /**
+   * <b>Waive the automations gate for this request's current fold</b> (epic qits-978) — a person's
+   * escape for the day qits-maintenance itself is broken and its own fix is the request its
+   * automations are holding (cf. "the deployer refuses its own fix").
+   *
+   * <p>Recorded durably, like an approval, and about a sha like one: the stated {@code foldSha} must
+   * be the request's current fold, so a push landing between reading and clicking is a 409 naming the
+   * fold the request is on now rather than a waiver silently transferred to content nobody looked
+   * at. The re-fold that follows any later push leaves the waiver behind, which is the point.
+   *
+   * <p>Refusals, in the order they are met: 404 for a request that is not this repository's; 409 for
+   * one that is READY or has concluded (nothing left to waive), for a repository the automations gate
+   * does not hold, for a request with no fold yet, and for a stated fold that is not the current one.
+   * A blank fold or reason is a 400 — a waiver nobody can explain later is the one worth refusing.
+   *
+   * <p>The gate is asked again after the write, so a fold whose other gates are already satisfied
+   * releases on the click, and the answer is the request as it then stands.
+   */
+  public ReleaseRequestDto waiveAutomations(
+      String repoId, String id, String foldSha, String reason, String actor) {
+    if (foldSha == null || foldSha.isBlank()) {
+      throw new BadRequestException(
+          "foldSha is required: a waiver names the fold it waives, which is what stops it covering"
+              + " content nobody looked at.");
+    }
+    if (reason == null || reason.isBlank()) {
+      throw new BadRequestException("reason is required: say why this fold may ship without them.");
+    }
+    String fold = foldSha.trim();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              ReleaseRequest row =
+                  requests
+                      .findByIdOptional(id)
+                      .filter(candidate -> candidate.repoId.equals(repoId))
+                      .orElseThrow(
+                          () -> new NotFoundException("Release request not found: " + id));
+              if (row.state == ReleaseRequest.State.READY
+                  || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + id
+                        + " is "
+                        + row.state
+                        + "; there is no automations gate left to waive.");
+              }
+              if (!automationsApply(row.repoId)) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + id
+                        + " is held by no automations gate, so there is nothing here to waive.");
+              }
+              if (row.mergedSha == null) {
+                throw new DomainException(
+                    409,
+                    "Release request " + id + " has not been folded yet, so there is no fold to waive.");
+              }
+              if (!row.mergedSha.equals(fold)) {
+                throw new DomainException(
+                    409,
+                    "Release request "
+                        + id
+                        + " is on "
+                        + row.mergedSha
+                        + " now, not "
+                        + fold
+                        + "; re-read it and waive the fold you are looking at.");
+              }
+              ReleaseRequestAutomationWaiver waiver = new ReleaseRequestAutomationWaiver();
+              waiver.id = UUID.randomUUID().toString();
+              waiver.requestId = row.id;
+              waiver.mergedSha = row.mergedSha;
+              waiver.actor = actor == null || actor.isBlank() ? "an operator" : actor.trim();
+              waiver.reason = reason.trim();
+              waiver.waivedAt = Instant.now();
+              waiver.persist();
+              row.updatedAt = waiver.waivedAt;
+              LOG.infof(
+                  "Release request %s: the automations gate was waived at %s by %s: %s",
+                  id, shortSha(row.mergedSha), waiver.actor, waiver.reason);
+            });
+    evaluate(id, null);
+    return get(id);
+  }
+
+  /**
+   * <b>Run one automation again, now, on this request's current fold</b> — qits-maintenance's re-run
+   * door, forwarded for the release request page's button (epic qits-978). It decides nothing here:
+   * the run's outcome arrives the way every automation outcome does, on the next read of the
+   * request's automations, so the answer is the far side's id and not the request.
+   *
+   * <p>Like the pipeline-phase rerun, a far side's refusal reaches the caller <b>with its status and
+   * its sentence intact</b> — a run already active for (request, kind), the request not open, bumping
+   * off, an unknown kind — because that sentence is the fact the person pressing the button has not
+   * got. No port, or a port with nowhere to ask, or one that could not be reached, is a 503.
+   *
+   * @return the far side's id for the run it accepted
+   */
+  public String rerunAutomation(String repoId, String id, String kind) {
+    ReleaseRequest row = requireRequestOf(repoId, id);
+    if (kind == null || kind.isBlank()) {
+      throw new BadRequestException("Name the automation to run again.");
+    }
+    if (!automationRefresh.configured()) {
+      throw new DomainException(
+          503, "No qits-maintenance is configured, so no automation of this request can be run.");
+    }
+    String repoName =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () ->
+                    repositories
+                        .findByIdOptional(row.repoId)
+                        .flatMap(repository -> names.nameFor(repository))
+                        .orElse(null));
+    ReleaseRequestAutomations.Run run;
+    try {
+      run = automationPort.get().rerun(repoName, id, kind.trim());
+    } catch (RuntimeException e) {
+      // The port says it must not throw; a throw is a port bug, and the caller still gets an answer.
+      LOG.warnf(e, "The automations port threw re-running %s of release request %s", kind, id);
+      run = ReleaseRequestAutomations.Run.unreachable(e.toString());
+    }
+    if (run == null) {
+      run = ReleaseRequestAutomations.Run.unreachable("no answer");
+    }
+    if (run.wasAccepted()) {
+      LOG.infof("Release request %s: %s was asked to run again (%s)", id, kind, run.id());
+      return run.id();
+    }
+    if (run.wasRefused()) {
+      throw new DomainException(
+          run.refusal(),
+          run.detail() == null ? "qits-maintenance refused to run " + kind + " again." : run.detail());
+    }
+    throw new DomainException(
+        503,
+        "qits-maintenance could not be asked to run "
+            + kind
+            + " again"
+            + (run.detail() == null ? "." : ": " + run.detail()));
+  }
+
+  /**
    * <b>One request's whole decision trail, newest first</b> — every fold it has ever had, not just
    * the one it is on.
    *
@@ -1111,6 +1266,10 @@ public class ReleaseRequests {
                       row,
                       gates.resolve(row.repoId),
                       approval,
+                      automationsOf(
+                          row,
+                          automationsApply(row.repoId),
+                          waivers.latestFor(row.id, row.mergedSha).isPresent()),
                       row.mergedSha == null
                           ? List.of()
                           : ledger.verdictsOf(row.repoId, row.mergedSha),
@@ -1979,7 +2138,7 @@ public class ReleaseRequests {
               }
             });
     for (Finalized done : finalized) {
-      estatePinLedger.forget(done.requestId());
+      automationLedger.forget(done.requestId());
       LOG.infof("Release request %s is finalized: %s reached main", done.requestId(), done.tagName());
       cancel(repoId, done.requestId(), "is finalized: " + done.tagName() + " reached main");
       closeGateTicket(
@@ -2328,7 +2487,7 @@ public class ReleaseRequests {
             "was superseded by a re-fold onto " + shortSha(folded.mergedSha()));
       }
       announce(folded);
-      refreshEstatePins(folded.releaseRequestId());
+      refreshAutomations(folded.releaseRequestId(), folded.supersededSha());
     }
     if (outcome.folded()) {
       evaluate(id);
@@ -2369,34 +2528,55 @@ public class ReleaseRequests {
   }
 
   /**
-   * <b>The arming seam of the estate gate.</b> A fold that produced something new is a request that
-   * has just been armed onto content nobody has looked at, and for a wrapper that content includes a
-   * set of gitlink pins that may be older than what its members have released. This is where that is
-   * put right.
+   * <b>The arming seam of the automations gate.</b> A fold that produced something new is a request
+   * that has just been armed onto content nobody has looked at, and for every repository that content
+   * may need regenerating before it can ship — a wrapper's gitlink pins older than what its members
+   * released, a landing page's screenshot references older than its rendering. This is where
+   * qits-maintenance is asked, on every fold of every repository (epic qits-978).
    *
    * <p><b>One seam covers both triggers, which is why it is here and not at two call sites.</b>
    * {@link #request} folds on creation and that first fold produces a {@link Folded}; every re-arm
    * goes through {@link #apply}'s merged arm, which produces one too. So "the request was created"
    * and "the request was re-armed" are the same event seen from this line, and a third trigger added
    * later gets the refresh for free as long as it re-folds — which is the only way a request's
-   * content ever changes.
+   * content ever changes. The superseded sha travels along, so the far side can tell what the fold
+   * changed and carry an outcome over a re-fold an automation's own commit caused.
    *
    * <p>It runs <b>before</b> {@link #evaluate} does, so the very first gate pass after a fold already
-   * has an answer to read: a wrapper whose pins were current releases on the same pass it always
+   * has an answer to read: a repository no automation applies to releases on the same pass it always
    * did, rather than holding once for a fact that was already true.
    *
    * <p>Outside every transaction, its own try/catch, never able to fail a fold — {@link #cancel}'s
    * posture beside it, and for the same reason: the merge has already landed, and no enrichment of a
    * landed fold may undo it. The refresh promises not to throw; this is the belt.
    */
-  private void refreshEstatePins(String requestId) {
+  private void refreshAutomations(String requestId, String previousFoldSha) {
     try {
-      estatePinRefresh.refresh(requestId);
+      automationRefresh.refresh(requestId, previousFoldSha);
     } catch (RuntimeException e) {
       // It says it must not throw; a throw is a bug in it and must not cost the fold. The request
       // then holds, because absence of a note is the hold.
-      LOG.warnf(e, "Could not refresh the estate pins of release request %s", requestId);
+      LOG.warnf(e, "Could not refresh the automations of release request %s", requestId);
     }
+  }
+
+  /**
+   * Whether the automations gate holds {@code repoId}'s requests: wherever qits-maintenance is
+   * configured to answer, and for the estate wrapper always — with no port a wrapper holds, as the
+   * estate gate always did, while an ordinary repository releases as it did before automations
+   * existed. Must be asked inside a transaction (the wrapper reading is a row lookup).
+   */
+  private boolean automationsApply(String repoId) {
+    return automationRefresh.configured() || approvalPolicy.isEstateWrapper(repoId);
+  }
+
+  /**
+   * Whether this fold of this request has passed the automations gate: a FRESH note about exactly
+   * this sha, or a person's waiver of exactly this sha. Inside the caller's transaction.
+   */
+  private boolean automationsPassed(ReleaseRequest row) {
+    return automationLedger.fresh(row.id, row.mergedSha)
+        || waivers.latestFor(row.id, row.mergedSha).isPresent();
   }
 
   /**
@@ -2668,9 +2848,9 @@ public class ReleaseRequests {
     // evaluation that does not reject an unattended request, which is nearly all of them.
     AtomicReference<UnattendedGateTickets.Rejection> unattended = new AtomicReference<>();
     // Carried out of the transaction the same way and for the same reason: the answer to "was it the
-    // estate gate that held this?" is decided inside, and what it triggers is an HTTP round trip
+    // automations gate that held this?" is decided inside, and what it triggers is an HTTP round trip
     // into qits-maintenance that belongs nowhere near the transaction that decided a gate.
-    AtomicReference<Boolean> estateHeld = new AtomicReference<>(false);
+    AtomicReference<Boolean> automationsHeld = new AtomicReference<>(false);
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -2717,6 +2897,20 @@ public class ReleaseRequests {
                           .filter(v -> !"SUCCESS".equals(v.status()))
                           .findFirst()
                           .orElse(null);
+                  // Asked once, here, because both the red arm and the gate below read it.
+                  boolean automationsGated = automationsApply(row.repoId);
+                  if (red != null && automationsGated && !automationsPassed(row)) {
+                    // A RED VERDICT ON A FOLD WHOSE AUTOMATIONS ARE NOT FRESH HOLDS INSTEAD OF
+                    // REJECTING — the one ordering change the automations gate made. That fold is
+                    // about to be superseded by an automation's commit (or is waiting on a person's
+                    // re-run or waiver), and a stale screenshot reference failing QA is exactly the
+                    // red this must not turn into a rejection and an unattended-gate ticket. No
+                    // rejectingRunId, no ticket: once the automations are fresh at this same fold,
+                    // the verdict is read again on the next pass and rejects exactly as before.
+                    waiting(row, automationDetail(row));
+                    automationsHeld.set(true);
+                    return false;
+                  }
                   if (red != null) {
                     row.state = ReleaseRequest.State.REJECTED;
                     // The run is recorded as a KEY beside the sentence, not only inside it: a retry
@@ -2781,21 +2975,18 @@ public class ReleaseRequests {
                       return false;
                     }
                   }
-                  // THE ESTATE GATE, and its position is an argument rather than a convenience.
-                  // A wrapper release is the estate's own version moving, so it may not ship pins
-                  // older than what its members have released; the ledger holds a POSITIVE record
-                  // that, as of THIS fold, they are current, and no record is a hold. It sits after
+                  // THE AUTOMATIONS GATE, and its position is an argument rather than a
+                  // convenience. Every release-request automation that applies to this repository
+                  // (estate pins for the wrapper, screenshot baselines, …) has to be fresh for THIS
+                  // fold; the ledger holds a POSITIVE record that it is, and no record is a hold. A
+                  // person's waiver of this exact fold is the one other way through. It sits after
                   // the build gate and immediately before the approval gate because a person
-                  // approves a specific fold: asking somebody to sign off an estate whose pins are
-                  // about to be rewritten would invalidate their answer the moment the bump lands,
-                  // so the pin gate has to be the one that holds first. The red arm above is
-                  // deliberately unchanged — a red build on a fold that is about to be superseded
-                  // still rejects, exactly as it did, because a rejection is answerable and a
-                  // wrongly-released estate is not.
-                  if (approvalPolicy.isEstateWrapper(row.repoId)
-                      && !estatePinLedger.fresh(row.id, row.mergedSha)) {
-                    waiting(row, estateDetail(row));
-                    estateHeld.set(true);
+                  // approves a specific fold: asking somebody to sign off content an automation is
+                  // about to rewrite would invalidate their answer the moment the commit lands, so
+                  // this gate has to be the one that holds first.
+                  if (automationsGated && !automationsPassed(row)) {
+                    waiting(row, automationDetail(row));
+                    automationsHeld.set(true);
                     return false;
                   }
                   // THE APPROVAL GATE, asked last and STANDING ALONE. Last is a convenience and not
@@ -2845,14 +3036,14 @@ public class ReleaseRequests {
     if (unattended.get() != null) {
       fileUnattendedGateTicket(unattended.get());
     }
-    if (Boolean.TRUE.equals(estateHeld.get())) {
-      // THE RETRY, and it is the whole of what makes a qits-maintenance outage self-healing. The
-      // refresh is idempotent per (request, fold), so a request already waiting on a bump costs a
-      // map lookup here; one whose refresh could not be made asks again. That is the existing
-      // thirty-second sweep doing it — no new schedule, no new mechanism, and nothing to remember to
-      // start after a restart, since a restart empties the ledger and every open wrapper request
-      // comes back through this line.
-      refreshEstatePins(id);
+    if (Boolean.TRUE.equals(automationsHeld.get())) {
+      // THE RETRY AND THE RE-READ, and they are the whole of what makes a qits-maintenance outage
+      // self-healing and a red automation run visible. A request whose ask could not be made asks
+      // again; one waiting on a run re-reads where it stands, so a run that went red is learned
+      // rather than waited out. That is the existing thirty-second sweep doing it — no new schedule,
+      // no new mechanism, and nothing to remember to start after a restart, since a restart empties
+      // the ledger and every open request comes back through this line.
+      refreshAutomations(id, null);
     }
     if (ready) {
       enqueueExecution(id);
@@ -2860,30 +3051,70 @@ public class ReleaseRequests {
   }
 
   /**
-   * What a wrapper request held by the estate gate says about itself — and it distinguishes the two
-   * cases the ledger can tell apart, because they are different sentences to whoever is reading.
+   * What a request held by the automations gate says about itself — and it distinguishes the cases
+   * the ledger can tell apart, because they are different sentences to whoever is reading.
    *
-   * <p>A pending bump is the platform doing something: the pins are being written and the commit will
-   * re-arm this request, so the right thing for a reader to do is wait. Anything else is this service
-   * saying it could not establish the estate at all — no qits-maintenance configured, one that could
-   * not be reached, a git-host read that failed — and the right thing for a reader to do is look at
-   * the log. Collapsing the two into one sentence would make an outage indistinguishable from work in
-   * progress.
+   * <p>A pending note is the platform doing something: a run is requested or in flight, or a commit
+   * is about to re-fold the request, so the right thing for a reader to do is wait, and the sentence
+   * names the kinds and what each is doing. A failed one is a person's turn — push, re-run or waive.
+   * Anything else is this service saying it could not establish the automations at all — no
+   * qits-maintenance configured (only ever the wrapper), one that could not be reached, an answer
+   * that would not say — and the sentence carries the reason the refresh recorded. Collapsing those
+   * would make an outage indistinguishable from work in progress.
    *
    * <p>Routed through {@link #waiting} like every other holding sentence, so it is
    * idempotent-by-sentence: the sweep re-evaluates every open request every thirty seconds and
    * re-stamping {@code updatedAt} would re-sort the worklist on every tick for no news. That is why
-   * neither branch interpolates a time or a bump id.
+   * no branch interpolates a time, a run id or a bump id.
    */
-  private String estateDetail(ReleaseRequest row) {
-    EstatePinLedger.Note note = estatePinLedger.noteFor(row.id).orElse(null);
-    boolean writing =
-        note != null
-            && note.state() == EstatePinLedger.State.PENDING_BUMP
-            && row.mergedSha.equals(note.foldSha());
-    return writing
-        ? "The estate pins are being written; " + shortSha(row.mergedSha) + " re-arms when they land"
-        : "The estate pins could not be refreshed for " + shortSha(row.mergedSha);
+  private String automationDetail(ReleaseRequest row) {
+    AutomationLedger.Note note =
+        automationLedger
+            .noteFor(row.id)
+            .filter(held -> row.mergedSha.equals(held.foldSha()))
+            .orElse(null);
+    String sha = shortSha(row.mergedSha);
+    if (note == null) {
+      return "Waiting for automations at " + sha + ": not asked yet";
+    }
+    switch (note.state()) {
+      case PENDING -> {
+        String moving =
+            note.automations().stream()
+                .filter(entry -> !"FRESH".equals(entry.state()))
+                .map(entry -> entry.label() + " " + doing(entry.state()))
+                .collect(Collectors.joining(", "));
+        return "Waiting for automations at " + sha + ": " + moving;
+      }
+      case FAILED -> {
+        String failed =
+            note.automations().stream()
+                .filter(entry -> "FAILED".equals(entry.state()))
+                .map(AutomationLedger.Automation::label)
+                .collect(Collectors.joining(", "));
+        return failed + " failed at " + sha + "; push, re-run, or waive this fold";
+      }
+      case FRESH -> {
+        // Fresh and still held: the red arm above asked before this note was written. Next pass.
+        return "Waiting for automations at " + sha;
+      }
+      default -> {
+        return "The automations could not be established for "
+            + sha
+            + (note.detail() == null ? "" : ": " + note.detail());
+      }
+    }
+  }
+
+  /** One kind's state as the hold sentence says it. */
+  private static String doing(String state) {
+    return switch (state) {
+      case "REQUESTED" -> "requested";
+      case "RUNNING" -> "running";
+      case "COMMITTED" -> "committed; the commit re-folds this request";
+      case "SUPERSEDED" -> "superseded by a newer fold";
+      default -> state.toLowerCase(java.util.Locale.ROOT);
+    };
   }
 
   /**
@@ -3359,10 +3590,10 @@ public class ReleaseRequests {
 
   private void settle(
       String id, ReleaseRequest.State state, String detail, String version, boolean retryable) {
-    // The estate note is about a fold that is no longer being gated, so it goes — that is what keeps
-    // the ledger the size of the open work rather than of the history. Dropping it on a FAILED
+    // The automations note is about a fold that is no longer being gated, so it goes — that is what
+    // keeps the ledger the size of the open work rather than of the history. Dropping it on a FAILED
     // request costs one re-ask on the retry, which is the direction this whole feature errs in.
-    estatePinLedger.forget(id);
+    automationLedger.forget(id);
     QuarkusTransaction.requiringNew()
         .run(
             () ->
@@ -3511,6 +3742,20 @@ public class ReleaseRequests {
                 .filter(row -> row.mergedSha != null)
                 .collect(
                     Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a)));
+    // The automations gate's two durable halves, batched the same way: whether it holds a
+    // repository at all (once per distinct repository), and the waivers at each request's own fold
+    // (one query). The third half is the in-memory ledger and costs nothing to ask per row.
+    Map<String, Boolean> automationsApplyTo =
+        rows.stream()
+            .map(row -> row.repoId)
+            .distinct()
+            .collect(Collectors.toMap(repoId -> repoId, this::automationsApply));
+    Map<String, ReleaseRequestAutomationWaiver> waived =
+        waivers.currentForEach(
+            rows.stream()
+                .filter(row -> row.mergedSha != null)
+                .collect(
+                    Collectors.toMap(row -> row.id, row -> row.mergedSha, (a, b) -> a)));
     // Asked PER REQUEST, because the answer depends on what each fold changes; cached by (repoId,
     // mergedSha) within this read, since two open requests on one fold are one question. A settled
     // request reads no git at all — the policy answers it from the configuration and the approval
@@ -3566,6 +3811,10 @@ public class ReleaseRequests {
                       gateSets.getOrDefault(
                           row.repoId, ReleaseGates.GateSet.unknown("no gate set was resolved")),
                       approval,
+                      automationsOf(
+                          row,
+                          automationsApplyTo.getOrDefault(row.repoId, false),
+                          waived.containsKey(row.id)),
                       row.mergedSha == null
                           ? List.of()
                           : verdicts.getOrDefault(
@@ -3624,6 +3873,7 @@ public class ReleaseRequests {
       ReleaseRequest row,
       ReleaseGates.GateSet set,
       ApprovalView approval,
+      AutomationView automations,
       List<CommitBuildStatusDto> verdicts,
       ReleasedTagPendingMerge released,
       List<ReleasePipelineRun> phaseRuns,
@@ -3645,6 +3895,12 @@ public class ReleaseRequests {
     // The content rule can require approval of a repository whose main configures none, so a
     // required approval is what puts the kind in the set here — the same seam PUBLISH uses below.
     ReleaseGates.GateSet reported = approval.required() ? set.with(ReleaseGates.Kind.APPROVAL) : set;
+    // The automations gate is configured by qits-maintenance being there (and for the wrapper by
+    // being the wrapper), never by main, so it joins the reported set the same way.
+    if (automations.applies()) {
+      reported = reported.with(ReleaseGates.Kind.AUTOMATIONS);
+      states.put(ReleaseGates.Kind.AUTOMATIONS, automations.gate());
+    }
     if (released != null && released.publishState != null) {
       reported = reported.with(ReleaseGates.Kind.PUBLISH);
       states.put(
@@ -3655,7 +3911,17 @@ public class ReleaseRequests {
             case PENDING -> ReleaseGates.State.PENDING;
           });
     }
-    List<ReleaseGates.Gate> decided = ReleaseGates.report(reported, states);
+    // An unreadable gate set answers every kind UNKNOWN — except this one, which is not read from
+    // main at all: it is reported exactly where it holds, with its own state.
+    List<ReleaseGates.Gate> decided =
+        ReleaseGates.report(reported, states).stream()
+            .filter(gate -> gate.kind() != ReleaseGates.Kind.AUTOMATIONS || automations.applies())
+            .map(
+                gate ->
+                    gate.kind() == ReleaseGates.Kind.AUTOMATIONS
+                        ? new ReleaseGates.Gate(gate.kind(), automations.gate())
+                        : gate)
+            .toList();
     return new GateView(
         decided.stream()
             .map(
@@ -3665,8 +3931,75 @@ public class ReleaseRequests {
                         gate.state().name(),
                         gate.kind() == ReleaseGates.Kind.APPROVAL ? approval.detail() : null))
             .toList(),
+        automations.rows(),
         pipelineAssembler.assemble(
             phaseRuns, decided, gateDetails(set, released, approval), released, reach));
+  }
+
+  /**
+   * The automations gate as a <b>read</b> answers it: whether it holds this request at all, its
+   * state, and the rows behind it.
+   *
+   * @param applies whether the gate holds this request's repository — see {@link #automationsApply}
+   * @param gate PASSED when fresh at the current fold or waived there, FAILED on a FAILED note,
+   *     UNKNOWN on an UNKNOWN one, PENDING otherwise
+   * @param rows the ledger's rows as the DTO carries them, or null where nothing is on record
+   */
+  private record AutomationView(
+      boolean applies, ReleaseGates.State gate, List<ReleaseAutomationDto> rows) {}
+
+  /**
+   * Read the automations gate for one request off the ledger and the waiver, deciding nothing.
+   *
+   * <p><b>A request past its gates with no note reports PASSED</b>: a note is dropped when its
+   * request settles, and a READY, RELEASED, FINALIZED or failed-at-execution request got there only
+   * by passing this gate (or from before it existed), so reporting it PENDING would claim a wait
+   * that is over. Every other state with no note is PENDING — not asked yet, or asked by a process
+   * that has since restarted.
+   */
+  private AutomationView automationsOf(ReleaseRequest row, boolean applies, boolean waived) {
+    AutomationLedger.Note note = automationLedger.noteFor(row.id).orElse(null);
+    boolean current = note != null && row.mergedSha != null && row.mergedSha.equals(note.foldSha());
+    List<ReleaseAutomationDto> rows =
+        note == null
+            ? null
+            : note.automations().stream()
+                .map(
+                    entry ->
+                        new ReleaseAutomationDto(
+                            entry.kind(),
+                            entry.label(),
+                            current && waived && !"FRESH".equals(entry.state())
+                                ? "WAIVED"
+                                : entry.state(),
+                            note.foldSha(),
+                            entry.newestRunId(),
+                            entry.branch(),
+                            entry.detail(),
+                            entry.updatedAt()))
+                .toList();
+    if (!applies) {
+      return new AutomationView(false, null, rows);
+    }
+    ReleaseGates.State gate;
+    if (waived || (current && note.state() == AutomationLedger.State.FRESH)) {
+      gate = ReleaseGates.State.PASSED;
+    } else if (current) {
+      gate =
+          switch (note.state()) {
+            case FAILED -> ReleaseGates.State.FAILED;
+            case UNKNOWN -> ReleaseGates.State.UNKNOWN;
+            default -> ReleaseGates.State.PENDING;
+          };
+    } else if (row.state == ReleaseRequest.State.READY
+        || row.state == ReleaseRequest.State.RELEASED
+        || row.state == ReleaseRequest.State.FINALIZED
+        || row.state == ReleaseRequest.State.FAILED) {
+      gate = ReleaseGates.State.PASSED;
+    } else {
+      gate = ReleaseGates.State.PENDING;
+    }
+    return new AutomationView(true, gate, rows);
   }
 
   /**
@@ -3712,7 +4045,10 @@ public class ReleaseRequests {
    * @param pipeline null where the pipeline cannot be drawn — see {@code
    *     ReleasePipelineAssembler}'s "Absent is not empty"
    */
-  private record GateView(List<ReleaseGateDto> gates, ReleasePipelineDto pipeline) {}
+  private record GateView(
+      List<ReleaseGateDto> gates,
+      List<ReleaseAutomationDto> automations,
+      ReleasePipelineDto pipeline) {}
 
   /**
    * The approval gate as a <b>read</b> answers it: whether a person had to be asked, what the newest
@@ -3858,6 +4194,7 @@ public class ReleaseRequests {
         approval.decidedAt(),
         approval.note(),
         gates.gates(),
+        gates.automations(),
         conflictOf(row),
         row.version,
         row.supersededBy,

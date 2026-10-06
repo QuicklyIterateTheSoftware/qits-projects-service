@@ -618,6 +618,95 @@ public class ReleaseRequestController {
         releaseRequests.rerunPhase(repoId, requestId, phase));
   }
 
+  /** What the automation re-run door answers: the far side's id for the run it accepted. */
+  public static record RerunReleaseRequestAutomation() {
+    public record Response(String id) {}
+  }
+
+  /**
+   * Run one <b>release-request automation</b> again, now, on this request's current fold — the
+   * release request page's Re-run button, forwarded to qits-maintenance (epic qits-978).
+   *
+   * <p>Open to the class's three roles and unbound, on {@link #rerunPhase}'s reasoning: it decides
+   * nothing. The run's outcome is read back the way every automation outcome is, and whether the
+   * kind can run again at all is qits-maintenance's call — so a run already active, a request that is
+   * not open, bumping turned off and an unknown kind come back as that service's own status and
+   * sentence.
+   */
+  @POST
+  @Path("/{requestId}/automations/{kind}/runs")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @Operation(
+      summary = "Run one release-request automation again on this request's current fold",
+      description =
+          "kind is the automation's wire name — estate-pins, screenshot-baselines, … — and the"
+              + " ask is forwarded to qits-maintenance, which runs it on the request's current fold"
+              + " now, skipping carry-over and applicability (so a repository's first screenshot"
+              + " references come from here). 202 with the run's id; its outcome shows on the"
+              + " request's automations as every outcome does. qits-maintenance's refusals pass"
+              + " through with their status and sentence: 409 when one is already active for this"
+              + " request and kind, the request is not open or has no fold, or bumping is off; 404"
+              + " for an unknown kind. 404 also for an unknown request or one that is not this"
+              + " repository's, and 503 where qits-maintenance is not configured or cannot be"
+              + " reached.")
+  public jakarta.ws.rs.core.Response rerunAutomation(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      @PathParam("kind") String kind) {
+    return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.ACCEPTED)
+        .entity(
+            new RerunReleaseRequestAutomation.Response(
+                releaseRequests.rerunAutomation(repoId, requestId, kind)))
+        .type(MediaType.APPLICATION_JSON)
+        .build();
+  }
+
+  /**
+   * @param foldSha the fold being waived, as the caller last saw it — required for {@link
+   *     ApproveReleaseRequest#mergedSha}'s reason: a waiver is about content, and a push that lands
+   *     first is a 409 naming the fold the request is on now
+   * @param reason why this fold may ship without its automations. Required: a waiver nobody can
+   *     explain later is the one worth refusing.
+   */
+  public static record WaiveReleaseRequestAutomations(
+      @NotBlank String foldSha, @NotBlank String reason) {
+    public record Response(ReleaseRequestDto request) {}
+  }
+
+  /**
+   * <b>Waive the automations gate for one fold</b> — a person's escape for the day qits-maintenance
+   * itself is broken and its own fix would otherwise hold behind it. {@code qits:admin} alone and a
+   * verified person, on {@link #approve}'s terms: letting a fold through without its regenerations
+   * is a sign-off, and a gate a machine could waive is not this gate.
+   */
+  @POST
+  @Path("/{requestId}/automations/waivers")
+  @jakarta.annotation.security.RolesAllowed("qits:admin")
+  @Operation(
+      summary = "Waive the automations gate for this request's current fold",
+      description =
+          "Recorded durably, like an approval, and about one fold: foldSha names the fold being"
+              + " waived and a stale one answers 409 naming the fold the request is on now. A later"
+              + " re-fold leaves the waiver behind and the gate holds again. The gate is re-asked"
+              + " immediately and the request comes back as it then stands. 409 also for a request"
+              + " that is READY or has concluded, one with no fold yet, and a repository the"
+              + " automations gate does not hold; 400 for a blank foldSha or reason. A person only:"
+              + " qits:admin, verified by this service from a browser session or a person's qits"
+              + " CLI token — asserted identity headers alone answer 403.")
+  public WaiveReleaseRequestAutomations.Response waiveAutomations(
+      @PathParam("repoId") String repoId,
+      @PathParam("requestId") String requestId,
+      WaiveReleaseRequestAutomations body) {
+    String actor = decider();
+    return new WaiveReleaseRequestAutomations.Response(
+        releaseRequests.waiveAutomations(
+            repoId,
+            requestId,
+            body == null ? null : body.foldSha(),
+            body == null ? null : body.reason(),
+            actor));
+  }
+
   // ---- what an agent may reach ---------------------------------------------------------------
 
   /** A caller holding one of these is judged as before, even if it also holds the agent role. */

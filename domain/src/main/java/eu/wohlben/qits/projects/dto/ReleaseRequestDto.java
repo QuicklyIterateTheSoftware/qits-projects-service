@@ -43,6 +43,14 @@ import java.util.List;
  * ({@code MEDIUM} where nothing says otherwise), and a word rather than a closed set, because the
  * vocabulary may grow. The implicit tag sources are not in the max: they carry no priority at all.
  *
+ * <p><b>{@code automations} is the detail behind the {@code AUTOMATIONS} gate</b> (epic qits-978):
+ * one row per release-request automation that applies to this repository — estate pins, screenshot
+ * baselines, whatever qits-maintenance adds next — with where each stands, as last learned. Null
+ * where nothing has been learned for this request (no answer yet, the gate not configured, a request
+ * that settled and was forgotten); an empty list where the repository was asked and no kind applies.
+ * A row's {@code foldSha} is the fold its outcome is about, which need not be {@code mergedSha} on a
+ * request that re-folded a moment ago.
+ *
  * <p>{@code conflict} is populated on a CONFLICTED request and null on every other, so a caller
  * never has to ask a second question to find out what to resolve.
  *
@@ -139,6 +147,7 @@ public record ReleaseRequestDto(
     Instant approvedAt,
     String approvalNote,
     List<ReleaseGateDto> gates,
+    List<ReleaseAutomationDto> automations,
     MergeConflictDto conflict,
     String version,
     String supersededBy,

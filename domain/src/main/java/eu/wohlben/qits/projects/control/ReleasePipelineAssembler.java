@@ -27,7 +27,7 @@ import org.jboss.logging.Logger;
  *
  * <pre>
  *     P1 . QA        a qits-ci run at release/&lt;id&gt;@mergedSha
- *       |  gates     CI, and APPROVAL where the policy asks        between = QA_PUBLISH
+ *       |  gates     CI, AUTOMATIONS, and APPROVAL where asked     between = QA_PUBLISH
  *     P2 . Publish   a qits-ci run at &lt;version&gt;@commitSha
  *       |  gate      PUBLISH -- that run green                     between = PUBLISH_DEPLOY
  *     P3 . Deploy    a qits-deployments deployment request
@@ -135,12 +135,13 @@ public class ReleasePipelineAssembler {
 
   /**
    * Which slot each gate stands in. A {@link java.util.Map} rather than a {@code switch} because
-   * that is what the placement <em>is</em> — four kinds, three slots, two kinds sharing one — and a
-   * fifth gate is a line here and nothing else.
+   * that is what the placement <em>is</em> — five kinds, three slots, three kinds sharing one — and
+   * a sixth gate is a line here and nothing else.
    */
   private static final Map<ReleaseGates.Kind, String> PLACEMENT =
       Map.of(
           ReleaseGates.Kind.CI, BETWEEN_QA_PUBLISH,
+          ReleaseGates.Kind.AUTOMATIONS, BETWEEN_QA_PUBLISH,
           ReleaseGates.Kind.APPROVAL, BETWEEN_QA_PUBLISH,
           ReleaseGates.Kind.PUBLISH, BETWEEN_PUBLISH_DEPLOY,
           ReleaseGates.Kind.DEPLOYMENT, BETWEEN_DEPLOY_FINALIZED);

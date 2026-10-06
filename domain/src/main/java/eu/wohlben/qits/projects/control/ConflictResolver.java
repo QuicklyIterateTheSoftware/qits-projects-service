@@ -42,8 +42,8 @@ import org.jboss.logging.Logger;
  *       (read at {@code headSha}, because that commit is the only rev whose declaration is the one
  *       this conflict is about);
  *   <li>that section's <em>name</em> resolves to a repository of this project — {@link
- *       RepositoryNameRepository#findRepositoryByProjectAndName}, the lookup {@code
- *       EstatePinRefresh.released} makes and for the reason stated there;
+ *       RepositoryNameRepository#findRepositoryByProjectAndName}, whose unique {@code (project,
+ *       name)} index makes the forward lookup exact whichever alias the wrapper declares;
  *   <li>both shas are recorded releases of that repository;
  *   <li>one of them is strictly later by {@code releasedAt} — the ordering {@link
  *       ReleasedTagPendingMergeRepository#latestReleased} already uses;
@@ -74,14 +74,14 @@ import org.jboss.logging.Logger;
  *
  * <h2>Posture</h2>
  *
- * <p><b>Nothing here throws</b>, {@link EstatePinRefresh}'s rule and for {@link EstatePinRefresh}'s
+ * <p><b>Nothing here throws</b>, {@link AutomationRefresh}'s rule and for {@link AutomationRefresh}'s
  * reason: it is called from a seam where a fold has already happened, and no enrichment of a landed
  * fold may undo it. A port bug, a lazy-loading surprise or anything else costs one WARN and a no
  * answer — which is the CONFLICTED the request was going to get anyway.
  *
  * <p>Every read is made <b>outside every transaction</b>, like the fold itself: the git-host calls
  * are plain HTTP round trips and the database reads are short {@code requiringNew()} transactions of
- * their own, the way {@code EstatePinRefresh} splits {@code gather} from {@code released}.
+ * their own, the way {@code AutomationRefresh} keeps its {@code gather} apart from its HTTP round trip.
  *
  * <p>It has no trigger, no schedule and no loop. {@code ReleaseRequests.remerge} asks it once per
  * conflicting fold and folds at most one more time on the strength of the answer.
@@ -331,8 +331,7 @@ public class ConflictResolver {
 
   /**
    * The database half — the section name resolved to a member of this project, and each candidate
-   * sha looked up as a release of it. One short transaction of its own, outside the fold's, {@code
-   * EstatePinRefresh.released}'s shape.
+   * sha looked up as a release of it. One short transaction of its own, outside the fold's.
    *
    * <p>Null is "this project has no such repository", which is an answer and not a failure: a
    * wrapper is edited by people and reconciled asynchronously, so a section naming a member nobody

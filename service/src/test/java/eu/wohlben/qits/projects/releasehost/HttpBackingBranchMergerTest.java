@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link HttpBackingBranchMerger} against a local server standing in for qits-githost — plain JUnit
- * over a directly-constructed bean, {@code HttpEstatePinsTest}'s shape.
+ * over a directly-constructed bean, {@code HttpReleaseRequestAutomationsTest}'s shape.
  *
  * <p>What only a wire test can see, and the flow cannot: that a fold with nothing to decide sends
  * <b>the request it always sent</b>, byte-comparable and with no {@code resolutions} key at all, so

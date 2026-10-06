@@ -169,8 +169,8 @@ import org.jboss.logging.Logger;
  *
  * <h2>Stored nowhere</h2>
  *
- * <p>Resolved when asked. No gate's answer is a column on the request row — {@link EstatePinLedger}
- * states that rule for the estate gate and it holds for all of them: a stored answer would leave the
+ * <p>Resolved when asked. No gate's answer is a column on the request row — {@link AutomationLedger}
+ * states that rule for the automations gate and it holds for all of them: a stored answer would leave the
  * requests that are already open holding a rule that has since changed.
  */
 @ApplicationScoped
@@ -207,10 +207,18 @@ public class ReleaseGates {
 
   private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
-  /** The four gates. A fifth is a new member here and nowhere else. */
+  /** The five gates. A sixth is a new member here and nowhere else. */
   public enum Kind {
     /** Before the tag: a {@code BuildSuccessful} for the fold. */
     CI,
+    /**
+     * Before the tag, after the build and before a person: every release-request automation that
+     * applies (estate pins, screenshot baselines, …) is fresh for the fold, or a person waived that
+     * fold. Not configured from {@code main} like the others — it is on wherever {@link
+     * AutomationRefresh#configured() qits-maintenance is configured}, and for the estate wrapper
+     * always; {@code ReleaseRequests} is what puts it in a reported set. See {@link AutomationLedger}.
+     */
+    AUTOMATIONS,
     /** Before the tag, and standing alone: a person's yes. */
     APPROVAL,
     /**
