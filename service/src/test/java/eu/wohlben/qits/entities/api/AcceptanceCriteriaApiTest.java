@@ -80,7 +80,7 @@ class AcceptanceCriteriaApiTest {
   @Test
   void aPatchSetsReplacesAndClearsATicketsCriteria() {
     String ticket = EntityFixtures.ticket(EntityFixtures.project("Criteria Patch").id());
-    read(ticket).body("acceptanceCriteria", equalTo(List.of()));
+    read(ticket).body("acceptanceCriteria", equalTo(TestCriteria.CRITERIA));
 
     patch(ticket, map("acceptanceCriteria", List.of("The crash no longer occurs.", "A test pins it")))
         .statusCode(200)
@@ -139,7 +139,7 @@ class AcceptanceCriteriaApiTest {
     patch(epic, map("acceptanceCriteria", "not a list"))
         .statusCode(400)
         .body("message", containsString("acceptanceCriteria must be an array of strings"));
-    read(epic).body("acceptanceCriteria", equalTo(List.of()));
+    read(epic).body("acceptanceCriteria", equalTo(TestCriteria.CRITERIA));
   }
 
   @Test

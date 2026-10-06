@@ -54,7 +54,7 @@
         "blocked" : false,
         "supersededByEpicId" : null,
         "description" : "The spine",
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -77,7 +77,7 @@
         "blocked" : false,
         "supersededByEpicId" : null,
         "description" : "The spine",
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -117,7 +117,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -724,6 +724,7 @@
       "archetype" : "EPIC",
       "title" : "The plan, restated",
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ "It does what it says." ],
       "status" : "REPORTED",
       "membership" : {
         "parent" : null
@@ -759,7 +760,7 @@
       "updatedAt" : "<instant>",
       "changedBy" : "dev",
       "blocked" : false,
-      "acceptanceCriteria" : [ ]
+      "acceptanceCriteria" : [ "It does what it says." ]
     }
   }
 }, {
@@ -816,7 +817,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -841,7 +842,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -931,7 +932,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1038,7 +1039,7 @@
       "blocked" : false,
       "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1054,7 +1055,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1075,7 +1076,7 @@
       "blocked" : false,
       "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1096,7 +1097,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1118,7 +1119,7 @@
         "blocked" : false,
         "supersededByEpicId" : "<id:11>",
         "description" : "The spine, restated",
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -1135,7 +1136,7 @@
         "blocked" : false,
         "supersededByEpicId" : null,
         "description" : "The spine, restated",
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -1524,6 +1525,40 @@
         "projectId" : "<id:1>",
         "archetype" : "EPIC",
         "number" : 1,
+        "title" : "The plan",
+        "slug" : "the-plan",
+        "slugScope" : "<id:1>",
+        "description" : "The spine",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : null,
+        "impetus" : null,
+        "assignee" : null,
+        "createdBy" : null,
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "implementingAt" : null,
+        "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ "It does what it says." ],
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "EPIC",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "EPIC",
+        "number" : 1,
         "title" : "The plan, restated",
         "slug" : "the-plan",
         "slugScope" : "<id:1>",
@@ -1540,7 +1575,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1574,7 +1609,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1608,7 +1643,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1642,7 +1677,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1676,7 +1711,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2430,7 +2465,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2464,7 +2499,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2891,7 +2926,8 @@
   "body" : {
     "archetype" : "EPIC",
     "project" : "<id:1>",
-    "title" : "The generic plan"
+    "title" : "The generic plan",
+    "acceptanceCriteria" : [ "It does what it says." ]
   },
   "status" : 201,
   "response" : {
@@ -2921,7 +2957,7 @@
     "updatedAt" : "<instant>",
     "changedBy" : null,
     "blocked" : false,
-    "acceptanceCriteria" : [ ]
+    "acceptanceCriteria" : [ "It does what it says." ]
   }
 }, {
   "request" : "POST /projects/api/entities",
@@ -3205,7 +3241,7 @@
     "updatedAt" : "<instant>",
     "changedBy" : "dev",
     "blocked" : false,
-    "acceptanceCriteria" : [ ]
+    "acceptanceCriteria" : [ "It does what it says." ]
   }
 }, {
   "request" : "POST /projects/api/entities/<id:18>/status",
@@ -3240,7 +3276,7 @@
     "updatedAt" : "<instant>",
     "changedBy" : "dev",
     "blocked" : false,
-    "acceptanceCriteria" : [ ]
+    "acceptanceCriteria" : [ "It does what it says." ]
   }
 }, {
   "request" : "POST /projects/api/entities/<id:19>/status",

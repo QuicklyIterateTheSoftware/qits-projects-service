@@ -143,7 +143,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
   void onlyPhasedWorkOfThisProjectJoinsOnce() {
     WorkEntity campaign = campaign();
     WorkEntity epic =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Plan", null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     WorkEntity feature =
         workEntities
             .create(Archetype.FEATURE, epic.id, EntityWrite.feature("Part", null, null), WHO)
@@ -158,7 +158,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
             .create(
                 Archetype.TICKET,
                 OTHER_PROJECT,
-                EntityWrite.ticket("Elsewhere", "it occurs", null, "BUG", null),
+                EntityWrite.ticket("Elsewhere", "it occurs", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 WHO)
             .entity();
 
@@ -467,7 +467,7 @@ class CampaignServiceTest extends EntitiesTestSupport {
   private WorkEntity ticket(String title) {
     return workEntities
         .create(
-            Archetype.TICKET, PROJECT, EntityWrite.ticket(title, "it occurs", null, "BUG", null), WHO)
+            Archetype.TICKET, PROJECT, EntityWrite.ticket(title, "it occurs", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
         .entity();
   }
 

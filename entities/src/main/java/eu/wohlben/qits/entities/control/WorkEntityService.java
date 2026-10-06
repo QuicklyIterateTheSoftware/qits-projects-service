@@ -156,6 +156,13 @@ public class WorkEntityService {
   @Inject Instance<RetitleAnnouncer> retitles;
 
   /**
+   * The quality gates on a move (qits-887) — every {@link TransitionGate} bean, judged on a FORWARD
+   * or SKIP move by {@link TransitionGates#require}, in {@link #planTransition} and again in {@link
+   * #move}. A gate is added by writing one; nothing here names any of them.
+   */
+  @Inject Instance<TransitionGate> gates;
+
+  /**
    * What a {@link #transition} to {@code target} would be: the row as it stands, the status it would
    * move to, and whether that status {@linkplain EntityLifecycle#resolves resolves} it.
    *
@@ -809,13 +816,26 @@ public class WorkEntityService {
 
   // --- lifecycle ------------------------------------------------------------------------------------
 
-  /** The preview of a move — see {@link PlannedTransition}. */
+  /**
+   * The preview of a move — see {@link PlannedTransition} — by a caller nobody verified as a person.
+   */
   public PlannedTransition planTransition(Archetype archetype, String id, String target) {
+    return planTransition(archetype, id, target, Mover.machine(null));
+  }
+
+  /**
+   * The preview of a move by {@code mover} — see {@link PlannedTransition}. The quality gates are
+   * judged here too (qits-887), so a door that acts on the preview — the refinement discard — never
+   * acts on a move a gate is about to refuse.
+   */
+  public PlannedTransition planTransition(
+      Archetype archetype, String id, String target, Mover mover) {
     Kind kind = kind(archetype);
     Validations.requireText(target, "target");
     WorkEntity row = lookup(archetype, id);
     EntityStatus to = targetStatus(kind, row, target);
     requireSupersedable(kind, row, target);
+    TransitionGates.require(gates, kind.noun(), row, statusOf(row.status), to, mover);
     return new PlannedTransition(row, to, EntityLifecycle.resolves(to));
   }
 
@@ -847,6 +867,10 @@ public class WorkEntityService {
    *       only thing that sets it; a kind that is never blocked writes false over false.
    * </ul>
    *
+   * <p><b>The quality gates judge a FORWARD or SKIP move</b> (qits-887): every {@link
+   * TransitionGate} that applies to it, each with {@code mover} in hand, all refusals in one 409. A
+   * BACK, DROP or REOPEN passes every gate — it is a correction.
+   *
    * <p>Held through a cutover ({@link WritePatience}), the whole move in one transaction —
    * supersede's successor tree included, so a retry never leaves half a copy behind.
    *
@@ -855,14 +879,22 @@ public class WorkEntityService {
    * move, so it left no status: {@code statusBefore} null, status REPORTED), plus every descendant
    * the move carried, each with the status it left. See {@link TransitionAnnouncer}.
    */
-  public Transition transition(Archetype archetype, String id, String target, String changedBy) {
+  public Transition transition(Archetype archetype, String id, String target, Mover mover) {
     Kind kind = kind(archetype);
     Validations.requireText(target, "target");
     Moved moved =
-        writes.hold(
-            kind.label("transition"), () -> move(kind, archetype, id, null, target, changedBy));
+        writes.hold(kind.label("transition"), () -> move(kind, archetype, id, null, target, mover));
     announce(moved.batch());
     return moved.transition();
+  }
+
+  /**
+   * {@link #transition(Archetype, String, String, Mover)} by a caller nobody verified as a person —
+   * a {@link Mover#machine}. What a platform caller with no person behind it moves with; a gate that
+   * needs a person refuses it, which is the fail-closed default.
+   */
+  public Transition transition(Archetype archetype, String id, String target, String changedBy) {
+    return transition(archetype, id, target, Mover.machine(changedBy));
   }
 
   /**
@@ -879,7 +911,7 @@ public class WorkEntityService {
     Moved moved =
         writes.hold(
             kind.label("transition"),
-            () -> move(kind, archetype, id, from, target.name(), changedBy));
+            () -> move(kind, archetype, id, from, target.name(), Mover.machine(changedBy)));
     if (moved == null) {
       return Optional.empty();
     }
@@ -897,7 +929,8 @@ public class WorkEntityService {
       String id,
       EntityStatus expected,
       String target,
-      String changedBy) {
+      Mover mover) {
+    String changedBy = mover.name();
     WorkEntity row = lookup(archetype, id);
     if (expected != null && !expected.name().equals(row.status)) {
       return null;
@@ -915,6 +948,10 @@ public class WorkEntityService {
       requireOwnerPastDraft(kind, row);
       requirePieceScheduledWithItsEpic(kind, row, to);
     }
+    // The quality gates (qits-887), last of the refusals and before anything is written: a FORWARD
+    // or SKIP move every applying gate passes, judged on the row as it stands. The cascade below is
+    // judged once, here, on the row that moves — never per carried piece.
+    TransitionGates.require(gates, kind.noun(), row, statusOf(statusBefore), to, mover);
 
     WorkEntity successor =
         kind.supersedable() && SUPERSEDE.equals(target) ? supersede(kind, row, changedBy) : null;

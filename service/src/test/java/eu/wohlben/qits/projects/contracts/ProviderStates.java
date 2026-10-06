@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.contracts;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -321,7 +322,7 @@ public class ProviderStates {
     Project telemetry = project("telemetry", "telemetry-" + second, TWO_PROJECTS_EXIST);
     projectService.createRepository(qits.id, null, "qits-ci-service", null, "qits-ci");
     projectService.createRepository(qits.id, null, "qits-ci-frontend", null, "qits-ci");
-    String epic = create(Archetype.EPIC, qits, EntityWrite.epic("Unified SPA", "Seeded work."));
+    String epic = create(Archetype.EPIC, qits, EntityWrite.epic("Unified SPA", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String ticket = ticket(qits, "Picker shows every project");
     ticket(qits, "Cards load their lines lazily");
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
@@ -377,7 +378,7 @@ public class ProviderStates {
   private Setup aProjectWithRefinedWork() {
     String token = token();
     Project project = project(token, A_PROJECT_WITH_REFINED_WORK);
-    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Refined epic", "Seeded work."));
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Refined epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String first = ticket(project, "Refined ticket");
     String second = ticket(project, "Second refined ticket");
     ticket(project, "Reported ticket");
@@ -417,7 +418,7 @@ public class ProviderStates {
     paths.put("Dropped", List.of("DROPPED"));
     for (Map.Entry<String, List<String>> path : paths.entrySet()) {
       String epic =
-          create(Archetype.EPIC, project, EntityWrite.epic(path.getKey() + " epic", "Seeded work."));
+          create(Archetype.EPIC, project, EntityWrite.epic(path.getKey() + " epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
       String ticket = ticket(project, path.getKey() + " ticket");
       for (String status : path.getValue()) {
         work.transition(Archetype.EPIC, epic, status, SEEDER);
@@ -426,7 +427,7 @@ public class ProviderStates {
     }
     String repositoryId = repository(project, "contract-service");
     String started =
-        create(Archetype.EPIC, project, EntityWrite.epic("Started epic", "Seeded work."));
+        create(Archetype.EPIC, project, EntityWrite.epic("Started epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
         node(Archetype.FEATURE, started, EntityWrite.feature("Started feature", "Seeded.", null));
     String task =
@@ -448,7 +449,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, AN_EPIC_WITH_FEATURES_AND_TASKS);
     String repositoryId = repository(project, "contract-service");
-    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Nested epic", "Seeded work."));
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Nested epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String done = node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded.", null));
     String shippedTask =
         node(Archetype.TASK, done, EntityWrite.task(repositoryId, "First shipped task", "Seeded.", null));
@@ -478,7 +479,7 @@ public class ProviderStates {
     Project project = project(token, AN_EPIC_WITH_TASKS_IN_EVERY_STATUS);
     String repositoryId = repository(project, "contract-service");
     String epic =
-        create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work."));
+        create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
         node(Archetype.FEATURE, epic, EntityWrite.feature("Feature in flight", "Seeded.", null));
     Map<EntityStatus, String> tasks = new LinkedHashMap<>();
@@ -528,7 +529,7 @@ public class ProviderStates {
     Project project = project(token, state);
     String repositoryId = repository(project, "contract-service");
     String epic =
-        create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work."));
+        create(Archetype.EPIC, project, EntityWrite.epic("Epic in flight", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String verified =
         node(
             Archetype.FEATURE,
@@ -579,8 +580,8 @@ public class ProviderStates {
     Project project = project(token, A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
     String campaign =
         work.createCampaign(project.id, "Ordered campaign", "Seeded work.", SEEDER).id;
-    String shipped = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded."));
-    String running = create(Archetype.EPIC, project, EntityWrite.epic("Running epic", "Seeded."));
+    String shipped = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
+    String running = create(Archetype.EPIC, project, EntityWrite.epic("Running epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     node(Archetype.FEATURE, running, EntityWrite.feature("Running feature", "Seeded.", null));
     String waiting = ticket(project, "Waiting ticket");
     String standalone = ticket(project, "Standalone ticket");
@@ -617,7 +618,7 @@ public class ProviderStates {
   private String epicWithFeaturesInMixedStatuses(Project project, String repositoryId) {
     String epic =
         create(
-            Archetype.EPIC, project, EntityWrite.epic("Epic with mixed features", "Seeded work."));
+            Archetype.EPIC, project, EntityWrite.epic("Epic with mixed features", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String verifiedFeature =
         node(Archetype.FEATURE, epic, EntityWrite.feature("Verified feature", "Seeded.", null));
     String verifiedTask =
@@ -680,7 +681,7 @@ public class ProviderStates {
    */
   private String epicWithEverything(
       Project project, String repositoryId, String title, String prefix, EntityStatus target) {
-    String epic = create(Archetype.EPIC, project, EntityWrite.epic(title, "Seeded work."));
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic(title, "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
         node(Archetype.FEATURE, epic, EntityWrite.feature(prefix + " feature", "Seeded.", null));
     List<String> tasks = new ArrayList<>();
@@ -762,7 +763,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_VERIFIED_EPIC);
     String repositoryId = repository(project, "contract-service");
-    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded."));
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Verified epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature = node(Archetype.FEATURE, epic, EntityWrite.feature("A feature", "Seeded.", null));
     node(Archetype.TASK, feature, EntityWrite.task(repositoryId, "A task", "Seeded.", null));
     walk(Archetype.EPIC, epic, EntityStatus.VERIFIED);
@@ -820,7 +821,7 @@ public class ProviderStates {
                 "Raise the database's connection limit, so two pools fit during a rolling deploy."
                     + " Verify by deploying again.",
                 "BUG",
-                null));
+                null).withAcceptanceCriteria(TestCriteria.CRITERIA));
     moveTo(Archetype.TICKET, ticket, status);
     if (status != EntityStatus.DROPPED
         && EntityStateMachine.isAtOrPast(status, EntityStatus.IMPLEMENTED)) {
@@ -838,7 +839,7 @@ public class ProviderStates {
         create(
             Archetype.EPIC,
             project,
-            EntityWrite.epic("Work item actions", "Seeded work: the page's moves and dispatches."));
+            EntityWrite.epic("Work item actions", "Seeded work: the page's moves and dispatches.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     moveTo(Archetype.EPIC, epic, status);
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
   }
@@ -879,7 +880,7 @@ public class ProviderStates {
     for (String type : List.of("BUG", "IMPROVEMENT", "MAINTENANCE")) {
       String title = type.charAt(0) + type.substring(1).toLowerCase(Locale.ROOT) + " ticket";
       String ticket =
-          create(Archetype.TICKET, project, EntityWrite.ticket(title, "Seeded work.", null, type, null));
+          create(Archetype.TICKET, project, EntityWrite.ticket(title, "Seeded work.", null, type, null).withAcceptanceCriteria(TestCriteria.CRITERIA));
       work.transition(Archetype.TICKET, ticket, "REFINED", SEEDER);
     }
     return new Setup(params("projectId", project.id), List.of(token));
@@ -900,7 +901,7 @@ public class ProviderStates {
         create(
             Archetype.EPIC,
             project,
-            EntityWrite.epic(done ? "Done epic" : "Verified epic", "Seeded work."));
+            EntityWrite.epic(done ? "Done epic" : "Verified epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String feature =
         node(Archetype.FEATURE, epic, EntityWrite.feature("Shipped feature", "Seeded.", null));
     List<String> tasks = new ArrayList<>();
@@ -930,7 +931,7 @@ public class ProviderStates {
     String token = token();
     Project project = project(token, A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE);
     String campaign = work.createCampaign(project.id, "Card campaign", "Seeded work.", SEEDER).id;
-    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Refined epic", "Seeded."));
+    String epic = create(Archetype.EPIC, project, EntityWrite.epic("Refined epic", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     String refined = ticket(project, "Refined ticket");
     String reported = ticket(project, "Reported ticket");
     String done = ticket(project, "Done ticket");
@@ -970,7 +971,7 @@ public class ProviderStates {
     String first = work.createCampaign(project.id, "First campaign", "Seeded work.", SEEDER).id;
     String second = work.createCampaign(project.id, "Second campaign", "Seeded work.", SEEDER).id;
     String epic =
-        create(Archetype.EPIC, project, EntityWrite.epic("Epic in two campaigns", "Seeded."));
+        create(Archetype.EPIC, project, EntityWrite.epic("Epic in two campaigns", "Seeded.").withAcceptanceCriteria(TestCriteria.CRITERIA));
     work.transition(Archetype.EPIC, epic, "REFINED", SEEDER);
     for (String campaign : List.of(first, second)) {
       campaigns.addMember(campaign, epic, null, false, SEEDER);
@@ -1075,7 +1076,7 @@ public class ProviderStates {
                 ```
                 GET /billing/api/invoices/export?from=2026-10-01&to=2026-12-31&format=csv
                 ```
-                """));
+                """).withAcceptanceCriteria(TestCriteria.CRITERIA));
     String csv =
         node(
             Archetype.FEATURE,
@@ -1174,7 +1175,7 @@ public class ProviderStates {
         create(
             Archetype.EPIC,
             project,
-            EntityWrite.epic("Tax rates per country", "Bill each country at its own VAT rate."));
+            EntityWrite.epic("Tax rates per country", "Bill each country at its own VAT rate.").withAcceptanceCriteria(TestCriteria.CRITERIA));
 
     String bug =
         create(
@@ -1196,7 +1197,7 @@ public class ProviderStates {
                 ```
                 """,
                 "BUG",
-                PERSON));
+                PERSON).withAcceptanceCriteria(TestCriteria.CRITERIA));
     dossierPage(
         null,
         bug,
@@ -1221,7 +1222,7 @@ public class ProviderStates {
                 "Accountants pick CSV every time; the list forgets it.",
                 "Keep the chosen export format per user and preselect it next time.",
                 "IMPROVEMENT",
-                null));
+                null).withAcceptanceCriteria(TestCriteria.CRITERIA));
 
     String maintenance =
         create(
@@ -1232,7 +1233,7 @@ public class ProviderStates {
                 "The release request for billing-service has waited on its gates for 6 hours.",
                 null,
                 "MAINTENANCE",
-                null));
+                null).withAcceptanceCriteria(TestCriteria.CRITERIA));
     dossierPage(
         null,
         maintenance,
@@ -1249,7 +1250,7 @@ public class ProviderStates {
                 "A credit note of 50 EUR prints as 50 EUR, not -50 EUR.",
                 "Print credit note amounts negative.",
                 "BUG",
-                null));
+                null).withAcceptanceCriteria(TestCriteria.CRITERIA));
 
     // Work: the epic's markers, then every status. Task markers move only while the epic is
     // READY_FOR_DEV or IMPLEMENTING; marking a task implementing moves the epic to IMPLEMENTING.
@@ -1511,7 +1512,7 @@ public class ProviderStates {
     return create(
         Archetype.TICKET,
         project,
-        EntityWrite.ticket(title, "Seeded work.", null, "BUG", null));
+        EntityWrite.ticket(title, "Seeded work.", null, "BUG", null).withAcceptanceCriteria(TestCriteria.CRITERIA));
   }
 
   private String create(Archetype archetype, Project project, EntityWrite write) {

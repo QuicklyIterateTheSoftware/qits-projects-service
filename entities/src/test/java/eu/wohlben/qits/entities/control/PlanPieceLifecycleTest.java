@@ -51,7 +51,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   private Plan plan() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", "The spine"), "t")
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", "The spine").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity();
     String feature =
         workEntities

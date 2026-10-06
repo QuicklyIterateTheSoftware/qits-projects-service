@@ -1927,6 +1927,14 @@ components:
           type: string
         kind:
           $ref: "#/components/schemas/TransitionKind"
+        gates:
+          type: array
+          items:
+            type: string
+          description: "The quality gates the move has to pass, by name (ACCEPTANCE_CRITERIA:\
+            \ the entity carries acceptance criteria). Only a FORWARD or SKIP move\
+            \ has any, and the key is absent when there are none. A move that fails\
+            \ one is a 409 naming every failing gate."
     ListPagesResponse:
       type: object
       properties:
@@ -3984,8 +3992,8 @@ paths:
         \ phases"
       description: "Every archetype's declaration, read off the registry and the state\
         \ machine the doors enforce: what it requires and permits, its lifecycle,\
-        \ the legal moves out of each status (transitions) and what a dispatch press\
-        \ runs from each status (phases)."
+        \ the legal moves out of each status (transitions, each naming the quality\
+        \ gates it has to pass) and what a dispatch press runs from each status (phases)."
       operationId: listArchetypes
       responses:
         "200":

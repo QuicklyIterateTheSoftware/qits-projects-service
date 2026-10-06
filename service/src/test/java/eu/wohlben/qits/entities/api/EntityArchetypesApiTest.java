@@ -179,9 +179,34 @@ class EntityArchetypesApiTest {
         .body(at("FEATURE") + "requiredOnTransition", contains("TITLE", "STATUS"));
   }
 
-  /** A legal move as the wire spells it. */
-  private static Map<String, String> move(String to, String kind) {
+  /** A legal move as the wire spells it: no {@code gates} key when it has none. */
+  private static Map<String, Object> move(String to, String kind) {
     return Map.of("to", to, "kind", kind);
+  }
+
+  /** A legal move with the quality gates it names (qits-887). */
+  private static Map<String, Object> move(String to, String kind, String... gates) {
+    return Map.of("to", to, "kind", kind, "gates", List.of(gates));
+  }
+
+  /** The served moves with every {@code gates} key dropped — what the kinds share. */
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> withoutGates(Map<String, Object> moves) {
+    Map<String, Object> stripped = new LinkedHashMap<>();
+    moves.forEach(
+        (status, list) ->
+            stripped.put(
+                status,
+                ((List<Map<String, Object>>) list)
+                    .stream()
+                        .map(
+                            move -> {
+                              Map<String, Object> copy = new LinkedHashMap<>(move);
+                              copy.remove("gates");
+                              return copy;
+                            })
+                        .toList()));
+    return stripped;
   }
 
   /**
@@ -198,14 +223,18 @@ class EntityArchetypesApiTest {
         ticket = entry;
       }
     }
-    Map<String, List<Map<String, String>>> transitions =
+    Map<String, List<Map<String, Object>>> transitions =
         new ObjectMapper().convertValue(ticket.path("transitions"), new TypeReference<>() {});
-    Map<String, List<Map<String, String>>> expected = new LinkedHashMap<>();
+    Map<String, List<Map<String, Object>>> expected = new LinkedHashMap<>();
     expected.put(
-        "REPORTED", List.of(move("REFINED", "FORWARD"), move("DROPPED", "DROP")));
+        "REPORTED",
+        List.of(move("REFINED", "FORWARD", "ACCEPTANCE_CRITERIA"), move("DROPPED", "DROP")));
     expected.put(
         "REFINED",
-        List.of(move("READY_FOR_DEV", "FORWARD"), move("REPORTED", "BACK"), move("DROPPED", "DROP")));
+        List.of(
+            move("READY_FOR_DEV", "FORWARD", "ACCEPTANCE_CRITERIA"),
+            move("REPORTED", "BACK"),
+            move("DROPPED", "DROP")));
     expected.put(
         "READY_FOR_DEV",
         List.of(
@@ -277,15 +306,22 @@ class EntityArchetypesApiTest {
                 "VERIFYING"));
   }
 
-  /** qits-763: a feature and a task serve the epic's moves and walk, both skips included. */
+  /**
+   * qits-763: a feature and a task serve the epic's moves and walk, both skips included — though
+   * not its acceptance-criteria gate (qits-887), which judges an epic and a ticket alone.
+   */
   @Test
   void aFeatureAndATaskServeTheEpicsMovesAndLifecycle() {
     Map<String, Object> epicMoves = document().extract().path(at("EPIC") + "transitions");
     List<String> epicWalk = document().extract().path(at("EPIC") + "lifecycle");
     for (String archetype : List.of("FEATURE", "TASK")) {
+      Map<String, Object> moves = document().extract().path(at(archetype) + "transitions");
+      assertEquals(withoutGates(epicMoves), withoutGates(moves), archetype);
       document()
-          .body(at(archetype) + "transitions", equalTo(epicMoves))
-          .body(at(archetype) + "lifecycle", equalTo(epicWalk));
+          .body(at(archetype) + "lifecycle", equalTo(epicWalk))
+          .body(
+              at(archetype) + "transitions.REPORTED.find { it.to == 'REFINED' }.gates",
+              nullValue());
     }
   }
 

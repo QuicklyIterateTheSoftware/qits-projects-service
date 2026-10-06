@@ -40,7 +40,8 @@ public class TicketDossierControllerTest {
   }
 
   private String createTicket(String name) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(
             Map.of(
@@ -55,7 +56,7 @@ public class TicketDossierControllerTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   private static String base(String ticketId) {

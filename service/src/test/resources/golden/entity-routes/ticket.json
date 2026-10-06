@@ -116,7 +116,7 @@
         "createdBy" : "dev",
         "impetus" : "clicking the login button does nothing on the sign-in page",
         "description" : "It just sits there",
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -162,7 +162,7 @@
         "createdBy" : "dev",
         "impetus" : "clicking the login button does nothing on the sign-in page",
         "description" : "It just sits there",
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -219,7 +219,7 @@
       "createdBy" : "dev",
       "impetus" : "clicking the login button does nothing on the sign-in page",
       "description" : "It just sits there",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -241,6 +241,7 @@
       "status" : "REPORTED",
       "ticketType" : "IMPROVEMENT",
       "assignee" : "bob",
+      "acceptanceCriteria" : [ "It does what it says." ],
       "membership" : {
         "parent" : null
       }
@@ -275,7 +276,7 @@
       "updatedAt" : "<instant>",
       "changedBy" : "dev",
       "blocked" : false,
-      "acceptanceCriteria" : [ ]
+      "acceptanceCriteria" : [ "It does what it says." ]
     }
   }
 }, {
@@ -296,7 +297,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -350,7 +351,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -386,7 +387,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -423,7 +424,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -447,7 +448,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -474,7 +475,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
-      "acceptanceCriteria" : [ ],
+      "acceptanceCriteria" : [ "It does what it says." ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -878,7 +879,41 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
+        "createdAt" : "<instant>",
+        "updatedAt" : "<instant>"
+      }
+    }, {
+      "id" : "<audit-id>",
+      "entityType" : "TICKET",
+      "entityId" : "<id:2>",
+      "epicId" : "<id:2>",
+      "operation" : "UPDATE",
+      "changedBy" : "dev",
+      "changedAt" : "<instant>",
+      "snapshot" : {
+        "id" : "<id:2>",
+        "causationId" : null,
+        "projectId" : "<id:1>",
+        "archetype" : "TICKET",
+        "number" : 1,
+        "title" : "Login button does nothing",
+        "slug" : "login-button-does-nothing",
+        "slugScope" : "<id:1>",
+        "description" : "It just sits there",
+        "status" : "REPORTED",
+        "blocked" : false,
+        "dispatchContinues" : true,
+        "ticketType" : "BUG",
+        "impetus" : "clicking the login button does nothing on the sign-in page",
+        "assignee" : "alice",
+        "createdBy" : "dev",
+        "supersededByEntityId" : null,
+        "repositoryId" : null,
+        "implementedAt" : null,
+        "implementingAt" : null,
+        "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -912,7 +947,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -946,7 +981,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -980,7 +1015,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1014,7 +1049,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1048,7 +1083,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
-        "acceptanceCriteria" : [ ],
+        "acceptanceCriteria" : [ "It does what it says." ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1481,35 +1516,9 @@
   "body" : {
     "target" : "REFINED"
   },
-  "status" : 200,
+  "status" : 409,
   "response" : {
-    "id" : "<id:7>",
-    "archetype" : "TICKET",
-    "projectId" : "<id:1>",
-    "number" : 3,
-    "qualifiedId" : "<project>-3",
-    "title" : "Filed generically",
-    "slug" : "filed-generically",
-    "slugScope" : "<id:1>",
-    "description" : null,
-    "status" : "REFINED",
-    "statusBefore" : "REPORTED",
-    "ticketType" : "IMPROVEMENT",
-    "impetus" : "the generic door should file a ticket",
-    "assignee" : null,
-    "createdBy" : "dev",
-    "supersededBy" : null,
-    "repositoryId" : null,
-    "implementedAt" : null,
-    "implementingAt" : null,
-    "dependsOn" : null,
-    "parent" : null,
-    "position" : null,
-    "createdAt" : "<instant>",
-    "updatedAt" : "<instant>",
-    "changedBy" : "dev",
-    "blocked" : false,
-    "acceptanceCriteria" : [ ]
+    "message" : "Ticket <id:7> cannot move to REFINED: ACCEPTANCE_CRITERIA: it has no acceptance criteria — write them first (acceptanceCriteria: update_ticket, PATCH /entities/{id} or qits work update)"
   }
 }, {
   "request" : "POST /projects/api/entities/<id:7>/status",
@@ -1518,7 +1527,7 @@
   },
   "status" : 409,
   "response" : {
-    "message" : "A ticket cannot move from REFINED to DONE"
+    "message" : "A ticket cannot move from REPORTED to DONE"
   }
 }, {
   "request" : "POST /projects/api/entities/no-such-entity/status",

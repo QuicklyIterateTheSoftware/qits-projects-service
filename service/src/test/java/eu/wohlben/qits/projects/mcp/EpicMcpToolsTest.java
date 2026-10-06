@@ -4,6 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.EpicController;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
@@ -176,7 +177,13 @@ public class EpicMcpToolsTest {
     call(
         projectId,
         "propose_epic",
-        Map.of("title", title, "description", "drafted by the agent"),
+        Map.of(
+            "title",
+            title,
+            "description",
+            "drafted by the agent",
+            "acceptanceCriteria",
+            TestCriteria.CRITERIA),
         response -> {
           assertFalse(response.isError(), text(response));
           String body = text(response);

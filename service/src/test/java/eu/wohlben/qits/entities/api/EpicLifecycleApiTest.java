@@ -41,7 +41,8 @@ class EpicLifecycleApiTest {
   }
 
   private String createEpic(String projectId, String title) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(new ProjectEpicsController.CreateEpicRequest(title, "The spine"))
         .when()
@@ -51,7 +52,7 @@ class EpicLifecycleApiTest {
         .body("epic.status", equalTo("REPORTED"))
         .body("epic.supersededByEpicId", nullValue())
         .extract()
-        .path("epic.id");
+        .path("epic.id"));
   }
 
   private ValidatableResponse transition(String epicId, String target) {

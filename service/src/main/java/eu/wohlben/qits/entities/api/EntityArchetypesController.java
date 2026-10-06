@@ -1,9 +1,12 @@
 package eu.wohlben.qits.entities.api;
 
 import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
+import eu.wohlben.qits.entities.control.TransitionGate;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -63,6 +66,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @RolesAllowed({"qits:admin", "qits:agent"})
 public class EntityArchetypesController {
 
+  /** Every quality gate (qits-887), so each served move names the gates it has to pass. */
+  @Inject Instance<TransitionGate> gates;
+
   /**
    * The registry as it stands.
    *
@@ -80,9 +86,10 @@ public class EntityArchetypesController {
       description =
           "Every archetype's declaration, read off the registry and the state machine the doors"
               + " enforce: what it requires and permits, its lifecycle, the legal moves out of each"
-              + " status (transitions) and what a dispatch press runs from each status (phases).")
+              + " status (transitions, each naming the quality gates it has to pass) and what a"
+              + " dispatch press runs from each status (phases).")
   public ArchetypeRegistryDocument archetypes() {
-    return ArchetypeRegistryDocument.describe();
+    return ArchetypeRegistryDocument.describe(gates.stream().toList());
   }
 
   /**

@@ -171,7 +171,7 @@ class EntityAgentBoundsTest {
     var epic =
         workEntities
             .create(
-                Archetype.EPIC, OWN_PROJECT, EntityWrite.epic("The own plan", "as filed"), "seed")
+                Archetype.EPIC, OWN_PROJECT, EntityWrite.epic("The own plan", "as filed").withAcceptanceCriteria(TestCriteria.CRITERIA), "seed")
             .entity();
     String epicId = epic.id;
     String featureId =
@@ -194,7 +194,7 @@ class EntityAgentBoundsTest {
             .create(
                 Archetype.TICKET,
                 OWN_PROJECT,
-                EntityWrite.ticket("The own ticket", "it occurs", null, "BUG", null),
+                EntityWrite.ticket("The own ticket", "it occurs", null, "BUG", null).withAcceptanceCriteria(TestCriteria.CRITERIA),
                 "seed")
             .entity()
             .id;
@@ -211,7 +211,7 @@ class EntityAgentBoundsTest {
             .create(
                 Archetype.EPIC,
                 FOREIGN_PROJECT,
-                EntityWrite.epic("The other plan", "as filed"),
+                EntityWrite.epic("The other plan", "as filed").withAcceptanceCriteria(TestCriteria.CRITERIA),
                 "seed")
             .entity()
             .id;
@@ -220,7 +220,7 @@ class EntityAgentBoundsTest {
             .create(
                 Archetype.TICKET,
                 FOREIGN_PROJECT,
-                EntityWrite.ticket("The other ticket", "it occurs", null, "BUG", null),
+                EntityWrite.ticket("The other ticket", "it occurs", null, "BUG", null).withAcceptanceCriteria(TestCriteria.CRITERIA),
                 "seed")
             .entity()
             .id;
@@ -430,13 +430,16 @@ class EntityAgentBoundsTest {
 
   /** The generic create's body for a ticket filed in {@code project} (qits-548). */
   private static JsonNode filedTicket(String project, String title) {
-    return JsonNodeFactory.instance
-        .objectNode()
-        .put("archetype", "TICKET")
-        .put("project", project)
-        .put("title", title)
-        .put("ticketType", "BUG")
-        .put("impetus", "it occurs");
+    var body =
+        JsonNodeFactory.instance
+            .objectNode()
+            .put("archetype", "TICKET")
+            .put("project", project)
+            .put("title", title)
+            .put("ticketType", "BUG")
+            .put("impetus", "it occurs");
+    body.putArray("acceptanceCriteria").add(TestCriteria.CRITERIA.get(0));
+    return body;
   }
 
   /** The generic create's body for a feature under {@code parent}. */

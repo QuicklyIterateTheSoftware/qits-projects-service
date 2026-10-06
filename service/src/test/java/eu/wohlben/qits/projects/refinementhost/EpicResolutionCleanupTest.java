@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
@@ -48,7 +49,8 @@ public class EpicResolutionCleanupTest {
   }
 
   private String createEpic(String projectId, String title) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(Map.of("title", title, "description", "A draft."))
         .when()
@@ -56,7 +58,7 @@ public class EpicResolutionCleanupTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("epic.id");
+        .path("epic.id"));
   }
 
   private long open(String epicId) {

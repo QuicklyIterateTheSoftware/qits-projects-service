@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.projects.refinementhost.FakeRefinementCredentials;
 import eu.wohlben.qits.projects.refinementhost.FakeRefinementRuntime;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
@@ -76,25 +77,27 @@ public class EntityRefinementControllerTest {
   }
 
   private String createTicket(String projectId, String title) {
-    return asAdmin()
+    return TestCriteria.give(
+            asAdmin()
         .body(Map.of("title", title, "type", "BUG", "impetus", "something occurs here"))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()
         .statusCode(200)
         .extract()
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   private String createEpic(String projectId, String title) {
-    return asAdmin()
+    return TestCriteria.give(
+            asAdmin()
         .body(Map.of("title", title, "description", "The pitch."))
         .when()
         .post("/projects/api/projects/" + projectId + "/epics")
         .then()
         .statusCode(200)
         .extract()
-        .path("epic.id");
+        .path("epic.id"));
   }
 
   private io.restassured.response.Response open(String entityId) {

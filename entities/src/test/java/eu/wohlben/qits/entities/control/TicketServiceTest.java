@@ -35,7 +35,7 @@ class TicketServiceTest extends EntitiesTestSupport {
             Archetype.TICKET,
             "proj-1",
             EntityWrite.ticket(
-                title, "something occurs on the login page", "what went wrong", "BUG", null),
+                title, "something occurs on the login page", "what went wrong", "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
             "alice")
         .entity();
   }
@@ -90,7 +90,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                 Archetype.TICKET,
                 "proj-1",
                 EntityWrite.ticket(
-                    "Unattributed", "something occurs on the login page", null, "BUG", null),
+                    "Unattributed", "something occurs on the login page", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 null)
             .entity()
             .createdBy,
@@ -118,7 +118,7 @@ class TicketServiceTest extends EntitiesTestSupport {
         .create(
             Archetype.TICKET,
             "proj-a",
-            EntityWrite.ticket("A1", "something occurs on the login page", null, "BUG", null),
+            EntityWrite.ticket("A1", "something occurs on the login page", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
             "t")
         .entity();
     workEntities
@@ -126,14 +126,14 @@ class TicketServiceTest extends EntitiesTestSupport {
             Archetype.TICKET,
             "proj-a",
             EntityWrite.ticket(
-                "A2", "something occurs on the login page", null, "IMPROVEMENT", null),
+                "A2", "something occurs on the login page", null, "IMPROVEMENT", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
             "t")
         .entity();
     workEntities
         .create(
             Archetype.TICKET,
             "proj-b",
-            EntityWrite.ticket("B1", "something occurs on the login page", null, "BUG", null),
+            EntityWrite.ticket("B1", "something occurs on the login page", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
             "t")
         .entity();
 
@@ -205,7 +205,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                     "something occurs on the login page",
                     null,
                     "BUG",
-                    null),
+                    null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "t")
             .entity()
             .slug);
@@ -234,7 +234,7 @@ class TicketServiceTest extends EntitiesTestSupport {
             .create(
                 Archetype.TICKET,
                 "proj-1",
-                EntityWrite.ticket("Assigned", "the list is unsorted", "a body", "BUG", "alice"),
+                EntityWrite.ticket("Assigned", "the list is unsorted", "a body", "BUG", "alice").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "alice")
             .entity();
 
@@ -278,7 +278,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                     "clicking the login button does nothing on the sign-in page",
                     null,
                     "BUG",
-                    null),
+                    null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "alice")
             .entity();
     assertEquals(EntityStatus.REPORTED.name(), filed.status);
@@ -300,7 +300,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                 .create(
                     Archetype.TICKET,
                     "proj-1",
-                    EntityWrite.ticket("T", null, "a body", "BUG", null),
+                    EntityWrite.ticket("T", null, "a body", "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                     "t")
                 .entity());
     assertThrows(
@@ -310,7 +310,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                 .create(
                     Archetype.TICKET,
                     "proj-1",
-                    EntityWrite.ticket("T", "   ", "a body", "BUG", null),
+                    EntityWrite.ticket("T", "   ", "a body", "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                     "t")
                 .entity());
   }
@@ -323,7 +323,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                 Archetype.TICKET,
                 "proj-1",
                 EntityWrite.ticket(
-                    "Inert button", "the login button does nothing", null, "BUG", null),
+                    "Inert button", "the login button does nothing", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "alice")
             .entity();
 
@@ -360,7 +360,7 @@ class TicketServiceTest extends EntitiesTestSupport {
             .create(
                 Archetype.TICKET,
                 "proj-1",
-                EntityWrite.ticket("T", "something occurs on the login page", null, "BUG", "   "),
+                EntityWrite.ticket("T", "something occurs on the login page", null, "BUG", "   ").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "t")
             .entity();
     assertNull(ticket.assignee);
@@ -385,7 +385,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                     Archetype.TICKET,
                     "proj-1",
                     EntityWrite.ticket(
-                        "  ", "something occurs on the login page", null, "BUG", null),
+                        "  ", "something occurs on the login page", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                     "t")
                 .entity());
     assertThrows(
@@ -395,7 +395,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                 .create(
                     Archetype.TICKET,
                     "proj-1",
-                    EntityWrite.ticket("T", "something occurs on the login page", null, "  ", null),
+                    EntityWrite.ticket("T", "something occurs on the login page", null, "  ", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                     "t")
                 .entity());
     assertThrows(
@@ -406,7 +406,7 @@ class TicketServiceTest extends EntitiesTestSupport {
                     Archetype.TICKET,
                     "proj-1",
                     EntityWrite.ticket(
-                        "T", "something occurs on the login page", null, "DEFECT", null),
+                        "T", "something occurs on the login page", null, "DEFECT", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                     "t")
                 .entity());
 

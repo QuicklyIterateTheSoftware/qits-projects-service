@@ -49,7 +49,8 @@ class TicketApiTest {
   }
 
   private String createTicket(String projectId, String title, String type) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(
             new ProjectTicketsController.CreateTicketRequest(
@@ -59,7 +60,7 @@ class TicketApiTest {
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .extract()
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   private String addComment(String ticketId, String body) {
@@ -109,7 +110,8 @@ class TicketApiTest {
     String projectId = createProject();
 
     String ticketId =
-        given()
+        TestCriteria.give(
+            given()
             .contentType(ContentType.JSON)
             .body(
                 new ProjectTicketsController.CreateTicketRequest(
@@ -137,7 +139,7 @@ class TicketApiTest {
             .body("ticket.createdBy", equalTo("dev"))
             .body("ticket.createdAt", notNullValue())
             .extract()
-            .path("ticket.id");
+            .path("ticket.id"));
 
     // Get + list.
     given()
@@ -378,7 +380,8 @@ class TicketApiTest {
   void theNullableFieldsEmptyThroughTheWholeRowEdit() {
     String projectId = createProject();
     String ticketId =
-        given()
+        TestCriteria.give(
+            given()
             .contentType(ContentType.JSON)
             .body(
                 new ProjectTicketsController.CreateTicketRequest(
@@ -388,7 +391,7 @@ class TicketApiTest {
             .then()
             .statusCode(200)
             .extract()
-            .path("ticket.id");
+            .path("ticket.id"));
 
     restate(ticketId, ticketRow("Renamed", null, null, "BUG", null)).statusCode(200);
 
@@ -834,6 +837,8 @@ class TicketApiTest {
     row.put("ticketType", type);
     row.put("assignee", assignee);
     row.put("status", "REPORTED");
+    // The SPA's form restates the criteria with the rest of the row (qits-887).
+    row.put("acceptanceCriteria", TestCriteria.CRITERIA);
     row.put("membership", java.util.Collections.singletonMap("parent", null));
     return row;
   }

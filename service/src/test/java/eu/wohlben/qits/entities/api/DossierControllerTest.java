@@ -38,7 +38,8 @@ public class DossierControllerTest {
   }
 
   private String createEpic(String name) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(Map.of("title", name + " Epic", "description", "A draft."))
         .when()
@@ -46,7 +47,7 @@ public class DossierControllerTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("epic.id");
+        .path("epic.id"));
   }
 
   private static String base(String epicId) {

@@ -17,14 +17,16 @@
       "transitions" : {
         "REPORTED" : [ {
           "to" : "REFINED",
-          "kind" : "FORWARD"
+          "kind" : "FORWARD",
+          "gates" : [ "ACCEPTANCE_CRITERIA" ]
         }, {
           "to" : "DROPPED",
           "kind" : "DROP"
         } ],
         "REFINED" : [ {
           "to" : "READY_FOR_DEV",
-          "kind" : "FORWARD"
+          "kind" : "FORWARD",
+          "gates" : [ "ACCEPTANCE_CRITERIA" ]
         }, {
           "to" : "REPORTED",
           "kind" : "BACK"
@@ -203,14 +205,16 @@
       "transitions" : {
         "REPORTED" : [ {
           "to" : "REFINED",
-          "kind" : "FORWARD"
+          "kind" : "FORWARD",
+          "gates" : [ "ACCEPTANCE_CRITERIA" ]
         }, {
           "to" : "DROPPED",
           "kind" : "DROP"
         } ],
         "REFINED" : [ {
           "to" : "READY_FOR_DEV",
-          "kind" : "FORWARD"
+          "kind" : "FORWARD",
+          "gates" : [ "ACCEPTANCE_CRITERIA" ]
         }, {
           "to" : "REPORTED",
           "kind" : "BACK"

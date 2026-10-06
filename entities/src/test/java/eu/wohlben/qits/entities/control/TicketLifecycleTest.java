@@ -74,7 +74,7 @@ class TicketLifecycleTest extends EntitiesTestSupport {
                 "clicking the login button does nothing on the sign-in page",
                 null,
                 "BUG",
-                null),
+                null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
             "t")
         .entity();
   }

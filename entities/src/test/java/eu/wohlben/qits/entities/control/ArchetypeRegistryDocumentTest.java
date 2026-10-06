@@ -290,7 +290,9 @@ class ArchetypeRegistryDocumentTest {
       for (EntityStateMachine.Transition move : EntityStateMachine.transitions()) {
         expected
             .get(move.from().name())
-            .add(new ArchetypeRegistryDocument.LegalMove(move.to().name(), move.kind()));
+            .add(
+                new ArchetypeRegistryDocument.LegalMove(
+                    move.to().name(), move.kind(), List.of()));
       }
       assertEquals(expected, served.transitions(), archetype.name());
       assertEquals(
@@ -381,7 +383,45 @@ class ArchetypeRegistryDocumentTest {
 
   private static ArchetypeRegistryDocument.LegalMove move(
       String to, EntityStateMachine.TransitionKind kind) {
-    return new ArchetypeRegistryDocument.LegalMove(to, kind);
+    return new ArchetypeRegistryDocument.LegalMove(to, kind, List.of());
+  }
+
+  // ---- quality gates (qits-887) ------------------------------------------------------------------
+
+  /** The gates a served move names, read off a document built over {@code gates}. */
+  private static List<String> gatesOf(
+      List<? extends TransitionGate> gates, Archetype archetype, String from, String to) {
+    return ArchetypeRegistryDocument.describe(gates).archetypes().stream()
+        .filter(declared -> declared.archetype() == archetype)
+        .findFirst()
+        .orElseThrow()
+        .transitions()
+        .get(from)
+        .stream()
+        .filter(move -> move.to().equals(to))
+        .findFirst()
+        .orElseThrow()
+        .gates();
+  }
+
+  @Test
+  void aServedMoveNamesTheGatesItHasForwardAndSkipOnly() {
+    List<TransitionGate> gates = List.of(new AcceptanceCriteriaGate());
+    for (Archetype archetype : List.of(Archetype.EPIC, Archetype.TICKET)) {
+      assertEquals(
+          List.of("ACCEPTANCE_CRITERIA"), gatesOf(gates, archetype, "REPORTED", "REFINED"));
+      assertEquals(
+          List.of("ACCEPTANCE_CRITERIA"), gatesOf(gates, archetype, "REFINED", "READY_FOR_DEV"));
+      // A BACK into REFINED is a correction: no gate, though the gate applies to the pair.
+      assertEquals(List.of(), gatesOf(gates, archetype, "READY_FOR_DEV", "REFINED"));
+      assertEquals(List.of(), gatesOf(gates, archetype, "READY_FOR_DEV", "IMPLEMENTING"));
+      assertEquals(List.of(), gatesOf(gates, archetype, "REFINED", "DROPPED"));
+    }
+    // A feature and a task hold no criteria, so the criteria gate names none of their moves.
+    assertEquals(List.of(), gatesOf(gates, Archetype.FEATURE, "REPORTED", "REFINED"));
+    assertEquals(List.of(), gatesOf(gates, Archetype.TASK, "REFINED", "READY_FOR_DEV"));
+    // With no gate handed in, nothing is named.
+    assertEquals(List.of(), gatesOf(List.of(), Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
   }
 
   @Test

@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.workspacedaemon.protocol.GitStatus;
@@ -57,7 +58,8 @@ public class RefinementLifecycleTest {
   }
 
   private String createEpic(String projectId, String title) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(java.util.Map.of("title", title, "description", "A draft."))
         .when()
@@ -65,7 +67,7 @@ public class RefinementLifecycleTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("epic.id");
+        .path("epic.id"));
   }
 
   private io.restassured.response.Response open(String epicId) {

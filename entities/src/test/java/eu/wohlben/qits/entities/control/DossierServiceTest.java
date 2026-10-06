@@ -37,7 +37,7 @@ class DossierServiceTest extends EntitiesTestSupport {
 
   private WorkEntity epic() {
     return workEntities
-        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t")
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
         .entity();
   }
 

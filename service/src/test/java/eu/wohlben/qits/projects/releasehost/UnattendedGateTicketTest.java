@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.EntityPatchController;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
@@ -247,7 +248,7 @@ public class UnattendedGateTicketTest {
     String id = create("maintenance/dependencies", ROBOT);
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
-    String first = awaitTicketOn(id);
+    String first = TestCriteria.give(awaitTicketOn(id));
 
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       given()
@@ -507,7 +508,7 @@ public class UnattendedGateTicketTest {
       String id = create("maintenance/dependencies", ROBOT);
       verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
       awaitState(id, "REJECTED");
-      String ticketId = awaitTicketOn(id);
+      String ticketId = TestCriteria.give(awaitTicketOn(id));
       for (String target : walk) {
         given()
             .contentType(ContentType.JSON)

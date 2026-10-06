@@ -92,7 +92,7 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
             .create(
                 Archetype.EPIC,
                 "proj-transition-cutover",
-                EntityWrite.epic("Superseded through the cutover", null),
+                EntityWrite.epic("Superseded through the cutover", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "alice")
             .entity();
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "alice");
@@ -128,7 +128,7 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
             .create(
                 Archetype.EPIC,
                 "proj-write-cutover",
-                EntityWrite.epic("Held through the cutover", null),
+                EntityWrite.epic("Held through the cutover", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "alice")
             .entity();
 
@@ -161,7 +161,7 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
             .create(
                 Archetype.EPIC,
                 "proj-transition-commit",
-                EntityWrite.epic("Never superseded", null),
+                EntityWrite.epic("Never superseded", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "alice")
             .entity();
     workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "alice");
@@ -190,7 +190,7 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
                     .create(
                         Archetype.EPIC,
                         "proj-not-retried",
-                        EntityWrite.epic("Reported, not retried", null),
+                        EntityWrite.epic("Reported, not retried", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                         "alice")
                     .entity());
     long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
@@ -219,7 +219,7 @@ class EpicWriteCutoverTest extends EntitiesTestSupport {
                 .create(
                     Archetype.EPIC,
                     "proj-write-gone",
-                    EntityWrite.epic("Never lands", null),
+                    EntityWrite.epic("Never lands", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                     "alice")
                 .entity());
     long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;

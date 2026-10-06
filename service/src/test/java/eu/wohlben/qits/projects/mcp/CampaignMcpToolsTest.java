@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.entities.control.EntityWrite;
@@ -73,7 +74,7 @@ public class CampaignMcpToolsTest {
         .create(
             Archetype.TICKET,
             projectId,
-            EntityWrite.ticket(title, "it occurs", null, "BUG", null),
+            EntityWrite.ticket(title, "it occurs", null, "BUG", null).withAcceptanceCriteria(TestCriteria.CRITERIA),
             "t")
         .entity();
   }

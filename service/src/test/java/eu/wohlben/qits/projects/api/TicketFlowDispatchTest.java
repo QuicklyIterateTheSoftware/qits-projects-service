@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
@@ -75,7 +76,8 @@ public class TicketFlowDispatchTest {
   }
 
   private String createTicket(String projectId, String title, String type, String description) {
-    return asAdmin("setup")
+    return TestCriteria.give(
+            asAdmin("setup")
         .body(
             java.util.Map.of(
                 "title",
@@ -93,7 +95,7 @@ public class TicketFlowDispatchTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   /** One step along the lifecycle, through the door a person presses. */

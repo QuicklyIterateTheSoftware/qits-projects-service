@@ -34,6 +34,12 @@ import org.junit.jupiter.api.BeforeEach;
  */
 public abstract class EntitiesTestSupport {
 
+  /**
+   * Acceptance criteria for a fixture epic or ticket (qits-887): what lets it pass the {@code
+   * ACCEPTANCE_CRITERIA} gate into REFINED and READY_FOR_DEV, for a test that is not about the gate.
+   */
+  public static final java.util.List<String> CRITERIA = java.util.List.of("It does what it says.");
+
   @Inject AuditRepository auditRepository;
   @Inject EntityCommentRepository entityCommentRepository;
   @Inject DossierPageRepository dossierPageRepository;

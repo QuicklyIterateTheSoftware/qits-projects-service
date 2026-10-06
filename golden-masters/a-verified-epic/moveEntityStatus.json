@@ -25,5 +25,7 @@
   "updatedAt": "2026-01-01T00:00:00Z",
   "changedBy": "dev",
   "blocked": false,
-  "acceptanceCriteria": []
+  "acceptanceCriteria": [
+    "It does what it says."
+  ]
 }

@@ -99,6 +99,8 @@ class EntityRoutesGoldenTest {
     String epicId =
         r.call("POST", p + "/epics", map("title", "The plan", "description", "The spine"))
             .path("epic.id");
+    // Acceptance criteria, off the record: the freeze below needs them (qits-887).
+    TestCriteria.give(epicId);
     r.call("POST", p + "/epics", map("title", " ", "description", null)); // blank title: 400
     r.call("GET", p + "/epics", null);
     r.call("GET", p + "/epics?status=REPORTED", null);
@@ -218,6 +220,7 @@ class EntityRoutesGoldenTest {
     epicRow.put("archetype", "EPIC");
     epicRow.put("title", "The plan, restated");
     epicRow.put("description", "The spine, restated");
+    epicRow.put("acceptanceCriteria", TestCriteria.CRITERIA); // restated, as the SPA's form does
     epicRow.put("status", "REPORTED");
     epicRow.put("membership", map("parent", null));
     r.call("POST", "/projects/api/entities/transition", Map.of(epicId, epicRow));
@@ -302,7 +305,15 @@ class EntityRoutesGoldenTest {
         r.call(
             "POST",
             "/projects/api/entities",
-            map("archetype", "EPIC", "project", projectId, "title", "The generic plan"));
+            map(
+                "archetype",
+                "EPIC",
+                "project",
+                projectId,
+                "title",
+                "The generic plan",
+                "acceptanceCriteria",
+                TestCriteria.CRITERIA));
     String genericEpic = generic.path("id");
     String genericFeature =
         r.call(
@@ -371,6 +382,7 @@ class EntityRoutesGoldenTest {
     filed.put("type", "BUG");
     filed.put("assignee", "alice");
     String ticketId = r.call("POST", p + "/tickets", filed).path("ticket.id");
+    TestCriteria.give(ticketId); // off the record: REFINED needs them (qits-887)
     String second =
         r.call(
                 "POST",
@@ -403,6 +415,7 @@ class EntityRoutesGoldenTest {
     row.put("status", "REPORTED");
     row.put("ticketType", "IMPROVEMENT");
     row.put("assignee", "bob");
+    row.put("acceptanceCriteria", TestCriteria.CRITERIA); // restated, as the SPA's form does
     row.put("membership", map("parent", null));
     r.call("POST", "/projects/api/entities/transition", Map.of(ticketId, row));
     r.call("GET", "/projects/api/tickets/" + ticketId, null);

@@ -40,7 +40,7 @@ class ScheduleCascadeTest extends EntitiesTestSupport {
   private Plan refinedPlan() {
     String epic =
         workEntities
-            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", "The spine"), "t")
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", "The spine").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity()
             .id;
     String feature =

@@ -31,7 +31,7 @@ class FeatureServiceTest extends EntitiesTestSupport {
 
   private WorkEntity epic() {
     return workEntities
-        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t")
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
         .entity();
   }
 
@@ -188,7 +188,7 @@ class FeatureServiceTest extends EntitiesTestSupport {
     WorkEntity e1 = epic();
     WorkEntity e2 =
         workEntities
-            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic2", null), "t")
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic2", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity();
     Nested inOther =
         workEntities.create(

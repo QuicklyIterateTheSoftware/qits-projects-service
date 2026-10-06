@@ -77,7 +77,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aFeatureBecomesAnEpicWhileItsTasksAreRescopedInOneRequest() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested feature =
         workEntities.create(
@@ -153,7 +153,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void nothingIsAppliedWhenAnyPartIsRefused() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested feature =
         workEntities.create(
@@ -215,7 +215,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void anEpicIsExplodedIntoSeveralTickets() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("Too much at once", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("Too much at once", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested one =
         workEntities.create(
@@ -257,7 +257,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aPlainEditIsAMapOfOne() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("Before", "the old body"), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("Before", "the old body").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
 
     Map<String, TransitionedEntity> after =
@@ -274,7 +274,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
 
   private WorkEntity doneEpic(String title) {
     WorkEntity epic =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic(title, null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic(title, null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE")) {
       workEntities.transition(Archetype.EPIC, epic.id, target, WHO);
     }
@@ -309,7 +309,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aDoneEntityCannotBeReArchetyped() {
     WorkEntity epic = doneEpic("Shipped");
     WorkEntity other =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Host", null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Host", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     BadRequestException refusal =
         assertThrows(
             BadRequestException.class,
@@ -321,26 +321,119 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
     inFreshTx(() -> assertEquals(Archetype.EPIC, entities.findById(epic.id).archetype));
   }
 
-  /** A DONE entity's plain fields stay editable, as long as it stays DONE. */
+  /**
+   * A DONE entity's plain fields stay editable, as long as it stays DONE — and its acceptance
+   * criteria are restated as they are, since a changed list is frozen from READY_FOR_DEV on.
+   */
   @Test
   void aDoneEntityStillTakesAPlainEdit() {
     WorkEntity epic = doneEpic("Shipped");
     Map<String, TransitionedEntity> after =
         transitions.transition(
-            stated(epic.id, epicEntry("Shipped, renamed", "a note", null, EntityStatus.DONE)), WHO);
+            stated(
+                epic.id,
+                epicEntry("Shipped, renamed", "a note", null, EntityStatus.DONE, CRITERIA)),
+            WHO);
     assertEquals("Shipped, renamed", after.get(epic.id).title());
     assertEquals(EntityStatus.DONE.name(), after.get(epic.id).status());
   }
 
-  /** The door still skips adjacency everywhere else: a REPORTED epic may be restated DONE. */
+  /**
+   * The door still skips adjacency where nothing stands in front of the move: a started epic may be
+   * restated VERIFIED, two steps on and over no gate.
+   */
   @Test
-  void anOpenEntityMayStillBeRestatedAtAnyStatus() {
+  void aStartedEntityMayStillBeRestatedPastItsNeighbours() {
     WorkEntity epic =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Draft", null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Started", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", WHO);
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person(WHO));
+    workEntities.transition(Archetype.EPIC, epic.id, "IMPLEMENTING", WHO);
     Map<String, TransitionedEntity> after =
         transitions.transition(
-            stated(epic.id, epicEntry("Draft", null, null, EntityStatus.DONE)), WHO);
-    assertEquals(EntityStatus.DONE.name(), after.get(epic.id).status());
+            stated(epic.id, epicEntry("Started", null, null, EntityStatus.VERIFIED, CRITERIA)),
+            WHO);
+    assertEquals(EntityStatus.VERIFIED.name(), after.get(epic.id).status());
+  }
+
+  // --- the statuses this door may not state (qits-887) --------------------
+
+  /**
+   * READY_FOR_DEV is never stated here, in either direction, nor is work started that nobody
+   * scheduled, nor a move a gate judges: each is a 409 naming the door that judges it, and nothing
+   * is written.
+   */
+  @Test
+  void schedulingStartingUnscheduledWorkAndAGatedMoveAreRefused() {
+    WorkEntity draft =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Draft", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
+    for (EntityStatus target :
+        List.of(
+            EntityStatus.REFINED,
+            EntityStatus.READY_FOR_DEV,
+            EntityStatus.IMPLEMENTING,
+            EntityStatus.DONE)) {
+      ConflictException refusal =
+          assertThrows(
+              ConflictException.class,
+              () ->
+                  transitions.transition(
+                      stated(draft.id, epicEntry("Draft", null, null, target, CRITERIA)), WHO),
+              "REPORTED -> " + target);
+      assertTrue(
+          refusal.getMessage().contains("POST /projects/api/entities/{id}/status"),
+          refusal.getMessage());
+    }
+    ConflictException gated =
+        assertThrows(
+            ConflictException.class,
+            () ->
+                transitions.transition(
+                    stated(draft.id, epicEntry("Draft", null, null, EntityStatus.REFINED, CRITERIA)),
+                    WHO));
+    assertTrue(gated.getMessage().contains("ACCEPTANCE_CRITERIA"), gated.getMessage());
+    inFreshTx(() -> assertEquals("REPORTED", entities.findById(draft.id).status));
+
+    WorkEntity scheduled =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Scheduled", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
+    workEntities.transition(Archetype.EPIC, scheduled.id, "REFINED", WHO);
+    workEntities.transition(Archetype.EPIC, scheduled.id, "READY_FOR_DEV", Mover.person(WHO));
+    ConflictException unscheduling =
+        assertThrows(
+            ConflictException.class,
+            () ->
+                transitions.transition(
+                    stated(
+                        scheduled.id,
+                        epicEntry("Scheduled", null, null, EntityStatus.REFINED, CRITERIA)),
+                    WHO));
+    assertTrue(
+        unscheduling.getMessage().contains("from READY_FOR_DEV to REFINED"),
+        unscheduling.getMessage());
+    inFreshTx(() -> assertEquals("READY_FOR_DEV", entities.findById(scheduled.id).status));
+  }
+
+  /**
+   * Restating READY_FOR_DEV unchanged is no move: an edited title passes with it, the criteria
+   * restated as they are — which is what the SPA's edit form sends.
+   */
+  @Test
+  void restatingReadyForDevUnchangedWithAnEditedTitlePasses() {
+    WorkEntity epic =
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Scheduled", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
+    workEntities.transition(Archetype.EPIC, epic.id, "REFINED", WHO);
+    workEntities.transition(Archetype.EPIC, epic.id, "READY_FOR_DEV", Mover.person(WHO));
+
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(
+                epic.id,
+                epicEntry("Scheduled, retitled", null, null, EntityStatus.READY_FOR_DEV, CRITERIA)),
+            WHO);
+
+    assertEquals("Scheduled, retitled", after.get(epic.id).title());
+    assertEquals("READY_FOR_DEV", after.get(epic.id).status());
+    assertEquals(CRITERIA, after.get(epic.id).acceptanceCriteria());
   }
 
   // --- resolution of a parent inside the map -------------------------------
@@ -353,7 +446,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aParentMayBeNamedOnlyWithinTheMap() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested promoted =
         workEntities.create(
@@ -383,7 +476,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aParentThatIsInNeitherTheMapNorTheStoreIsRefused() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested feature =
         workEntities.create(
@@ -409,7 +502,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void anIdInTheMapThatNamesNothingIsCollectedAsAViolation() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
 
     BadRequestException refusal =
@@ -439,14 +532,14 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aDemotionActuallyClearsTheDroppedProperties() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     WorkEntity ticket =
         workEntities
             .create(
                 Archetype.TICKET,
                 PROJECT,
-                EntityWrite.ticket("Turns out to be scope", "it came up", null, "BUG", "me"),
+                EntityWrite.ticket("Turns out to be scope", "it came up", null, "BUG", "me").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 WHO)
             .entity();
 
@@ -471,14 +564,14 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aDemotionCarryingAForeignPropertyIsRefused() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     WorkEntity ticket =
         workEntities
             .create(
                 Archetype.TICKET,
                 PROJECT,
-                EntityWrite.ticket("Turns out to be scope", "it came up", null, "BUG", null),
+                EntityWrite.ticket("Turns out to be scope", "it came up", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 WHO)
             .entity();
 
@@ -536,7 +629,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
             .create(
                 Archetype.TICKET,
                 PROJECT,
-                EntityWrite.ticket("The gate times out", "it came up", null, "BUG", "me"),
+                EntityWrite.ticket("The gate times out", "it came up", null, "BUG", "me").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 WHO)
             .entity();
     workEntities.setBlocked(Archetype.TICKET, ticket.id, true, WHO);
@@ -582,7 +675,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void violationsFromBothLayersComeBackTogether() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested feature =
         workEntities.create(
@@ -627,9 +720,9 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   @Test
   void aMoveIntoAScopeThatAlreadyHoldsTheSlugIsRefusedByName() {
     WorkEntity here =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Here", null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Here", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     WorkEntity there =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("There", null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("There", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     Nested moving =
         workEntities.create(
             Archetype.FEATURE, here.id, EntityWrite.feature("Shared name", null, null), WHO);
@@ -667,7 +760,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aPromotionToTicketWithNoImpetusIsAccepted() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested feature =
         workEntities.create(
@@ -709,7 +802,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aPromotionToTicketStillNeedsItsTypeAndAStatusOfTheLifecycle() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested feature =
         workEntities.create(
@@ -750,7 +843,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void anEntryWhoseTargetHasALifecycleMustStateAStatus() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
 
     BadRequestException refusal =
@@ -768,7 +861,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void aStatedPositionLandsAtThatIndexAndIsClampedRatherThanRefused() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested a =
         workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("A", null, null), WHO);
@@ -799,7 +892,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void oneEventIsAnnouncedForTheWholeBatch() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested one =
         workEntities.create(
@@ -836,7 +929,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void theBatchCarriesTheStatusEachEntityLeftAndTheActor() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested feature =
         workEntities.create(
@@ -871,7 +964,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void everyTransitionedEntityGetsAnUpdateAuditRowUnderItsNewSubtree() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("The plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     Nested staying =
         workEntities.create(
@@ -927,7 +1020,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   void nothingBecomesACampaignAndACampaignBecomesNothingElseThroughThisDoor() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("To be gathered", null), WHO)
+            .create(Archetype.EPIC, PROJECT, EntityWrite.epic("To be gathered", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
             .entity();
     WorkEntity campaign = workEntities.createCampaign(PROJECT, "Summer", null, WHO);
 
@@ -1008,9 +1101,9 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   @Test
   void aReshapeLeavesTheCampaignEdgesOfWhatItMovesStanding() {
     WorkEntity here =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Here", null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Here", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     WorkEntity there =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("There", null), WHO).entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("There", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO).entity();
     Nested feature =
         workEntities.create(
             Archetype.FEATURE, here.id, EntityWrite.feature("Gathered", null, null), WHO);
@@ -1066,6 +1159,15 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
 
   private static EntityTransition epicEntry(
       String title, String description, String parent, EntityStatus status) {
+    return epicEntry(title, description, parent, status, null);
+  }
+
+  private static EntityTransition epicEntry(
+      String title,
+      String description,
+      String parent,
+      EntityStatus status,
+      List<String> acceptanceCriteria) {
     return new EntityTransition(
         Archetype.EPIC,
         new EntityTransition.Membership(parent, null),
@@ -1079,7 +1181,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         null,
         null,
-        null);
+        acceptanceCriteria);
   }
 
   private static EntityTransition campaignEntry(

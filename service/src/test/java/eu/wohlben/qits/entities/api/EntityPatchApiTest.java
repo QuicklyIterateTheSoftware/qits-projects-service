@@ -41,7 +41,8 @@ class EntityPatchApiTest {
   }
 
   private static String createTicket(String projectId) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(
             new ProjectTicketsController.CreateTicketRequest(
@@ -51,11 +52,12 @@ class EntityPatchApiTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   private static String createEpic(String projectId) {
-    return given()
+    return TestCriteria.give(
+            given()
         .contentType(ContentType.JSON)
         .body(new ProjectEpicsController.CreateEpicRequest("The plan", "The spine"))
         .when()
@@ -63,7 +65,7 @@ class EntityPatchApiTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("epic.id");
+        .path("epic.id"));
   }
 
   private static String createFeature(String epicId) {

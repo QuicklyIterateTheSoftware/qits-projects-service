@@ -267,7 +267,8 @@ final class PhasePrompts {
    * names. The result goes into the description because that is the implement phase's brief. "Do
    * not implement" carries its reason, since an agent that has just found the bug wants to fix it.
    * The claim to REFINED ends the run (qits-887): REFINED starts nothing, a person schedules the
-   * ticket next, and the claim needs acceptance criteria (the quality gate qits-921 adds).
+   * ticket next, and the claim needs acceptance criteria — the {@code ACCEPTANCE_CRITERIA} gate
+   * refuses REFINED without them — so the turn names the property, the tool and the item rules.
    */
   private static String refineTicket(WorkEntity ticket, String q) {
     return "Refine ticket \""
@@ -286,9 +287,11 @@ final class PhasePrompts {
         + " find why its named run failed. Write the result into the ticket's description with"
         + " update_ticket. Use put_dossier_page (ticketId "
         + ticket.id
-        + ") only for what prose cannot hold. Do not implement anything: the implement phase is a"
-        + " separate session that starts from what you write. When someone else could implement"
-        + " from the ticket alone and it has acceptance criteria, transition_ticket to "
+        + ") only for what prose cannot hold. Write its acceptanceCriteria with update_ticket:"
+        + " short checkable statements, each one line, at most one '.', fewer than 20 spaces. Do not"
+        + " implement anything: the implement phase is a separate session that starts from what"
+        + " you write. When someone else could implement from the ticket alone, transition_ticket"
+        + " to "
         + end(Phase.REFINE)
         + ". That ends this run: a person schedules it next. If you cannot get there,"
         + " block_entity with what is missing.";
@@ -361,7 +364,8 @@ final class PhasePrompts {
    * the implement phase builds from. The claim to REFINED freezes all three ({@code
    * EntityLifecycle.requireReported}), which the turn says because the claim is bigger than a
    * ticket's; the thread stays writable after the freeze. Like a ticket's, the claim ends the run
-   * and needs acceptance criteria (qits-887, qits-921): a person schedules the epic next.
+   * and needs acceptance criteria (qits-887, the {@code ACCEPTANCE_CRITERIA} gate), so the turn
+   * names the property, the tool and the item rules: a person schedules the epic next.
    */
   private static String refineEpic(WorkEntity epic, String q) {
     return "Refine epic \""
@@ -380,8 +384,9 @@ final class PhasePrompts {
         + "). Record decisions and open questions on its thread with add_comment (entityId "
         + epic.id
         + "). Do not implement anything: the implement phase is a separate session that starts from"
-        + " what you write. When every task could be built from the epic alone and it has acceptance"
-        + " criteria, transition_epic to "
+        + " what you write. Write its acceptanceCriteria with update_epic: short checkable"
+        + " statements, each one line, at most one '.', fewer than 20 spaces. When every task could be"
+        + " built from the epic alone, transition_epic to "
         + end(Phase.REFINE)
         + ", which freezes the scope and ends this run: a person schedules it next. If you cannot"
         + " get there, block_entity with what is missing.";

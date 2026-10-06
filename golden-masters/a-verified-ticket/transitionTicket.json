@@ -13,7 +13,9 @@
     "createdBy": "contract-seeder",
     "impetus": "Seeded work.",
     "description": null,
-    "acceptanceCriteria": [],
+    "acceptanceCriteria": [
+      "It does what it says."
+    ],
     "createdAt": "2026-01-01T00:00:00Z",
     "updatedAt": "2026-01-01T00:00:00Z",
     "workspaces": []

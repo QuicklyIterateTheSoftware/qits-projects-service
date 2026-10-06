@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
@@ -159,7 +160,15 @@ public class TicketMcpToolsTest {
     call(
         projectId,
         "create_ticket",
-        Map.of("title", title, "type", type, "impetus", "something occurs in this project"),
+        Map.of(
+            "title",
+            title,
+            "type",
+            type,
+            "impetus",
+            "something occurs in this project",
+            "acceptanceCriteria",
+            TestCriteria.CRITERIA),
         response -> {
           assertFalse(response.isError(), text(response));
           String body = text(response);

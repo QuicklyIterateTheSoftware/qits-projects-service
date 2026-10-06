@@ -30,6 +30,13 @@ public class ArchetypeRegistrySchemaFilter implements OASFilter {
               "What a dispatch press (dispatchEntity) runs from each status, keyed by every status"
                   + " in lifecycle order. Empty for a kind a dispatch runs no phases on: a feature, a"
                   + " task and a campaign (whose press is its start)."),
+          "LegalMove",
+          Map.of(
+              "gates",
+              "The quality gates the move has to pass, by name (ACCEPTANCE_CRITERIA: the entity"
+                  + " carries acceptance criteria). Only a FORWARD or SKIP move has any, and the key"
+                  + " is absent when there are none. A move that fails one is a 409 naming every"
+                  + " failing gate."),
           "DispatchPhases",
           Map.of(
               "next",

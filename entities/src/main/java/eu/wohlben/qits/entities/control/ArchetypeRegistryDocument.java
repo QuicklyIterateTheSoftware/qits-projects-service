@@ -2,7 +2,9 @@ package eu.wohlben.qits.entities.control;
 
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -164,8 +166,15 @@ public record ArchetypeRegistryDocument(
    *
    * @param to the status the move lands on
    * @param kind FORWARD, BACK, DROP or REOPEN — {@link EntityStateMachine.TransitionKind}
+   * @param gates the quality gates this move has to pass (qits-887), by name, in name order —
+   *     {@code ACCEPTANCE_CRITERIA}, {@code PERSON_APPROVAL} — so a client can say in advance what a
+   *     move needs without a status model of its own. Only a FORWARD or SKIP move has any ({@link
+   *     TransitionGates#namesOf}); left off the wire when empty, which keeps it additive
    */
-  public record LegalMove(String to, EntityStateMachine.TransitionKind kind) {}
+  public record LegalMove(
+      String to,
+      EntityStateMachine.TransitionKind kind,
+      @JsonInclude(JsonInclude.Include.NON_EMPTY) List<String> gates) {}
 
   /**
    * The document as the registry stands right now.
@@ -176,6 +185,15 @@ public record ArchetypeRegistryDocument(
    * read in one sequence — and the archetypes take {@link Archetype} enum order.
    */
   public static ArchetypeRegistryDocument describe() {
+    return describe(List.of());
+  }
+
+  /**
+   * The document with every move's {@link LegalMove#gates} read off {@code gates} — what {@code GET
+   * /entities/archetypes} serves, handed the {@link TransitionGate} beans. {@link #describe()} is the
+   * same document with no gate named, for a caller that reads the declarations alone.
+   */
+  public static ArchetypeRegistryDocument describe(Collection<? extends TransitionGate> gates) {
     List<DeclaredArchetype> declared = new ArrayList<>();
     for (Archetype archetype : Archetype.values()) {
       ArchetypeSpec spec = Archetypes.spec(archetype);
@@ -190,7 +208,7 @@ public record ArchetypeRegistryDocument(
               inVocabularyOrder(requiredOnTransition(spec)),
               inVocabularyOrder(spec.permitted()),
               spec.legalStatuses().stream().sorted().toList(),
-              transitions(spec),
+              transitions(spec, gates),
               lifecycle(spec),
               phases(spec)));
     }
@@ -222,7 +240,8 @@ public record ArchetypeRegistryDocument(
    * lifecycle. An insertion-ordered map behind an unmodifiable view and <b>not</b> {@code
    * Map.copyOf}, whose iteration order is salted per JVM: the key order is part of what is served.
    */
-  private static Map<String, List<LegalMove>> transitions(ArchetypeSpec spec) {
+  private static Map<String, List<LegalMove>> transitions(
+      ArchetypeSpec spec, Collection<? extends TransitionGate> gates) {
     if (spec.legalStatuses().isEmpty()) {
       return Map.of();
     }
@@ -231,7 +250,12 @@ public record ArchetypeRegistryDocument(
       served.put(
           state.name(),
           EntityStateMachine.transitionsFrom(spec.archetype(), state).stream()
-              .map(move -> new LegalMove(move.to().name(), move.kind()))
+              .map(
+                  move ->
+                      new LegalMove(
+                          move.to().name(),
+                          move.kind(),
+                          TransitionGates.namesOf(gates, spec.archetype(), move)))
               .toList());
     }
     return Collections.unmodifiableMap(served);

@@ -99,7 +99,7 @@ class EntityNumbersTest extends EntitiesTestSupport {
                         .create(
                             Archetype.EPIC,
                             "proj-1",
-                            EntityWrite.epic("Epic " + Thread.currentThread().threadId(), null),
+                            EntityWrite.epic("Epic " + Thread.currentThread().threadId(), null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                             "t")
                         .entity()
                         .id));
@@ -151,7 +151,7 @@ class EntityNumbersTest extends EntitiesTestSupport {
   void everyArchetypeInAProjectDrawsFromOneRunOfIntegers() {
     WorkEntity epic =
         workEntities
-            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("The epic", null), "t")
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("The epic", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity();
     Nested feature =
         workEntities.create(
@@ -167,7 +167,7 @@ class EntityNumbersTest extends EntitiesTestSupport {
             .create(
                 Archetype.TICKET,
                 "proj-1",
-                EntityWrite.ticket("The ticket", "it occurs", null, "BUG", null),
+                EntityWrite.ticket("The ticket", "it occurs", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
                 "t")
             .entity();
 
@@ -181,14 +181,14 @@ class EntityNumbersTest extends EntitiesTestSupport {
   @Test
   void eachProjectHasItsOwnRunAndBothStartAtOne() {
     WorkEntity here =
-        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Here", null), "t").entity();
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Here", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t").entity();
     WorkEntity there =
         workEntities
-            .create(Archetype.EPIC, "proj-2", EntityWrite.epic("There", null), "t")
+            .create(Archetype.EPIC, "proj-2", EntityWrite.epic("There", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity();
     WorkEntity alsoHere =
         workEntities
-            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Also here", null), "t")
+            .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Also here", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity();
 
     assertEquals(1L, numberOf(here.id));
@@ -205,7 +205,7 @@ class EntityNumbersTest extends EntitiesTestSupport {
   @Test
   void supersedingNumbersTheWholeCopiedTreeAfresh() {
     WorkEntity epic =
-        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null), "t").entity();
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t").entity();
     Nested feature =
         workEntities.create(
             Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
@@ -232,7 +232,7 @@ class EntityNumbersTest extends EntitiesTestSupport {
   @Test
   void aTransitionAllocatesNothing() {
     WorkEntity epic =
-        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null), "t").entity();
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Plan", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t").entity();
     Nested feature =
         workEntities.create(
             Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");

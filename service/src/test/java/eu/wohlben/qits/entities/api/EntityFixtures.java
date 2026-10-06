@@ -59,15 +59,17 @@ final class EntityFixtures {
   }
 
   static String epic(String projectId) {
-    return post("/projects/api/projects/" + projectId + "/epics", map("title", "The plan"))
-        .path("epic.id");
+    return TestCriteria.give(
+            post("/projects/api/projects/" + projectId + "/epics", map("title", "The plan"))
+        .path("epic.id"));
   }
 
   static String ticket(String projectId) {
-    return post(
+    return TestCriteria.give(
+            post(
             "/projects/api/projects/" + projectId + "/tickets",
             map("title", "The ticket", "impetus", "it occurs", "type", "BUG"))
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   static String campaign(String projectId) {

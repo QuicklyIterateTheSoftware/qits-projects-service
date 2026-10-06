@@ -45,7 +45,7 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
 
   private WorkEntity epic() {
     return workEntities
-        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t")
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
         .entity();
   }
 
@@ -54,7 +54,7 @@ class DossierTicketOwnerTest extends EntitiesTestSupport {
         .create(
             Archetype.TICKET,
             "proj-1",
-            EntityWrite.ticket("The button is wrong", "It is wrong.", null, "BUG", null),
+            EntityWrite.ticket("The button is wrong", "It is wrong.", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
             "t")
         .entity();
   }

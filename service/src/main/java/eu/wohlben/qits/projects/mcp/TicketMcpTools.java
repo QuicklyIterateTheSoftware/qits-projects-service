@@ -255,13 +255,21 @@ public class TicketMcpTools {
                       + " been made.")
           String description,
       @ToolArg(required = false, description = "who is looking at it; omit for nobody")
-          String assignee) {
+          String assignee,
+      @ToolArg(
+              required = false,
+              description =
+                  "acceptance criteria, in order, when they are already known; usually written"
+                      + " later with update_ticket while refining. Each item: no line break, at most"
+                      + " one '.', and fewer than 20 whitespace characters.")
+          List<String> acceptanceCriteria) {
     WorkEntity ticket =
         entities
             .create(
                 Archetype.TICKET,
                 scope.requireProjectId(),
-                EntityWrite.ticket(title, impetus, description, type, assignee),
+                EntityWrite.ticket(title, impetus, description, type, assignee)
+                    .withAcceptanceCriteria(acceptanceCriteria),
                 changedBy())
             .entity();
     announce();

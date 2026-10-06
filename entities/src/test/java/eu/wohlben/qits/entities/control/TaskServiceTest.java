@@ -28,7 +28,7 @@ class TaskServiceTest extends EntitiesTestSupport {
 
   private Nested feature() {
     WorkEntity e =
-        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null), "t").entity();
+        workEntities.create(Archetype.EPIC, "proj-1", EntityWrite.epic("Epic", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t").entity();
     return workEntities.create(
         Archetype.FEATURE, e.id, EntityWrite.feature("Feature", null, null), "t");
   }

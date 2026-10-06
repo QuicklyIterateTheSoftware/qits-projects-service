@@ -220,7 +220,7 @@ class CampaignApiTest {
   void theRefusalsAnswerAsDocumented() {
     WorkEntity campaign = workEntities.createCampaign(PROJECT, "Refusals", null, "t");
     WorkEntity epic =
-        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Plan", null), "t").entity();
+        workEntities.create(Archetype.EPIC, PROJECT, EntityWrite.epic("Plan", null).withAcceptanceCriteria(TestCriteria.CRITERIA), "t").entity();
     WorkEntity feature =
         workEntities
             .create(Archetype.FEATURE, epic.id, EntityWrite.feature("Part", null, null), "t")
@@ -446,7 +446,7 @@ class CampaignApiTest {
   private WorkEntity ticket(String title) {
     return workEntities
         .create(
-            Archetype.TICKET, PROJECT, EntityWrite.ticket(title, "it occurs", null, "BUG", null), "t")
+            Archetype.TICKET, PROJECT, EntityWrite.ticket(title, "it occurs", null, "BUG", null).withAcceptanceCriteria(TestCriteria.CRITERIA), "t")
         .entity();
   }
 

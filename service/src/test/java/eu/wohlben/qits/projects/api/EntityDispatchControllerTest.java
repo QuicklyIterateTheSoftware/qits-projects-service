@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
 import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
@@ -136,25 +137,27 @@ public class EntityDispatchControllerTest {
   }
 
   private String createTicket(String projectId, String title) {
-    return asAdmin("setup")
+    return TestCriteria.give(
+            asAdmin("setup")
         .body(Map.of("title", title, "type", "BUG", "impetus", "something occurs here"))
         .when()
         .post("/projects/api/projects/" + projectId + "/tickets")
         .then()
         .statusCode(200)
         .extract()
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   private String createEpic(String projectId, String title) {
-    return asAdmin("setup")
+    return TestCriteria.give(
+            asAdmin("setup")
         .body(Map.of("title", title, "description", "The pitch."))
         .when()
         .post("/projects/api/projects/" + projectId + "/epics")
         .then()
         .statusCode(200)
         .extract()
-        .path("epic.id");
+        .path("epic.id"));
   }
 
   private String addFeature(String epicId, String title) {

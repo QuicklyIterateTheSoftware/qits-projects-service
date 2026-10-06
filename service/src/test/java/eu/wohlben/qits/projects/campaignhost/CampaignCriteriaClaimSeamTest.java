@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignEvaluatorDto;
 import eu.wohlben.qits.entities.campaign.CampaignCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignEvaluator;
@@ -244,7 +245,7 @@ class CampaignCriteriaClaimSeamTest {
             .create(
                 Archetype.TICKET,
                 projectId,
-                EntityWrite.ticket(title, "it occurs", null, "BUG", null),
+                EntityWrite.ticket(title, "it occurs", null, "BUG", null).withAcceptanceCriteria(TestCriteria.CRITERIA),
                 "setup")
             .entity();
     return walk(ticket, "REFINED", "READY_FOR_DEV");

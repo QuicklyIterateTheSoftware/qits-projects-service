@@ -40,7 +40,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
 
   private WorkEntity epic() {
     return workEntities
-        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Planning domain", "The spine"), "t")
+        .create(Archetype.EPIC, "proj-1", EntityWrite.epic("Planning domain", "The spine").withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
         .entity();
   }
 
@@ -480,7 +480,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
             ConflictException.class,
             () ->
                 workEntities
-                    .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null), "t")
+                    .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
                     .entity());
     // The refusal says why: the status it is in, the one scope needs, and the way back.
     assertTrue(refused.getMessage().contains("REFINED"), refused.getMessage());
@@ -548,7 +548,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertEquals(
         "Renamed",
         workEntities
-            .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null), "t")
+            .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
             .entity()
             .title);
     workEntities.create(Archetype.FEATURE, epic.id, EntityWrite.feature("Late", null, null), "t");
@@ -862,7 +862,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
           ConflictException.class,
           () ->
               workEntities
-                  .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null), "t")
+                  .update(Archetype.EPIC, epic.id, EntityWrite.epic("Renamed", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), "t")
                   .entity());
       assertThrows(
           ConflictException.class,

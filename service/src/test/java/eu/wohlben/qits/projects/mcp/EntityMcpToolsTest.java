@@ -7,11 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.testsupport.GitFixtures;
 import io.quarkiverse.mcp.server.ToolResponse;
 import io.quarkiverse.mcp.server.test.McpAssured;
@@ -190,7 +193,13 @@ public class EntityMcpToolsTest {
     call(
         projectId,
         "propose_epic",
-        Map.of("title", title, "description", "drafted by the agent"),
+        Map.of(
+            "title",
+            title,
+            "description",
+            "drafted by the agent",
+            "acceptanceCriteria",
+            TestCriteria.CRITERIA),
         response -> {
           assertFalse(response.isError(), text(response));
           id[0] = json(response).path("id").asText();
@@ -395,8 +404,9 @@ public class EntityMcpToolsTest {
   }
 
   /**
-   * DONE is final at this door too: adjacency is skipped (an epic may be restated DONE in one call),
-   * but once it is DONE its status cannot be changed here — only its plain fields.
+   * DONE is final at this door too: once an entity is DONE its status cannot be changed here — only
+   * its plain fields, its acceptance criteria restated as they are. Getting there is the status
+   * door's: this one does not start work nobody scheduled (qits-887).
    */
   @Test
   public void aDoneEntityKeepsItsStatusButTakesAPlainEdit() {
@@ -409,14 +419,34 @@ public class EntityMcpToolsTest {
         Map.of(
             "entities",
             Map.of(epicId, Map.of("archetype", "EPIC", "title", "Shipped", "status", "DONE"))),
-        response -> assertFalse(response.isError(), text(response)));
+        response -> {
+          assertTrue(response.isError(), "restating a draft DONE starts work nobody scheduled");
+          assertTrue(text(response).contains("nobody scheduled"), text(response));
+        });
+
+    for (String target : new String[] {"REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE"}) {
+      authenticated()
+          .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
+          .contentType(ContentType.JSON)
+          .body(Map.of("target", target))
+          .when()
+          .post("/projects/api/entities/" + epicId + "/status")
+          .then()
+          .statusCode(Response.Status.OK.getStatusCode());
+    }
 
     call(
         projectId,
         "transition_entities",
         Map.of(
             "entities",
-            Map.of(epicId, Map.of("archetype", "EPIC", "title", "Shipped", "status", "VERIFIED"))),
+            Map.of(
+                epicId,
+                Map.of(
+                    "archetype", "EPIC",
+                    "title", "Shipped",
+                    "status", "VERIFIED",
+                    "acceptanceCriteria", TestCriteria.CRITERIA))),
         response -> {
           assertTrue(response.isError(), "a DONE entity's status must not change");
           assertTrue(text(response).contains("DONE is final"), text(response));
@@ -429,7 +459,11 @@ public class EntityMcpToolsTest {
             "entities",
             Map.of(
                 epicId,
-                Map.of("archetype", "EPIC", "title", "Shipped, renamed", "status", "DONE"))),
+                Map.of(
+                    "archetype", "EPIC",
+                    "title", "Shipped, renamed",
+                    "status", "DONE",
+                    "acceptanceCriteria", TestCriteria.CRITERIA))),
         response -> assertFalse(response.isError(), text(response)));
 
     assertEquals("DONE", entity(projectId, epicId).path("status").asText());

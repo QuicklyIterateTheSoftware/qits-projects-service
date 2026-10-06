@@ -99,6 +99,11 @@ public class EntityTransitionController {
    * of those violations and deliberately not a 404: a caller with three wrong ids should be told
    * about three wrong ids once.
    *
+   * <p><b>A status this door may not state is a 409</b> (qits-887): a change to or from
+   * READY_FOR_DEV, a jump into started work from before it, and a move a quality gate judges (an
+   * epic's or a ticket's into REFINED) — each goes through {@code POST /entities/{id}/status}. So is
+   * a changed acceptance-criteria list from READY_FOR_DEV on. Restating what the row holds passes.
+   *
    * <p><b>A bound agent is judged on the whole batch, before any of it is written.</b> Every key of
    * the map, and every parent it names, is resolved in ONE {@link EntityCatalogService#byIds} read,
    * and a project outside the token's claim refuses the request entirely — all or nothing, because a

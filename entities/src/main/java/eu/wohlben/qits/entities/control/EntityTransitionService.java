@@ -163,6 +163,9 @@ public class EntityTransitionService {
 
   @Inject WritePatience writes;
 
+  /** The quality gates (qits-887): a status they judge is never stated through this door. */
+  @Inject Instance<TransitionGate> gates;
+
   /**
    * The announcement seam. Optional, like every port this repository declares: with no
    * implementation a transition simply announces nothing.
@@ -235,13 +238,16 @@ public class EntityTransitionService {
 
     Map<String, WorkEntity> rows = index(entities.listByIds(stated.keySet()));
     refuseCampaignLifecycle(stated, rows);
-    refuseFrozenCriteria(stated, rows);
     Map<String, WorkEntity> statedParents = parentRows(stated, rows);
 
     List<String> violations = validate(stated, rows, statedParents);
     if (!violations.isEmpty()) {
       throw new BadRequestException(String.join("; ", violations));
     }
+    // After the 400s, so a malformed entry and a final one are told what is wrong with them first
+    // (DONE is final says more than a gate would), and before anything is written (qits-887).
+    refuseFrozenCriteria(stated, rows);
+    refuseGatedStatus(stated, rows);
 
     // The pre-state's status, read before the first write: the rows are managed, so once written
     // they only know where they went. Nothing is created here, so every entry has one — and a row
@@ -338,6 +344,68 @@ public class EntityTransitionService {
               + " — move a campaign through /campaigns/{id}/transition; create one through"
               + " /projects/{projectId}/campaigns");
     }
+  }
+
+  /**
+   * <b>This door states statuses with no adjacency rule, so it may state none a gate or a person
+   * stands in front of</b> (qits-887). A 409 for every entry whose stated status differs from the
+   * row's and
+   *
+   * <ul>
+   *   <li>either side is READY_FOR_DEV — scheduling and unscheduling are a person's moves (and the
+   *       epic's cascades), never a restatement;
+   *   <li>or it enters scheduled work from before it — REPORTED, REFINED or DROPPED to IMPLEMENTING or
+   *       further — which would skip the scheduling altogether;
+   *   <li>or a {@link TransitionGate} applies to it — the acceptance criteria on entering REFINED,
+   *       whatever the row holds.
+   * </ul>
+   *
+   * <p>Each is "move it through POST /entities/{id}/status", the door that judges the move. An entry
+   * restating the status the row already holds is no move and passes, at READY_FOR_DEV too — which is
+   * what the SPA's edit form sends with an edited title. A change of archetype alone moves no status
+   * and is not judged here; the gate is asked again on scheduling.
+   */
+  private void refuseGatedStatus(
+      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
+    List<String> refused = new ArrayList<>();
+    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
+      WorkEntity row = rows.get(entry.getKey());
+      String word = blankToNull(entry.getValue().status());
+      if (row == null || word == null || word.equals(row.status)) {
+        continue;
+      }
+      Optional<EntityStatus> from = EntityLifecycle.parse(row.status);
+      Optional<EntityStatus> to = EntityLifecycle.parse(word);
+      if (from.isEmpty() || to.isEmpty()) {
+        continue; // an unknown word is the registry's 400, reported with every other complaint
+      }
+      String move = entry.getKey() + " would move from " + row.status + " to " + word;
+      if (from.get() == EntityStatus.READY_FOR_DEV || to.get() == EntityStatus.READY_FOR_DEV) {
+        refused.add(move + ": scheduling and unscheduling are moves of their own");
+      } else if (!scheduled(from.get()) && scheduled(to.get())) {
+        refused.add(move + ": that starts work nobody scheduled (READY_FOR_DEV)");
+      } else {
+        List<String> applying =
+            TransitionGates.applying(gates, entry.getValue().archetype(), from.get(), to.get())
+                .stream()
+                .map(TransitionGate::name)
+                .toList();
+        if (!applying.isEmpty()) {
+          refused.add(move + ": that move has quality gates (" + String.join(", ", applying) + ")");
+        }
+      }
+    }
+    if (!refused.isEmpty()) {
+      throw new ConflictException(
+          String.join("; ", refused)
+              + " — move it through POST /projects/api/entities/{id}/status, which judges the move");
+    }
+  }
+
+  /** Whether {@code status} is scheduled work: READY_FOR_DEV or further along the walk. */
+  private static boolean scheduled(EntityStatus status) {
+    return !EntityStateMachine.isOffWalk(status)
+        && EntityStateMachine.isAtOrPast(status, EntityStatus.READY_FOR_DEV);
   }
 
   /**

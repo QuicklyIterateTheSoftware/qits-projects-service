@@ -162,6 +162,23 @@ public class PhasePromptsTest {
         "with the dossier as the bounded exception: " + prompt);
   }
 
+  /**
+   * The refine turns end at REFINED, which the ACCEPTANCE_CRITERIA gate refuses without criteria
+   * (qits-887): so each names the property, the tool that writes it and the item rules.
+   */
+  @Test
+  public void bothRefineTurnsNameTheAcceptanceCriteriaTheirToolAndTheItemRules() {
+    String ticket = promptFor(EntityStatus.REPORTED);
+    String epic = epicPromptFor(EntityStatus.REPORTED);
+    assertTrue(ticket.contains("Write its acceptanceCriteria with update_ticket"), ticket);
+    assertTrue(epic.contains("Write its acceptanceCriteria with update_epic"), epic);
+    for (String turn : new String[] {ticket, epic}) {
+      assertTrue(
+          turn.contains("each one line, at most one '.', fewer than 20 spaces"),
+          "the item rules: " + turn);
+    }
+  }
+
   /** The impetus is the report, not the investigation, and the three types are refined apart. */
   @Test
   public void refineReadsTheImpetusAsTheReportAndGoesFurtherThanIt() {

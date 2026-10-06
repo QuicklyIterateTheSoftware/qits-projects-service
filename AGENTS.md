@@ -1117,6 +1117,23 @@ restated — same items, same order — passes at every status, because the SPA'
 whole row through `POST /entities/transition`. The list rows of `EntitySummary` carry none, like the
 description; a feature's or task's merged shape omits the key.
 
+**Quality gates judge FORWARD and SKIP moves (qits-935).** `control/TransitionGate` — `name()`,
+`appliesTo(archetype, from, to)` (pure: the served registry asks it with no row), `refusal(row,
+mover)` — is a CDI bean, and `WorkEntityService` collects every one through
+`Instance<TransitionGate>`, so a gate is added by writing one: neither the state machine nor any other
+gate changes. `control/TransitionGates` is the one reading of "which gates does this move have",
+shared by the move (`move` and `planTransition`, so `EntityResolutions` refuses before it discards a
+refinement), the PUT-shaped door and the registry, which serves each legal move's `gates: [names]`
+(absent when empty). A BACK, DROP or REOPEN is a correction and is never judged; every failing gate
+comes back in one 409, `"<Noun> <id> cannot move to <TO>: <GATE>: <why>; …"`. A cascade is judged
+once, on the row that moves. The first gate is `AcceptanceCriteriaGate` (`ACCEPTANCE_CRITERIA`):
+an EPIC or a TICKET entering REFINED or READY_FOR_DEV without criteria — READY_FOR_DEV too, so a
+REFINED row from before the gate cannot be scheduled until it gains them. **The PUT door states no
+status a gate or a person stands in front of**: `EntityTransitionService` answers 409 for a stated
+status that differs from the row's when either side is READY_FOR_DEV, when it enters started work
+from before READY_FOR_DEV, or when a gate applies — after its 400s, so DONE-is-final still speaks
+first. Restating the status a row holds passes, at READY_FOR_DEV too.
+
 **Moving to `IMPLEMENTED` stamps every feature and task still unimplemented**, in the same
 transaction — declaring the epic implemented is declaring its scope implemented. That is why the
 epic implement prompt makes the move conditional on every task already being marked.

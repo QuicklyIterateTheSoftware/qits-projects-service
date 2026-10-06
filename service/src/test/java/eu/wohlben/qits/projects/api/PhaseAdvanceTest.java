@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
@@ -109,7 +110,8 @@ public class PhaseAdvanceTest {
   }
 
   private String createTicket(String projectId, String title) {
-    return asAdmin("setup")
+    return TestCriteria.give(
+            asAdmin("setup")
         .body(
             Map.of(
                 "title", title,
@@ -120,7 +122,7 @@ public class PhaseAdvanceTest {
         .then()
         .statusCode(200)
         .extract()
-        .path("ticket.id");
+        .path("ticket.id"));
   }
 
   /** One step along the lifecycle, through the door a person presses. */
@@ -354,13 +356,14 @@ public class PhaseAdvanceTest {
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     String projectId = createProject("Phase Advance Task");
     String epic =
-        asAdmin("setup")
+        TestCriteria.give(
+            asAdmin("setup")
             .body(Map.of("title", "The plan"))
             .post("/projects/api/projects/" + projectId + "/epics")
             .then()
             .statusCode(200)
             .extract()
-            .path("epic.id");
+            .path("epic.id"));
     String feature =
         asAdmin("setup")
             .body(Map.of("title", "The part"))
