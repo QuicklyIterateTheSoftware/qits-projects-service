@@ -6,6 +6,7 @@ import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * <b>One entity as it stands after a transition</b> — the post-state that was actually written,
@@ -76,6 +77,9 @@ import java.time.Instant;
  *     for a feature and a task</b>: they hold a status since qits-763 but run no phase of their own
  *     ({@code Archetypes.isPlanPiece}), so a {@code false} there would claim a flag nothing can
  *     raise
+ * @param acceptanceCriteria an epic's or a ticket's acceptance criteria, in order (qits-887) — an
+ *     empty list when it has none. <b>Null, and left off the wire, for every other kind</b>, which
+ *     has no slot for them
  */
 public record TransitionedEntity(
     String id,
@@ -103,7 +107,8 @@ public record TransitionedEntity(
     Instant createdAt,
     Instant updatedAt,
     String changedBy,
-    @JsonInclude(JsonInclude.Include.NON_NULL) Boolean blocked) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) Boolean blocked,
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<String> acceptanceCriteria) {
 
   /**
    * The same entity, told what it is called in a commit subject. {@code EpicDto.withWorkspaces}'
@@ -136,7 +141,8 @@ public record TransitionedEntity(
         createdAt,
         updatedAt,
         changedBy,
-        blocked);
+        blocked,
+        acceptanceCriteria);
   }
 
   /**
@@ -190,7 +196,8 @@ public record TransitionedEntity(
         row.createdAt,
         row.updatedAt,
         null,
-        blockedOf(row));
+        blockedOf(row),
+        criteriaOf(row));
   }
 
   /**
@@ -228,7 +235,8 @@ public record TransitionedEntity(
         read.createdAt(),
         read.updatedAt(),
         changedBy,
-        read.blocked());
+        read.blocked(),
+        read.acceptanceCriteria());
   }
 
   /**
@@ -264,7 +272,19 @@ public record TransitionedEntity(
         row.createdAt,
         row.updatedAt,
         changedBy,
-        blockedOf(row));
+        blockedOf(row),
+        criteriaOf(row));
+  }
+
+  /**
+   * The acceptance criteria (qits-887) on a kind that has a slot for them — an epic, a ticket — and
+   * null (absent on the wire) on every other kind, the way {@link #blocked} is absent on a piece: a
+   * feature's empty list would read as "criteria nobody wrote" rather than "none to write".
+   */
+  private static List<String> criteriaOf(WorkEntity row) {
+    return Archetypes.spec(row.archetype).permits(EntityProperty.ACCEPTANCE_CRITERIA)
+        ? List.copyOf(row.acceptanceCriteria)
+        : null;
   }
 
   /**

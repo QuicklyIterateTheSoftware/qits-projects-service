@@ -482,6 +482,10 @@ public class WorkEntityService {
     row.assignee = blankToNull(write.assignee());
     row.repositoryId = write.repositoryId();
     row.dependsOnEntityId = write.dependsOn();
+    List<String> criteria = AcceptanceCriteria.require(write.acceptanceCriteria());
+    if (criteria != null) {
+      row.acceptanceCriteria.addAll(criteria);
+    }
     return row;
   }
 
@@ -581,6 +585,9 @@ public class WorkEntityService {
     if (write.repositoryId() != null) {
       row.repositoryId = write.repositoryId();
     }
+    if (write.touchesCriteria()) {
+      writeCriteria(kind, row, write.acceptanceCriteria());
+    }
     if (write.clearDependsOn()) {
       row.dependsOnEntityId = null;
     } else if (write.dependsOn() != null) {
@@ -617,6 +624,51 @@ public class WorkEntityService {
       moved.add(TransitionedEntity.of(updated, edgeOf(updated.id), statusBefore, changedBy));
     }
     return new Nested(updated, parentId);
+  }
+
+  /**
+   * <b>The acceptance criteria an edit restates</b> (qits-887), replacing the list whole after the
+   * item rules ({@link AcceptanceCriteria}) — a 400 naming every broken item. They sit outside an
+   * epic's scope freeze, so a REFINED epic can still gain the criteria its scheduling needs. <b>From
+   * READY_FOR_DEV on they are frozen</b>, for an epic and a ticket alike: the scheduled content is
+   * what a person approved, so a <em>changed</em> list is a 409 there (unschedule to change it).
+   * Restating the list unchanged — the same items in the same order — is no change and passes at
+   * every status, which is what lets a form restate the whole row. A kind with no slot for them is
+   * left to the registry's 400.
+   */
+  private static void writeCriteria(Kind kind, WorkEntity row, List<String> stated) {
+    List<String> criteria = AcceptanceCriteria.require(stated);
+    if (criteria.equals(row.acceptanceCriteria)) {
+      return;
+    }
+    requireCriteriaEditable(kind.noun(), row);
+    row.acceptanceCriteria.clear();
+    row.acceptanceCriteria.addAll(criteria);
+  }
+
+  /**
+   * The freeze on a changed acceptance-criteria list (qits-887): a 409 while {@code row} is
+   * READY_FOR_DEV or further along the walk. Off the walk (DROPPED) nothing is frozen — a dropped
+   * entity is scheduled by nobody. Shared with {@link EntityTransitionService}, whose PUT restates
+   * the list on every entry.
+   */
+  static void requireCriteriaEditable(String noun, WorkEntity row) {
+    EntityStatus status = statusOf(row.status);
+    if (status != null
+        && !EntityStateMachine.isOffWalk(status)
+        && EntityStateMachine.isAtOrPast(status, EntityStatus.READY_FOR_DEV)) {
+      throw new ConflictException(
+          "The acceptance criteria of "
+              + noun.toLowerCase(Locale.ROOT)
+              + " "
+              + row.id
+              + " are frozen: it is "
+              + row.status
+              + ", and what a person scheduled is not changed underneath them"
+              + (status == EntityStatus.READY_FOR_DEV
+                  ? ". Move it back to REFINED (unschedule it) to change them."
+                  : ": they are frozen from READY_FOR_DEV on."));
+    }
   }
 
   /**
@@ -1182,7 +1234,8 @@ public class WorkEntityService {
 
   /**
    * The successor draft of a superseded row: a new {@link EntityStatus#REPORTED} row of the same kind
-   * carrying the old title and description and the whole tree beneath it, so refinement restarts
+   * carrying the old title, description and acceptance criteria and the whole tree beneath it, so
+   * refinement restarts
    * from what was discarded rather than from a blank page.
    *
    * <p>Copies get fresh ids and keep their slugs — each node's scope is its new parent, so the name
@@ -1206,7 +1259,8 @@ public class WorkEntityService {
             kind,
             old.projectId,
             old.projectId,
-            EntityWrite.epic(old.title, old.description),
+            EntityWrite.epic(old.title, old.description)
+                .withAcceptanceCriteria(List.copyOf(old.acceptanceCriteria)),
             old.ticketType);
     requireArchetypeValid(successorRow, Demand.AT_CREATE);
     entities.persist(successorRow);

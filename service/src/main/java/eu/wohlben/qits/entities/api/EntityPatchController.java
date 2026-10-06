@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import eu.wohlben.qits.entities.control.AcceptanceCriteria;
 import eu.wohlben.qits.entities.control.ArchetypeViolation;
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityCatalogService;
@@ -180,7 +181,16 @@ public class EntityPatchController {
                       + " implementation was started. Cannot be cleared. Moves only while the"
                       + " owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's status to"
                       + " IMPLEMENTING when it is not already there or further.")
-          Instant implementingAt) {}
+          Instant implementingAt,
+      @Schema(
+              nullable = true,
+              description =
+                  "An epic's or ticket's acceptance criteria, the whole list in order; null or an"
+                      + " empty list clears them. "
+                      + AcceptanceCriteria.RULES
+                      + " Editable at REFINED (outside an epic's scope freeze); from READY_FOR_DEV"
+                      + " on a changed list is a 409, and restating the same list passes.")
+          List<String> acceptanceCriteria) {}
 
   /**
    * Applies the patch and answers the entity as it now stands.
@@ -204,7 +214,9 @@ public class EntityPatchController {
               + " supersede through POST /projects/api/entities/transition. An epic's, feature's or"
               + " task's scope follows the epic's freeze: scope edits need the epic REPORTED, the"
               + " markers need it READY_FOR_DEV or IMPLEMENTING, and a marker moves the item's status with"
-              + " it. Answers the entity in the merged shape.")
+              + " it. An epic's or a ticket's acceptance criteria sit outside the scope freeze and"
+              + " are frozen from READY_FOR_DEV on instead, where a changed list is refused and the"
+              + " same list restated passes. Answers the entity in the merged shape.")
   @APIResponse(
       responseCode = "200",
       description = "The entity as it stands after the edit",
@@ -224,7 +236,9 @@ public class EntityPatchController {
   @APIResponse(responseCode = "404", description = "No entity with this id")
   @APIResponse(
       responseCode = "409",
-      description = "The owning epic's status freezes what the patch touches")
+      description =
+          "The owning epic's status freezes what the patch touches, or the acceptance criteria are"
+              + " changed from READY_FOR_DEV on")
   public TransitionedEntity patch(
       @PathParam("id") String id,
       @RequestBody(
@@ -295,6 +309,8 @@ public class EntityPatchController {
         if (NOT_CLEARABLE.contains(name)) {
           refused.add(name + " cannot be cleared");
         }
+      } else if (EDITABLE.get(name) == EntityProperty.ACCEPTANCE_CRITERIA) {
+        EntitySchemas.listRefusal(name, value).ifPresent(refused::add);
       } else if (!value.isTextual()) {
         refused.add(name + " must be a string");
       } else if (name.equals("implementedAt") || name.equals("implementingAt")) {
@@ -325,7 +341,20 @@ public class EntityPatchController {
         cleared(body, "dependsOn"),
         implementedAt == null ? null : Instant.parse(implementedAt),
         cleared(body, "implementedAt"),
-        implementingAt == null ? null : Instant.parse(implementingAt));
+        implementingAt == null ? null : Instant.parse(implementingAt),
+        criteria(body));
+  }
+
+  /**
+   * The acceptance criteria as the patch states them (qits-887): null when the patch does not name
+   * them (left alone), an empty list when it sends null (cleared), else the array's items.
+   */
+  private static List<String> criteria(JsonNode body) {
+    JsonNode value = body.get("acceptanceCriteria");
+    if (value == null) {
+      return null;
+    }
+    return value.isNull() ? List.of() : EntitySchemas.strings(value).orElseThrow();
   }
 
   /**

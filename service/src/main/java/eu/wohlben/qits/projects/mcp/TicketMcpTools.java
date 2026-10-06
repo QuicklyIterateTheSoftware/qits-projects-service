@@ -132,7 +132,8 @@ public class TicketMcpTools {
       String assignee,
       String createdBy,
       String impetus,
-      String description) {}
+      String description,
+      List<String> acceptanceCriteria) {}
 
   /** One remark inside {@link TicketDetail}. */
   public record CommentDetail(String id, String author, String body, Instant createdAt) {}
@@ -150,6 +151,7 @@ public class TicketMcpTools {
       String createdBy,
       String impetus,
       String description,
+      List<String> acceptanceCriteria,
       List<CommentDetail> comments) {}
 
   // --- Tickets --------------------------------------------------------------
@@ -214,6 +216,7 @@ public class TicketMcpTools {
         ticket.createdBy,
         ticket.impetus,
         ticket.description,
+        List.copyOf(ticket.acceptanceCriteria),
         comments);
   }
 
@@ -269,7 +272,8 @@ public class TicketMcpTools {
   @Tool(
       name = "update_ticket",
       description =
-          "Change a ticket's title, impetus, description, type or assignee. Omitted fields keep"
+          "Change a ticket's title, impetus, description, type, assignee or acceptance criteria."
+              + " Omitted fields keep"
               + " their current value. Writing the description is how the refine phase does its"
               + " work: it is what turns a REPORTED ticket into one that says what to do, and the"
               + " transition to REFINED is the claim that it now does. The impetus is editable"
@@ -299,7 +303,17 @@ public class TicketMcpTools {
                       + " platform then no longer closes it")
           String type,
       @ToolArg(required = false, description = "new assignee; omit to keep the current one")
-          String assignee) {
+          String assignee,
+      @ToolArg(
+              required = false,
+              description =
+                  "the whole list of acceptance criteria, in order, replacing the current one;"
+                      + " omit to keep it, an empty list clears it. What the ticket is accepted"
+                      + " against: each item one short Markdown statement a reviewer can check."
+                      + " Write them while refining — moving to REFINED needs them — and they are"
+                      + " frozen from READY_FOR_DEV on. Each item: no line break, at most one '.',"
+                      + " and fewer than 20 whitespace characters.")
+          List<String> acceptanceCriteria) {
     requireTicketInProject(id);
     // Omitted means unchanged on this surface: the clear flags the REST route carries are a
     // deliberate act in a form, and a model that meant "no value" would reach for a null it cannot
@@ -310,7 +324,8 @@ public class TicketMcpTools {
                 Archetype.TICKET,
                 id,
                 EntityWrite.ticketEdit(
-                    title, impetus, false, description, false, type, assignee, false),
+                        title, impetus, false, description, false, type, assignee, false)
+                    .withAcceptanceCriteria(acceptanceCriteria),
                 changedBy())
             .entity();
     announce();
@@ -574,6 +589,7 @@ public class TicketMcpTools {
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,
-        ticket.description);
+        ticket.description,
+        List.copyOf(ticket.acceptanceCriteria));
   }
 }

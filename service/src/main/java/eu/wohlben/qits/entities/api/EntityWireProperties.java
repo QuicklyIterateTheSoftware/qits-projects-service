@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.api;
 
+import eu.wohlben.qits.entities.control.AcceptanceCriteria;
 import eu.wohlben.qits.entities.control.EntityProperty;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
@@ -42,7 +43,9 @@ import java.util.Optional;
  *       dependsOnFeatureId}) are theirs and are not in here.
  *   <li><b>A value is a string by default</b>; the ticket type is its enum, the two task markers
  *       (implemented, implementing) a {@code date-time}, and the three properties an empty value would defeat — title, impetus,
- *       repository — carry the pattern {@code \S}. The status carries the lifecycle's words.
+ *       repository — carry the pattern {@code \S}. The status carries the lifecycle's words. The
+ *       acceptance criteria (qits-887) are the one list: an {@code array} of strings, each item
+ *       carrying {@code AcceptanceCriteria}' rule as its pattern.
  *   <li><b>Clearable</b> is false for the four properties that have no {@code clear*} flag behind
  *       them in {@code EntityWrite}: three because every kind that permits one requires it, so a
  *       null there is a 400 rather than an absent flag, and the implementing marker (qits-749)
@@ -127,6 +130,16 @@ public final class EntityWireProperties {
         EntityProperty.DEPENDS_ON,
         true,
         text("The id of the sibling this one waits for — ordering, never nesting."));
+    row(
+        table,
+        EntityProperty.ACCEPTANCE_CRITERIA,
+        true,
+        list(
+            "What the work is accepted against, in order: short Markdown statements. The whole list"
+                + " is written at once; an empty list (or null on a patch) clears it. Frozen from"
+                + " READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+            AcceptanceCriteria.RULES,
+            AcceptanceCriteria.PATTERN));
     return Collections.unmodifiableMap(table);
   }
 
@@ -219,6 +232,24 @@ public final class EntityWireProperties {
     Map<String, Object> schema = new LinkedHashMap<>(text(description));
     schema.put("enum", List.copyOf(words));
     return Collections.unmodifiableMap(schema);
+  }
+
+  /** An array of strings, each item carrying its own rule as a description and a pattern. */
+  private static Map<String, Object> list(String description, String itemRule, String pattern) {
+    Map<String, Object> item = new LinkedHashMap<>();
+    item.put("type", "string");
+    item.put("description", itemRule);
+    item.put("pattern", pattern);
+    Map<String, Object> schema = new LinkedHashMap<>();
+    schema.put("type", "array");
+    schema.put("description", description);
+    schema.put("items", Collections.unmodifiableMap(item));
+    return Collections.unmodifiableMap(schema);
+  }
+
+  /** Whether a fragment describes a list rather than a single value. */
+  static boolean isList(Map<String, Object> schema) {
+    return "array".equals(schema.get("type"));
   }
 
   private static Map<String, Object> dateTime(String description) {

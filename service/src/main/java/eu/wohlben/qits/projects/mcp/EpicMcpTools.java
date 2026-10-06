@@ -129,7 +129,8 @@ public class EpicMcpTools {
       String title,
       String status,
       boolean blocked,
-      String description) {}
+      String description,
+      List<String> acceptanceCriteria) {}
 
   /**
    * A task inside {@link EpicDetail}. {@code qualifiedId} only — see {@link EpicSummary}. {@code
@@ -172,6 +173,7 @@ public class EpicMcpTools {
       String status,
       boolean blocked,
       String description,
+      List<String> acceptanceCriteria,
       String supersededByEpicId,
       List<FeatureDetail> features,
       List<CommentMcpTools.CommentDetail> comments) {}
@@ -327,6 +329,7 @@ public class EpicMcpTools {
         epic.status,
         epic.blocked,
         epic.description,
+        List.copyOf(epic.acceptanceCriteria),
         epic.supersededByEntityId,
         features,
         CommentMcpTools.threadOf(thread, epic.id));
@@ -343,13 +346,20 @@ public class EpicMcpTools {
               + " dispatched to refine this epic.")
   public EpicSummary proposeEpic(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
-      @ToolArg(required = false, description = "the long-form Markdown spine") String description) {
+      @ToolArg(required = false, description = "the long-form Markdown spine") String description,
+      @ToolArg(
+              required = false,
+              description =
+                  "acceptance criteria, in order, when they are already known; usually written"
+                      + " later with update_epic while refining. Each item: no line break, at most"
+                      + " one '.', and fewer than 20 whitespace characters.")
+          List<String> acceptanceCriteria) {
     WorkEntity epic =
         entities
             .create(
                 Archetype.EPIC,
                 scope.requireProjectId(),
-                EntityWrite.epic(title, description),
+                EntityWrite.epic(title, description).withAcceptanceCriteria(acceptanceCriteria),
                 changedBy())
             .entity();
     announce();
@@ -360,23 +370,36 @@ public class EpicMcpTools {
   @Tool(
       name = "update_epic",
       description =
-          "Change a REPORTED epic's title or description. Omitted fields keep their current value."
-              + " Refused with a message once the epic leaves REPORTED: its scope is frozen from"
-              + " REFINED on, and only a person moving the epic back to REPORTED reopens it.")
+          "Change an epic's title, description or acceptance criteria. Omitted fields keep their"
+              + " current value. The title and description are the scope: refused once the epic"
+              + " leaves REPORTED, since its scope is frozen from REFINED on and only a person moving"
+              + " the epic back to REPORTED reopens it. The acceptanceCriteria are not scope: write"
+              + " them while refining (moving to REFINED needs them) and they stay editable at"
+              + " REFINED; from READY_FOR_DEV on they are frozen, because a person scheduled what"
+              + " they say.")
   public EpicSummary updateEpic(
       @ToolArg(description = "id of an epic in this project") String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
       @ToolArg(required = false, description = "new description; omit to keep it")
-          String description) {
-    WorkEntity current = requireEpicInProject(id);
+          String description,
+      @ToolArg(
+              required = false,
+              description =
+                  "the whole list of acceptance criteria, in order, replacing the current one;"
+                      + " omit to keep it, an empty list clears it. What the epic is accepted"
+                      + " against: each item one short Markdown statement a reviewer can check."
+                      + " Each item: no line break, at most one '.', and fewer than 20 whitespace"
+                      + " characters.")
+          List<String> acceptanceCriteria) {
+    requireEpicInProject(id);
+    // Only what was supplied is written, so a criteria-only call does not restate the frozen scope.
     WorkEntity epic =
         entities
             .update(
                 Archetype.EPIC,
                 id,
-                EntityWrite.epic(
-                    (title == null || title.isBlank()) ? current.title : title,
-                    description == null ? current.description : description),
+                EntityWrite.epic((title == null || title.isBlank()) ? null : title, description)
+                    .withAcceptanceCriteria(acceptanceCriteria),
                 changedBy())
             .entity();
     announce();
@@ -870,7 +893,8 @@ public class EpicMcpTools {
         // The merged column holds the enum's own name(), which is what the old status.name() was.
         epic.status,
         epic.blocked,
-        epic.description);
+        epic.description,
+        List.copyOf(epic.acceptanceCriteria));
   }
 
   /**

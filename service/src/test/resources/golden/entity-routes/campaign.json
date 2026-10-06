@@ -21,6 +21,7 @@
       "createdBy" : "dev",
       "impetus" : "it has to happen",
       "description" : null,
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -49,6 +50,7 @@
       "createdBy" : "dev",
       "impetus" : "it has to happen",
       "description" : null,
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -77,6 +79,7 @@
       "createdBy" : "dev",
       "impetus" : "it has to happen",
       "description" : null,
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]

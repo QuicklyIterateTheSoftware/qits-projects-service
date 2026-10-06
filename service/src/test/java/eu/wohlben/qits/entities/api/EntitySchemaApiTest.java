@@ -37,7 +37,7 @@ import org.junit.jupiter.api.TestFactory;
  * </ul>
  *
  * <p>A value is made from the property's fragment alone — the first word of an enum, an instant for
- * a {@code date-time}, {@code "x"} for a string — except the handful that must name a real row (a
+ * a {@code date-time}, {@code "x"} for a string, {@code ["x"]} for a list — except the handful that must name a real row (a
  * project, a parent, a repository, a sibling), which come from fixtures.
  */
 @QuarkusTest
@@ -319,6 +319,9 @@ class EntitySchemaApiTest {
         default:
           break;
       }
+      if (fragment.path("type").toString().contains("array")) {
+        return List.of("x");
+      }
       JsonNode words = fragment.get("enum");
       if (words != null) {
         return words.get(0).asText();
@@ -363,6 +366,15 @@ class EntitySchemaApiTest {
             "type" : "string",
             "description" : "Who is looking at it; free text."
           },
+          "acceptanceCriteria" : {
+            "type" : "array",
+            "description" : "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+            "items" : {
+              "type" : "string",
+              "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+              "pattern" : "^(?=.*\\\\S)(?![^.]*\\\\.[^.]*\\\\.)(?!(?:\\\\S*\\\\s){20})[^\\\\n\\\\r]*$"
+            }
+          },
           "project" : {
             "type" : "string",
             "pattern" : "\\\\S",
@@ -404,6 +416,15 @@ class EntitySchemaApiTest {
           "assignee" : {
             "type" : [ "string", "null" ],
             "description" : "Who is looking at it; free text."
+          },
+          "acceptanceCriteria" : {
+            "type" : [ "array", "null" ],
+            "description" : "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+            "items" : {
+              "type" : "string",
+              "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+              "pattern" : "^(?=.*\\\\S)(?![^.]*\\\\.[^.]*\\\\.)(?!(?:\\\\S*\\\\s){20})[^\\\\n\\\\r]*$"
+            }
           }
         },
         "required" : [ ],
@@ -447,6 +468,15 @@ class EntitySchemaApiTest {
           "assignee" : {
             "type" : "string",
             "description" : "Who is looking at it; free text."
+          },
+          "acceptanceCriteria" : {
+            "type" : "array",
+            "description" : "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+            "items" : {
+              "type" : "string",
+              "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+              "pattern" : "^(?=.*\\\\S)(?![^.]*\\\\.[^.]*\\\\.)(?!(?:\\\\S*\\\\s){20})[^\\\\n\\\\r]*$"
+            }
           },
           "membership" : {
             "type" : "object",

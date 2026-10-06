@@ -18,6 +18,8 @@ import java.util.List;
  *     TicketDto#blocked}'s flag, rule for rule, since the block door stopped being a ticket's alone
  *     (qits-592). An epic that reads REFINED while its implementer is stuck is the wrong one to
  *     press next.
+ * @param acceptanceCriteria what the work is accepted against, in order (qits-887); empty when
+ *     none is written yet
  * @param workspaces the workspaces cut for this epic, <b>live or resolved</b>, each carrying its own
  *     {@code status} — {@link TicketDto#workspaces}' field, rule for rule. An epic leaves no other
  *     trace of a dispatch: its door writes nothing on the row, by design, so this is also the only
@@ -37,6 +39,7 @@ public record EpicDto(
     boolean blocked,
     String supersededByEpicId,
     String description,
+    List<String> acceptanceCriteria,
     Instant createdAt,
     Instant updatedAt,
     List<WorkspaceReferenceDto> workspaces) {
@@ -54,6 +57,7 @@ public record EpicDto(
         blocked,
         supersededByEpicId,
         description,
+        acceptanceCriteria,
         createdAt,
         updatedAt,
         found == null ? List.of() : found);
@@ -72,6 +76,7 @@ public record EpicDto(
         blocked,
         supersededByEpicId,
         description,
+        acceptanceCriteria,
         createdAt,
         updatedAt,
         workspaces);

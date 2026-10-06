@@ -508,6 +508,7 @@ class EntityAgentBoundsTest {
         null,
         null,
         null,
+        null,
         null);
   }
 
@@ -520,6 +521,7 @@ class EntityAgentBoundsTest {
         title,
         null,
         "REPORTED",
+        null,
         null,
         null,
         null,

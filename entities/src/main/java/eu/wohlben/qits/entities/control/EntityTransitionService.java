@@ -235,6 +235,7 @@ public class EntityTransitionService {
 
     Map<String, WorkEntity> rows = index(entities.listByIds(stated.keySet()));
     refuseCampaignLifecycle(stated, rows);
+    refuseFrozenCriteria(stated, rows);
     Map<String, WorkEntity> statedParents = parentRows(stated, rows);
 
     List<String> violations = validate(stated, rows, statedParents);
@@ -336,6 +337,31 @@ public class EntityTransitionService {
           String.join("; ", refused)
               + " — move a campaign through /campaigns/{id}/transition; create one through"
               + " /projects/{projectId}/campaigns");
+    }
+  }
+
+  /**
+   * <b>The acceptance criteria are frozen from READY_FOR_DEV on</b> (qits-887), on this door as on
+   * the edit ({@code WorkEntityService.requireCriteriaEditable}): an entry whose list differs from
+   * the row's while the row is READY_FOR_DEV or further is a 409. A PUT restates every property, so
+   * an entry restating the list it already holds — same items, same order — is no change and passes
+   * at every status, which is what a form restating the whole row sends. An absent list on a row
+   * that holds criteria is a change (the PUT would clear it), and frozen like any other.
+   */
+  private static void refuseFrozenCriteria(
+      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
+    for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
+      WorkEntity row = rows.get(entry.getKey());
+      if (row == null) {
+        continue;
+      }
+      List<String> criteria =
+          entry.getValue().acceptanceCriteria() == null
+              ? List.of()
+              : entry.getValue().acceptanceCriteria();
+      if (!criteria.equals(row.acceptanceCriteria)) {
+        WorkEntityService.requireCriteriaEditable(WorkEntityService.nounOf(row.archetype), row);
+      }
     }
   }
 
@@ -446,6 +472,9 @@ public class EntityTransitionService {
     add(present, EntityProperty.REPOSITORY_ID, target.repositoryId());
     add(present, EntityProperty.IMPLEMENTED_AT, target.implementedAt());
     add(present, EntityProperty.DEPENDS_ON, target.dependsOn());
+    if (target.acceptanceCriteria() != null && !target.acceptanceCriteria().isEmpty()) {
+      present.add(EntityProperty.ACCEPTANCE_CRITERIA);
+    }
 
     // The SERVER_OWNED pair, read off the constant rather than named here, so the list this check
     // carries and the list the registry document serves are the same list. The two travel
@@ -475,6 +504,13 @@ public class EntityTransitionService {
     for (ArchetypeViolation violation :
         Archetypes.validate(new EntityState(archetype, target.status(), present), Demand.ON_UPDATE)) {
       refused.add(violation.message());
+    }
+
+    // The item rules of the acceptance criteria (qits-887), the writer's own: a list the target has
+    // no slot for was refused above as NOT_PERMITTED, so only a permitted one is judged item by item.
+    if (spec.permits(EntityProperty.ACCEPTANCE_CRITERIA)) {
+      refused.addAll(
+          AcceptanceCriteria.refusals("acceptanceCriteria", target.acceptanceCriteria()));
     }
 
     // The transition's own rule — see the class javadoc and requiresStatusOnTransition. Stated in
@@ -629,6 +665,13 @@ public class EntityTransitionService {
       row.implementingAt = null;
     }
     row.dependsOnEntityId = blankToNull(target.dependsOn());
+    List<String> criteria =
+        target.acceptanceCriteria() == null ? List.of() : List.copyOf(target.acceptanceCriteria());
+    if (!criteria.equals(row.acceptanceCriteria)) {
+      // In place, never a new list: see WorkEntity.acceptanceCriteria.
+      row.acceptanceCriteria.clear();
+      row.acceptanceCriteria.addAll(criteria);
+    }
     if (!Archetypes.spec(target.archetype()).permits(EntityProperty.CREATED_BY)) {
       row.createdBy = null;
     }

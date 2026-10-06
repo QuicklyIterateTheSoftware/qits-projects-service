@@ -151,6 +151,7 @@ public final class Archetypes {
 
     // A plan. Root, depth 0. Its status is the one entity lifecycle, the ticket's words;
     // supersededBy is the successor draft a supersede spawns and exists on no other kind.
+    // Its acceptance criteria (qits-887) are permitted and never required: a gate asks for them.
     registry.put(
         Archetype.EPIC,
         new ArchetypeSpec(
@@ -164,7 +165,8 @@ public final class Archetypes {
                 EntityProperty.SLUG,
                 EntityProperty.DESCRIPTION,
                 EntityProperty.STATUS,
-                EntityProperty.SUPERSEDED_BY),
+                EntityProperty.SUPERSEDED_BY,
+                EntityProperty.ACCEPTANCE_CRITERIA),
             STATUSES,
             false));
 
@@ -177,6 +179,7 @@ public final class Archetypes {
     // entity.impetus is nullable and a person clearing one is asserted behaviour. Declaring it
     // required at every moment would refuse a write the product allows; declaring it merely
     // permitted would stop intake being described at all. It is required at create and not after.
+    // Acceptance criteria (qits-887) are permitted, as on an epic, and never required.
     registry.put(
         Archetype.TICKET,
         new ArchetypeSpec(
@@ -198,7 +201,8 @@ public final class Archetypes {
                 EntityProperty.TICKET_TYPE,
                 EntityProperty.IMPETUS,
                 EntityProperty.ASSIGNEE,
-                EntityProperty.CREATED_BY),
+                EntityProperty.CREATED_BY,
+                EntityProperty.ACCEPTANCE_CRITERIA),
             STATUSES,
             false));
 

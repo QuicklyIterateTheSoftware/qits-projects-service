@@ -129,7 +129,8 @@ class EntityArchetypesApiTest {
         .body(at("EPIC") + "requiredOnTransition", contains("TITLE", "STATUS"))
         .body(
             at("EPIC") + "permitted",
-            contains("TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY"))
+            contains(
+                "TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY", "ACCEPTANCE_CRITERIA"))
         .body(
             at("EPIC") + "legalStatuses",
             contains(

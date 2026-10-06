@@ -18,6 +18,8 @@ import java.util.List;
  *     for the same reason {@code status} does: a reader choosing what to pick up needs both, and
  *     a ticket that reads REFINED while somebody is stuck on it is exactly the wrong thing to pick
  *     up next.
+ * @param acceptanceCriteria what the work is accepted against, in order (qits-887); empty when
+ *     none is written yet
  * @param workspaces the workspaces cut for this ticket, <b>live or resolved</b>, each carrying its
  *     own {@code status} — see {@link WorkspaceReferenceDto}. Derived per read and never stored:
  *     empty means no workspace was ever cut, and a resolved one stays on the list so the ticket
@@ -41,6 +43,7 @@ public record TicketDto(
     String createdBy,
     String impetus,
     String description,
+    List<String> acceptanceCriteria,
     Instant createdAt,
     Instant updatedAt,
     List<WorkspaceReferenceDto> workspaces) {
@@ -61,6 +64,7 @@ public record TicketDto(
         createdBy,
         impetus,
         description,
+        acceptanceCriteria,
         createdAt,
         updatedAt,
         found == null ? List.of() : found);
@@ -82,6 +86,7 @@ public record TicketDto(
         createdBy,
         impetus,
         description,
+        acceptanceCriteria,
         createdAt,
         updatedAt,
         workspaces);

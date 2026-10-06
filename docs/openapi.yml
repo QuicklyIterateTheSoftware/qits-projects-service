@@ -1514,6 +1514,18 @@ components:
             \ when its implementation was started. Cannot be cleared. Moves only while\
             \ the owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's\
             \ status to IMPLEMENTING when it is not already there or further."
+        acceptanceCriteria:
+          type:
+          - array
+          - "null"
+          items:
+            type: string
+          description: "An epic's or ticket's acceptance criteria, the whole list\
+            \ in order; null or an empty list clears them. Each item is one line of\
+            \ Markdown: not blank, no line break, at most one '.', and fewer than\
+            \ 20 whitespace characters. Editable at REFINED (outside an epic's scope\
+            \ freeze); from READY_FOR_DEV on a changed list is a 409, and restating\
+            \ the same list passes."
     EntityProperty:
       type: string
       enum:
@@ -1530,6 +1542,7 @@ components:
       - IMPLEMENTED_AT
       - IMPLEMENTING_AT
       - DEPENDS_ON
+      - ACCEPTANCE_CRITERIA
     EntityRefinementResponse:
       type: object
       properties:
@@ -1631,6 +1644,10 @@ components:
           $ref: "#/components/schemas/Instant"
         dependsOn:
           type: string
+        acceptanceCriteria:
+          type: array
+          items:
+            type: string
     Entry:
       type: object
       properties:
@@ -1729,6 +1746,10 @@ components:
           type: string
         description:
           type: string
+        acceptanceCriteria:
+          type: array
+          items:
+            type: string
         createdAt:
           $ref: "#/components/schemas/Instant"
         updatedAt:
@@ -3088,6 +3109,10 @@ components:
           type: string
         description:
           type: string
+        acceptanceCriteria:
+          type: array
+          items:
+            type: string
         createdAt:
           $ref: "#/components/schemas/Instant"
         updatedAt:
@@ -3185,6 +3210,10 @@ components:
           type: string
         blocked:
           type: boolean
+        acceptanceCriteria:
+          type: array
+          items:
+            type: string
     UpdateDesign:
       type: object
       required:
@@ -4056,7 +4085,10 @@ paths:
         \ through POST /projects/api/entities/transition. An epic's, feature's or\
         \ task's scope follows the epic's freeze: scope edits need the epic REPORTED,\
         \ the markers need it READY_FOR_DEV or IMPLEMENTING, and a marker moves the\
-        \ item's status with it. Answers the entity in the merged shape."
+        \ item's status with it. An epic's or a ticket's acceptance criteria sit outside\
+        \ the scope freeze and are frozen from READY_FOR_DEV on instead, where a changed\
+        \ list is refused and the same list restated passes. Answers the entity in\
+        \ the merged shape."
       parameters:
       - name: id
         in: path
@@ -4090,7 +4122,8 @@ paths:
         "404":
           description: No entity with this id
         "409":
-          description: The owning epic's status freezes what the patch touches
+          description: "The owning epic's status freezes what the patch touches, or\
+            \ the acceptance criteria are changed from READY_FOR_DEV on"
         "401":
           description: Not Authorized
       tags:

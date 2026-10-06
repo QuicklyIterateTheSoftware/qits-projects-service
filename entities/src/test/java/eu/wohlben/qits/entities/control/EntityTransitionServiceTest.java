@@ -186,6 +186,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null,
                             null, // no repository id, which a TASK requires
                             null,
+                            null,
                             null)),
                     WHO));
     assertTrue(refusal.getMessage().contains("repository id"), refusal.getMessage());
@@ -500,6 +501,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null,
                             null,
                             null,
+                            null,
                             null)),
                     WHO));
     assertTrue(refusal.getMessage().contains("has no impetus"), refusal.getMessage());
@@ -555,6 +557,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                     null,
                     null,
                     null,
+                    null,
                     null)),
             WHO);
 
@@ -598,6 +601,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             "The part",
                             null,
                             "IN_PROGRESS", // layer one: no lifecycle spells this word
+                            null,
                             null,
                             null,
                             null,
@@ -685,6 +689,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                     null,
                     null,
                     null,
+                    null,
                     null)),
             WHO);
 
@@ -724,6 +729,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                             null,
                             "REFINING", // a retired epic word, in no lifecycle any more
                             null, // and no ticket type
+                            null,
                             null,
                             null,
                             null,
@@ -1072,6 +1078,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         null,
         null,
+        null,
         null);
   }
 
@@ -1083,6 +1090,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         title,
         description,
         status == null ? null : status.name(),
+        null,
         null,
         null,
         null,
@@ -1105,6 +1113,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         null,
         null,
+        null,
         null);
   }
 
@@ -1116,6 +1125,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         title,
         null,
         "REPORTED",
+        null,
         null,
         null,
         null,
@@ -1139,6 +1149,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
         null,
         null,
         repositoryId,
+        null,
         null,
         null);
   }

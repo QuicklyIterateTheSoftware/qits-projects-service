@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.control;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.TicketType;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * <b>One entity's whole intended state after a transition</b> — what it is, where it hangs, and
@@ -57,6 +58,9 @@ import java.time.Instant;
  * @param repositoryId the one concrete repository a task names
  * @param implementedAt the implemented marker
  * @param dependsOn the sibling ordering edge. <b>Never nesting</b> — {@link Membership} is nesting
+ * @param acceptanceCriteria an epic's or a ticket's acceptance criteria (qits-887), the whole list;
+ *     absent clears it as every other property. Restating the list the row already holds is no
+ *     change and passes at every status; a changed one is refused from READY_FOR_DEV on
  */
 public record EntityTransition(
     Archetype archetype,
@@ -70,7 +74,8 @@ public record EntityTransition(
     String supersededBy,
     String repositoryId,
     Instant implementedAt,
-    String dependsOn) {
+    String dependsOn,
+    List<String> acceptanceCriteria) {
 
   /**
    * Where an entity hangs after the transition, and where among its siblings.

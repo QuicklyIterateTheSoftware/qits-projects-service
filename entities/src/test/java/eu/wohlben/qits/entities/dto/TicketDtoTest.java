@@ -47,6 +47,7 @@ class TicketDtoTest {
         "bob",
         "clicking the login button does nothing",
         "re-issue the session first",
+        List.of(),
         CREATED,
         UPDATED,
         List.of());
@@ -90,6 +91,7 @@ class TicketDtoTest {
             "bob",
             "clicking the login button does nothing",
             "re-issue the session first",
+            List.of(),
             CREATED,
             UPDATED,
             CUT),
@@ -110,6 +112,7 @@ class TicketDtoTest {
             "bob",
             "clicking the login button does nothing",
             "re-issue the session first",
+            List.of(),
             CREATED,
             UPDATED,
             List.of()),

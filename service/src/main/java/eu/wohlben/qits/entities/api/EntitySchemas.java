@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import eu.wohlben.qits.entities.control.AcceptanceCriteria;
 import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
 import eu.wohlben.qits.entities.control.ArchetypeSpec;
 import eu.wohlben.qits.entities.control.ArchetypeViolation;
@@ -254,6 +255,9 @@ public final class EntitySchemas {
     if (value == null || value.isNull()) {
       return Optional.empty(); // absence is the required check's to judge, not the value's
     }
+    if (EntityWireProperties.isList(property)) {
+      return listRefusal(name, value);
+    }
     if (!value.isTextual()) {
       return Optional.of(name + " must be a string");
     }
@@ -273,6 +277,34 @@ public final class EntitySchemas {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * The complaint about a list value — the acceptance criteria, the one list (qits-887): an array of
+   * strings, each obeying {@link AcceptanceCriteria}' rules, every broken item named by its index.
+   */
+  static Optional<String> listRefusal(String name, JsonNode value) {
+    Optional<List<String>> items = strings(value);
+    if (items.isEmpty()) {
+      return Optional.of(name + " must be an array of strings");
+    }
+    List<String> refused = AcceptanceCriteria.refusals(name, items.get());
+    return refused.isEmpty() ? Optional.empty() : Optional.of(String.join("; ", refused));
+  }
+
+  /** The array's items when {@code value} is an array of strings, else empty. */
+  static Optional<List<String>> strings(JsonNode value) {
+    if (value == null || !value.isArray()) {
+      return Optional.empty();
+    }
+    List<String> items = new ArrayList<>();
+    for (JsonNode item : value) {
+      if (!item.isTextual()) {
+        return Optional.empty();
+      }
+      items.add(item.textValue());
+    }
+    return Optional.of(items);
   }
 
   /** Why a name the create schema does not list is refused — the most useful sentence available. */
@@ -399,7 +431,7 @@ public final class EntitySchemas {
   /** The fragment, typed to admit null — and its enum too, where it has one. */
   private static Map<String, Object> nullable(Map<String, Object> fragment) {
     Map<String, Object> schema = new LinkedHashMap<>(fragment);
-    schema.put("type", List.of("string", "null"));
+    schema.put("type", List.of(fragment.get("type"), "null"));
     if (fragment.get("enum") instanceof List<?> words) {
       List<Object> withNull = new ArrayList<>(words);
       withNull.add(null);

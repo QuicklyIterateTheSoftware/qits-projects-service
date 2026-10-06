@@ -17,6 +17,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -53,6 +54,7 @@
         "blocked" : false,
         "supersededByEpicId" : null,
         "description" : "The spine",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -75,6 +77,7 @@
         "blocked" : false,
         "supersededByEpicId" : null,
         "description" : "The spine",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -114,6 +117,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -754,7 +758,8 @@
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "changedBy" : "dev",
-      "blocked" : false
+      "blocked" : false,
+      "acceptanceCriteria" : [ ]
     }
   }
 }, {
@@ -811,6 +816,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -835,6 +841,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -924,6 +931,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1030,6 +1038,7 @@
       "blocked" : false,
       "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1045,6 +1054,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1065,6 +1075,7 @@
       "blocked" : false,
       "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1085,6 +1096,7 @@
       "blocked" : false,
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1106,6 +1118,7 @@
         "blocked" : false,
         "supersededByEpicId" : "<id:11>",
         "description" : "The spine, restated",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -1122,6 +1135,7 @@
         "blocked" : false,
         "supersededByEpicId" : null,
         "description" : "The spine, restated",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -1492,6 +1506,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1525,6 +1540,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1558,6 +1574,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1591,6 +1608,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1624,6 +1642,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1657,6 +1676,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1690,6 +1710,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1723,6 +1744,7 @@
         "implementedAt" : "<instant>",
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1756,6 +1778,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1789,6 +1812,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1822,6 +1846,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:3>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1855,6 +1880,7 @@
         "implementedAt" : "<instant>",
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1888,6 +1914,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1921,6 +1948,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1954,6 +1982,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:3>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1987,6 +2016,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2020,6 +2050,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2053,6 +2084,7 @@
         "implementedAt" : "<instant>",
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2086,6 +2118,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2119,6 +2152,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2152,6 +2186,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:6>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2185,6 +2220,7 @@
         "implementedAt" : "<instant>",
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:6>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2218,6 +2254,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:6>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2251,6 +2288,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:6>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2284,6 +2322,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:6>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2391,6 +2430,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2424,6 +2464,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2457,6 +2498,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2490,6 +2532,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2523,6 +2566,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2556,6 +2600,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2589,6 +2634,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2622,6 +2668,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2655,6 +2702,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:14>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2688,6 +2736,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : "<id:14>",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -2710,6 +2759,15 @@
       "description" : {
         "type" : "string",
         "description" : "The long-form Markdown body."
+      },
+      "acceptanceCriteria" : {
+        "type" : "array",
+        "description" : "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+        "items" : {
+          "type" : "string",
+          "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+          "pattern" : "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
+        }
       },
       "project" : {
         "type" : "string",
@@ -2862,7 +2920,8 @@
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
     "changedBy" : null,
-    "blocked" : false
+    "blocked" : false,
+    "acceptanceCriteria" : [ ]
   }
 }, {
   "request" : "POST /projects/api/entities",
@@ -3145,7 +3204,8 @@
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
     "changedBy" : "dev",
-    "blocked" : false
+    "blocked" : false,
+    "acceptanceCriteria" : [ ]
   }
 }, {
   "request" : "POST /projects/api/entities/<id:18>/status",
@@ -3179,7 +3239,8 @@
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
     "changedBy" : "dev",
-    "blocked" : false
+    "blocked" : false,
+    "acceptanceCriteria" : [ ]
   }
 }, {
   "request" : "POST /projects/api/entities/<id:19>/status",

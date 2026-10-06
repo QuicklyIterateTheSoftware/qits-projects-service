@@ -88,5 +88,15 @@ public enum EntityProperty {
    * depends_on_task_id}. A <b>sibling ordering</b> edge and never containment; a STRUCTURAL {@code
    * EntityMembership} is the relation that is containment, and {@link Nesting} is what judges it.
    */
-  DEPENDS_ON
+  DEPENDS_ON,
+
+  /**
+   * {@code entity_acceptance_criterion} (epics V26, qits-887): the ordered list of short Markdown
+   * statements an epic or a ticket is accepted against — {@code acceptanceCriteria} on the wire.
+   * Permitted on {@code EPIC} and {@code TICKET}, required of nobody at any moment: an empty list is
+   * a legal row, and it is the {@code ACCEPTANCE_CRITERIA} transition gate, not the registry, that
+   * asks for criteria before a move into REFINED or READY_FOR_DEV. Present when the list is not
+   * empty. The item rules are {@link AcceptanceCriteria}'.
+   */
+  ACCEPTANCE_CRITERIA
 }

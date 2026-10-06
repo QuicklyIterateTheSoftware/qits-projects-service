@@ -23,6 +23,7 @@
       "createdBy" : "dev",
       "impetus" : "clicking the login button does nothing on the sign-in page",
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -51,6 +52,7 @@
       "createdBy" : "dev",
       "impetus" : "the board should load faster",
       "description" : null,
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -114,6 +116,7 @@
         "createdBy" : "dev",
         "impetus" : "clicking the login button does nothing on the sign-in page",
         "description" : "It just sits there",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -133,6 +136,7 @@
         "createdBy" : "dev",
         "impetus" : "the board should load faster",
         "description" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -158,6 +162,7 @@
         "createdBy" : "dev",
         "impetus" : "clicking the login button does nothing on the sign-in page",
         "description" : "It just sits there",
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -177,6 +182,7 @@
         "createdBy" : "dev",
         "impetus" : "the board should load faster",
         "description" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -213,6 +219,7 @@
       "createdBy" : "dev",
       "impetus" : "clicking the login button does nothing on the sign-in page",
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -267,7 +274,8 @@
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "changedBy" : "dev",
-      "blocked" : false
+      "blocked" : false,
+      "acceptanceCriteria" : [ ]
     }
   }
 }, {
@@ -288,6 +296,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -341,6 +350,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -376,6 +386,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -412,6 +423,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -435,6 +447,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -461,6 +474,7 @@
       "createdBy" : "dev",
       "impetus" : null,
       "description" : "It just sits there",
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -487,6 +501,7 @@
       "createdBy" : "dev",
       "impetus" : "the board should load faster",
       "description" : null,
+      "acceptanceCriteria" : [ ],
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -669,6 +684,7 @@
         "createdBy" : "dev",
         "impetus" : "the board should load faster",
         "description" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -828,6 +844,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -861,6 +878,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -894,6 +912,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -927,6 +946,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -960,6 +980,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -993,6 +1014,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1026,6 +1048,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1065,6 +1088,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1098,6 +1122,7 @@
         "implementedAt" : null,
         "implementingAt" : null,
         "dependsOnEntityId" : null,
+        "acceptanceCriteria" : [ ],
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>"
       }
@@ -1134,6 +1159,15 @@
       "assignee" : {
         "type" : "string",
         "description" : "Who is looking at it; free text."
+      },
+      "acceptanceCriteria" : {
+        "type" : "array",
+        "description" : "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+        "items" : {
+          "type" : "string",
+          "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+          "pattern" : "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
+        }
       },
       "project" : {
         "type" : "string",
@@ -1175,6 +1209,15 @@
       "assignee" : {
         "type" : [ "string", "null" ],
         "description" : "Who is looking at it; free text."
+      },
+      "acceptanceCriteria" : {
+        "type" : [ "array", "null" ],
+        "description" : "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+        "items" : {
+          "type" : "string",
+          "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+          "pattern" : "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
+        }
       }
     },
     "required" : [ ],
@@ -1217,6 +1260,15 @@
       "assignee" : {
         "type" : "string",
         "description" : "Who is looking at it; free text."
+      },
+      "acceptanceCriteria" : {
+        "type" : "array",
+        "description" : "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+        "items" : {
+          "type" : "string",
+          "description" : "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+          "pattern" : "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
+        }
       },
       "membership" : {
         "type" : "object",
@@ -1275,7 +1327,8 @@
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
     "changedBy" : null,
-    "blocked" : false
+    "blocked" : false,
+    "acceptanceCriteria" : [ ]
   }
 }, {
   "request" : "POST /projects/api/entities",
@@ -1318,7 +1371,8 @@
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
     "changedBy" : null,
-    "blocked" : false
+    "blocked" : false,
+    "acceptanceCriteria" : [ ]
   }
 }, {
   "request" : "GET /projects/api/entities/no-such-entity",
@@ -1454,7 +1508,8 @@
     "createdAt" : "<instant>",
     "updatedAt" : "<instant>",
     "changedBy" : "dev",
-    "blocked" : false
+    "blocked" : false,
+    "acceptanceCriteria" : [ ]
   }
 }, {
   "request" : "POST /projects/api/entities/<id:7>/status",

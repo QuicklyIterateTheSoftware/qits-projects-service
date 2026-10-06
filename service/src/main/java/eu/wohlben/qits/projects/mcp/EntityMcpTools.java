@@ -106,10 +106,11 @@ public class EntityMcpTools {
               + " cannot state a correct one without seeing the current archetype and the current"
               + " membership — which get_epic, get_ticket, list_epics and list_tickets do not"
               + " report. Use those for an epic's or a ticket's ordinary detail; use this one before"
-              + " you move, promote, demote or re-parent anything. It answers no description:"
-              + " read that with get_entity, one entity at a time. Every other field it answers is"
-              + " one transition_entities takes, so an entry you restate there is this entry plus"
-              + " its description from get_entity.")
+              + " you move, promote, demote or re-parent anything. It answers no description and"
+              + " no acceptance criteria: read those with get_entity, one entity at a time. Every"
+              + " other field it answers is one transition_entities takes, so an entry you restate"
+              + " there is this entry plus its description and acceptanceCriteria from"
+              + " get_entity.")
   public List<EntitySummary> listEntities(
       @ToolArg(
               required = false,
@@ -133,8 +134,9 @@ public class EntityMcpTools {
       name = "get_entity",
       description =
           "Read one entity of this project in full, description included: the same fields"
-              + " list_entities answers, plus the description it leaves out. Read this for every"
-              + " entity you restate in transition_entities, because an omitted description is"
+              + " list_entities answers, plus the description and an epic's or a ticket's"
+              + " acceptanceCriteria it leaves out. Read this for every entity you restate in"
+              + " transition_entities, because an omitted description or acceptanceCriteria is"
               + " cleared there.")
   public TransitionedEntity getEntity(
       @ToolArg(description = "the entity's UUID or its qualified id (<project-slug>-<n>)")
@@ -244,7 +246,9 @@ public class EntityMcpTools {
                       + " MAINTENANCE is reserved for the tickets the platform files itself);"
                       + " impetus;"
                       + " assignee; repositoryId (a TASK's repository); implementedAt; dependsOn (a"
-                      + " sibling to do first, never nesting). Position is clamped to the legal"
+                      + " sibling to do first, never nesting); acceptanceCriteria (an EPIC's or a"
+                      + " TICKET's list of short statements, restated whole — unchanged from"
+                      + " READY_FOR_DEV on). Position is clamped to the legal"
                       + " range rather than refused, and an entry with a parent and no position is"
                       + " appended.")
           Map<String, EntityTransition> entities) {

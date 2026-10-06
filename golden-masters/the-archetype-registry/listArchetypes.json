@@ -12,7 +12,8 @@
     "REPOSITORY_ID",
     "IMPLEMENTED_AT",
     "IMPLEMENTING_AT",
-    "DEPENDS_ON"
+    "DEPENDS_ON",
+    "ACCEPTANCE_CRITERIA"
   ],
   "serverOwned": [
     "SLUG",
@@ -39,7 +40,8 @@
         "SLUG",
         "DESCRIPTION",
         "STATUS",
-        "SUPERSEDED_BY"
+        "SUPERSEDED_BY",
+        "ACCEPTANCE_CRITERIA"
       ],
       "legalStatuses": [
         "DONE",
@@ -310,7 +312,8 @@
         "TICKET_TYPE",
         "IMPETUS",
         "ASSIGNEE",
-        "CREATED_BY"
+        "CREATED_BY",
+        "ACCEPTANCE_CRITERIA"
       ],
       "legalStatuses": [
         "DONE",

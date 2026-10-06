@@ -3,7 +3,12 @@ package eu.wohlben.qits.entities.entity;
 import eu.wohlben.qits.eventstream.CausationStamp;
 import eu.wohlben.qits.eventstream.CausedRow;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
@@ -11,8 +16,12 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.UpdateTimestamp;
 
 /**
@@ -331,6 +340,32 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    */
   @Column(name = "depends_on_entity_id")
   public String dependsOnEntityId;
+
+  /**
+   * <b>The acceptance criteria</b> (qits-887, qits-934, epics V26): short Markdown statements the
+   * work is accepted against, in order. An {@link Archetype#EPIC}'s and a {@link Archetype#TICKET}'s,
+   * and empty on every other kind ({@code control/Archetypes} refuses them there). Each item obeys
+   * {@code control/AcceptanceCriteria}' rules; the list is what the {@code ACCEPTANCE_CRITERIA} gate
+   * asks for on entering REFINED and READY_FOR_DEV.
+   *
+   * <p><b>An element collection, loaded with the row</b>, so every reader of the row — the DTOs,
+   * the catalogue, the audit snapshot, a gate — has it without a second lookup, and a row handed
+   * out of a write's transaction carries it rather than a proxy that can no longer load. {@code
+   * SUBSELECT} makes a listing one extra query for all its rows, never one per row.
+   *
+   * <p><b>Write it in place</b> ({@code clear()} then {@code addAll}), never by assigning a new
+   * list: Hibernate then updates the positions it already has rather than deleting and
+   * re-inserting the whole collection. A row built by hand from a projection carries an empty list,
+   * which is <em>not</em> a statement that it has none — such a row is never written.
+   */
+  @ElementCollection(fetch = FetchType.EAGER)
+  @Fetch(FetchMode.SUBSELECT)
+  @CollectionTable(
+      name = "entity_acceptance_criterion",
+      joinColumns = @JoinColumn(name = "entity_id"))
+  @OrderColumn(name = "position")
+  @Column(name = "text", nullable = false)
+  public List<String> acceptanceCriteria = new ArrayList<>();
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)

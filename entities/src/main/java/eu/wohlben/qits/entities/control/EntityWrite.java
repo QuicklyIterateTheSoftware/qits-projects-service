@@ -1,6 +1,7 @@
 package eu.wohlben.qits.entities.control;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * <b>What a create or an edit writes, as data</b> — every writable property of every archetype in
@@ -21,6 +22,10 @@ import java.time.Instant;
  * unassign a ticket, drop its body, un-ship a feature or lose a dependency. On a create the flags
  * mean nothing and the values are the new row's.
  *
+ * <p><b>The acceptance criteria (qits-887) are a list and take no flag</b>: null leaves them alone,
+ * a list (an empty one included) replaces them whole. A list has an empty value of its own, so the
+ * clear flag's job is already done by it.
+ *
  * <p>The static factories are the shapes the four surfaces speak — an epic's words, a ticket's
  * intake, a plan node's parts — so a call site reads as what it is writing. They build this record
  * and nothing else; there is no rule in any of them.
@@ -39,13 +44,14 @@ public record EntityWrite(
     boolean clearDependsOn,
     Instant implementedAt,
     boolean clearImplementedAt,
-    Instant implementingAt) {
+    Instant implementingAt,
+    List<String> acceptanceCriteria) {
 
   /** An epic: its title and its long-form spine. */
   public static EntityWrite epic(String title, String description) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, null, null, false, null, false,
-        null);
+        null, null);
   }
 
   /** A campaign: a title and a description, the same two words an epic is written in. */
@@ -58,14 +64,14 @@ public record EntityWrite(
       String title, String impetus, String description, String type, String assignee) {
     return new EntityWrite(
         title, description, false, impetus, false, type, assignee, false, null, null, false, null,
-        false, null);
+        false, null, null);
   }
 
   /** A feature under an epic, optionally depending on a sibling. */
   public static EntityWrite feature(String title, String description, String dependsOn) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, null, dependsOn, false, null,
-        false, null);
+        false, null, null);
   }
 
   /** A task under a feature: the work in one repository, optionally depending on a sibling. */
@@ -73,7 +79,7 @@ public record EntityWrite(
       String repositoryId, String title, String description, String dependsOn) {
     return new EntityWrite(
         title, description, false, null, false, null, null, false, repositoryId, dependsOn, false,
-        null, false, null);
+        null, false, null, null);
   }
 
   /** An edit of a ticket's words, each nullable field with its clear flag. */
@@ -100,7 +106,7 @@ public record EntityWrite(
         false,
         null,
         false,
-        null);
+        null, null);
   }
 
   /**
@@ -128,7 +134,7 @@ public record EntityWrite(
         clearDependsOn,
         implementedAt,
         clearImplementedAt,
-        null);
+        null, null);
   }
 
   /** Only the implemented marker, stamped — what {@code mark_task_implemented} writes. */
@@ -142,7 +148,41 @@ public record EntityWrite(
    */
   public static EntityWrite implementingAt(Instant at) {
     return new EntityWrite(
-        null, null, false, null, false, null, null, false, null, null, false, null, false, at);
+        null, null, false, null, false, null, null, false, null, null, false, null, false, at,
+        null);
+  }
+
+  /**
+   * This write with its acceptance criteria (qits-887) replaced by {@code criteria} — null leaves
+   * them alone on an edit, an empty list clears them. The surfaces that take criteria beside the
+   * words of an archetype's factory ({@code update_epic}, {@code create_ticket}) build it this way.
+   */
+  public EntityWrite withAcceptanceCriteria(List<String> criteria) {
+    return new EntityWrite(
+        title,
+        description,
+        clearDescription,
+        impetus,
+        clearImpetus,
+        type,
+        assignee,
+        clearAssignee,
+        repositoryId,
+        dependsOn,
+        clearDependsOn,
+        implementedAt,
+        clearImplementedAt,
+        implementingAt,
+        criteria);
+  }
+
+  /**
+   * Whether this edit restates the acceptance criteria (qits-887). They are neither scope nor a
+   * marker: an epic's stay editable at REFINED, outside the scope freeze, and from READY_FOR_DEV on
+   * a changed list is refused for an epic and a ticket alike ({@code WorkEntityService.edit}).
+   */
+  boolean touchesCriteria() {
+    return acceptanceCriteria != null;
   }
 
   /**
@@ -155,8 +195,9 @@ public record EntityWrite(
   }
 
   /**
-   * Whether this edit touches scope — anything but the marker. <b>An edit that supplies nothing at
-   * all counts as scope</b>: it is the structural endpoint, and letting an empty body through a
+   * Whether this edit touches scope — anything but the marker and the acceptance criteria. <b>An
+   * edit that supplies nothing at all counts as scope</b>: it is the structural endpoint, and
+   * letting an empty body through a
    * frozen epic's guard would make "nothing" the one write a freeze cannot refuse.
    */
   boolean touchesScope() {
@@ -171,6 +212,6 @@ public record EntityWrite(
         || repositoryId != null
         || dependsOn != null
         || clearDependsOn
-        || !touchesMarker();
+        || (!touchesMarker() && !touchesCriteria());
   }
 }

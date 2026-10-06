@@ -2,7 +2,7 @@
   "request" : "GET /projects/api/entities/archetypes",
   "status" : 200,
   "response" : {
-    "properties" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY", "SUPERSEDED_BY", "REPOSITORY_ID", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON" ],
+    "properties" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY", "SUPERSEDED_BY", "REPOSITORY_ID", "IMPLEMENTED_AT", "IMPLEMENTING_AT", "DEPENDS_ON", "ACCEPTANCE_CRITERIA" ],
     "serverOwned" : [ "SLUG", "CREATED_BY" ],
     "archetypes" : [ {
       "archetype" : "EPIC",
@@ -12,7 +12,7 @@
       "required" : [ "TITLE" ],
       "requiredAtCreate" : [ "TITLE" ],
       "requiredOnTransition" : [ "TITLE", "STATUS" ],
-      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "SUPERSEDED_BY", "ACCEPTANCE_CRITERIA" ],
       "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "READY_FOR_DEV", "REFINED", "REPORTED", "VERIFIED", "VERIFYING" ],
       "transitions" : {
         "REPORTED" : [ {
@@ -198,7 +198,7 @@
       "required" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
       "requiredAtCreate" : [ "TITLE", "STATUS", "TICKET_TYPE", "IMPETUS" ],
       "requiredOnTransition" : [ "TITLE", "STATUS", "TICKET_TYPE" ],
-      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY" ],
+      "permitted" : [ "TITLE", "SLUG", "DESCRIPTION", "STATUS", "TICKET_TYPE", "IMPETUS", "ASSIGNEE", "CREATED_BY", "ACCEPTANCE_CRITERIA" ],
       "legalStatuses" : [ "DONE", "DROPPED", "IMPLEMENTED", "IMPLEMENTING", "READY_FOR_DEV", "REFINED", "REPORTED", "VERIFIED", "VERIFYING" ],
       "transitions" : {
         "REPORTED" : [ {

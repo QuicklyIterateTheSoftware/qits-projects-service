@@ -236,7 +236,8 @@ public class EntityCreateController {
             false,
             null,
             false,
-            null);
+            null,
+            EntitySchemas.strings(body.get("acceptanceCriteria")).orElse(null));
     if (write.repositoryId() != null) {
       Repository repo = repositories.get(write.repositoryId()); // 404 if absent
       if (repo.project == null || !projectId.equals(repo.project.id)) {

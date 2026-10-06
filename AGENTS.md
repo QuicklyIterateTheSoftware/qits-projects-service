@@ -1101,6 +1101,22 @@ way out is DROP. V25 backfilled nothing: a REFINED row stays REFINED until someb
 campaign keeps READY_FOR_DEV and elides only IMPLEMENTING and VERIFYING — its lifecycle is the walk with
 the elided states removed (`EntityStateMachine.transitionsFrom(Archetype, …)`).
 
+**Acceptance criteria are an epic's and a ticket's ordered list of short statements (qits-934,
+epics V26).** `EntityProperty.ACCEPTANCE_CRITERIA`, `acceptanceCriteria` on the wire, permitted on
+EPIC and TICKET only and required by nobody. Stored as `WorkEntity.acceptanceCriteria`, an eager
+`@ElementCollection` over `entity_acceptance_criterion (entity_id, position, text)` — loaded with the
+row so every reader (DTOs, catalogue, audit snapshot, gates) has it, and written **in place**
+(`clear()` + `addAll`), never by assigning a new list. The item rules are `control/AcceptanceCriteria`'s
+alone — not blank, no `\n`/`\r`, at most one `.`, fewer than 20 whitespace characters — and the
+served schema carries them as the item `pattern`. Written by the create, `PATCH /entities/{id}` (null
+or `[]` clears), the PUT-shaped transition (absent clears, as every property there), `update_epic`,
+`update_ticket`, `propose_epic`. **They are not scope**: an epic's stay editable at REFINED, outside
+`requireReported`. **From READY_FOR_DEV on a CHANGED list is a 409** for both kinds
+(`WorkEntityService.requireCriteriaEditable`, on the edit and on the PUT door), and the same list
+restated — same items, same order — passes at every status, because the SPA's edit form restates the
+whole row through `POST /entities/transition`. The list rows of `EntitySummary` carry none, like the
+description; a feature's or task's merged shape omits the key.
+
 **Moving to `IMPLEMENTED` stamps every feature and task still unimplemented**, in the same
 transaction — declaring the epic implemented is declaring its scope implemented. That is why the
 epic implement prompt makes the move conditional on every task already being marked.
