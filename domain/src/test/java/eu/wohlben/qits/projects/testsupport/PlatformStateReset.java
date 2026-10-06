@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -98,6 +99,12 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
    * is in the middle of deleting. {@link Files#walk} takes its list first, so a file created after
    * the enumeration leaves its parent non-empty when the delete reaches it, and the whole suite
    * fails at whichever method happened to be next. Deleting again finds the file the writer left.
+   *
+   * <p>The mirror image is the same race: a file that existed when the walk listed its directory and
+   * is gone when the walk reaches it — a {@code git maintenance} the previous test's push started,
+   * removing its own {@code objects/maintenance.lock} — surfaces from the lazy walk as an {@link
+   * UncheckedIOException} around a {@link NoSuchFileException}. Walking again simply no longer
+   * sees it.
    */
   private static void wipe(Path dir) {
     for (int attempt = 1; Files.exists(dir); attempt++) {
@@ -111,6 +118,11 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
       } catch (DirectoryNotEmptyException raced) {
         if (attempt == 5) {
           throw new UncheckedIOException("Could not wipe " + dir, raced);
+        }
+        pause();
+      } catch (UncheckedIOException walked) {
+        if (attempt == 5 || !(walked.getCause() instanceof NoSuchFileException)) {
+          throw walked;
         }
         pause();
       } catch (IOException e) {
