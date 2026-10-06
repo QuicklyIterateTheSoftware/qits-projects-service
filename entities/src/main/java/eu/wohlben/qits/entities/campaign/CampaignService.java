@@ -51,8 +51,8 @@ import java.util.stream.Collectors;
  *       have a lifecycle ({@link Archetypes#legalStatuses}) and must be one a campaign may hold
  *       ({@link Nesting#mayContain}, which refuses a campaign inside a campaign). A campaign edge is
  *       not a tree edge and never goes through {@link Nesting#check}.
- *   <li><b>Membership edits are allowed while the campaign is REPORTED or REFINED</b>, running or
- *       not, and refused with a 409 at IMPLEMENTED, VERIFIED, DONE and DROPPED.
+ *   <li><b>Membership edits are allowed while the campaign is REPORTED, REFINED or READY_FOR_DEV</b>,
+ *       running or not, and refused with a 409 at IMPLEMENTED, VERIFIED, DONE and DROPPED.
  *   <li><b>Positions are dense and zero-based</b>; an insert shifts the tail and a move renumbers the
  *       affected span, {@code DossierService.move}'s idiom.
  *   <li><b>The seed.</b> A member added at position p when a member stands at p−1 that is neither
@@ -96,9 +96,23 @@ public class CampaignService {
    */
   private static final List<EntityStatus> FORWARD = EntityStateMachine.walk();
 
-  /** Where a campaign's membership may still be edited. */
+  /**
+   * Where a campaign's membership may still be edited: before IMPLEMENTED. READY_FOR_DEV (qits-887)
+   * is "ready for development", not frozen — a person may still reorder or add to it.
+   */
   private static final Set<String> EDITABLE =
-      Set.of(EntityStatus.REPORTED.name(), EntityStatus.REFINED.name());
+      Set.of(
+          EntityStatus.REPORTED.name(),
+          EntityStatus.REFINED.name(),
+          EntityStatus.READY_FOR_DEV.name());
+
+  /**
+   * Why a start press is refused (qits-887): the campaign's qualified id and its status. One
+   * sentence for {@link #start} and {@code campaignhost/CampaignStarter}, which decides it first,
+   * unlocked.
+   */
+  public static final String START_REFUSED =
+      "Start a campaign from REFINED or READY_FOR_DEV; campaign %s is %s. Move it to REFINED first.";
 
   /** Where an approval is refused: the campaign is over. */
   private static final Set<String> FINISHED =
@@ -640,8 +654,9 @@ public class CampaignService {
    * <b>A start press's row</b> (qits-417): upserts {@code campaign_start} — the first press inserts
    * it with {@code first_started_at = started_at = now}, every later one sets {@code started_at},
    * {@code started_by} and {@code active = true}, and {@code first_started_at}, the forward-only
-   * floor event criteria read, never moves. 409 unless the campaign is REFINED, decided under the
-   * campaign row's lock, so a pause that committed first is what this sees.
+   * floor event criteria read, never moves. 409 unless the campaign is REFINED or READY_FOR_DEV
+   * (qits-887 — the two statuses a campaign runs at, {@link EntityStateMachine#campaignRunsAt}),
+   * decided under the campaign row's lock, so a pause that committed first is what this sees.
    *
    * <p>Locks the campaign's entity row, then the start row — the same order the pause hook in {@code
    * WorkEntityService.transition} takes them in, so a press and a pause serialise on the first and
@@ -654,13 +669,8 @@ public class CampaignService {
         "campaign start",
         () -> {
           WorkEntity campaign = lockCampaign(campaignId);
-          if (!EntityStatus.REFINED.name().equals(campaign.status)) {
-            throw new ConflictException(
-                "Start a campaign from REFINED; campaign "
-                    + qid(campaign)
-                    + " is "
-                    + campaign.status
-                    + ". Move it to REFINED first.");
+          if (!EntityStateMachine.campaignRunsAt(campaign.status)) {
+            throw new ConflictException(START_REFUSED.formatted(qid(campaign), campaign.status));
           }
           // Microseconds, what the column holds, so the row answered is the row stored.
           Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
@@ -846,7 +856,10 @@ public class CampaignService {
     return ids;
   }
 
-  /** A membership may be edited while its campaign is REPORTED or REFINED, and never after. */
+  /**
+   * A membership may be edited while its campaign is REPORTED, REFINED or READY_FOR_DEV, and never
+   * after.
+   */
   private void requireEditable(WorkEntity campaign) {
     if (!EDITABLE.contains(campaign.status)) {
       throw new ConflictException(
@@ -854,8 +867,8 @@ public class CampaignService {
               + qid(campaign)
               + " is "
               + campaign.status
-              + ": its members and their conditions are edited only while it is REPORTED or"
-              + " REFINED.");
+              + ": its members and their conditions are edited only while it is REPORTED, REFINED"
+              + " or READY_FOR_DEV.");
     }
   }
 

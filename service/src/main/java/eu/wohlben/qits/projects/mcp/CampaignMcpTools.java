@@ -194,7 +194,7 @@ public class CampaignMcpTools {
           "Propose a new campaign for this project. It is created REPORTED and empty — no members,"
               + " never started — so add its members with add_campaign_member next. Moving it to"
               + " REFINED is the claim that its membership and order are ready; starting a REFINED"
-              + " campaign is a person's press, not a tool on this server.")
+              + " (or READY_FOR_DEV) campaign is a person's press, not a tool on this server.")
   public CampaignDto createCampaign(
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(required = false, description = "the long-form Markdown description") String description) {
@@ -215,12 +215,16 @@ public class CampaignMcpTools {
               + " and verified), so its walk is REPORTED <-> REFINED <-> READY_FOR_DEV <->"
               + " IMPLEMENTED <-> VERIFIED -> DONE with both left out: READY_FOR_DEV -> IMPLEMENTED"
               + " and IMPLEMENTED -> VERIFIED are one step forward, VERIFIED -> IMPLEMENTED and"
-              + " IMPLEMENTED -> READY_FOR_DEV one step back. Its membership and conditions are editable only while it is"
-              + " REPORTED or REFINED — add_campaign_member, move_campaign_member,"
-              + " remove_campaign_member and set_campaign_member_condition are all refused once it"
-              + " moves past REFINED. Moving out of REFINED pauses a campaign that is currently"
-              + " running. Starting a REFINED campaign, and approving an APPROVAL criterion, are both"
-              + " a person's press and are not reachable from this server.")
+              + " IMPLEMENTED -> READY_FOR_DEV one step back. REFINED -> READY_FOR_DEV is a person's"
+              + " move and is refused here (PERSON_APPROVAL), and refused to anybody while a member"
+              + " that is not DROPPED is still before READY_FOR_DEV (MEMBERS_SCHEDULED). Its"
+              + " membership and conditions are editable only while it is REPORTED, REFINED or"
+              + " READY_FOR_DEV — add_campaign_member, move_campaign_member, remove_campaign_member"
+              + " and set_campaign_member_condition are all refused once it moves past"
+              + " READY_FOR_DEV. A started campaign runs at REFINED and at READY_FOR_DEV alike: moving"
+              + " between the two neither starts nor pauses it, and moving out of both pauses it."
+              + " Starting a REFINED or READY_FOR_DEV campaign, and approving an APPROVAL criterion,"
+              + " are both a person's press and are not reachable from this server.")
   public CampaignDto transitionCampaign(
       @ToolArg(description = "id of a campaign in this project") String id,
       @ToolArg(
@@ -245,7 +249,8 @@ public class CampaignMcpTools {
       description =
           "Add an epic or a ticket of this project to a campaign, at a position (omit to append)."
               + " Refused with a 409 for a feature or a task, one a campaign may not hold, one"
-              + " of another project, a duplicate, or a campaign no longer REPORTED or REFINED. When"
+              + " of another project, a duplicate, or a campaign no longer REPORTED, REFINED or"
+              + " READY_FOR_DEV. When"
               + " a member already stands at the position just before this one and is not yet"
               + " VERIFIED or DONE, the new member is SEEDED to wait on that predecessor reaching"
               + " VERIFIED — one group, one ENTITY_STATUS criterion — so ordering members is itself"

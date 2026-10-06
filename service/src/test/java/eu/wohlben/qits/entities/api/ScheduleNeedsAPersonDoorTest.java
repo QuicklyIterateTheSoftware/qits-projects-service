@@ -207,6 +207,38 @@ class ScheduleNeedsAPersonDoorTest {
         .body("campaign.status", equalTo("READY_FOR_DEV"));
   }
 
+  /**
+   * A campaign is ready for dev when its members are (qits-942): a person's move at the campaign door
+   * is refused while a member is still REFINED, naming it, and goes through once it is scheduled. A
+   * machine is refused by both gates at once.
+   */
+  @Test
+  void aCampaignIsScheduledByAPersonOnceItsMembersAre() {
+    String projectId = project("Campaign members scheduled");
+    String campaignId = refinedCampaign(projectId);
+    String memberId = refined(projectId, "TICKET");
+    session("ada", "ada")
+        .body(Map.of("entityId", memberId))
+        .when()
+        .post("/projects/api/campaigns/" + campaignId + "/members")
+        .then()
+        .statusCode(200);
+
+    campaign(session("ada", "ada"), campaignId, "READY_FOR_DEV")
+        .statusCode(409)
+        .body("message", containsString("MEMBERS_SCHEDULED: a member is not READY_FOR_DEV yet: "))
+        .body("message", containsString(" (REFINED)"));
+    campaign(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
+        .statusCode(409)
+        .body("message", containsString("MEMBERS_SCHEDULED: "))
+        .body("message", containsString(REFUSAL));
+
+    status(session("ada", "ada"), memberId, "READY_FOR_DEV").statusCode(200);
+    campaign(session("ada", "ada"), campaignId, "READY_FOR_DEV")
+        .statusCode(200)
+        .body("campaign.status", equalTo("READY_FOR_DEV"));
+  }
+
   @Test
   void aPersonsCliSchedulesUnderTheTokensName() {
     String projectId = project("Person CLI schedules");

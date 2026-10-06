@@ -18,9 +18,10 @@ import java.util.UUID;
  *
  * <ul>
  *   <li>{@link #firstStartedAt} is the forward-only floor for event criteria and never moves.
- *   <li>{@link #active} is what the executor acts on, together with the campaign being REFINED. It
- *       is cleared by the pause hook in {@code WorkEntityService.transition}, in the same transaction
- *       as the campaign leaving REFINED, and set again only by a new start press.
+ *   <li>{@link #active} is what the executor acts on, together with the campaign being REFINED or
+ *       READY_FOR_DEV (qits-887). It is cleared by the pause hook in {@code
+ *       WorkEntityService.transition}, in the same transaction as the campaign leaving both, and set
+ *       again only by a new start press — the move between the two touches neither.
  * </ul>
  */
 @Entity

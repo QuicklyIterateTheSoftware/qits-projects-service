@@ -176,11 +176,16 @@ class CampaignServiceTest extends EntitiesTestSupport {
   @Test
   void membershipIsFrozenOnceTheCampaignIsImplemented() {
     WorkEntity campaign = campaign();
-    CampaignService.Member member = campaigns.addMember(campaign.id, ticket("A").id, null, false, WHO);
+    CampaignService.Member member =
+        campaigns.addMember(campaign.id, scheduled("A").id, null, false, WHO);
     walk(campaign, "REFINED");
     // Running or not, REFINED is still editable.
-    campaigns.addMember(campaign.id, ticket("B").id, null, false, WHO);
-    walk(campaign, "READY_FOR_DEV", "IMPLEMENTED");
+    campaigns.addMember(campaign.id, scheduled("B").id, null, false, WHO);
+    walk(campaign, "READY_FOR_DEV");
+    // And READY_FOR_DEV (qits-887): ready for development, not frozen.
+    CampaignService.Member late = campaigns.addMember(campaign.id, scheduled("D").id, null, false, WHO);
+    campaigns.moveMember(campaign.id, late.membership().id, 0, WHO);
+    walk(campaign, "IMPLEMENTED");
 
     conflict(() -> campaigns.addMember(campaign.id, ticket("C").id, null, false, WHO), "IMPLEMENTED");
     conflict(() -> campaigns.moveMember(campaign.id, member.membership().id, 1, WHO), "IMPLEMENTED");
@@ -437,6 +442,41 @@ class CampaignServiceTest extends EntitiesTestSupport {
     assertTrue(inTx(() -> starts.startOf(neverStarted.id).isEmpty()), "no row, nothing to do");
   }
 
+  /**
+   * qits-887, decision 19: REFINED <-> READY_FOR_DEV neither pauses nor starts — a started campaign
+   * runs at both — and leaving both pauses as leaving REFINED always did.
+   */
+  @Test
+  void schedulingACampaignNeitherPausesNorStartsItAndLeavingBothPauses() {
+    WorkEntity campaign = walk(campaign(), "REFINED");
+    start(campaign.id);
+
+    walk(campaign, "READY_FOR_DEV");
+    assertTrue(active(campaign.id), "scheduling is not a pause");
+    walk(campaign, "REFINED");
+    assertTrue(active(campaign.id), "unscheduling is not a pause either");
+    walk(campaign, "READY_FOR_DEV", "IMPLEMENTED");
+    assertFalse(active(campaign.id), "moving on past READY_FOR_DEV pauses it");
+
+    WorkEntity unstarted = walk(campaign(), "REFINED", "READY_FOR_DEV");
+    assertTrue(inTx(() -> starts.startOf(unstarted.id).isEmpty()), "READY_FOR_DEV starts nothing");
+  }
+
+  /** The start press is accepted at REFINED and at READY_FOR_DEV (qits-887), and nowhere else. */
+  @Test
+  void aStartIsAcceptedAtRefinedAndAtReadyForDev() {
+    WorkEntity reported = campaign();
+    conflict(() -> campaigns.start(reported.id, WHO), "Start a campaign from REFINED or READY_FOR_DEV");
+
+    WorkEntity refined = walk(campaign(), "REFINED");
+    assertTrue(campaigns.start(refined.id, WHO).active);
+    WorkEntity scheduled = walk(campaign(), "REFINED", "READY_FOR_DEV");
+    assertTrue(campaigns.start(scheduled.id, WHO).active);
+
+    walk(scheduled, "IMPLEMENTED");
+    conflict(() -> campaigns.start(scheduled.id, WHO), "is IMPLEMENTED");
+  }
+
   // --- the audit -----------------------------------------------------------------------------------
 
   @Test
@@ -470,6 +510,11 @@ class CampaignServiceTest extends EntitiesTestSupport {
         .create(
             Archetype.TICKET, PROJECT, EntityWrite.ticket(title, "it occurs", null, "BUG", null).withAcceptanceCriteria(EntitiesTestSupport.CRITERIA), WHO)
         .entity();
+  }
+
+  /** A ticket a person scheduled: READY_FOR_DEV, so a campaign holding it may be too (qits-887). */
+  private WorkEntity scheduled(String title) {
+    return walk(ticket(title), "REFINED", "READY_FOR_DEV");
   }
 
   /** Moves {@code row} through each status in turn and answers it as it ends up. */

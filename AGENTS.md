@@ -1101,6 +1101,17 @@ way out is DROP. V25 backfilled nothing: a REFINED row stays REFINED until someb
 campaign keeps READY_FOR_DEV and elides only IMPLEMENTING and VERIFYING — its lifecycle is the walk with
 the elided states removed (`EntityStateMachine.transitionsFrom(Archetype, …)`).
 
+**A campaign is READY_FOR_DEV when its members are (qits-942, decision 19).** Its REFINED →
+READY_FOR_DEV is a person's move (`PERSON_APPROVAL`) and is judged by
+`entities/campaign/MembersScheduledGate` (`MEMBERS_SCHEDULED`): refused while any member that is not
+DROPPED is still before READY_FOR_DEV, the 409 naming each with its status; an empty campaign has
+nobody behind and passes. READY_FOR_DEV means "ready for development", **not "start it"**: a started
+campaign runs at REFINED and READY_FOR_DEV alike (`EntityStateMachine.campaignRunsAt`) — the start
+press (`CampaignService.start`, `CampaignStarter`), the dispatch read (`EntityDispatch.campaignState`),
+the executor's claim and its sweep all accept both — and the move between the two neither starts nor
+pauses it. The pause hook fires when the campaign leaves both (REPORTED, IMPLEMENTED, DROPPED).
+Membership stays editable at READY_FOR_DEV (`CampaignService.EDITABLE`).
+
 **Acceptance criteria are an epic's and a ticket's ordered list of short statements (qits-934,
 epics V26).** `EntityProperty.ACCEPTANCE_CRITERIA`, `acceptanceCriteria` on the wire, permitted on
 EPIC and TICKET only and required by nobody. Stored as `WorkEntity.acceptanceCriteria`, an eager

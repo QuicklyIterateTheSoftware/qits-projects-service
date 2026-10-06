@@ -339,6 +339,62 @@ class CampaignExecutorTest {
     assertNull(untouched.dispatchRefusal, "started by hand is not something wrong with it");
   }
 
+  // --- 5c. a campaign runs at REFINED and at READY_FOR_DEV (qits-942) -----------------------------
+
+  /**
+   * A started campaign scheduled (REFINED → READY_FOR_DEV) keeps running: the move pauses nothing,
+   * and the executor claims the next member while the campaign is READY_FOR_DEV.
+   */
+  @Test
+  void aStartedCampaignKeepsRunningAcrossItsScheduling() {
+    WorkEntity first = scheduled("First");
+    Fixture f = campaignOf(List.of(first, scheduled("Second")), List.of(false, false));
+    press(f.campaign.id);
+    assertEquals(1, port.calls().size(), "the first starts at the press");
+
+    walk(f.campaign, "READY_FOR_DEV");
+    asAdmin("dana")
+        .get("/projects/api/entities/" + f.campaign.id + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.status", equalTo("READY_FOR_DEV"))
+        .body("state.nextPhase", equalTo("recheck"))
+        .body("state.dispatchable", equalTo(true));
+
+    walk(first, "IMPLEMENTED", "VERIFIED");
+    deliver(transitioned(first, "IMPLEMENTED", "VERIFIED"));
+    awaitQuiet();
+
+    assertEquals(2, port.calls().size(), "claimed while the campaign is READY_FOR_DEV");
+    assertEquals(f.members.get(1).id, port.lastCall().subject().ticketId());
+    assertNotNull(membership(f, 1).dispatchedAt);
+  }
+
+  /**
+   * An unstarted campaign moved to READY_FOR_DEV stays unstarted — READY_FOR_DEV means "ready for
+   * development", not "start it" — until a person presses, which is accepted there.
+   */
+  @Test
+  void anUnstartedCampaignScheduledStartsNothingUntilItIsPressed() {
+    Fixture f = campaignOf(scheduled("Ready"));
+    walk(f.campaign, "READY_FOR_DEV");
+
+    assertEquals(0, executor.sweep(f.campaign.id));
+    assertEquals(0, executor.sweep());
+    assertEquals(0, port.calls().size(), "the move started nothing");
+    asAdmin("dana")
+        .get("/projects/api/entities/" + f.campaign.id + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.nextPhase", equalTo("start"))
+        .body("state.dispatchable", equalTo(true));
+
+    press(f.campaign.id);
+
+    assertEquals(1, port.calls().size(), "the press starts it at READY_FOR_DEV");
+    assertNotNull(membership(f, 0).dispatchedAt);
+  }
+
   // --- 6. the member moves between the precheck and the claim ------------------------------------
 
   @Test

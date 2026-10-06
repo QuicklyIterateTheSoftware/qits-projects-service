@@ -581,7 +581,7 @@
         "REFINED" : [ {
           "to" : "READY_FOR_DEV",
           "kind" : "FORWARD",
-          "gates" : [ "PERSON_APPROVAL" ]
+          "gates" : [ "MEMBERS_SCHEDULED", "PERSON_APPROVAL" ]
         }, {
           "to" : "REPORTED",
           "kind" : "BACK"

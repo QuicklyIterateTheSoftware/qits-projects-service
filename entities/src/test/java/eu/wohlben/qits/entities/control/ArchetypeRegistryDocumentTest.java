@@ -432,6 +432,19 @@ class ArchetypeRegistryDocumentTest {
     assertEquals(
         List.of("PERSON_APPROVAL"), gatesOf(both, Archetype.CAMPAIGN, "REFINED", "READY_FOR_DEV"));
     assertEquals(List.of(), gatesOf(both, Archetype.EPIC, "READY_FOR_DEV", "REFINED"));
+    // And a campaign's own (qits-942): its members are scheduled, beside the person.
+    List<TransitionGate> all =
+        List.of(
+            new PersonApprovalGate(),
+            new AcceptanceCriteriaGate(),
+            new eu.wohlben.qits.entities.campaign.MembersScheduledGate());
+    assertEquals(
+        List.of("MEMBERS_SCHEDULED", "PERSON_APPROVAL"),
+        gatesOf(all, Archetype.CAMPAIGN, "REFINED", "READY_FOR_DEV"));
+    assertEquals(
+        List.of("ACCEPTANCE_CRITERIA", "PERSON_APPROVAL"),
+        gatesOf(all, Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
+    assertEquals(List.of(), gatesOf(all, Archetype.CAMPAIGN, "READY_FOR_DEV", "REFINED"));
     // With no gate handed in, nothing is named.
     assertEquals(List.of(), gatesOf(List.of(), Archetype.EPIC, "REFINED", "READY_FOR_DEV"));
   }

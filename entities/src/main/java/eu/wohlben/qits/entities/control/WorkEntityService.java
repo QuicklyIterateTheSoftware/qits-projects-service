@@ -959,12 +959,14 @@ public class WorkEntityService {
     row.status = to.name();
     row.blocked = false;
     if (archetype == Archetype.CAMPAIGN
-        && EntityStatus.REFINED.name().equals(statusBefore)
-        && to != EntityStatus.REFINED) {
-      // The pause hook (qits-413): a campaign that leaves REFINED stops its executor, in this very
-      // transaction, so no claim can land between the move and the pause. The UPDATE takes the row
-      // lock the executor's claim waits on; a campaign never started has no row and nothing happens.
-      // Resuming is a new start press at REFINED — moving back is not enough.
+        && EntityStateMachine.campaignRunsAt(statusBefore)
+        && !EntityStateMachine.campaignRunsAt(to.name())) {
+      // The pause hook (qits-413): a campaign that leaves the statuses it runs at — REFINED and
+      // READY_FOR_DEV since qits-887 — stops its executor, in this very transaction, so no claim can
+      // land between the move and the pause. The UPDATE takes the row lock the executor's claim waits
+      // on; a campaign never started has no row and nothing happens. REFINED <-> READY_FOR_DEV
+      // neither pauses nor starts: READY_FOR_DEV means ready for development, not "start it".
+      // Resuming is a new start press at either — moving back is not enough.
       campaignStarts.pause(row.id);
     }
     if (successor != null) {
@@ -1206,14 +1208,16 @@ public class WorkEntityService {
     if (kind.archetype() == Archetype.CAMPAIGN
         && !EntityStateMachine.states(Archetype.CAMPAIGN).contains(to)) {
       // A campaign never enters IMPLEMENTING or VERIFYING (qits-749): its press starts it and
-      // REFINED is what "running" means, so either status would say nothing a campaign's start does
-      // not already say. Its lifecycle elides both already; this refusal is here for the sentence.
+      // REFINED or READY_FOR_DEV is what "running" means, so either status would say nothing a
+      // campaign's start does not already say. Its lifecycle elides both already; this refusal is
+      // here for the sentence.
       throw new ConflictException(
           "A campaign never moves to "
               + to
               + ": campaign "
               + row.id
-              + " runs while it is REFINED, and its members are what is implemented and verified.");
+              + " runs while it is REFINED or READY_FOR_DEV, and its members are what is"
+              + " implemented and verified.");
     }
     EntityLifecycle.requireTransition(kind.archetype(), EntityStatus.valueOf(row.status), to);
     return to;

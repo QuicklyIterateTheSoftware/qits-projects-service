@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.campaignhost;
 
 import eu.wohlben.qits.entities.campaign.CampaignService;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.entity.Archetype;
-import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.api.DispatchMode;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
@@ -17,8 +17,10 @@ import jakarta.inject.Inject;
  * itself refuses a campaign, so no in-process path can cut a workspace for one.
  *
  * <ol>
- *   <li>{@code PHASE} is a 409 — a campaign presses dispatch only; a status other than REFINED is a
- *       409 (decided again under the campaign row's lock, in {@link CampaignService#start}); and so
+ *   <li>{@code PHASE} is a 409 — a campaign presses dispatch only; a status other than REFINED or
+ *       READY_FOR_DEV (qits-887: the two a campaign runs at, {@link
+ *       EntityStateMachine#campaignRunsAt}) is a 409 (decided again under the campaign row's lock, in
+ *       {@link CampaignService#start}); and so
  *       is a <b>blocked</b> campaign (qits-592) — somebody wrote down why it must wait, and a start
  *       press would be a sweep {@link CampaignExecutor} refuses member by member anyway. The block
  *       is decided here only, unlocked: a block landing after this check starts a campaign whose
@@ -32,6 +34,8 @@ import jakarta.inject.Inject;
  *
  * <p>A press while the campaign is running is allowed and is how a person re-checks every waiting
  * member at once. Resuming a paused campaign is a press too: moving it back to REFINED is not.
+ * <b>Nor is moving it to READY_FOR_DEV a start</b> (qits-887, decision 19): that status means
+ * "ready for development", and a campaign is started by this press alone, at either status.
  */
 @ApplicationScoped
 public class CampaignStarter {
@@ -60,14 +64,9 @@ public class CampaignStarter {
               + campaign.id
               + ".");
     }
-    if (!EntityStatus.REFINED.name().equals(campaign.status)) {
+    if (!EntityStateMachine.campaignRunsAt(campaign.status)) {
       throw new DomainException(
-          409,
-          "Start a campaign from REFINED; campaign "
-              + campaign.id
-              + " is "
-              + campaign.status
-              + ". Move it to REFINED first.");
+          409, CampaignService.START_REFUSED.formatted(campaign.id, campaign.status));
     }
     if (campaign.blocked) {
       throw new DomainException(

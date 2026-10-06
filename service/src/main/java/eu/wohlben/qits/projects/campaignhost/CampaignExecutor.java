@@ -8,6 +8,7 @@ import eu.wohlben.qits.entities.campaign.CampaignEvaluator;
 import eu.wohlben.qits.entities.campaign.CampaignMembersSatisfied;
 import eu.wohlben.qits.entities.campaign.Conditions;
 import eu.wohlben.qits.entities.campaign.EntityQualifier;
+import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.MembershipKind;
@@ -97,8 +98,14 @@ import org.jboss.logging.Logger;
  * property, so a block racing a claim either wins or lands one claim late, and taking the campaign
  * row here would break the lock order below. Claiming resumes after an unblock ({@code
  * EntityBlocks} runs {@link #sweep(String)} straight after, and the periodic sweep is the belt) or
- * after the next transition clears the flag — a move off REFINED pauses the start, so that one
- * resumes at the next start press.
+ * after the next transition clears the flag — a move off REFINED and READY_FOR_DEV pauses the
+ * start, so that one resumes at the next start press.
+ *
+ * <h2>A campaign runs at REFINED and at READY_FOR_DEV (qits-887)</h2>
+ *
+ * <p>Steps 1 and 3 and the sweep claim while the campaign is started and at either status ({@link
+ * EntityStateMachine#campaignRunsAt}). The move between the two starts nothing and pauses nothing:
+ * READY_FOR_DEV means "ready for development", and only a start press starts a campaign.
  *
  * <h2>Locks, and why they cannot deadlock with {@code CampaignService}</h2>
  *
@@ -143,9 +150,9 @@ public class CampaignExecutor {
   /** What one {@link #tryDispatch} came to — for the sweep's count, the log and the tests. */
   public enum Attempt {
     /**
-     * Nothing to do: not a campaign member, claimed, not started, not REFINED, blocked, not
-     * satisfied — or the member is not scheduled (REFINED, its waiting written once) or was started
-     * by hand (an unclaimed IMPLEMENTING member, qits-887).
+     * Nothing to do: not a campaign member, claimed, not started, not REFINED or READY_FOR_DEV,
+     * blocked, not satisfied — or the member is not scheduled (REFINED, its waiting written once)
+     * or was started by hand (an unclaimed IMPLEMENTING member, qits-887).
      */
     NOT_READY,
     /** The member is VERIFIED or DONE already: skipped silently; progress shows it done. */
@@ -387,7 +394,7 @@ public class CampaignExecutor {
       return Look.stop(Attempt.NOT_READY);
     }
     WorkEntity campaign = em.find(WorkEntity.class, edge.parentId);
-    if (campaign == null || !EntityStatus.REFINED.name().equals(campaign.status) || campaign.blocked) {
+    if (campaign == null || !EntityStateMachine.campaignRunsAt(campaign.status) || campaign.blocked) {
       return Look.stop(Attempt.NOT_READY);
     }
     if (!startActive(edge.parentId, false).active()) {
@@ -432,7 +439,7 @@ public class CampaignExecutor {
       return new Claim(Attempt.LOST, null, null, false);
     }
     if (campaign == null
-        || !EntityStatus.REFINED.name().equals(campaign.status)
+        || !EntityStateMachine.campaignRunsAt(campaign.status)
         || campaign.blocked
         || !start.active()
         || !satisfied(edge.id)) {
@@ -645,7 +652,10 @@ public class CampaignExecutor {
     }
   }
 
-  /** Every active, unblocked REFINED campaign; answers how many members it dispatched. */
+  /**
+   * Every active, unblocked campaign at a status it runs at (REFINED or READY_FOR_DEV, qits-887);
+   * answers how many members it dispatched.
+   */
   @ActivateRequestContext
   public int sweep() {
     @SuppressWarnings("unchecked")
@@ -658,9 +668,14 @@ public class CampaignExecutor {
                             select s.campaign_id
                               from campaign_start s
                               join entity e on e.id = s.campaign_id
-                             where s.active and e.status = 'REFINED' and not e.blocked
+                             where s.active and e.status in (:running) and not e.blocked
                              order by s.campaign_id
                             """)
+                        .setParameter(
+                            "running",
+                            EntityStateMachine.campaignRunStatuses().stream()
+                                .map(Enum::name)
+                                .toList())
                         .getResultList());
     int dispatched = 0;
     for (String campaignId : campaignIds) {

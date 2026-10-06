@@ -42,8 +42,9 @@ import java.util.Map;
  *       forwarded header.
  *   <li><b>The transition is the only door that moves a campaign's status</b> — the MIMO door
  *       refuses it — and goes through {@link EntityResolutions} and so through the announcer;
- *       leaving REFINED pauses the campaign's start in the same transaction (the hook is inside
- *       {@code WorkEntityService.transition}, not here).
+ *       leaving REFINED and READY_FOR_DEV pauses the campaign's start in the same transaction (the
+ *       hook is inside {@code WorkEntityService.transition}, not here); the move between those two
+ *       neither starts nor pauses it (qits-887).
  *   <li><b>Every write fires the {@code epics} hint</b>, after the service has returned.
  * </ul>
  */
@@ -106,9 +107,11 @@ public class CampaignController {
 
   /**
    * A lifecycle move of the campaign — {@code REFINED} readies it to be started, leaving REFINED
-   * pauses a started one, {@code DROPPED} stops it. A move the lifecycle does not allow is a 409.
-   * REFINED → READY_FOR_DEV is a person's move (qits-887, {@code PERSON_APPROVAL}): the caller is
-   * built into a {@code Mover} by {@link EntityMovers}, and a machine is refused with a 409.
+   * and READY_FOR_DEV pauses a started one, {@code DROPPED} stops it. A move the lifecycle does not
+   * allow is a 409. REFINED → READY_FOR_DEV is a person's move (qits-887, {@code PERSON_APPROVAL}):
+   * the caller is built into a {@code Mover} by {@link EntityMovers}, and a machine is refused with a
+   * 409 — as is anybody while a member that is not DROPPED is still before READY_FOR_DEV ({@code
+   * MEMBERS_SCHEDULED}). The move neither starts nor pauses the campaign.
    */
   @POST
   @Path("/{id}/transition")

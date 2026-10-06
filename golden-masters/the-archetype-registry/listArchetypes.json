@@ -936,6 +936,7 @@
             "to": "READY_FOR_DEV",
             "kind": "FORWARD",
             "gates": [
+              "MEMBERS_SCHEDULED",
               "PERSON_APPROVAL"
             ]
           },

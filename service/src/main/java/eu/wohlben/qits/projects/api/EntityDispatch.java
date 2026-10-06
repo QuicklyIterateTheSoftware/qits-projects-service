@@ -278,7 +278,8 @@ public class EntityDispatch {
   }
 
   /**
-   * <b>A campaign's read</b> (qits-417): a press is accepted whenever it is REFINED and not blocked —
+   * <b>A campaign's read</b> (qits-417): a press is accepted whenever it is REFINED or READY_FOR_DEV
+   * (qits-887, {@link EntityStateMachine#campaignRunsAt}) and not blocked —
    * while it runs too, since a press re-checks every waiting member — and what it would do is start
    * it, or, once a start is active, re-check it. A campaign has no phase of its own; its block
    * (qits-592) is reported as it stands and refuses the press, as {@code CampaignStarter} does. The
@@ -296,7 +297,7 @@ public class EntityDispatch {
         campaign.status,
         active ? "recheck" : "start",
         campaign.blocked,
-        EntityStatus.REFINED.name().equals(campaign.status) && !campaign.blocked,
+        EntityStateMachine.campaignRunsAt(campaign.status) && !campaign.blocked,
         start.isPresent() ? DispatchMode.FLOW : null);
   }
 

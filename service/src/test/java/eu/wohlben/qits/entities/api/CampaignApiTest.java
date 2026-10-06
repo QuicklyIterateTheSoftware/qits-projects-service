@@ -184,6 +184,19 @@ class CampaignApiTest {
         .then()
         .statusCode(409)
         .body("message", containsString("never moves to IMPLEMENTING"));
+    // ... it is READY_FOR_DEV only once its members are (qits-942, MEMBERS_SCHEDULED) ...
+    given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
+        .contentType(ContentType.JSON)
+        .body(Map.of("target", "READY_FOR_DEV"))
+        .post(base + "/transition")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("MEMBERS_SCHEDULED: 2 members are not READY_FOR_DEV yet"));
+    for (WorkEntity member : List.of(a, b)) {
+      for (String status : List.of("REFINED", "READY_FOR_DEV")) {
+        workEntities.transition(Archetype.TICKET, member.id, status, Mover.person("dev"));
+      }
+    }
     // ... it walks READY_FOR_DEV (qits-887), and its BACK moves are IMPLEMENTED -> READY_FOR_DEV and
     // VERIFIED -> IMPLEMENTED, with VERIFYING refused the same way (qits-749), through the same door.
     for (String target :

@@ -220,6 +220,15 @@ public final class EntityStateMachine {
   private static final Map<Archetype, Set<EntityStatus>> ELIDED =
       Map.of(Archetype.CAMPAIGN, EnumSet.of(EntityStatus.IMPLEMENTING, EntityStatus.VERIFYING));
 
+  /**
+   * The statuses a started campaign runs at (qits-887, decision 19): REFINED, and READY_FOR_DEV —
+   * which means "ready for development", not "start it". The start press is accepted at either, the
+   * executor claims at either, and moving between the two neither starts nor pauses anything; a
+   * campaign that leaves both is paused.
+   */
+  private static final Set<EntityStatus> CAMPAIGN_RUNS =
+      EnumSet.of(EntityStatus.REFINED, EntityStatus.READY_FOR_DEV);
+
   static {
     verify();
   }
@@ -474,6 +483,17 @@ public final class EntityStateMachine {
       throw new IllegalArgumentException(milestone + " is not on the walk");
     }
     return at >= of;
+  }
+
+  /** Whether a started campaign at {@code statusWord} runs — see {@link #CAMPAIGN_RUNS}. */
+  public static boolean campaignRunsAt(String statusWord) {
+    return statusWord != null
+        && CAMPAIGN_RUNS.stream().anyMatch(status -> status.name().equals(statusWord));
+  }
+
+  /** The statuses a started campaign runs at, in walk order — see {@link #CAMPAIGN_RUNS}. */
+  public static List<EntityStatus> campaignRunStatuses() {
+    return WALK.stream().filter(CAMPAIGN_RUNS::contains).toList();
   }
 
   /** Whether {@code status} is off the walk — DROPPED. */
