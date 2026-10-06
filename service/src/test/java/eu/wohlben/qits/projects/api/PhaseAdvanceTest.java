@@ -133,6 +133,12 @@ public class PhaseAdvanceTest {
         .statusCode(200);
   }
 
+  /** Refined and scheduled by a person (qits-887): the ticket stands at READY_FOR_DEV. */
+  private void scheduled(String ticketId) {
+    transition(ticketId, "REFINED");
+    transition(ticketId, "READY_FOR_DEV");
+  }
+
   /** The transition body, spelled here so this suite needs nothing of the entities module's API. */
   private record Transition(String target) {}
 
@@ -202,8 +208,9 @@ public class PhaseAdvanceTest {
   /**
    * <b>The whole rule, once per status.</b> Each move delivers the phase its new status begins, on
    * the ticket's own branch at the project's wrapper — and the statuses that start nothing deliver
-   * nothing at all, which is where the one remaining human decision lives. This walk covers the
-   * two on the pipeline; DROPPED is off it and has a case of its own.
+   * nothing at all, which is where the human decisions live: REFINED waits for a person to schedule
+   * it, the scheduling itself starts nothing (qits-887), and VERIFIED and DONE are a person's to
+   * close. This walk covers the pipeline; DROPPED is off it and has a case of its own.
    */
   @Test
   public void eachStatusDeliversThePromptThePhaseItStartsNeeds() {
@@ -211,34 +218,37 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Walk me through");
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
-    // REPORTED → REFINED: the implement phase is what runs while REFINED holds.
+    // REPORTED → REFINED: nothing runs while REFINED holds — a person schedules it.
     transition(ticketId, "REFINED");
+    assertEquals(List.of(), turns.calls(), "REFINED starts no phase");
+    // REFINED → READY_FOR_DEV is that person's approval, and not a hand-off.
+    transition(ticketId, "READY_FOR_DEV");
+    assertEquals(List.of(), turns.calls(), "scheduling starts nothing on its own");
+    assertEquals("READY_FOR_DEV", statusOf(ticketId));
+
+    // READY_FOR_DEV → IMPLEMENTED (the skip): verify is what runs while IMPLEMENTED holds.
+    transition(ticketId, "IMPLEMENTED");
     assertEquals(1, turns.calls().size(), "one transition, one turn");
-    RecordingWorkspaceAgentTurns.Spoken implement = turns.lastCall();
+    RecordingWorkspaceAgentTurns.Spoken verify = turns.lastCall();
     assertEquals(
         wrapperIdOf(projectId),
-        implement.repositoryId(),
+        verify.repositoryId(),
         "a ticket names no repository, so the turn goes to the project's wrapper");
-    assertEquals("ticket/walk-me-through", implement.branch());
+    assertEquals("ticket/walk-me-through", verify.branch());
     assertTrue(
-        implement.text().contains("Implement ticket \""),
-        "REFINED starts implementation: " + implement.text());
-    // The turn was spoken, so the implementation started and the ticket says so (qits-749).
-    assertEquals("IMPLEMENTING", statusOf(ticketId));
-
-    transition(ticketId, "IMPLEMENTED");
-    assertTrue(
-        turns.lastCall().text().contains("Verify ticket \""),
-        "IMPLEMENTED starts verification: " + turns.lastCall().text());
+        verify.text().contains("Verify ticket \""),
+        "IMPLEMENTED starts verification: " + verify.text());
+    // The turn was spoken, so the verification started and the ticket says so (qits-749).
+    assertEquals("VERIFYING", statusOf(ticketId));
 
     // VERIFIED and DONE start no phase: the work is over and closing is a person's move. VERIFIED
     // does ask for the release of the branch the work was done on — which is not a turn, and is
     // what the tests below are about.
     transition(ticketId, "VERIFIED");
     assertEquals(
-        2, turns.calls().size(), "a move into VERIFIED starts no phase, so it delivers no turn");
+        1, turns.calls().size(), "a move into VERIFIED starts no phase, so it delivers no turn");
     transition(ticketId, "DONE");
-    assertEquals(2, turns.calls().size(), "and neither does a move into DONE");
+    assertEquals(1, turns.calls().size(), "and neither does a move into DONE");
   }
 
   /**
@@ -359,7 +369,7 @@ public class PhaseAdvanceTest {
             .statusCode(200)
             .extract()
             .path("feature.id");
-    for (String target : List.of("REFINED", "IMPLEMENTED")) {
+    for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED")) {
       asAdmin("dana")
           .body(Map.of("target", target))
           .post("/projects/api/entities/" + epic + "/status")
@@ -387,7 +397,7 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>A blocked ticket delivers no turn</b>, and the ticket here is REFINED — a status that
+   * <b>A blocked ticket delivers no turn</b>, and the ticket here is READY_FOR_DEV — a status that
    * plainly does start a phase — so what is being asserted is the flag and nothing about the
    * status. A block says the phase the ticket is <em>already standing in</em> cannot finish, so
    * telling the agent in that workspace to start it is telling it to walk into the obstacle
@@ -410,7 +420,7 @@ public class PhaseAdvanceTest {
     blocked.title = "Waiting on something";
     blocked.slug = "waiting-on-something";
     blocked.ticketType = TicketType.BUG;
-    blocked.status = EntityStatus.REFINED.name();
+    blocked.status = EntityStatus.READY_FOR_DEV.name();
     blocked.blocked = true;
 
     advance.afterTransition(blocked, null, "dana");
@@ -418,7 +428,8 @@ public class PhaseAdvanceTest {
     assertEquals(
         List.of(),
         turns.calls(),
-        "REFINED starts the implement phase, so the empty list here is the block and nothing else");
+        "READY_FOR_DEV starts the implement phase, so the empty list here is the block and nothing"
+            + " else");
     assertEquals(
         List.of(),
         workspaces.lookups(),
@@ -456,7 +467,7 @@ public class PhaseAdvanceTest {
   public void aMoveBackToImplementingStartsTheImplementPhase() {
     String projectId = createProject("Advance Backward");
     String ticketId = createTicket(projectId, "Still broken after all");
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED"); // the skip
     turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
@@ -470,16 +481,16 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>The one exception to direction not being consulted</b> (qits-749): REFINED → IMPLEMENTING
-   * says an implementation was started — by a press, or by the agent at work — so the implement
-   * prompt is already out and a second one would restart it.
+   * <b>The one exception to direction not being consulted</b> (qits-749): READY_FOR_DEV →
+   * IMPLEMENTING says an implementation was started — by a press, or by the agent at work — so the
+   * implement prompt is already out and a second one would restart it.
    */
   @Test
-  public void aMoveFromRefinedIntoImplementingPushesNothing() {
+  public void aMoveFromReadyForDevIntoImplementingPushesNothing() {
     String projectId = createProject("Advance Started By Hand");
     String ticketId = createTicket(projectId, "Started by hand");
-    transition(ticketId, "REFINED"); // no workspace answers, so this stays REFINED
-    assertEquals("REFINED", statusOf(ticketId));
+    scheduled(ticketId);
+    assertEquals("READY_FOR_DEV", statusOf(ticketId));
     turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
@@ -489,25 +500,71 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>A FLOW refine that ends in REFINED ends in IMPLEMENTING</b> (qits-749): the implement turn is
-   * spoken, and the move follows it with exactly one turn and one more {@code EntityTransitioned}.
+   * <b>A FLOW refine that ends in REFINED ends there</b> (qits-887): REFINED starts no phase, so no
+   * implement turn is spoken and the ticket is not moved on. With the refine agent still standing
+   * on the branch, the thread says the run now waits for a person, so the flow does not end silently.
    */
   @Test
-  public void aFlowRefineThatLandsRefinedAndIsHandedItsTurnMovesOnToImplementing() {
-    String projectId = createProject("Advance Into Implementing");
-    String ticketId = createTicket(projectId, "Carried on");
-    turns.willAnswer(WorkspaceAgentTurns.Outcome.LAUNCHED, "launched one");
+  public void aFlowRefineThatLandsRefinedDeliversNoTurnAndSaysItWaitsForAPerson() {
+    String projectId = createProject("Advance Into Refined");
+    String ticketId = createTicket(projectId, "Waits for a person");
+    workspaces.willReference(
+        standingOn(wrapperIdOf(projectId), "ticket/waits-for-a-person", ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
     transition(ticketId, "REFINED");
 
-    assertEquals(1, turns.calls().size(), "one implement turn and no second");
-    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
-    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals(List.of(), turns.calls(), "no implement turn");
+    assertEquals("REFINED", statusOf(ticketId));
     List<EntityTransitioned.Entity> moved =
         transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
     assertEquals(
-        List.of("REPORTED->REFINED", "REFINED->IMPLEMENTING"),
+        List.of("REPORTED->REFINED"),
         moved.stream().map(entity -> entity.statusBefore() + "->" + entity.status()).toList());
+    assertEquals(
+        List.of("Refined; waiting for a person to schedule it (READY_FOR_DEV)."), thread(ticketId));
+  }
+
+  /** A one-phase run that lands REFINED says nothing: the person who pressed knows it stops. */
+  @Test
+  public void aOnePhaseRefineThatLandsRefinedSaysNothing() {
+    String projectId = createProject("Advance Into Refined Quietly");
+    String ticketId = createTicket(projectId, "Stops quietly");
+    dispatchEntities.setDispatchContinues(ticketId, false, "dana");
+    workspaces.willReference(standingOn(wrapperIdOf(projectId), "ticket/stops-quietly", ticketId));
+
+    transition(ticketId, "REFINED");
+
+    assertEquals(List.of(), turns.calls());
+    assertEquals(List.of(), thread(ticketId));
+  }
+
+  /**
+   * <b>Scheduling pushes nothing</b> (qits-887), even for an entity whose last press was FLOW and
+   * whose refine workspace is still standing: REFINED → READY_FOR_DEV is a person's approval, not a
+   * phase hand-off, and starting the work is the next press.
+   */
+  @Test
+  public void schedulingDeliversNoTurnEvenWithAFlowWorkspaceStanding() {
+    String projectId = createProject("Advance Scheduled");
+    String ticketId = createTicket(projectId, "Scheduled by a person");
+    workspaces.willReference(
+        standingOn(wrapperIdOf(projectId), "ticket/scheduled-by-a-person", ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transition(ticketId, "REFINED");
+    transitions.reset();
+
+    transition(ticketId, "READY_FOR_DEV");
+
+    assertTrue(dispatchEntities.fresh(ticketId).dispatchContinues, "the run was a flow");
+    assertEquals(List.of(), turns.calls(), "the scheduling delivered no implement turn");
+    assertEquals("READY_FOR_DEV", statusOf(ticketId), "and nothing moved it on to IMPLEMENTING");
+    assertEquals(
+        List.of("REFINED->READY_FOR_DEV"),
+        transitions.published().stream()
+            .flatMap(event -> event.entities().stream())
+            .map(entity -> entity.statusBefore() + "->" + entity.status())
+            .toList());
   }
 
   /**
@@ -519,7 +576,7 @@ public class PhaseAdvanceTest {
   public void aFlowHandOffIntoImplementedMovesOnToVerifyingWithOneTurn() {
     String projectId = createProject("Advance Into Verifying");
     String ticketId = createTicket(projectId, "Verify me next");
-    transition(ticketId, "REFINED"); // nobody to tell, so it stays REFINED
+    scheduled(ticketId); // nobody to tell, and scheduling starts nothing anyway
     turns.reset();
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     transitions.reset();
@@ -530,7 +587,7 @@ public class PhaseAdvanceTest {
     assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
     assertEquals("VERIFYING", statusOf(ticketId));
     assertEquals(
-        List.of("REFINED->IMPLEMENTED", "IMPLEMENTED->VERIFYING"),
+        List.of("READY_FOR_DEV->IMPLEMENTED", "IMPLEMENTED->VERIFYING"),
         transitions.published().stream()
             .flatMap(event -> event.entities().stream())
             .map(entity -> entity.statusBefore() + "->" + entity.status())
@@ -541,7 +598,7 @@ public class PhaseAdvanceTest {
   public void aMoveFromImplementedIntoVerifyingPushesNothing() {
     String projectId = createProject("Advance Verifying By Hand");
     String ticketId = createTicket(projectId, "Verifying by hand");
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED"); // nobody to tell, so it stays IMPLEMENTED
     assertEquals("IMPLEMENTED", statusOf(ticketId));
     turns.reset();
@@ -556,7 +613,7 @@ public class PhaseAdvanceTest {
   public void aMoveBackToVerifyingStartsTheVerifyPhase() {
     String projectId = createProject("Advance Reverify");
     String ticketId = createTicket(projectId, "Check it again");
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED"); // the skip
     turns.reset();
@@ -579,9 +636,10 @@ public class PhaseAdvanceTest {
   public void aDeliveredTurnSaysWhichPhaseStartedAndWhereTheAgentIs() {
     String projectId = createProject("Advance Delivered");
     String ticketId = createTicket(projectId, "Tell the agent");
+    scheduled(ticketId);
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
-    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
 
     asAdmin("dana")
         .when()
@@ -593,7 +651,7 @@ public class PhaseAdvanceTest {
         .body(
             "entries[0].comment.body",
             equalTo(
-                "Started the implement phase: the agent working in the workspace on"
+                "Started the verify phase: the agent working in the workspace on"
                     + " `ticket/tell-the-agent` was told."));
   }
 
@@ -602,13 +660,14 @@ public class PhaseAdvanceTest {
   public void aLaunchedAgentIsSaidToBeALaunchAndNotAHandOff() {
     String projectId = createProject("Advance Launched");
     String ticketId = createTicket(projectId, "Nobody was home");
+    scheduled(ticketId);
     turns.willAnswer(WorkspaceAgentTurns.Outcome.LAUNCHED, "started one");
 
-    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
 
     assertEquals(
         java.util.List.of(
-            "Started the implement phase: no agent was running in the workspace on"
+            "Started the verify phase: no agent was running in the workspace on"
                 + " `ticket/nobody-was-home`, so one was launched to take it."),
         thread(ticketId));
   }
@@ -624,10 +683,10 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Nobody is on this");
     turns.willAnswer(WorkspaceAgentTurns.Outcome.NO_WORKSPACE, "no workspace stands on that branch");
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
 
-    assertEquals(2, turns.calls().size(), "the far side is still asked — it is the only thing that knows");
+    assertEquals(1, turns.calls().size(), "the far side is still asked — it is the only thing that knows");
     asAdmin("dana")
         .when()
         .get("/projects/api/tickets/" + ticketId + "/comments")
@@ -652,21 +711,22 @@ public class PhaseAdvanceTest {
   public void aRefusedDeliveryLeavesTheTransitionAndSaysSoPlainly() {
     String projectId = createProject("Advance Refused");
     String ticketId = createTicket(projectId, "Nothing answers here");
+    scheduled(ticketId);
     turns.willAnswer(WorkspaceAgentTurns.Outcome.COULD_NOT, "qits-workspaces answered 503");
 
-    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
 
     assertEquals(
         java.util.List.of(
-            "Could not start the implement phase: qits-workspaces answered 503. The ticket is"
-                + " REFINED and nothing is running on it."),
+            "Could not start the verify phase: qits-workspaces answered 503. The ticket is"
+                + " IMPLEMENTED and nothing is running on it."),
         thread(ticketId));
     asAdmin("dana")
         .when()
         .get("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("REFINED"));
+        .body("ticket.status", equalTo("IMPLEMENTED"));
   }
 
   /**
@@ -678,21 +738,22 @@ public class PhaseAdvanceTest {
   public void aPortThatThrowsCannotUndoTheTransitionAndStillSaysSomething() {
     String projectId = createProject("Advance Thrown");
     String ticketId = createTicket(projectId, "The port misbehaves");
+    scheduled(ticketId);
     turns.willThrow(new IllegalStateException("the adapter is broken"));
 
-    transition(ticketId, "REFINED"); // a 200, or this line fails
+    transition(ticketId, "IMPLEMENTED"); // a 200, or this line fails
 
     assertEquals(
         java.util.List.of(
-            "Could not start the implement phase: the delivery failed unexpectedly. The ticket is"
-                + " REFINED and nothing is running on it."),
+            "Could not start the verify phase: the delivery failed unexpectedly. The ticket is"
+                + " IMPLEMENTED and nothing is running on it."),
         thread(ticketId));
     asAdmin("dana")
         .when()
         .get("/projects/api/tickets/" + ticketId)
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("REFINED"));
+        .body("ticket.status", equalTo("IMPLEMENTED"));
   }
 
   // --- when it runs ---------------------------------------------------------------------------
@@ -747,9 +808,10 @@ public class PhaseAdvanceTest {
   public void theTurnGoesToTheSameWrapperAndBranchTheDispatchDoorStandsUp() {
     String projectId = createProject("Advance Same Address");
     String ticketId = createTicket(projectId, "One address");
+    scheduled(ticketId);
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
-    transition(ticketId, "REFINED");
+    transition(ticketId, "IMPLEMENTED");
 
     assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
     assertEquals("ticket/one-address", turns.lastCall().branch());
@@ -763,10 +825,11 @@ public class PhaseAdvanceTest {
   public void theCommentIsStampedFromTheCallerThatMovedTheTicket() {
     String projectId = createProject("Advance Stamped");
     String ticketId = createTicket(projectId, "Who said that");
+    scheduled(ticketId);
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
     asAdmin("mallory")
-        .body(new Transition("REFINED"))
+        .body(new Transition("IMPLEMENTED"))
         .when()
         .post("/projects/api/tickets/" + ticketId + "/transition")
         .then()
@@ -778,7 +841,7 @@ public class PhaseAdvanceTest {
         .then()
         .statusCode(200)
         .body("entries[0].comment.author", equalTo("mallory"))
-        .body("entries[0].comment.body", containsString("Started the implement phase"));
+        .body("entries[0].comment.body", containsString("Started the verify phase"));
   }
 
   // --- VERIFIED asks for a release ------------------------------------------------------------
@@ -795,7 +858,7 @@ public class PhaseAdvanceTest {
     String wrapperId = wrapperIdOf(projectId);
     workspaces.willReference(standingOn(wrapperId, "ticket/release-me", ticketId));
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
@@ -819,7 +882,7 @@ public class PhaseAdvanceTest {
     workspaces.willReference(
         standingOn(wrapperIdOf(projectId), "ticket/nothing-to-say", ticketId));
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     int beforeVerification = turns.calls().size();
     transition(ticketId, "VERIFIED");
@@ -843,7 +906,7 @@ public class PhaseAdvanceTest {
     String wrapperId = wrapperIdOf(projectId);
     workspaces.willReference(standingOn(wrapperId, "epic/something-bigger", ticketId));
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
@@ -879,7 +942,7 @@ public class PhaseAdvanceTest {
             "INTEGRATED"),
         standingOn(wrapperId, "ticket/twice-around", ticketId));
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
@@ -906,12 +969,15 @@ public class PhaseAdvanceTest {
     workspaces.willReference(
         resolvedOn(wrapperId, "ticket/tidied-away", ticketId, "ABANDONED"));
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
+    int asked = workspaces.lookups().size(); // the walk may ask too (qits-887's REFINED note)
     transition(ticketId, "VERIFIED"); // a 200, or this line fails
 
     assertEquals(
-        1, workspaces.lookups().size(), "the far side was asked, which is the only way to know");
+        asked + 1,
+        workspaces.lookups().size(),
+        "the far side was asked, which is the only way to know");
     assertTrue(
         releaseRequestsOf(wrapperId).isEmpty(),
         "an abandoned workspace's branch is not one to ask for the release of");
@@ -932,7 +998,7 @@ public class PhaseAdvanceTest {
     String projectId = createProject("Advance Release Nobody");
     String ticketId = createTicket(projectId, "Walked by hand");
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
@@ -956,12 +1022,15 @@ public class PhaseAdvanceTest {
     String ticketId = createTicket(projectId, "Far side is down");
     workspaces.willReference(); // exactly what a failed lookup answers
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
+    int asked = workspaces.lookups().size(); // the walk may ask too (qits-887's REFINED note)
     transition(ticketId, "VERIFIED");
 
     assertEquals(
-        1, workspaces.lookups().size(), "the far side was asked, which is the only way to know");
+        asked + 1,
+        workspaces.lookups().size(),
+        "the far side was asked, which is the only way to know");
     assertTrue(releaseRequestsOf(wrapperIdOf(projectId)).isEmpty());
     assertEquals(
         "No workspace is standing on `ticket/far-side-is-down`, so no release was asked for.",
@@ -980,7 +1049,7 @@ public class PhaseAdvanceTest {
     String wrapperId = wrapperIdOf(projectId);
     workspaces.willReference(standingOn(wrapperId, "ticket/verified-again", ticketId));
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
     String first = (String) releaseRequestsOf(wrapperId).get(0).get("id");
@@ -1013,7 +1082,7 @@ public class PhaseAdvanceTest {
     String wrapperId = wrapperIdOf(projectId);
     workspaces.willReference(standingOn(wrapperId, "ticket/not-fixed-after-all", ticketId));
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
     String requestId = (String) releaseRequestsOf(wrapperId).get(0).get("id");
@@ -1030,22 +1099,20 @@ public class PhaseAdvanceTest {
 
   /**
    * <b>The note is conditioned on the request and never on the direction of the move.</b> Arriving
-   * at IMPLEMENTED from REFINED nothing has been asked for, so there is nothing to name and nothing
+   * at IMPLEMENTED from READY_FOR_DEV nothing has been asked for, so there is nothing to name and nothing
    * is said — which is the same rule, reached from the other side.
    */
   @Test
-  public void aMoveIntoImplementedFromRefinedNamesNoRelease() {
+  public void aMoveIntoImplementedFromReadyForDevNamesNoRelease() {
     String projectId = createProject("Advance Release Forward");
     String ticketId = createTicket(projectId, "First time through");
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
-    transition(ticketId, "REFINED");
+    scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
 
     assertEquals(
         java.util.List.of(
-            "Started the implement phase: the agent working in the workspace on"
-                + " `ticket/first-time-through` was told.",
             "Started the verify phase: the agent working in the workspace on"
                 + " `ticket/first-time-through` was told."),
         thread(ticketId),

@@ -2192,6 +2192,11 @@ a FLOW press from REPORTED stops at REFINED (`flowFrom` = refine).
   started or DROPPED piece stays): five epic moves carry descendants now. A piece is never scheduled
   or unscheduled on its own — a 409 naming the epic. The carried rows are the person's move, audited
   under their name and announced in the epic's one batch.
+- **Dispatch and the flow.** A press on a REFINED epic or ticket is a 409 of its own ("REFINED waits
+  for a person to schedule it (READY_FOR_DEV) before it can be dispatched"), and `GET
+  /entities/{id}/dispatch` offers nothing there. `PhaseAdvance` delivers no turn on the scheduling
+  move even with a FLOW workspace standing, and a FLOW refine that lands REFINED says on the thread
+  that the run now waits for a person.
 
 ## Where the code is
 

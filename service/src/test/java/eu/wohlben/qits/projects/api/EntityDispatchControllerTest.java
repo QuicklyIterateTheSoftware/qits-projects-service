@@ -251,6 +251,9 @@ public class EntityDispatchControllerTest {
     assertEquals("refine", press(ticketId, "FLOW"));
     assertTrue(dispatch.lastCall().instruction().contains("Refine ticket \""));
     transitionTicket(ticketId, "REFINED");
+    // qits-887: REFINED starts nothing — a person schedules it first — and says so.
+    pressRefused(ticketId, "FLOW", "REFINED waits for a person to schedule it (READY_FOR_DEV)");
+    transitionTicket(ticketId, "READY_FOR_DEV");
     assertEquals("implement", press(ticketId, "FLOW"));
     assertTrue(dispatch.lastCall().instruction().contains("Implement ticket \""));
     transitionTicket(ticketId, "IMPLEMENTED");
@@ -289,6 +292,9 @@ public class EntityDispatchControllerTest {
         threadOf(epicId));
 
     transitionEpic(epicId, "REFINED");
+    pressRefused(epicId, "PHASE", "Epic " + epicId + " is REFINED");
+    pressRefused(epicId, "FLOW", "waits for a person to schedule it (READY_FOR_DEV)");
+    transitionEpic(epicId, "READY_FOR_DEV");
     assertEquals("implement", press(epicId, "PHASE"));
     assertTrue(dispatch.lastCall().instruction().contains("Implement epic \""));
     transitionEpic(epicId, "IMPLEMENTED");
@@ -359,7 +365,12 @@ public class EntityDispatchControllerTest {
 
   // ---- the continue-or-stop bit ----------------------------------------------------------------
 
-  /** FLOW: the agent's claim delivers the next phase's prompt, for a ticket and for an epic. */
+  /**
+   * FLOW: the agent's claim delivers the next phase's prompt, for a ticket and for an epic — but
+   * since qits-887 the refine claim (REFINED) is where a flow waits for a person, and the person's
+   * scheduling (READY_FOR_DEV) is an approval, not a hand-off: neither pushes a turn. The run goes
+   * on from the next claim the agent makes.
+   */
   @Test
   public void theFlowVariantPushesTheNextPromptOnTransition() {
     String projectId = createProject("Dispatch Flow");
@@ -368,33 +379,47 @@ public class EntityDispatchControllerTest {
     press(ticketId, "FLOW");
     press(epicId, "FLOW");
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    String wrapperId = wrapperIdOf(projectId);
+    dispatch.willReference(
+        RecordingWorkspaceAgentDispatch.live(
+            11L, wrapperId, "ws-t", "ticket/flow-ticket", ticketId, null),
+        RecordingWorkspaceAgentDispatch.live(12L, wrapperId, "ws-e", "epic/flow-epic", null, epicId));
 
     transitionTicket(ticketId, "REFINED");
+    assertEquals(0, turns.calls().size(), "the refine claim waits for a person");
+    assertTrue(
+        threadOf(ticketId).stream().anyMatch(body -> body.contains("schedule it (READY_FOR_DEV)")),
+        "and the flow does not end silently: " + threadOf(ticketId));
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    assertEquals(0, turns.calls().size(), "scheduling pushes no implement turn");
+    assertEquals("READY_FOR_DEV", statusOf(Archetype.TICKET, ticketId));
+
+    transitionTicket(ticketId, "IMPLEMENTED");
     assertEquals(1, turns.calls().size(), "the flow carried the ticket on");
     assertEquals("ticket/flow-ticket", turns.lastCall().branch());
-    // The implement turn was spoken, so the implementation started (qits-749): the ticket is moved
-    // on to IMPLEMENTING with no second turn.
-    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
-    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
-    // A later phase's turn carries the qualified id and the commit-subject form too (qits-301): the
-    // advance renders it, not the press, so it is pinned on the advance's own delivery.
+    // The verify turn was spoken, so the verification started (qits-749): the ticket is moved on
+    // to VERIFYING with no second turn.
+    assertEquals("VERIFYING", statusOf(Archetype.TICKET, ticketId));
+    assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
+    // A later phase's turn names the entity by its qualified id too (qits-301): the advance renders
+    // it, not the press, so it is pinned on the advance's own delivery.
     String ticketQualified = qualifiedIdOf(projectId, ticketId);
     assertTrue(
-        turns.lastCall().text().contains("e.g. feat(" + ticketQualified + "): "),
+        turns.lastCall().text().contains(ticketQualified + ", slug flow-ticket, id " + ticketId),
         turns.lastCall().text());
 
     transitionEpic(epicId, "REFINED");
+    transitionEpic(epicId, "READY_FOR_DEV");
+    assertEquals(1, turns.calls().size(), "the epic's refine claim and schedule push nothing");
+    transitionEpic(epicId, "IMPLEMENTED");
     assertEquals(2, turns.calls().size(), "and the epic, through the epic's own transition door");
-    assertEquals("IMPLEMENTING", statusOf(Archetype.EPIC, epicId));
+    assertEquals("VERIFYING", statusOf(Archetype.EPIC, epicId));
     assertEquals("epic/flow-epic", turns.lastCall().branch());
     assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
-    assertTrue(turns.lastCall().text().contains("Implement epic \""), turns.lastCall().text());
+    assertTrue(turns.lastCall().text().contains("Verify epic \""), turns.lastCall().text());
     String epicQualified = qualifiedIdOf(projectId, epicId);
     assertTrue(
         turns.lastCall().text().contains("(" + epicQualified + ", slug flow-epic, id " + epicId),
-        turns.lastCall().text());
-    assertTrue(
-        turns.lastCall().text().contains("term(" + epicQualified + "): message"),
         turns.lastCall().text());
   }
 
@@ -412,7 +437,7 @@ public class EntityDispatchControllerTest {
     transitionEpic(epicId, "REFINED");
 
     assertTrue(turns.calls().isEmpty(), "a one-phase run stops: " + turns.calls());
-    // Nothing was delivered, so nothing started: both stay REFINED until somebody presses.
+    // Nothing was delivered, so nothing started: both stay REFINED until a person schedules them.
     assertEquals("REFINED", statusOf(Archetype.TICKET, ticketId));
     assertEquals("REFINED", statusOf(Archetype.EPIC, epicId));
   }
@@ -429,6 +454,7 @@ public class EntityDispatchControllerTest {
 
     assertEquals("refine", press(ticketId, "PHASE"));
     transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
     assertTrue(turns.calls().isEmpty());
 
     assertEquals("implement", press(ticketId, "PHASE"));
@@ -445,12 +471,12 @@ public class EntityDispatchControllerTest {
   // ---- the press starts the implementation (qits-749) -----------------------------------------
 
   /**
-   * <b>A press on a REFINED entity moves it to IMPLEMENTING, in FLOW and PHASE alike</b>: one
+   * <b>A press on a READY_FOR_DEV entity moves it to IMPLEMENTING, in FLOW and PHASE alike</b>: one
    * implement prompt (the dispatch's own), no turn pushed by the move, one {@code EntityTransitioned}
-   * REFINED → IMPLEMENTING, and the one dispatch comment on the thread.
+   * READY_FOR_DEV → IMPLEMENTING, and the one dispatch comment on the thread.
    */
   @Test
-  public void aPressOnARefinedEntityMovesItToImplementingOnceWithOnePrompt() {
+  public void aPressOnAScheduledEntityMovesItToImplementingOnceWithOnePrompt() {
     String projectId = createProject("Dispatch Implementing");
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     for (String mode : List.of("FLOW", "PHASE")) {
@@ -461,6 +487,8 @@ public class EntityDispatchControllerTest {
       press(epicId, "PHASE");
       transitionTicket(ticketId, "REFINED");
       transitionEpic(epicId, "REFINED");
+      transitionTicket(ticketId, "READY_FOR_DEV");
+      transitionEpic(epicId, "READY_FOR_DEV");
       dispatch.reset();
       turns.reset();
       transitions.reset();
@@ -480,7 +508,7 @@ public class EntityDispatchControllerTest {
           transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
       assertEquals(2, moved.size(), mode + ": one EntityTransitioned each: " + moved);
       for (EntityTransitioned.Entity entity : moved) {
-        assertEquals("REFINED", entity.statusBefore());
+        assertEquals("READY_FOR_DEV", entity.statusBefore());
         assertEquals("IMPLEMENTING", entity.status());
       }
       assertEquals(
@@ -495,6 +523,7 @@ public class EntityDispatchControllerTest {
     String ticketId = createTicket(projectId, "Resume me");
     press(ticketId, "PHASE");
     transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
     transitionTicket(ticketId, "IMPLEMENTING");
     transitions.reset();
 
@@ -528,7 +557,7 @@ public class EntityDispatchControllerTest {
       String epicId = createEpic(projectId, "Verifying epic " + mode);
       press(ticketId, "PHASE");
       press(epicId, "PHASE");
-      for (String target : List.of("REFINED", "IMPLEMENTED")) {
+      for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED")) {
         transitionTicket(ticketId, target);
         transitionEpic(epicId, target);
       }
@@ -562,6 +591,7 @@ public class EntityDispatchControllerTest {
     String ticketId = createTicket(projectId, "Resume my check");
     press(ticketId, "PHASE");
     transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
     transitionTicket(ticketId, "IMPLEMENTED");
     transitionTicket(ticketId, "VERIFYING");
     transitions.reset();
@@ -597,6 +627,7 @@ public class EntityDispatchControllerTest {
 
     for (String ticketId : List.of(oneShot, flow)) {
       transitionTicket(ticketId, "REFINED");
+      transitionTicket(ticketId, "READY_FOR_DEV");
       transitionTicket(ticketId, "IMPLEMENTED");
       transitionTicket(ticketId, "VERIFIED");
     }
@@ -615,6 +646,7 @@ public class EntityDispatchControllerTest {
     String wrapperId = wrapperIdOf(projectId);
     String epicId = createEpic(projectId, "Released epic");
     transitionEpic(epicId, "REFINED");
+    transitionEpic(epicId, "READY_FOR_DEV");
     press(epicId, "PHASE");
     dispatch.willReference(
         RecordingWorkspaceAgentDispatch.live(
@@ -663,12 +695,23 @@ public class EntityDispatchControllerTest {
 
     press(epicId, "PHASE");
     transitionEpic(epicId, "REFINED");
+    // qits-887: REFINED waits for a person, so the read offers nothing to press.
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/entities/" + epicId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.status", equalTo("REFINED"))
+        .body("state.nextPhase", nullValue())
+        .body("state.dispatchable", equalTo(false));
+    transitionEpic(epicId, "READY_FOR_DEV");
     asAdmin("mallory")
         .when()
         .get("/projects/api/entities/" + epicId + "/dispatch")
         .then()
         .statusCode(200)
         .body("state.nextPhase", equalTo("implement"))
+        .body("state.dispatchable", equalTo(true))
         .body("state.mode", equalTo("PHASE"));
 
     asAdmin("mallory")

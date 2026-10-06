@@ -210,14 +210,25 @@ public class TicketFlowDispatchTest {
 
   /**
    * The resume: the door reads the status at the moment it is pressed, so a ticket that was refined
-   * last week gets the implement turn rather than a second refinement of a description that is
-   * already written. The phase is never passed in, so this is the only way it could be wrong.
+   * and scheduled last week gets the implement turn rather than a second refinement of a description
+   * that is already written. The phase is never passed in, so this is the only way it could be wrong.
+   * A REFINED ticket nobody scheduled yet is refused, naming the person's move it waits for
+   * (qits-887).
    */
   @Test
-  public void aTicketAlreadyRefinedIsResumedAtTheImplementPhase() {
+  public void aTicketAlreadyRefinedIsResumedAtTheImplementPhaseOnceScheduled() {
     String projectId = createProject("Dispatch Resume");
     String ticketId = createTicket(projectId, "Resume me", "BUG", "It is refined already.");
     transition(ticketId, "REFINED");
+    asAdmin("mallory")
+        .body(FLOW)
+        .when()
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("REFINED waits for a person to schedule it (READY_FOR_DEV)"));
+    assertTrue(dispatch.calls().isEmpty(), "an unscheduled ticket stands no workspace up");
+    transition(ticketId, "READY_FOR_DEV");
 
     asAdmin("mallory")
         .body(FLOW)
@@ -228,7 +239,7 @@ public class TicketFlowDispatchTest {
 
     assertTrue(
         dispatch.lastCall().instruction().contains("Implement ticket \""),
-        "a REFINED ticket starts the implement phase: " + dispatch.lastCall().instruction());
+        "a READY_FOR_DEV ticket starts the implement phase: " + dispatch.lastCall().instruction());
 
     asAdmin("mallory")
         .when()
@@ -248,6 +259,7 @@ public class TicketFlowDispatchTest {
     String projectId = createProject("Dispatch Finished");
     String ticketId = createTicket(projectId, "All over", "BUG", "It was fixed.");
     transition(ticketId, "REFINED");
+    transition(ticketId, "READY_FOR_DEV");
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
     transition(ticketId, "DONE");
@@ -285,6 +297,7 @@ public class TicketFlowDispatchTest {
     String projectId = createProject("Dispatch Verified");
     String ticketId = createTicket(projectId, "Confirmed gone", "BUG", "Checked on the platform.");
     transition(ticketId, "REFINED");
+    transition(ticketId, "READY_FOR_DEV");
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
@@ -328,7 +341,7 @@ public class TicketFlowDispatchTest {
 
   /**
    * <b>A block refuses a dispatch that the status alone would have allowed</b>, which is the whole
-   * of what the flag adds to this door: REFINED plainly starts the implement phase, so the only
+   * of what the flag adds to this door: READY_FOR_DEV plainly starts the implement phase, so the only
    * thing standing between this caller and a workspace is somebody having written down what is in
    * the way. An agent sent in anyway would walk into the same wall the last one did, with the
    * reason one read away on the thread and nothing telling it to look.
@@ -343,6 +356,7 @@ public class TicketFlowDispatchTest {
     String projectId = createProject("Dispatch Blocked");
     String ticketId = createTicket(projectId, "Waiting on something", "BUG", "It is refined.");
     transition(ticketId, "REFINED");
+    transition(ticketId, "READY_FOR_DEV");
     block(ticketId, "the sibling service has to release its fix first");
     dispatch.reset(); // the transition and the block are fixture; what follows is the subject
 

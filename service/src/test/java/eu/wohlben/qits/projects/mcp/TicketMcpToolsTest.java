@@ -776,12 +776,32 @@ public class TicketMcpToolsTest {
         "transition_ticket",
         Map.of("id", ticketId, "target", "REFINED"),
         response -> assertFalse(response.isError(), text(response)));
+    // qits-887: REFINED starts no phase — it waits for a person to schedule it — so the refine
+    // agent's claim ends the run there.
+    assertEquals(0, turns.calls().size(), "nothing runs until a person schedules it");
+
+    // A person schedules it; the scheduling is an approval, not a hand-off, so it pushes nothing.
+    authenticated()
+        .contentType(ContentType.JSON)
+        .body(Map.of("target", "READY_FOR_DEV"))
+        .when()
+        .post("/projects/api/entities/" + ticketId + "/status")
+        .then()
+        .statusCode(200);
+    assertEquals(0, turns.calls().size(), "scheduling starts nothing on its own");
+
+    // From there the agent's own claim is what starts the next phase.
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "IMPLEMENTED"),
+        response -> assertFalse(response.isError(), text(response)));
 
     assertEquals(1, turns.calls().size(), "the agent's claim is what starts the next phase");
     assertEquals("ticket/refined-by-its-own-agent", turns.lastCall().branch());
     assertTrue(
-        turns.lastCall().text().contains("Implement ticket \""),
-        "REFINED starts implementation: " + turns.lastCall().text());
+        turns.lastCall().text().contains("Verify ticket \""),
+        "IMPLEMENTED starts verification: " + turns.lastCall().text());
 
     // And it lands on this ticket's own thread, stamped like every other write this surface makes
     // — the shipped %test dev user names the session here, so what is asserted is that the comment

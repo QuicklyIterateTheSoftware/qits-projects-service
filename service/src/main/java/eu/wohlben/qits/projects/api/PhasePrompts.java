@@ -16,11 +16,12 @@ import java.util.Optional;
  *
  * <h2>The status picks the phase, and that is the whole design</h2>
  *
- * <p>{@code REPORTED → REFINED → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED → DONE}, where a
- * status is what has been <em>achieved</em> — or, for the two "-ING" statuses, a fact the platform
- * recorded: an implementation or a verification was started (qits-749) — and the phase that runs
- * while it holds is what happens <em>next</em> ({@link EntityStatus}). So REPORTED starts the refine
- * phase, REFINED and IMPLEMENTING both run implement, IMPLEMENTED and VERIFYING both run verify (a
+ * <p>{@code REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED → VERIFYING → VERIFIED →
+ * DONE}, where a status is what has been <em>achieved</em> — or, for the two "-ING" statuses, a fact
+ * the platform recorded: an implementation or a verification was started (qits-749) — and the phase
+ * that runs while it holds is what happens <em>next</em> ({@link EntityStatus}). So REPORTED starts
+ * the refine phase, REFINED starts nothing — it waits for a person to schedule it (qits-887) —
+ * READY_FOR_DEV and IMPLEMENTING both run implement, IMPLEMENTED and VERIFYING both run verify (a
  * press on an "-ING" entity resumes its phase rather than refusing), and VERIFIED and DONE start
  * nothing at all — the work is
  * over and closing is a person's move. {@link EntityStatus#DROPPED} starts nothing either: the work
@@ -144,8 +145,8 @@ final class PhasePrompts {
    * where that piece of the plan stands and starts nothing — the phase runs on the epic ({@link
    * Archetypes#isPlanPiece}). The
    * mapping itself is the state machine's ({@link EntityStateMachine#phaseStartedBy}): REPORTED
-   * starts refine, REFINED and IMPLEMENTING implement, IMPLEMENTED and VERIFYING verify, and
-   * VERIFIED, DONE and DROPPED nothing —
+   * starts refine, READY_FOR_DEV and IMPLEMENTING implement, IMPLEMENTED and VERIFYING verify, and
+   * REFINED (a person schedules it, qits-887), VERIFIED, DONE and DROPPED nothing —
    * VERIFIED and DONE because the work is over and closing is a person's, DROPPED because the work
    * was decided against. This method only reads the stored word back into the enum first.
    */
@@ -265,6 +266,8 @@ final class PhasePrompts {
    * code does now, a MAINTENANCE ticket (a red gate the platform filed about itself) by the run it
    * names. The result goes into the description because that is the implement phase's brief. "Do
    * not implement" carries its reason, since an agent that has just found the bug wants to fix it.
+   * The claim to REFINED ends the run (qits-887): REFINED starts nothing, a person schedules the
+   * ticket next, and the claim needs acceptance criteria (the quality gate qits-921 adds).
    */
   private static String refineTicket(WorkEntity ticket, String q) {
     return "Refine ticket \""
@@ -285,14 +288,14 @@ final class PhasePrompts {
         + ticket.id
         + ") only for what prose cannot hold. Do not implement anything: the implement phase is a"
         + " separate session that starts from what you write. When someone else could implement"
-        + " from the ticket alone, transition_ticket to "
+        + " from the ticket alone and it has acceptance criteria, transition_ticket to "
         + end(Phase.REFINE)
-        + ". If you cannot get there,"
+        + ". That ends this run: a person schedules it next. If you cannot get there,"
         + " block_entity with what is missing.";
   }
 
   /**
-   * <b>IMPLEMENT</b>, run while the ticket is REFINED or IMPLEMENTING. A running thread rather
+   * <b>IMPLEMENT</b>, run while the ticket is READY_FOR_DEV or IMPLEMENTING. A running thread rather
    * than one report at the end, because the thread is the record the verify phase reads; a
    * contradiction goes on it rather than into the description, which is what the work was agreed
    * against. Released and deployed, because the next phase verifies the live platform. And no
@@ -357,7 +360,8 @@ final class PhasePrompts {
    * {@code dependsOn} where order matters), and a dossier holding the paths, names and exact values
    * the implement phase builds from. The claim to REFINED freezes all three ({@code
    * EntityLifecycle.requireReported}), which the turn says because the claim is bigger than a
-   * ticket's; the thread stays writable after the freeze.
+   * ticket's; the thread stays writable after the freeze. Like a ticket's, the claim ends the run
+   * and needs acceptance criteria (qits-887, qits-921): a person schedules the epic next.
    */
   private static String refineEpic(WorkEntity epic, String q) {
     return "Refine epic \""
@@ -376,14 +380,15 @@ final class PhasePrompts {
         + "). Record decisions and open questions on its thread with add_comment (entityId "
         + epic.id
         + "). Do not implement anything: the implement phase is a separate session that starts from"
-        + " what you write. When every task could be built from the epic alone, transition_epic to "
+        + " what you write. When every task could be built from the epic alone and it has acceptance"
+        + " criteria, transition_epic to "
         + end(Phase.REFINE)
-        + ", which freezes the scope. If you cannot get there, block_entity with what is"
-        + " missing.";
+        + ", which freezes the scope and ends this run: a person schedules it next. If you cannot"
+        + " get there, block_entity with what is missing.";
   }
 
   /**
-   * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#REFINED} or {@link
+   * <b>IMPLEMENT</b> for an epic, run while it is {@link EntityStatus#READY_FOR_DEV} or {@link
    * EntityStatus#IMPLEMENTING}. The tree and dossier are frozen, so corrections go on the thread.
    * Tasks in {@code dependsOn} order, each marked with {@code mark_task_implementing} as it starts
    * and {@code mark_task_implemented} as it lands so a run that dies halfway leaves a true record —

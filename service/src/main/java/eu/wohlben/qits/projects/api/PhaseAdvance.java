@@ -55,8 +55,11 @@ import org.jboss.logging.Logger;
  * <p>A ticket's three phases run in one workspace, separated by a context reset rather than by a
  * container ({@link WorkspaceAgentTurns}). So the moment an agent claims a phase — its own {@code
  * transition_ticket} call — is the moment this service knows something that workspace does not, and
- * this class is what says it. Nobody presses anything between phases: refine ends, the ticket is
- * REFINED, and the implement turn arrives in the session the agent is already in. Pressing "Assign
+ * this class is what says it. Nobody presses anything between implement and verify: implement ends,
+ * the ticket is IMPLEMENTED, and the verify turn arrives in the session the agent is already in.
+ * <b>Refine is the exception since qits-887</b>: it ends at REFINED, which starts nothing and waits
+ * for a person to schedule the work (READY_FOR_DEV), and the scheduling move delivers no turn either
+ * — starting the work is the next press. Pressing "Assign
  * agent" stays the way to <em>resume</em> a ticket nobody is working on; it stops being the way to
  * continue one that is.
  *
@@ -74,23 +77,25 @@ import org.jboss.logging.Logger;
  * <p><b>Direction is not consulted, with one exception.</b> The ticket's new status is otherwise the
  * entire input, so a move back from IMPLEMENTED to IMPLEMENTING — a correction of a claim, not a
  * failure path — gets the <em>implement</em> turn, which is precisely right, because rework is
- * what runs next; a move back to REFINED gets it for the same reason; a move back from VERIFIED to
+ * what runs next; a move back from VERIFIED to
  * VERIFYING gets the <em>verify</em> turn, re-verification; and a person closing a
  * VERIFIED ticket to DONE gets nothing, which is also right, because DONE starts no phase at all
  * (and, being final, never moves again).
  *
- * <p><b>The exception is the platform's own "phase started" move</b> (qits-749) — REFINED →
+ * <p><b>The exception is the platform's own "phase started" move</b> (qits-749) — READY_FOR_DEV →
  * IMPLEMENTING or IMPLEMENTED → VERIFYING ({@link EntityStateMachine#isStartedMove}) — and it pushes
  * nothing. That move means the phase was started: the platform made it at the dispatch press (which
  * is not a route and never reaches here), or the agent already working moved itself by hand —
  * either way the prompt is out or the agent is at work, and a second one would restart it. Into
  * IMPLEMENTING or VERIFYING from anywhere else (BACK, rework or re-verification) the turn is
- * delivered as for any phase. {@code statusBefore} is passed in for this and read for nothing else.
+ * delivered as for any phase. {@code statusBefore} is passed in for this, and for the two qits-887
+ * arms beside it: a person's scheduling (REFINED → READY_FOR_DEV) pushes nothing, and a refine that
+ * lands REFINED under FLOW says on the thread that the run now waits for a person.
  *
  * <h2>Delivering a phase's turn starts the phase (qits-749)</h2>
  *
  * <p><b>One rule:</b> whenever the implement prompt is delivered for an epic or a ticket that is
- * REFINED, the entity moves to IMPLEMENTING; whenever the verify prompt is delivered for one that is
+ * READY_FOR_DEV, the entity moves to IMPLEMENTING; whenever the verify prompt is delivered for one that is
  * IMPLEMENTED, it moves to VERIFYING. {@link EntityDispatch} does it at the press; this class does it
  * for the FLOW hand-off, when the previous phase lands its status with {@code dispatchContinues} set
  * and the next turn is spoken (DELIVERED or LAUNCHED) — and only then: a turn that found no
@@ -149,7 +154,7 @@ import org.jboss.logging.Logger;
  *
  * <p><b>That note is conditioned on the request existing and never on the direction of the move</b>,
  * which is this class's rule applied where it would be easiest to break: arriving at IMPLEMENTED
- * from REFINED nothing has been asked for, the query finds nothing and no comment is written;
+ * from READY_FOR_DEV nothing has been asked for, the query finds nothing and no comment is written;
  * arriving back from VERIFIED — at VERIFYING, its BACK move since qits-749 — it does, and the
  * sentence lands. The fact is read rather than inferred
  * from where the ticket came from, so there is still no second table saying which way is which.
@@ -276,8 +281,9 @@ public class PhaseAdvance {
    *     return at once (qits-763); for a ticket or an epic the new status is the input
    *     to which phase starts, and its {@code dispatchContinues} is whether it starts at all
    * @param statusBefore the status it moved from, read only to tell the platform's "phase started"
-   *     move (REFINED → IMPLEMENTING, IMPLEMENTED → VERIFYING — it pushes nothing) from any other
-   *     arrival at an "-ING" status; may be null
+   *     move (READY_FOR_DEV → IMPLEMENTING, IMPLEMENTED → VERIFYING — it pushes nothing) and a
+   *     person's scheduling (REFINED → READY_FOR_DEV — it pushes nothing either, qits-887) from any
+   *     other arrival, and a refine that just landed REFINED; may be null
    * @param changedBy the caller, resolved by the surface that took the transition; may be null
    */
   public void afterTransition(WorkEntity entity, String statusBefore, String changedBy) {
@@ -323,10 +329,27 @@ public class PhaseAdvance {
           entity.archetype, entity.id, statusBefore, entity.status);
       return;
     }
+    if (isScheduling(statusOf(statusBefore), statusOf(entity.status))) {
+      // REFINED → READY_FOR_DEV is a person's approval (qits-887), not a phase hand-off. Without
+      // this arm an entity whose last press was FLOW, with its refine workspace still standing,
+      // would be handed its implement turn the moment somebody schedules it. Starting the work is
+      // the press — a person's, or a campaign executor's — and never the scheduling itself.
+      LOG.debugf(
+          "%s %s was scheduled (%s → %s); scheduling starts nothing, so no turn is delivered",
+          entity.archetype, entity.id, statusBefore, entity.status);
+      return;
+    }
     Optional<Phase> phase = PhasePrompts.phaseOf(entity);
     if (phase.isEmpty()) {
-      // DONE and DROPPED, now that VERIFIED is answered above: the work is over, or it was decided
-      // against. Nothing to do either way, and nothing to say about having done nothing.
+      // REFINED (it waits for a person to schedule it, qits-887), DONE and DROPPED, now that
+      // VERIFIED is answered above. A flow that has just refined stops here, and says so on the
+      // thread when an agent stands on the branch, so the run does not end in silence; otherwise
+      // there is nothing to do, and nothing to say about having done nothing.
+      if (EntityStatus.REFINED.name().equals(entity.status)
+          && EntityStatus.REPORTED.name().equals(statusBefore)
+          && entity.dispatchContinues) {
+        noteTheFlowWaitsForAPerson(entity, changedBy);
+      }
       return;
     }
     if (turns.isUnsatisfied()) {
@@ -366,6 +389,48 @@ public class PhaseAdvance {
       noteTheReleaseThatStandsOpen(entity, target.get(), changedBy);
     }
   }
+
+  /** Whether {@code from → to} is a person scheduling the entity: REFINED → READY_FOR_DEV. */
+  private static boolean isScheduling(EntityStatus from, EntityStatus to) {
+    return from == EntityStatus.REFINED && to == EntityStatus.READY_FOR_DEV;
+  }
+
+  /**
+   * The sentence a FLOW run ends on when its refine phase lands REFINED (qits-887): REFINED starts
+   * no phase, so the hand-off a flow used to make here is a person's scheduling now. Said only when
+   * a workspace stands on the entity's branch — the agent that just refined it — for the reason the
+   * no-workspace case says nothing anywhere else: a person walking an entity by hand must not
+   * collect a sentence per move. Never throws.
+   */
+  private void noteTheFlowWaitsForAPerson(WorkEntity entity, String changedBy) {
+    if (dispatchedWorkspaces.isUnsatisfied()) {
+      return;
+    }
+    String branch = EntityWorkspaces.branchOf(entity);
+    boolean isTicket = entity.archetype == Archetype.TICKET;
+    List<WorkspaceAgentDispatch.Reference> found;
+    try {
+      found =
+          dispatchedWorkspaces
+              .get()
+              .workspacesReferencing(
+                  isTicket ? List.of(entity.id) : List.of(),
+                  isTicket ? List.of() : List.of(entity.id));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not look up the workspaces of %s %s: the port threw", noun(entity), entity.id);
+      return;
+    }
+    if (theLiveOneOn(branch, found) == null) {
+      return;
+    }
+    LOG.infof(
+        "%s %s is REFINED; its flow waits for a person to schedule it", entity.archetype, entity.id);
+    say(entity, WAITING_FOR_SCHEDULE, changedBy);
+  }
+
+  /** What a FLOW run says on the thread when it stops at REFINED (qits-887). */
+  static final String WAITING_FOR_SCHEDULE =
+      "Refined; waiting for a person to schedule it (READY_FOR_DEV).";
 
   /**
    * The ask that a move into VERIFIED makes, and the sentence that follows it.
@@ -497,7 +562,7 @@ public class PhaseAdvance {
    * The second sentence a move into IMPLEMENTED sometimes gets: the release asked for earlier is
    * still standing, and it is a person's to withdraw or decline.
    *
-   * <p>Read rather than inferred — see the class javadoc — so a ticket arriving from REFINED finds
+   * <p>Read rather than inferred — see the class javadoc — so a ticket arriving from READY_FOR_DEV finds
    * nothing and is told nothing. A failed read writes nothing either: this note is context on a move
    * that has already happened and has already said what it started, and a sentence about the release
    * is worth exactly nothing if it might be wrong.
@@ -562,7 +627,7 @@ public class PhaseAdvance {
 
   /**
    * The FLOW hand-off's move into the "-ING" status of the phase whose turn was just spoken —
-   * IMPLEMENTING from REFINED, VERIFYING from IMPLEMENTED; nothing for any other status — see the
+   * IMPLEMENTING from READY_FOR_DEV, VERIFYING from IMPLEMENTED; nothing for any other status — see the
    * class javadoc. Never throws: the turn is out and the thread has said so, and a refused move must
    * not reach the caller of a transition that already happened.
    */

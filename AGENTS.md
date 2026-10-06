@@ -1150,10 +1150,12 @@ scopes; the successor *epic's* slug cannot, so it mints the next free suffix lik
 
 **Putting an agent on an epic or a ticket is one action**, `POST /projects/api/entities/{id}/dispatch`
 (`projects/api/EntityDispatchController` → `EntityDispatch`), `qits:admin` alone. It starts the phase
-the entity's **status** implies — REPORTED starts refine, REFINED and IMPLEMENTING implement (a press
-on a REFINED entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED and VERIFYING verify (a
+the entity's **status** implies — REPORTED starts refine, READY_FOR_DEV and IMPLEMENTING implement (a
+press on a READY_FOR_DEV entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED and VERIFYING
+verify (a
 press on an IMPLEMENTED entity moves it to VERIFYING);
-VERIFIED, DONE and DROPPED start nothing and answer **409** naming the status — in one workspace on
+VERIFIED, DONE and DROPPED start nothing and answer **409** naming the status, and REFINED answers a
+409 of its own: it waits for a person to schedule it (READY_FOR_DEV, qits-887) — in one workspace on
 the project's **wrapper** with `branchTree`, on `ticket/<slug>` or `epic/<slug>`. The body names a
 mode, and the mode is the only difference between the two actions the UI offers:
 
@@ -1519,8 +1521,9 @@ Three things travel with it:
   composes the link, because that needs the platform's public origin, which a browser is told by
   `/main-navigation` and no service here holds a key for.
 - **The agent's first turn is `api/PhasePrompts` and the ticket's STATUS picks it.** Three
-  ticket templates (an epic has its own three, over the same status→phase rule), one per phase — REPORTED starts refine, REFINED starts implement, IMPLEMENTED starts
-  verify — and VERIFIED, DONE and DROPPED render **nothing**, so the door answers **409** naming the
+  ticket templates (an epic has its own three, over the same status→phase rule), one per phase — REPORTED starts refine, READY_FOR_DEV starts implement, IMPLEMENTED starts
+  verify — and REFINED (a person schedules it, qits-887), VERIFIED, DONE and DROPPED render
+  **nothing**, so the door answers **409** naming the
   status and stands no workspace up (the refusal runs before the port is asked for anything). The
   same emptiness is what makes a transition into DROPPED deliver no turn and say nothing on the
   thread: one switch answers both. The prompt is
@@ -1574,9 +1577,13 @@ entity's `dispatch_continues` says the last press asked for the whole flow; a PH
 silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
 and no second switch**: the prompt for a status is the work that starts from it, so a
 move back from IMPLEMENTED to IMPLEMENTING — a correction, not a failure path — gets the *implement* turn and a close to DONE
-gets nothing. Direction is consulted once (qits-749): the platform's "phase started" moves, REFINED →
-IMPLEMENTING and IMPLEMENTED → VERIFYING, push nothing when made by hand, because each says the phase
-already started. And a FLOW hand-off whose implement or verify turn was spoken moves the entity on to
+gets nothing. Direction is consulted once (qits-749): the platform's "phase started" moves,
+READY_FOR_DEV → IMPLEMENTING and IMPLEMENTED → VERIFYING, push nothing when made by hand, because each
+says the phase already started. **And a person's scheduling, REFINED → READY_FOR_DEV, pushes nothing
+either (qits-887)**, even with a FLOW workspace standing: it is an approval, and starting the work is
+the next press. A FLOW refine that lands REFINED delivers nothing (REFINED starts no phase) and, when a
+workspace stands on the branch, says *"Refined; waiting for a person to schedule it (READY_FOR_DEV)."*
+so the run does not end silently. And a FLOW hand-off whose implement or verify turn was spoken moves the entity on to
 IMPLEMENTING or VERIFYING itself, through `WorkEntityService.transitionFrom`, never
 a route — as the dispatch press does (`EntityDispatch`). It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
@@ -1594,8 +1601,8 @@ assignment, not a comment, not a release.
   comment (the stamp is passed *in*, because the MCP surface's fallback identity is `mcp-agent` where
   the REST one's is null): *"Started the implement phase: the agent working in the workspace on
   `ticket/x` was told."*, or *"…no agent was running in the workspace on `ticket/x`, so one was
-  launched to take it."*, or *"Could not start the implement phase: &lt;reason&gt;. The ticket is
-  REFINED and nothing is running on it."* — which claims nothing about an agent. **A ticket with no
+  launched to take it."*, or *"Could not start the verify phase: &lt;reason&gt;. The ticket is
+  IMPLEMENTED and nothing is running on it."* — which claims nothing about an agent. **A ticket with no
   workspace gets no comment at all**, and so do a project with no wrapper and an absent port: in all
   three there is nothing standing to speak to, and a person walking a ticket through by hand must not
   have their thread filled with "there was nobody to tell". The `TICKETS` hint fires only where a

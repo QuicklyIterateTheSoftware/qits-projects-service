@@ -38,7 +38,9 @@ import org.jboss.logging.Logger;
  *       phase left" would be false, and the answer that sends a reader to the thread comes first.
  *       A campaign's block is its start's business ({@code CampaignStarter}) and its executor's.
  *   <li><b>The phase</b>, from {@link PhasePrompts#phaseOf} — VERIFIED, DONE and DROPPED start
- *       none and are a <b>409</b> naming the status. Decided before anything is asked of anybody.
+ *       none and are a <b>409</b> naming the status. REFINED starts none either (qits-887) and has a
+ *       409 of its own, asked before the block: it waits for a person to schedule it
+ *       (READY_FOR_DEV). Decided before anything is asked of anybody.
  *   <li><b>The port</b> (503 when absent) and <b>the address</b> ({@link EntityWorkspaces#require},
  *       409 for a project with no wrapper). Knowable without attempting anything.
  *   <li><b>The bit</b>, written onto the entity ({@code EntityDispatchService.setDispatchContinues}),
@@ -46,8 +48,8 @@ import org.jboss.logging.Logger;
  *       returned must already find the answer the press gave. A dispatch that then fails leaves the
  *       bit saying what the person last asked for, which is harmless — it is read only when a
  *       transition happens with a workspace standing.
- *   <li><b>The move into the phase's "-ING" status</b> (qits-749): REFINED → IMPLEMENTING when the
- *       press starts implement, IMPLEMENTED → VERIFYING when it starts verify. The press is the
+ *   <li><b>The move into the phase's "-ING" status</b> (qits-749): READY_FOR_DEV → IMPLEMENTING
+ *       when the press starts implement, IMPLEMENTED → VERIFYING when it starts verify. The press is the
  *       moment that phase starts, so the platform records it in the same press rather than leaving
  *       it to anybody's hand. FLOW and PHASE alike — it is a fact about this press, not about what
  *       follows it — and so the campaign executor's press too. Made through {@link
@@ -167,7 +169,8 @@ public class EntityDispatch {
   /**
    * The same press by id, refused with a {@link DispatchRefused} unless the phase the row's status
    * starts is {@code requiredPhase} — the campaign executor's door (qits-417), which starts a member
-   * at REFINED, its implement phase, and nothing else. The phase is decided on the row as this call
+   * at its implement phase and nothing else (READY_FOR_DEV or IMPLEMENTING since qits-887; a
+   * REFINED member is refused, it waits for a person to schedule it). The phase is decided on the row as this call
    * reads it, fresh, so a member that moved on since the caller last looked (another press, an agent's
    * own claim) is refused here instead of being started at whatever phase it has reached.
    */
@@ -288,8 +291,8 @@ public class EntityDispatch {
   // ---- the pieces --------------------------------------------------------------------------
 
   /**
-   * The move a press makes into the "-ING" status of the phase it starts (qits-749): REFINED →
-   * IMPLEMENTING for implement, IMPLEMENTED → VERIFYING for verify ({@link
+   * The move a press makes into the "-ING" status of the phase it starts (qits-749): READY_FOR_DEV
+   * → IMPLEMENTING for implement, IMPLEMENTED → VERIFYING for verify ({@link
    * EntityStateMachine#startedStatusOf}), judged by the write itself so a row that moved meanwhile
    * is left where it is. Refine starts nothing to move into, and an "-ING" status is already there.
    * Answers the row as it now stands.
@@ -397,6 +400,18 @@ public class EntityDispatch {
               + " runs no phase of its own, so there is no phase to dispatch an agent onto —"
               + " dispatch its epic instead.");
     }
+    if (EntityStatus.REFINED.name().equals(entity.status)) {
+      // qits-887: REFINED starts no phase, and not because the work is over — it waits for a
+      // person's scheduling. Its own sentence, before the block's, so the reader is sent to the one
+      // move that would let a press through.
+      throw new DispatchRefused(
+          409,
+          capitalised(noun(entity))
+              + " "
+              + entity.id
+              + " is REFINED. "
+              + REFINED_WAITS);
+    }
     if (entity.blocked) {
       throw new DispatchRefused(
           409,
@@ -423,6 +438,10 @@ public class EntityDispatch {
                         + " decide, and an agent is not dispatched onto work that is over or that"
                         + " was decided against."));
   }
+
+  /** Why a REFINED entity is not dispatched (qits-887). */
+  static final String REFINED_WAITS =
+      "REFINED waits for a person to schedule it (READY_FOR_DEV) before it can be dispatched.";
 
   /**
    * What the entity's thread is told. It names the phase, and for a one-phase run says that it stops
