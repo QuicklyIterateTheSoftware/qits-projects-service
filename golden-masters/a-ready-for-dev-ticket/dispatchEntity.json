@@ -8,6 +8,7 @@
     "repositoryId": "00000000-0000-4000-8000-000000000003",
     "branch": "ticket/database-runs-out-of-connection-slots-during-deploys",
     "fresh": true,
-    "agentLaunch": "SCHEDULED"
+    "agentLaunch": "SCHEDULED",
+    "assignee": "ws-agent-41"
   }
 }

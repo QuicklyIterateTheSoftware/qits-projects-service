@@ -1211,7 +1211,7 @@ mode, and the mode is the only difference between the two actions the UI offers:
     POST /projects/api/entities/{id}/dispatch   {"mode":"FLOW"}    Dispatch — run the whole flow
                                                 {"mode":"PHASE"}   Run the next phase — one, then stop
       → {"dispatch": {entityId, archetype, phase, mode, workspaceRowId, repositoryId, branch,
-                      fresh, agentLaunch}}
+                      fresh, agentLaunch, assignee}}
     GET  /projects/api/entities/{id}/dispatch   (qits:admin, qits:agent)
       → {"state": {entityId, archetype, status, nextPhase, blocked, dispatchable, mode}}
 
@@ -1225,6 +1225,16 @@ the phase prompts' forward claims read too, so the page and the agent cannot dis
 unknown mode is a 400; a feature or a task is a 409 (no phase of its own); a blocked ticket or epic is a
 409 naming the block, and a blocked campaign's start press is too; no workspaces context is a 503; a
 project with no wrapper is a 409.
+
+**The assignee is the dispatched agent (qits-887).** `ASSIGNEE` is permitted on EPIC as on TICKET
+(declaration only: `entity.assignee` is on every row), and every successful press — refine, implement
+or verify, a person's or the campaign executor's — writes it through
+`EntityDispatchService.setAssignee` (audited) to the `agentIdentity` qits-workspaces answers on the
+dispatch (`WorkspaceAgentDispatch.Dispatch.agentIdentity`: the commissioned client id, or the
+workspace token's subject on a runner), **never the person who pressed**. When the far side names
+none — null before a fresh workspace is commissioned, absent from an older qits-workspaces — it is
+`workspace <workspaceRowId>` (`Dispatch.assignee()`). The press's answer carries it as `assignee`
+and its thread comment names it; a refused or failed press writes nothing.
 
 **Blocking is for every archetype that runs a phase (qits-592)** — a ticket, an epic, a campaign —
 through one rule, `api/EntityBlocks` (reason required to block, 409 where `PhasePrompts.phaseOf`

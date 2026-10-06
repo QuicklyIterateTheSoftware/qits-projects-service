@@ -58,6 +58,7 @@ class QualifiedEntityIdsTest {
   private static EpicDto epic(String id, String projectId, long number) {
     return new EpicDto(
         id, projectId, number, null, "T", "t", "REPORTED", false, null, null, List.of(), null, null,
+        null,
         List.of());
   }
 

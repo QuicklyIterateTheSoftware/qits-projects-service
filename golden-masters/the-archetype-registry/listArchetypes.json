@@ -40,6 +40,7 @@
         "SLUG",
         "DESCRIPTION",
         "STATUS",
+        "ASSIGNEE",
         "SUPERSEDED_BY",
         "ACCEPTANCE_CRITERIA"
       ],

@@ -20,6 +20,9 @@ import java.util.List;
  *     press next.
  * @param acceptanceCriteria what the work is accepted against, in order (qits-887); empty when
  *     none is written yet
+ * @param assignee who is on the epic (qits-887) — the agent the last dispatch put there, by the
+ *     identity its calls carry, or {@code workspace <rowId>} when qits-workspaces named none; null
+ *     until a first press, and editable like a ticket's
  * @param workspaces the workspaces cut for this epic, <b>live or resolved</b>, each carrying its own
  *     {@code status} — {@link TicketDto#workspaces}' field, rule for rule. An epic leaves no other
  *     trace of a dispatch: its door writes nothing on the row, by design, so this is also the only
@@ -40,6 +43,7 @@ public record EpicDto(
     String supersededByEpicId,
     String description,
     List<String> acceptanceCriteria,
+    String assignee,
     Instant createdAt,
     Instant updatedAt,
     List<WorkspaceReferenceDto> workspaces) {
@@ -58,6 +62,7 @@ public record EpicDto(
         supersededByEpicId,
         description,
         acceptanceCriteria,
+        assignee,
         createdAt,
         updatedAt,
         found == null ? List.of() : found);
@@ -77,6 +82,7 @@ public record EpicDto(
         supersededByEpicId,
         description,
         acceptanceCriteria,
+        assignee,
         createdAt,
         updatedAt,
         workspaces);

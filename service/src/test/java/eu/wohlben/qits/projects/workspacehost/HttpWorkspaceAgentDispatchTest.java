@@ -142,6 +142,42 @@ class HttpWorkspaceAgentDispatchTest {
   }
 
   /**
+   * The agent identity (qits-887) is read off the answer when the far side names one, and an answer
+   * that names none — {@code null} before the container is commissioned, or no member at all from a
+   * qits-workspaces older than the field — is a dispatch with no identity, never a failed one. The
+   * assignee then falls back to the workspace.
+   */
+  @Test
+  void theAgentIdentityIsReadAndItsAbsenceTolerated() throws Exception {
+    String base = startServer();
+    HttpWorkspaceAgentDispatch adapter = against(base);
+    WorkspaceAgentDispatch.Subject subject = WorkspaceAgentDispatch.Subject.ticket("t-7");
+
+    responseBody.set(
+        "{\"workspace\":{\"id\":41},\"fresh\":true,\"agentLaunch\":\"SCHEDULED\","
+            + "\"agentIdentity\":\"ws-client-41\"}");
+    WorkspaceAgentDispatch.Dispatch named =
+        adapter.dispatchAgent("repo-1", "ticket/x", null, true, subject, "i");
+    assertEquals("ws-client-41", named.agentIdentity());
+    assertEquals("ws-client-41", named.assignee());
+
+    responseBody.set(
+        "{\"workspace\":{\"id\":42},\"fresh\":true,\"agentLaunch\":\"SCHEDULED\","
+            + "\"agentIdentity\":null}");
+    WorkspaceAgentDispatch.Dispatch uncommissioned =
+        adapter.dispatchAgent("repo-1", "ticket/x", null, true, subject, "i");
+    assertNull(uncommissioned.agentIdentity());
+    assertEquals("workspace 42", uncommissioned.assignee());
+
+    responseBody.set(
+        "{\"workspace\":{\"id\":43},\"fresh\":false,\"agentLaunch\":\"SKIPPED_RUNNING\"}");
+    WorkspaceAgentDispatch.Dispatch older =
+        adapter.dispatchAgent("repo-1", "ticket/x", null, true, subject, "i");
+    assertNull(older.agentIdentity(), "an older qits-workspaces omits the member");
+    assertEquals("workspace 43", older.assignee());
+  }
+
+  /**
    * The rest of the session name travels beside the qualified id (qits-617): {@code entityTitle},
    * {@code entityStatus} as the status enum's name, and {@code entityBlocked}.
    */

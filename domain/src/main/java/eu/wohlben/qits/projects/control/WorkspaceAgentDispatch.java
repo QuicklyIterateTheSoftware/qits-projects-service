@@ -60,8 +60,30 @@ public interface WorkspaceAgentDispatch {
    *     SKIPPED_RUNNING} when one was already working in that workspace. A string rather than an
    *     enum: it is the far side's vocabulary, and a value this side has never heard of must reach
    *     the ticket thread rather than fail the dispatch.
+   * @param agentIdentity the principal the dispatched agent's own calls carry (qits-887) — the
+   *     commissioned client id on a DIRECT workspace, the workspace token's subject on a RUNNER one.
+   *     <b>{@code null} when the far side named none</b>: a fresh workspace answers before its
+   *     container is commissioned, and a qits-workspaces older than the field omits it. Never a
+   *     secret. It is what an entity's assignee records, see {@link #assignee()}.
    */
-  record Dispatch(long workspaceRowId, boolean fresh, String agentLaunch) {}
+  record Dispatch(long workspaceRowId, boolean fresh, String agentLaunch, String agentIdentity) {
+
+    /** A dispatch whose far side named no agent identity. */
+    public Dispatch(long workspaceRowId, boolean fresh, String agentLaunch) {
+      this(workspaceRowId, fresh, agentLaunch, null);
+    }
+
+    /**
+     * Who is on the work, as an entity's assignee records it (qits-887): the agent identity, or —
+     * when the far side named none — {@code workspace <workspaceRowId>}, so the field still says
+     * where the agent is rather than nothing.
+     */
+    public String assignee() {
+      return agentIdentity == null || agentIdentity.isBlank()
+          ? "workspace " + workspaceRowId
+          : agentIdentity;
+    }
+  }
 
   /**
    * What the dispatched workspace is <b>for</b>: the row this dispatch is about, named by id.

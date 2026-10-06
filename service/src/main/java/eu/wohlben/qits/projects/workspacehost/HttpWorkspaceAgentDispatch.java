@@ -409,10 +409,18 @@ public class HttpWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     }
     boolean fresh = Boolean.TRUE.equals(answer.get("fresh"));
     Object launch = answer.get("agentLaunch");
+    // qits-887: who the agent's own calls are made as. Null before the container is commissioned,
+    // and absent from a qits-workspaces older than the field — both read as "named none", never as a
+    // failed dispatch: the workspace is real either way.
+    Object identity = answer.get("agentIdentity");
+    String agentIdentity =
+        identity instanceof String text && !text.isBlank() ? text : null;
     LOG.infof(
-        "qits-workspaces dispatched an agent onto %s in workspace %s (fresh=%s, launch=%s)",
-        branch, id.longValue(), fresh, launch);
-    return new Dispatch(id.longValue(), fresh, launch == null ? null : launch.toString());
+        "qits-workspaces dispatched an agent onto %s in workspace %s (fresh=%s, launch=%s,"
+            + " identity=%s)",
+        branch, id.longValue(), fresh, launch, agentIdentity);
+    return new Dispatch(
+        id.longValue(), fresh, launch == null ? null : launch.toString(), agentIdentity);
   }
 
   private static DomainException failed(String branch, String reason) {

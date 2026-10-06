@@ -62,7 +62,14 @@ import org.jboss.logging.Logger;
  *   <li><b>The dispatch</b>, with the entity as the workspace's {@link WorkspaceAgentDispatch.Subject}
  *       and the archetype's own turn. A failure surfaces as the port's 502/503 and nothing is written
  *       on the entity after it.
- *   <li><b>The record</b>: the entity's thread gets one comment naming the phase and the mode, and
+ *   <li><b>The assignee</b> (qits-887): the agent the far side names ({@link
+ *       WorkspaceAgentDispatch.Dispatch#agentIdentity}), or {@code workspace <rowId>} when it named
+ *       none, written through {@code EntityDispatchService.setAssignee} with an audit row. Every
+ *       successful press writes it, whatever the phase and whoever pressed — a person or the
+ *       campaign executor — because it records who is on the work, which is the agent. A refused or
+ *       failed press writes nothing.
+ *   <li><b>The record</b>: the entity's thread gets one comment naming the phase, the mode and the
+ *       assignee, and
  *       the hint of its archetype — {@code TICKETS} for a ticket, {@code EPICS} for an epic. Until
  *       qits-551 an epic had no thread and got the hint alone, so nothing on the epic said an agent
  *       had been put on it; its description is still the plan and is never written here.
@@ -147,7 +154,8 @@ public class EntityDispatch {
           repositoryId,
           branch,
           made.fresh(),
-          made.agentLaunch());
+          made.agentLaunch(),
+          entity.assignee);
     }
   }
 
@@ -231,6 +239,10 @@ public class EntityDispatch {
                 true,
                 subject,
                 started.instruction());
+
+    // qits-887: who is on it now is the agent this press put there, whoever pressed — and the
+    // answer carries the row as that write left it.
+    recorded = entities.setAssignee(recorded.id, made.assignee(), changedBy);
 
     comments.addComment(
         recorded.id, comment(noun(recorded), branch, made, started.phase(), mode), changedBy);
@@ -444,8 +456,9 @@ public class EntityDispatch {
       "REFINED waits for a person to schedule it (READY_FOR_DEV) before it can be dispatched.";
 
   /**
-   * What the entity's thread is told. It names the phase, and for a one-phase run says that it stops
-   * there, so a reader can tell a flow from a single step. A re-dispatch that found an agent already
+   * What the entity's thread is told. It names the phase and the assignee the press wrote
+   * (qits-887), and for a one-phase run says that it stops there, so a reader can tell a flow from a
+   * single step. A re-dispatch that found an agent already
    * working says so and names no phase: that agent was started for whatever the status said then.
    */
   private static String comment(
@@ -459,7 +472,9 @@ public class EntityDispatch {
           + noun
           + " in workspace `"
           + branch
-          + "`; left it to carry on."
+          + "`; left it to carry on. Assignee: `"
+          + made.assignee()
+          + "`."
           + (mode == DispatchMode.PHASE
               ? " It stops after its current phase: the next one starts when somebody presses"
                   + " again."
@@ -469,7 +484,9 @@ public class EntityDispatch {
         + branch
         + "` for the "
         + phase
-        + " phase."
+        + " phase. Assignee: `"
+        + made.assignee()
+        + "`."
         + (mode == DispatchMode.PHASE
             ? " This run stops after that phase: the next one starts when somebody presses again."
             : "");

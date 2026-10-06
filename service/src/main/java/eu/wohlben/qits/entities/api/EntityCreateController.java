@@ -130,7 +130,7 @@ public class EntityCreateController {
                       + " itself.")
           String ticketType,
       @Schema(description = "Why a ticket came about. Required for a ticket.") String impetus,
-      @Schema(description = "A ticket's assignee.") String assignee,
+      @Schema(description = "An epic's or a ticket's assignee.") String assignee,
       @Schema(description = "A task's repository, in the task's project.") String repositoryId,
       @Schema(description = "A feature's or task's sibling dependency.") String dependsOn) {}
 

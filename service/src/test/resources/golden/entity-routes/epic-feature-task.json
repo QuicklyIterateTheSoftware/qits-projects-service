@@ -18,6 +18,7 @@
       "supersededByEpicId" : null,
       "description" : "The spine",
       "acceptanceCriteria" : [ ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -55,6 +56,7 @@
         "supersededByEpicId" : null,
         "description" : "The spine",
         "acceptanceCriteria" : [ "It does what it says." ],
+        "assignee" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -78,6 +80,7 @@
         "supersededByEpicId" : null,
         "description" : "The spine",
         "acceptanceCriteria" : [ "It does what it says." ],
+        "assignee" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -118,6 +121,7 @@
       "supersededByEpicId" : null,
       "description" : "The spine",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -818,6 +822,7 @@
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -843,6 +848,7 @@
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -933,6 +939,7 @@
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1040,6 +1047,7 @@
       "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1056,6 +1064,7 @@
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1077,6 +1086,7 @@
       "supersededByEpicId" : "<id:11>",
       "description" : "The spine, restated",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1098,6 +1108,7 @@
       "supersededByEpicId" : null,
       "description" : "The spine, restated",
       "acceptanceCriteria" : [ "It does what it says." ],
+      "assignee" : null,
       "createdAt" : "<instant>",
       "updatedAt" : "<instant>",
       "workspaces" : [ ]
@@ -1120,6 +1131,7 @@
         "supersededByEpicId" : "<id:11>",
         "description" : "The spine, restated",
         "acceptanceCriteria" : [ "It does what it says." ],
+        "assignee" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -1137,6 +1149,7 @@
         "supersededByEpicId" : null,
         "description" : "The spine, restated",
         "acceptanceCriteria" : [ "It does what it says." ],
+        "assignee" : null,
         "createdAt" : "<instant>",
         "updatedAt" : "<instant>",
         "workspaces" : [ ]
@@ -2794,6 +2807,10 @@
       "description" : {
         "type" : "string",
         "description" : "The long-form Markdown body."
+      },
+      "assignee" : {
+        "type" : "string",
+        "description" : "Who is looking at it; free text."
       },
       "acceptanceCriteria" : {
         "type" : "array",

@@ -41,7 +41,13 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
 
   private final List<Dispatched> calls = new ArrayList<>();
 
-  private Dispatch scripted = new Dispatch(41L, true, "SCHEDULED");
+  /**
+   * The agent identity the default answer names (qits-887) — what a commissioned workspace's agent
+   * calls as. A test of the fallback scripts an answer without one.
+   */
+  public static final String DEFAULT_AGENT = "ws-agent-41";
+
+  private Dispatch scripted = new Dispatch(41L, true, "SCHEDULED", DEFAULT_AGENT);
 
   private DomainException failure;
 
@@ -156,7 +162,7 @@ public class RecordingWorkspaceAgentDispatch implements WorkspaceAgentDispatch {
     calls.clear();
     lookups.clear();
     references = List.of();
-    scripted = new Dispatch(41L, true, "SCHEDULED");
+    scripted = new Dispatch(41L, true, "SCHEDULED", DEFAULT_AGENT);
     failure = null;
   }
 }

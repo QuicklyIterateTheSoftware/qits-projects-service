@@ -152,6 +152,8 @@ public final class Archetypes {
     // A plan. Root, depth 0. Its status is the one entity lifecycle, the ticket's words;
     // supersededBy is the successor draft a supersede spawns and exists on no other kind.
     // Its acceptance criteria (qits-887) are permitted and never required: a gate asks for them.
+    // Its assignee (qits-887) is the ticket's: a press puts an agent on an epic as on a ticket, and
+    // the dispatch writes who. The column was always on every row, so this is the declaration alone.
     registry.put(
         Archetype.EPIC,
         new ArchetypeSpec(
@@ -166,7 +168,8 @@ public final class Archetypes {
                 EntityProperty.DESCRIPTION,
                 EntityProperty.STATUS,
                 EntityProperty.SUPERSEDED_BY,
-                EntityProperty.ACCEPTANCE_CRITERIA),
+                EntityProperty.ACCEPTANCE_CRITERIA,
+                EntityProperty.ASSIGNEE),
             STATUSES,
             false));
 

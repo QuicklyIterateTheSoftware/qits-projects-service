@@ -16,6 +16,7 @@ import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.bus.EntityTransitioned;
 import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
+import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
@@ -61,6 +62,9 @@ public class EntityDispatchControllerTest {
 
   /** The row read the dispatch path itself uses, fresh and patient — for reading a number back. */
   @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
+
+  /** The press itself, for the campaign executor's in-process door. */
+  @Inject EntityDispatch entityDispatch;
 
   /** Every project this class made, so the requests its releases opened can be taken away again. */
   private final List<String> projectIds = new ArrayList<>();
@@ -294,6 +298,7 @@ public class EntityDispatchControllerTest {
     assertEquals(
         List.of(
             "Dispatched a coding agent to workspace `epic/walk-the-epic` for the refine phase."
+                + " Assignee: `ws-agent-41`."
                 + " This run stops after that phase: the next one starts when somebody presses"
                 + " again."),
         threadOf(epicId));
@@ -792,6 +797,112 @@ public class EntityDispatchControllerTest {
         .statusCode(200)
         .body("state.nextPhase", equalTo("refine"));
     assertTrue(dispatch.calls().isEmpty());
+  }
+
+  // ---- the assignee is the dispatched agent (qits-887) ---------------------------------------
+
+  /** Who the dispatch path itself reads as the row's assignee, fresh. */
+  private String assigneeOf(String entityId) {
+    return dispatchEntities.fresh(entityId).assignee;
+  }
+
+  /**
+   * <b>A person's press writes the agent onto the row</b>, for an epic as for a ticket and at every
+   * phase: the identity qits-workspaces names, never the person who pressed. The answer carries it,
+   * the entity reads it back, and the thread's comment names it.
+   */
+  @Test
+  public void aPersonsPressMakesTheDispatchedAgentTheAssignee() {
+    String projectId = createProject("Dispatch Assignee");
+    String ticketId = createTicket(projectId, "Assigned ticket");
+    String epicId = createEpic(projectId, "Assigned epic");
+
+    asAdmin("mallory")
+        .body(Map.of("mode", "PHASE"))
+        .when()
+        .post("/projects/api/entities/" + epicId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("dispatch.assignee", equalTo(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT));
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(epicId));
+    asAdmin("dana")
+        .when()
+        .get("/projects/api/epics/" + epicId)
+        .then()
+        .statusCode(200)
+        .body("epic.assignee", equalTo(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT));
+    assertTrue(
+        threadOf(epicId).get(0).contains("Assignee: `" + RecordingWorkspaceAgentDispatch.DEFAULT_AGENT + "`"),
+        threadOf(epicId).toString());
+
+    // Every press writes it, whatever the phase: a later one onto another agent replaces it.
+    press(ticketId, "PHASE");
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(52L, false, "SCHEDULED", "ws-agent-52"));
+    assertEquals("implement", press(ticketId, "PHASE"));
+    assertEquals("ws-agent-52", assigneeOf(ticketId), "the implement press's agent, not mallory");
+  }
+
+  /**
+   * <b>The campaign executor's press writes it the same way</b>: its door is the by-id overload with
+   * the implement phase required, and the row records the agent, not the executor.
+   */
+  @Test
+  public void anExecutorsPressMakesTheDispatchedAgentTheAssignee() {
+    String projectId = createProject("Dispatch Executor Assignee");
+    String ticketId = createTicket(projectId, "Executor ticket");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(63L, true, "SCHEDULED", "ws-agent-63"));
+
+    EntityDispatch.Outcome outcome =
+        entityDispatch.dispatch(ticketId, DispatchMode.FLOW, "campaign c-1", "implement");
+
+    assertEquals("ws-agent-63", outcome.entity().assignee);
+    assertEquals("ws-agent-63", assigneeOf(ticketId));
+  }
+
+  /**
+   * <b>No identity, the workspace instead</b>: a fresh workspace answers before its container is
+   * commissioned (and an older qits-workspaces never names one), so the field says which workspace
+   * the agent is in rather than nothing.
+   */
+  @Test
+  public void aDispatchNamingNoAgentFallsBackToTheWorkspace() {
+    String projectId = createProject("Dispatch Assignee Fallback");
+    String epicId = createEpic(projectId, "Uncommissioned");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(77L, true, "SCHEDULED", null));
+
+    press(epicId, "FLOW");
+
+    assertEquals("workspace 77", assigneeOf(epicId));
+    assertTrue(threadOf(epicId).get(0).contains("Assignee: `workspace 77`"), threadOf(epicId).toString());
+  }
+
+  /** <b>A refused press writes nothing</b>, and neither does one whose far side failed. */
+  @Test
+  public void aRefusedOrFailedPressLeavesTheAssigneeAsItWas() {
+    String projectId = createProject("Dispatch Assignee Refused");
+    String ticketId = createTicket(projectId, "Hold still");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(88L, true, "SCHEDULED", "ws-agent-88"));
+
+    pressRefused(ticketId, "FLOW", "waits for a person to schedule it");
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
+
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willFailWith(
+        new eu.wohlben.qits.projects.error.DomainException(502, "qits-workspaces is down"));
+    asAdmin("mallory")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(502);
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
   }
 
   /** {@code <project-slug>-<number>}, read back from the two rows rather than trusted. */

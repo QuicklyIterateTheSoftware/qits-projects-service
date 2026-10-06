@@ -158,7 +158,7 @@ public class EntityPatchController {
                       + " filed and will close itself, and retyping one away from it takes it over."
                       + " Cannot be cleared.")
           String ticketType,
-      @Schema(nullable = true, description = "A ticket's assignee; null clears it.")
+      @Schema(nullable = true, description = "An epic's or a ticket's assignee; null clears it.")
           String assignee,
       @Schema(description = "A task's repository, in the task's project. Cannot be cleared.")
           String repositoryId,

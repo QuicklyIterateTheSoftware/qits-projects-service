@@ -17,7 +17,8 @@ import jakarta.inject.Inject;
  * <p><b>This module still knows nothing about phases, workspaces or prompts</b> — those are the
  * service layer's ({@code projects/api/EntityDispatch}, {@code PhasePrompts}, {@code PhaseAdvance}).
  * What is here is only what a row can say about itself: which row an id names, and whether the last
- * press on it asked for the whole flow or for one phase ({@link WorkEntity#dispatchContinues}).
+ * press on it asked for the whole flow or for one phase ({@link WorkEntity#dispatchContinues}), and
+ * which agent the last press put on it ({@link WorkEntity#assignee}, qits-887).
  *
  * <p>The bit is refused on a feature and a task. That is a registry fact rather than a phase fact —
  * they hold a status since qits-763, but no phase runs on a piece of a plan, so there is no run to
@@ -77,6 +78,38 @@ public class EntityDispatchService {
                     + " stop — its epic's run is the one.");
           }
           row.dispatchContinues = continues;
+          entities.getEntityManager().flush();
+          auditService.record(
+              AuditEntityType.of(row.archetype),
+              row.id,
+              row.id,
+              AuditOperation.UPDATE,
+              changedBy,
+              row);
+          return row;
+        });
+  }
+
+  /**
+   * Record who is on the row now (qits-887): the agent a press just put there, by the identity its
+   * own calls carry. Written on every successful press whatever the phase, and the same for a
+   * person's press and the campaign executor's — the assignee is the agent, never whoever pressed.
+   * Audited as an UPDATE of the row, {@link #setDispatchContinues}' way, under the caller.
+   *
+   * <p>Refused on a kind that has no assignee ({@link Archetypes} permits it on the two kinds a
+   * press is made on, the epic and the ticket): a campaign, a feature and a task are never
+   * dispatched, so a write here on one is a caller's mistake and not a value to store.
+   */
+  public WorkEntity setAssignee(String id, String assignee, String changedBy) {
+    return writes.hold(
+        "entity assignee",
+        () -> {
+          WorkEntity row = entity(id);
+          if (!Archetypes.spec(row.archetype).permits(EntityProperty.ASSIGNEE)) {
+            throw new ConflictException(
+                "A " + row.archetype + " has no assignee: nothing is dispatched onto one.");
+          }
+          row.assignee = assignee == null || assignee.isBlank() ? null : assignee;
           entities.getEntityManager().flush();
           auditService.record(
               AuditEntityType.of(row.archetype),
