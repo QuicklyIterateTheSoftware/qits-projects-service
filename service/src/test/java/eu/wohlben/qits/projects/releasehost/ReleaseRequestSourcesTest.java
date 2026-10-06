@@ -657,6 +657,7 @@ public class ReleaseRequestSourcesTest {
         List.of(),
         folds.get(folds.size() - 2).resolutions(),
         "the fold that conflicted asked for nothing, exactly as every fold did before this existed");
+    assertTrue(second.versionPins(), "the gitlink re-fold asks for version pins like the first");
   }
 
   /**
@@ -691,6 +692,103 @@ public class ReleaseRequestSourcesTest {
         .body("request.conflict.conflicts[0].kind", equalTo("gitlink"))
         .body("request.conflict.conflicts[0].ours", equalTo(OLDER_SHA))
         .body("request.conflict.conflicts[0].theirs", equalTo(unreleased));
+  }
+
+  /**
+   * Release request e4f88596's shape, decided where the conflict chunks live: every fold asks the git
+   * host for version pins, the git host answers 200 having decided both protocol pins itself, and
+   * the request goes on in ONE fold. The decision cannot be a trailer — the message was composed
+   * before the git host decided anything — so the INFO log, in the trailer's own form, is where a
+   * person auditing the fold finds it.
+   */
+  @Test
+  public void versionPinsTheGitHostDecidedAreRecordedOnTheRequest() {
+    String id = create("work");
+    String target = "refs/heads/release/" + id;
+    int foldsBefore = merger.foldsOf(target).size();
+
+    List<String> logged = new java.util.concurrent.CopyOnWriteArrayList<>();
+    java.util.logging.Logger log =
+        java.util.logging.Logger.getLogger(
+            eu.wohlben.qits.projects.control.ReleaseRequests.class.getName());
+    java.util.logging.Handler capture =
+        new java.util.logging.Handler() {
+          @Override
+          public void publish(java.util.logging.LogRecord entry) {
+            logged.add(
+                entry.getParameters() == null
+                    ? entry.getMessage()
+                    : String.format(entry.getMessage(), entry.getParameters()));
+          }
+
+          @Override
+          public void flush() {}
+
+          @Override
+          public void close() {}
+        };
+    log.addHandler(capture);
+    try {
+      merger.answerOnce(
+          BackingBranchMerger.Outcome.merged(
+              RecordingBackingBranchMerger.freshSha(),
+              List.of("refs/heads/main", "refs/heads/work"),
+              List.of("pom.xml"),
+              List.of(
+                  new BackingBranchMerger.ResolvedVersion(
+                      "pom.xml", 57, "2026.1006.55511", "2026.1006.64435", "2026.1006.64435"),
+                  new BackingBranchMerger.ResolvedVersion(
+                      "pom.xml", 58, "2026.1006.55641", "2026.1006.62842", "2026.1006.62842"))));
+      headMoved("work");
+
+      assertEquals("PENDING", stateOf(id));
+      List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
+      assertEquals(foldsBefore + 1, folds.size(), "the git host decided it; nothing folds again");
+      assertTrue(folds.get(folds.size() - 1).versionPins(), "every fold asks for version pins");
+      assertEquals(List.of(), folds.get(folds.size() - 1).resolutions());
+      String line =
+          logged.stream()
+              .filter(entry -> entry.contains("qits-githost decided 2 version pin(s)"))
+              .findFirst()
+              .orElseThrow(() -> new AssertionError("no decision logged: " + logged));
+      assertTrue(line.contains(id), line);
+      assertTrue(
+          line.contains(
+              "Resolved-Version: pom.xml:57 ours=2026.1006.55511 theirs=2026.1006.64435"
+                  + " -> 2026.1006.64435\n"
+                  + "Resolved-Version: pom.xml:58 ours=2026.1006.55641 theirs=2026.1006.62842"
+                  + " -> 2026.1006.62842"),
+          line);
+    } finally {
+      log.removeHandler(capture);
+    }
+  }
+
+  /**
+   * And the manifest the git host could not decide — a comment changed beside the version, say —
+   * comes back in the 409 exactly as before: one fold, asked with version pins, CONFLICTED, and the
+   * resolver's sentence on the detail.
+   */
+  @Test
+  public void aPomTheGitHostCouldNotDecideStaysConflictedAfterOneFold() {
+    String id = create("work");
+    String target = "refs/heads/release/" + id;
+    int foldsBefore = merger.foldsOf(target).size();
+
+    merger.answer(
+        BackingBranchMerger.Outcome.conflict(
+            target,
+            List.of(
+                new BackingBranchMerger.Conflict(
+                    "pom.xml", "refs/heads/maintenance/dependencies", CONFLICT_HEAD_SHA, "content"))));
+    headMoved("work");
+
+    assertEquals("CONFLICTED", stateOf(id));
+    List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
+    assertEquals(foldsBefore + 1, folds.size(), "nothing here decides a pom, so nothing folds again");
+    assertTrue(folds.get(folds.size() - 1).versionPins());
+    String detail = given().get(base() + "/" + id).then().extract().path("request.detail");
+    assertTrue(detail.contains("not over a submodule pin"), detail);
   }
 
   /** The member's path in the wrapper, under the component grammar. */

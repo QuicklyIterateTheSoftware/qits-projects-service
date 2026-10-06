@@ -2208,6 +2208,16 @@ public class ReleaseRequests {
    * written into the merge message as trailers. Anything else, including a second conflict, reaches
    * {@link #apply} exactly as it always did, with what was attempted appended to the CONFLICT arm's
    * sentence.
+   *
+   * <p><b>Version pins are the git host's to decide, and every fold asks it to.</b> Two sources
+   * bumping one {@code <….version>} in a pom, or one dependency in a package.json, is a text conflict
+   * only the git host holds the chunks of, so both folds go out with {@code versionPins} and the far
+   * side decides those itself, newer wins. Because it decides during the call, the decisions cannot
+   * be trailers of the message this side composed beforehand; they are logged at INFO, one {@code
+   * Resolved-Version} trailer line each. Not on the request's detail: the gate pass that follows
+   * every fold rewrites that sentence at once, so it would be a record nobody ever reads, and the
+   * gitlink decisions are not there either. A manifest the git host could not decide comes back in
+   * the 409 as before, and {@link ConflictResolver} declines it as it always has.
    */
   void remerge(String id, String why) {
     record Ask(
@@ -2297,6 +2307,15 @@ public class ReleaseRequests {
         attempted = attempt.detail();
       }
     }
+    if (outcome.folded() && !outcome.resolvedVersions().isEmpty()) {
+      LOG.infof(
+          "Release request %s: qits-githost decided %d version pin(s) in the fold:\n%s",
+          id,
+          outcome.resolvedVersions().size(),
+          outcome.resolvedVersions().stream()
+              .map(BackingBranchMerger.ResolvedVersion::trailer)
+              .collect(Collectors.joining("\n")));
+    }
     Folded folded = apply(id, target, why, outcome, attempted);
     if (folded != null) {
       if (folded.supersededSha() != null) {
@@ -2317,8 +2336,8 @@ public class ReleaseRequests {
   }
 
   /**
-   * One call to the merge port, with the port's must-not-throw contract belted. Two call sites and
-   * exactly two: a fold, and — only when the first answered CONFLICT and every conflicting path was
+   * One call to the merge port, with the port's must-not-throw contract belted, and always with
+   * {@code versionPins} — see {@link #remerge}. Two call sites and exactly two: a fold, and — only when the first answered CONFLICT and every conflicting path was
    * decidable — the same fold again carrying the directives.
    *
    * <p><b>Two is the ceiling and there is no mechanism here that could raise it.</b> The second call
@@ -2341,7 +2360,7 @@ public class ReleaseRequests {
     try {
       return mergers
           .get()
-          .merge(repoId, projectId, repoName, target, refs, message, resolutions);
+          .merge(repoId, projectId, repoName, target, refs, message, resolutions, true);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not lose the request.
       LOG.warnf(e, "The backing-branch merger threw for release request %s", id);

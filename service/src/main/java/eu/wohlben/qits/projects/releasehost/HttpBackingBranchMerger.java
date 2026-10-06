@@ -78,7 +78,8 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
       String target,
       List<String> sources,
       String message,
-      List<Resolution> resolutions) {
+      List<Resolution> resolutions,
+      boolean versionPins) {
     if (githostUrl.isEmpty() || githostUrl.get().isBlank()) {
       return Outcome.unreachable(
           "qits.projects.release-requests.githost-url is not configured; nothing can fold this"
@@ -103,6 +104,13 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
       // git host that predates the announcement ignores both; a repository with no name sends none.
       putIfPresent(body, "projectId", projectId);
       putIfPresent(body, "repoName", repoName);
+      if (versionPins) {
+        // The git host decides version-only manifest conflicts itself and reports them back as
+        // resolvedVersions. One that predates the flag ignores the unknown field — its request
+        // decoding does not fail on unknown properties, as projectId/repoName already rely on — and
+        // folds exactly as it always did.
+        body.put("versionPins", true);
+      }
       if (resolutions != null && !resolutions.isEmpty()) {
         // OMITTED ENTIRELY when there is nothing to direct, which is almost every fold: a git host
         // that has never heard of resolutions must see byte for byte the request it saw before this
@@ -146,8 +154,9 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
 
   /**
    * The 200 body: {@code target}, {@code sha}, {@code outcome}, {@code parents}, {@code skipped},
-   * and — on a fold that carried directives — {@code resolved}, the paths the far side decided by
-   * them. An absent {@code resolved} is an empty list and not a failure: it is what every fold that
+   * and — on a fold that carried directives or {@code versionPins} — {@code resolved}, the paths the
+   * far side decided, and {@code resolvedVersions}, the version pins among them ({@code path},
+   * 1-based {@code line}, {@code ours}, {@code theirs}, {@code chosen}). An absent {@code resolved} is an empty list and not a failure: it is what every fold that
    * asked for nothing answers, and what a git host that predates directives answers to every fold.
    */
   private static Outcome success(String body) throws Exception {
@@ -160,8 +169,20 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
     answer.path("parents").forEach(node -> parents.add(node.asText()));
     List<String> resolved = new ArrayList<>();
     answer.path("resolved").forEach(node -> resolved.add(node.asText()));
+    List<ResolvedVersion> resolvedVersions = new ArrayList<>();
+    answer
+        .path("resolvedVersions")
+        .forEach(
+            node ->
+                resolvedVersions.add(
+                    new ResolvedVersion(
+                        text(node, "path"),
+                        node.path("line").asInt(0),
+                        text(node, "ours"),
+                        text(node, "theirs"),
+                        text(node, "chosen"))));
     return switch (answer.path("outcome").asText("")) {
-      case "merged" -> Outcome.merged(sha, parents, resolved);
+      case "merged" -> Outcome.merged(sha, parents, resolved, resolvedVersions);
       case "fast-forward" -> Outcome.fastForward(sha, parents, resolved);
       case "unchanged" -> Outcome.unchanged(sha);
       default ->
