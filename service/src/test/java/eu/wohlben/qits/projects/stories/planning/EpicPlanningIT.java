@@ -43,9 +43,13 @@ import org.junit.jupiter.api.TestMethodOrder;
  * one rule is worth stating before the stories: <b>the freeze is per field, not per endpoint</b>.
  * A structural change — the epic's title or description, and any feature or task create, update or
  * delete — needs the epic at {@code REPORTED}; the implemented markers need it at {@code
- * REFINED}. So the same {@code PUT /tasks/{id}} is refused before the freeze and accepted
- * after it, depending on which field it carries, and the two stories below are exactly those two
- * sides.
+ * READY_FOR_DEV} or {@code IMPLEMENTING} — which is why the owner's own press schedules the epic
+ * before the engineer ever reaches for a marker. So the same {@code PUT /tasks/{id}} is refused
+ * before the freeze and accepted after the scope is frozen and scheduled, depending on which field
+ * it carries, and the two stories below are exactly those two sides. Two gates stand in front of
+ * the freeze and the schedule: {@code ACCEPTANCE_CRITERIA} (an epic needs criteria to enter
+ * {@code REFINED}) and {@code PERSON_APPROVAL} (only a verified person may schedule it, {@code
+ * REFINED -> READY_FOR_DEV}).
  *
  * <p><b>Two actors, because it really is two people.</b> A product owner shapes and freezes the
  * scope; an engineer marks the work done afterwards and never touches the scope. The audit log is
@@ -118,9 +122,12 @@ public class EpicPlanningIT {
       a task bound to one of the project's repositories — a task must name a repository in its own
       epic's project, so the plan and the catalogue are one graph rather than two. The epic starts
       REPORTED, which is the only status in which any of that is allowed, and the transition door
-      is the only thing that moves it: REFINED is the scope freeze. Afterwards the same
-      person, on the same session, cannot add a second feature — 409, because the scope is no
-      longer a draft, and that is a conflict rather than a permission problem.
+      is the only thing that moves it. REFINED is the scope freeze, and it is refused — 409, naming
+      the ACCEPTANCE_CRITERIA gate — until the epic has acceptance criteria, so the owner gives it
+      some first. Afterwards the same person, on the same session, cannot add a second feature — 409,
+      because the scope is no longer a draft, and that is a conflict rather than a permission
+      problem. Scheduling the epic for development (REFINED -> READY_FOR_DEV) is a separate, later
+      decision — the PERSON_APPROVAL gate — and the owner's own press is what makes it one.
       """)
   @UserflowRunsAfter({TokenValidationBootstrapIT.class, ProjectCatalogueIT.class})
   @Order(1)
@@ -202,6 +209,17 @@ public class EpicPlanningIT {
         .note("…a feature under it, and a task bound to one of the project's own repositories")
         .as("scope-drafted");
 
+    // The freeze is refused without them — ACCEPTANCE_CRITERIA, qits-934/qits-935 — so the owner
+    // gives the epic its criteria before asking for REFINED.
+    StoryIdentities.person(given(), OWNER_USER)
+        .contentType("application/merge-patch+json")
+        .body(Map.of("acceptanceCriteria", List.of("The checkout completes without losing the cart.")))
+        .when()
+        .patch(StoryTarget.entityPath(epicId))
+        .then()
+        .statusCode(200);
+    story.note("the owner gives the epic acceptance criteria").as("criteria-given");
+
     JsonPath frozen =
         StoryIdentities.person(given(), OWNER_USER)
             .contentType(ContentType.JSON)
@@ -230,6 +248,26 @@ public class EpicPlanningIT {
     story
         .note("a second feature is refused with a conflict — the scope is no longer a draft")
         .as("freeze-enforced");
+
+    // Scheduling is a separate decision from freezing — PERSON_APPROVAL — and the asserted headers
+    // above do not satisfy it (they are a machine credential to qits-891's check); a person's own
+    // qits CLI bearer is the owner's second proof, and it is what the cascade carries the feature
+    // and the task along on, which is what lets the engineer mark the task implemented in the next
+    // story.
+    JsonPath scheduled =
+        StoryIdentities.personsCli(given(), OWNER_USER)
+            .contentType(ContentType.JSON)
+            .body(Map.of("target", "READY_FOR_DEV"))
+            .when()
+            .post(StoryTarget.epicTransitionPath(epicId))
+            .then()
+            .statusCode(200)
+            .extract()
+            .jsonPath();
+    assertEquals("READY_FOR_DEV", scheduled.getString("epic.status"));
+    story
+        .note("the owner schedules the epic for development: it moves to READY_FOR_DEV")
+        .as("epic-scheduled");
   }
 
   @UserStory(
@@ -237,13 +275,14 @@ public class EpicPlanningIT {
       category = CATEGORY)
   @UserStoryDescription(
       """
-      With the scope frozen, the implemented markers open — the mirror image of the freeze, and on
-      the very same route: PUT /tasks/{id} carrying implementedAt is accepted where the same route
-      carrying a title is refused, because the guard is per field. An engineer marks the task done
-      and then its feature, and "done" for the epic is derived from exactly that rather than
-      stored, so no fifth status can disagree with it. The audit subtree is then read back to see
-      who did it: every row records the X-Qits-User the platform edge asserted, which is the only
-      thing that produces a principal in a deployed process at all.
+      With the scope frozen and the epic scheduled — a person already moved it to READY_FOR_DEV —
+      the implemented markers open: the mirror image of the freeze, and on the very same route: PUT
+      /tasks/{id} carrying implementedAt is accepted where the same route carrying a title is
+      refused, because the guard is per field. An engineer marks the task done and then its
+      feature, and "done" for the epic is derived from exactly that rather than stored, so no fifth
+      status can disagree with it. The audit subtree is then read back to see who did it: every row
+      records the X-Qits-User the platform edge asserted, which is the only thing that produces a
+      principal in a deployed process at all.
       """)
   @UserflowRunsAfter(TokenValidationBootstrapIT.class)
   @Order(2)
@@ -331,8 +370,17 @@ public class EpicPlanningIT {
     ReportAssertions.assertComplete(CATEGORY, PROPOSED_SLUG, UserflowReport.PASSED);
     ReportAssertions.assertStepId(CATEGORY, PROPOSED_SLUG, "epic-proposed");
     ReportAssertions.assertStepId(CATEGORY, PROPOSED_SLUG, "scope-drafted");
+    ReportAssertions.assertStepId(CATEGORY, PROPOSED_SLUG, "criteria-given");
     ReportAssertions.assertStepId(CATEGORY, PROPOSED_SLUG, "scope-frozen");
     ReportAssertions.assertStepId(CATEGORY, PROPOSED_SLUG, "freeze-enforced");
+    ReportAssertions.assertStepId(CATEGORY, PROPOSED_SLUG, "epic-scheduled");
+    ReportAssertions.assertEdge(
+        CATEGORY,
+        PROPOSED_SLUG,
+        NetworkEdge.HTTP,
+        PRODUCT_OWNER,
+        StoryTarget.SERVICE,
+        "PATCH " + StoryTarget.entityPath("{id}") + " -> 200");
     ReportAssertions.assertEdge(
         CATEGORY,
         PROPOSED_SLUG,

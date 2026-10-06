@@ -69,6 +69,11 @@ public final class StoryTarget {
     return API_PATH + "/epics/" + epicId;
   }
 
+  /** The merged model's generic door — {@code PATCH} is where acceptance criteria are written. */
+  public static String entityPath(String id) {
+    return API_PATH + "/entities/" + id;
+  }
+
   /** The epic's features: {@code GET} lists them, {@code POST} adds one. */
   public static String epicFeaturesPath(String epicId) {
     return epicPath(epicId) + "/features";
