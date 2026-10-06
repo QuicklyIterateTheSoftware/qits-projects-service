@@ -76,6 +76,18 @@ import org.jboss.logging.Logger;
  * <p><b>Only step 3 decides.</b> Under the two row locks one caller sees {@code claimed_at is null}
  * and updates one row, and every other caller sees it claimed.
  *
+ * <h2>Only a scheduled member is claimed (qits-887)</h2>
+ *
+ * <p>A member is claimed at READY_FOR_DEV — a person's scheduling — and at no other status that
+ * starts implement. A REFINED member is {@link Attempt#NOT_READY} with {@link #WAITING_FOR_SCHEDULE}
+ * written once on its membership, which the progress shows; an unclaimed IMPLEMENTING member is
+ * {@link Attempt#NOT_READY} with nothing written, because somebody started it by hand and a claim
+ * would put a second agent on it. VERIFIED and DONE stay {@link Attempt#ARRIVED}. Both steps 1 and 3
+ * decide it. <b>Scheduling re-checks the member at once</b>: its move into READY_FOR_DEV is an
+ * {@code EntityTransitioned}, and {@code bus/CampaignCriteriaListener}'s retry arm hands every
+ * satisfied, unclaimed membership of a moved entity back here — in every campaign that holds it — so
+ * the dispatch does not wait for the periodic sweep.
+ *
  * <h2>A blocked campaign claims nothing new (qits-592)</h2>
  *
  * <p>Steps 1 and 3 both read the campaign row's {@code blocked} beside its status, and a blocked
@@ -114,14 +126,26 @@ public class CampaignExecutor {
 
   private static final Logger LOG = Logger.getLogger(CampaignExecutor.class);
 
-  /** The one phase a campaign starts a member at: REFINED, so FLOW carries it to VERIFIED. */
+  /**
+   * The one phase a campaign starts a member at: READY_FOR_DEV, so FLOW carries it to VERIFIED.
+   */
   static final String PHASE = "implement";
+
+  /**
+   * What a REFINED member's membership says while it waits (qits-887): a person schedules work, the
+   * campaign never does, so the member is not claimed until somebody has. Written once, like every
+   * refusal, and cleared by the claim that follows the scheduling.
+   */
+  static final String WAITING_FOR_SCHEDULE =
+      "Waiting for a person to schedule it (READY_FOR_DEV); the campaign dispatches it once they"
+          + " have.";
 
   /** What one {@link #tryDispatch} came to — for the sweep's count, the log and the tests. */
   public enum Attempt {
     /**
      * Nothing to do: not a campaign member, claimed, not started, not REFINED, blocked, not
-     * satisfied.
+     * satisfied — or the member is not scheduled (REFINED, its waiting written once) or was started
+     * by hand (an unclaimed IMPLEMENTING member, qits-887).
      */
     NOT_READY,
     /** The member is VERIFIED or DONE already: skipped silently; progress shows it done. */
@@ -233,17 +257,26 @@ public class CampaignExecutor {
 
   // --- tryDispatch -----------------------------------------------------------------------------
 
-  /** What step 1 read, for the steps that follow; {@code verdict} set means stop there. */
+  /**
+   * What step 1 read, for the steps that follow; {@code verdict} set means stop there, and {@code
+   * refusalWritten} that the stop wrote the member's waiting onto its membership.
+   */
   private record Look(
       Attempt verdict,
       String campaignId,
       String projectId,
       WorkEntity campaign,
       WorkEntity member,
-      String storedRefusal) {
+      String storedRefusal,
+      boolean refusalWritten) {
 
     static Look stop(Attempt verdict) {
-      return new Look(verdict, null, null, null, null, null);
+      return new Look(verdict, null, null, null, null, null, false);
+    }
+
+    /** An unscheduled member: not ready, its waiting written when it was not already. */
+    static Look waiting(String projectId, boolean written) {
+      return new Look(Attempt.NOT_READY, null, projectId, null, null, null, written);
     }
   }
 
@@ -263,6 +296,9 @@ public class CampaignExecutor {
   public Attempt tryDispatch(String membershipId, UUID evidenceEventId) {
     // 1. CHEAP READ — no lock, its own transaction.
     Look look = QuarkusTransaction.requiringNew().call(() -> look(membershipId));
+    if (look.refusalWritten()) {
+      publisher.fire(look.projectId(), ProjectChangeHint.Topic.EPICS);
+    }
     if (look.verdict() != null) {
       return look.verdict();
     }
@@ -367,8 +403,14 @@ public class CampaignExecutor {
     if (arrived(member)) {
       return Look.stop(Attempt.ARRIVED);
     }
+    if (startedByHand(member)) {
+      return Look.stop(Attempt.NOT_READY);
+    }
+    if (unscheduled(member)) {
+      return Look.waiting(campaign.projectId, waitForSchedule(edge));
+    }
     return new Look(
-        null, campaign.id, campaign.projectId, campaign, member, edge.dispatchRefusal);
+        null, campaign.id, campaign.projectId, campaign, member, edge.dispatchRefusal, false);
   }
 
   /** Step 3's body, inside its own transaction. */
@@ -402,6 +444,12 @@ public class CampaignExecutor {
     }
     if (arrived(member)) {
       return new Claim(Attempt.ARRIVED, null, null, false);
+    }
+    if (startedByHand(member)) {
+      return new Claim(Attempt.NOT_READY, null, null, false);
+    }
+    if (unscheduled(member)) {
+      return new Claim(Attempt.NOT_READY, null, WAITING_FOR_SCHEDULE, waitForSchedule(edge));
     }
     String refusal =
         QuarkusTransaction.suspendingExisting()
@@ -468,6 +516,31 @@ public class CampaignExecutor {
 
   private static boolean arrived(WorkEntity member) {
     return Set.of(EntityStatus.VERIFIED.name(), EntityStatus.DONE.name()).contains(member.status);
+  }
+
+  /**
+   * <b>Not scheduled yet</b> (qits-887): a REFINED member waits for a person's READY_FOR_DEV and is
+   * never claimed before it — the campaign orders work, it does not approve it. Not a refusal of
+   * the member, so it is decided here rather than by the dispatch's precheck, and its own sentence
+   * ({@link #WAITING_FOR_SCHEDULE}) is what the progress shows.
+   */
+  private static boolean unscheduled(WorkEntity member) {
+    return EntityStatus.REFINED.name().equals(member.status);
+  }
+
+  /**
+   * <b>Started by hand</b> (qits-887): an IMPLEMENTING member nobody here claimed has an agent on it
+   * already — somebody pressed it themselves. The precheck would let a second agent start on it,
+   * so it is never claimed; nothing is wrong with it, so no refusal is written.
+   */
+  private static boolean startedByHand(WorkEntity member) {
+    return EntityStatus.IMPLEMENTING.name().equals(member.status);
+  }
+
+  /** The waiting sentence on {@code edge}, written once; answers whether this call wrote it. */
+  private boolean waitForSchedule(EntityMembership edge) {
+    return !WAITING_FOR_SCHEDULE.equals(edge.dispatchRefusal)
+        && writeRefusal(edge.id, WAITING_FOR_SCHEDULE);
   }
 
   // --- the records -----------------------------------------------------------------------------

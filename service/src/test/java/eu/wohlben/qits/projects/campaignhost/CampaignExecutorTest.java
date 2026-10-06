@@ -273,6 +273,7 @@ class CampaignExecutorTest {
     walk(reported, "REFINED");
     // qits-887: REFINED starts no phase, so the member waits for a person to schedule it.
     assertEquals(0, executor.sweep(f.campaign.id));
+    assertEquals(CampaignExecutor.WAITING_FOR_SCHEDULE, membership(f, 0).dispatchRefusal);
     walk(reported, "READY_FOR_DEV");
     assertEquals(1, executor.sweep(f.campaign.id));
     EntityMembership dispatched = membership(f, 0);
@@ -282,6 +283,60 @@ class CampaignExecutorTest {
     // The executor's dispatch is the press's, so the member starts IMPLEMENTING too (qits-749).
     assertEquals(
         "IMPLEMENTING", workEntities.get(Archetype.TICKET, reported.id).status);
+  }
+
+  // --- 5b. only a scheduled member is claimed (qits-887) ------------------------------------------
+
+  /**
+   * A REFINED member waits for a person: the press claims nothing and writes the waiting sentence
+   * once; a person's scheduling is an {@code EntityTransitioned} whose delivery dispatches it at
+   * once, with no sweep in between.
+   */
+  @Test
+  void aRefinedMemberWaitsForAPersonAndIsDispatchedOnceScheduled() {
+    WorkEntity refined = walk(ticket("Awaiting a person"), "REFINED");
+    Fixture f = campaignOf(refined);
+
+    press(f.campaign.id);
+    assertEquals(0, port.calls().size(), "a REFINED member is not dispatched");
+    EntityMembership waiting = membership(f, 0);
+    assertNull(waiting.claimedAt);
+    assertEquals(CampaignExecutor.WAITING_FOR_SCHEDULE, waiting.dispatchRefusal);
+    Instant refusedAt = waiting.dispatchRefusedAt;
+    assertEquals(
+        CampaignExecutor.Attempt.NOT_READY, executor.tryDispatch(f.membershipIds.get(0), null));
+    assertEquals(0, executor.sweep(f.campaign.id));
+    assertEquals(refusedAt, membership(f, 0).dispatchRefusedAt, "written once, not every attempt");
+
+    walk(refined, "READY_FOR_DEV");
+    deliver(transitioned(refined, "REFINED", "READY_FOR_DEV"));
+    awaitQuiet();
+
+    assertEquals(1, port.calls().size(), "the scheduling itself re-checked the member");
+    assertEquals(refined.id, port.lastCall().subject().ticketId());
+    EntityMembership dispatched = membership(f, 0);
+    assertNotNull(dispatched.dispatchedAt);
+    assertNull(dispatched.dispatchRefusal, "the claim clears the waiting");
+  }
+
+  /**
+   * An unclaimed IMPLEMENTING member was started by hand: the campaign never claims it — the
+   * implement precheck would have let a second agent on — and writes nothing on it.
+   */
+  @Test
+  void anUnclaimedImplementingMemberIsNeverDispatched() {
+    WorkEntity byHand = walk(scheduled("Started by hand"), "IMPLEMENTING");
+    Fixture f = campaignOf(byHand);
+
+    press(f.campaign.id);
+    assertEquals(
+        CampaignExecutor.Attempt.NOT_READY, executor.tryDispatch(f.membershipIds.get(0), null));
+    assertEquals(0, executor.sweep(f.campaign.id));
+
+    assertEquals(0, port.calls().size());
+    EntityMembership untouched = membership(f, 0);
+    assertNull(untouched.claimedAt);
+    assertNull(untouched.dispatchRefusal, "started by hand is not something wrong with it");
   }
 
   // --- 6. the member moves between the precheck and the claim ------------------------------------

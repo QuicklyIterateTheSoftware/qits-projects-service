@@ -1252,6 +1252,12 @@ it means "outcome unknown". **On a CAMPAIGN the press is its start** — the bra
 CampaignProgressDto}` — the wrapper `GET /campaigns/{id}/progress` answers (qits-418);
 `EntityDispatch` itself still refuses a campaign. The members are then claimed and dispatched by
 `campaignhost/CampaignExecutor`, whose javadoc carries the at-most-once argument and the lock order.
+**It claims only scheduled members (qits-887)**: READY_FOR_DEV. A REFINED member is not claimed and
+its membership says `CampaignExecutor.WAITING_FOR_SCHEDULE` (written once, shown on the progress like
+any refusal, cleared by the claim); an unclaimed IMPLEMENTING member was started by hand and is
+never claimed, with nothing written. The scheduling move is an `EntityTransitioned`, and
+`CampaignCriteriaListener`'s retry arm hands the moved member's satisfied, unclaimed memberships back
+to the executor, so a scheduled member is dispatched without waiting for the sweep.
 The progress read stores nothing: `entities/api/CampaignProgress` derives every member's state,
 `waitsFor` and each criterion's `wouldBeSatisfiedBy`/`satisfiable`/`reason` from the rows
 `CampaignService.progress` reads, and `campaignhost/CampaignEvaluatorHealth` adds whether the event
