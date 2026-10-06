@@ -44,7 +44,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
       String target,
       List<String> sources,
       String message,
-      List<Resolution> resolutions) {}
+      List<Resolution> resolutions,
+      boolean versionPins) {}
 
   private final List<Fold> folds = Collections.synchronizedList(new ArrayList<>());
 
@@ -105,7 +106,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
       String target,
       List<String> sources,
       String message,
-      List<Resolution> resolutions) {
+      List<Resolution> resolutions,
+      boolean versionPins) {
     folds.add(
         new Fold(
             repoId,
@@ -114,7 +116,8 @@ public class RecordingBackingBranchMerger implements BackingBranchMerger {
             target,
             List.copyOf(sources),
             message,
-            List.copyOf(resolutions)));
+            List.copyOf(resolutions),
+            versionPins));
     Outcome once = queued.poll();
     Outcome scriptedOutcome = scripted.get();
     Outcome outcome =

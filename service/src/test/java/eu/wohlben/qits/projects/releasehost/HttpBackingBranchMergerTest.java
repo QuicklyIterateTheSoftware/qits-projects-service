@@ -249,4 +249,60 @@ class HttpBackingBranchMergerTest {
     // about the kind must never fall into it.
     assertEquals(BackingBranchMerger.KIND_FILE, conflict.kind());
   }
+
+  @Test
+  void aFoldAskingForVersionPinsSaysSo() throws Exception {
+    String base = startServer();
+
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true);
+
+    JsonNode body = MAPPER.readTree(received.get(0).body());
+    assertTrue(body.path("versionPins").asBoolean(false), body.toString());
+    assertFalse(body.has("resolutions"), "asking for version pins directs no path");
+  }
+
+  @Test
+  void aFoldNotAskingForVersionPinsSendsNoSuchKey() throws Exception {
+    String base = startServer();
+
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold");
+
+    assertFalse(MAPPER.readTree(received.get(0).body()).has("versionPins"));
+  }
+
+  @Test
+  void theVersionPinsTheGitHostDecidedAreRead() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        "{\"outcome\":\"merged\",\"sha\":\"fold-sha\",\"parents\":[\"p1\",\"p2\"],"
+            + "\"resolved\":[\"pom.xml\"],\"resolvedVersions\":[{\"path\":\"pom.xml\",\"line\":57,"
+            + "\"ours\":\"2026.1006.55511\",\"theirs\":\"2026.1006.64435\","
+            + "\"chosen\":\"2026.1006.64435\"}]}");
+
+    BackingBranchMerger.Outcome outcome =
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true);
+
+    assertEquals(BackingBranchMerger.Result.MERGED, outcome.result());
+    assertEquals(List.of("pom.xml"), outcome.resolved());
+    assertEquals(
+        List.of(
+            new BackingBranchMerger.ResolvedVersion(
+                "pom.xml", 57, "2026.1006.55511", "2026.1006.64435", "2026.1006.64435")),
+        outcome.resolvedVersions());
+    assertEquals(
+        "Resolved-Version: pom.xml:57 ours=2026.1006.55511 theirs=2026.1006.64435"
+            + " -> 2026.1006.64435",
+        outcome.resolvedVersions().get(0).trailer());
+  }
+
+  @Test
+  void aBodyWithNoResolvedVersionsKeyIsAnEmptyList() throws Exception {
+    String base = startServer();
+
+    BackingBranchMerger.Outcome outcome =
+        against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true);
+
+    assertTrue(outcome.folded());
+    assertEquals(List.of(), outcome.resolvedVersions());
+  }
 }

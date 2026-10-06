@@ -48,6 +48,8 @@ public interface BackingBranchMerger {
    * today's <em>request</em> too: a git host that has never heard of directives must not be able to
    * tell the difference.
    *
+   * <p>This form asks for no version-pin decisions; see the eight-argument form.
+   *
    * @param repoId the repository's storage id — the git host's own key
    * @param projectId the project the repository belongs to, or null. With {@code repoName} it is the
    *     public address pair the git host stamps on the {@code SCMPublishCommit} it announces for the
@@ -60,6 +62,29 @@ public interface BackingBranchMerger {
    * @param message the merge commit's message, for a person reading the log
    * @param resolutions at most one entry per path; a repeated path is refused by the far side
    */
+  default Outcome merge(
+      String repoId,
+      String projectId,
+      String repoName,
+      String target,
+      List<String> sources,
+      String message,
+      List<Resolution> resolutions) {
+    return merge(repoId, projectId, repoName, target, sources, message, resolutions, false);
+  }
+
+  /**
+   * The full form: {@code versionPins} asks the git host to decide, <b>itself and during this
+   * call</b>, any text conflict in a {@code pom.xml} or {@code package.json} whose every conflicting
+   * hunk differs only in version tokens — the newer version of each winning, numerically and never
+   * as a string. A file it cannot decide stays a conflict exactly as it would have without the flag.
+   *
+   * <p>Unlike a {@link Resolution} this is not a decision made here and carried across: the git
+   * host holds the conflict chunks and this side does not, so it is a permission, and what the far
+   * side decided comes back as {@link Outcome#resolvedVersions}. A git host that predates the flag
+   * ignores it, which is the fold it always made. The flag is still release vocabulary-free: it
+   * says "version tokens may be ordered", not what a release is.
+   */
   Outcome merge(
       String repoId,
       String projectId,
@@ -67,7 +92,8 @@ public interface BackingBranchMerger {
       String target,
       List<String> sources,
       String message,
-      List<Resolution> resolutions);
+      List<Resolution> resolutions,
+      boolean versionPins);
 
   /**
    * "Whatever the merge would have made of {@code path}, put this gitlink there instead."
@@ -94,6 +120,10 @@ public interface BackingBranchMerger {
    * It is empty for every fold that carried none, which is almost all of them; a caller that asked
    * for directives reads it to say <em>what it did</em> rather than inferring it from what it asked
    * for — the two differ the moment the far side finds a path it no longer has to decide.
+   *
+   * <p>{@link Outcome#resolvedVersions} is what the git host decided under {@code versionPins}, one
+   * entry per pin; those paths are in {@link Outcome#resolved} too. Empty on every other fold, and
+   * on every fold of a git host that predates the flag.
    */
   record Outcome(
       Result result,
@@ -101,38 +131,61 @@ public interface BackingBranchMerger {
       List<String> parents,
       List<Conflict> conflicts,
       String detail,
-      List<String> resolved) {
+      List<String> resolved,
+      List<ResolvedVersion> resolvedVersions) {
 
     public static Outcome merged(String sha, List<String> parents) {
-      return new Outcome(Result.MERGED, sha, List.copyOf(parents), List.of(), null, List.of());
+      return merged(sha, parents, List.of());
     }
 
     /** A fold that took directives and applied them — the paths it decided, in the host's order. */
     public static Outcome merged(String sha, List<String> parents, List<String> resolved) {
+      return merged(sha, parents, resolved, List.of());
+    }
+
+    /** A fold that also decided version pins on the git host's side. */
+    public static Outcome merged(
+        String sha,
+        List<String> parents,
+        List<String> resolved,
+        List<ResolvedVersion> resolvedVersions) {
       return new Outcome(
-          Result.MERGED, sha, List.copyOf(parents), List.of(), null, List.copyOf(resolved));
+          Result.MERGED,
+          sha,
+          List.copyOf(parents),
+          List.of(),
+          null,
+          List.copyOf(resolved),
+          List.copyOf(resolvedVersions));
     }
 
     public static Outcome fastForward(String sha, List<String> parents) {
-      return new Outcome(Result.FAST_FORWARD, sha, List.copyOf(parents), List.of(), null, List.of());
+      return fastForward(sha, parents, List.of());
     }
 
     public static Outcome fastForward(String sha, List<String> parents, List<String> resolved) {
       return new Outcome(
-          Result.FAST_FORWARD, sha, List.copyOf(parents), List.of(), null, List.copyOf(resolved));
+          Result.FAST_FORWARD,
+          sha,
+          List.copyOf(parents),
+          List.of(),
+          null,
+          List.copyOf(resolved),
+          List.of());
     }
 
     public static Outcome unchanged(String sha) {
-      return new Outcome(Result.UNCHANGED, sha, List.of(), List.of(), null, List.of());
+      return new Outcome(Result.UNCHANGED, sha, List.of(), List.of(), null, List.of(), List.of());
     }
 
     public static Outcome conflict(String target, List<Conflict> conflicts) {
       return new Outcome(
-          Result.CONFLICT, null, List.of(), List.copyOf(conflicts), target, List.of());
+          Result.CONFLICT, null, List.of(), List.copyOf(conflicts), target, List.of(), List.of());
     }
 
     public static Outcome unreachable(String detail) {
-      return new Outcome(Result.UNREACHABLE, null, List.of(), List.of(), detail, List.of());
+      return new Outcome(
+          Result.UNREACHABLE, null, List.of(), List.of(), detail, List.of(), List.of());
     }
 
     /** Whether the target ref now names {@link #sha} — true for all three success words. */
@@ -140,6 +193,31 @@ public interface BackingBranchMerger {
       return result == Result.MERGED
           || result == Result.FAST_FORWARD
           || result == Result.UNCHANGED;
+    }
+  }
+
+  /**
+   * One version pin the git host decided under {@code versionPins}: in {@code path}, at {@code line}
+   * (1-based, in the merged file), the two sides held {@code ours} and {@code theirs} and the fold
+   * holds {@code chosen}.
+   */
+  record ResolvedVersion(String path, int line, String ours, String theirs, String chosen) {
+
+    /**
+     * The decision as one git trailer line, the shape of {@code ConflictResolver}'s {@code
+     * Resolved-Gitlink}, so a person auditing either reads the same form.
+     */
+    public String trailer() {
+      return "Resolved-Version: "
+          + path
+          + ':'
+          + line
+          + " ours="
+          + ours
+          + " theirs="
+          + theirs
+          + " -> "
+          + chosen;
     }
   }
 
@@ -186,6 +264,9 @@ public interface BackingBranchMerger {
   /** The {@code kind} of a conflict over a submodule pin — the one kind anything here can decide. */
   String KIND_GITLINK = "gitlink";
 
-  /** The {@code kind} of a conflict over bytes. */
+  /**
+   * The {@code kind} of a conflict over bytes. A fold asked with {@code versionPins} has already had
+   * the git host decide the manifests it could; one reported here is one it could not.
+   */
   String KIND_FILE = "file";
 }

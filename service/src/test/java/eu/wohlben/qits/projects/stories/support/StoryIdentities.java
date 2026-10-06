@@ -34,6 +34,17 @@ import io.restassured.specification.RequestSpecification;
  * only thing opening these doors. Every refusal in {@code stories.refusals} is a claim only a
  * packaged run can make: inside a {@code @QuarkusTest} the dev identity holds all four platform
  * roles and no route here would refuse anybody.
+ *
+ * <h2>A verified person is neither of those (qits-887, qits-891)</h2>
+ *
+ * <p>{@link #person(RequestSpecification, String)}'s asserted header pair is enough to open any
+ * {@code qits:admin} route, but it is deliberately <b>not</b> enough to satisfy {@code
+ * PersonCheck} — the door a scheduling move (REFINED -&gt; READY_FOR_DEV) stands behind, which asks
+ * whether this process itself verified a person rather than believing a header. {@link
+ * #personsCli(RequestSpecification, String)} is the second of qits-891's two proofs, a person's
+ * {@code qits} CLI bearer: idp-signed, {@code credential_type=cli}, no {@code context_kind}, {@code
+ * qits:admin} in its groups — the marks a service client and a commissioned agent never carry. A
+ * story that needs to schedule something presents this, not {@link #person}.
  */
 public final class StoryIdentities {
 
@@ -80,5 +91,26 @@ public final class StoryIdentities {
   /** {@code given()} with the two headers the edge asserts for a logged-in admin session. */
   public static RequestSpecification person(RequestSpecification request, String user) {
     return request.header(USER_HEADER, user).header(ROLES_HEADER, HUMAN_ROLE);
+  }
+
+  /**
+   * A person's {@code qits} CLI bearer — qits-891's second proof, minted fresh per call like {@link
+   * #platformToken}. {@code changedBy} ends up holding {@code subject}: {@code PersonCheck} reads
+   * the verified person's name off the token itself ({@code JsonWebToken#getName()}, which falls
+   * back to {@code sub} since this mock sets no {@code upn}/{@code preferred_username}).
+   */
+  public static String personsCliToken(String subject) {
+    return MockIdp.attach()
+        .token()
+        .subject(subject)
+        .audience(AUDIENCE)
+        .groups(HUMAN_ROLE)
+        .claim("credential_type", "cli")
+        .mint();
+  }
+
+  /** {@code given()} with a person's qits CLI bearer on it — what a scheduling move needs. */
+  public static RequestSpecification personsCli(RequestSpecification request, String subject) {
+    return request.header("Authorization", "Bearer " + personsCliToken(subject));
   }
 }
