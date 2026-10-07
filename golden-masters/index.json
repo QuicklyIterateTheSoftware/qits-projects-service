@@ -821,6 +821,28 @@
           }
         },
         {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-campaign-with-members-to-edit/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listWorkMembers",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}/members",
@@ -959,6 +981,28 @@
           }
         },
         {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{campaignQualifiedId}",
+          "status": 200,
+          "file": "a-campaign-with-ordered-developments/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listProjectEntities",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/entities",
@@ -1062,6 +1106,28 @@
             "strings": [
               "$.campaign.qualifiedId",
               "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{campaignQualifiedId}",
+          "status": 200,
+          "file": "a-campaign-with-work-in-every-phase/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -3968,6 +4034,28 @@
           }
         },
         {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{firstCampaignQualifiedId}",
+          "status": 200,
+          "file": "an-epic-in-two-campaigns/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listProjectEntities",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/entities",
@@ -5174,6 +5262,28 @@
             "strings": [
               "$.campaign.qualifiedId",
               "$.campaign.members[*].entity.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{secondCampaignQualifiedId}",
+          "status": 200,
+          "file": "the-second-campaign-of-an-epic-in-two-campaigns/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
             ],
             "listFilteredTo": null
           }

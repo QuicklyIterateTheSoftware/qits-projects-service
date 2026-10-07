@@ -690,6 +690,26 @@ class GoldenMasterRecordingTest {
             "POST",
             members + "/{lastMembershipId}/criteria/{approvalCriterionId}/approve",
             "{\"note\":\"Finance signed the totals off.\"}"));
+    // A campaign shown anywhere can have its description read (qits-965): every state recording a
+    // campaign's members reads the campaign itself too, by the same qualified id. The detail
+    // states that focus another entity already record getWork for it — one answer per operation —
+    // and read the campaign as "a campaign in detail", over the same seed and frozen ids.
+    all.add(
+        read(
+            ProviderStates.A_CAMPAIGN_WITH_MEMBERS_TO_EDIT,
+            "getWork",
+            "/projects/api/work/{qualifiedId}"));
+    for (Map.Entry<String, String> campaign :
+        List.of(
+            Map.entry(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS, "campaignQualifiedId"),
+            Map.entry(ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE, "campaignQualifiedId"),
+            Map.entry(ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS, "firstCampaignQualifiedId"),
+            Map.entry(
+                ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS,
+                "secondCampaignQualifiedId"))) {
+      all.add(
+          read(campaign.getKey(), "getWork", "/projects/api/work/{" + campaign.getValue() + "}"));
+    }
     all.add(
         read(
             ProviderStates.A_REPORTED_TICKET,
