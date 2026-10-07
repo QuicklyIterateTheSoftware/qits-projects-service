@@ -30,7 +30,7 @@
          the mandatory -Dqits.variant=oauth|forwardauth|local auth profiles. -->
     <groupId>eu.wohlben.qits</groupId>
     <artifactId>qits-projects</artifactId>
-    <version>2026.1007.120642</version>
+    <version>2026.1007.134600</version>
     <packaging>pom</packaging>
     <name>qits-projects</name>
 
@@ -210,7 +210,7 @@
         <qits.workspaces-pacts-qits-projects.version>2026.1002.170857</qits.workspaces-pacts-qits-projects.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1007.50835</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1007.51027</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1007.53821</qits.platform-access-cli-pacts-qits-projects-service.version>
+        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1007.122439</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1007.53748</qits.maintenance-service-pacts-qits-projects-service.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
