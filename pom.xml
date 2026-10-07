@@ -441,6 +441,24 @@
                         <!-- The platform injects QITS_DOMAIN into CI steps and agent containers; a
                              test JVM that inherits it picks up the live domain instead of the
                              suite's domain-less default. Keep it out. -->
+                        <!-- No background git in a test JVM (qits-965). A push, commit or fetch may
+                             start a detached `git gc` or `git maintenance run` (their auto mode), which
+                             orphans itself. In a qits-ci step the container's PID 1 is the ci-daemon,
+                             which reaps nothing, so every such process stays a zombie holding a pid
+                             until the step ends: a gate run counted 3822 `git` zombies against the
+                             step's pids limit of 4096, and the next thread the JVM asked for failed
+                             as "unable to create native thread". Command-level config
+                             (GIT_CONFIG_COUNT) outranks GIT_CONFIG_GLOBAL=/dev/null in the fixtures,
+                             and every git the tests start inherits it. -->
+                        <environmentVariables>
+                            <GIT_CONFIG_COUNT>3</GIT_CONFIG_COUNT>
+                            <GIT_CONFIG_KEY_0>gc.auto</GIT_CONFIG_KEY_0>
+                            <GIT_CONFIG_VALUE_0>0</GIT_CONFIG_VALUE_0>
+                            <GIT_CONFIG_KEY_1>maintenance.auto</GIT_CONFIG_KEY_1>
+                            <GIT_CONFIG_VALUE_1>false</GIT_CONFIG_VALUE_1>
+                            <GIT_CONFIG_KEY_2>receive.autogc</GIT_CONFIG_KEY_2>
+                            <GIT_CONFIG_VALUE_2>false</GIT_CONFIG_VALUE_2>
+                        </environmentVariables>
                         <excludedEnvironmentVariables>
                             <excludedEnvironmentVariable>QITS_DOMAIN</excludedEnvironmentVariable>
                         </excludedEnvironmentVariables>
@@ -450,6 +468,16 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>${failsafe-plugin.version}</version>
                     <configuration>
+                        <!-- No background git, as for surefire above. -->
+                        <environmentVariables>
+                            <GIT_CONFIG_COUNT>3</GIT_CONFIG_COUNT>
+                            <GIT_CONFIG_KEY_0>gc.auto</GIT_CONFIG_KEY_0>
+                            <GIT_CONFIG_VALUE_0>0</GIT_CONFIG_VALUE_0>
+                            <GIT_CONFIG_KEY_1>maintenance.auto</GIT_CONFIG_KEY_1>
+                            <GIT_CONFIG_VALUE_1>false</GIT_CONFIG_VALUE_1>
+                            <GIT_CONFIG_KEY_2>receive.autogc</GIT_CONFIG_KEY_2>
+                            <GIT_CONFIG_VALUE_2>false</GIT_CONFIG_VALUE_2>
+                        </environmentVariables>
                         <!-- Same reasoning as the surefire plugin above: don't let the platform's
                              QITS_DOMAIN leak into the forked test JVM. -->
                         <excludedEnvironmentVariables>
