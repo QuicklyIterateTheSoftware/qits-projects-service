@@ -233,15 +233,15 @@ class AgentReadAccessTest {
    */
   private static final Set<String> ADMIN_ONLY_WRITES =
       Set.of(
+          // Letting a fold through without its automations is a sign-off (qits-978).
+          "ReleaseRequestController.waiveAutomations",
           "EpicController.transition",
           "EpicController.delete",
           "TicketController.delete",
           "TicketCommentController.delete",
           "CommentController.delete",
           // Approving a campaign criterion is the sign-off on a gated member (qits-413).
-          "CampaignController.approve",
-          // Letting a fold through without its automations is a sign-off too (qits-978).
-          "ReleaseRequestController.waiveAutomations");
+          "CampaignController.approve");
 
   /**
    * <b>The generic entity doors a platform service reaches</b> (qits-667): qits-maintenance files a
