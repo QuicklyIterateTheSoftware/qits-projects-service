@@ -25,7 +25,7 @@ import org.junit.platform.launcher.LauncherSessionListener;
 public final class Qits965ThreadSampler implements LauncherSessionListener {
 
     private static final String TAG = "[qits-965-diag]";
-    private static final long PERIOD_MS = 15_000;
+    private static final long PERIOD_MS = 2_000;
     private static volatile Thread sampler;
 
     @Override
@@ -93,6 +93,7 @@ public final class Qits965ThreadSampler implements LauncherSessionListener {
         try {
             File[] dirs = new File("/proc").listFiles();
             int procs = 0;
+            int zombies = 0;
             Map<String, Integer> tasksByComm = new HashMap<>();
             if (dirs != null) {
                 for (File d : dirs) {
@@ -100,17 +101,32 @@ public final class Qits965ThreadSampler implements LauncherSessionListener {
                         continue;
                     }
                     procs++;
+                    String stat = read(d.getPath() + "/stat");
+                    int close = stat.lastIndexOf(')');
+                    if (close > 0 && close + 2 < stat.length() && stat.charAt(close + 2) == 'Z') {
+                        zombies++;
+                    }
                     String[] tasks = new File(d, "task").list();
                     int n = tasks == null ? 0 : tasks.length;
                     String comm = read(d.getPath() + "/comm");
                     tasksByComm.merge(comm, n, Integer::sum);
                 }
             }
-            line.append(" procs=").append(procs).append(" tasks=").append(top(tasksByComm, 5));
+            line.append(" procs=").append(procs).append(" zombies=").append(zombies).append(" tasks=").append(top(tasksByComm, 5));
         } catch (Throwable e) {
             line.append(" procs=?");
         }
-        safePrint(line.toString());
+        // Every 2 s near the pids limit, else every 30 s: the gate keeps only the end of a step's
+        // log, so the samples that matter have to be the last ones written before a failure.
+        long pids = -1;
+        try {
+            pids = Long.parseLong(read("/sys/fs/cgroup/pids.current"));
+        } catch (Throwable ignored) {
+            // absent outside a pids cgroup
+        }
+        if (pids >= 1500 || secs % 30 < 2) {
+            safePrint(line.toString());
+        }
     }
 
     /** Thread name with trailing digits, ids and separators stripped, so a pool collapses to one. */
