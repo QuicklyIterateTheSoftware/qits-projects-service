@@ -45,7 +45,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
    * <b>{@link #listByProject} without the description column</b>, which is long-form Markdown and
    * only a detail view shows. The rows are built here, not loaded: they are <b>not managed</b>, so
    * never persist or merge one. {@code description}, {@code causationId} and {@code
-   * dispatchContinues} are left at their defaults.
+   * dispatchContinues} are left at their defaults; {@code preApprovedBy} is carried (qits-1075).
    */
   public List<WorkEntity> listByProjectWithoutDescription(String projectId) {
     return getEntityManager()
@@ -53,7 +53,8 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
             "select e.id, e.projectId, e.archetype, e.number, e.title, e.slug, e.slugScope,"
                 + " e.status, e.blocked, e.ticketType, e.impetus, e.assignee, e.createdBy,"
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
-                + " e.dependsOnEntityId, e.createdAt, e.updatedAt"
+                + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
+                + " e.preApprovedBy"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
         .setParameter(1, projectId)
@@ -84,6 +85,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.dependsOnEntityId = (String) c[17];
     row.createdAt = (Instant) c[18];
     row.updatedAt = (Instant) c[19];
+    row.preApprovedBy = (String) c[20];
     return row;
   }
 

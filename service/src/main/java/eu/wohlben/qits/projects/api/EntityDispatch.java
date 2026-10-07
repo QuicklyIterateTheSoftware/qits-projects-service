@@ -7,10 +7,12 @@ import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -39,7 +41,9 @@ import org.jboss.logging.Logger;
  *   <li><b>The phase</b>, from {@link PhasePrompts#phaseOf} — VERIFIED, DONE and DROPPED start
  *       none and are a <b>409</b> naming the status. REFINED starts none either (qits-887) and has a
  *       409 of its own, asked before the block: it waits for a person to schedule it
- *       (READY_FOR_DEV). Decided before anything is asked of anybody.
+ *       (READY_FOR_DEV) — <b>unless the press is a person's FLOW press</b> (qits-1075), which is
+ *       that scheduling: see "A person's Dispatch pre-approves the scheduling" below. Decided
+ *       before anything is asked of anybody.
  *   <li><b>The port</b> (503 when absent) and <b>the address</b> ({@link EntityWorkspaces#require},
  *       409 for a project with no wrapper). Knowable without attempting anything.
  *   <li><b>The bit</b>, written onto the entity ({@code EntityDispatchService.setDispatchContinues}),
@@ -90,6 +94,29 @@ import org.jboss.logging.Logger;
  * phase. So a second "Run the next phase" on an entity continues from its new status and records
  * PHASE again — which is the intended way to step an entity through by hand — and pressing
  * <em>Dispatch</em> on an entity a one-phase run left behind turns it back into a flow.
+ *
+ * <h2>A person's Dispatch pre-approves the scheduling (qits-1075)</h2>
+ *
+ * <p>Pressing <em>Dispatch</em> is a person saying "take this all the way", so the scheduling move a
+ * person must make between refine and implement (REFINED → READY_FOR_DEV, {@code PERSON_APPROVAL})
+ * is made on that press's authority rather than waited for. The {@link Mover} is the door's ({@code
+ * EntityMovers.of}, qits-891's one definition of a person); the by-id overload taking a name is a
+ * machine, which is what the campaign executor passes.
+ *
+ * <ul>
+ *   <li><b>A person's FLOW press at REPORTED</b> writes their name onto the row ({@code
+ *       EntityDispatchService.setPreApprovedBy}) beside the bit and before the refine turn goes
+ *       out; {@link PhaseAdvance} spends it when the refine phase lands REFINED.
+ *   <li><b>A person's FLOW press at REFINED</b> (unblocked) is the scheduling itself: REFINED →
+ *       READY_FOR_DEV through {@link WorkEntityService#transitionFrom} as {@link Mover#person}, so
+ *       every gate runs — a refusal ({@code ACCEPTANCE_CRITERIA}, say) is this press's 409 with the
+ *       gate's words and nothing moves — then any pending pre-approval is cleared, and the press
+ *       goes on exactly as a READY_FOR_DEV press does (into IMPLEMENTING, the implement turn).
+ *   <li><b>A PHASE press</b> never grants one, and clears a pending one (it asked for one phase, so
+ *       nothing is pre-approved past it). <b>A machine's press</b> neither grants nor clears.
+ *   <li><b>Still refused at REFINED</b>: a machine's press and a PHASE press, with {@link
+ *       #REFINED_WAITS}. A refused press writes nothing, the pre-approval included.
+ * </ul>
  *
  * <h2>Why a bean and not the controller's body</h2>
  *
@@ -174,6 +201,15 @@ public class EntityDispatch {
   }
 
   /**
+   * The same press by id, made by {@code mover} as a door verified it (qits-1075): a person's FLOW
+   * press pre-approves the scheduling — see the class javadoc. {@link #dispatch(String,
+   * DispatchMode, String)} is this with a {@link Mover#machine}.
+   */
+  public Outcome dispatch(String id, DispatchMode mode, Mover mover) {
+    return dispatch(entities.fresh(id), mode, mover); // 404
+  }
+
+  /**
    * The same press by id, refused with a {@link DispatchRefused} unless the phase the row's status
    * starts is {@code requiredPhase} — the campaign executor's door (qits-417), which starts a member
    * at its implement phase and nothing else (READY_FOR_DEV or IMPLEMENTING since qits-887; a
@@ -214,13 +250,26 @@ public class EntityDispatch {
    * in another transaction would be handed its stale first read back by its own session.
    */
   public Outcome dispatch(WorkEntity entity, DispatchMode mode, String changedBy) {
+    return dispatch(entity, mode, Mover.machine(changedBy));
+  }
+
+  /** {@link #dispatch(WorkEntity, DispatchMode, String)} by {@code mover} — see the class javadoc. */
+  public Outcome dispatch(WorkEntity entity, DispatchMode mode, Mover mover) {
+    String changedBy = mover.name();
+    boolean schedules = schedulesAtThePress(entity, mode, mover);
     // Every refusal first, with no side effect (a DispatchRefused); everything after this line is
-    // the part that writes and calls out, so anything it throws means "outcome unknown".
-    Checked checked = checked(entity);
+    // the part that writes and calls out, so anything it throws means "outcome unknown" — except
+    // the scheduling's own gate refusal, which moves nothing and writes nothing and is a refusal.
+    Checked checked = schedules ? checkedAsScheduled(entity) : checked(entity);
     EntityWorkspaces.Target target = checked.target();
     String branch = target.branch();
 
-    WorkEntity recorded = entities.setDispatchContinues(entity.id, mode.continues(), changedBy);
+    WorkEntity recorded = entity;
+    if (schedules) {
+      recorded = schedule(entity, mover);
+    }
+    recorded = entities.setDispatchContinues(recorded.id, mode.continues(), changedBy);
+    recorded = recordPreApproval(recorded, mode, mover, schedules);
     recorded = startPhase(recorded, changedBy);
     // One qualified-id read names both the workspace and the entity in the agent's first turn, so
     // the session label and the commit subjects the turn asks for cannot disagree (qits-301).
@@ -266,14 +315,18 @@ public class EntityDispatch {
     }
     String nextPhase = PhasePrompts.nextPhase(entity).orElse(null);
     boolean lifecycle = entity.status != null && nextPhaseAware(entity);
+    // "A FLOW press would run something" (qits-1075): at REFINED a person's Dispatch schedules the
+    // entity and starts implement, so it is dispatchable there although no phase is next.
+    boolean flowRuns = nextPhase != null || (lifecycle && isRefined(entity));
     return new EntityDispatchStateDto(
         entity.id,
         entity.archetype.name(),
         entity.status,
         nextPhase,
         entity.blocked,
-        nextPhase != null && !entity.blocked,
-        lifecycle ? DispatchMode.of(entity.dispatchContinues) : null);
+        flowRuns && !entity.blocked,
+        lifecycle ? DispatchMode.of(entity.dispatchContinues) : null,
+        entity.preApprovedBy);
   }
 
   /**
@@ -297,7 +350,8 @@ public class EntityDispatch {
         active ? "recheck" : "start",
         campaign.blocked,
         EntityStateMachine.campaignRunsAt(campaign.status) && !campaign.blocked,
-        start.isPresent() ? DispatchMode.FLOW : null);
+        start.isPresent() ? DispatchMode.FLOW : null,
+        null);
   }
 
   // ---- the pieces --------------------------------------------------------------------------
@@ -317,6 +371,88 @@ public class EntityDispatch {
         .orElse(entity);
   }
 
+  /**
+   * Whether this press is the scheduling itself (qits-1075): a person's FLOW press on an epic or a
+   * ticket standing at REFINED. A block is not consulted here — {@link #checkedAsScheduled} refuses
+   * it with its own sentence — and neither is anything that refuses the press anyway.
+   */
+  private static boolean schedulesAtThePress(WorkEntity entity, DispatchMode mode, Mover mover) {
+    return mode == DispatchMode.FLOW
+        && mover.isPerson()
+        && nextPhaseAware(entity)
+        && isRefined(entity);
+  }
+
+  private static boolean isRefined(WorkEntity entity) {
+    return EntityStatus.REFINED.name().equals(entity.status);
+  }
+
+  /**
+   * {@link #checked} for a press that will schedule the entity first: the same refusals in the same
+   * order, but the phase is the one READY_FOR_DEV starts — implement — because that is where the
+   * scheduling leaves it. A block is refused with the block's own sentence, as anywhere else.
+   */
+  private Checked checkedAsScheduled(WorkEntity entity) {
+    refuseCampaign(entity);
+    if (entity.blocked) {
+      throw blockedRefusal(entity);
+    }
+    return located(entity, Phase.IMPLEMENT);
+  }
+
+  /**
+   * REFINED → READY_FOR_DEV as the person pressing (qits-1075), through {@link
+   * WorkEntityService#transitionFrom} — not a route, so {@link PhaseAdvance} does not see it and
+   * pushes nothing; every gate runs. A gate's refusal is this press's 409 in the gate's words, and
+   * nothing has moved or been written. A row that is no longer REFINED (somebody moved it a moment
+   * ago) is a 409 too: the press was decided on a status the row no longer holds.
+   */
+  private WorkEntity schedule(WorkEntity entity, Mover mover) {
+    try {
+      return lifecycle
+          .transitionFrom(
+              entity.archetype, entity.id, EntityStatus.REFINED, EntityStatus.READY_FOR_DEV, mover)
+          .map(WorkEntityService.Transition::entity)
+          .orElseThrow(
+              () ->
+                  new DispatchRefused(
+                      409,
+                      capitalised(noun(entity))
+                          + " "
+                          + entity.id
+                          + " is no longer REFINED, so this press did not schedule it; press"
+                          + " again to dispatch it from where it stands now."));
+    } catch (ConflictException refused) {
+      throw new DispatchRefused(409, refused.getMessage());
+    }
+  }
+
+  /**
+   * The pre-approval this press leaves on the row (qits-1075): a person's FLOW press at REPORTED
+   * grants one in their name; a scheduling press has just spent one, so a pending one goes; a PHASE
+   * press clears a pending one; a machine's press, and a person's FLOW press anywhere else, leave
+   * the row as it is. Written only when it changes, so a press that changes nothing audits nothing
+   * here.
+   */
+  private WorkEntity recordPreApproval(
+      WorkEntity entity, DispatchMode mode, Mover mover, boolean scheduled) {
+    if (!mover.isPerson()) {
+      // A machine never grants a pre-approval and never takes a person's away either.
+      return entity;
+    }
+    String now = entity.preApprovedBy;
+    String wanted = now;
+    if (mode == DispatchMode.PHASE || scheduled) {
+      wanted = null;
+    } else if (EntityStatus.REPORTED.name().equals(entity.status)) {
+      wanted = mover.name();
+    }
+    if (java.util.Objects.equals(now, wanted)) {
+      return entity;
+    }
+    return entities.setPreApprovedBy(entity.id, wanted, mover.name());
+  }
+
   /** What {@link #checked} decided: the phase, and where it runs. */
   private record Checked(Phase phase, EntityWorkspaces.Target target) {}
 
@@ -328,7 +464,11 @@ public class EntityDispatch {
    */
   private Checked checked(WorkEntity entity) {
     refuseCampaign(entity);
-    Phase phase = phaseOrRefuse(entity);
+    return located(entity, phaseOrRefuse(entity));
+  }
+
+  /** The port and the address — step 4 of the class javadoc — for a phase already decided. */
+  private Checked located(WorkEntity entity, Phase phase) {
     if (dispatch.isUnsatisfied()) {
       throw new DispatchRefused(
           503,
@@ -425,16 +565,7 @@ public class EntityDispatch {
               + REFINED_WAITS);
     }
     if (entity.blocked) {
-      throw new DispatchRefused(
-          409,
-          capitalised(noun(entity))
-              + " "
-              + entity.id
-              + " is blocked, so its "
-              + entity.status
-              + " phase is not started — something is in the way and the "
-              + noun(entity)
-              + "'s thread says what. Clear the block once that is resolved, then dispatch.");
+      throw blockedRefusal(entity);
     }
     return PhasePrompts.phaseOf(entity)
         .orElseThrow(
@@ -451,7 +582,24 @@ public class EntityDispatch {
                         + " was decided against."));
   }
 
-  /** Why a REFINED entity is not dispatched (qits-887). */
+  /** The refusal a blocked entity's press answers, whatever its status. */
+  private static DispatchRefused blockedRefusal(WorkEntity entity) {
+    return new DispatchRefused(
+        409,
+        capitalised(noun(entity))
+            + " "
+            + entity.id
+            + " is blocked, so its "
+            + entity.status
+            + " phase is not started — something is in the way and the "
+            + noun(entity)
+            + "'s thread says what. Clear the block once that is resolved, then dispatch.");
+  }
+
+  /**
+   * Why a REFINED entity is not dispatched (qits-887) — by a machine, or by a PHASE press; a
+   * person's FLOW press schedules it instead (qits-1075).
+   */
   static final String REFINED_WAITS =
       "REFINED waits for a person to schedule it (READY_FOR_DEV) before it can be dispatched.";
 

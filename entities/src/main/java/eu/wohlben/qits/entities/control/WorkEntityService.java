@@ -907,11 +907,23 @@ public class WorkEntityService {
    */
   public Optional<Transition> transitionFrom(
       Archetype archetype, String id, EntityStatus from, EntityStatus target, String changedBy) {
+    return transitionFrom(archetype, id, from, target, Mover.machine(changedBy));
+  }
+
+  /**
+   * {@link #transitionFrom(Archetype, String, EntityStatus, EntityStatus, String)} with the mover
+   * stated (qits-1075): the platform's own REFINED → READY_FOR_DEV, made as the person whose stored
+   * pre-approval it spends, or as the person pressing Dispatch at REFINED. Every gate runs as for
+   * any other move — {@code PERSON_APPROVAL} and {@code ACCEPTANCE_CRITERIA} included — and a
+   * refusal is the same 409.
+   */
+  public Optional<Transition> transitionFrom(
+      Archetype archetype, String id, EntityStatus from, EntityStatus target, Mover mover) {
     Kind kind = kind(archetype);
     Moved moved =
         writes.hold(
             kind.label("transition"),
-            () -> move(kind, archetype, id, from, target.name(), Mover.machine(changedBy)));
+            () -> move(kind, archetype, id, from, target.name(), mover));
     if (moved == null) {
       return Optional.empty();
     }
@@ -958,6 +970,12 @@ public class WorkEntityService {
     List<Carried> carried = carryDescendants(row, statusOf(statusBefore), to, changedBy);
     row.status = to.name();
     row.blocked = false;
+    if (to == EntityStatus.DROPPED) {
+      // A pre-approval (qits-1075) is for the run of work that was decided against: it does not
+      // survive into whatever a reopen starts. Cleared here, where every lifecycle move lands, so
+      // no door can drop an entity and leave a person's approval waiting on it.
+      row.preApprovedBy = null;
+    }
     if (archetype == Archetype.CAMPAIGN
         && EntityStateMachine.campaignRunsAt(statusBefore)
         && !EntityStateMachine.campaignRunsAt(to.name())) {

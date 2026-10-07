@@ -288,4 +288,45 @@ class ScheduleNeedsAPersonDoorTest {
     status(bearer(serviceClient()), refined(projectId, "EPIC"), "READY_FOR_DEV").statusCode(403);
     stillRefined(id);
   }
+
+  // --- the dispatch door's scheduling (qits-1075) -------------------------------------------------
+
+  private static ValidatableResponse dispatch(RequestSpecification caller, String id) {
+    return caller
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + id + "/dispatch")
+        .then();
+  }
+
+  /**
+   * <b>A Dispatch press at REFINED is a scheduling, so it needs a person too</b> (qits-1075): a
+   * person's session or CLI schedules and starts implement, recorded under the proof's name; asserted
+   * headers are a machine and keep the 409 REFINED answered before; an agent's and a service
+   * client's bearer never reach the press at all.
+   */
+  @Test
+  void theDispatchDoorSchedulesOnlyForAPerson() {
+    String projectId = project("Dispatch schedules");
+    String ticketId = refined(projectId, "TICKET");
+    dispatch(headersOnly(), ticketId)
+        .statusCode(409)
+        .body("message", containsString("REFINED waits for a person to schedule it"));
+    dispatch(bearer(agent(projectId)), ticketId).statusCode(403);
+    dispatch(bearer(serviceClient()), ticketId).statusCode(403);
+    stillRefined(ticketId);
+
+    dispatch(session("mallory", "ada"), ticketId)
+        .statusCode(200)
+        .body("dispatch.phase", equalTo("implement"));
+    session("ada", "ada")
+        .when()
+        .get("/projects/api/work/" + ticketId + "/audit")
+        .then()
+        .statusCode(200)
+        .body("entries.find { it.snapshot.contains('READY_FOR_DEV') }.changedBy", equalTo("ada"));
+
+    String epicId = refined(projectId, "EPIC");
+    dispatch(bearer(personsCli()), epicId).statusCode(200).body("dispatch.phase", equalTo("implement"));
+  }
 }

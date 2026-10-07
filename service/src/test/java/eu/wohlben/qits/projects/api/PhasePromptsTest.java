@@ -189,6 +189,36 @@ public class PhasePromptsTest {
     assertTrue(prompt.contains("For a MAINTENANCE ticket"), prompt);
   }
 
+  /** A person's realistic name, as a pre-approval carries it (qits-1075). */
+  private static final String PERSON = "Margarethe Oberhauser-Wohlleben";
+
+  private static WorkEntity preApproved(WorkEntity entity) {
+    entity.preApprovedBy = PERSON;
+    return entity;
+  }
+
+  /**
+   * <b>A pre-approved refine turn does not say a person schedules it next</b> (qits-1075): it names
+   * the person whose Dispatch pre-approved it and says the platform schedules it and hands implement
+   * to this same session — for a ticket and for an epic. Without a pre-approval it says what it said.
+   */
+  @Test
+  public void aPreApprovedRefineTurnSaysThePlatformSchedulesItAndHandsImplementHere() {
+    for (WorkEntity entity :
+        new WorkEntity[] {
+          preApproved(ticket(EntityStatus.REPORTED)), preApproved(epic(EntityStatus.REPORTED))
+        }) {
+      String turn = prompt(entity).orElseThrow();
+      assertFalse(turn.contains("a person schedules it next"), turn);
+      assertTrue(
+          turn.contains(PERSON + " pre-approved it: the platform schedules it; implement here."),
+          turn);
+      assertFalse(turn.contains(".."), turn);
+    }
+    assertTrue(promptFor(EntityStatus.REPORTED).contains("a person schedules it next"));
+    assertTrue(epicPromptFor(EntityStatus.REPORTED).contains("a person schedules it next"));
+  }
+
   // ---- IMPLEMENT ------------------------------------------------------------------------------
 
   /** The platform's definition of done, with the two answers that read like done and are not. */
@@ -360,8 +390,8 @@ public class PhasePromptsTest {
   /**
    * <b>The length budget</b> (qits-592): each phase turn is at most 900 characters, not counting the
    * flow-brief pointer and its separating space, and not counting the substituted title, type,
-   * qualified id, slug and id — each occurrence of each. Realistic values, so a long title cannot
-   * hide in the budget.
+   * qualified id, slug, id and pre-approving person's name (qits-1075) — each occurrence of each.
+   * Realistic values, so a long title cannot hide in the budget.
    */
   @Test
   public void everyPhaseTurnFitsTheBudget() {
@@ -383,7 +413,10 @@ public class PhasePromptsTest {
           occurrences(phaseTurn, qualified) * qualified.length()
               + occurrences(phaseTurn, entity.title) * entity.title.length()
               + occurrences(phaseTurn, entity.slug) * entity.slug.length()
-              + occurrences(phaseTurn, entity.id) * entity.id.length();
+              + occurrences(phaseTurn, entity.id) * entity.id.length()
+              + (entity.preApprovedBy == null
+                  ? 0
+                  : occurrences(phaseTurn, entity.preApprovedBy) * entity.preApprovedBy.length());
       if (entity.ticketType != null) {
         String type = "(" + entity.ticketType.name() + ", ";
         substituted += occurrences(phaseTurn, type) * entity.ticketType.name().length();
@@ -409,9 +442,11 @@ public class PhasePromptsTest {
   private static WorkEntity[] everyPhaseOfBothArchetypes() {
     return new WorkEntity[] {
       ticket(EntityStatus.REPORTED),
+      preApproved(ticket(EntityStatus.REPORTED)),
       ticket(EntityStatus.READY_FOR_DEV),
       ticket(EntityStatus.IMPLEMENTED),
       epic(EntityStatus.REPORTED),
+      preApproved(epic(EntityStatus.REPORTED)),
       epic(EntityStatus.READY_FOR_DEV),
       epic(EntityStatus.IMPLEMENTED)
     };

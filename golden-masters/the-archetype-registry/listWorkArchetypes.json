@@ -194,12 +194,37 @@
               "from": "REPORTED",
               "enters": null,
               "endsIn": "REFINED"
+            },
+            {
+              "phase": "implement",
+              "from": "READY_FOR_DEV",
+              "enters": "IMPLEMENTING",
+              "endsIn": "IMPLEMENTED"
+            },
+            {
+              "phase": "verify",
+              "from": "IMPLEMENTED",
+              "enters": "VERIFYING",
+              "endsIn": "VERIFIED"
             }
           ]
         },
         "REFINED": {
           "next": null,
-          "flow": []
+          "flow": [
+            {
+              "phase": "implement",
+              "from": "READY_FOR_DEV",
+              "enters": "IMPLEMENTING",
+              "endsIn": "IMPLEMENTED"
+            },
+            {
+              "phase": "verify",
+              "from": "IMPLEMENTED",
+              "enters": "VERIFYING",
+              "endsIn": "VERIFIED"
+            }
+          ]
         },
         "READY_FOR_DEV": {
           "next": {
@@ -473,12 +498,37 @@
               "from": "REPORTED",
               "enters": null,
               "endsIn": "REFINED"
+            },
+            {
+              "phase": "implement",
+              "from": "READY_FOR_DEV",
+              "enters": "IMPLEMENTING",
+              "endsIn": "IMPLEMENTED"
+            },
+            {
+              "phase": "verify",
+              "from": "IMPLEMENTED",
+              "enters": "VERIFYING",
+              "endsIn": "VERIFIED"
             }
           ]
         },
         "REFINED": {
           "next": null,
-          "flow": []
+          "flow": [
+            {
+              "phase": "implement",
+              "from": "READY_FOR_DEV",
+              "enters": "IMPLEMENTING",
+              "endsIn": "IMPLEMENTED"
+            },
+            {
+              "phase": "verify",
+              "from": "IMPLEMENTED",
+              "enters": "VERIFYING",
+              "endsIn": "VERIFIED"
+            }
+          ]
         },
         "READY_FOR_DEV": {
           "next": {

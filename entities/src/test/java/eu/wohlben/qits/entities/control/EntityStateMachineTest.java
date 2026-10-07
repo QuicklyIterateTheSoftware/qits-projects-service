@@ -297,16 +297,22 @@ class EntityStateMachineTest {
   }
 
   @Test
-  void refinedStartsNoPhaseAndAFlowFromReportedStopsThere() {
+  void refinedStartsNoPhaseButAPersonsFlowRunsOnPastIt() {
     assertEquals(
         Optional.empty(), EntityStateMachine.phaseRunFrom(Archetype.EPIC, EntityStatus.REFINED));
     assertEquals(
         Optional.empty(), EntityStateMachine.phaseRunFrom(Archetype.TICKET, EntityStatus.REFINED));
+    // qits-1075: the press pre-approves the scheduling, so the flow continues past REFINED.
     assertEquals(
-        List.of(Phase.REFINE),
+        List.of(Phase.REFINE, Phase.IMPLEMENT, Phase.VERIFY),
         EntityStateMachine.flowFrom(Archetype.EPIC, EntityStatus.REPORTED).stream()
             .map(EntityStateMachine.PhaseRun::phase)
             .toList());
+    assertEquals(
+        EntityStateMachine.flowFrom(Archetype.TICKET, EntityStatus.READY_FOR_DEV),
+        EntityStateMachine.flowFrom(Archetype.TICKET, EntityStatus.REFINED));
+    assertEquals(
+        List.of(), EntityStateMachine.flowFrom(Archetype.CAMPAIGN, EntityStatus.REFINED));
     assertEquals(
         List.of(
             new EntityStateMachine.PhaseRun(

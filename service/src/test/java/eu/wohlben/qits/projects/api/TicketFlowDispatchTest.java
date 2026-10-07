@@ -56,6 +56,9 @@ public class TicketFlowDispatchTest {
 
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
 
+  /** The row as the dispatch path reads it, fresh — for the pre-approval (qits-1075). */
+  @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
+
   @BeforeEach
   void resetThePort() {
     dispatch.reset();
@@ -94,6 +97,34 @@ public class TicketFlowDispatchTest {
                     "description", description,
                     "assignee", "dana"))
             .path("id"));
+  }
+
+  /**
+   * An admin workspace's agent (qits-628): it opens every {@code qits:admin} door, and asserted
+   * headers are never a person (qits-891) — a machine at the dispatch door.
+   */
+  private RequestSpecification asAdminAgent() {
+    return given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", "admin-agent")
+        .header("X-Qits-Roles", "qits:admin-agent");
+  }
+
+  private String statusOf(String ticketId) {
+    return dispatchEntities.fresh(ticketId).status;
+  }
+
+  private String preApprovedByOf(String ticketId) {
+    return dispatchEntities.fresh(ticketId).preApprovedBy;
+  }
+
+  private void press(RequestSpecification caller, String ticketId, String mode, int status) {
+    caller
+        .body(java.util.Map.of("mode", mode))
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(status);
   }
 
   /** One step along the lifecycle, through the door a person presses. */
@@ -199,36 +230,45 @@ public class TicketFlowDispatchTest {
 
   /**
    * The resume: the door reads the status at the moment it is pressed, so a ticket that was refined
-   * and scheduled last week gets the implement turn rather than a second refinement of a description
-   * that is already written. The phase is never passed in, so this is the only way it could be wrong.
-   * A REFINED ticket nobody scheduled yet is refused, naming the person's move it waits for
-   * (qits-887).
+   * last week gets the implement turn rather than a second refinement of a description that is
+   * already written. The phase is never passed in, so this is the only way it could be wrong. A
+   * REFINED ticket nobody scheduled yet is refused to a machine and to a one-phase press, naming
+   * the person's move it waits for (qits-887); a person's Dispatch is that move (qits-1075).
    */
   @Test
   public void aTicketAlreadyRefinedIsResumedAtTheImplementPhaseOnceScheduled() {
     String projectId = createProject("Dispatch Resume");
     String ticketId = createTicket(projectId, "Resume me", "BUG", "It is refined already.");
     transition(ticketId, "REFINED");
-    asAdmin("mallory")
+    asAdminAgent()
         .body(FLOW)
         .when()
         .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("REFINED waits for a person to schedule it (READY_FOR_DEV)"));
+    asAdmin("mallory")
+        .body(java.util.Map.of("mode", "PHASE"))
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("REFINED waits for a person to schedule it (READY_FOR_DEV)"));
     assertTrue(dispatch.calls().isEmpty(), "an unscheduled ticket stands no workspace up");
-    transition(ticketId, "READY_FOR_DEV");
+    assertEquals("REFINED", statusOf(ticketId));
 
     asAdmin("mallory")
         .body(FLOW)
         .when()
         .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
-        .statusCode(200);
+        .statusCode(200)
+        .body("dispatch.phase", equalTo("implement"));
 
     assertTrue(
         dispatch.lastCall().instruction().contains("Implement ticket \""),
-        "a READY_FOR_DEV ticket starts the implement phase: " + dispatch.lastCall().instruction());
+        "a scheduled ticket starts the implement phase: " + dispatch.lastCall().instruction());
+    assertEquals("IMPLEMENTING", statusOf(ticketId), "scheduled as mallory, then started");
 
     asAdmin("mallory")
         .when()
@@ -422,5 +462,124 @@ public class TicketFlowDispatchTest {
         .body(
             "entries.size()",
             equalTo(0));
+  }
+
+  // ---- a person's Dispatch pre-approves the scheduling (qits-1075) ------------------------------
+
+  /**
+   * <b>A machine's press grants no pre-approval</b>, so its flow stops at REFINED exactly as before
+   * — an admin workspace's agent opens the door, and is still not a person.
+   */
+  @Test
+  public void anAdminAgentsPressSetsNoPreApprovalAndItsFlowStopsAtRefined() {
+    String projectId = createProject("Pre-approval Machine");
+    String ticketId = createTicket(projectId, "Machine pressed", "BUG", "Pressed by an agent.");
+
+    press(asAdminAgent(), ticketId, "FLOW", 200);
+    assertNull(preApprovedByOf(ticketId), "a machine pre-approves nothing");
+    transition(ticketId, "REFINED");
+
+    assertEquals("REFINED", statusOf(ticketId), "nothing scheduled it");
+    press(asAdminAgent(), ticketId, "FLOW", 409);
+    assertEquals("REFINED", statusOf(ticketId));
+  }
+
+  /** <b>A person's FLOW press at REPORTED pre-approves</b>, and its read says by whom. */
+  @Test
+  public void aPersonsFlowPressAtReportedPreApprovesInTheirName() {
+    String projectId = createProject("Pre-approval Person");
+    String ticketId = createTicket(projectId, "Person pressed", "BUG", "Pressed by a person.");
+
+    press(asAdmin("mallory"), ticketId, "FLOW", 200);
+
+    assertEquals("mallory", preApprovedByOf(ticketId));
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.preApprovedBy", equalTo("mallory"));
+    assertTrue(
+        dispatch.lastCall().instruction().contains("mallory pre-approved it"),
+        "the refine turn says the platform schedules it: " + dispatch.lastCall().instruction());
+  }
+
+  /** <b>A PHASE press clears a pending pre-approval</b>: it asked for one phase and no more. */
+  @Test
+  public void aPhasePressClearsAPendingPreApproval() {
+    String projectId = createProject("Pre-approval Phase");
+    String ticketId = createTicket(projectId, "Stepped instead", "BUG", "One phase only.");
+    press(asAdmin("mallory"), ticketId, "FLOW", 200);
+    assertEquals("mallory", preApprovedByOf(ticketId));
+
+    press(asAdmin("dana"), ticketId, "PHASE", 200);
+
+    assertNull(preApprovedByOf(ticketId), "the PHASE press took it away");
+    transition(ticketId, "REFINED");
+    assertEquals("REFINED", statusOf(ticketId), "so the refine claim waits for a person");
+  }
+
+  /**
+   * <b>Once used, it is gone</b>: the refine claim is scheduled on it and it is cleared, so a move
+   * back to REFINED and forward again is a person's to make like any other.
+   */
+  @Test
+  public void aBackMoveToRefinedAfterUseHasNoPreApproval() {
+    String projectId = createProject("Pre-approval Spent");
+    String ticketId = createTicket(projectId, "Spent once", "BUG", "Used up.");
+    press(asAdmin("mallory"), ticketId, "FLOW", 200);
+    transition(ticketId, "REFINED");
+    assertEquals("READY_FOR_DEV", statusOf(ticketId), "scheduled on mallory's pre-approval");
+    assertNull(preApprovedByOf(ticketId));
+
+    transition(ticketId, "REFINED"); // unscheduled
+
+    assertEquals("REFINED", statusOf(ticketId));
+    assertNull(preApprovedByOf(ticketId), "nothing came back with the move");
+    press(asAdminAgent(), ticketId, "FLOW", 409);
+  }
+
+  /** <b>A move to DROPPED clears it</b>: the work it approved was decided against. */
+  @Test
+  public void droppingTheTicketClearsAPendingPreApproval() {
+    String projectId = createProject("Pre-approval Dropped");
+    String ticketId = createTicket(projectId, "Dropped after all", "BUG", "Never mind.");
+    press(asAdmin("mallory"), ticketId, "FLOW", 200);
+    assertEquals("mallory", preApprovedByOf(ticketId));
+
+    transition(ticketId, "DROPPED");
+
+    assertNull(preApprovedByOf(ticketId));
+    transition(ticketId, "REPORTED"); // reopened: it does not come back
+    assertNull(preApprovedByOf(ticketId));
+  }
+
+  /**
+   * <b>A person's press at REFINED runs every gate</b>: with no acceptance criteria the scheduling
+   * is refused, the press answers 409 in the gate's words, and nothing moves or is dispatched.
+   */
+  @Test
+  public void aPersonsPressAtRefinedIsRefusedByTheGateAndMovesNothing() {
+    String projectId = createProject("Pre-approval Gate");
+    String ticketId = createTicket(projectId, "No criteria left", "BUG", "Criteria cleared.");
+    transition(ticketId, "REFINED");
+    given()
+        .contentType("application/merge-patch+json")
+        .body(java.util.Map.of("acceptanceCriteria", java.util.List.of()))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+
+    asAdmin("mallory")
+        .body(FLOW)
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("ACCEPTANCE_CRITERIA"));
+
+    assertEquals("REFINED", statusOf(ticketId));
+    assertTrue(dispatch.calls().isEmpty(), "a refused press stands no workspace up");
   }
 }

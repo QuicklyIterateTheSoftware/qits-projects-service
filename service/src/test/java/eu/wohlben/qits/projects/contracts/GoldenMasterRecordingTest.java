@@ -762,11 +762,13 @@ class GoldenMasterRecordingTest {
     moves(all, ProviderStates.EPIC_IN_STATUS);
     all.add(dispatch(ProviderStates.AN_IMPLEMENTED_TICKET, "PHASE"));
     // qits-887: implement runs from READY_FOR_DEV; a REFINED entity waits for a person to schedule
-    // it, and its press is the 409 that says so.
-    all.add(dispatch(ProviderStates.A_REFINED_TICKET, "FLOW", 409));
+    // it — and since qits-1075 a person's Dispatch press is that scheduling: the recording rides a
+    // person's session, so the press schedules the entity and starts implement (a 200). A machine's
+    // press there is still the 409, which no consumer's caller makes.
+    all.add(dispatch(ProviderStates.A_REFINED_TICKET, "FLOW"));
     all.add(dispatch(ProviderStates.A_READY_FOR_DEV_TICKET, "FLOW"));
     all.add(dispatch(ProviderStates.A_REPORTED_EPIC, "PHASE"));
-    all.add(dispatch(ProviderStates.A_REFINED_EPIC, "FLOW", 409));
+    all.add(dispatch(ProviderStates.A_REFINED_EPIC, "FLOW"));
     all.add(dispatch(ProviderStates.A_READY_FOR_DEV_EPIC, "FLOW"));
     all.add(
         new Interaction(

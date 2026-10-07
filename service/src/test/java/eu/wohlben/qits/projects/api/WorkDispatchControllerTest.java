@@ -207,6 +207,31 @@ public class WorkDispatchControllerTest {
         .body("message", containsString(says));
   }
 
+  /**
+   * An admin workspace's agent (qits-628): it opens the press, and asserted headers are never a
+   * person (qits-891), so it presses as a machine (qits-1075).
+   */
+  private RequestSpecification asAdminAgent() {
+    return given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", "admin-agent")
+        .header("X-Qits-Roles", "qits:admin-agent");
+  }
+
+  private void pressRefusedForAMachine(String entityId, String mode, String says) {
+    asAdminAgent()
+        .body(Map.of("mode", mode))
+        .when()
+        .post("/projects/api/work/" + entityId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString(says));
+  }
+
+  private String preApprovedByOf(String entityId) {
+    return dispatchEntities.fresh(entityId).preApprovedBy;
+  }
+
   /** The bodies on an entity's thread, oldest first — the thread every archetype has (qits-551). */
   private List<String> threadOf(String entityId) {
     return asAdmin("dana")
@@ -247,10 +272,12 @@ public class WorkDispatchControllerTest {
 
     assertEquals("refine", press(ticketId, "FLOW"));
     assertTrue(dispatch.lastCall().instruction().contains("Refine ticket \""));
+    assertEquals("mallory", preApprovedByOf(ticketId), "a person's Dispatch pre-approves (qits-1075)");
     transitionTicket(ticketId, "REFINED");
-    // qits-887: REFINED starts nothing — a person schedules it first — and says so.
-    pressRefused(ticketId, "FLOW", "REFINED waits for a person to schedule it (READY_FOR_DEV)");
-    transitionTicket(ticketId, "READY_FOR_DEV");
+    // qits-1075: the refine claim is scheduled on mallory's pre-approval; no agent stood on the
+    // branch to take the implement turn, so the ticket waits at READY_FOR_DEV for the next press.
+    assertEquals("READY_FOR_DEV", statusOf(Archetype.TICKET, ticketId));
+    assertNull(preApprovedByOf(ticketId), "the pre-approval is spent");
     assertEquals("implement", press(ticketId, "FLOW"));
     assertTrue(dispatch.lastCall().instruction().contains("Implement ticket \""));
     transitionTicket(ticketId, "IMPLEMENTED");
@@ -291,10 +318,12 @@ public class WorkDispatchControllerTest {
 
     transitionEpic(epicId, "REFINED");
     pressRefused(epicId, "PHASE", "Epic " + epicId + " is REFINED");
-    pressRefused(epicId, "FLOW", "waits for a person to schedule it (READY_FOR_DEV)");
-    transitionEpic(epicId, "READY_FOR_DEV");
-    assertEquals("implement", press(epicId, "PHASE"));
+    pressRefusedForAMachine(epicId, "FLOW", "waits for a person to schedule it (READY_FOR_DEV)");
+    // qits-1075: a person's Dispatch at REFINED is the scheduling itself, and goes on into
+    // implement exactly as a press at READY_FOR_DEV does.
+    assertEquals("implement", press(epicId, "FLOW"));
     assertTrue(dispatch.lastCall().instruction().contains("Implement epic \""));
+    assertEquals("IMPLEMENTING", statusOf(Archetype.EPIC, epicId));
     transitionEpic(epicId, "IMPLEMENTED");
     assertEquals("verify", press(epicId, "PHASE"));
     assertTrue(dispatch.lastCall().instruction().contains("Verify epic \""));
@@ -364,10 +393,11 @@ public class WorkDispatchControllerTest {
   // ---- the continue-or-stop bit ----------------------------------------------------------------
 
   /**
-   * FLOW: the agent's claim delivers the next phase's prompt, for a ticket and for an epic — but
-   * since qits-887 the refine claim (REFINED) is where a flow waits for a person, and the person's
-   * scheduling (READY_FOR_DEV) is an approval, not a hand-off: neither pushes a turn. The run goes
-   * on from the next claim the agent makes.
+   * FLOW: the agent's claim delivers the next phase's prompt, for a ticket and for an epic. Since
+   * qits-1075 a person's Dispatch also pre-approves the scheduling, so the refine claim (REFINED) is
+   * scheduled as that person and the implement turn follows in the same session — one press,
+   * REPORTED to VERIFIED. A run without a pre-approval still waits at REFINED ({@link
+   * #aMachinesPressGrantsNoPreApprovalAndItsFlowStopsAtRefined}).
    */
   @Test
   public void theFlowVariantPushesTheNextPromptOnTransition() {
@@ -382,18 +412,26 @@ public class WorkDispatchControllerTest {
         RecordingWorkspaceAgentDispatch.live(
             11L, wrapperId, "ws-t", "ticket/flow-ticket", ticketId, null),
         RecordingWorkspaceAgentDispatch.live(12L, wrapperId, "ws-e", "epic/flow-epic", null, epicId));
+    transitions.reset();
 
     transitionTicket(ticketId, "REFINED");
-    assertEquals(0, turns.calls().size(), "the refine claim waits for a person");
-    assertTrue(
-        threadOf(ticketId).stream().anyMatch(body -> body.contains("schedule it (READY_FOR_DEV)")),
-        "and the flow does not end silently: " + threadOf(ticketId));
-    transitionTicket(ticketId, "READY_FOR_DEV");
-    assertEquals(0, turns.calls().size(), "scheduling pushes no implement turn");
-    assertEquals("READY_FOR_DEV", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(1, turns.calls().size(), "the pre-approved refine claim hands implement on");
+    assertTrue(turns.lastCall().text().contains("Implement ticket \""), turns.lastCall().text());
+    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+    List<EntityTransitioned.Entity> moved =
+        transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
+    assertEquals(
+        List.of(
+            "REPORTED->REFINED by dana",
+            "REFINED->READY_FOR_DEV by mallory",
+            "READY_FOR_DEV->IMPLEMENTING by dana"),
+        moved.stream()
+            .map(e -> e.statusBefore() + "->" + e.status() + " by " + e.changedBy())
+            .toList(),
+        "the scheduling is mallory's, who pressed Dispatch");
 
     transitionTicket(ticketId, "IMPLEMENTED");
-    assertEquals(1, turns.calls().size(), "the flow carried the ticket on");
+    assertEquals(2, turns.calls().size(), "the flow carried the ticket on");
     assertEquals("ticket/flow-ticket", turns.lastCall().branch());
     // The verify turn was spoken, so the verification started (qits-749): the ticket is moved on
     // to VERIFYING with no second turn.
@@ -407,10 +445,11 @@ public class WorkDispatchControllerTest {
         turns.lastCall().text());
 
     transitionEpic(epicId, "REFINED");
-    transitionEpic(epicId, "READY_FOR_DEV");
-    assertEquals(1, turns.calls().size(), "the epic's refine claim and schedule push nothing");
+    assertEquals(3, turns.calls().size(), "the epic's pre-approved refine claim hands on too");
+    assertTrue(turns.lastCall().text().contains("Implement epic \""), turns.lastCall().text());
+    assertEquals("IMPLEMENTING", statusOf(Archetype.EPIC, epicId));
     transitionEpic(epicId, "IMPLEMENTED");
-    assertEquals(2, turns.calls().size(), "and the epic, through the epic's own transition door");
+    assertEquals(4, turns.calls().size(), "and the epic, through the epic's own transition door");
     assertEquals("VERIFYING", statusOf(Archetype.EPIC, epicId));
     assertEquals("epic/flow-epic", turns.lastCall().branch());
     assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
@@ -419,6 +458,47 @@ public class WorkDispatchControllerTest {
     assertTrue(
         turns.lastCall().text().contains("(" + epicQualified + ", slug flow-epic, id " + epicId),
         turns.lastCall().text());
+  }
+
+  /**
+   * <b>A machine's Dispatch grants no pre-approval</b> (qits-1075): an admin workspace's agent's FLOW
+   * press runs the refine phase as before, and the refine claim stops at REFINED and says it waits
+   * for a person — as does a ticket's or an epic's machine press at REFINED, still a 409.
+   */
+  @Test
+  public void aMachinesPressGrantsNoPreApprovalAndItsFlowStopsAtRefined() {
+    String projectId = createProject("Dispatch Machine Flow");
+    String ticketId = createTicket(projectId, "Machine flow ticket");
+    String epicId = createEpic(projectId, "Machine flow epic");
+    for (String id : List.of(ticketId, epicId)) {
+      asAdminAgent()
+          .body(Map.of("mode", "FLOW"))
+          .when()
+          .post("/projects/api/work/" + id + "/dispatch")
+          .then()
+          .statusCode(200)
+          .body("dispatch.phase", equalTo("refine"));
+      assertNull(preApprovedByOf(id), "a machine pre-approves nothing");
+    }
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    String wrapperId = wrapperIdOf(projectId);
+    dispatch.willReference(
+        RecordingWorkspaceAgentDispatch.live(
+            21L, wrapperId, "ws-t", "ticket/machine-flow-ticket", ticketId, null),
+        RecordingWorkspaceAgentDispatch.live(
+            22L, wrapperId, "ws-e", "epic/machine-flow-epic", null, epicId));
+
+    transitionTicket(ticketId, "REFINED");
+    transitionEpic(epicId, "REFINED");
+
+    assertEquals(0, turns.calls().size(), "no implement turn without a pre-approval");
+    assertEquals("REFINED", statusOf(Archetype.TICKET, ticketId));
+    assertEquals("REFINED", statusOf(Archetype.EPIC, epicId));
+    assertTrue(
+        threadOf(ticketId).stream().anyMatch(body -> body.contains("schedule it (READY_FOR_DEV)")),
+        "the flow does not end silently: " + threadOf(ticketId));
+    pressRefusedForAMachine(ticketId, "FLOW", "REFINED waits for a person to schedule it");
+    pressRefusedForAMachine(epicId, "FLOW", "REFINED waits for a person to schedule it");
   }
 
   /** PHASE: the same claim delivers nothing — the bit survived the round trip on the row. */
@@ -625,7 +705,10 @@ public class WorkDispatchControllerTest {
 
     for (String ticketId : List.of(oneShot, flow)) {
       transitionTicket(ticketId, "REFINED");
-      transitionTicket(ticketId, "READY_FOR_DEV");
+      if (ticketId.equals(oneShot)) {
+        // The flow's refine claim was scheduled on its person's pre-approval (qits-1075).
+        transitionTicket(ticketId, "READY_FOR_DEV");
+      }
       transitionTicket(ticketId, "IMPLEMENTED");
       transitionTicket(ticketId, "VERIFIED");
     }
@@ -689,11 +772,14 @@ public class WorkDispatchControllerTest {
         .body("state.status", equalTo("REPORTED"))
         .body("state.nextPhase", equalTo("refine"))
         .body("state.dispatchable", equalTo(true))
-        .body("state.mode", equalTo("FLOW"));
+        .body("state.mode", equalTo("FLOW"))
+        .body("state.preApprovedBy", nullValue());
 
     press(epicId, "PHASE");
+    assertNull(preApprovedByOf(epicId), "a PHASE press pre-approves nothing");
     transitionEpic(epicId, "REFINED");
-    // qits-887: REFINED waits for a person, so the read offers nothing to press.
+    // qits-887: REFINED starts no phase of its own, so nothing is next — but a person's Dispatch
+    // there schedules it and starts implement (qits-1075), so a FLOW press would run something.
     asAdmin("mallory")
         .when()
         .get("/projects/api/work/" + epicId + "/dispatch")
@@ -701,7 +787,8 @@ public class WorkDispatchControllerTest {
         .statusCode(200)
         .body("state.status", equalTo("REFINED"))
         .body("state.nextPhase", nullValue())
-        .body("state.dispatchable", equalTo(false));
+        .body("state.dispatchable", equalTo(true))
+        .body("state.preApprovedBy", nullValue());
     transitionEpic(epicId, "READY_FOR_DEV");
     asAdmin("mallory")
         .when()
@@ -783,6 +870,29 @@ public class WorkDispatchControllerTest {
         .statusCode(200)
         .body("state.nextPhase", equalTo("refine"));
     assertTrue(dispatch.calls().isEmpty());
+
+    // qits-1075: at REFINED neither may an agent press, and its read says nothing is next.
+    transitionTicket(ticketId, "REFINED");
+    given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", "agent")
+        .header("X-Qits-Roles", "qits:agent")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(403);
+    given()
+        .header("X-Qits-User", "agent")
+        .header("X-Qits-Roles", "qits:agent")
+        .when()
+        .get("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.nextPhase", nullValue())
+        .body("state.preApprovedBy", nullValue());
+    assertTrue(dispatch.calls().isEmpty());
+    assertEquals("REFINED", statusOf(Archetype.TICKET, ticketId), "nothing scheduled it");
   }
 
   // ---- the assignee is the dispatched agent (qits-887) ---------------------------------------
@@ -876,7 +986,7 @@ public class WorkDispatchControllerTest {
     transitionTicket(ticketId, "REFINED");
     dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(88L, true, "SCHEDULED", "ws-agent-88"));
 
-    pressRefused(ticketId, "FLOW", "waits for a person to schedule it");
+    pressRefused(ticketId, "PHASE", "waits for a person to schedule it");
     assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
 
     transitionTicket(ticketId, "READY_FOR_DEV");

@@ -293,8 +293,23 @@ final class PhasePrompts {
         + " you write. When someone else could implement from the ticket alone, transition_ticket"
         + " to "
         + end(Phase.REFINE)
-        + ". That ends this run: a person schedules it next. If you cannot get there,"
-        + " block_entity with what is missing.";
+        + afterRefined(ticket, ". That ends this run: a person schedules it next.")
+        + " If you cannot get there, block_entity with what is missing.";
+  }
+
+  /**
+   * What a refine turn says happens once the claim to REFINED lands (qits-1075): with no
+   * pre-approval, {@code waits} — the run ends and a person schedules it; with one, a sentence of
+   * its own: the person who pressed Dispatch pre-approved it, so the platform schedules it once it is
+   * REFINED and hands the implement phase to this same session ("implement here" — the budget is
+   * tight, and the session is the one reading it). Either answer starts with the separator it
+   * needs. The name is the stored one, which only a verified person's press writes.
+   */
+  private static String afterRefined(WorkEntity entity, String waits) {
+    if (entity.preApprovedBy == null) {
+      return waits;
+    }
+    return ". " + entity.preApprovedBy + " pre-approved it: the platform schedules it; implement here.";
   }
 
   /**
@@ -388,8 +403,9 @@ final class PhasePrompts {
         + " statements, each one line, at most one '.', fewer than 20 spaces. When every task could be"
         + " built from the epic alone, transition_epic to "
         + end(Phase.REFINE)
-        + ", which freezes the scope and ends this run: a person schedules it next. If you cannot"
-        + " get there, block_entity with what is missing.";
+        + ", which freezes the scope"
+        + afterRefined(epic, " and ends this run: a person schedules it next.")
+        + " If you cannot get there, block_entity with what is missing.";
   }
 
   /**

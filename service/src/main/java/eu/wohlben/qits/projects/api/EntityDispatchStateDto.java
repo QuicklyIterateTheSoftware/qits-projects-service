@@ -13,10 +13,16 @@ package eu.wohlben.qits.projects.api;
  *     start — or {@code null} where none would (VERIFIED, DONE, DROPPED, or a feature or a task,
  *     which run no phase of their own)
  * @param blocked whether a block refuses the press even though a phase exists (tickets only)
- * @param dispatchable {@code nextPhase != null && !blocked}: whether a press would be accepted, as
- *     far as this row can say (a project with no wrapper or no workspaces context still refuses)
+ * @param dispatchable whether a FLOW press would run something and be accepted, as far as this row
+ *     can say (a project with no wrapper or no workspaces context still refuses): {@code nextPhase
+ *     != null && !blocked}, and also true at an unblocked REFINED (qits-1075), where a person's
+ *     Dispatch schedules the entity and starts implement — {@code nextPhase} stays null there,
+ *     because a PHASE press starts nothing at REFINED
  * @param mode the mode the last press recorded, which is what the phase advance follows on the next
  *     transition: {@code FLOW} or {@code PHASE}; {@code null} for a feature or a task
+ * @param preApprovedBy read-only: the person whose Dispatch press pre-approved scheduling the entity
+ *     once its refine phase lands REFINED (qits-1075), or {@code null} for none (and always for a
+ *     campaign, a feature or a task). Nothing a client sends writes it
  */
 public record EntityDispatchStateDto(
     String entityId,
@@ -25,4 +31,5 @@ public record EntityDispatchStateDto(
     String nextPhase,
     boolean blocked,
     boolean dispatchable,
-    DispatchMode mode) {}
+    DispatchMode mode,
+    String preApprovedBy) {}

@@ -240,6 +240,23 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public boolean dispatchContinues = true;
 
   /**
+   * <b>The person who pre-approved scheduling this entity</b> (qits-1075), or {@code null} for no
+   * pre-approval. A person's <em>Dispatch</em> (FLOW) press on a REPORTED epic or ticket writes their
+   * name here before the refine turn goes out, so that when the refine phase lands REFINED the
+   * platform makes the scheduling move (REFINED → READY_FOR_DEV) as that person and hands the
+   * implement phase to the same session — one press from REPORTED to VERIFIED.
+   *
+   * <p><b>Stamped only from a verified person</b>: the dispatch door writes it from the {@code Mover}
+   * qits-891's person check built, and nothing else writes a name — no REST body, no MCP tool, no
+   * create. It is spent once: the automatic schedule and a person's press at REFINED clear it, as do
+   * a PHASE press and a move to DROPPED. Written through {@code
+   * EntityDispatchService.setPreApprovedBy}. Not an {@code EntityProperty}, for {@link #blocked}'s
+   * reason.
+   */
+  @Column(name = "pre_approved_by")
+  public String preApprovedBy;
+
+  /**
    * Bug, improvement or the platform's own maintenance failure ({@link TicketType}), on a ticket and
    * on nothing else. Named {@code
    * ticketType} rather than {@code type}, because {@code type} in a row holding four archetypes

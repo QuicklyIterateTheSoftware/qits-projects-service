@@ -132,10 +132,12 @@ public record ArchetypeRegistryDocument(
    * What a dispatch press does from one status.
    *
    * @param next the one phase a PHASE press runs — also the first phase of a FLOW press — or null
-   *     where a press starts nothing (VERIFIED, DONE, DROPPED)
-   * @param flow the phases a FLOW press runs, in order, until the flow stops at a status that starts
-   *     no phase (VERIFIED, where the release is asked for). Empty where a press starts nothing. A
-   *     block stops a flow early; that is not in the data
+   *     where a press starts nothing (REFINED, VERIFIED, DONE, DROPPED)
+   * @param flow the phases <b>a person's</b> FLOW press runs, in order, until the flow stops at a
+   *     status that starts no phase (VERIFIED, where the release is asked for). REFINED does not
+   *     stop it (qits-1075): the press pre-approves the scheduling, so from REFINED the flow is
+   *     READY_FOR_DEV's. Empty where a press starts nothing. A block stops a flow early, and a
+   *     machine's press (no pre-approval) stops at REFINED; neither is in the data
    */
   public record DispatchPhases(DispatchPhase next, List<DispatchPhase> flow) {}
 
