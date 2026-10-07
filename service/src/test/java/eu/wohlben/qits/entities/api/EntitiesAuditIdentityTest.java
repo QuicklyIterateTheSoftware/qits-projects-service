@@ -14,14 +14,15 @@ import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Test;
 
 /**
- * The audit "changed-by" against a real request header, end to end through the epics boundary.
+ * The audit "changed-by" against a real request header, end to end through the work boundary
+ * ({@code POST /projects/api/work}, {@code GET /projects/api/work/{id}/audit}).
  *
  * <p>This is the regression test the extraction left missing, and it covers a bug rather than a
  * hypothetical. {@code EntitiesPrincipal.changedBy()} reads an injected {@link
  * io.quarkus.security.identity.SecurityIdentity}, but until qits-gateway's header contract landed
  * this repo shipped no authentication mechanism at all — so the identity was anonymous on every real
  * request and {@code changed_by} had been silently unwritten since extraction. The suite did not
- * notice because {@code EpicApiTest} names its caller with {@code @TestSecurity}, which bypasses the
+ * notice because {@code WorkEpicApiTest} names its caller with {@code @TestSecurity}, which bypasses the
  * mechanism entirely and so could never have caught it.
  *
  * <p>Hence: no {@code @TestSecurity} here. A real {@code X-Qits-User} header, resolved by the real
@@ -47,6 +48,12 @@ class EntitiesAuditIdentityTest {
         .header("X-Qits-Roles", "qits:admin");
   }
 
+  /** An epic in {@code projectId}, as the create body {@code POST /work} takes. */
+  private static java.util.Map<String, Object> epic(String projectId, String title) {
+    return WorkRequests.map(
+        "archetype", "EPIC", "project", projectId, "title", title, "description", "Who changed it");
+  }
+
   private String createProject(String name) {
     return session("operator")
         .body(new ProjectController.CreateProjectRequest(name, null, null, null, ProjectRequests.DNS))
@@ -66,17 +73,17 @@ class EntitiesAuditIdentityTest {
 
     String epicId =
         session("alice")
-            .body(new ProjectEpicsController.CreateEpicRequest("Audited epic", "Who changed it"))
+            .body(epic(projectId, "Audited epic"))
             .when()
-            .post("/projects/api/projects/" + projectId + "/epics")
+            .post("/projects/api/work")
             .then()
-            .statusCode(Response.Status.OK.getStatusCode())
+            .statusCode(Response.Status.CREATED.getStatusCode())
             .extract()
-            .path("epic.id");
+            .path("id");
 
     session("alice")
         .when()
-        .get("/projects/api/epics/" + epicId + "/audit")
+        .get("/projects/api/work/" + epicId + "/audit")
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("entries.changedBy", hasItem("alice"));
@@ -93,9 +100,9 @@ class EntitiesAuditIdentityTest {
 
     given()
         .contentType(ContentType.JSON)
-        .body(new ProjectEpicsController.CreateEpicRequest("Unnamed epic", "Nobody"))
+        .body(epic(projectId, "Unnamed epic"))
         .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
+        .post("/projects/api/work")
         .then()
         .statusCode(Response.Status.UNAUTHORIZED.getStatusCode());
   }
@@ -109,9 +116,9 @@ class EntitiesAuditIdentityTest {
     given()
         .contentType(ContentType.JSON)
         .header("X-Qits-User", "alice")
-        .body(new ProjectEpicsController.CreateEpicRequest("Ungranted epic", "No role"))
+        .body(epic(projectId, "Ungranted epic"))
         .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
+        .post("/projects/api/work")
         .then()
         .statusCode(Response.Status.FORBIDDEN.getStatusCode());
   }

@@ -41,7 +41,7 @@ import org.jboss.logging.Logger;
  * <p>The agent sessions working a ticket or an epic are named {@code <status square> <qualified id>
  * <title>}, so every transition has to reach them — and this is the one place every transition
  * passes: {@code WorkEntityService.transition} and {@code EntityTransitionService} (the bulk {@code
- * POST /entities/transition} and {@code transition_entities}) both announce through this port after
+ * POST /work/transition} and {@code transition_entities}) both announce through this port after
  * their write commits, and the port is resolved with {@code Instance.get()}, so it has exactly one
  * implementation and this is it. After the publish, {@link
  * AgentEntitySignals#changed(TransitionedEntity)} is called once for each ticket and epic in the

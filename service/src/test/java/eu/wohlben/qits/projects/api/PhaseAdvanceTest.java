@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.TicketType;
@@ -115,18 +116,8 @@ public class PhaseAdvanceTest {
 
   private String createTicket(String projectId, String title) {
     return TestCriteria.give(
-            asAdmin("setup")
-        .body(
-            Map.of(
-                "title", title,
-                "type", "BUG",
-                "impetus", "something occurs in this project"))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/tickets")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("ticket.id"));
+        WorkRequests.ticket(
+            () -> asAdmin("setup"), projectId, title, "BUG", "something occurs in this project"));
   }
 
   /** One step along the lifecycle, through the door a person presses. */
@@ -134,7 +125,7 @@ public class PhaseAdvanceTest {
     asAdmin("dana")
         .body(new Transition(target))
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .post("/projects/api/work/" + ticketId + "/status")
         .then()
         .statusCode(200);
   }
@@ -145,7 +136,7 @@ public class PhaseAdvanceTest {
     transition(ticketId, "READY_FOR_DEV");
   }
 
-  /** The transition body, spelled here so this suite needs nothing of the entities module's API. */
+  /** The status move's body, {@code POST /work/{qualifiedId}/status}'s {@code {"target"}}. */
   private record Transition(String target) {}
 
   private String wrapperIdOf(String projectId) {
@@ -159,7 +150,7 @@ public class PhaseAdvanceTest {
   private java.util.List<String> thread(String ticketId) {
     return asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .extract()
@@ -353,33 +344,20 @@ public class PhaseAdvanceTest {
 
   /**
    * The same through the door a person or an agent presses: a task moved to VERIFIED through {@code
-   * POST /entities/{id}/status} is announced as a TASK and starts nothing.
+   * POST /work/{qualifiedId}/status} is announced as a TASK and starts nothing.
    */
   @Test
   public void aTaskVerifiedThroughTheStatusDoorIsAnnouncedAndStartsNothing() {
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     String projectId = createProject("Phase Advance Task");
     String epic =
-        TestCriteria.give(
-            asAdmin("setup")
-            .body(Map.of("title", "The plan"))
-            .post("/projects/api/projects/" + projectId + "/epics")
-            .then()
-            .statusCode(200)
-            .extract()
-            .path("epic.id"));
+        TestCriteria.give(WorkRequests.epic(() -> asAdmin("setup"), projectId, "The plan"));
     String feature =
-        asAdmin("setup")
-            .body(Map.of("title", "The part"))
-            .post("/projects/api/epics/" + epic + "/features")
-            .then()
-            .statusCode(200)
-            .extract()
-            .path("feature.id");
+        WorkRequests.feature(() -> asAdmin("setup"), epic, "The part");
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED")) {
       asAdmin("dana")
           .body(Map.of("target", target))
-          .post("/projects/api/entities/" + epic + "/status")
+          .post("/projects/api/work/" + epic + "/status")
           .then()
           .statusCode(200);
     }
@@ -389,7 +367,7 @@ public class PhaseAdvanceTest {
 
     asAdmin("dana")
         .body(Map.of("target", "VERIFIED"))
-        .post("/projects/api/entities/" + feature + "/status")
+        .post("/projects/api/work/" + feature + "/status")
         .then()
         .statusCode(200);
 
@@ -650,7 +628,7 @@ public class PhaseAdvanceTest {
 
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(1))
@@ -696,7 +674,7 @@ public class PhaseAdvanceTest {
     assertEquals(1, turns.calls().size(), "the far side is still asked — it is the only thing that knows");
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(0));
@@ -704,10 +682,10 @@ public class PhaseAdvanceTest {
     // And the transition itself stands, which is the half that must never depend on any of this.
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/work/" + ticketId)
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("IMPLEMENTED"));
+        .body("status", equalTo("IMPLEMENTED"));
   }
 
   /**
@@ -730,10 +708,10 @@ public class PhaseAdvanceTest {
         thread(ticketId));
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/work/" + ticketId)
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("IMPLEMENTED"));
+        .body("status", equalTo("IMPLEMENTED"));
   }
 
   /**
@@ -757,10 +735,10 @@ public class PhaseAdvanceTest {
         thread(ticketId));
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/work/" + ticketId)
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("IMPLEMENTED"));
+        .body("status", equalTo("IMPLEMENTED"));
   }
 
   // --- when it runs ---------------------------------------------------------------------------
@@ -780,14 +758,14 @@ public class PhaseAdvanceTest {
     asAdmin("dana")
         .body(new Transition("IMPLEMENTED")) // REPORTED → IMPLEMENTED is two steps
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .post("/projects/api/work/" + ticketId + "/status")
         .then()
         .statusCode(409);
 
     assertTrue(turns.calls().isEmpty(), "a move that was refused started no phase");
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(0));
@@ -799,7 +777,7 @@ public class PhaseAdvanceTest {
     asAdmin("dana")
         .body(new Transition("REFINED"))
         .when()
-        .post("/projects/api/tickets/no-such-ticket/transition")
+        .post("/projects/api/work/no-such-ticket/status")
         .then()
         .statusCode(404);
 
@@ -838,13 +816,13 @@ public class PhaseAdvanceTest {
     asAdmin("mallory")
         .body(new Transition("IMPLEMENTED"))
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .post("/projects/api/work/" + ticketId + "/status")
         .then()
         .statusCode(200);
 
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries[0].comment.author", equalTo("mallory"))
@@ -993,10 +971,10 @@ public class PhaseAdvanceTest {
         thread(ticketId).get(thread(ticketId).size() - 1));
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/work/" + ticketId)
         .then()
         .statusCode(200)
-        .body("ticket.status", equalTo("VERIFIED"));
+        .body("status", equalTo("VERIFIED"));
   }
 
   /** A ticket nobody ever dispatched an agent onto: the same answer, reached one step earlier. */
@@ -1137,7 +1115,7 @@ public class PhaseAdvanceTest {
     asAdmin("dana")
         .body(new Transition("VERIFIED")) // REPORTED → VERIFIED is three steps
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/transition")
+        .post("/projects/api/work/" + ticketId + "/status")
         .then()
         .statusCode(409);
 
@@ -1145,7 +1123,7 @@ public class PhaseAdvanceTest {
     assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "and asked for no release");
     asAdmin("dana")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(0));

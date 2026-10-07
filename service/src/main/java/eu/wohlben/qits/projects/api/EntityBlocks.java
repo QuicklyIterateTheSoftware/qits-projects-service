@@ -28,8 +28,8 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  *
  * <h2>Why this class exists rather than the rule being written at each door</h2>
  *
- * <p>Several surfaces perform this write — {@code entities/api/EntityBlockController}'s route and
- * {@code TicketController}'s older one, {@code mcp/CommentMcpTools}' {@code block_entity} pair and
+ * <p>Several surfaces perform this write — {@code POST /work/{qualifiedId}/blocked} ({@code
+ * WorkEntityDoors.block}), {@code mcp/CommentMcpTools}' {@code block_entity} pair and
  * {@code mcp/TicketMcpTools}' {@code block_ticket} pair — exactly as several surfaces perform a
  * transition, and a rule written at each would be free to drift. What is written here is all of the
  * rule: a reason is required to block and not to unblock, only a status that starts a phase may be
@@ -102,8 +102,8 @@ public class EntityBlocks {
 
   /**
    * What every generic block door answers: the entity as the flag now stands on it, and no more. A
-   * record of its own rather than an archetype's DTO, for the reason {@code EntityPatchController}
-   * gives for the merged shape — a door that takes any id must answer one shape.
+   * record of its own rather than an archetype's DTO, for the reason the {@code /work} doors
+   * answer the merged shape — a door that takes any id must answer one shape.
    */
   @Schema(
       name = "EntityBlock",

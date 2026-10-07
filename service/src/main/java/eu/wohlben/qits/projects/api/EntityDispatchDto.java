@@ -2,7 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 /**
  * What one press of the unified dispatch door did, as the SPA reads it — the answer to {@code POST
- * /projects/api/entities/{id}/dispatch}, wrapped as {@code {"dispatch": …}}.
+ * /projects/api/work/{qualifiedId}/dispatch}, wrapped as {@code {"dispatch": …}}.
  *
  * <p>The last five fields are the ones the two retired DTOs ({@code TicketAgentDispatchDto}, {@code
  * EpicAgentDispatchDto}, removed with their doors in qits-399) carried, with the same meaning: {@code workspaceRowId} and {@code

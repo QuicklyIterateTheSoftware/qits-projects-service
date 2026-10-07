@@ -182,7 +182,7 @@ class CampaignCriteriaClaimSeamTest {
     given()
         .header("X-Qits-User", "dana")
         .header("X-Qits-Roles", "qits:admin")
-        .get("/projects/api/campaigns/" + campaign.id + "/progress")
+        .get("/projects/api/work/" + campaign.id + "/progress")
         .then()
         .statusCode(200)
         .body("progress.evaluator.stalled", equalTo(true))

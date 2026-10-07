@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.workspacehost.NoWorkspacesContextProfile;
 import io.quarkus.test.junit.QuarkusTest;
@@ -33,7 +34,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>One class for both archetypes, because since qits-399 there is one door: the ticket's and the
  * epic's retired {@code dispatch-agent} routes each had a class of their own on this profile, and
- * both cases now press {@code POST /entities/{id}/dispatch}.
+ * both cases now press {@code POST /work/{qualifiedId}/dispatch} (qits-976 retired {@code
+ * /entities/{id}/dispatch}).
  */
 @QuarkusTest
 @TestProfile(NoWorkspacesContextProfile.class)
@@ -65,32 +67,24 @@ public class EntityDispatchWithNoWorkspacesTest {
             .extract()
             .path("project.id");
     String ticketId =
-        asAdmin()
-            .body(Map.of(
-                    "title",
-                    "Nobody to dispatch",
-                    "type",
-                    "BUG",
-                    "impetus",
-                    "something occurs in this project"))
-            .when()
-            .post("/projects/api/projects/" + projectId + "/tickets")
-            .then()
-            .statusCode(200)
-            .extract()
-            .path("ticket.id");
+        WorkRequests.ticket(
+            this::asAdmin,
+            projectId,
+            "Nobody to dispatch",
+            "BUG",
+            "something occurs in this project");
 
     asAdmin()
         .body(Map.of("mode", "FLOW"))
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(503)
         .body("message", containsString("No workspaces context is configured"));
 
     asAdmin()
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(0));
@@ -112,29 +106,29 @@ public class EntityDispatchWithNoWorkspacesTest {
             .extract()
             .path("project.id");
     String epicId =
-        asAdmin()
-            .body(Map.of("title", "Nobody to dispatch", "description", "Nobody home."))
-            .when()
-            .post("/projects/api/projects/" + projectId + "/epics")
-            .then()
-            .statusCode(200)
-            .extract()
-            .path("epic.id");
+        WorkRequests.create(
+                this::asAdmin,
+                WorkRequests.map(
+                    "archetype", "EPIC",
+                    "project", projectId,
+                    "title", "Nobody to dispatch",
+                    "description", "Nobody home."))
+            .path("id");
 
     asAdmin()
         .body(Map.of("mode", "PHASE"))
         .when()
-        .post("/projects/api/entities/" + epicId + "/dispatch")
+        .post("/projects/api/work/" + epicId + "/dispatch")
         .then()
         .statusCode(503)
         .body("message", containsString("No workspaces context is configured"));
 
     asAdmin()
         .when()
-        .get("/projects/api/epics/" + epicId)
+        .get("/projects/api/work/" + epicId)
         .then()
         .statusCode(200)
-        .body("epic.status", equalTo("REPORTED"));
+        .body("status", equalTo("REPORTED"));
   }
 
   /** The premise of every assertion here, so a config override that stopped working says so. */

@@ -2,12 +2,14 @@ package eu.wohlben.qits.projects.refinementhost;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
@@ -52,15 +54,13 @@ public class EpicResolutionCleanupTest {
 
   private String createEpic(String projectId, String title) {
     return TestCriteria.give(
-            given()
-        .contentType(ContentType.JSON)
-        .body(Map.of("title", title, "description", "A draft."))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("epic.id"));
+        WorkRequests.create(
+                WorkRequests.map(
+                    "archetype", "EPIC",
+                    "project", projectId,
+                    "title", title,
+                    "description", "A draft."))
+            .path("id"));
   }
 
   private long open(String epicId) {
@@ -69,7 +69,7 @@ public class EpicResolutionCleanupTest {
             .contentType(ContentType.JSON)
             .body(Map.of())
             .when()
-            .post("/projects/api/entities/" + epicId + "/refinement")
+            .post("/projects/api/work/" + epicId + "/refinement")
             .then()
             .statusCode(200)
             .extract()
@@ -82,7 +82,7 @@ public class EpicResolutionCleanupTest {
         .contentType(ContentType.JSON)
         .body(Map.of("target", target))
         .when()
-        .post("/projects/api/epics/" + epicId + "/transition");
+        .post("/projects/api/work/" + epicId + "/status");
   }
 
   @Test
@@ -91,7 +91,7 @@ public class EpicResolutionCleanupTest {
     String epicId = createEpic(projectId, "Abandoned Epic");
     long id = open(epicId);
 
-    transition(epicId, "DROPPED").then().statusCode(200).body("epic.status", equalTo("DROPPED"));
+    transition(epicId, "DROPPED").then().statusCode(200).body("status", equalTo("DROPPED"));
 
     assertTrue(runtime.calls().contains("delete:" + id), "the container is torn down");
     given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
@@ -112,7 +112,7 @@ public class EpicResolutionCleanupTest {
     transition(epicId, "IMPLEMENTED")
         .then()
         .statusCode(200)
-        .body("epic.status", equalTo("IMPLEMENTED"));
+        .body("status", equalTo("IMPLEMENTED"));
 
     assertTrue(runtime.calls().contains("delete:" + id));
     given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
@@ -129,9 +129,10 @@ public class EpicResolutionCleanupTest {
         transition(epicId, "SUPERSEDED")
             .then()
             .statusCode(200)
-            .body("epic.status", equalTo("DROPPED"))
+            .body("status", equalTo("DROPPED"))
+            .body("supersededBy", notNullValue())
             .extract()
-            .path("successor.id");
+            .path("supersededBy");
 
     assertTrue(runtime.calls().contains("delete:" + id));
     given().when().get("/projects/api/refinements/" + id).then().statusCode(404);
@@ -164,6 +165,6 @@ public class EpicResolutionCleanupTest {
     String projectId = createProject("Resolve Bare");
     String epicId = createEpic(projectId, "Bare Epic");
 
-    transition(epicId, "DROPPED").then().statusCode(200).body("epic.status", equalTo("DROPPED"));
+    transition(epicId, "DROPPED").then().statusCode(200).body("status", equalTo("DROPPED"));
   }
 }

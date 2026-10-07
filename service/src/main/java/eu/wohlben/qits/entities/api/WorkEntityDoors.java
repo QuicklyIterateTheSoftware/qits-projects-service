@@ -32,12 +32,14 @@ import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.entities.mapper.AuditEntryMapper;
 import eu.wohlben.qits.entities.mapper.EntityCommentMapper;
 import eu.wohlben.qits.projects.api.EntityBlocks;
+import eu.wohlben.qits.projects.api.PhaseAdvance;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.entity.Repository;
+import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import eu.wohlben.qits.projects.security.AgentAccess;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -56,26 +58,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
+import org.jboss.logging.Logger;
 
 /**
- * <b>The generic work-entity doors, as one implementation behind two surfaces</b> (qits-969): the
- * archetype-free {@code /work} family addressed by qualified id ({@code Work*Controller}) and the
- * {@code /entities} family it replaces ({@code Entity*Controller}, {@code CommentController}, {@code
- * ProjectEntitiesController}). Every rule that used to live in one of those controllers lives here,
- * moved verbatim, so the two surfaces cannot drift while both are served — and so deleting the old
- * controllers (epic qits-965, phase 3) deletes thin JAX-RS resources and nothing else. Nothing here
- * names a controller class.
+ * <b>The generic work-entity doors</b> (qits-969): every rule behind the archetype-free {@code /work}
+ * family addressed by qualified id ({@code Work*Controller}, {@code ProjectWorkController}). They
+ * were moved here verbatim from the {@code /entities} and per-archetype controllers, which epic
+ * qits-965 deleted in its phase 3 (qits-976). Nothing here names a controller class.
  *
- * <p>Where the two surfaces differ, a {@link Surface} says which is asking:
- *
- * <ul>
- *   <li><b>Ids in bodies.</b> On {@link Surface#WORK} every entity id a body carries — the
- *       transition map's keys, a transition entry's {@code parent}, {@code supersededBy} and {@code
- *       dependsOn}, a patch's {@code dependsOn} — may be a qualified id ({@code qits-7}) as well as a
- *       UUID ({@link #toIds}). {@link Surface#ENTITIES} keeps its UUID-only reading.
- *   <li><b>The doors a refusal points at</b> — a patch naming {@code status} is told where a status
- *       moves, in the surface's own paths.
- * </ul>
+ * <p><b>Ids in bodies.</b> Every entity id a body carries — the transition map's keys, a transition
+ * entry's {@code parent}, {@code supersededBy} and {@code dependsOn}, a patch's {@code dependsOn} —
+ * may be a qualified id ({@code qits-7}) as well as a UUID ({@link #toIds}).
  *
  * <p>Nothing here fires inside a write's retried body: every hint goes out after the service
  * returns, as each controller fired it before.
@@ -83,16 +76,25 @@ import java.util.function.UnaryOperator;
 @ApplicationScoped
 public class WorkEntityDoors {
 
+  private static final Logger LOG = Logger.getLogger(WorkEntityDoors.class);
+
   /** RFC 7396's media type. Plain {@code application/json} is accepted beside it. */
   public static final String MERGE_PATCH_JSON = "application/merge-patch+json";
 
-  /** Which family of routes is asking. */
-  public enum Surface {
-    /** {@code /projects/api/entities/…}: UUIDs in bodies, as it always read them. */
-    ENTITIES,
-    /** {@code /projects/api/work/…}: a qualified id wherever a body names an entity. */
-    WORK
-  }
+  /** The properties a patch refuses, each with the door to use instead. */
+  private static final Map<String, String> MOVES =
+      Map.of(
+          "status", "a lifecycle move — POST /projects/api/work/{qualifiedId}/status",
+          "archetype",
+              "a reshape — state it through PUT /projects/api/work/{qualifiedId} or POST"
+                  + " /projects/api/work/transition",
+          "membership",
+              "a reparent — state it through PUT /projects/api/work/{qualifiedId} or POST"
+                  + " /projects/api/work/transition",
+          "supersededBy",
+              "a supersede — state it through PUT /projects/api/work/{qualifiedId} or POST"
+                  + " /projects/api/work/transition",
+          "blocked", "the block — set it through POST /projects/api/work/{qualifiedId}/blocked");
 
   /** What the server writes on an entity and a patch never does. */
   private static final List<String> SERVER_OWNED = List.of("slug", "createdBy");
@@ -136,7 +138,14 @@ public class WorkEntityDoors {
 
   @Inject QualifiedEntityIds qualifiedIds;
 
-  @Inject EntityRoutes routes;
+  /** The only way a door moves a lifecycle: discards a refinement a resolving move would strand. */
+  @Inject EntityResolutions resolutions;
+
+  /** The next phase after a move, delivered outside the move's transaction. */
+  @Inject PhaseAdvance phaseAdvance;
+
+  /** Who is moving, as qits-891's person check says (qits-887) — see {@link EntityMovers}. */
+  @Inject EntityMovers movers;
 
   @Inject EntityBlocks blocks;
 
@@ -256,18 +265,15 @@ public class WorkEntityDoors {
    * Applies a merge patch to the entity {@code id} (a UUID) and answers it as it now stands. The
    * order is the refusal order: the id (404), the binding (403), the body (400), the write.
    */
-  public TransitionedEntity patch(
-      SecurityIdentity identity, String id, JsonNode body, Surface surface) {
+  public TransitionedEntity patch(SecurityIdentity identity, String id, JsonNode body) {
     TransitionedEntity current = catalog.byIds(List.of(id)).get(id);
     if (current == null) {
       throw new NotFoundException("Entity not found: " + id);
     }
     EntitiesAgentAccess.requireProject(identity, current.projectId());
 
-    // On /work a dependency may be named by its qualified id; /entities keeps reading a UUID.
-    UnaryOperator<String> dependency =
-        surface == Surface.WORK ? this::entityId : UnaryOperator.identity();
-    EntityWrite write = readPatch(current, body, surface, dependency);
+    // A dependency may be named by its qualified id as well as its UUID.
+    EntityWrite write = readPatch(current, body, this::entityId);
     requireRepositoryIn(write.repositoryId(), current.projectId());
     Nested updated =
         entities.update(current.archetype(), id, write, EntitiesPrincipal.changedBy(identity));
@@ -280,7 +286,7 @@ public class WorkEntityDoors {
     return qualifiedIds.qualify(TransitionedEntity.edited(updated.entity(), current));
   }
 
-  /** A task's repository must be in the entity's project — the check {@code EntityRoutes} makes. */
+  /** A task's repository must be in the entity's project — a task must not bind a repository from an unrelated project. */
   private void requireRepositoryIn(String repositoryId, String projectId) {
     if (repositoryId == null) {
       return;
@@ -297,10 +303,7 @@ public class WorkEntityDoors {
    * complaint about it.
    */
   private static EntityWrite readPatch(
-      TransitionedEntity current,
-      JsonNode body,
-      Surface surface,
-      UnaryOperator<String> dependency) {
+      TransitionedEntity current, JsonNode body, UnaryOperator<String> dependency) {
     if (body == null || !body.isObject()) {
       throw new BadRequestException("a merge patch must be a JSON object");
     }
@@ -308,13 +311,12 @@ public class WorkEntityDoors {
       throw new BadRequestException("a merge patch must name at least one property");
     }
     Archetype archetype = current.archetype();
-    Map<String, String> moves = moves(surface);
     List<String> refused = new ArrayList<>();
     for (Iterator<String> names = body.fieldNames(); names.hasNext(); ) {
       String name = names.next();
       JsonNode value = body.get(name);
-      if (moves.containsKey(name)) {
-        String door = name.equals("status") ? statusDoor(archetype, surface) : moves.get(name);
+      if (MOVES.containsKey(name)) {
+        String door = MOVES.get(name);
         refused.add(name + " is not written by a patch: it is " + door);
       } else if (SERVER_OWNED.contains(name)) {
         refused.add(name + " is server-owned and never written");
@@ -366,50 +368,6 @@ public class WorkEntityDoors {
   }
 
   /**
-   * The properties a patch refuses, each with the door to use instead. The status's is blank here
-   * because it depends on the archetype — see {@link #statusDoor}.
-   */
-  private static Map<String, String> moves(Surface surface) {
-    if (surface == Surface.WORK) {
-      return Map.of(
-          "status", "",
-          "archetype",
-              "a reshape — state it through PUT /projects/api/work/{qualifiedId} or POST"
-                  + " /projects/api/work/transition",
-          "membership",
-              "a reparent — state it through PUT /projects/api/work/{qualifiedId} or POST"
-                  + " /projects/api/work/transition",
-          "supersededBy",
-              "a supersede — state it through PUT /projects/api/work/{qualifiedId} or POST"
-                  + " /projects/api/work/transition",
-          "blocked", "the block — set it through POST /projects/api/work/{qualifiedId}/blocked");
-    }
-    return Map.of(
-        "status", "",
-        "archetype", "a reshape — state it through POST /projects/api/entities/transition",
-        "membership", "a reparent — state it through POST /projects/api/entities/transition",
-        "supersededBy", "a supersede — state it through POST /projects/api/entities/transition",
-        "blocked", "the block — set it through POST /projects/api/entities/{id}/blocked");
-  }
-
-  /**
-   * The lifecycle door of the archetype. A feature and a task have no door of their own: since
-   * qits-763 their status moves through the generic one, which is every kind's — and on {@code
-   * /work} that generic door is every archetype's.
-   */
-  private static String statusDoor(Archetype archetype, Surface surface) {
-    if (surface == Surface.WORK) {
-      return "a lifecycle move — POST /projects/api/work/{qualifiedId}/status";
-    }
-    return switch (archetype) {
-      case EPIC -> "a lifecycle move — POST /projects/api/epics/{id}/transition";
-      case TICKET -> "a lifecycle move — POST /projects/api/tickets/{id}/transition";
-      case CAMPAIGN -> "a lifecycle move — POST /projects/api/campaigns/{id}/transition";
-      case FEATURE, TASK -> "a lifecycle move — POST /projects/api/entities/{id}/status";
-    };
-  }
-
-  /**
    * The acceptance criteria as the patch states them (qits-887): null when the patch does not name
    * them (left alone), an empty list when it sends null (cleared), else the array's items.
    */
@@ -436,24 +394,39 @@ public class WorkEntityDoors {
   // --- the lifecycle move ----------------------------------------------------------------------
 
   /**
-   * Moves {@code row} to {@code target} by the path its archetype's own door takes. The order is the
-   * entity doors': the epic's role (403), the binding (403), the target (400), the move (409).
+   * Moves {@code row} to {@code target}. The order is the doors': the epic's role (403), the binding
+   * (403), the target (400), the move (409). The move goes through {@link EntityResolutions} — a
+   * resolving move tears the row's refinement room down before the status lands — then the
+   * archetype's hint, then {@link PhaseAdvance}, after the move is recorded and outside its
+   * transaction: a transition that rolled back speaks to nobody, and a throw in the advance must not
+   * touch a move that has already been answered for. {@code PhaseAdvance} returns at once for a
+   * campaign.
    */
   public TransitionedEntity move(SecurityIdentity identity, WorkEntity row, String target) {
     Archetype archetype = row.archetype;
     if (archetype == Archetype.EPIC && !identity.hasRole(AgentAccess.ADMIN_ROLE)) {
       throw new ForbiddenException(
-          "Moving an epic's status is qits:admin alone, as POST /projects/api/epics/{id}/transition"
-              + " is; an agent's claim goes through the transition_epic MCP tool.");
+          "Moving an epic's status is qits:admin alone; an agent's claim goes through the"
+              + " transition_epic MCP tool.");
     }
     EntitiesAgentAccess.requireProject(identity, row.projectId);
 
     TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
     // The mover's name is the audit's: a verified person's own, never a header (qits-887).
-    Mover mover = routes.moverOf(identity);
-    // Bound above, in this door's refusal order, so the move is asked not to bind again.
-    WorkEntityService.Transition moved =
-        routes.move(archetype, row.id, target, false, identity, mover);
+    Mover mover = movers.of(identity);
+    WorkEntityService.Transition moved = resolutions.transition(archetype, row.id, target, mover);
+    // A supersede spawns a second row in the same project, so one hint covers both.
+    publisher.fire(moved.entity().projectId, ProjectChangeHint.Topic.of(archetype));
+    try {
+      phaseAdvance.afterTransition(moved.entity(), moved.statusBefore(), mover.name());
+    } catch (RuntimeException e) {
+      // It says it must not throw; a throw is a bug in it and must not touch a recorded move.
+      LOG.warnf(
+          e,
+          "Could not start the phase %s %s just moved into",
+          archetype.name().toLowerCase(Locale.ROOT),
+          moved.entity().id);
+    }
     return qualifiedIds.qualify(
         TransitionedEntity.moved(moved.entity(), before, moved.statusBefore(), mover.name()));
   }
@@ -563,16 +536,16 @@ public class WorkEntityDoors {
   // --- the transition --------------------------------------------------------------------------
 
   /**
-   * Applies a stated post-state and answers what was written, keyed the way the request was. On
-   * {@link Surface#WORK} every id in the request may be a qualified id ({@link #toIds}); the answer
+   * Applies a stated post-state and answers what was written, keyed the way the request was. Every
+   * id in the request may be a qualified id ({@link #toIds}); the answer
    * is keyed by the keys exactly as they were sent, so a caller reads its statement and the result
    * side by side whichever form it used.
    */
   public Map<String, TransitionedEntity> transition(
-      SecurityIdentity identity, Map<String, EntityTransition> request, Surface surface) {
+      SecurityIdentity identity, Map<String, EntityTransition> request) {
     Map<String, String> keys = new LinkedHashMap<>();
     Map<String, EntityTransition> stated = request;
-    if (surface == Surface.WORK && request != null) {
+    if (request != null) {
       stated = toIds(request, keys);
     }
     requireAgentProjects(identity, stated);
@@ -612,7 +585,7 @@ public class WorkEntityDoors {
     }
     Map<String, EntityTransition> request = new LinkedHashMap<>();
     request.put(row.id, state);
-    return transition(identity, request, Surface.WORK).get(row.id);
+    return transition(identity, request).get(row.id);
   }
 
   /**
@@ -717,8 +690,8 @@ public class WorkEntityDoors {
 
   /**
    * Deletes {@code row} and its subtree (qits-970), by the rules the per-archetype deletes kept: a
-   * root's delete — an epic's, a ticket's — is {@code qits:admin} alone, as {@code DELETE
-   * /epics/{id}} and {@code DELETE /tickets/{id}} are (deleting is on no agent's surface: an agent
+   * root's delete — an epic's, a ticket's — is {@code qits:admin} alone, as the deleted {@code DELETE
+   * /epics/{id}} and {@code DELETE /tickets/{id}} were (deleting is on no agent's surface: an agent
    * that could delete what it disagrees with could erase the record of its own mistake); a feature's
    * and a task's admit the agent bound to its project, as {@code remove_feature}/{@code remove_task}
    * do over MCP. No door has ever deleted a campaign: it is dropped, through its status. The project
@@ -736,9 +709,7 @@ public class WorkEntityDoors {
       throw new ForbiddenException(
           "Deleting "
               + (archetype == Archetype.EPIC ? "an epic" : "a ticket")
-              + " is qits:admin alone, as DELETE /projects/api/"
-              + (archetype == Archetype.EPIC ? "epics" : "tickets")
-              + "/{id} is.");
+              + " is qits:admin alone: deleting is on no agent's surface.");
     }
     EntitiesAgentAccess.requireProject(identity, row.projectId);
     entities.delete(archetype, row.id, EntitiesPrincipal.changedBy(identity));

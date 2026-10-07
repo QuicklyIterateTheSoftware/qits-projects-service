@@ -381,7 +381,7 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
                       stated(draft.id, epicEntry("Draft", null, null, target, CRITERIA)), WHO),
               "REPORTED -> " + target);
       assertTrue(
-          refusal.getMessage().contains("POST /projects/api/entities/{id}/status"),
+          refusal.getMessage().contains("POST /projects/api/work/{qualifiedId}/status"),
           refusal.getMessage());
     }
     ConflictException gated =
@@ -993,8 +993,8 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
   // --- a campaign's lifecycle is not this door's (qits-411) ----------------
 
   private static final String CAMPAIGN_DOORS =
-      "move a campaign through /campaigns/{id}/transition; create one through"
-          + " /projects/{projectId}/campaigns";
+      "move a campaign through POST /projects/api/work/{qualifiedId}/status; create one through"
+          + " POST /projects/api/work";
 
   @Test
   void aCampaignsStatusIsNotMovedThroughThisDoor() {

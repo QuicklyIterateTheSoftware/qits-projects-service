@@ -169,37 +169,37 @@ public class AccessRefusalIT {
       """
       The mirror image. A sibling service holds qits:system and reads this service constantly —
       qits-ci enumerates the repository catalogue, qits-workspaces looks a repository up by id —
-      but the planning surface is a person's judgement about scope, so every epics, features and
-      tasks route is qits:admin and nothing else. A perfectly valid machine bearer, minted against
-      the same signing keys this service fetches when a bearer arrives, is 403 on both a create and
-      an update
-      there, and 200 on the catalogue in the same breath.
+      but the shape of a plan is a person's judgement about scope, so adding a feature under an
+      epic and the whole-entity transition are qits:admin and qits:agent and never qits:system. A
+      perfectly valid machine bearer, minted against the same signing keys this service fetches
+      when a bearer arrives, is 403 on both there, and 200 on the catalogue in the same breath.
       """)
   @Order(2)
   void aMachineIsRefusedThePlanningSurface(Interactions story) {
     NetworkCapture.actor(PLATFORM);
     platformBearer = StoryIdentities.platformToken("qits-ci");
-    String projectId = StoryPlatform.projectId();
 
     given()
         .header("Authorization", "Bearer " + platformBearer)
         .contentType(ContentType.JSON)
-        .body("{\"title\":\"An epic no machine may propose\"}")
+        .body("{\"title\":\"A feature no machine may add\"}")
         .when()
-        .post(StoryTarget.projectEpicsPath(projectId))
+        .post(StoryTarget.workChildrenPath(UUID.randomUUID().toString()))
         .then()
         .statusCode(403);
-    story.note("a machine bearer cannot propose an epic").as("epic-refused");
+    story.note("a machine bearer cannot add a feature to a plan").as("epic-refused");
 
-    // A task id that names nothing: the role check runs before the resource method, so the answer
+    // Ids that name nothing, both: the role check runs before the resource method, so the answer
     // is 403 rather than 404 — which is the right order, since a refused caller must not learn
     // which ids exist.
     given()
         .header("Authorization", "Bearer " + platformBearer)
         .contentType(ContentType.JSON)
-        .body("{\"implementedAt\":\"2026-08-29T00:00:00Z\"}")
+        .body(
+            "{\"archetype\":\"TASK\",\"title\":\"A task\",\"status\":\"IMPLEMENTED\","
+                + "\"implementedAt\":\"2026-08-29T00:00:00Z\"}")
         .when()
-        .put(StoryTarget.taskPath(UUID.randomUUID().toString()))
+        .put(StoryTarget.workPath(UUID.randomUUID().toString()))
         .then()
         .statusCode(403);
     story
@@ -292,14 +292,14 @@ public class AccessRefusalIT {
         NetworkEdge.HTTP,
         PLATFORM,
         StoryTarget.SERVICE,
-        "POST " + StoryTarget.projectEpicsPath("{id}") + " -> 403");
+        "POST " + StoryTarget.workChildrenPath("{id}") + " -> 403");
     ReportAssertions.assertEdge(
         CATEGORY,
         MACHINE_SLUG,
         NetworkEdge.HTTP,
         PLATFORM,
         StoryTarget.SERVICE,
-        "PUT " + StoryTarget.taskPath("{id}") + " -> 403");
+        "PUT " + StoryTarget.workPath("{id}") + " -> 403");
     ReportAssertions.assertEdge(
         CATEGORY,
         MACHINE_SLUG,

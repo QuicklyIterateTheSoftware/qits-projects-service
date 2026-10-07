@@ -59,48 +59,41 @@ public final class StoryTarget {
     return REPOSITORIES_PATH + "/" + repoId;
   }
 
-  /** The project's epics: {@code GET} lists them, {@code POST} proposes one. */
-  public static String projectEpicsPath(String projectId) {
-    return projectPath(projectId) + "/epics";
+  /**
+   * The project's work, every archetype: {@code GET} lists it, narrowed by {@code ?archetype=}. The
+   * query never reaches a diagram — the tap labels an edge by the path alone.
+   */
+  public static String projectWorkPath(String projectId) {
+    return projectPath(projectId) + "/work";
   }
 
-  /** One epic by id. */
-  public static String epicPath(String epicId) {
-    return API_PATH + "/epics/" + epicId;
+  /**
+   * The one create door for a root (qits-976): {@code POST} an epic, a ticket or a campaign, the
+   * archetype in the body. A node is added under its parent at {@link #workChildrenPath}.
+   */
+  public static final String WORK_PATH = API_PATH + "/work";
+
+  /**
+   * One work entity by id — a qualified id or a UUID; the stories pass the UUID, which the tap
+   * scrubs to {@code {id}}. {@code PATCH} is the merge patch where acceptance criteria and the
+   * implemented markers are written; {@code PUT} is the one-entry transition.
+   */
+  public static String workPath(String id) {
+    return WORK_PATH + "/" + id;
   }
 
-  /** The merged model's generic door — {@code PATCH} is where acceptance criteria are written. */
-  public static String entityPath(String id) {
-    return API_PATH + "/entities/" + id;
+  /** The entity's children — an epic's features, a feature's tasks: {@code POST} adds one. */
+  public static String workChildrenPath(String id) {
+    return workPath(id) + "/children";
   }
 
-  /** The epic's features: {@code GET} lists them, {@code POST} adds one. */
-  public static String epicFeaturesPath(String epicId) {
-    return epicPath(epicId) + "/features";
+  /** The door that moves an entity's status — the scope freeze, the schedule, the terminal moves. */
+  public static String workStatusPath(String id) {
+    return workPath(id) + "/status";
   }
 
-  /** The only door that moves an epic's status — the scope freeze and the two terminal moves. */
-  public static String epicTransitionPath(String epicId) {
-    return epicPath(epicId) + "/transition";
-  }
-
-  /** The epic subtree's whole change history, newest first — it outlives the rows it describes. */
-  public static String epicAuditPath(String epicId) {
-    return epicPath(epicId) + "/audit";
-  }
-
-  /** One feature by id. */
-  public static String featurePath(String featureId) {
-    return API_PATH + "/features/" + featureId;
-  }
-
-  /** The feature's tasks: {@code GET} lists them, {@code POST} adds one. */
-  public static String featureTasksPath(String featureId) {
-    return featurePath(featureId) + "/tasks";
-  }
-
-  /** One task by id — where the implemented marker is set. */
-  public static String taskPath(String taskId) {
-    return API_PATH + "/tasks/" + taskId;
+  /** The entity subtree's whole change history, newest first — it outlives the rows it describes. */
+  public static String workAuditPath(String id) {
+    return workPath(id) + "/audit";
   }
 }

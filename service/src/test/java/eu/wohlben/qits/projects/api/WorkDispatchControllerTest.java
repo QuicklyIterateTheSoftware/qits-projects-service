@@ -1,0 +1,899 @@
+package eu.wohlben.qits.projects.api;
+
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import eu.wohlben.qits.projects.security.PersonCheck;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.entities.api.TestCriteria;
+import eu.wohlben.qits.entities.api.WorkRequests;
+import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.projects.bus.EntityTransitioned;
+import eu.wohlben.qits.projects.bus.RecordingEntityTransitionAnnouncer;
+import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
+import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
+import eu.wohlben.qits.projects.entity.ReleaseRequest;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
+import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns;
+import io.quarkus.narayana.jta.QuarkusTransaction;
+import io.quarkus.test.junit.QuarkusTest;
+import io.restassured.http.ContentType;
+import io.restassured.specification.RequestSpecification;
+import jakarta.inject.Inject;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The one dispatch path (qits-394), end to end through {@code POST /work/{qualifiedId}/dispatch}
+ * ({@link WorkDispatchController}, the {@code /entities/{id}/dispatch} door's home since qits-976)
+ * and the status door {@code POST /work/{qualifiedId}/status}, against the recording ports.
+ *
+ * <p>What it pins: <b>the status picks the phase for every archetype</b> and nothing starts past the
+ * work; <b>an epic and a ticket at the same status take the same path</b> with their own words;
+ * <b>FLOW pushes the next prompt</b> on the agent's transition and <b>PHASE does not</b>, because the
+ * bit rides on the entity row across the two requests; a second PHASE press continues from the new
+ * status; and <b>both modes ask for the release at VERIFIED</b>. The ticket door this one replaced
+ * left its refusal cases behind in {@link TicketFlowDispatchTest}, pointed at this door.
+ *
+ * <p>No profile of its own: the default {@code @QuarkusTest} application, the one every door suite
+ * shares, so this class costs no boot (the test-profile budget rule).
+ */
+@QuarkusTest
+public class WorkDispatchControllerTest {
+
+  @Inject RecordingWorkspaceAgentDispatch dispatch;
+
+  @Inject RecordingWorkspaceAgentTurns turns;
+
+  @Inject RecordingEntityTransitionAnnouncer transitions;
+
+  @Inject eu.wohlben.qits.projects.control.ProjectService projects;
+
+  @Inject eu.wohlben.qits.entities.control.WorkEntityService workEntities;
+
+  /** The row read the dispatch path itself uses, fresh and patient — for reading a number back. */
+  @Inject eu.wohlben.qits.entities.control.EntityDispatchService dispatchEntities;
+
+  /** The press itself, for the campaign executor's in-process door. */
+  @Inject EntityDispatch entityDispatch;
+
+  /** Every project this class made, so the requests its releases opened can be taken away again. */
+  private final List<String> projectIds = new ArrayList<>();
+
+  @BeforeEach
+  void resetThePorts() {
+    dispatch.reset();
+    turns.reset();
+    transitions.reset();
+  }
+
+  /** Open requests must not outlive this class: the release sweep walks every open row. */
+  @AfterEach
+  void dropTheRequestsTheEntitiesAskedFor() {
+    QuarkusTransaction.requiringNew()
+        .run(() -> projectIds.forEach(id -> ReleaseRequest.delete("projectId = ?1", id)));
+    projectIds.clear();
+  }
+
+  // ---- a campaign's press is its start (qits-417) ----------------------------------------------
+
+  /**
+   * A campaign is never dispatched onto a workspace: its press is its start, which a REPORTED
+   * campaign refuses, and its read answers the campaign's own state. The start itself is {@code
+   * campaignhost/CampaignExecutorTest}'s.
+   */
+  @Test
+  void aCampaignsPressIsItsStartAndItsReadSaysSo() {
+    String projectId = createProject("Dispatch Campaign");
+    String campaignId = workEntities.createCampaign(projectId, "Spring", null, "setup").id;
+
+    asAdmin("dana")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + campaignId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString("Start a campaign from REFINED"));
+    asAdmin("dana")
+        .when()
+        .get("/projects/api/work/" + campaignId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.archetype", equalTo("CAMPAIGN"))
+        .body("state.status", equalTo("REPORTED"))
+        .body("state.nextPhase", equalTo("start"))
+        .body("state.dispatchable", equalTo(false))
+        .body("state.mode", nullValue());
+
+    assertEquals(List.of(), dispatch.calls(), "no agent was dispatched onto a campaign");
+  }
+
+  // ---- fixtures ------------------------------------------------------------------------------
+
+  private RequestSpecification asAdmin(String user) {
+    return given()
+        // A person behind the press: the session the edge keeps, as a browser sends it (qits-887).
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin(user))
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", user)
+        .header("X-Qits-Roles", "qits:admin");
+  }
+
+  private String createProject(String name) {
+    String id =
+        asAdmin("setup")
+            .body(
+                new ProjectController.CreateProjectRequest(
+                    name, null, null, null, ProjectRequests.DNS))
+            .when()
+            .post("/projects/api/projects")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("project.id");
+    projectIds.add(id);
+    return id;
+  }
+
+  private String createTicket(String projectId, String title) {
+    return TestCriteria.give(
+        WorkRequests.ticket(
+            () -> asAdmin("setup"), projectId, title, "BUG", "something occurs here"));
+  }
+
+  private String createEpic(String projectId, String title) {
+    return TestCriteria.give(
+        WorkRequests.create(
+                () -> asAdmin("setup"),
+                WorkRequests.map(
+                    "archetype", "EPIC",
+                    "project", projectId,
+                    "title", title,
+                    "description", "The pitch."))
+            .path("id"));
+  }
+
+  private String addFeature(String epicId, String title) {
+    return WorkRequests.create(
+            () -> asAdmin("setup"),
+            WorkRequests.map(
+                "archetype", "FEATURE",
+                "parent", epicId,
+                "title", title,
+                "description", "a slice"))
+        .path("id");
+  }
+
+  private void transitionTicket(String ticketId, String target) {
+    WorkRequests.status(() -> asAdmin("dana"), ticketId, target).then().statusCode(200);
+  }
+
+  private void transitionEpic(String epicId, String target) {
+    WorkRequests.status(() -> asAdmin("dana"), epicId, target).then().statusCode(200);
+  }
+
+  /** The press, answered 200, and the phase it started. */
+  private String press(String entityId, String mode) {
+    return asAdmin("mallory")
+        .body(Map.of("mode", mode))
+        .when()
+        .post("/projects/api/work/" + entityId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("dispatch.entityId", equalTo(entityId))
+        .body("dispatch.mode", equalTo(mode))
+        .extract()
+        .path("dispatch.phase");
+  }
+
+  private void pressRefused(String entityId, String mode, String says) {
+    asAdmin("mallory")
+        .body(Map.of("mode", mode))
+        .when()
+        .post("/projects/api/work/" + entityId + "/dispatch")
+        .then()
+        .statusCode(409)
+        .body("message", containsString(says));
+  }
+
+  /** The bodies on an entity's thread, oldest first — the thread every archetype has (qits-551). */
+  private List<String> threadOf(String entityId) {
+    return asAdmin("dana")
+        .when()
+        .get("/projects/api/work/" + entityId + "/comments")
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("entries.comment.body");
+  }
+
+  private String wrapperIdOf(String projectId) {
+    return projects.findWrapper(projectId).orElseThrow().id;
+  }
+
+  private List<Map<String, Object>> releaseRequestsOf(String repoId) {
+    return asAdmin("dana")
+        .when()
+        .get("/projects/api/repositories/" + repoId + "/release-requests")
+        .then()
+        .statusCode(200)
+        .extract()
+        .path("requests");
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<String> sourceNamesOf(Map<String, Object> request) {
+    return ((List<Map<String, Object>>) request.get("sources"))
+        .stream().map(source -> (String) source.get("name")).toList();
+  }
+
+  // ---- the status picks the phase, for every archetype ------------------------------------------
+
+  @Test
+  public void dispatchingATicketAtEachStatusStartsItsPhaseAndNothingPastTheWork() {
+    String projectId = createProject("Dispatch Walk Ticket");
+    String ticketId = createTicket(projectId, "Walk the ticket");
+
+    assertEquals("refine", press(ticketId, "FLOW"));
+    assertTrue(dispatch.lastCall().instruction().contains("Refine ticket \""));
+    transitionTicket(ticketId, "REFINED");
+    // qits-887: REFINED starts nothing — a person schedules it first — and says so.
+    pressRefused(ticketId, "FLOW", "REFINED waits for a person to schedule it (READY_FOR_DEV)");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    assertEquals("implement", press(ticketId, "FLOW"));
+    assertTrue(dispatch.lastCall().instruction().contains("Implement ticket \""));
+    transitionTicket(ticketId, "IMPLEMENTED");
+    assertEquals("verify", press(ticketId, "FLOW"));
+    assertTrue(dispatch.lastCall().instruction().contains("Verify ticket \""));
+    int dispatched = dispatch.calls().size();
+
+    transitionTicket(ticketId, "VERIFIED");
+    pressRefused(ticketId, "FLOW", "is VERIFIED");
+    transitionTicket(ticketId, "DONE");
+    pressRefused(ticketId, "PHASE", "is DONE");
+    String dropped = createTicket(projectId, "Decided against");
+    transitionTicket(dropped, "DROPPED");
+    pressRefused(dropped, "FLOW", "is DROPPED");
+
+    assertEquals(dispatched, dispatch.calls().size(), "nothing past the work stands a workspace up");
+  }
+
+  @Test
+  public void dispatchingAnEpicAtEachStatusStartsItsPhaseAndNothingPastTheWork() {
+    String projectId = createProject("Dispatch Walk Epic");
+    String epicId = createEpic(projectId, "Walk the epic");
+
+    assertEquals("refine", press(epicId, "PHASE"));
+    RecordingWorkspaceAgentDispatch.Dispatched refine = dispatch.lastCall();
+    assertTrue(refine.instruction().contains("Refine epic \""), refine.instruction());
+    assertEquals("epic/walk-the-epic", refine.branch());
+    assertEquals(epicId, refine.subject().epicId(), "the workspace names the epic it is for");
+    assertNull(refine.subject().ticketId());
+    // The press is recorded on the epic's own thread, as a ticket's always was (qits-551).
+    assertEquals(
+        List.of(
+            "Dispatched a coding agent to workspace `epic/walk-the-epic` for the refine phase."
+                + " Assignee: `ws-agent-41`."
+                + " This run stops after that phase: the next one starts when somebody presses"
+                + " again."),
+        threadOf(epicId));
+
+    transitionEpic(epicId, "REFINED");
+    pressRefused(epicId, "PHASE", "Epic " + epicId + " is REFINED");
+    pressRefused(epicId, "FLOW", "waits for a person to schedule it (READY_FOR_DEV)");
+    transitionEpic(epicId, "READY_FOR_DEV");
+    assertEquals("implement", press(epicId, "PHASE"));
+    assertTrue(dispatch.lastCall().instruction().contains("Implement epic \""));
+    transitionEpic(epicId, "IMPLEMENTED");
+    assertEquals("verify", press(epicId, "PHASE"));
+    assertTrue(dispatch.lastCall().instruction().contains("Verify epic \""));
+    int dispatched = dispatch.calls().size();
+
+    transitionEpic(epicId, "VERIFIED");
+    pressRefused(epicId, "PHASE", "Epic " + epicId + " is VERIFIED");
+    transitionEpic(epicId, "DONE");
+    pressRefused(epicId, "FLOW", "is DONE");
+    String dropped = createEpic(projectId, "Never happening");
+    transitionEpic(dropped, "DROPPED");
+    pressRefused(dropped, "FLOW", "is DROPPED");
+
+    assertEquals(dispatched, dispatch.calls().size(), "nothing past the work stands a workspace up");
+  }
+
+  /**
+   * <b>Same status, same path, different words.</b> Both stand on the project's wrapper with the
+   * whole estate branched, both start the refine phase, and each is told what refining it means.
+   */
+  @Test
+  public void anEpicAndATicketAtTheSameStatusTakeTheSamePathWithDifferentPromptText() {
+    String projectId = createProject("Dispatch Same Path");
+    String ticketId = createTicket(projectId, "Same path ticket");
+    String epicId = createEpic(projectId, "Same path epic");
+
+    assertEquals("refine", press(ticketId, "FLOW"));
+    RecordingWorkspaceAgentDispatch.Dispatched ticketRun = dispatch.lastCall();
+    assertEquals("refine", press(epicId, "FLOW"));
+    RecordingWorkspaceAgentDispatch.Dispatched epicRun = dispatch.lastCall();
+
+    assertEquals(wrapperIdOf(projectId), ticketRun.repositoryId());
+    assertEquals(ticketRun.repositoryId(), epicRun.repositoryId(), "both stand on the wrapper");
+    assertTrue(ticketRun.branchTree() && epicRun.branchTree(), "both branch the whole estate");
+    assertEquals("ticket/same-path-ticket", ticketRun.branch());
+    assertEquals("epic/same-path-epic", epicRun.branch());
+    assertEquals(ticketId, ticketRun.subject().ticketId());
+    assertEquals(epicId, epicRun.subject().epicId());
+    // Each also named as a person names it, <project-slug>-<number> (qits-614): the label the far
+    // side's daemon names the agent's sessions by, resolved here from the project row and the number.
+    assertEquals(qualifiedIdOf(projectId, ticketId), ticketRun.subject().qualifiedId());
+    assertEquals(qualifiedIdOf(projectId, epicId), epicRun.subject().qualifiedId());
+    assertTrue(
+        ticketRun.subject().qualifiedId().matches(".+-[1-9][0-9]*"),
+        ticketRun.subject().qualifiedId());
+    // And the rest of the session name, `<status square> <id> <title>` (qits-617): the row's title,
+    // its status as the enum's name and its block flag, as they stand at the press.
+    assertEquals("Same path ticket", ticketRun.subject().title());
+    assertEquals("Same path epic", epicRun.subject().title());
+    assertEquals("REPORTED", ticketRun.subject().status());
+    assertEquals("REPORTED", epicRun.subject().status());
+    assertFalse(ticketRun.subject().blocked());
+    assertFalse(epicRun.subject().blocked());
+    assertNotEquals(ticketRun.instruction(), epicRun.instruction(), "the words are per archetype");
+    assertTrue(ticketRun.instruction().contains("update_ticket"), ticketRun.instruction());
+    assertTrue(epicRun.instruction().contains("add_feature"), epicRun.instruction());
+    // The first turn names the entity by the same qualified id the workspace is named by (qits-301),
+    // so the commit subjects it asks for and the session label cannot disagree.
+    assertTrue(
+        ticketRun.instruction().contains("(BUG, " + ticketRun.subject().qualifiedId() + ", slug "),
+        ticketRun.instruction());
+    assertTrue(
+        epicRun.instruction().contains("(" + epicRun.subject().qualifiedId() + ", slug "),
+        epicRun.instruction());
+  }
+
+  // ---- the continue-or-stop bit ----------------------------------------------------------------
+
+  /**
+   * FLOW: the agent's claim delivers the next phase's prompt, for a ticket and for an epic — but
+   * since qits-887 the refine claim (REFINED) is where a flow waits for a person, and the person's
+   * scheduling (READY_FOR_DEV) is an approval, not a hand-off: neither pushes a turn. The run goes
+   * on from the next claim the agent makes.
+   */
+  @Test
+  public void theFlowVariantPushesTheNextPromptOnTransition() {
+    String projectId = createProject("Dispatch Flow");
+    String ticketId = createTicket(projectId, "Flow ticket");
+    String epicId = createEpic(projectId, "Flow epic");
+    press(ticketId, "FLOW");
+    press(epicId, "FLOW");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    String wrapperId = wrapperIdOf(projectId);
+    dispatch.willReference(
+        RecordingWorkspaceAgentDispatch.live(
+            11L, wrapperId, "ws-t", "ticket/flow-ticket", ticketId, null),
+        RecordingWorkspaceAgentDispatch.live(12L, wrapperId, "ws-e", "epic/flow-epic", null, epicId));
+
+    transitionTicket(ticketId, "REFINED");
+    assertEquals(0, turns.calls().size(), "the refine claim waits for a person");
+    assertTrue(
+        threadOf(ticketId).stream().anyMatch(body -> body.contains("schedule it (READY_FOR_DEV)")),
+        "and the flow does not end silently: " + threadOf(ticketId));
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    assertEquals(0, turns.calls().size(), "scheduling pushes no implement turn");
+    assertEquals("READY_FOR_DEV", statusOf(Archetype.TICKET, ticketId));
+
+    transitionTicket(ticketId, "IMPLEMENTED");
+    assertEquals(1, turns.calls().size(), "the flow carried the ticket on");
+    assertEquals("ticket/flow-ticket", turns.lastCall().branch());
+    // The verify turn was spoken, so the verification started (qits-749): the ticket is moved on
+    // to VERIFYING with no second turn.
+    assertEquals("VERIFYING", statusOf(Archetype.TICKET, ticketId));
+    assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
+    // A later phase's turn names the entity by its qualified id too (qits-301): the advance renders
+    // it, not the press, so it is pinned on the advance's own delivery.
+    String ticketQualified = qualifiedIdOf(projectId, ticketId);
+    assertTrue(
+        turns.lastCall().text().contains(ticketQualified + ", slug flow-ticket, id " + ticketId),
+        turns.lastCall().text());
+
+    transitionEpic(epicId, "REFINED");
+    transitionEpic(epicId, "READY_FOR_DEV");
+    assertEquals(1, turns.calls().size(), "the epic's refine claim and schedule push nothing");
+    transitionEpic(epicId, "IMPLEMENTED");
+    assertEquals(2, turns.calls().size(), "and the epic, through the epic's own transition door");
+    assertEquals("VERIFYING", statusOf(Archetype.EPIC, epicId));
+    assertEquals("epic/flow-epic", turns.lastCall().branch());
+    assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
+    assertTrue(turns.lastCall().text().contains("Verify epic \""), turns.lastCall().text());
+    String epicQualified = qualifiedIdOf(projectId, epicId);
+    assertTrue(
+        turns.lastCall().text().contains("(" + epicQualified + ", slug flow-epic, id " + epicId),
+        turns.lastCall().text());
+  }
+
+  /** PHASE: the same claim delivers nothing — the bit survived the round trip on the row. */
+  @Test
+  public void theOneShotVariantDoesNotPushTheNextPromptOnTransition() {
+    String projectId = createProject("Dispatch One Shot");
+    String ticketId = createTicket(projectId, "One shot ticket");
+    String epicId = createEpic(projectId, "One shot epic");
+    press(ticketId, "PHASE");
+    press(epicId, "PHASE");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transitionTicket(ticketId, "REFINED");
+    transitionEpic(epicId, "REFINED");
+
+    assertTrue(turns.calls().isEmpty(), "a one-phase run stops: " + turns.calls());
+    // Nothing was delivered, so nothing started: both stay REFINED until a person schedules them.
+    assertEquals("REFINED", statusOf(Archetype.TICKET, ticketId));
+    assertEquals("REFINED", statusOf(Archetype.EPIC, epicId));
+  }
+
+  /**
+   * <b>A second "next phase" continues from the new status</b> and keeps the run stopping — the way
+   * an entity is stepped through by hand. A later FLOW press turns it back into a flow.
+   */
+  @Test
+  public void aSecondPhasePressContinuesFromTheNewStatusAndStillStops() {
+    String projectId = createProject("Dispatch Step");
+    String ticketId = createTicket(projectId, "Step me");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    assertEquals("refine", press(ticketId, "PHASE"));
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    assertTrue(turns.calls().isEmpty());
+
+    assertEquals("implement", press(ticketId, "PHASE"));
+    assertTrue(dispatch.lastCall().instruction().contains("Implement ticket \""));
+    transitionTicket(ticketId, "IMPLEMENTED");
+    assertTrue(turns.calls().isEmpty(), "the second press recorded PHASE again");
+
+    assertEquals("verify", press(ticketId, "FLOW")); // moves it to VERIFYING (qits-749)
+    transitionTicket(ticketId, "IMPLEMENTED"); // a claim that turned out wrong, moved back
+    assertEquals(1, turns.calls().size(), "a FLOW press turns the run back into a flow");
+    assertTrue(turns.lastCall().text().contains("Verify ticket \""), turns.lastCall().text());
+  }
+
+  // ---- the press starts the implementation (qits-749) -----------------------------------------
+
+  /**
+   * <b>A press on a READY_FOR_DEV entity moves it to IMPLEMENTING, in FLOW and PHASE alike</b>: one
+   * implement prompt (the dispatch's own), no turn pushed by the move, one {@code EntityTransitioned}
+   * READY_FOR_DEV → IMPLEMENTING, and the one dispatch comment on the thread.
+   */
+  @Test
+  public void aPressOnAScheduledEntityMovesItToImplementingOnceWithOnePrompt() {
+    String projectId = createProject("Dispatch Implementing");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    for (String mode : List.of("FLOW", "PHASE")) {
+      String ticketId = createTicket(projectId, "Implementing ticket " + mode);
+      String epicId = createEpic(projectId, "Implementing epic " + mode);
+      // PHASE to REFINED, so the claim itself pushes nothing and the press is the only prompt.
+      press(ticketId, "PHASE");
+      press(epicId, "PHASE");
+      transitionTicket(ticketId, "REFINED");
+      transitionEpic(epicId, "REFINED");
+      transitionTicket(ticketId, "READY_FOR_DEV");
+      transitionEpic(epicId, "READY_FOR_DEV");
+      dispatch.reset();
+      turns.reset();
+      transitions.reset();
+      int commentsBefore = threadOf(ticketId).size();
+
+      assertEquals("implement", press(ticketId, mode));
+      assertEquals("implement", press(epicId, mode));
+
+      assertEquals(2, dispatch.calls().size(), mode + ": one implement prompt each");
+      assertTrue(dispatch.calls().get(0).instruction().contains("Implement ticket \""));
+      assertTrue(dispatch.calls().get(1).instruction().contains("Implement epic \""));
+      assertEquals("IMPLEMENTING", dispatch.calls().get(0).subject().status());
+      assertTrue(turns.calls().isEmpty(), mode + ": the move pushes no second prompt");
+      assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+      assertEquals("IMPLEMENTING", statusOf(Archetype.EPIC, epicId));
+      List<EntityTransitioned.Entity> moved =
+          transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
+      assertEquals(2, moved.size(), mode + ": one EntityTransitioned each: " + moved);
+      for (EntityTransitioned.Entity entity : moved) {
+        assertEquals("READY_FOR_DEV", entity.statusBefore());
+        assertEquals("IMPLEMENTING", entity.status());
+      }
+      assertEquals(
+          commentsBefore + 1, threadOf(ticketId).size(), "the dispatch comment and nothing more");
+    }
+  }
+
+  /** <b>A press on an IMPLEMENTING entity resumes the implement phase</b> and moves nothing. */
+  @Test
+  public void aPressOnAnImplementingEntityResumesImplementWithoutMovingIt() {
+    String projectId = createProject("Dispatch Resume Implementing");
+    String ticketId = createTicket(projectId, "Resume me");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    transitionTicket(ticketId, "IMPLEMENTING");
+    transitions.reset();
+
+    assertEquals("implement", press(ticketId, "FLOW"));
+
+    assertTrue(dispatch.lastCall().instruction().contains("Implement ticket \""));
+    assertEquals("IMPLEMENTING", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(List.of(), transitions.published(), "no move, so nothing announced");
+  }
+
+  /** <b>A refine press moves nothing</b>: REPORTED has no "-ING" status. */
+  @Test
+  public void aRefinePressMovesNothing() {
+    String projectId = createProject("Dispatch No Move");
+    String ticketId = createTicket(projectId, "Leave me where I am");
+    assertEquals("refine", press(ticketId, "PHASE"));
+    assertEquals("REPORTED", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(List.of(), transitions.published());
+  }
+
+  /**
+   * <b>A verify press on an IMPLEMENTED entity moves it to VERIFYING</b> (qits-749), FLOW and PHASE
+   * alike, with one verify prompt and one {@code EntityTransitioned} — the mirror of IMPLEMENTING.
+   */
+  @Test
+  public void aVerifyPressOnAnImplementedEntityMovesItToVerifyingOnceWithOnePrompt() {
+    String projectId = createProject("Dispatch Verifying");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    for (String mode : List.of("FLOW", "PHASE")) {
+      String ticketId = createTicket(projectId, "Verifying ticket " + mode);
+      String epicId = createEpic(projectId, "Verifying epic " + mode);
+      press(ticketId, "PHASE");
+      press(epicId, "PHASE");
+      for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED")) {
+        transitionTicket(ticketId, target);
+        transitionEpic(epicId, target);
+      }
+      dispatch.reset();
+      turns.reset();
+      transitions.reset();
+
+      assertEquals("verify", press(ticketId, mode));
+      assertEquals("verify", press(epicId, mode));
+
+      assertEquals(2, dispatch.calls().size(), mode + ": one verify prompt each");
+      assertTrue(dispatch.calls().get(0).instruction().contains("Verify ticket \""));
+      assertTrue(dispatch.calls().get(1).instruction().contains("Verify epic \""));
+      assertTrue(turns.calls().isEmpty(), mode + ": the move pushes no second prompt");
+      assertEquals("VERIFYING", statusOf(Archetype.TICKET, ticketId));
+      assertEquals("VERIFYING", statusOf(Archetype.EPIC, epicId));
+      List<EntityTransitioned.Entity> moved =
+          transitions.published().stream().flatMap(event -> event.entities().stream()).toList();
+      assertEquals(2, moved.size(), mode + ": one EntityTransitioned each: " + moved);
+      for (EntityTransitioned.Entity entity : moved) {
+        assertEquals("IMPLEMENTED", entity.statusBefore());
+        assertEquals("VERIFYING", entity.status());
+      }
+    }
+  }
+
+  /** <b>A press on a VERIFYING entity resumes the verify phase</b> and moves nothing. */
+  @Test
+  public void aPressOnAVerifyingEntityResumesVerifyWithoutMovingIt() {
+    String projectId = createProject("Dispatch Resume Verifying");
+    String ticketId = createTicket(projectId, "Resume my check");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    transitionTicket(ticketId, "IMPLEMENTED");
+    transitionTicket(ticketId, "VERIFYING");
+    transitions.reset();
+
+    assertEquals("verify", press(ticketId, "FLOW"));
+
+    assertTrue(dispatch.lastCall().instruction().contains("Verify ticket \""));
+    assertEquals("VERIFYING", statusOf(Archetype.TICKET, ticketId));
+    assertEquals(List.of(), transitions.published(), "no move, so nothing announced");
+  }
+
+  private String statusOf(Archetype archetype, String id) {
+    return dispatchEntities.fresh(id).status;
+  }
+
+  /**
+   * <b>Both modes ask for the release at VERIFIED</b> — the bit governs the next prompt and nothing
+   * else, because the branch is finished whoever pressed what.
+   */
+  @Test
+  public void bothVariantsReleaseTheWorkspaceAtVerified() {
+    String projectId = createProject("Dispatch Release Ticket");
+    String wrapperId = wrapperIdOf(projectId);
+    String oneShot = createTicket(projectId, "Released one shot");
+    String flow = createTicket(projectId, "Released flow");
+    press(oneShot, "PHASE");
+    press(flow, "FLOW");
+    dispatch.willReference(
+        RecordingWorkspaceAgentDispatch.live(
+            7L, wrapperId, "ws-a", "ticket/released-one-shot", oneShot, null),
+        RecordingWorkspaceAgentDispatch.live(
+            8L, wrapperId, "ws-b", "ticket/released-flow", flow, null));
+
+    for (String ticketId : List.of(oneShot, flow)) {
+      transitionTicket(ticketId, "REFINED");
+      transitionTicket(ticketId, "READY_FOR_DEV");
+      transitionTicket(ticketId, "IMPLEMENTED");
+      transitionTicket(ticketId, "VERIFIED");
+    }
+
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), "the wrapper's one open request carries both: " + requests);
+    List<String> sources = sourceNamesOf(requests.get(0));
+    assertTrue(sources.contains("ticket/released-one-shot"), "the one-phase run: " + sources);
+    assertTrue(sources.contains("ticket/released-flow"), "and the flow: " + sources);
+  }
+
+  /** An epic reaching VERIFIED asks for its own branch, titled as the epic, in PHASE mode too. */
+  @Test
+  public void anEpicReachingVerifiedAsksForTheReleaseOfItsBranch() {
+    String projectId = createProject("Dispatch Release Epic");
+    String wrapperId = wrapperIdOf(projectId);
+    String epicId = createEpic(projectId, "Released epic");
+    transitionEpic(epicId, "REFINED");
+    transitionEpic(epicId, "READY_FOR_DEV");
+    press(epicId, "PHASE");
+    dispatch.willReference(
+        RecordingWorkspaceAgentDispatch.live(
+            9L, wrapperId, "ws-e", "epic/released-epic", null, epicId));
+
+    transitionEpic(epicId, "IMPLEMENTED");
+    transitionEpic(epicId, "VERIFIED");
+
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), requests.toString());
+    assertTrue(sourceNamesOf(requests.get(0)).contains("epic/released-epic"));
+    assertEquals("Epic released-epic: Released epic", requests.get(0).get("summary"));
+    assertTrue(
+        threadOf(epicId).stream()
+            .anyMatch(
+                body ->
+                    body.startsWith(
+                        "Asked for the release of `epic/released-epic`: the epic now waits on"
+                            + " release request ")),
+        "the epic's thread names the request it now waits on: " + threadOf(epicId));
+    assertTrue(
+        dispatch.lookups().stream().anyMatch(looked -> looked.epicIds().contains(epicId)),
+        "the epic is looked up at the workspaces port by epic id");
+  }
+
+  // ---- the door itself ------------------------------------------------------------------------
+
+  /** The read the SPA draws the two actions from: the server's status→phase rule, per row. */
+  @Test
+  public void theReadNamesTheNextPhaseAndTheRecordedModeWithoutStartingAnything() {
+    String projectId = createProject("Dispatch Read");
+    String ticketId = createTicket(projectId, "Read me");
+    String epicId = createEpic(projectId, "Read epic");
+    String featureId = addFeature(epicId, "A slice");
+
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.archetype", equalTo("TICKET"))
+        .body("state.status", equalTo("REPORTED"))
+        .body("state.nextPhase", equalTo("refine"))
+        .body("state.dispatchable", equalTo(true))
+        .body("state.mode", equalTo("FLOW"));
+
+    press(epicId, "PHASE");
+    transitionEpic(epicId, "REFINED");
+    // qits-887: REFINED waits for a person, so the read offers nothing to press.
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + epicId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.status", equalTo("REFINED"))
+        .body("state.nextPhase", nullValue())
+        .body("state.dispatchable", equalTo(false));
+    transitionEpic(epicId, "READY_FOR_DEV");
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + epicId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.nextPhase", equalTo("implement"))
+        .body("state.dispatchable", equalTo(true))
+        .body("state.mode", equalTo("PHASE"));
+
+    asAdmin("mallory")
+        .when()
+        .get("/projects/api/work/" + featureId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.archetype", equalTo("FEATURE"))
+        .body("state.nextPhase", nullValue())
+        .body("state.dispatchable", equalTo(false))
+        .body("state.mode", nullValue());
+
+    assertEquals(1, dispatch.calls().size(), "reading starts nothing; only the one press did");
+  }
+
+  @Test
+  public void aFeatureIsRefusedAndAMissingOrUnknownModeIsA400() {
+    String projectId = createProject("Dispatch Refusals");
+    String epicId = createEpic(projectId, "Holds a feature");
+    String featureId = addFeature(epicId, "Not dispatchable");
+    String ticketId = createTicket(projectId, "Say how");
+
+    pressRefused(featureId, "FLOW", "runs no phase of its own");
+    asAdmin("mallory")
+        .body(Map.of())
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(400)
+        .body("message", containsString("mode is required"));
+    asAdmin("mallory")
+        .body(Map.of("mode", "SIDEWAYS"))
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(400)
+        .body("message", containsString("Unknown mode SIDEWAYS"));
+    asAdmin("mallory")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/no-such-entity/dispatch")
+        .then()
+        .statusCode(404);
+
+    assertTrue(dispatch.calls().isEmpty(), "no refused press stood a workspace up");
+  }
+
+  /**
+   * The press is {@code qits:admin} alone, exactly as the doors it replaces; the read admits an
+   * agent, by the standing rule that an agent reads everywhere.
+   */
+  @Test
+  public void anAgentMayReadButNotPress() {
+    String projectId = createProject("Dispatch Roles");
+    String ticketId = createTicket(projectId, "Not for agents");
+    given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", "agent")
+        .header("X-Qits-Roles", "qits:agent")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(403);
+    given()
+        .header("X-Qits-User", "agent")
+        .header("X-Qits-Roles", "qits:agent")
+        .when()
+        .get("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.nextPhase", equalTo("refine"));
+    assertTrue(dispatch.calls().isEmpty());
+  }
+
+  // ---- the assignee is the dispatched agent (qits-887) ---------------------------------------
+
+  /** Who the dispatch path itself reads as the row's assignee, fresh. */
+  private String assigneeOf(String entityId) {
+    return dispatchEntities.fresh(entityId).assignee;
+  }
+
+  /**
+   * <b>A person's press writes the agent onto the row</b>, for an epic as for a ticket and at every
+   * phase: the identity qits-workspaces names, never the person who pressed. The answer carries it,
+   * the entity reads it back, and the thread's comment names it.
+   */
+  @Test
+  public void aPersonsPressMakesTheDispatchedAgentTheAssignee() {
+    String projectId = createProject("Dispatch Assignee");
+    String ticketId = createTicket(projectId, "Assigned ticket");
+    String epicId = createEpic(projectId, "Assigned epic");
+
+    asAdmin("mallory")
+        .body(Map.of("mode", "PHASE"))
+        .when()
+        .post("/projects/api/work/" + epicId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("dispatch.assignee", equalTo(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT));
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(epicId));
+    asAdmin("dana")
+        .when()
+        .get("/projects/api/work/" + epicId)
+        .then()
+        .statusCode(200)
+        .body("assignee", equalTo(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT));
+    assertTrue(
+        threadOf(epicId).get(0).contains("Assignee: `" + RecordingWorkspaceAgentDispatch.DEFAULT_AGENT + "`"),
+        threadOf(epicId).toString());
+
+    // Every press writes it, whatever the phase: a later one onto another agent replaces it.
+    press(ticketId, "PHASE");
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(52L, false, "SCHEDULED", "ws-agent-52"));
+    assertEquals("implement", press(ticketId, "PHASE"));
+    assertEquals("ws-agent-52", assigneeOf(ticketId), "the implement press's agent, not mallory");
+  }
+
+  /**
+   * <b>The campaign executor's press writes it the same way</b>: its door is the by-id overload with
+   * the implement phase required, and the row records the agent, not the executor.
+   */
+  @Test
+  public void anExecutorsPressMakesTheDispatchedAgentTheAssignee() {
+    String projectId = createProject("Dispatch Executor Assignee");
+    String ticketId = createTicket(projectId, "Executor ticket");
+    transitionTicket(ticketId, "REFINED");
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(63L, true, "SCHEDULED", "ws-agent-63"));
+
+    EntityDispatch.Outcome outcome =
+        entityDispatch.dispatch(ticketId, DispatchMode.FLOW, "campaign c-1", "implement");
+
+    assertEquals("ws-agent-63", outcome.entity().assignee);
+    assertEquals("ws-agent-63", assigneeOf(ticketId));
+  }
+
+  /**
+   * <b>No identity, the workspace instead</b>: a fresh workspace answers before its container is
+   * commissioned (and an older qits-workspaces never names one), so the field says which workspace
+   * the agent is in rather than nothing.
+   */
+  @Test
+  public void aDispatchNamingNoAgentFallsBackToTheWorkspace() {
+    String projectId = createProject("Dispatch Assignee Fallback");
+    String epicId = createEpic(projectId, "Uncommissioned");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(77L, true, "SCHEDULED", null));
+
+    press(epicId, "FLOW");
+
+    assertEquals("workspace 77", assigneeOf(epicId));
+    assertTrue(threadOf(epicId).get(0).contains("Assignee: `workspace 77`"), threadOf(epicId).toString());
+  }
+
+  /** <b>A refused press writes nothing</b>, and neither does one whose far side failed. */
+  @Test
+  public void aRefusedOrFailedPressLeavesTheAssigneeAsItWas() {
+    String projectId = createProject("Dispatch Assignee Refused");
+    String ticketId = createTicket(projectId, "Hold still");
+    press(ticketId, "PHASE");
+    transitionTicket(ticketId, "REFINED");
+    dispatch.willAnswer(new WorkspaceAgentDispatch.Dispatch(88L, true, "SCHEDULED", "ws-agent-88"));
+
+    pressRefused(ticketId, "FLOW", "waits for a person to schedule it");
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
+
+    transitionTicket(ticketId, "READY_FOR_DEV");
+    dispatch.willFailWith(
+        new eu.wohlben.qits.projects.error.DomainException(502, "qits-workspaces is down"));
+    asAdmin("mallory")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(502);
+    assertEquals(RecordingWorkspaceAgentDispatch.DEFAULT_AGENT, assigneeOf(ticketId));
+  }
+
+  /** {@code <project-slug>-<number>}, read back from the two rows rather than trusted. */
+  private String qualifiedIdOf(String projectId, String entityId) {
+    String slug = QuarkusTransaction.requiringNew().call(() -> projects.get(projectId).slug);
+    return slug + "-" + dispatchEntities.fresh(entityId).number;
+  }
+}

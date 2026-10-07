@@ -57,7 +57,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * EntityIdResolver#resolve}; naming nothing is a 404. <b>Every entity id in a body takes either
  * form too</b>: the create's {@code parent} and {@code dependsOn}, the patch's {@code dependsOn}, and
  * on the PUT and the bulk transition the map's keys and each entry's {@code membership.parent},
- * {@code supersededBy} and {@code dependsOn} ({@link WorkEntityDoors.Surface#WORK}). Every answer
+ * {@code supersededBy} and {@code dependsOn} ({@link WorkEntityDoors}). Every answer
  * carries {@code qualifiedId}.
  *
  * <p><b>The roles are the routes' they mirror, method by method</b>: a read and the create, the
@@ -362,7 +362,7 @@ public class WorkController {
                     schema = @Schema(implementation = WorkPatch.class))
               })
           JsonNode body) {
-    return doors.patch(identity, ids.resolve(qualifiedId).id, body, WorkEntityDoors.Surface.WORK);
+    return doors.patch(identity, ids.resolve(qualifiedId).id, body);
   }
 
   @POST
@@ -411,7 +411,7 @@ public class WorkController {
                               type = SchemaType.OBJECT,
                               additionalProperties = EntityTransition.class)))
           Map<String, EntityTransition> request) {
-    return doors.transition(identity, request, WorkEntityDoors.Surface.WORK);
+    return doors.transition(identity, request);
   }
 
   @POST

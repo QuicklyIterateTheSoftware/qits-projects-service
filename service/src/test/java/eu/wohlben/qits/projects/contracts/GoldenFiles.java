@@ -10,8 +10,7 @@ import java.util.function.UnaryOperator;
 
 /**
  * <b>The one compare-or-rewrite switch every golden file in this module goes through</b> — {@code
- * EntityRoutesGoldenTest}'s goldens, {@code docs/openapi.yml} and the provider golden masters under
- * {@code golden-masters/}.
+ * docs/openapi.yml} and the provider golden masters under {@code golden-masters/}.
  *
  * <p>By default a test <em>compares</em>: the file it would write is checked against the committed
  * one and a difference fails with a unified diff. It rewrites only when asked, with {@code

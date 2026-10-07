@@ -1,7 +1,5 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.entities.dto.EpicDto;
-import eu.wohlben.qits.entities.dto.TicketDto;
 import eu.wohlben.qits.entities.dto.WorkspaceReferenceDto;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
@@ -15,23 +13,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Fills the {@code workspaces} field on a ticket or an epic: one batched lookup, then a row-for-row
- * decoration of what the mapper already produced.
+ * Which workspaces name a ticket or an epic — {@code GET /work/{qualifiedId}/workspaces}: one lookup
+ * against the workspaces port.
  *
- * <h2>Why it sits in {@code projects.api} and is called from {@code epics.api}</h2>
+ * <h2>Why it sits in {@code projects.api} and is called from {@code entities.api}</h2>
  *
  * <p>The entities module depends on {@code domain} nowhere and must keep not depending on it, so it
  * cannot reach {@link WorkspaceAgentDispatch} and cannot answer this question for itself. The
- * <em>service</em> layer may cross — {@code ProjectTicketsController} already validates a project id
- * against {@code domain}, and {@link EntityDispatchController} is the whole dispatch door living
+ * <em>service</em> layer may cross — {@link WorkDispatchController} is the whole dispatch door living
  * here for exactly this reason — so the crossing happens once, in this class, declared by the
  * package it is in.
- *
- * <h2>One call per listing, never one per row</h2>
- *
- * <p>Every entry point takes the whole collection and makes a single lookup for it. A per-row call
- * would put a network hop inside a loop over a page, and a project with forty tickets would pay
- * forty round trips for a field that decides one button.
  *
  * <h2>Absent, and away, are both "no workspaces"</h2>
  *
@@ -48,53 +39,9 @@ public class DispatchedWorkspaces {
   @Inject Instance<WorkspaceAgentDispatch> dispatch;
 
   /**
-   * The tickets, each told which workspaces name it — live and resolved alike, each with its status.
-   * One lookup for the whole list.
-   */
-  public List<TicketDto> decorateTickets(List<TicketDto> tickets) {
-    if (tickets.isEmpty() || dispatch.isUnsatisfied()) {
-      return tickets;
-    }
-    Map<String, List<WorkspaceReferenceDto>> byTicket =
-        byRow(
-            dispatch
-                .get()
-                .workspacesReferencing(tickets.stream().map(TicketDto::id).toList(), List.of()),
-            WorkspaceAgentDispatch.Reference::ticketId);
-    return tickets.stream()
-        .map(ticket -> ticket.withWorkspaces(byTicket.getOrDefault(ticket.id(), List.of())))
-        .toList();
-  }
-
-  /** One ticket — the same call, asked about a list of one. */
-  public TicketDto decorate(TicketDto ticket) {
-    return decorateTickets(List.of(ticket)).get(0);
-  }
-
-  /** The epics, each told which workspaces name it, live and resolved alike. */
-  public List<EpicDto> decorateEpics(List<EpicDto> epics) {
-    if (epics.isEmpty() || dispatch.isUnsatisfied()) {
-      return epics;
-    }
-    Map<String, List<WorkspaceReferenceDto>> byEpic =
-        byRow(
-            dispatch
-                .get()
-                .workspacesReferencing(List.of(), epics.stream().map(EpicDto::id).toList()),
-            WorkspaceAgentDispatch.Reference::epicId);
-    return epics.stream()
-        .map(epic -> epic.withWorkspaces(byEpic.getOrDefault(epic.id(), List.of())))
-        .toList();
-  }
-
-  /** One epic. */
-  public EpicDto decorate(EpicDto epic) {
-    return decorateEpics(List.of(epic)).get(0);
-  }
-
-  /**
-   * The workspaces naming one work entity, live and resolved alike — what {@code workspaces} on its
-   * per-archetype read carries, for {@code GET /work/{qualifiedId}/workspaces} (qits-970). Only a
+   * The workspaces naming one work entity, live and resolved alike — what the deleted per-archetype
+   * read carried as its {@code workspaces} field, for {@code GET /work/{qualifiedId}/workspaces}
+   * (qits-970). Only a
    * ticket and an epic are dispatched onto a branch, so every other archetype has none.
    */
   public List<WorkspaceReferenceDto> referencing(WorkEntity entity) {

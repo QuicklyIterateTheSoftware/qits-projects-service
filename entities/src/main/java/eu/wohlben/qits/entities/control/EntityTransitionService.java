@@ -306,8 +306,8 @@ public class EntityTransitionService {
    * is told where it IS created rather than merely that it is not). A campaign's title and
    * description may still be edited here, with its status restated unchanged.
    *
-   * <p>The reason is the pause hook. A campaign's own transition door ({@code
-   * /campaigns/{id}/transition}) stops its executor in the same transaction as the campaign leaving
+   * <p>The reason is the pause hook. A campaign's own status door ({@code POST
+   * /work/{qualifiedId}/status}) stops its executor in the same transaction as the campaign leaving
    * REFINED; this door sets {@code row.status} directly, with no adjacency rule and no hook, so a
    * move made here would leave the executor running a campaign that is no longer started. A 409 and
    * not a 400: the entry is well-formed, it has merely come to the wrong door.
@@ -341,8 +341,8 @@ public class EntityTransitionService {
     if (!refused.isEmpty()) {
       throw new ConflictException(
           String.join("; ", refused)
-              + " — move a campaign through /campaigns/{id}/transition; create one through"
-              + " /projects/{projectId}/campaigns");
+              + " — move a campaign through POST /projects/api/work/{qualifiedId}/status; create"
+              + " one through POST /projects/api/work");
     }
   }
 
@@ -360,7 +360,7 @@ public class EntityTransitionService {
    *       whatever the row holds.
    * </ul>
    *
-   * <p>Each is "move it through POST /entities/{id}/status", the door that judges the move. An entry
+   * <p>Each is "move it through POST /work/{qualifiedId}/status", the door that judges the move. An entry
    * restating the status the row already holds is no move and passes, at READY_FOR_DEV too — which is
    * what the SPA's edit form sends with an edited title. A change of archetype alone moves no status
    * and is not judged here; the gate is asked again on scheduling.
@@ -398,7 +398,8 @@ public class EntityTransitionService {
     if (!refused.isEmpty()) {
       throw new ConflictException(
           String.join("; ", refused)
-              + " — move it through POST /projects/api/entities/{id}/status, which judges the move");
+              + " — move it through POST /projects/api/work/{qualifiedId}/status, which judges the"
+              + " move");
     }
   }
 

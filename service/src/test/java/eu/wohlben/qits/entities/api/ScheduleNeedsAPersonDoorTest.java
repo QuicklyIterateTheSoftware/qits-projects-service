@@ -19,10 +19,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * <b>Scheduling needs a person, at every REST door</b> (qits-887, qits-937): REFINED →
- * READY_FOR_DEV through {@code POST /entities/{id}/status}, {@code /epics/{id}/transition}, {@code
- * /tickets/{id}/transition} and {@code /campaigns/{id}/transition} is made only by a caller qits-891's
- * {@link PersonCheck} verified — a browser session this service introspects, or a person's {@code
+ * <b>Scheduling needs a person, at the REST status door</b> (qits-887, qits-937): REFINED →
+ * READY_FOR_DEV through {@code POST /work/{id}/status} — since qits-976 the one status door, for an
+ * epic, a ticket and a campaign alike — is made only by a caller qits-891's {@link PersonCheck}
+ * verified — a browser session this service introspects, or a person's {@code
  * qits} CLI bearer — and it is recorded under the proof's name. An agent's bearer, a service client's
  * and asserted identity headers (alone, or beside a machine bearer) are a 409 naming the gate, or the
  * 403 the door's roles already answer for an epic. Unscheduling is anybody's.
@@ -119,7 +119,7 @@ class ScheduleNeedsAPersonDoorTest {
         session("ada", "ada")
             .body(body)
             .when()
-            .post("/projects/api/entities")
+            .post("/projects/api/work")
             .then()
             .statusCode(201)
             .extract()
@@ -131,14 +131,14 @@ class ScheduleNeedsAPersonDoorTest {
   private static String refinedCampaign(String projectId) {
     String id =
         session("ada", "ada")
-            .body(Map.of("title", "The order"))
+            .body(Map.of("archetype", "CAMPAIGN", "project", projectId, "title", "The order"))
             .when()
-            .post("/projects/api/projects/" + projectId + "/campaigns")
+            .post("/projects/api/work")
             .then()
-            .statusCode(200)
+            .statusCode(201)
             .extract()
-            .path("campaign.id");
-    campaign(session("ada", "ada"), id, "REFINED").statusCode(200);
+            .path("id");
+    status(session("ada", "ada"), id, "REFINED").statusCode(200);
     return id;
   }
 
@@ -146,39 +146,14 @@ class ScheduleNeedsAPersonDoorTest {
     return caller
         .body(Map.of("target", target))
         .when()
-        .post("/projects/api/entities/" + id + "/status")
-        .then();
-  }
-
-  private static ValidatableResponse epic(RequestSpecification caller, String id, String target) {
-    return caller
-        .body(Map.of("target", target))
-        .when()
-        .post("/projects/api/epics/" + id + "/transition")
-        .then();
-  }
-
-  private static ValidatableResponse ticket(RequestSpecification caller, String id, String target) {
-    return caller
-        .body(Map.of("target", target))
-        .when()
-        .post("/projects/api/tickets/" + id + "/transition")
-        .then();
-  }
-
-  private static ValidatableResponse campaign(
-      RequestSpecification caller, String id, String target) {
-    return caller
-        .body(Map.of("target", target))
-        .when()
-        .post("/projects/api/campaigns/" + id + "/transition")
+        .post("/projects/api/work/" + id + "/status")
         .then();
   }
 
   private static void stillRefined(String id) {
     session("ada", "ada")
         .when()
-        .get("/projects/api/entities/" + id)
+        .get("/projects/api/work/" + id)
         .then()
         .statusCode(200)
         .body("status", equalTo("REFINED"));
@@ -189,27 +164,26 @@ class ScheduleNeedsAPersonDoorTest {
   // --- a person schedules -------------------------------------------------------------------------
 
   @Test
-  void aPersonsSessionSchedulesAtEveryDoorUnderTheSessionsName() {
+  void aPersonsSessionSchedulesEveryRootUnderTheSessionsName() {
     String projectId = project("Person session schedules");
     // The headers assert one admin and the session idp vouches for another: the proof's name wins.
     status(session("mallory", "ada"), refined(projectId, "TICKET"), "READY_FOR_DEV")
         .statusCode(200)
         .body("status", equalTo("READY_FOR_DEV"))
         .body("changedBy", equalTo("ada"));
-    epic(session("mallory", "ada"), refined(projectId, "EPIC"), "READY_FOR_DEV")
+    status(session("mallory", "ada"), refined(projectId, "EPIC"), "READY_FOR_DEV")
         .statusCode(200)
-        .body("epic.status", equalTo("READY_FOR_DEV"));
-    ticket(session("mallory", "ada"), refined(projectId, "TICKET"), "READY_FOR_DEV")
+        .body("status", equalTo("READY_FOR_DEV"))
+        .body("changedBy", equalTo("ada"));
+    status(session("mallory", "ada"), refinedCampaign(projectId), "READY_FOR_DEV")
         .statusCode(200)
-        .body("ticket.status", equalTo("READY_FOR_DEV"));
-    campaign(session("mallory", "ada"), refinedCampaign(projectId), "READY_FOR_DEV")
-        .statusCode(200)
-        .body("campaign.status", equalTo("READY_FOR_DEV"));
+        .body("status", equalTo("READY_FOR_DEV"))
+        .body("changedBy", equalTo("ada"));
   }
 
   /**
-   * A campaign is ready for dev when its members are (qits-942): a person's move at the campaign door
-   * is refused while a member is still REFINED, naming it, and goes through once it is scheduled. A
+   * A campaign is ready for dev when its members are (qits-942): a person's move of the campaign is
+   * refused while a member is still REFINED, naming it, and goes through once it is scheduled. A
    * machine is refused by both gates at once.
    */
   @Test
@@ -220,23 +194,23 @@ class ScheduleNeedsAPersonDoorTest {
     session("ada", "ada")
         .body(Map.of("entityId", memberId))
         .when()
-        .post("/projects/api/campaigns/" + campaignId + "/members")
+        .post("/projects/api/work/" + campaignId + "/members")
         .then()
-        .statusCode(200);
+        .statusCode(201);
 
-    campaign(session("ada", "ada"), campaignId, "READY_FOR_DEV")
+    status(session("ada", "ada"), campaignId, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString("MEMBERS_SCHEDULED: a member is not READY_FOR_DEV yet: "))
         .body("message", containsString(" (REFINED)"));
-    campaign(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
+    status(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString("MEMBERS_SCHEDULED: "))
         .body("message", containsString(REFUSAL));
 
     status(session("ada", "ada"), memberId, "READY_FOR_DEV").statusCode(200);
-    campaign(session("ada", "ada"), campaignId, "READY_FOR_DEV")
+    status(session("ada", "ada"), campaignId, "READY_FOR_DEV")
         .statusCode(200)
-        .body("campaign.status", equalTo("READY_FOR_DEV"));
+        .body("status", equalTo("READY_FOR_DEV"));
   }
 
   @Test
@@ -245,7 +219,9 @@ class ScheduleNeedsAPersonDoorTest {
     status(bearer(personsCli()), refined(projectId, "EPIC"), "READY_FOR_DEV")
         .statusCode(200)
         .body("changedBy", equalTo("user-7"));
-    ticket(bearer(personsCli()), refined(projectId, "TICKET"), "READY_FOR_DEV").statusCode(200);
+    status(bearer(personsCli()), refined(projectId, "TICKET"), "READY_FOR_DEV")
+        .statusCode(200)
+        .body("changedBy", equalTo("user-7"));
   }
 
   // --- a machine does not -------------------------------------------------------------------------
@@ -258,9 +234,8 @@ class ScheduleNeedsAPersonDoorTest {
         .statusCode(409)
         .body("message", containsString(REFUSAL))
         .body("message", containsString("mallory is a machine credential"));
-    ticket(headersOnly(), id, "READY_FOR_DEV").statusCode(409);
     String epicId = refined(projectId, "EPIC");
-    epic(headersOnly(), epicId, "READY_FOR_DEV").statusCode(409);
+    status(headersOnly(), epicId, "READY_FOR_DEV").statusCode(409);
     // A session idp does not vouch for an admin is no person either.
     status(
             headersOnly()
@@ -279,13 +254,11 @@ class ScheduleNeedsAPersonDoorTest {
     status(bearer(agent(projectId)), id, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString(REFUSAL));
-    ticket(bearer(agent(projectId)), id, "READY_FOR_DEV").statusCode(409);
     String campaignId = refinedCampaign(projectId);
-    campaign(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
+    status(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString(REFUSAL));
     // An epic's status door is qits:admin alone, before any gate.
-    epic(bearer(agent(projectId)), refined(projectId, "EPIC"), "READY_FOR_DEV").statusCode(403);
     status(bearer(agent(projectId)), refined(projectId, "EPIC"), "READY_FOR_DEV").statusCode(403);
     stillRefined(id);
 

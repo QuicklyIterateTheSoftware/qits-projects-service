@@ -4,7 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.entities.api.ProjectEpicsController;
+import eu.wohlben.qits.entities.api.WorkRequests;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -23,8 +23,9 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
- * The project events endpoint end to end: a browser subscribes, somebody mutates an epic, and the
- * {@code epics} hint arrives as an SSE frame. This is the whole point of the channel — the epics
+ * The project events endpoint end to end: a browser subscribes, somebody mutates an epic (or a
+ * ticket) through the {@code /work} doors, and the {@code epics} (or {@code tickets}) hint arrives
+ * as an SSE frame. This is the whole point of the channel — the epics
  * overview re-fetches on the frame rather than polling — so it is asserted over real HTTP against
  * the real CDI async bus, not by calling the broadcaster.
  */
@@ -54,15 +55,41 @@ class ProjectEventsSseTest {
 
     assertSseDataFrame(
         new URL(projectsUrl, projectId + "/events"),
+        () -> WorkRequests.epic(projectId, "Drafted live"),
+        "epics");
+  }
+
+  /**
+   * A ticket is a topic of its own: a ticket's write redraws the tickets board, and a write through
+   * the generic {@code /work} doors says which board by the archetype it touched.
+   */
+  @Test
+  void aTicketMutationReachesTheProjectsSubscribersOnItsOwnTopic() throws Exception {
+    String projectId = createProject("SSE Tickets Project");
+
+    assertSseDataFrame(
+        new URL(projectsUrl, projectId + "/events"),
+        () -> WorkRequests.ticket(projectId, "Filed live", "BUG", "It occurs."),
+        "tickets");
+  }
+
+  /** A remark on a ticket's thread is a ticket write too, and redraws the same board. */
+  @Test
+  void aCommentOnATicketReachesTheTicketsTopic() throws Exception {
+    String projectId = createProject("SSE Comments Project");
+    String ticket = WorkRequests.ticket(projectId, "Discussed live", "BUG", "It occurs.");
+
+    assertSseDataFrame(
+        new URL(projectsUrl, projectId + "/events"),
         () ->
             given()
                 .contentType(ContentType.JSON)
-                .body(new ProjectEpicsController.CreateEpicRequest("Drafted live", "The spine"))
+                .body(java.util.Map.of("body", "A remark."))
                 .when()
-                .post("/projects/api/projects/" + projectId + "/epics")
+                .post("/projects/api/work/" + ticket + "/comments")
                 .then()
                 .statusCode(200),
-        "epics");
+        "tickets");
   }
 
   @Test

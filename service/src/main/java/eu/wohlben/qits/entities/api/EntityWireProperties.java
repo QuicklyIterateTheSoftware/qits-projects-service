@@ -20,14 +20,14 @@ import java.util.Optional;
  * EntityProperty} a caller may write, its wire name, the JSON Schema fragment of its value, and
  * whether a merge patch may clear it.
  *
- * <p>The registry ({@code Archetypes}, served as {@code GET /entities/archetypes}) says which
+ * <p>The registry ({@code Archetypes}, served as {@code GET /work/archetypes}) says which
  * properties a kind permits and requires, in enum constants ({@code TICKET_TYPE}); it says nothing
  * about what goes on the wire. That gap was filled twice, by hand, in two places that could disagree
- * — {@code EntityPatchController}'s list of editable names, and whatever a client kept to build a
+ * — the patch door's list of editable names, and whatever a client kept to build a
  * payload. This is the one place it is filled now, and the three readers read it: the published
- * schemas ({@link EntitySchemas}, {@code GET /entities/archetypes/{a}/schemas/{door}}), the generic
+ * schemas ({@link EntitySchemas}, {@code GET /work/archetypes/{a}/schemas/{door}}), the generic
  * create door's validation (which validates <em>against</em> the schema, not beside it), and {@code
- * EntityPatchController}'s editable and non-clearable sets. A schema and a validator built from one
+ * WorkEntityDoors}' patch, its editable and non-clearable sets. A schema and a validator built from one
  * table cannot disagree; {@code EntitySchemaApiTest} pins that the doors accept what the schemas
  * require.
  *
@@ -179,7 +179,7 @@ public final class EntityWireProperties {
 
   /**
    * What a field edit writes, keyed by wire name: the table less the {@link #MOVES}. {@code
-   * EntityPatchController}'s editable set, read from here so the update schema and the PATCH
+   * WorkEntityDoors}' editable set, read from here so the update schema and the PATCH
    * validator are one list.
    */
   public static Map<String, EntityProperty> editable() {
@@ -192,7 +192,7 @@ public final class EntityWireProperties {
     return Collections.unmodifiableMap(editable);
   }
 
-  /** The wire names a merge patch may not null — {@code EntityPatchController}'s other set. */
+  /** The wire names a merge patch may not null — {@code WorkEntityDoors}' other set. */
   public static List<String> notClearable() {
     List<String> names = new ArrayList<>();
     for (Slot slot : TABLE.values()) {

@@ -9,19 +9,6 @@ components:
       properties:
         technicalProcessId:
           type: string
-    AddCampaignMemberRequest:
-      type: object
-      required:
-      - entityId
-      properties:
-        entityId:
-          type: string
-          pattern: \S
-        position:
-          type: integer
-          format: int32
-        inFlight:
-          type: boolean
     AddReleaseRequestSource:
       type: object
       required:
@@ -235,11 +222,6 @@ components:
             $ref: "#/components/schemas/AgentMcpCatalogEntryDto"
         shipped:
           type: boolean
-    ApproveCampaignCriterionRequest:
-      type: object
-      properties:
-        note:
-          type: string
     ApproveReleaseRequest:
       type: object
       required:
@@ -379,34 +361,6 @@ components:
           type: string
         agentLaunch:
           type: string
-    CampaignDto:
-      type: object
-      properties:
-        id:
-          type: string
-        number:
-          type: integer
-          format: int64
-        qualifiedId:
-          type: string
-        projectId:
-          type: string
-        slug:
-          type: string
-        title:
-          type: string
-        description:
-          type: string
-        status:
-          type: string
-        blocked:
-          type: boolean
-        start:
-          $ref: "#/components/schemas/CampaignStartDto"
-        members:
-          type: array
-          items:
-            $ref: "#/components/schemas/CampaignMemberDto"
     CampaignEvaluatorDto:
       type: object
       properties:
@@ -510,11 +464,6 @@ components:
           $ref: "#/components/schemas/Instant"
         dispatchError:
           type: string
-    CampaignMemberResponse:
-      type: object
-      properties:
-        member:
-          $ref: "#/components/schemas/CampaignMemberDto"
     CampaignMemberState:
       type: string
       enum:
@@ -552,16 +501,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CampaignMemberProgressDto"
-    CampaignProgressResponse:
-      type: object
-      properties:
-        progress:
-          $ref: "#/components/schemas/CampaignProgressDto"
-    CampaignResponse:
-      type: object
-      properties:
-        campaign:
-          $ref: "#/components/schemas/CampaignDto"
     CampaignStartDto:
       type: object
       properties:
@@ -573,38 +512,6 @@ components:
           type: string
         active:
           type: boolean
-    CampaignSummaryDto:
-      type: object
-      properties:
-        id:
-          type: string
-        number:
-          type: integer
-          format: int64
-        qualifiedId:
-          type: string
-        projectId:
-          type: string
-        title:
-          type: string
-        status:
-          type: string
-        blocked:
-          type: boolean
-        started:
-          type: boolean
-        active:
-          type: boolean
-        members:
-          type: integer
-          format: int32
-    CampaignsResponse:
-      type: object
-      properties:
-        campaigns:
-          type: array
-          items:
-            $ref: "#/components/schemas/CampaignSummaryDto"
     CapabilityReportRequest:
       type: object
       properties:
@@ -679,17 +586,6 @@ components:
         pins:
           $ref: "#/components/schemas/TagCollectionPinSources"
           type: object
-    CommentAnswer:
-      type: object
-      description: One comment on an entity's thread.
-      properties:
-        comment:
-          $ref: "#/components/schemas/CommentDto"
-    CommentDeleted:
-      type: object
-      properties:
-        success:
-          type: boolean
     CommentDto:
       type: object
       properties:
@@ -705,31 +601,6 @@ components:
           $ref: "#/components/schemas/Instant"
         updatedAt:
           $ref: "#/components/schemas/Instant"
-    CommentList:
-      type: object
-      description: "An entity's thread, oldest first."
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/CommentListEntry"
-    CommentListEntry:
-      type: object
-      properties:
-        comment:
-          $ref: "#/components/schemas/CommentDto"
-    CommentPatch:
-      type: object
-      required:
-      - body
-      description: "A JSON merge patch (RFC 7396) of one comment. body is the only\
-        \ property and is required: it replaces the text, and may not be null or blank.\
-        \ id, entityId, author, createdAt and updatedAt are server-owned; any other\
-        \ property is refused as unknown."
-      properties:
-        body:
-          type: string
-          description: "The remark as it should now read, Markdown."
     CommitBuildStatusDto:
       type: object
       properties:
@@ -853,23 +724,6 @@ components:
           type: array
           items:
             type: string
-    ConditionCriterion:
-      type: object
-      properties:
-        id:
-          type: string
-        kind:
-          type: string
-        predicate:
-          type: object
-          additionalProperties: {}
-    ConditionGroup:
-      type: object
-      properties:
-        criteria:
-          type: array
-          items:
-            $ref: "#/components/schemas/ConditionCriterion"
     ConflictedPath:
       type: object
       properties:
@@ -903,46 +757,6 @@ components:
         daemonVersionStale:
           type: boolean
         failureDetail:
-          type: string
-    CreateCampaignRequest:
-      type: object
-      required:
-      - title
-      properties:
-        title:
-          type: string
-          pattern: \S
-        description:
-          type: string
-    CreateEntityCommentRequest:
-      type: object
-      required:
-      - body
-      properties:
-        body:
-          type: string
-          pattern: \S
-    CreateEpicRequest:
-      type: object
-      required:
-      - title
-      properties:
-        title:
-          type: string
-          pattern: \S
-        description:
-          type: string
-    CreateFeatureRequest:
-      type: object
-      required:
-      - title
-      properties:
-        title:
-          type: string
-          pattern: \S
-        description:
-          type: string
-        dependsOnFeatureId:
           type: string
     CreateProjectRepositoryRequest:
       type: object
@@ -988,55 +802,6 @@ components:
           type: string
         priority:
           type: string
-    CreateTaskRequest:
-      type: object
-      required:
-      - repositoryId
-      - title
-      properties:
-        repositoryId:
-          type: string
-          pattern: \S
-        title:
-          type: string
-          pattern: \S
-        description:
-          type: string
-        dependsOnTaskId:
-          type: string
-    CreateTicketCommentRequest:
-      type: object
-      required:
-      - body
-      properties:
-        body:
-          type: string
-          pattern: \S
-    CreateTicketRequest:
-      type: object
-      required:
-      - title
-      - impetus
-      - type
-      properties:
-        title:
-          type: string
-          pattern: \S
-        impetus:
-          type: string
-          pattern: \S
-        description:
-          type: string
-        type:
-          type: string
-          pattern: \S
-        assignee:
-          type: string
-    CreatedCampaignResponse:
-      type: object
-      properties:
-        campaign:
-          $ref: "#/components/schemas/CampaignDto"
     CriterionApprovalDto:
       type: object
       properties:
@@ -1121,7 +886,7 @@ components:
           description: "The legal moves out of each status, keyed by every status\
             \ in lifecycle order: FORWARD first, then SKIP, BACK, DROP/REOPEN. DONE\
             \ maps to an empty list. Empty for a kind with no lifecycle. The status\
-            \ door (moveEntityStatus) allows exactly these."
+            \ door (setWorkStatus) allows exactly these."
         lifecycle:
           type: array
           items:
@@ -1131,7 +896,7 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/DispatchPhases"
-          description: "What a dispatch press (dispatchEntity) runs from each status,\
+          description: "What a dispatch press (dispatchWork) runs from each status,\
             \ keyed by every status in lifecycle order. Empty for a kind a dispatch\
             \ runs no phases on: a feature, a task and a campaign (whose press is\
             \ its start)."
@@ -1145,11 +910,6 @@ components:
           pattern: \S
         note:
           type: string
-    DeletePageResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
     DeletedTag:
       type: object
       properties:
@@ -1203,7 +963,7 @@ components:
       properties:
         phase:
           type: string
-          description: "The phase's word: refine, implement or verify — the word dispatchEntity\
+          description: "The phase's word: refine, implement or verify — the word dispatchWork\
             \ answers in phase."
         from:
           type: string
@@ -1231,11 +991,6 @@ components:
             $ref: "#/components/schemas/DispatchPhase"
           description: "The phases a FLOW press runs, in order, until a status starts\
             \ no phase. Empty where a press starts nothing. A block stops a flow early."
-    DispatchRequest:
-      type: object
-      properties:
-        mode:
-          type: string
     DnsSpec:
       type: object
       required:
@@ -1256,34 +1011,6 @@ components:
       - NO_MATCHING_ZONE
       - NOT_CONFIGURED
       - FAILED
-    DossierAssetEntry:
-      type: object
-      properties:
-        id:
-          type: string
-        kind:
-          type: string
-        mimeType:
-          type: string
-        label:
-          type: string
-        url:
-          type: string
-        markdown:
-          type: string
-        pageIds:
-          type: array
-          items:
-            type: string
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-    DossierAssetList:
-      type: object
-      properties:
-        assets:
-          type: array
-          items:
-            $ref: "#/components/schemas/DossierAssetEntry"
     DossierPageDto:
       type: object
       properties:
@@ -1346,68 +1073,6 @@ components:
           type: string
         blocked:
           type: boolean
-    EntityBlockAnswer:
-      type: object
-      description: An entity's block flag as the write left it.
-      properties:
-        block:
-          $ref: "#/components/schemas/EntityBlock"
-    EntityBlockRequest:
-      type: object
-      required:
-      - blocked
-      description: "What the block flag should become, and why."
-      properties:
-        blocked:
-          type: boolean
-          description: "true to block, false to unblock"
-        reason:
-          type: string
-          description: what is in the way — required when blocking; lands on the entity's
-            thread
-    EntityCreate:
-      type: object
-      required:
-      - archetype
-      description: "A new entity of any archetype: the archetype, plus exactly the\
-        \ body GET /projects/api/entities/archetypes/{archetype}/schemas/create describes\
-        \ for it. A root (EPIC, TICKET, CAMPAIGN) names its project, a node (FEATURE,\
-        \ TASK) its parent."
-      properties:
-        archetype:
-          $ref: "#/components/schemas/Archetype"
-          type: string
-          description: "EPIC, TICKET, FEATURE, TASK or CAMPAIGN"
-        project:
-          type: string
-          description: "A root's project: its id or its slug."
-        parent:
-          type: string
-          description: "A node's parent — an EPIC for a FEATURE, a FEATURE for a TASK\
-            \ — by UUID or qualified id."
-        title:
-          type: string
-          description: The label.
-        description:
-          type: string
-          description: The long-form Markdown body.
-        ticketType:
-          type: string
-          description: "A ticket's kind, BUG or IMPROVEMENT. MAINTENANCE is reserved\
-            \ for the tickets the platform files about its own stuck release requests,\
-            \ and it closes those itself."
-        impetus:
-          type: string
-          description: Why a ticket came about. Required for a ticket.
-        assignee:
-          type: string
-          description: An epic's or a ticket's assignee.
-        repositoryId:
-          type: string
-          description: "A task's repository, in the task's project."
-        dependsOn:
-          type: string
-          description: A feature's or task's sibling dependency.
     EntityDispatchDto:
       type: object
       properties:
@@ -1449,85 +1114,6 @@ components:
           type: boolean
         mode:
           $ref: "#/components/schemas/DispatchMode"
-    EntityList:
-      type: object
-      description: "A project's entities, in tree order."
-      properties:
-        entities:
-          type: array
-          items:
-            $ref: "#/components/schemas/EntitySummary"
-    EntityPatch:
-      type: object
-      description: "A JSON merge patch (RFC 7396) of one entity. An absent property\
-        \ is left as it is; an explicit null clears it. At least one property must\
-        \ be named. status, archetype, membership, supersededBy and blocked are refused\
-        \ with the door that moves them; slug and createdBy are server-owned; any\
-        \ other property is refused as unknown. A property the entity's archetype\
-        \ has no slot for is refused (impetus on an epic)."
-      properties:
-        title:
-          type: string
-          description: The label. Cannot be cleared.
-        description:
-          type:
-          - string
-          - "null"
-          description: The long-form Markdown body; null clears it.
-        impetus:
-          type:
-          - string
-          - "null"
-          description: A ticket's impetus; null clears it.
-        ticketType:
-          type: string
-          description: "A ticket's type, BUG or IMPROVEMENT; MAINTENANCE marks a ticket\
-            \ the platform filed and will close itself, and retyping one away from\
-            \ it takes it over. Cannot be cleared."
-        assignee:
-          type:
-          - string
-          - "null"
-          description: An epic's or a ticket's assignee; null clears it.
-        repositoryId:
-          type: string
-          description: "A task's repository, in the task's project. Cannot be cleared."
-        dependsOn:
-          type:
-          - string
-          - "null"
-          description: A feature's or task's sibling dependency; null clears it.
-        implementedAt:
-          type:
-          - string
-          - "null"
-          description: A feature's or task's implemented marker (ISO-8601 instant);
-            null clears it. Moves only while the owning epic is READY_FOR_DEV or IMPLEMENTING.
-            Setting it moves the item's status to IMPLEMENTED; clearing it takes an
-            IMPLEMENTED item back to IMPLEMENTING (or READY_FOR_DEV when it was never
-            marked implementing).
-          anyOf:
-          - $ref: "#/components/schemas/Instant"
-          - type: "null"
-        implementingAt:
-          $ref: "#/components/schemas/Instant"
-          type: string
-          description: "A feature's or task's implementing marker (ISO-8601 instant):\
-            \ when its implementation was started. Cannot be cleared. Moves only while\
-            \ the owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's\
-            \ status to IMPLEMENTING when it is not already there or further."
-        acceptanceCriteria:
-          type:
-          - array
-          - "null"
-          items:
-            type: string
-          description: "An epic's or ticket's acceptance criteria, the whole list\
-            \ in order; null or an empty list clears them. Each item is one line of\
-            \ Markdown: not blank, no line break, at most one '.', and fewer than\
-            \ 20 whitespace characters. Editable at REFINED (outside an epic's scope\
-            \ freeze); from READY_FOR_DEV on a changed list is a 409, and restating\
-            \ the same list passes."
     EntityProperty:
       type: string
       enum:
@@ -1545,25 +1131,6 @@ components:
       - IMPLEMENTING_AT
       - DEPENDS_ON
       - ACCEPTANCE_CRITERIA
-    EntityRefinementResponse:
-      type: object
-      properties:
-        refinement:
-          $ref: "#/components/schemas/RefinementDto"
-    EntityStatusMove:
-      type: object
-      required:
-      - target
-      description: "A lifecycle move: the status to move to."
-      properties:
-        target:
-          type: string
-          description: "REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED,\
-            \ VERIFYING, VERIFIED, DONE or DROPPED — one the entity's current status\
-            \ may move to: a neighbour on the walk (IMPLEMENTING has no move back,\
-            \ and READY_FOR_DEV none to REPORTED), or IMPLEMENTED from READY_FOR_DEV\
-            \ or VERIFIED from IMPLEMENTED (the skips). A campaign never moves to\
-            \ IMPLEMENTING or VERIFYING."
     EntitySummary:
       type: object
       properties:
@@ -1653,37 +1220,12 @@ components:
     Entry:
       type: object
       properties:
-        feature:
-          $ref: "#/components/schemas/FeatureDto"
-    Entry1:
-      type: object
-      properties:
-        task:
-          $ref: "#/components/schemas/TaskDto"
-    Entry2:
-      type: object
-      properties:
-        epic:
-          $ref: "#/components/schemas/EpicDto"
-    Entry3:
-      type: object
-      properties:
-        ticket:
-          $ref: "#/components/schemas/TicketDto"
-    Entry4:
-      type: object
-      properties:
-        comment:
-          $ref: "#/components/schemas/TicketCommentDto"
-    Entry5:
-      type: object
-      properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
         declared:
           type: boolean
           description: The wrapper's .gitmodules names this repository
-    Entry6:
+    Entry1:
       type: object
       properties:
         path:
@@ -1692,7 +1234,7 @@ components:
           type: string
         repositoryId:
           type: string
-    Entry7:
+    Entry2:
       type: object
       properties:
         project:
@@ -1714,96 +1256,6 @@ components:
           $ref: "#/components/schemas/Outcome"
         warning:
           type: string
-    EpicDto:
-      type: object
-      properties:
-        id:
-          type: string
-        projectId:
-          type: string
-        number:
-          type: integer
-          format: int64
-        qualifiedId:
-          type: string
-        title:
-          type: string
-        slug:
-          type: string
-        status:
-          type: string
-          enum:
-          - REPORTED
-          - REFINED
-          - READY_FOR_DEV
-          - IMPLEMENTING
-          - IMPLEMENTED
-          - VERIFYING
-          - VERIFIED
-          - DONE
-          - DROPPED
-        blocked:
-          type: boolean
-        supersededByEpicId:
-          type: string
-        description:
-          type: string
-        acceptanceCriteria:
-          type: array
-          items:
-            type: string
-        assignee:
-          type: string
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        updatedAt:
-          $ref: "#/components/schemas/Instant"
-        workspaces:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkspaceReferenceDto"
-    FeatureDto:
-      type: object
-      properties:
-        id:
-          type: string
-        epicId:
-          type: string
-        projectId:
-          type: string
-        number:
-          type: integer
-          format: int64
-        qualifiedId:
-          type: string
-        title:
-          type: string
-        slug:
-          type: string
-        description:
-          type: string
-        status:
-          type: string
-          enum:
-          - REPORTED
-          - REFINED
-          - READY_FOR_DEV
-          - IMPLEMENTING
-          - IMPLEMENTED
-          - VERIFYING
-          - VERIFIED
-          - DONE
-          - DROPPED
-        dependsOnFeatureId:
-          type: string
-        implementedOn:
-          $ref: "#/components/schemas/Instant"
-        implementingOn:
-          $ref: "#/components/schemas/Instant"
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        updatedAt:
-          $ref: "#/components/schemas/Instant"
     HarnessCapabilityReport:
       type: object
       properties:
@@ -1847,33 +1299,6 @@ components:
         probeDetail:
           type: string
           description: Why it fell back. Empty when it did not.
-    InlineFigureRequest:
-      type: object
-      required:
-      - sourceId
-      - kind
-      properties:
-        sourceId:
-          type: string
-          pattern: \S
-        kind:
-          type: string
-          pattern: \S
-    InlinedFigure:
-      type: object
-      properties:
-        id:
-          type: string
-        kind:
-          type: string
-        mimeType:
-          type: string
-        label:
-          type: string
-        url:
-          type: string
-        markdown:
-          type: string
     Instant:
       type: string
       format: date-time
@@ -1941,13 +1366,6 @@ components:
             \ a service client or asserted headers). Only a FORWARD or SKIP move has\
             \ any, and the key is absent when there are none. A move that fails one\
             \ is a 409 naming every failing gate."
-    ListPagesResponse:
-      type: object
-      properties:
-        pages:
-          type: array
-          items:
-            $ref: "#/components/schemas/DossierPageDto"
     ListResponse:
       type: object
       properties:
@@ -2001,20 +1419,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConflictedPath"
-    MoveCampaignMemberRequest:
-      type: object
-      required:
-      - position
-      properties:
-        position:
-          type: integer
-          format: int32
-    MovePage:
-      type: object
-      properties:
-        position:
-          type: integer
-          format: int32
     NewAttachment:
       type: object
       required:
@@ -2049,16 +1453,6 @@ components:
           type: string
         truncated:
           type: boolean
-    NewPage:
-      type: object
-      required:
-      - title
-      properties:
-        title:
-          type: string
-          pattern: \S
-        body:
-          type: string
     NonComplyingCommit:
       type: object
       properties:
@@ -2442,134 +1836,73 @@ components:
     Response:
       type: object
       properties:
-        epic:
-          $ref: "#/components/schemas/EpicDto"
-        successor:
-          $ref: "#/components/schemas/EpicDto"
-    Response1:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/Entry"
-    Response10:
-      type: object
-      properties:
-        task:
-          $ref: "#/components/schemas/TaskDto"
-    Response11:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/Entry2"
-    Response12:
-      type: object
-      properties:
-        epic:
-          $ref: "#/components/schemas/EpicDto"
-    Response13:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/Entry3"
-    Response14:
-      type: object
-      properties:
-        ticket:
-          $ref: "#/components/schemas/TicketDto"
-    Response15:
-      type: object
-      properties:
-        task:
-          $ref: "#/components/schemas/TaskDto"
-    Response16:
-      type: object
-      properties:
-        task:
-          $ref: "#/components/schemas/TaskDto"
-    Response17:
-      type: object
-      properties:
-        success:
-          type: boolean
-    Response18:
-      type: object
-      properties:
-        comment:
-          $ref: "#/components/schemas/TicketCommentDto"
-    Response19:
-      type: object
-      properties:
-        success:
-          type: boolean
-    Response2:
-      type: object
-      properties:
-        epic:
-          $ref: "#/components/schemas/EpicDto"
-    Response20:
-      type: object
-      properties:
-        ticket:
-          $ref: "#/components/schemas/TicketDto"
-    Response21:
-      type: object
-      properties:
-        ticket:
-          $ref: "#/components/schemas/TicketDto"
-    Response22:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/Entry4"
-    Response23:
-      type: object
-      properties:
-        ticket:
-          $ref: "#/components/schemas/TicketDto"
-    Response24:
-      type: object
-      properties:
-        success:
-          type: boolean
-    Response25:
-      type: object
-      properties:
-        comment:
-          $ref: "#/components/schemas/TicketCommentDto"
-    Response26:
-      type: object
-      properties:
-        state:
-          $ref: "#/components/schemas/EntityDispatchStateDto"
-    Response27:
-      type: object
-      properties:
-        dispatch:
-          $ref: "#/components/schemas/EntityDispatchDto"
-    Response28:
-      type: object
-      properties:
         project:
           $ref: "#/components/schemas/ProjectDto"
-    Response29:
+    Response1:
       type: object
       properties:
         repositoryId:
           type: string
-    Response3:
+    Response10:
       type: object
       properties:
-        success:
-          type: boolean
-    Response30:
+        projectId:
+          type: string
+        scheduled:
+          type: integer
+          format: int32
+    Response11:
+      type: object
+      properties:
+        repository:
+          $ref: "#/components/schemas/RepositoryDto"
+        projectId:
+          type: string
+    Response12:
+      type: object
+      properties:
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseRequestDto"
+    Response13:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response14:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response15:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response16:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response17:
+      type: object
+      properties:
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseRequestDto"
+    Response18:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response19:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/ReleaseRequestDto"
+    Response2:
       type: object
       properties:
         projectId:
@@ -2582,159 +1915,39 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntryOutcome"
-    Response31:
-      type: object
-      properties:
-        domain:
-          $ref: "#/components/schemas/DomainOutcome"
-        domainDetail:
-          type: string
-    Response32:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/Entry5"
-        wrapper:
-          $ref: "#/components/schemas/WrapperView"
-    Response33:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/Entry7"
-    Response34:
-      type: object
-      properties:
-        project:
-          $ref: "#/components/schemas/ProjectDto"
-    Response35:
-      type: object
-      properties:
-        success:
-          type: boolean
-    Response36:
-      type: object
-      properties:
-        repository:
-          $ref: "#/components/schemas/RepositoryDto"
-        projectId:
-          type: string
-        wrapperPath:
-          type: string
-    Response37:
-      type: object
-      properties:
-        project:
-          $ref: "#/components/schemas/ProjectDto"
-        wrapper:
-          $ref: "#/components/schemas/RepositoryDto"
-    Response38:
-      type: object
-      properties:
-        projectId:
-          type: string
-        scheduled:
-          type: integer
-          format: int32
-    Response39:
-      type: object
-      properties:
-        repository:
-          $ref: "#/components/schemas/RepositoryDto"
-        projectId:
-          type: string
-    Response4:
-      type: object
-      properties:
-        feature:
-          $ref: "#/components/schemas/FeatureDto"
-    Response40:
-      type: object
-      properties:
-        requests:
-          type: array
-          items:
-            $ref: "#/components/schemas/ReleaseRequestDto"
-    Response41:
+    Response20:
       type: object
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
-    Response42:
+    Response21:
       type: object
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
-    Response43:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
-    Response44:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
-    Response45:
-      type: object
-      properties:
-        requests:
-          type: array
-          items:
-            $ref: "#/components/schemas/ReleaseRequestDto"
-    Response46:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
-    Response47:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
-    Response48:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
-    Response49:
-      type: object
-      properties:
-        request:
-          $ref: "#/components/schemas/ReleaseRequestDto"
-    Response5:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/AuditEntryDto"
-    Response50:
+    Response22:
       type: object
       properties:
         approvals:
           type: array
           items:
             $ref: "#/components/schemas/ReleaseRequestApprovalDto"
-    Response51:
+    Response23:
       type: object
       properties:
         request:
           $ref: "#/components/schemas/ReleaseRequestDto"
-    Response52:
+    Response24:
       type: object
       properties:
         technicalProcessId:
           type: string
-    Response53:
+    Response25:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
-    Response54:
+    Response26:
       type: object
       properties:
         repository:
@@ -2743,86 +1956,113 @@ components:
           type: string
         changed:
           type: boolean
-    Response55:
+    Response27:
       type: object
       properties:
         technicalProcessId:
           type: string
-    Response56:
+    Response28:
       type: object
       properties:
         technicalProcessId:
           type: string
-    Response57:
+    Response29:
       type: object
       properties:
         repositories:
           type: array
           items:
             $ref: "#/components/schemas/RepositoryCoordinatesDto"
-    Response58:
+    Response3:
+      type: object
+      properties:
+        domain:
+          $ref: "#/components/schemas/DomainOutcome"
+        domainDetail:
+          type: string
+    Response30:
       type: object
       properties:
         repository:
           $ref: "#/components/schemas/RepositoryDto"
-    Response59:
+    Response31:
       type: object
       properties:
         success:
           type: boolean
-    Response6:
-      type: object
-      properties:
-        feature:
-          $ref: "#/components/schemas/FeatureDto"
-    Response60:
+    Response32:
       type: object
       properties:
         success:
           type: boolean
-    Response61:
+    Response33:
       type: object
       properties:
         builds:
           type: array
           items:
             $ref: "#/components/schemas/CommitBuildStatusDto"
-    Response62:
+    Response34:
       type: object
       properties:
         branches:
           type: array
           items:
             $ref: "#/components/schemas/BranchDto"
-    Response63:
+    Response35:
       type: object
       properties:
         repositoryId:
           type: string
         scheduled:
           type: boolean
-    Response64:
+    Response36:
       type: object
       properties:
         technicalProcessId:
           type: string
-    Response7:
+    Response4:
       type: object
       properties:
         entries:
           type: array
           items:
-            $ref: "#/components/schemas/Entry1"
-    Response8:
+            $ref: "#/components/schemas/Entry"
+        wrapper:
+          $ref: "#/components/schemas/WrapperView"
+    Response5:
       type: object
       properties:
-        feature:
-          $ref: "#/components/schemas/FeatureDto"
-    Response9:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entry2"
+    Response6:
+      type: object
+      properties:
+        project:
+          $ref: "#/components/schemas/ProjectDto"
+    Response7:
       type: object
       properties:
         success:
           type: boolean
+    Response8:
+      type: object
+      properties:
+        repository:
+          $ref: "#/components/schemas/RepositoryDto"
+        projectId:
+          type: string
+        wrapperPath:
+          type: string
+    Response9:
+      type: object
+      properties:
+        project:
+          $ref: "#/components/schemas/ProjectDto"
+        wrapper:
+          $ref: "#/components/schemas/RepositoryDto"
     RevisionDto:
       type: object
       properties:
@@ -2852,13 +2092,6 @@ components:
           type: string
         serializedPrompt:
           type: string
-    SetCampaignMemberConditionRequest:
-      type: object
-      properties:
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/ConditionGroup"
     SetMainBranchRequest:
       type: object
       required:
@@ -2880,13 +2113,6 @@ components:
           type: string
           pattern: \S
         requester:
-          type: string
-    SetTicketBlockedRequest:
-      type: object
-      properties:
-        blocked:
-          type: boolean
-        reason:
           type: string
     SubmoduleChangesDto:
       type: object
@@ -3034,50 +2260,6 @@ components:
           type: array
           items:
             type: string
-    TaskDto:
-      type: object
-      properties:
-        id:
-          type: string
-        featureId:
-          type: string
-        projectId:
-          type: string
-        number:
-          type: integer
-          format: int64
-        qualifiedId:
-          type: string
-        repositoryId:
-          type: string
-        title:
-          type: string
-        slug:
-          type: string
-        description:
-          type: string
-        status:
-          type: string
-          enum:
-          - REPORTED
-          - REFINED
-          - READY_FOR_DEV
-          - IMPLEMENTING
-          - IMPLEMENTED
-          - VERIFYING
-          - VERIFIED
-          - DONE
-          - DROPPED
-        dependsOnTaskId:
-          type: string
-        implementedAt:
-          $ref: "#/components/schemas/Instant"
-        implementingAt:
-          $ref: "#/components/schemas/Instant"
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        updatedAt:
-          $ref: "#/components/schemas/Instant"
     TechnicalProcessFrame:
       type: object
       properties:
@@ -3096,92 +2278,12 @@ components:
           type: string
         hintTarget:
           type: string
-    TicketCommentDto:
-      type: object
-      properties:
-        id:
-          type: string
-        ticketId:
-          type: string
-        author:
-          type: string
-        body:
-          type: string
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        updatedAt:
-          $ref: "#/components/schemas/Instant"
-    TicketDto:
-      type: object
-      properties:
-        id:
-          type: string
-        projectId:
-          type: string
-        number:
-          type: integer
-          format: int64
-        qualifiedId:
-          type: string
-        title:
-          type: string
-        slug:
-          type: string
-        type:
-          type: string
-        status:
-          type: string
-          enum:
-          - REPORTED
-          - REFINED
-          - READY_FOR_DEV
-          - IMPLEMENTING
-          - IMPLEMENTED
-          - VERIFYING
-          - VERIFIED
-          - DONE
-          - DROPPED
-        blocked:
-          type: boolean
-        assignee:
-          type: string
-        createdBy:
-          type: string
-        impetus:
-          type: string
-        description:
-          type: string
-        acceptanceCriteria:
-          type: array
-          items:
-            type: string
-        createdAt:
-          $ref: "#/components/schemas/Instant"
-        updatedAt:
-          $ref: "#/components/schemas/Instant"
-        workspaces:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkspaceReferenceDto"
     TicketType:
       type: string
       enum:
       - BUG
       - IMPROVEMENT
       - MAINTENANCE
-    TransitionCampaignRequest:
-      type: object
-      required:
-      - target
-      properties:
-        target:
-          type: string
-          pattern: \S
-    TransitionEpicRequest:
-      type: object
-      properties:
-        target:
-          type: string
     TransitionKind:
       type: string
       enum:
@@ -3190,11 +2292,6 @@ components:
       - BACK
       - DROP
       - REOPEN
-    TransitionTicketRequest:
-      type: object
-      properties:
-        target:
-          type: string
     TransitionedEntity:
       type: object
       properties:
@@ -3271,21 +2368,6 @@ components:
           format: int64
         truncated:
           type: boolean
-    UpdateFeatureRequest:
-      type: object
-      properties:
-        title:
-          type: string
-        description:
-          type: string
-        dependsOnFeatureId:
-          type: string
-        clearDependsOn:
-          type: boolean
-        implementedOn:
-          $ref: "#/components/schemas/Instant"
-        clearImplementedOn:
-          type: boolean
     UpdateProjectRequest:
       type: object
       properties:
@@ -3293,29 +2375,6 @@ components:
           type: string
         description:
           type: string
-    UpdateTaskRequest:
-      type: object
-      properties:
-        title:
-          type: string
-        description:
-          type: string
-        dependsOnTaskId:
-          type: string
-        clearDependsOn:
-          type: boolean
-        implementedAt:
-          $ref: "#/components/schemas/Instant"
-        clearImplementedAt:
-          type: boolean
-    UpdateTicketCommentRequest:
-      type: object
-      required:
-      - body
-      properties:
-        body:
-          type: string
-          pattern: \S
     WaiveReleaseRequestAutomations:
       type: object
       required:
@@ -3848,17 +2907,7 @@ components:
         entries:
           type: array
           items:
-            $ref: "#/components/schemas/Entry6"
-    WritePage:
-      type: object
-      properties:
-        title:
-          type: string
-        body:
-          type: string
-        version:
-          type: integer
-          format: int64
+            $ref: "#/components/schemas/Entry1"
   securitySchemes:
     SecurityScheme:
       type: openIdConnect
@@ -4139,1482 +3188,6 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
-  /projects/api/campaigns/{id}:
-    get:
-      summary: Get
-      description: One campaign with its members in campaign order.
-      operationId: getCampaign
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/campaigns/{id}/members:
-    post:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AddCampaignMemberRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignMemberResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Add Member
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/campaigns/{id}/members/{membershipId}:
-    delete:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "204":
-          description: No Content
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Remove Member
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/campaigns/{id}/members/{membershipId}/condition:
-    put:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SetCampaignMemberConditionRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignMemberResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Set Condition
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/campaigns/{id}/members/{membershipId}/criteria/{criterionId}/approve:
-    post:
-      parameters:
-      - name: criterionId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ApproveCampaignCriterionRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignMemberResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Approve
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/campaigns/{id}/members/{membershipId}/position:
-    put:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: membershipId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MoveCampaignMemberRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Move Member
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/campaigns/{id}/progress:
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignProgressResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Progress
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/campaigns/{id}/transition:
-    post:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TransitionCampaignRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Transition
-      tags:
-      - Campaign Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/comments/{commentId}:
-    patch:
-      summary: Edit a comment's text (JSON merge patch)
-      description: "Replaces the body of a comment on an entity of any archetype.\
-        \ Only body is written; the author stays who wrote it, and updatedAt moves."
-      parameters:
-      - name: commentId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/merge-patch+json:
-            schema:
-              $ref: "#/components/schemas/CommentPatch"
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CommentPatch"
-        required: true
-      responses:
-        "200":
-          description: The comment as it stands after the edit
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CommentAnswer"
-        "400":
-          description: "Every complaint about the body in one message: not an object,\
-            \ empty, body null or blank or not a string, a server-owned or unknown\
-            \ property"
-        "403":
-          description: An agent editing a comment outside its own project; nothing
-            is written
-        "404":
-          description: No comment with this id
-        "401":
-          description: Not Authorized
-      tags:
-      - Comment Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      summary: Delete a comment
-      description: Removes a comment; audited. Admin only.
-      parameters:
-      - name: commentId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The comment is gone
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CommentDeleted"
-        "404":
-          description: No comment with this id
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Comment Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/entities:
-    post:
-      summary: Create an entity of any archetype
-      description: "Files a new epic, ticket, campaign, feature or task from one body\
-        \ shape: the archetype plus the archetype's create schema (GET /projects/api/entities/archetypes/{archetype}/schemas/create).\
-        \ A root names its project (id or slug), a node its parent (UUID or qualified\
-        \ id): a feature's parent is an EPIC, a task's a FEATURE. The status starts\
-        \ REPORTED. Answers the entity in the merged shape, with its qualified id."
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EntityCreate"
-        required: true
-      responses:
-        "201":
-          description: The entity as written
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TransitionedEntity"
-        "400":
-          description: "Every complaint about the body in one message: not an object,\
-            \ no or an unknown archetype, a property the create schema does not list,\
-            \ a missing required one, a value of the wrong shape, a parent of the\
-            \ wrong kind, or a repository outside the project"
-        "403":
-          description: An agent creating in a project other than its own; nothing
-            is written
-        "404":
-          description: "The project, the parent or the repository names nothing"
-        "409":
-          description: "The owning epic's status freezes its scope: a node needs the\
-            \ epic REPORTED"
-        "401":
-          description: Not Authorized
-      tags:
-      - Entity Create Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-        - qits:system
-  /projects/api/entities/archetypes:
-    get:
-      summary: "The archetype registry: properties, lifecycles, legal moves and dispatch\
-        \ phases"
-      description: "Every archetype's declaration, read off the registry and the state\
-        \ machine the doors enforce: what it requires and permits, its lifecycle,\
-        \ the legal moves out of each status (transitions, each naming the quality\
-        \ gates it has to pass) and what a dispatch press runs from each status (phases)."
-      operationId: listArchetypes
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ArchetypeRegistryDocument"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Entity Archetypes Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/entities/archetypes/{archetype}/schemas/{door}:
-    get:
-      summary: "The JSON Schema of an entity write door's payload, per archetype"
-      description: "A JSON Schema (2020-12) object for the body of one write door\
-        \ and one archetype: create (POST /projects/api/entities, less the archetype),\
-        \ update (the merge patch of PATCH /projects/api/entities/{id}) or transition\
-        \ (one entry of POST /projects/api/entities/transition). Built from the archetype\
-        \ registry and the same property table the doors validate with. The archetype\
-        \ is case-insensitive."
-      parameters:
-      - name: archetype
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: door
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The schema
-          content:
-            application/json:
-              schema:
-                type: object
-        "404":
-          description: "No such archetype, or no such door"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Entity Archetypes Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/entities/transition:
-    post:
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties:
-                $ref: "#/components/schemas/EntityTransition"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties:
-                  $ref: "#/components/schemas/TransitionedEntity"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Transition
-      tags:
-      - Entity Transition Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/entities/{id}:
-    patch:
-      summary: Edit an entity's fields (JSON merge patch)
-      description: "Partial update of one entity of any archetype. An absent property\
-        \ is left unchanged and an explicit null clears it. The status is never written\
-        \ here — a lifecycle move goes through POST /projects/api/entities/{id}/status\
-        \ (or the archetype's own /{id}/transition), and a reshape, reparent or supersede\
-        \ through POST /projects/api/entities/transition. An epic's, feature's or\
-        \ task's scope follows the epic's freeze: scope edits need the epic REPORTED,\
-        \ the markers need it READY_FOR_DEV or IMPLEMENTING, and a marker moves the\
-        \ item's status with it. An epic's or a ticket's acceptance criteria sit outside\
-        \ the scope freeze and are frozen from READY_FOR_DEV on instead, where a changed\
-        \ list is refused and the same list restated passes. Answers the entity in\
-        \ the merged shape."
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/merge-patch+json:
-            schema:
-              $ref: "#/components/schemas/EntityPatch"
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EntityPatch"
-        required: true
-      responses:
-        "200":
-          description: The entity as it stands after the edit
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TransitionedEntity"
-        "400":
-          description: "Every complaint about the body in one message: not an object,\
-            \ empty, a property that is a move or server-owned or unknown, one the\
-            \ archetype has no slot for, a null where the property cannot be cleared,\
-            \ or a value of the wrong shape"
-        "403":
-          description: An agent writing an entity outside its own project; nothing
-            is written
-        "404":
-          description: No entity with this id
-        "409":
-          description: "The owning epic's status freezes what the patch touches, or\
-            \ the acceptance criteria are changed from READY_FOR_DEV on"
-        "401":
-          description: Not Authorized
-      tags:
-      - Entity Patch Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-        - qits:system
-    get:
-      summary: Read one entity of any archetype
-      description: "The entity in the merged shape, with its qualified id, its parent\
-        \ and position, and for a ticket whether it is blocked. The id is the UUID\
-        \ or the qualified id (<projectSlug>-<n>)."
-      operationId: getEntity
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The entity
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TransitionedEntity"
-        "404":
-          description: No entity with this id
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Entity Read Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-        - qits:system
-  /projects/api/entities/{id}/blocked:
-    post:
-      summary: Block or unblock an entity
-      description: "Says the phase an epic's, ticket's or campaign's status starts\
-        \ cannot finish right now (or can again). The status does not move — it is\
-        \ the phase to resume — and the next transition clears the block. The reason\
-        \ is required to block and lands on the entity's thread. The id is the UUID\
-        \ or the qualified id."
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EntityBlockRequest"
-        required: true
-      responses:
-        "200":
-          description: The flag as the write left it
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EntityBlockAnswer"
-        "400":
-          description: Blocking with no reason
-        "403":
-          description: An agent blocking outside its own project; nothing is written
-        "404":
-          description: No entity with this id
-        "409":
-          description: "A feature or a task (which runs no phase of its own), or a\
-            \ status that starts no phase (VERIFIED, DONE, DROPPED)"
-        "401":
-          description: Not Authorized
-      tags:
-      - Entity Block Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/entities/{id}/comments:
-    get:
-      summary: Read an entity's comment thread
-      description: "The thread of an entity of any archetype, oldest first. The id\
-        \ is the entity's UUID or its qualified id (<projectSlug>-<n>)."
-      operationId: listEntityComments
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: "The thread, oldest first"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CommentList"
-        "404":
-          description: No entity with this id
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Entity Comment Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-        - qits:system
-    post:
-      summary: Comment on an entity
-      description: Adds a remark to the thread of an entity of any archetype. The
-        id is the entity's UUID or its qualified id (<projectSlug>-<n>). The author
-        is stamped from the caller.
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateEntityCommentRequest"
-        required: true
-      responses:
-        "200":
-          description: The comment as written
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CommentAnswer"
-        "400":
-          description: A blank body
-        "403":
-          description: An agent commenting outside its own project; nothing is written
-        "404":
-          description: No entity with this id
-        "401":
-          description: Not Authorized
-      tags:
-      - Entity Comment Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-        - qits:system
-  /projects/api/entities/{id}/dispatch:
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response26"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: State
-      tags:
-      - Entity Dispatch Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      summary: "Put an agent on an epic or a ticket, or start a campaign"
-      description: "mode PHASE runs the one phase the entity's status starts; mode\
-        \ FLOW runs that phase and the ones after it until a status starts none. The\
-        \ archetype registry's phases say which phases those are, per status. On a\
-        \ campaign the press is its start."
-      operationId: dispatchEntity
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DispatchRequest"
-        required: true
-      responses:
-        "200":
-          description: "The dispatch made, or — for a campaign — its progress as the\
-            \ start press left it"
-          content:
-            application/json:
-              schema:
-                oneOf:
-                - $ref: "#/components/schemas/Response27"
-                - $ref: "#/components/schemas/CampaignProgressResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      tags:
-      - Entity Dispatch Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/entities/{id}/refinement:
-    post:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EntityRefinementResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Open
-      tags:
-      - Entity Refinement Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EntityRefinementResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Find
-      tags:
-      - Entity Refinement Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/entities/{id}/status:
-    post:
-      summary: Move an entity through its lifecycle
-      description: "Moves an epic, ticket, campaign, feature or task to the target\
-        \ status, by the same path as the archetype's own /{id}/transition door and\
-        \ under its roles: an agent may move a ticket or a campaign of its own project,\
-        \ a platform service (qits:system) one of any project, and an epic is qits:admin\
-        \ alone. A feature or a task moves under a ticket's roles, and only once its\
-        \ epic is past REPORTED; the epic's moves to REFINED, back to REPORTED, to\
-        \ READY_FOR_DEV, back to REFINED and to IMPLEMENTED carry it, no other does,\
-        \ and its own scheduling (to READY_FOR_DEV, or back) is refused — that is\
-        \ the epic's. The id is the UUID or the qualified id. Answers the entity in\
-        \ the merged shape, with statusBefore."
-      operationId: moveEntityStatus
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EntityStatusMove"
-        required: true
-      responses:
-        "200":
-          description: The entity as the move left it
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TransitionedEntity"
-        "400":
-          description: No target
-        "403":
-          description: "An agent moving an epic, or an entity outside its own project;\
-            \ nothing is written"
-        "404":
-          description: No entity with this id
-        "409":
-          description: "A move the lifecycle does not allow, a target naming no status,\
-            \ a feature or a task whose epic is still REPORTED, or a quality gate\
-            \ refusing a forward move — no acceptance criteria into REFINED or READY_FOR_DEV\
-            \ (ACCEPTANCE_CRITERIA), or REFINED to READY_FOR_DEV by a caller this\
-            \ service did not verify as a person (PERSON_APPROVAL)"
-        "401":
-          description: Not Authorized
-      tags:
-      - Entity Status Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-        - qits:system
-  /projects/api/epics/{epicId}/dossier:
-    get:
-      summary: Read an epic's dossier
-      description: "The epic's dossier pages in position order, bodies included. Empty,\
-        \ never 404."
-      operationId: listEpicDossierPages
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListPagesResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NewPage"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create
-      tags:
-      - Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/epics/{epicId}/dossier-assets:
-    get:
-      summary: List the figures an epic's dossier inlines
-      description: "Each asset's kind, mime type, label, content URL, markdown line\
-        \ and the pages that name it. No bytes: getDossierAssetContent serves those."
-      operationId: listEpicDossierAssets
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierAssetList"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Dossier Asset Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InlineFigureRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InlinedFigure"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Inline
-      tags:
-      - Dossier Asset Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/epics/{epicId}/dossier-assets/{assetId}/content:
-    get:
-      summary: "The bytes of one figure an epic's dossier inlines, sandboxed"
-      operationId: getDossierAssetContent
-      parameters:
-      - name: assetId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema: {}
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Dossier Asset Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/epics/{epicId}/dossier/{pageId}:
-    put:
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: pageId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WritePage"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Write
-      tags:
-      - Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    get:
-      summary: Read one page of an epic's dossier
-      operationId: getEpicDossierPage
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: pageId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: pageId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeletePageResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Delete
-      tags:
-      - Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/epics/{epicId}/dossier/{pageId}/move:
-    post:
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: pageId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MovePage"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Move
-      tags:
-      - Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/epics/{epicId}/features:
-    get:
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response1"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: List Features
-      tags:
-      - Epic Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: epicId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateFeatureRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response4"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create Feature
-      tags:
-      - Epic Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/epics/{id}:
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response2"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Get
-      tags:
-      - Epic Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response3"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Delete
-      tags:
-      - Epic Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/epics/{id}/audit:
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response5"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Audit
-      tags:
-      - Epic Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/epics/{id}/transition:
-    post:
-      summary: Transition
-      description: "Moves the epic to the target status. Its features and tasks hold\
-        \ statuses of their own and follow it on five moves only: REPORTED to REFINED\
-        \ (each REPORTED piece is refined), REFINED back to REPORTED (each REFINED\
-        \ piece returns), REFINED to READY_FOR_DEV (each REFINED piece is scheduled\
-        \ with it), READY_FOR_DEV back to REFINED (each piece still READY_FOR_DEV\
-        \ returns) and the move to IMPLEMENTED (each piece still before IMPLEMENTED\
-        \ is carried there). No other move touches them: a task is verified on its\
-        \ own, and a piece is never scheduled on its own. Two quality gates judge\
-        \ forward moves: REFINED and READY_FOR_DEV need acceptance criteria (ACCEPTANCE_CRITERIA),\
-        \ and REFINED to READY_FOR_DEV needs a person (PERSON_APPROVAL: a browser\
-        \ session or a person's qits CLI, verified here — never asserted headers or\
-        \ a machine bearer); a failing gate is a 409 naming it, and the scheduling\
-        \ move is recorded under the verified person's name."
-      operationId: transitionEpic
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TransitionEpicRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      tags:
-      - Epic Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/features/{featureId}/tasks:
-    get:
-      parameters:
-      - name: featureId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response7"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: List Tasks
-      tags:
-      - Feature Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: featureId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTaskRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response10"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create Task
-      tags:
-      - Feature Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/features/{id}:
-    put:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateFeatureRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response6"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Update
-      tags:
-      - Feature Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response8"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Get
-      tags:
-      - Feature Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response9"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Delete
-      tags:
-      - Feature Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
   /projects/api/gc/tags:
     post:
       summary: "Decommission release tags no pin, gitlink or release in flight keeps"
@@ -5673,7 +3246,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response33"
+                $ref: "#/components/schemas/Response5"
         "401":
           description: Not Authorized
         "403":
@@ -5699,7 +3272,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response37"
+                $ref: "#/components/schemas/Response9"
         "409":
           description: The supplied slug already names another project — slugs are
             unique
@@ -5735,7 +3308,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response28"
+                $ref: "#/components/schemas/Response"
         "401":
           description: Not Authorized
         "403":
@@ -5762,7 +3335,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response34"
+                $ref: "#/components/schemas/Response6"
         "401":
           description: Not Authorized
         "403":
@@ -5787,7 +3360,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response35"
+                $ref: "#/components/schemas/Response7"
         "401":
           description: Not Authorized
         "403":
@@ -5874,177 +3447,6 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
-  /projects/api/projects/{projectId}/campaigns:
-    get:
-      operationId: listProjectCampaigns
-      parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CampaignsResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: List
-      tags:
-      - Project Campaigns Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateCampaignRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CreatedCampaignResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create
-      tags:
-      - Project Campaigns Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/projects/{projectId}/entities:
-    get:
-      summary: List a project's entities of every archetype
-      description: "The project's whole planning tree, flat: each root oldest first,\
-        \ its descendants depth-first in position order — the order of the MCP list_entities.\
-        \ Optionally narrowed to one archetype, one status, and the direct children\
-        \ of one parent (UUID or qualified id). The project is its id or its slug."
-      operationId: listProjectEntities
-      parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: archetype
-        in: query
-        schema:
-          type: string
-      - name: parent
-        in: query
-        schema:
-          type: string
-      - name: status
-        in: query
-        schema:
-          type: string
-      responses:
-        "200":
-          description: The entities
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EntityList"
-        "400":
-          description: An archetype or a status naming none
-        "404":
-          description: "No such project, or no such parent"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Project Entities Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/projects/{projectId}/epics:
-    get:
-      operationId: listProjectEpics
-      parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: status
-        in: query
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response11"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: List
-      tags:
-      - Project Epics Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateEpicRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response12"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create
-      tags:
-      - Project Epics Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
   /projects/api/projects/{projectId}/events:
     get:
       parameters:
@@ -6096,7 +3498,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response31"
+                $ref: "#/components/schemas/Response3"
         "404":
           description: No such project
         "401":
@@ -6159,7 +3561,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response40"
+                $ref: "#/components/schemas/Response12"
         "401":
           description: Not Authorized
         "403":
@@ -6186,7 +3588,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response32"
+                $ref: "#/components/schemas/Response4"
         "401":
           description: Not Authorized
         "403":
@@ -6218,7 +3620,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response36"
+                $ref: "#/components/schemas/Response8"
         "400":
           description: "Neither or both of url/name, an archetype that is not a component\
             \ of a project (PROJECT, SERVICE_TEMPLATE, FORK), a name that carries\
@@ -6256,7 +3658,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response39"
+                $ref: "#/components/schemas/Response11"
         "400":
           description: "An id or name outside the adoptable shape, archetype PROJECT\
             \ (the wrapper's, which this route does not own), or an unusable url"
@@ -6291,7 +3693,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response38"
+                $ref: "#/components/schemas/Response10"
         "404":
           description: No such project
         "401":
@@ -6330,7 +3732,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response29"
+                $ref: "#/components/schemas/Response1"
         "404":
           description: "No such project, or no repository by that name"
         "401":
@@ -6367,7 +3769,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response30"
+                $ref: "#/components/schemas/Response2"
         "400":
           description: The project has no wrapper repository
         "404":
@@ -6381,70 +3783,6 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
-  /projects/api/projects/{projectId}/tickets:
-    get:
-      operationId: listProjectTickets
-      parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: status
-        in: query
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response13"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: List
-      tags:
-      - Project Tickets Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: projectId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTicketRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response14"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create
-      tags:
-      - Project Tickets Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
   /projects/api/projects/{project}/work:
     get:
       summary: List a project's work of every archetype
@@ -7083,7 +4421,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response57"
+                $ref: "#/components/schemas/Response29"
         "401":
           description: Not Authorized
         "403":
@@ -7124,7 +4462,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response54"
+                $ref: "#/components/schemas/Response26"
         "400":
           description: "An invalid name, a name another repository in this project\
             \ already answers to, or the project's wrapper repository (whose name\
@@ -7154,7 +4492,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response58"
+                $ref: "#/components/schemas/Response30"
         "401":
           description: Not Authorized
         "403":
@@ -7187,7 +4525,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response60"
+                $ref: "#/components/schemas/Response32"
         "401":
           description: Not Authorized
         "403":
@@ -7211,7 +4549,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response64"
+                $ref: "#/components/schemas/Response36"
         "401":
           description: Not Authorized
         "403":
@@ -7241,7 +4579,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response63"
+                $ref: "#/components/schemas/Response35"
         "404":
           description: No such repository
         "401":
@@ -7273,7 +4611,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response59"
+                $ref: "#/components/schemas/Response31"
         "401":
           description: Not Authorized
         "403":
@@ -7297,7 +4635,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response62"
+                $ref: "#/components/schemas/Response34"
         "401":
           description: Not Authorized
         "403":
@@ -7407,7 +4745,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response61"
+                $ref: "#/components/schemas/Response33"
         "401":
           description: Not Authorized
         "403":
@@ -7515,7 +4853,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response53"
+                $ref: "#/components/schemas/Response25"
         "401":
           description: Not Authorized
         "403":
@@ -7542,7 +4880,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response56"
+                $ref: "#/components/schemas/Response28"
         "401":
           description: Not Authorized
         "403":
@@ -7567,7 +4905,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response55"
+                $ref: "#/components/schemas/Response27"
         "401":
           description: Not Authorized
         "403":
@@ -7602,7 +4940,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response45"
+                $ref: "#/components/schemas/Response17"
         "401":
           description: Not Authorized
         "403":
@@ -7646,7 +4984,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response48"
+                $ref: "#/components/schemas/Response20"
         "401":
           description: Not Authorized
         "403":
@@ -7679,7 +5017,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response46"
+                $ref: "#/components/schemas/Response18"
         "401":
           description: Not Authorized
         "403":
@@ -7721,7 +5059,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response50"
+                $ref: "#/components/schemas/Response22"
         "401":
           description: Not Authorized
         "403":
@@ -7772,7 +5110,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response49"
+                $ref: "#/components/schemas/Response21"
         "401":
           description: Not Authorized
         "403":
@@ -7859,7 +5197,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response42"
+                $ref: "#/components/schemas/Response14"
         "401":
           description: Not Authorized
         "403":
@@ -8184,7 +5522,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response47"
+                $ref: "#/components/schemas/Response19"
         "401":
           description: Not Authorized
         "403":
@@ -8235,7 +5573,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response44"
+                $ref: "#/components/schemas/Response16"
         "401":
           description: Not Authorized
         "403":
@@ -8278,7 +5616,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response51"
+                $ref: "#/components/schemas/Response23"
         "401":
           description: Not Authorized
         "403":
@@ -8326,7 +5664,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response43"
+                $ref: "#/components/schemas/Response15"
         "401":
           description: Not Authorized
         "403":
@@ -8371,7 +5709,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response41"
+                $ref: "#/components/schemas/Response13"
         "401":
           description: Not Authorized
         "403":
@@ -8399,7 +5737,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Response52"
+                $ref: "#/components/schemas/Response24"
         "401":
           description: Not Authorized
         "403":
@@ -8436,90 +5774,6 @@ paths:
       - SecurityScheme:
         - qits:admin
         - qits:agent
-  /projects/api/tasks/{id}:
-    put:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateTaskRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response15"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Update
-      tags:
-      - Task Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response16"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Get
-      tags:
-      - Task Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response17"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Delete
-      tags:
-      - Task Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
   /projects/api/technical-processes/{id}/events:
     get:
       parameters:
@@ -8544,448 +5798,6 @@ paths:
       summary: Events
       tags:
       - Technical Process Events Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/ticket-comments/{id}:
-    put:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateTicketCommentRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response18"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Update
-      tags:
-      - Ticket Comment Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response19"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Delete
-      tags:
-      - Ticket Comment Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/tickets/{id}:
-    get:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response23"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Get
-      tags:
-      - Ticket Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response24"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Delete
-      tags:
-      - Ticket Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-  /projects/api/tickets/{id}/blocked:
-    post:
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SetTicketBlockedRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response21"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Set Blocked
-      tags:
-      - Ticket Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/tickets/{id}/transition:
-    post:
-      summary: Transition
-      description: "Moves the ticket to the target status. REFINED and READY_FOR_DEV\
-        \ need acceptance criteria (ACCEPTANCE_CRITERIA), and REFINED to READY_FOR_DEV\
-        \ needs a person (PERSON_APPROVAL: a browser session or a person's qits CLI,\
-        \ verified here — an agent's or a service's bearer and asserted headers are\
-        \ refused); a failing gate is a 409 naming it."
-      operationId: transitionTicket
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TransitionTicketRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response20"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      tags:
-      - Ticket Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/tickets/{ticketId}/comments:
-    get:
-      parameters:
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response22"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: List Comments
-      tags:
-      - Ticket Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTicketCommentRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response25"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create Comment
-      tags:
-      - Ticket Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/tickets/{ticketId}/dossier:
-    get:
-      summary: Read a ticket's dossier
-      description: "The ticket's dossier pages in position order, bodies included.\
-        \ Empty, never 404."
-      operationId: listTicketDossierPages
-      parameters:
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListPagesResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Ticket Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    post:
-      parameters:
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NewPage"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Create
-      tags:
-      - Ticket Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/tickets/{ticketId}/dossier/{slug}:
-    put:
-      parameters:
-      - name: slug
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WritePage"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Write
-      tags:
-      - Ticket Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    get:
-      summary: "Read one page of a ticket's dossier, by its slug or its id"
-      operationId: getTicketDossierPage
-      parameters:
-      - name: slug
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      tags:
-      - Ticket Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-    delete:
-      parameters:
-      - name: slug
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeletePageResponse"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-      summary: Delete
-      tags:
-      - Ticket Dossier Controller
-      security:
-      - SecurityScheme:
-        - qits:admin
-        - qits:agent
-  /projects/api/tickets/{ticketId}/dossier/{slug}/move:
-    post:
-      parameters:
-      - name: slug
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: ticketId
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MovePage"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DossierPageDto"
-        "401":
-          description: Not Authorized
-        "403":
-          description: Not Allowed
-        "400":
-          description: Bad Request
-      summary: Move
-      tags:
-      - Ticket Dossier Controller
       security:
       - SecurityScheme:
         - qits:admin
@@ -10487,4 +7299,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1006.121753
+  version: 2026.1007.35430

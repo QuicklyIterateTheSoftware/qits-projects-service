@@ -90,8 +90,10 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     far side and an unparseable answer are all one WARN and an empty list. Empty is also the honest
     degraded answer — it is exactly what these screens showed before the field existed. The liveness
     rule is the far side's and is stated there once (an ACTIVE workspace row, whatever its container
-    is doing); nothing here re-decides it, and `api/DispatchedWorkspaces` is the one place the entities
-    module's DTOs are decorated with what it answers.
+    is doing); nothing here re-decides it, and `api/DispatchedWorkspaces.referencing(WorkEntity)` is the one
+    place what it answers reaches the wire — `GET /work/{qualifiedId}/workspaces`
+    (`WorkWorkspacesController`). Until qits-976 it also decorated the per-archetype epic and ticket
+    DTOs with a `workspaces` field; those went with their routes, and the merged shape carries none.
     <br>**The path is under `agent-dispatches` because the roles are, and that cost a release to
     learn.** It shipped against `/workspaces/api/workspaces/references` (qits-workspaces
     2026.911.151414) and answered **403** to every call: that far-side class is
@@ -131,7 +133,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     person's press. `api/AgentEntitySignals` is its one caller, always sending all three values as
     the row holds them, from three triggers each wired once and each after the write: a flag change
     (`EntityBlocks.apply`), **every** transition (`bus/EntityTransitionAnnouncer`, the single
-    `TransitionAnnouncer` implementation — so the bulk `POST /entities/transition` and
+    `TransitionAnnouncer` implementation — so the bulk `POST /work/transition` and
     `transition_entities` are covered, and a move signals exactly once), and a retitle (the
     `entities` port `RetitleAnnouncer`, told by `WorkEntityService.update` only when the title
     changed). It also asks the entity's refinement through `refinementhost/RefinementAgentEntities`
@@ -169,8 +171,9 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   (`classpath:db/epics/migration`), `QITS_RESOURCE_EPICS_*` and the database `qits_epics` are still
   spelled `epics`, deliberately** — they are deployment configuration and applied migration history,
   not code, and the module name and the datasource name having been the same word was a coincidence.
-  So `entities/src/main/resources/db/epics/migration/` is the intended result. Likewise unmoved:
-  every REST route (`/projects/api/epics/…`), every DTO field, every MCP tool name, the SSE topics
+  So `entities/src/main/resources/db/epics/migration/` is the intended result. Likewise unmoved by
+  the rename: the REST routes of the time (`/projects/api/epics/…`, since deleted outright by
+  qits-976 in favour of the archetype-free `/work` family), every DTO field, every MCP tool name, the SSE topics
   `epics`/`tickets` (see "The event bus"), and `AgentSurface`'s `project.work`, which is not
   merely shared with qits-projects-daemon but **validated against a closed list** — `AgentSurface`
   in the qits-coding-agents javalib, which both daemons refuse a surface outside of with a 400 — so
@@ -197,39 +200,47 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   empties it — and the registry refuses a property the kind has no slot for. The thread lives in
   `control/EntityCommentService`, since a comment is not an archetype — and since qits-551 every
   archetype has one (see "One thread per entity" under "Tickets").
-  On the `service` side, `entities/api/EntityRoutes` is the one implementation behind every
-  per-archetype route: `EpicController`, `TicketController`, `FeatureController`, `TaskController`,
-  `ProjectEpicsController` and `ProjectTicketsController` stay as **thin JAX-RS resources** because
-  the wire is per archetype — paths, request records, `{"epic": …}`/`{"ticket": …}` envelopes, role
-  lists, `docs/openapi.yml` (byte-identical across the collapse) and `AgentReadAccessTest`'s
-  per-class method names — and each route body is one call handing over an `EntityRoutes.View` (the
-  archetype as the wire sees it: its DTO, its qualify/decorate steps, its SSE topic). Whether an
-  agent is bound stays the route's own declaration. `EntityRoutesGoldenTest` pins every surviving
-  route's JSON per archetype in `service/src/test/resources/golden/entity-routes/` — taken from the
-  pre-collapse code — and regenerating a golden to make a change pass is the change moving the wire.
+  On the `service` side the wire is archetype-free: the `/work` family below is the only REST
+  surface over the entity table, every rule behind it lives in `entities/api/WorkEntityDoors` (and
+  `CampaignDoors`, `DispatchDoors` for what is campaign- or dispatch-shaped), and the archetype is a
+  field of the body and the answer rather than a segment of the path. The per-archetype routes
+  (`/epics`, `/tickets`, `/features`, `/tasks`, `/campaigns`, `/ticket-comments`, the
+  `/projects/{projectId}/epics|tickets|campaigns|entities` listings) and the whole `/entities` family
+  were thin resources over one implementation, `entities/api/EntityRoutes`, until **qits-976 (phase
+  3 of epic qits-965) deleted all of them** — the controllers, `EntityRoutes`, the per-archetype DTOs
+  (`EpicDto`, `TicketDto`, `FeatureDto`, `TaskDto`, `TicketCommentDto`), `mapper/WorkEntityMapper`,
+  `EntityStatusSchemaFilter`, `EntityRoutesGoldenTest` and its `golden/entity-routes/` fixtures. The
+  lifecycle move `EntityRoutes.move` carried — `EntityResolutions` (a resolving move tears the
+  refinement room down before the status lands), then the archetype's hint, then `PhaseAdvance`
+  after the move is recorded and outside its transaction — is now `WorkEntityDoors.move`, behind
+  `POST /work/{qualifiedId}/status`. `RetiredEntityDoorsTest` sweeps every deleted route (the 68 of
+  qits-976 plus the five qits-399 removed) and asserts each answers 404 against real rows with
+  nothing written; a 404 there turning into anything else is a route coming back.
 
   **The `/work` family (qits-969, epic qits-965) is the archetype-free surface, addressed by
-  qualified id, and it is served BESIDE `/entities` and the per-archetype routes until phase 3 of
-  that epic deletes them.** `WorkController` (`GET`/`PUT`/`PATCH /work/{qualifiedId}`, `POST /work`,
-  `POST /work/transition`, `…/status`, `…/blocked`), `WorkCommentController`
-  (`/work/{qualifiedId}/comments[/{commentId}]`), `WorkArchetypesController` (`/work/archetypes…`)
-  and `ProjectWorkController` (`/projects/{project}/work`, id or slug). Every rule lives in
-  `entities/api/WorkEntityDoors`, which the `/entities` controllers (`Entity*Controller`,
-  `CommentController`, `ProjectEntitiesController`) now delegate to as well — so the new classes name
-  no old controller or schema, and deleting the old ones is deleting files. Its `Surface` is the
-  only fork: on `WORK` every entity id in a body takes a qualified id too (the transition's keys,
-  `membership.parent`, `supersededBy`, `dependsOn`; the patch's `dependsOn`), and the bulk answer is
-  keyed exactly as the request was. `PUT /work/{qualifiedId}` is the one-entry PUT-shaped transition
-  (absent clears) under the transition's roles. Roles mirror the route each new one replaces, and
-  `AgentReadAccessTest` pins them.
+  qualified id — and, since qits-976 deleted `/entities` and the per-archetype routes it was first
+  served beside, it is the whole surface.** `WorkController` (`GET`/`PUT`/`PATCH`/`DELETE
+  /work/{qualifiedId}`, `POST /work`, `POST /work/transition`, `…/status`, `…/blocked`),
+  `WorkCommentController` (`/work/{qualifiedId}/comments[/{commentId}]`), `WorkArchetypesController`
+  (`/work/archetypes…`) and `ProjectWorkController` (`/projects/{project}/work`, id or slug). Every
+  `{qualifiedId}` also takes the UUID. Every rule lives in `entities/api/WorkEntityDoors`, which
+  names no controller or schema. Every entity id in a body takes a qualified id too (the
+  transition's keys, `membership.parent`, `supersededBy`, `dependsOn`; the patch's `dependsOn`), and
+  the bulk answer is keyed exactly as the request was — this was `WorkEntityDoors.Surface.WORK`
+  while the `/entities` controllers shared the doors on the UUID-only fork, and with them gone the
+  fork went too. `PUT /work/{qualifiedId}` is the one-entry PUT-shaped transition (absent clears)
+  under the transition's roles. Roles mirror the routes each one replaced, and `AgentReadAccessTest`
+  and `EntityAgentBoundsTest`, which list only the `/work` controllers now, pin them. A refusal
+  names the `/work` door, never a deleted one (a gated move says to go through `POST
+  /projects/api/work/{qualifiedId}/status`).
 
   **qits-970 gave every remaining work-entity capability its `/work` home, beside the old routes,
-  removing nothing.** One controller per sub-resource path, each its own JAX-RS root (a class at
+  removing nothing; qits-976 then deleted the old routes, so the table below is an old→new map, not
+  two live surfaces.** One controller per sub-resource path, each its own JAX-RS root (a class at
   `/work/{qualifiedId}` would shadow `WorkController`'s `…/status` under the spec's longest-literal
-  rule), each resolving `{qualifiedId}` through `EntityIdResolver.resolve` and naming no old
-  controller:
+  rule), each resolving `{qualifiedId}` through `EntityIdResolver.resolve`:
 
-  | old route(s) | `/work` route | class |
+  | deleted route(s) (qits-976) | `/work` route | class |
   | --- | --- | --- |
   | `/epics/{id}/dossier[/{pageId}[/move]]`, `/tickets/{id}/dossier[/{slug}[/move]]` | `GET`/`POST /work/{q}/dossier`, `GET`/`PUT`/`DELETE …/{page}`, `POST …/{page}/move` | `WorkDossierController` |
   | `/epics/{id}/dossier-assets[/{assetId}/content]` | `POST`/`GET /work/{q}/dossier-assets`, `GET …/{assetId}/content` | `WorkDossierAssetController` |
@@ -242,15 +253,20 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   | `DELETE /epics/{id}`, `/tickets/{id}`, `/features/{id}`, `/tasks/{id}` | `DELETE /work/{q}` | `WorkController.delete` |
   | the `workspaces` field `GET /epics/{id}` and `GET /tickets/{id}` decorate (the merged shape has none) | `GET /work/{q}/workspaces` | `projects.api.WorkWorkspacesController` |
 
-  The rules moved into shared beans both families call — `CampaignDoors` (every campaign door,
-  `CampaignController` is now thin), `DispatchDoors` (the press and its campaign branch, and
-  `DispatchMode.parse`), `DossierAssetContent` (the sandbox headers, one literal for both content
-  routes), and `WorkEntityDoors.delete`/`children`/`createChild`/`audit` — or were already one
-  service (`DossierService`, `RefinementService`). Every entity id in a body takes a qualified id:
+  The rules moved into shared beans both families called, and which the `/work` controllers alone
+  call now — `CampaignDoors` (every campaign door; since qits-976 also the home of the
+  `ConditionGroup`/`ConditionCriterion` records and `toGroupSpecs` that `CampaignController` used to
+  hold, which `CampaignMcpTools`' `set_campaign_member_condition` reads its argument through),
+  `DispatchDoors` (the press and its campaign branch, and `DispatchMode.parse`),
+  `DossierAssetContent` (the sandbox headers), and `WorkEntityDoors.delete`/`children`/`createChild`/
+  `audit` — or were already one service (`DossierService`, `RefinementService`). A campaign's
+  transition is `WorkEntityDoors.move` like any other archetype's (`CampaignDoors.transition` went
+  with `CampaignController`), and `DispatchedWorkspaces` keeps only `referencing(WorkEntity)`, the
+  read behind `GET /work/{q}/workspaces`. Every entity id in a body takes a qualified id:
   a member's `entityId`, an `ENTITY_STATUS` criterion's `predicate.entityId`, a child's
   `dependsOn`. Roles mirror the route replaced; the delete admits `qits:agent` at the method for a
-  feature's or task's delete and refuses it an epic's or a ticket's inside the door, as the two
-  per-archetype deletes did, and no door deletes a campaign (a 409: drop it).
+  feature's or task's delete and refuses it an epic's or a ticket's inside the door, as the
+  per-archetype deletes it replaced did, and no door deletes a campaign (a 409: drop it).
   A campaign's transition and its create need no new route (`…/status`, `POST /work`), and its
   project listing is `GET /projects/{project}/work?archetype=CAMPAIGN` — without the summary's
   `started`/`active`/member count, which `…/progress` and `…/members` answer per campaign.
@@ -264,9 +280,10 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   not broken. An archetype with no dossier (feature, task, campaign) is a 404; only an EPIC's
   dossier inlines figures, so `dossier-assets` is a 404 for any other. The figure's `url` and
   `markdown` keep the stored `/epics/{epicId}/dossier-assets/{assetId}/content` shape: that string
-  is in page bodies and is what `DossierAssetService`'s reference count parses, so it is data —
-  **deleting the epic content route in phase 3 needs those bodies' URL (and the parser) moved
-  first**, or every inlined figure breaks. The children answer the merged shape (`{"children":
+  is in page bodies and is what `DossierAssetService`'s reference count parses, so it is **data, not
+  a route** — qits-976 deleted the route and left the string, and the bytes are served by `GET
+  /work/{qualifiedId}/dossier-assets/{assetId}/content`, onto which a consumer maps the stored
+  reference (see "The one hardened content route" under the dossier). The children answer the merged shape (`{"children":
   [...]}`), the add is `POST /work`'s create of the child kind under the path's parent (201); the
   audit answers a root's whole subtree and a feature's or task's own rows, and a UUID naming a
   deleted root still answers. The members' move and remove answer `{"members": [...]}`.
@@ -607,20 +624,23 @@ write** (user ruling, 2026-09-12):
   one helper and `entities.error.ForbiddenException` the 403. The granted set is epic create,
   feature create/update/delete, task create/update/delete, ticket create, transition, block and
   comment create, comment update, the entity thread's comment create and PATCH (qits-551), the
-  block of any lifecycle archetype (`POST /entities/{id}/blocked`, qits-592), both
+  block of any lifecycle archetype (`POST /work/{qualifiedId}/blocked`, qits-592), both
   dossiers' four writes each, `inline_figure`'s door, and
-  `POST /entities/transition` — which binds **all or nothing** over every id and every parent in the
+  `POST /work/transition` (and its one-entry `PUT /work/{qualifiedId}`) — which binds **all or nothing** over every id and every parent in the
   batch, resolved in one `EntityCatalogService.byIds` read, with an unresolvable id falling through
-  to the write's own 400 rather than becoming a 403. **Still `qits:admin` alone:**
-  `EpicController.transition` and `delete` (freezing or resolving a plan from the board is a
-  person's door; the agent's claim goes through `transition_epic` on the MCP server, qits-394, and
-  the REST grant was not widened with it), `EntityDispatchController.dispatch` (standing a workspace
-  up is a person's press; its GET is a read and admits the agent), `TicketController.delete`,
-  `TicketCommentController.delete` and `CommentController.delete` (deleting is on neither surface:
-  an agent that could delete what it disagrees with could erase the record of its own mistake).
+  to the write's own 400 rather than becoming a 403. **Still `qits:admin` alone:** an epic's
+  status move and an epic's or a ticket's delete — refused inside `WorkController.setStatus` and
+  `WorkController.delete`, which admit the agent at the method for the kinds whose moves and deletes
+  are tools (freezing or resolving a plan from the board is a person's door; the agent's claim goes
+  through `transition_epic` on the MCP server, qits-394, and the REST grant was not widened with
+  it) — `WorkDispatchController.dispatch` and `WorkRefinementController.open` (standing a workspace
+  or a room up is a person's press; their GETs are reads and admit the agent), and
+  `WorkCommentController.delete` (deleting is on neither surface: an agent that could delete what it
+  disagrees with could erase the record of its own mistake).
 - **Five of the generic entity doors also take `qits:system`, UNBOUND (qits-621/qits-667):**
-  `POST /entities`, `GET /entities/{id}`, `GET|POST /entities/{id}/comments`, `PATCH
-  /entities/{id}` and `POST /entities/{id}/status`. A platform service client holds the fixed role
+  `POST /work`, `GET /work/{qualifiedId}`, `GET|POST /work/{qualifiedId}/comments`, `PATCH
+  /work/{qualifiedId}` and `POST /work/{qualifiedId}/status` (they were the `/entities` doors until
+  qits-976 deleted those). A platform service client holds the fixed role
   `qits:system` and no `project` claim, and qits-maintenance files MAINTENANCE tickets in whichever
   project a stuck release request belongs to, then drops them through the status door — so a
   machine caller acts in any project (owner decision 2026-10-01). Nothing new binds it:
@@ -633,8 +653,9 @@ write** (user ruling, 2026-09-12):
   blank. `AgentReadAccessTest` pins the five routes' role lists; `EntityAgentBoundsTest` drives a
   `qits:system` caller through all five in a project it has no tie to.
 - **The campaign build doors take it too (qits-413), bound the same way** — the campaign resolved
-  first, its project checked by `EntitiesAgentAccess`: `POST /projects/{projectId}/campaigns`, `POST
-  /campaigns/{id}/transition` and the four membership writes (`POST …/members`, `PUT
+  first, its project checked by `EntitiesAgentAccess`: the campaign's create (`POST /work`), its
+  transition (`POST /work/{qualifiedId}/status`) and the four membership writes on
+  `WorkMembersController` (`POST /work/{qualifiedId}/members`, `PUT
   …/members/{membershipId}/position`, `DELETE …/members/{membershipId}`, `PUT
   …/members/{membershipId}/condition`). **`POST …/criteria/{criterionId}/approve` is `qits:admin`
   alone** — an approval is the sign-off on a gated member — and `AgentReadAccessTest` pins both
@@ -1147,12 +1168,13 @@ IMPLEMENTED → VERIFIED, `DROPPED` reachable from every status that is not `DON
 reopening only to `REPORTED`, and **`DONE` final, with no exits at all** — a follow-up to done work
 is a new ticket or epic). The machine declares each transition once with its kind
 (`FORWARD`/`SKIP`/`BACK`/`DROP`/`REOPEN`), checks its own declaration at class load, and is what
-`EntityLifecycle.requireTransition`, `resolves`, the DONE rule on `POST /entities/transition`, the
+`EntityLifecycle.requireTransition`, `resolves`, the DONE rule on `POST /work/transition`, the
 served registry's `transitions`/`lifecycle` members and `PhasePrompts.phaseOf` (via
 `phaseStartedBy`) all read; nothing else spells a move. New epics start `REPORTED`. `EpicStatus` and `EpicLifecycle` are
 deleted; epics V15 backfilled `REFINING→REPORTED`, `IMPLEMENTATION→REFINED`, `ABANDONED` and
 `SUPERSEDED→DROPPED`, and narrowed `ck_entity_status` to the six. Two doors move an epic's status:
-`POST /epics/{id}/transition` (a person) and the `transition_epic` MCP tool (a dispatched agent's
+`POST /work/{qualifiedId}/status` (a person — `qits:admin` alone for an epic; it was `POST
+/epics/{id}/transition` until qits-976) and the `transition_epic` MCP tool (a dispatched agent's
 claim, qits-394), both through `refinementhost/EntityResolutions` and both followed by
 `api/PhaseAdvance`. **An epic can now be VERIFIED and DONE**, which is what the campaigns epic waits
 on.
@@ -1182,13 +1204,13 @@ EPIC and TICKET only and required by nobody. Stored as `WorkEntity.acceptanceCri
 row so every reader (DTOs, catalogue, audit snapshot, gates) has it, and written **in place**
 (`clear()` + `addAll`), never by assigning a new list. The item rules are `control/AcceptanceCriteria`'s
 alone — not blank, no `\n`/`\r`, at most one `.`, fewer than 20 whitespace characters — and the
-served schema carries them as the item `pattern`. Written by the create, `PATCH /entities/{id}` (null
+served schema carries them as the item `pattern`. Written by the create, `PATCH /work/{qualifiedId}` (null
 or `[]` clears), the PUT-shaped transition (absent clears, as every property there), `update_epic`,
 `update_ticket`, `propose_epic`. **They are not scope**: an epic's stay editable at REFINED, outside
 `requireReported`. **From READY_FOR_DEV on a CHANGED list is a 409** for both kinds
 (`WorkEntityService.requireCriteriaEditable`, on the edit and on the PUT door), and the same list
 restated — same items, same order — passes at every status, because the SPA's edit form restates the
-whole row through `POST /entities/transition`. The list rows of `EntitySummary` carry none, like the
+whole row through `POST /work/transition`. The list rows of `EntitySummary` carry none, like the
 description; a feature's or task's merged shape omits the key.
 
 **Quality gates judge FORWARD and SKIP moves (qits-935).** `control/TransitionGate` — `name()`,
@@ -1210,10 +1232,10 @@ first. Restating the status a row holds passes, at READY_FOR_DEV too.
 
 **Scheduling needs a person (qits-937): `PersonApprovalGate` (`PERSON_APPROVAL`)** refuses REFINED →
 READY_FOR_DEV, for every archetype, unless the `control/Mover` is a person — and the entities module
-never decides that. `entities/api/EntityMovers` builds the Mover at the REST lifecycle doors
-(`EntityRoutes.move` behind `/entities/{id}/status`, `/epics/{id}/transition`,
-`/tickets/{id}/transition`; `CampaignController.transition`) from `security/PersonCheck`
-alone (`verifiedAdmin(SecurityIdentity)`, the identity-taking twin of qits-891's check): a person
+never decides that. `entities/api/EntityMovers` builds the Mover at the REST lifecycle door
+(`WorkEntityDoors.move` behind `POST /work/{qualifiedId}/status`, every archetype's one status door
+since qits-976 deleted the per-archetype transitions and `CampaignController.transition`) from
+`security/PersonCheck` alone (`verifiedAdmin(SecurityIdentity)`, the identity-taking twin of qits-891's check): a person
 under the proof's name — which is also the move's `changedBy` — and a machine otherwise. Asserted
 `X-Qits-*` headers, an agent's or a service client's bearer, and headers beside a machine bearer are
 machines. The MCP tools and every in-process caller (`PhaseAdvance`, `EntityDispatch`,
@@ -1231,11 +1253,11 @@ epic implement prompt makes the move conditional on every task already being mar
 **Features and tasks hold the same lifecycle of their own (qits-763, epics V24).** Same nine words,
 same `EntityStateMachine` graph and skips, same registry entry shape (STATUS permitted and minted
 `REPORTED` by the writer, so `requiredOnTransition` carries it), moved through the generic `POST
-/entities/{id}/status` and the `transition_task` MCP tool under a ticket's roles — and refused 409
+/work/{qualifiedId}/status` and the `transition_task` MCP tool under a ticket's roles — and refused 409
 while the owning epic is `REPORTED` (a draft is edited, not moved; `requireReported` stays on
 structural writes only). The markers are status moves: `mark_task_implementing` moves the task (and
-its feature, the first time) to IMPLEMENTING, `implementedAt` — `mark_task_implemented`, `PUT
-/tasks`, `PUT /features`, `PATCH /entities` — moves the item to IMPLEMENTED, clearing it moves an
+its feature, the first time) to IMPLEMENTING, `implementedAt` — `mark_task_implemented`,
+`PATCH /work/{qualifiedId}` (once also the deleted `PUT /tasks`, `PUT /features`) — moves the item to IMPLEMENTED, clearing it moves an
 IMPLEMENTED item back, so marker and status never disagree; the timestamps stay as history. **Five
 epic moves carry the descendants and no other does** (`WorkEntityService.carryDescendants`):
 REPORTED → REFINED refines the REPORTED ones, REFINED → REPORTED returns the REFINED ones, REFINED →
@@ -1271,8 +1293,9 @@ scopes; the successor *epic's* slug cannot, so it mints the next free suffix lik
 
 ### One dispatch path, phase-shaped, with a continue-or-stop bit (qits-394)
 
-**Putting an agent on an epic or a ticket is one action**, `POST /projects/api/entities/{id}/dispatch`
-(`projects/api/EntityDispatchController` → `EntityDispatch`), `qits:admin` alone. It starts the phase
+**Putting an agent on an epic or a ticket is one action**, `POST /projects/api/work/{qualifiedId}/dispatch`
+(`projects/api/WorkDispatchController` → `DispatchDoors` → `EntityDispatch`; it was `POST
+/entities/{id}/dispatch` until qits-976), `qits:admin` alone. It starts the phase
 the entity's **status** implies — REPORTED starts refine, READY_FOR_DEV and IMPLEMENTING implement (a
 press on a READY_FOR_DEV entity also moves it to IMPLEMENTING, qits-749), IMPLEMENTED and VERIFYING
 verify (a
@@ -1282,16 +1305,16 @@ VERIFIED, DONE and DROPPED start nothing and answer **409** naming the status, a
 the project's **wrapper** with `branchTree`, on `ticket/<slug>` or `epic/<slug>`. The body names a
 mode, and the mode is the only difference between the two actions the UI offers:
 
-    POST /projects/api/entities/{id}/dispatch   {"mode":"FLOW"}    Dispatch — run the whole flow
-                                                {"mode":"PHASE"}   Run the next phase — one, then stop
+    POST /projects/api/work/{qualifiedId}/dispatch   {"mode":"FLOW"}    Dispatch — run the whole flow
+                                                     {"mode":"PHASE"}   Run the next phase — one, then stop
       → {"dispatch": {entityId, archetype, phase, mode, workspaceRowId, repositoryId, branch,
                       fresh, agentLaunch, assignee}}
-    GET  /projects/api/entities/{id}/dispatch   (qits:admin, qits:agent)
+    GET  /projects/api/work/{qualifiedId}/dispatch   (qits:admin, qits:agent)
       → {"state": {entityId, archetype, status, nextPhase, blocked, dispatchable, mode}}
 
 The GET is how the SPA learns which phase a press would start (`nextPhase`, or null) without
 re-implementing the status→phase rule, which lives only in `api/PhasePrompts.phaseOf`. For every
-status at once, the registry (`GET /entities/archetypes`, `listArchetypes`) serves `phases` per
+status at once, the registry (`GET /work/archetypes`, `listWorkArchetypes`) serves `phases` per
 EPIC and TICKET: `{STATUS: {next: {phase, from, enters, endsIn} | null, flow: [...]}}` — `next` is
 what a PHASE press runs, `flow` what a FLOW press chains until a status starts none. Both come off
 `EntityStateMachine.phaseRunFrom`/`flowFrom` (`runsPhases`, `endOf`), which the dispatch door and
@@ -1313,17 +1336,18 @@ and its thread comment names it; a refused or failed press writes nothing.
 **Blocking is for every archetype that runs a phase (qits-592)** — a ticket, an epic, a campaign —
 through one rule, `api/EntityBlocks` (reason required to block, 409 where `PhasePrompts.phaseOf`
 starts no phase or the kind is a feature or a task, the reason on the entity's own thread), behind `POST
-/entities/{id}/blocked` (UUID or qualified id), `block_entity`/`unblock_entity` (`CommentMcpTools`),
-and the ticket-only `POST /tickets/{id}/blocked`/`block_ticket`/`unblock_ticket`, kept as delegates.
+/work/{qualifiedId}/blocked` (UUID or qualified id), `block_entity`/`unblock_entity` (`CommentMcpTools`),
+and the ticket-only `block_ticket`/`unblock_ticket` tools, kept as delegates (the ticket-only `POST
+/tickets/{id}/blocked` and `/entities/{id}/blocked` went with qits-976).
 Every transition clears the flag. A blocked campaign's executor claims no new member (running ones
-are untouched) and its unblock runs the campaign's sweep straight after; `blocked` is on the epic and
-campaign DTOs and on the merged shape for every lifecycle kind.
+are untouched) and its unblock runs the campaign's sweep straight after; `blocked` is on the merged shape for every lifecycle kind and on the campaign DTOs
+(`CampaignDtos`).
 
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
 it means "outcome unknown". **On a CAMPAIGN the press is its start** — the branch is in
-`EntityDispatchController`, to `campaignhost/CampaignStarter`, answering `{"progress":
-CampaignProgressDto}` — the wrapper `GET /campaigns/{id}/progress` answers (qits-418);
+`DispatchDoors.press`, to `campaignhost/CampaignStarter`, answering `{"progress":
+CampaignProgressDto}` — the wrapper `GET /work/{qualifiedId}/progress` answers (qits-418);
 `EntityDispatch` itself still refuses a campaign. The members are then claimed and dispatched by
 `campaignhost/CampaignExecutor`, whose javadoc carries the at-most-once argument and the lock order.
 **It claims only scheduled members (qits-887)**: READY_FOR_DEV. A REFINED member is not claimed and
@@ -1439,18 +1463,20 @@ the `CausationStamp` listener.
     sketches and designs, a route a ticket has not got, so `DossierAssetService.syncReferences` is
     **skipped** for a ticket-owned page rather than handed a null epic id — and a ticket page whose
     markdown names an asset id gets no copy and no dangling `dossier_page_asset` row. The REST side
-    matches by absence: there is no `/tickets/{id}/dossier-assets` route at all.
+    matches by absence: `/work/{qualifiedId}/dossier-assets` is a 404 for anything but an epic.
   - **The audit subtree key is the ticket's id**, with no schema change, because `auditentry.epic_id`
     is the subtree key rather than literally an epic (V4's stated reading).
   - **The MCP surface takes an owner and the five tools stay five.** Every tool takes `epicId` and
     `ticketId`, both optional, exactly one required; both or neither is refused with a sentence
     saying which. A parallel set of five ticket tools would double the surface a model chooses from
     and write one rule twice. `inline_figure` is the one tool that stays epic-only.
-  - The ticket routes are `entities/api/TicketDossierController` — `GET/POST /tickets/{ticketId}/dossier`,
-    `GET/PUT/DELETE …/{slug}`, `POST …/{slug}/move`, same roles and the same 409-with-current-page as
-    the epic ones. A **second root resource** rather than methods on `DossierController`, because
-    JAX-RS gives a class one `@Path`; the page segment accepts a slug **or** an id, so the SPA's
-    slug URLs and the epic half's id addressing are one contract.
+  - **Both owners' pages are one route family**, `entities/api/WorkDossierController` —
+    `GET/POST /work/{qualifiedId}/dossier`, `GET/PUT/DELETE …/{page}`, `POST …/{page}/move` — whose
+    `{qualifiedId}` names the epic or the ticket, same roles and the same 409-with-current-page for
+    both. The page segment accepts a slug **or** an id, so the SPA's slug URLs and the old epic
+    half's id addressing are one contract. (Until qits-976 the two owners had two root resources,
+    `DossierController` under `/epics/{epicId}/dossier` and `TicketDossierController` under
+    `/tickets/{ticketId}/dossier`; both are deleted.)
 - **Flat, and nothing may add a `parent_id`.** The nav's second level is the *current* page's own
   `h1`/`h2`/`h3`, derived in the browser from the rendered DOM and stored nowhere. It cannot drift
   from the page because it *is* the page.
@@ -1460,7 +1486,7 @@ the `CausationStamp` listener.
   person editing in the SPA while an agent writes from a prompt is the ordinary case: a stale write
   answers **409 carrying the current page**, body included, and never a merge. `StaleWriteException`
   (one per module: `entities.error` and `projects.error`) is what the two exception mappers put
-  `current` on the wire for. Both doors carry it — `DossierController` and `DossierMcpTools`
+  `current` on the wire for. Both doors carry it — `WorkDossierController` and `DossierMcpTools`
   (`list_dossier_pages`, `get_dossier_page`, `put_dossier_page`, `move_dossier_page`,
   `remove_dossier_page`, `inline_figure`), all six write tools in `ReadOnlyRepositoryToolFilter`.
 - **A figure is COPIED into the epic when it is inlined, keeping its id.** Both sources — a
@@ -1480,7 +1506,8 @@ the `CausationStamp` listener.
 
 ### The one hardened content route
 
-`GET /epics/{epicId}/dossier-assets/{assetId}/content` (`entities/api/DossierAssetController`) is the
+`GET /work/{qualifiedId}/dossier-assets/{assetId}/content` (`entities/api/WorkDossierAssetController`,
+headers from `DossierAssetContent`) is the
 single place this estate serves agent-authored HTML, and it does **not** lift `RefinementDesign`'s
 prohibition — it scopes it. The Design tab still renders from a JSON field; what is served here is a
 *copy*, in the epics database, with
@@ -1494,10 +1521,27 @@ route that read its own hardening off a database value would be one bad row away
 document unsandboxed. The CSP `sandbox` **directive** is what carries the safety, not the iframe
 attribute: the browser applies it to the response, so the document lands in an opaque origin even
 when the URL is opened directly, which is the case the attribute cannot cover. The SPA sets the
-attribute too, never with `allow-same-origin`.
+attribute too, never with `allow-same-origin`. Any archetype but an epic is a 404: only an epic's
+dossier inlines figures.
 
-`GET /epics/{epicId}/dossier-assets` (`listEpicDossierAssets`) lists the epic's assets without their
-bytes: kind, mime type, label, the content URL, the markdown line and the ids of the pages that name
+**The figure link is data, not a route (qits-976).** What a page body stores for an inlined figure is
+`/epics/{epicId}/dossier-assets/{assetId}/content`, and it stays that: `DossierAssetService.contentUrl`
+/`markdownFor` still write it, its `REFERENCE` pattern still parses it for the reference count
+(`syncReferences`), and `refinementhost/DossierFigures`, `inline_figure` and `listWorkDossierAssets`
+still hand it back as `url`/`markdown`. Only the **route** of that shape is deleted — qits-976
+removed `DossierAssetController` with the rest of the per-archetype surface — because the string lives
+in stored page bodies and the reference count is read off it, so moving it is a migration of every
+body and of the parser together, and a half-done one breaks every inlined figure; leaving it costs a
+consumer one mapping. The bytes
+are served by the `/work` route above, which takes the epic's UUID as readily as its qualified id, so
+a consumer maps the stored `/epics/<epicId>/dossier-assets/<assetId>/content` onto
+`/work/<epicId>/dossier-assets/<assetId>/content` — qits-projects-frontend's `STORED_DOSSIER_ASSET`
+and `dossierAssetContentUrl`, and qits-landing-app's work-detail store, do exactly that. A change to
+the stored shape is therefore a data migration of `dossier_page` bodies plus the `REFERENCE` pattern
+plus those consumers, in one release, never a route change alone.
+
+`GET /work/{qualifiedId}/dossier-assets` (`listWorkDossierAssets`) lists the epic's assets without their
+bytes: kind, mime type, label, the stored content URL, the markdown line and the ids of the pages that name
 it, by label. It is how a reader shows what a dossier inlines; the bytes stay this route's alone.
 
 ## Tickets
@@ -1512,7 +1556,8 @@ somebody writes, not a foreign key somebody sets.
 `ReadPatience`/`WritePatience` with no `@Transactional`, in-service cascade delete so each removed
 comment gets its own audit row, the `value` + `clear*` pairing on the three nullable fields
 (`EntityWrite`; since the per-ticket `PUT` went in qits-399 the REST edit is the whole-row
-`POST /entities/transition`, where a field left out is a field emptied), a
+`POST /work/transition` or its one-entry `PUT /work/{qualifiedId}`, where a field left out is a
+field emptied — or the merge `PATCH /work/{qualifiedId}`, where it is left alone), a
 target naming no status answering 409 while an absent one answers 400. Three things are *different*,
 and each one is a decision rather than a simplification:
 
@@ -1557,7 +1602,7 @@ and each one is a decision rather than a simplification:
   **REPORTED and nothing else**, because reviving abandoned work means asking again what it is for.
   **DONE is offered no drop**, nor any other move: it is final. The whole rule is declared once, in
   `EntityStateMachine`, and every other javadoc points at it rather than restating it. The one door
-  that skips adjacency, `POST /entities/transition` / `transition_entities`, still keeps finality:
+  that skips adjacency, `POST /work/transition` / `transition_entities`, still keeps finality:
   an entity that is DONE keeps status DONE and its archetype there, while its plain fields and its
   place in the tree stay writable. No migration came with this — existing DONE rows simply stay DONE.
 
@@ -1610,18 +1655,20 @@ renamed `TicketComment` to `entity_comment` (`ticket_id` → `entity_id`, the FK
 `entity (id)` since V12) and the audit word `TICKET_COMMENT` to `COMMENT`, rows included; the
 snapshots already written keep their `ticketId`. What rides with it:
 
-- **Doors:** `GET/POST /entities/{id}/comments` (`EntityCommentController`) and `PATCH/DELETE
-  /comments/{commentId}` (`CommentController`). `{id}` is the UUID **or** the qualified id
+- **Doors:** `GET/POST /work/{qualifiedId}/comments` and `PATCH/DELETE
+  /work/{qualifiedId}/comments/{commentId}` (`WorkCommentController`, a comment of another entity a
+  404). `{qualifiedId}` is the UUID **or** the qualified id
   (`qits-551`), resolved by `entitieshost/EntityIdResolver` — the id first, then the grammar,
   because a UUID whose last group is all digits parses as a qualified id; `CommitSubjectEntities`
   keeps the grammar and delegates its lookup there. The PATCH is a JSON merge patch read as a
-  `JsonNode`, like `PATCH /entities/{id}`, and `body` is its only property: `{}`, null, blank, a
+  `JsonNode`, like `PATCH /work/{qualifiedId}`, and `body` is its only property: `{}`, null, blank, a
   server-owned or unknown property are one 400. It never moves `author`, and there is no author
   check.
-- **The old doors are delegates** — `GET/POST /tickets/{id}/comments`, `PUT/DELETE
-  /ticket-comments/{id}`, `add_ticket_comment`, `update_ticket_comment` — with their shapes
-  (`ticketId`, the ticket-era 404 wording) unchanged, for the released CLI and SPA and for the tool
-  names pre-approved elsewhere. They retire when both clients are on the new doors.
+- **The old REST doors are deleted (qits-976)** — `GET/POST /tickets/{id}/comments`, `PUT/DELETE
+  /ticket-comments/{id}`, `GET/POST /entities/{id}/comments` and `PATCH/DELETE
+  /comments/{commentId}` all answer 404 (`RetiredEntityDoorsTest`). The MCP tools
+  `add_ticket_comment` and `update_ticket_comment` stay delegates with their ticket-era shapes, for
+  the tool names pre-approved elsewhere.
 - **MCP:** `add_comment`, `update_comment`, `list_comments` (`mcp/CommentMcpTools`); `get_epic` and
   `get_campaign` carry their own thread. The two writes are in `MUTATING_TOOLS` and in
   `AgentSurfaceDefaults`' `TICKET_THREAD_TOOLS` copy.
@@ -1637,14 +1684,15 @@ rather than four more methods on it, because the two announce different channels
 would redraw a board because somebody commented on a bug.
 
 **A ticket can be handed to an agent, through the one dispatch path every lifecycle archetype
-shares** — `POST /projects/api/entities/{id}/dispatch` (`projects/api/EntityDispatch`, qits-394; see
+shares** — `POST /projects/api/work/{qualifiedId}/dispatch` (`projects/api/EntityDispatch`, qits-394; see
 "Epic lifecycle" for the route, the FLOW/PHASE bit and the read). The old ticket door,
 `POST /projects/api/tickets/{id}/dispatch-agent`, was removed in qits-399. It stands an aggregate workspace on `ticket/<slug>`
 at the project's **wrapper** — a ticket names no repository, so the whole estate is the answer and
 `branchTree` is true — and launches a coding agent in it over the `control/WorkspaceAgentDispatch`
 port. It lives in `projects.api` because it needs `domain` (the project, the wrapper, the port) and
 the **entities jar depends on `domain` nowhere and must keep not depending on it**; the service layer
-may cross, which is the crossing `ProjectTicketsController` already makes. `EntitiesPrincipal` is
+may cross, which is the crossing the `projects.api` `/work` controllers (`WorkDispatchController`,
+`WorkWorkspacesController`) already make. `EntitiesPrincipal` is
 public for that one caller rather than copied into a second package.
 
 Three things travel with it:
@@ -1709,8 +1757,9 @@ Three things travel with it:
 **A transition starts the next phase by itself — when the run was dispatched as a flow — and the
 transition is the whole trigger.** `projects/api/PhaseAdvance` (application-scoped,
 `afterTransition(entity, statusBefore, changedBy)`; `TicketPhaseAdvance` until qits-394) is called by **every**
-lifecycle transition surface — `entities/api/EntityRoutes.transition`, behind both the ticket's and
-the epic's route, and `mcp/TicketMcpTools.transitionTicket` / `mcp/EpicMcpTools.transitionEpic` — *after* the move is recorded and outside its
+lifecycle transition surface — `entities/api/WorkEntityDoors.move`, behind `POST
+/work/{qualifiedId}/status` for every archetype (it was `EntityRoutes.move`, behind the per-archetype
+transition routes, until qits-976), and `mcp/TicketMcpTools.transitionTicket` / `mcp/EpicMcpTools.transitionEpic` — *after* the move is recorded and outside its
 transaction, exactly where each already fires its hint. It delivers the next turn only when the
 entity's `dispatch_continues` says the last press asked for the whole flow; a PHASE run stops there,
 silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
@@ -2402,9 +2451,11 @@ Where it differs from the agent harness, each difference is the domain line:
   thing a door may use to move an epic's or a ticket's status: it previews the move
   (`WorkEntityService.planTransition`, which throws every refusal the transition would), discards the refinement when the target **resolves** the entity —
   `IMPLEMENTED`, `VERIFIED`, `DONE`, `DROPPED` (supersede included), never the `REPORTED→REFINED`
-  freeze — and only then transitions. Four lifecycle doors use it: `POST /epics/{id}/transition`,
-  `transition_epic`, `POST /tickets/{id}/transition` and `transition_ticket`. `POST
-  /entities/transition` / `transition_entities` write statuses through `EntityTransitions` and do
+  freeze — and only then transitions. Three lifecycle doors use it: `POST
+  /work/{qualifiedId}/status` (`WorkEntityDoors.move`, every archetype; it took over from the
+  per-archetype `POST /epics/{id}/transition` and `POST /tickets/{id}/transition` qits-976 deleted),
+  `transition_epic` and `transition_ticket`. `POST /work/transition` and its one-entry `PUT
+  /work/{qualifiedId}` / `transition_entities` write statuses through `EntityTransitions` and do
   **not** come through it — a gap for an epic before qits-395 and for a ticket now, stated rather than
   fixed here; so is deleting an entity, which leaves its room for a discard.
   The order is the point: a resolved epic must never own a workspace nothing can reach, so a failed
@@ -2468,9 +2519,9 @@ Where it differs from the agent harness, each difference is the domain line:
   the image derives every registry host from it — `registry.qits.<domain>` and `mirror.qits.<domain>`
   — and never from a value this service hands it.
 
-The REST surface is under `/projects/api`: `POST /entities/{id}/refinement` (find-or-create keyed by
+The REST surface is under `/projects/api`: `POST /work/{qualifiedId}/refinement` (find-or-create keyed by
 entity — adopt-existing is the create's ordinary path, not an error dance; see "The refine action"
-below), `GET /entities/{id}/refinement` (find only), `GET/verbs /refinements/{id}`,
+below), `GET /work/{qualifiedId}/refinement` (find only), `GET/verbs /refinements/{id}`,
 `GET /projects/{projectId}/refinements` (the LIGHT projection — live halves, no git drift, because
 the list redraws on every activity hint), the prompt draft and attachments (content URLs are
 embedded into epic markdown, so attachment ids are never renumbered), the per-row SSE hint channel,
@@ -2527,15 +2578,15 @@ is working from.
 ### The refine action, for any archetype (qits-395)
 
 **Opening a refinement room is one action for an epic or a ticket**, beside the dispatch door and
-deliberately not part of it (`projects/api/EntityRefinementController` → `RefinementService
-.findOrCreate`):
+deliberately not part of it (`projects/api/WorkRefinementController` → `RefinementService
+.findOrCreate`; it was `EntityRefinementController` at `/entities/{id}/refinement` until qits-976):
 
-    POST /projects/api/entities/{id}/refinement   (qits:admin)
-      → {"refinement": RefinementDto}               find-or-create
-    GET  /projects/api/entities/{id}/refinement   (qits:admin, qits:agent)
-      → {"refinement": RefinementDto | null}        find only; 404 only for an id naming no entity
+    POST /projects/api/work/{qualifiedId}/refinement   (qits:admin)
+      → {"refinement": RefinementDto}                    find-or-create
+    GET  /projects/api/work/{qualifiedId}/refinement   (qits:admin, qits:agent)
+      → {"refinement": RefinementDto | null}             find only; 404 only for an id naming no entity
 
-It shares an address with `/entities/{id}/dispatch` and nothing else. A dispatch is a qits-workspaces
+It shares an address with `/work/{qualifiedId}/dispatch` and nothing else. A dispatch is a qits-workspaces
 workspace on `ticket/<slug>` or `epic/<slug>`; a refinement is a `domain` row and a `refinementhost/`
 container (workload `refinement`, its own registry, commissions, proxy and control socket) on
 `refining/<slug>`. The SPA's refining page being a copy of the workspace page does not make them one
@@ -2847,8 +2898,9 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
       ./mvnw -pl service -am test -Dtest=OpenApiSchemaExportTest -Dsurefire.failIfNoSpecifiedTests=false -Dgolden.update=true
 
   `-Dgolden.update=true` (or `QITS_GOLDEN_UPDATE=true` in the environment) is the one switch every
-  golden in this module reads — `contracts/GoldenFiles`, shared with `EntityRoutesGoldenTest` and
-  the provider golden masters below; without it a run only compares. `info.version` is left out of
+  golden in this module reads — `contracts/GoldenFiles`, shared with the provider golden masters
+  below (and, until qits-976 deleted the routes it pinned, with `EntityRoutesGoldenTest`); without
+  it a run only compares. `info.version` is left out of
   the comparison, because every release bumps it and no API change moves it. The other two extra
   flags are load-bearing on a fresh clone, which is the only state this repo promises:
   `-am` because `domain` and `entities` are 1.0.0-SNAPSHOTs published nowhere, so `-pl service` alone
@@ -2873,15 +2925,21 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   records any more fails the compare. Every `operationId` it names is an
   `@Operation` on a controller, so renaming one is a contract change, not a refactor. A param is
   frozen like the answer, tokens included, so a qualified id param (`contract-<token>-3`) works.
-  Only JSON is recorded: `getDossierAssetContent` serves bytes and has no golden master. A request
-  body may name a param as a quoted `"{name}"` (a value or a member name); it is expanded like a
+  Only JSON is recorded: `getWorkDossierAssetContent` serves bytes and has no golden master. A
+  request body may name a param as a quoted `"{name}"` (a value or a member name); it is expanded like a
   path's and recorded unexpanded. A member name holding a state's token — `transitionWork`'s answer,
   keyed by qualified id — is frozen like a value, and that operation's index entry gains
   `frozen.keys` (the objects whose keys were frozen; written only where there is one) with `.*`
-  standing for the key in every path beneath. Every generic entity read and move has a `/work` twin
-  recorded in the same state (`WORK_TWINS`), and since qits-970 so do the campaign read (as
-  `listWorkMembers`, by a `campaignQualifiedId`-style param the campaign states gained), both
-  dossier halves, the epic's figures and the dispatch press. An instant inside a longer string — an
+  standing for the key in every path beneath. **Only `/work` operations are recorded** — `getWork`,
+  `listWorkComments`, `listProjectWork`, `listWorkArchetypes`, `setWorkStatus`, `listWorkMembers`
+  (by a `campaignQualifiedId`-style param the campaign states gained), `listWorkDossier`,
+  `listWorkDossierAssets`, `dispatchWork` and the rest of the family. Until qits-976 each was a twin
+  (`WORK_TWINS`) of an old operation recorded in the same state; the old operationIds
+  (`getEntity`, `listEntityComments`, `listProjectEntities`, `listArchetypes`, `moveEntityStatus`,
+  `getCampaign`, `listEpicDossierPages`, `listTicketDossierPages`, `listEpicDossierAssets`,
+  `dispatchEntity`, `transitionEpic`, `transitionTicket`) went with their routes, and so did their
+  golden-master files — a consumer pact still naming one is a pact against a route that answers
+  404. An instant inside a longer string — an
   audit entry's `snapshot` is JSON held as text — is frozen in place and the string listed under
   `frozen.strings`. `startWorkRefinement` is recorded as its 409: a room's row id is a database
   sequence no freezing reaches, and `getWorkDossierAssetContent` serves bytes and has none.

@@ -34,7 +34,7 @@ import org.jboss.logging.Logger;
  *       the {@code TransitionAnnouncer} port both {@code WorkEntityService.transition} and {@code
  *       EntityTransitionService} announce through after their write, calls {@link
  *       #changed(TransitionedEntity)} for each ticket and epic of the batch. Wiring it there and not in the doors is what makes
- *       {@code POST /entities/transition} and {@code transition_entities} reach the agents too, which
+ *       {@code POST /work/transition} and {@code transition_entities} reach the agents too, which
  *       the door-level call in {@code EntityResolutions} this replaced never did — and what makes a
  *       transition signal exactly once, whichever door it came through. A transition clears the
  *       flag, so this is also how an agent learns a move unblocked it.

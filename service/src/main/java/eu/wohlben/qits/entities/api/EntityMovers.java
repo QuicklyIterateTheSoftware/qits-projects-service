@@ -13,8 +13,8 @@ import jakarta.inject.Inject;
  * principal. Nothing else here decides "is this a person", and no forwarded identity header ever
  * makes one: asserted headers with or without a machine bearer are a machine.
  *
- * <p>The lifecycle doors build one per move ({@code EntityRoutes.move}, {@code CampaignController
- * .transition}); the MCP tools and the platform's in-process callers never do — they are machines
+ * <p>The lifecycle doors build one per move ({@code WorkEntityDoors.move}, behind {@code POST
+ * /work/{qualifiedId}/status} for every archetype, a campaign's included); the MCP tools and the platform's in-process callers never do — they are machines
  * by construction and say so with {@link Mover#machine}.
  */
 @ApplicationScoped

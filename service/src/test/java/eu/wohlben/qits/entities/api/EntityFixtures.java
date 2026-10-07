@@ -12,10 +12,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Rows for the qits-548 doors' suites ({@code EntitySchemaApiTest}, {@code EntityCreateApiTest},
- * {@code EntityReadApiTest}, {@code EntityStatusApiTest}), written through the per-archetype doors
- * the SPA uses — deliberately not through the doors under test, so a fixture never passes because
- * the thing it sets up is the thing being judged.
+ * Rows for the work family's suites: a project, a repository, and the entities written through
+ * {@code POST /projects/api/work} ({@link WorkRequests}) — since qits-976 the one create door. An
+ * epic and a ticket are given {@link TestCriteria#CRITERIA}, so a suite not about the criteria gate
+ * can walk them into REFINED.
  */
 final class EntityFixtures {
 
@@ -59,46 +59,28 @@ final class EntityFixtures {
   }
 
   static String epic(String projectId) {
-    return TestCriteria.give(
-            post("/projects/api/projects/" + projectId + "/epics", map("title", "The plan"))
-        .path("epic.id"));
+    return TestCriteria.give(WorkRequests.epic(projectId, "The plan"));
   }
 
   static String ticket(String projectId) {
-    return TestCriteria.give(
-            post(
-            "/projects/api/projects/" + projectId + "/tickets",
-            map("title", "The ticket", "impetus", "it occurs", "type", "BUG"))
-        .path("ticket.id"));
+    return TestCriteria.give(WorkRequests.ticket(projectId, "The ticket", "BUG", "it occurs"));
   }
 
   static String campaign(String projectId) {
-    return post("/projects/api/projects/" + projectId + "/campaigns", map("title", "The order"))
-        .path("campaign.id");
+    return WorkRequests.campaign(projectId, "The order");
   }
 
   static String feature(String epicId) {
-    return post("/projects/api/epics/" + epicId + "/features", map("title", "The part"))
-        .path("feature.id");
+    return WorkRequests.feature(epicId, "The part");
   }
 
   static String task(String featureId, String repositoryId) {
-    return post(
-            "/projects/api/features/" + featureId + "/tasks",
-            map("repositoryId", repositoryId, "title", "The step"))
-        .path("task.id");
+    return WorkRequests.task(featureId, repositoryId, "The step");
   }
 
-  /** The entity's qualified id, read off the merged read. */
+  /** The entity's qualified id, read off {@code GET /work/{id}}. */
   static String qualifiedId(String id) {
-    return given().when().get("/projects/api/entities/" + id).then().statusCode(200).extract()
-        .path("qualifiedId");
-  }
-
-  private static Response post(String path, Map<String, Object> body) {
-    Response response = given().contentType(ContentType.JSON).body(body).when().post(path);
-    response.then().statusCode(200);
-    return response;
+    return WorkRequests.qualifiedId(id);
   }
 
   /** A map that, unlike {@link Map#of}, keeps its order and admits a null value. */

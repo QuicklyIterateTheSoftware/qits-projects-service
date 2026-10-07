@@ -24,7 +24,7 @@ import org.junit.jupiter.api.TestFactory;
 
 /**
  * <b>The published payload schemas, and the pin that keeps them honest</b> (qits-548): {@code GET
- * /projects/api/entities/archetypes/{archetype}/schemas/{door}}.
+ * /projects/api/work/archetypes/{archetype}/schemas/{door}}.
  *
  * <p>A schema is only worth serving if the door it describes accepts what it says. So besides
  * pinning TICKET's and TASK's three schemas byte for byte, this class judges every archetype's
@@ -47,7 +47,7 @@ class EntitySchemaApiTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
-  private static final String SCHEMAS = "/projects/api/entities/archetypes/";
+  private static final String SCHEMAS = "/projects/api/work/archetypes/";
 
   private static JsonNode schema(String archetype, String door) {
     try {
@@ -217,7 +217,7 @@ class EntitySchemaApiTest {
                           given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
                               .contentType(ContentType.JSON)
                               .body(map("target", target))
-                              .post("/projects/api/epics/" + rows.epic + "/transition")
+                              .post("/projects/api/work/" + rows.epic + "/status")
                               .then()
                               .statusCode(200);
                         }
@@ -230,7 +230,7 @@ class EntitySchemaApiTest {
   // --- the doors ----------------------------------------------------------------------------------
 
   private static Response create(Map<String, Object> body) {
-    return given().contentType(ContentType.JSON).body(body).when().post("/projects/api/entities");
+    return given().contentType(ContentType.JSON).body(body).when().post("/projects/api/work");
   }
 
   private static Response transition(String id, Map<String, Object> entry) {
@@ -238,15 +238,15 @@ class EntitySchemaApiTest {
         .contentType(ContentType.JSON)
         .body(Map.of(id, entry))
         .when()
-        .post("/projects/api/entities/transition");
+        .post("/projects/api/work/transition");
   }
 
   private static Response patch(String id, Map<String, Object> body) {
     return given()
-        .contentType(EntityPatchController.MERGE_PATCH_JSON)
+        .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
         .body(body)
         .when()
-        .patch("/projects/api/entities/" + id);
+        .patch("/projects/api/work/" + id);
   }
 
   private static List<String> strings(JsonNode array) {
@@ -342,7 +342,7 @@ class EntitySchemaApiTest {
       {
         "$schema" : "https://json-schema.org/draft/2020-12/schema",
         "title" : "TICKET create",
-        "description" : "The body of POST /projects/api/entities, less its archetype (\\"archetype\\": \\"TICKET\\" is added beside these). The status is minted REPORTED by the writer.",
+        "description" : "The body of POST /projects/api/work, less its archetype (\\"archetype\\": \\"TICKET\\" is added beside these). The status is minted REPORTED by the writer.",
         "type" : "object",
         "properties" : {
           "title" : {
@@ -393,7 +393,7 @@ class EntitySchemaApiTest {
       {
         "$schema" : "https://json-schema.org/draft/2020-12/schema",
         "title" : "TICKET update",
-        "description" : "A JSON merge patch (RFC 7396) of one TICKET, sent to PATCH /projects/api/entities/{id}: an absent property is left unchanged, null clears it. The status is moved through POST /projects/api/entities/{id}/status.",
+        "description" : "A JSON merge patch (RFC 7396) of one TICKET, sent to PATCH /projects/api/work/{qualifiedId}: an absent property is left unchanged, null clears it. The status is moved through POST /projects/api/work/{qualifiedId}/status.",
         "type" : "object",
         "properties" : {
           "title" : {
@@ -440,7 +440,7 @@ class EntitySchemaApiTest {
       {
         "$schema" : "https://json-schema.org/draft/2020-12/schema",
         "title" : "TICKET transition",
-        "description" : "The full post-state of one row turned into a TICKET, one entry of POST /projects/api/entities/transition (keyed by the row's id, with \\"archetype\\": \\"TICKET\\" beside these). An absent property is CLEARED, and an absent membership means a root.",
+        "description" : "The full post-state of one row turned into a TICKET, one entry of POST /projects/api/work/transition (keyed by the row's id, with \\"archetype\\": \\"TICKET\\" beside these). An absent property is CLEARED, and an absent membership means a root.",
         "type" : "object",
         "properties" : {
           "title" : {
@@ -508,7 +508,7 @@ class EntitySchemaApiTest {
       {
         "$schema" : "https://json-schema.org/draft/2020-12/schema",
         "title" : "TASK create",
-        "description" : "The body of POST /projects/api/entities, less its archetype (\\"archetype\\": \\"TASK\\" is added beside these). The status is minted REPORTED by the writer.",
+        "description" : "The body of POST /projects/api/work, less its archetype (\\"archetype\\": \\"TASK\\" is added beside these). The status is minted REPORTED by the writer.",
         "type" : "object",
         "properties" : {
           "title" : {
@@ -545,7 +545,7 @@ class EntitySchemaApiTest {
       {
         "$schema" : "https://json-schema.org/draft/2020-12/schema",
         "title" : "TASK update",
-        "description" : "A JSON merge patch (RFC 7396) of one TASK, sent to PATCH /projects/api/entities/{id}: an absent property is left unchanged, null clears it. The status is moved through POST /projects/api/entities/{id}/status.",
+        "description" : "A JSON merge patch (RFC 7396) of one TASK, sent to PATCH /projects/api/work/{qualifiedId}: an absent property is left unchanged, null clears it. The status is moved through POST /projects/api/work/{qualifiedId}/status.",
         "type" : "object",
         "properties" : {
           "title" : {
@@ -588,7 +588,7 @@ class EntitySchemaApiTest {
       {
         "$schema" : "https://json-schema.org/draft/2020-12/schema",
         "title" : "TASK transition",
-        "description" : "The full post-state of one row turned into a TASK, one entry of POST /projects/api/entities/transition (keyed by the row's id, with \\"archetype\\": \\"TASK\\" beside these). An absent property is CLEARED, and an absent membership means a root.",
+        "description" : "The full post-state of one row turned into a TASK, one entry of POST /projects/api/work/transition (keyed by the row's id, with \\"archetype\\": \\"TASK\\" beside these). An absent property is CLEARED, and an absent membership means a root.",
         "type" : "object",
         "properties" : {
           "title" : {

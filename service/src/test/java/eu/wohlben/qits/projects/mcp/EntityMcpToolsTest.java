@@ -430,7 +430,7 @@ public class EntityMcpToolsTest {
           .contentType(ContentType.JSON)
           .body(Map.of("target", target))
           .when()
-          .post("/projects/api/entities/" + epicId + "/status")
+          .post("/projects/api/work/" + epicId + "/status")
           .then()
           .statusCode(Response.Status.OK.getStatusCode());
     }

@@ -12,12 +12,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 /**
- * <b>The dispatch press and its read, as one implementation behind two surfaces</b> (qits-970, epic
- * qits-965): {@code /entities/{id}/dispatch} ({@link EntityDispatchController}) and {@code
- * /work/{qualifiedId}/dispatch} ({@link WorkDispatchController}). Both resolve their path to an
- * entity id and hand it here, so the campaign branch and the one dispatch path are one copy and
- * deleting the old door later deletes a thin resource. Nothing here names a controller class; each
- * door wraps {@link Pressed} in its own answer record.
+ * <b>The dispatch press and its read</b> (qits-970, epic qits-965), behind {@code
+ * /work/{qualifiedId}/dispatch} ({@link WorkDispatchController}), which resolves its path to an
+ * entity id and hands it here — the campaign branch and the one dispatch path, moved out of the
+ * {@code /entities/{id}/dispatch} controller deleted in qits-976. Nothing here names a controller
+ * class; the door wraps {@link Pressed} in its own answer record.
  */
 @ApplicationScoped
 public class DispatchDoors {

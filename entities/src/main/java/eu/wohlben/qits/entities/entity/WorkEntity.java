@@ -40,8 +40,9 @@ import org.hibernate.annotations.UpdateTimestamp;
  *
  * <p>The four old classes and their four tables are <b>gone</b> (V13). They stood for two releases
  * as shapes the services answered with, so that the mappers, the DTOs and the controllers above
- * could be left untouched while the storage moved underneath them; {@code mapper/WorkEntityMapper}
- * reads this row into all four DTOs now and not one of those DTOs moved by a byte.
+ * could be left untouched while the storage moved underneath them. Those four per-archetype DTOs,
+ * their mapper and their routes went in qits-976: the merged {@code TransitionedEntity} is the one
+ * shape this row is answered in.
  *
  * <p>The ids are the <em>same</em> id space — V10 copied each old row in under the id it already had
  * — because every dossier page, audit entry, branch name and URL on the platform names one of those
@@ -329,8 +330,7 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
 
   /**
    * <b>One sibling-dependency edge for what were two</b>: a feature's {@code depends_on_feature_id}
-   * and a task's {@code depends_on_task_id}. Self-FK with {@code on delete set null}. The DTOs keep
-   * both old spellings — see {@code mapper/WorkEntityMapper}.
+   * and a task's {@code depends_on_task_id}. Self-FK with {@code on delete set null}.
    *
    * <p><b>This is not nesting and must never be validated as nesting.</b> A dependency says "do
    * that one first"; a membership says "this one is part of that one". They point in unrelated

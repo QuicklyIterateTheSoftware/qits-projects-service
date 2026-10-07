@@ -21,7 +21,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The REST round-trip for {@code GET /projects/api/entities/archetypes} — the registry, served.
+ * The REST round-trip for {@code GET /projects/api/work/archetypes} — the registry, served.
  *
  * <p>What this class is for, as distinct from {@code ArchetypeRegistryDocumentTest}: that the route
  * exists at that path, that the document reaches a caller as JSON with the member names a client is
@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class EntityArchetypesApiTest {
 
-  private static final String PATH = "/projects/api/entities/archetypes";
+  private static final String PATH = "/projects/api/work/archetypes";
 
   private static ValidatableResponse document() {
     return given().when().get(PATH).then().statusCode(Response.Status.OK.getStatusCode());

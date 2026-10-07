@@ -17,9 +17,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * <b>The archetype registry on the work family: {@code GET /projects/api/work/archetypes}</b> and
- * the JSON Schema of each write door's payload per archetype (qits-969). The same document {@code
- * /entities/archetypes} serves — {@link WorkEntityDoors#registry} and {@link
- * WorkEntityDoors#schema} are the one implementation — under the family's address.
+ * the JSON Schema of each write door's payload per archetype (qits-969). The document the deleted {@code
+ * /entities/archetypes} served — {@link WorkEntityDoors#registry} and {@link
+ * WorkEntityDoors#schema} — under the family's address.
  *
  * <p>A read, so the whole class is {@code qits:admin} and {@code qits:agent}: the answer holds no
  * row, no project and no identity, and an agent assembling a write is the caller it is for.

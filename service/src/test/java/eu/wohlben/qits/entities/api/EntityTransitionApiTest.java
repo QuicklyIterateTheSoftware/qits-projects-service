@@ -15,7 +15,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The REST round-trip for {@code POST /projects/api/entities/transition} — the write surface of the
+ * The REST round-trip for {@code POST /projects/api/work/transition} — the write surface of the
  * merged model.
  *
  * <p>What this class is for, as distinct from {@code EntityTransitionServiceTest}: the route, the
@@ -45,27 +45,11 @@ class EntityTransitionApiTest {
   }
 
   private String createEpic(String projectId, String title) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(new ProjectEpicsController.CreateEpicRequest(title, null))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .extract()
-        .path("epic.id");
+    return WorkRequests.epic(projectId, title);
   }
 
   private String createFeature(String epicId, String title) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(new EpicController.CreateFeatureRequest(title, null, null))
-        .when()
-        .post("/projects/api/epics/" + epicId + "/features")
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .extract()
-        .path("feature.id");
+    return WorkRequests.feature(epicId, title);
   }
 
   /**
@@ -91,7 +75,7 @@ class EntityTransitionApiTest {
         .contentType(ContentType.JSON)
         .body(body)
         .when()
-        .post("/projects/api/entities/transition")
+        .post("/projects/api/work/transition")
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .body("'" + featureId + "'.archetype", equalTo("EPIC"))
@@ -118,7 +102,7 @@ class EntityTransitionApiTest {
         .contentType(ContentType.JSON)
         .body(body)
         .when()
-        .post("/projects/api/entities/transition")
+        .post("/projects/api/work/transition")
         .then()
         .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
         .body("message", containsString("there is no ghost-id"))
@@ -132,7 +116,7 @@ class EntityTransitionApiTest {
         .contentType(ContentType.JSON)
         .body(Map.of())
         .when()
-        .post("/projects/api/entities/transition")
+        .post("/projects/api/work/transition")
         .then()
         .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
         .body("message", containsString("at least one entity"));

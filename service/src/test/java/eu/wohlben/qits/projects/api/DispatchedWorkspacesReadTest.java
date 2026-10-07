@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
 import io.quarkus.test.junit.QuarkusTest;
@@ -19,13 +20,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The read back: a ticket and an epic carrying the live workspaces that are working on them, so
- * "Assign agent" and "Start implementation" stop offering a second one after a reload.
+ * The read back: the workspaces working on a ticket or an epic, so "Assign agent" and "Start
+ * implementation" stop offering a second one after a reload. Since qits-976 the per-archetype reads
+ * and their {@code workspaces} field are gone, and the same lookup is {@code GET
+ * /work/{qualifiedId}/workspaces} ({@link WorkWorkspacesController}).
  *
- * <p>What is pinned here is this service's half — that the reads ask, that they ask <b>once per
- * listing</b>, and that what comes back lands on the row it names. Which workspaces exist is
+ * <p>What is pinned here is this service's half — that the read asks, that it asks <b>once</b> and
+ * about the one row it names, and that what comes back lands on that row. Which workspaces exist is
  * qits-workspaces' answer and is scripted rather than simulated; {@code HttpWorkspaceAgentDispatchTest}
- * is where the wire is under test.
+ * is where the wire is under test. The listings no longer carry workspaces at all, so the old
+ * once-per-listing batching has nothing left to pin.
  */
 @QuarkusTest
 public class DispatchedWorkspacesReadTest {
@@ -56,25 +60,16 @@ public class DispatchedWorkspacesReadTest {
   }
 
   private String createTicket(String projectId, String title) {
-    return asAdmin()
-        .body(Map.of("title", title, "type", "BUG", "impetus", "something occurs in this project"))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/tickets")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("ticket.id");
+    return WorkRequests.ticket(
+        this::asAdmin, projectId, title, "BUG", "something occurs in this project");
   }
 
   private String createEpic(String projectId, String title) {
-    return asAdmin()
-        .body(Map.of("title", title))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("epic.id");
+    return WorkRequests.epic(this::asAdmin, projectId, title);
+  }
+
+  private io.restassured.response.ValidatableResponse workspacesOf(String id) {
+    return asAdmin().when().get("/projects/api/work/" + id + "/workspaces").then().statusCode(200);
   }
 
   private static WorkspaceAgentDispatch.Reference onTicket(long rowId, String ticketId) {
@@ -96,92 +91,62 @@ public class DispatchedWorkspacesReadTest {
   }
 
   @Test
-  public void aTicketListingAsksOnceAndPutsEachWorkspaceOnTheRowItNames() {
-    String projectId = createProject("Referenced tickets");
-    String worked = createTicket(projectId, "Somebody is on this");
-    createTicket(projectId, "Nobody is on this");
-    dispatch.willReference(onTicket(41L, worked), onTicket(42L, worked));
-
-    asAdmin()
-        .when()
-        .get("/projects/api/projects/" + projectId + "/tickets")
-        .then()
-        .statusCode(200)
-        // Two workspaces on one ticket is a real answer and the SPA draws two links for it.
-        .body("entries.find { it.ticket.id == '" + worked + "' }.ticket.workspaces", hasSize(2))
-        .body(
-            "entries.find { it.ticket.id == '" + worked + "' }.ticket.workspaces[0].workspaceRowId",
-            equalTo(41))
-        .body(
-            "entries.find { it.ticket.id == '" + worked + "' }.ticket.workspaces[0].repositoryId",
-            equalTo("repo-1"))
-        // Empty, never null: "none" must not have to be told apart from "unasked".
-        .body("entries.find { it.ticket.title == 'Nobody is on this' }.ticket.workspaces", hasSize(0));
-
-    // One lookup for the whole page, carrying every ticket on it — not one call per row.
-    assertEquals(1, dispatch.lookups().size());
-    RecordingWorkspaceAgentDispatch.Looked asked = dispatch.lookups().get(0);
-    assertEquals(2, asked.ticketIds().size());
-    assertTrue(asked.ticketIds().contains(worked));
-    assertTrue(asked.epicIds().isEmpty(), "a tickets listing asked about epics");
-  }
-
-  @Test
-  public void aTicketsDetailReadCarriesThemAndAWriteDoesNot() {
+  public void aTicketsReadCarriesThemAndAWriteDoesNotAsk() {
     String projectId = createProject("Referenced ticket detail");
     String ticketId = createTicket(projectId, "Read me");
-    dispatch.willReference(onTicket(41L, ticketId));
+    createTicket(projectId, "Nobody is on this");
+    dispatch.willReference(onTicket(41L, ticketId), onTicket(42L, ticketId));
 
-    asAdmin()
-        .when()
-        .get("/projects/api/tickets/" + ticketId)
-        .then()
-        .statusCode(200)
-        .body("ticket.workspaces", hasSize(1))
-        .body("ticket.workspaces[0].branch", equalTo("ticket/work"))
+    workspacesOf(ticketId)
+        // Two workspaces on one ticket is a real answer and the SPA draws two links for it.
+        .body("workspaces", hasSize(2))
+        .body("workspaces[0].workspaceRowId", equalTo(41))
+        .body("workspaces[0].repositoryId", equalTo("repo-1"))
+        .body("workspaces[0].branch", equalTo("ticket/work"))
         // The status travels with every row, live ones included — the browser draws the difference,
         // so "this one is still running" has to be a word on the wire and not an absence.
-        .body("ticket.workspaces[0].status", equalTo("ACTIVE"));
+        .body("workspaces[0].status", equalTo("ACTIVE"));
+
+    // One lookup, about this ticket alone — and no epic half asked.
+    assertEquals(1, dispatch.lookups().size());
+    RecordingWorkspaceAgentDispatch.Looked asked = dispatch.lookups().get(0);
+    assertEquals(List.of(ticketId), asked.ticketIds());
+    assertTrue(asked.epicIds().isEmpty(), "a ticket's read asked about epics");
 
     // An edit answers the row it changed and asks nobody who is working on it.
-    int asked = dispatch.lookups().size();
+    int lookups = dispatch.lookups().size();
     asAdmin()
         .body(Map.of("blocked", true, "reason", "waiting on a sibling"))
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/blocked")
+        .post("/projects/api/work/" + ticketId + "/blocked")
         .then()
-        .statusCode(200)
-        .body("ticket.workspaces", hasSize(0));
-    assertEquals(asked, dispatch.lookups().size(), "a write asked a sibling service who is working");
+        .statusCode(200);
+    assertEquals(lookups, dispatch.lookups().size(), "a write asked a sibling service who is working");
   }
 
   @Test
-  public void anEpicBoardCarriesTheWorkspacesToo() {
+  public void anEpicsWorkspacesAreReadToo() {
     String projectId = createProject("Referenced epics");
     String epicId = createEpic(projectId, "Somebody is implementing this");
     dispatch.willReference(
         RecordingWorkspaceAgentDispatch.live(77L, "repo-1", "epic-work", "epic/work", null, epicId));
 
-    asAdmin()
-        .when()
-        .get("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(200)
-        .body("entries.find { it.epic.id == '" + epicId + "' }.epic.workspaces", hasSize(1))
-        .body(
-            "entries.find { it.epic.id == '" + epicId + "' }.epic.workspaces[0].workspaceRowId",
-            equalTo(77));
+    workspacesOf(epicId).body("workspaces", hasSize(1)).body("workspaces[0].workspaceRowId", equalTo(77));
 
     assertEquals(1, dispatch.lookups().size());
     assertEquals(List.of(epicId), dispatch.lookups().get(0).epicIds());
-    assertTrue(dispatch.lookups().get(0).ticketIds().isEmpty(), "an epics board asked about tickets");
+    assertTrue(dispatch.lookups().get(0).ticketIds().isEmpty(), "an epic's read asked about tickets");
+  }
 
-    asAdmin()
-        .when()
-        .get("/projects/api/epics/" + epicId)
-        .then()
-        .statusCode(200)
-        .body("epic.workspaces", hasSize(1));
+  /** Only a ticket and an epic are dispatched onto a branch: a feature answers empty, asking nobody. */
+  @Test
+  public void aFeatureHasNoWorkspacesAndAsksNobody() {
+    String projectId = createProject("Referenced feature");
+    String featureId =
+        WorkRequests.feature(this::asAdmin, createEpic(projectId, "Holds a feature"), "A feature");
+
+    workspacesOf(featureId).body("workspaces", hasSize(0));
+    assertTrue(dispatch.lookups().isEmpty(), "a feature's read asked qits-workspaces");
   }
 
   /**
@@ -199,21 +164,21 @@ public class DispatchedWorkspacesReadTest {
 
     asAdmin()
         .when()
-        .get("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/work/" + ticketId + "/workspaces")
         .then()
         .statusCode(200)
         // Both of them: one that is over and one that is still running.
-        .body("ticket.workspaces", hasSize(2))
+        .body("workspaces", hasSize(2))
         .body(
-            "ticket.workspaces.find { it.workspaceRowId == 58 }.status", equalTo("INTEGRATED"))
+            "workspaces.find { it.workspaceRowId == 58 }.status", equalTo("INTEGRATED"))
         .body(
-            "ticket.workspaces.find { it.workspaceRowId == 58 }.branch",
+            "workspaces.find { it.workspaceRowId == 58 }.branch",
             equalTo("ticket/work-done"))
-        .body("ticket.workspaces.find { it.workspaceRowId == 59 }.status", equalTo("ACTIVE"))
+        .body("workspaces.find { it.workspaceRowId == 59 }.status", equalTo("ACTIVE"))
         // resolvedAt is deliberately NOT on the wire: nothing the browser draws needs it, and the
         // DTO the frontend reads stays the minimum it can be. The port carries it for a reader
         // that one day does.
-        .body("ticket.workspaces.find { it.workspaceRowId == 58 }.resolvedAt", equalTo(null));
+        .body("workspaces.find { it.workspaceRowId == 58 }.resolvedAt", equalTo(null));
   }
 
   /**
@@ -229,9 +194,9 @@ public class DispatchedWorkspacesReadTest {
 
     asAdmin()
         .when()
-        .get("/projects/api/tickets/" + ticketId)
+        .get("/projects/api/work/" + ticketId + "/workspaces")
         .then()
         .statusCode(200)
-        .body("ticket.workspaces", hasSize(0));
+        .body("workspaces", hasSize(0));
   }
 }

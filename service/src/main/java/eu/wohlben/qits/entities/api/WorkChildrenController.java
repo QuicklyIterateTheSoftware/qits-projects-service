@@ -23,7 +23,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * <b>A work entity's children: {@code /projects/api/work/{qualifiedId}/children}</b> (qits-970,
- * epic qits-965) — the {@code /work} home of {@code /epics/{epicId}/features} and {@code
+ * epic qits-965) — the {@code /work} home of the deleted {@code /epics/{epicId}/features} and {@code
  * /features/{featureId}/tasks}, one route for both edges: an epic's children are its features, a
  * feature's its tasks, and any other kind has none (an empty list to read, a 409 to add to).
  *

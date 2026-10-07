@@ -24,10 +24,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code POST /projects/api/entities/{id}/blocked} (qits-592): the block of every archetype with a
- * lifecycle, over the rule the ticket door always had — the reason required, the phase refusal, the
- * remark on the entity's own thread. The ticket door's own cases stay in {@code TicketApiTest}; the
- * agent binding is {@code EntityAgentBoundsTest}'s, because a {@code @QuarkusTest} cannot put a
+ * {@code POST /projects/api/work/{id}/blocked} (qits-592, on the work family since qits-976): the
+ * block of every archetype with a lifecycle — the reason required, the phase refusal, the remark on
+ * the entity's own thread. The agent binding is {@code EntityAgentBoundsTest}'s, because a {@code @QuarkusTest} cannot put a
  * project claim in front of this service.
  */
 @QuarkusTest
@@ -48,7 +47,7 @@ class EntityBlockApiTest {
    * the epic's title ({@link EntityFixtures#epic} names every epic "The plan") and the given status.
    */
   private Told told(String projectId, String epicId, String status, boolean blocked) {
-    String slug = given().get("/projects/api/epics/" + epicId).then().extract().path("epic.slug");
+    String slug = given().get("/projects/api/work/" + epicId).then().extract().path("slug");
     return new Told(
         projects.findWrapper(projectId).orElseThrow().id, "epic/" + slug, "The plan", status,
         blocked);
@@ -59,7 +58,7 @@ class EntityBlockApiTest {
         .contentType(ContentType.JSON)
         .body(map("blocked", blocked, "reason", reason))
         .when()
-        .post("/projects/api/entities/" + id + "/blocked")
+        .post("/projects/api/work/" + id + "/blocked")
         .then();
   }
 
@@ -69,19 +68,24 @@ class EntityBlockApiTest {
           .contentType(ContentType.JSON)
           .body(map("target", target))
           .when()
-          .post("/projects/api/entities/" + id + "/status")
+          .post("/projects/api/work/" + id + "/status")
           .then()
           .statusCode(200);
     }
   }
 
+  /** The row's flag, read back through {@code GET /work/{id}}. */
+  private static void blocked(String id, boolean blocked) {
+    given().get("/projects/api/work/" + id).then().statusCode(200).body("blocked", equalTo(blocked));
+  }
+
   private static ValidatableResponse thread(String id) {
-    return given().when().get("/projects/api/entities/" + id + "/comments").then().statusCode(200);
+    return given().when().get("/projects/api/work/" + id + "/comments").then().statusCode(200);
   }
 
   /**
-   * An epic, named by its qualified id: the flag is set on the row and read back by the epic's own
-   * door, the status does not move, and the reason lands on the epic's own thread.
+   * An epic, named by its qualified id: the flag is set on the row and read back by the read, the
+   * status does not move, and the reason lands on the epic's own thread.
    */
   @Test
   void anEpicIsBlockedAndUnblockedByItsQualifiedId() {
@@ -97,21 +101,20 @@ class EntityBlockApiTest {
         .body("block.status", equalTo("READY_FOR_DEV"))
         .body("block.blocked", equalTo(true));
     given()
-        .get("/projects/api/epics/" + epic)
+        .get("/projects/api/work/" + qualified)
         .then()
-        .body("epic.blocked", equalTo(true))
-        .body("epic.status", equalTo("READY_FOR_DEV"));
-    given().get("/projects/api/entities/" + epic).then().body("blocked", equalTo(true));
+        .body("blocked", equalTo(true))
+        .body("status", equalTo("READY_FOR_DEV"));
     thread(epic)
         .body("entries", hasSize(1))
         .body("entries[0].comment.body", equalTo("Blocked: the sibling library has not released"));
 
     setBlocked(epic, false, null).statusCode(200).body("block.blocked", equalTo(false));
-    given().get("/projects/api/epics/" + epic).then().body("epic.blocked", equalTo(false));
+    blocked(epic, false);
     thread(epic).body("entries", hasSize(2)).body("entries[1].comment.body", equalTo("Unblocked."));
   }
 
-  /** A campaign, the same way: its own reads carry the flag. */
+  /** A campaign, the same way: its read and its project's listing carry the flag. */
   @Test
   void aCampaignIsBlockedAndUnblocked() {
     EntityFixtures.Project project = EntityFixtures.project("Block Campaign");
@@ -122,19 +125,17 @@ class EntityBlockApiTest {
         .statusCode(200)
         .body("block.archetype", equalTo("CAMPAIGN"))
         .body("block.blocked", equalTo(true));
-    given().get("/projects/api/campaigns/" + campaign).then().body("campaign.blocked", equalTo(true));
+    blocked(campaign, true);
     given()
-        .get("/projects/api/projects/" + project.id() + "/campaigns")
+        .queryParam("archetype", "campaign")
+        .get("/projects/api/projects/" + project.id() + "/work")
         .then()
-        .body("campaigns[0].blocked", equalTo(true));
+        .body("entities[0].blocked", equalTo(true));
     thread(campaign)
         .body("entries[0].comment.body", containsString("widen the runner pool"));
 
     setBlocked(campaign, false, "it was widened").statusCode(200).body("block.blocked", equalTo(false));
-    given()
-        .get("/projects/api/campaigns/" + campaign)
-        .then()
-        .body("campaign.blocked", equalTo(false));
+    blocked(campaign, false);
   }
 
   /** Absent and blank are one 400, and nothing is written — neither the flag nor the thread. */
@@ -148,7 +149,7 @@ class EntityBlockApiTest {
           .statusCode(400)
           .body("message", containsString("A blocked epic needs a stated blocker"));
     }
-    given().get("/projects/api/epics/" + epic).then().body("epic.blocked", equalTo(false));
+    blocked(epic, false);
     thread(epic).body("entries", hasSize(0));
   }
 
@@ -204,7 +205,7 @@ class EntityBlockApiTest {
     setBlocked(epic, true, "the dossier owes a decision only a person can take").statusCode(200);
 
     given()
-        .get("/projects/api/entities/" + epic + "/dispatch")
+        .get("/projects/api/work/" + epic + "/dispatch")
         .then()
         .statusCode(200)
         .body("state.blocked", equalTo(true))
@@ -214,7 +215,7 @@ class EntityBlockApiTest {
         .contentType(ContentType.JSON)
         .body(map("mode", "FLOW"))
         .when()
-        .post("/projects/api/entities/" + epic + "/dispatch")
+        .post("/projects/api/work/" + epic + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("Epic " + epic + " is blocked"))
@@ -230,7 +231,7 @@ class EntityBlockApiTest {
     setBlocked(campaign, true, "the pilot has to finish first").statusCode(200);
 
     given()
-        .get("/projects/api/entities/" + campaign + "/dispatch")
+        .get("/projects/api/work/" + campaign + "/dispatch")
         .then()
         .statusCode(200)
         .body("state.blocked", equalTo(true))
@@ -239,18 +240,19 @@ class EntityBlockApiTest {
         .contentType(ContentType.JSON)
         .body(map("mode", "FLOW"))
         .when()
-        .post("/projects/api/entities/" + campaign + "/dispatch")
+        .post("/projects/api/work/" + campaign + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("Campaign " + campaign + " is blocked"));
     given()
-        .get("/projects/api/campaigns/" + campaign)
+        .get("/projects/api/work/" + campaign + "/progress")
         .then()
-        .body("campaign.start", org.hamcrest.Matchers.nullValue());
+        .statusCode(200)
+        .body("progress.campaign.start", org.hamcrest.Matchers.nullValue());
 
     setBlocked(campaign, false, null).statusCode(200);
     given()
-        .get("/projects/api/entities/" + campaign + "/dispatch")
+        .get("/projects/api/work/" + campaign + "/dispatch")
         .then()
         .body("state.blocked", equalTo(false))
         .body("state.dispatchable", equalTo(true));
@@ -327,9 +329,9 @@ class EntityBlockApiTest {
     agents.willThrow(new IllegalStateException("a port bug"));
 
     setBlocked(epic, true, "waiting on somebody").statusCode(200).body("block.blocked", equalTo(true));
-    given().get("/projects/api/epics/" + epic).then().body("epic.blocked", equalTo(true));
+    blocked(epic, true);
     walk(epic, "IMPLEMENTED");
-    given().get("/projects/api/epics/" + epic).then().body("epic.blocked", equalTo(false));
+    blocked(epic, false);
 
     assertEquals(2, agents.calls().size(), "both were attempted: " + agents.calls());
   }
@@ -368,7 +370,7 @@ class EntityBlockApiTest {
   }
 
   /**
-   * {@code POST /entities/transition} — the bulk door {@code transition_entities} shares — reaches
+   * {@code POST /work/transition} — the bulk door {@code transition_entities} shares — reaches
    * the agents too, carrying the row as the restatement left it (qits-617). Before, it wrote
    * statuses and titles past every signal.
    */
@@ -389,7 +391,7 @@ class EntityBlockApiTest {
         .contentType(ContentType.JSON)
         .body(java.util.Map.of(ticket, row))
         .when()
-        .post("/projects/api/entities/transition")
+        .post("/projects/api/work/transition")
         .then()
         .statusCode(200);
 
@@ -424,10 +426,10 @@ class EntityBlockApiTest {
 
   private static void patch(String id, java.util.Map<String, Object> body) {
     given()
-        .contentType(EntityPatchController.MERGE_PATCH_JSON)
+        .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
         .body(body)
         .when()
-        .patch("/projects/api/entities/" + id)
+        .patch("/projects/api/work/" + id)
         .then()
         .statusCode(200);
   }

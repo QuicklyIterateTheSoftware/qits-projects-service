@@ -1,10 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.TransitionedEntity;
-import eu.wohlben.qits.entities.dto.EpicDto;
-import eu.wohlben.qits.entities.dto.FeatureDto;
-import eu.wohlben.qits.entities.dto.TaskDto;
-import eu.wohlben.qits.entities.dto.TicketDto;
 import eu.wohlben.qits.projects.control.ProjectService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -16,12 +12,12 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Fills the {@code qualifiedId} field on an epic, a ticket, a feature, a task or a transitioned
- * entity: one batched slug lookup, then a row-for-row decoration of what the mapper already
+ * Fills the {@code qualifiedId} field on a work entity in the merged shape ({@link
+ * TransitionedEntity}): one batched slug lookup, then a row-for-row decoration of what the mapper already
  * produced. The rendering is {@code <project-slug>-<number>} — {@code qits-1337} — and this class is
  * the only place in the estate that performs it on the way out.
  *
- * <h2>Why it sits in {@code projects.api} and is called from {@code epics.api}</h2>
+ * <h2>Why it sits in {@code projects.api} and is called from {@code entities.api}</h2>
  *
  * <p>{@link DispatchedWorkspaces} is the precedent and this is the same crossing, made for the same
  * reason. <b>The {@code entities} module depends on {@code domain} nowhere and must keep not depending
@@ -64,54 +60,6 @@ public class QualifiedEntityIds {
    */
   public static String render(String projectSlug, long number) {
     return projectSlug + SEPARATOR + number;
-  }
-
-  // --- Epics ------------------------------------------------------------------------------------
-
-  /** The epics, each told what it is called in a commit subject. One lookup for the whole list. */
-  public List<EpicDto> qualifyEpics(List<EpicDto> epics) {
-    return qualify(epics, EpicDto::projectId, EpicDto::number, EpicDto::withQualifiedId);
-  }
-
-  /** One epic — the same call, asked about a list of one. */
-  public EpicDto qualify(EpicDto epic) {
-    return qualifyEpics(List.of(epic)).get(0);
-  }
-
-  // --- Tickets ----------------------------------------------------------------------------------
-
-  /** The tickets, each told what it is called in a commit subject. */
-  public List<TicketDto> qualifyTickets(List<TicketDto> tickets) {
-    return qualify(tickets, TicketDto::projectId, TicketDto::number, TicketDto::withQualifiedId);
-  }
-
-  /** One ticket. */
-  public TicketDto qualify(TicketDto ticket) {
-    return qualifyTickets(List.of(ticket)).get(0);
-  }
-
-  // --- Features ---------------------------------------------------------------------------------
-
-  /** The features, each told what it is called in a commit subject. */
-  public List<FeatureDto> qualifyFeatures(List<FeatureDto> features) {
-    return qualify(features, FeatureDto::projectId, FeatureDto::number, FeatureDto::withQualifiedId);
-  }
-
-  /** One feature. */
-  public FeatureDto qualify(FeatureDto feature) {
-    return qualifyFeatures(List.of(feature)).get(0);
-  }
-
-  // --- Tasks ------------------------------------------------------------------------------------
-
-  /** The tasks, each told what it is called in a commit subject. */
-  public List<TaskDto> qualifyTasks(List<TaskDto> tasks) {
-    return qualify(tasks, TaskDto::projectId, TaskDto::number, TaskDto::withQualifiedId);
-  }
-
-  /** One task. */
-  public TaskDto qualify(TaskDto task) {
-    return qualifyTasks(List.of(task)).get(0);
   }
 
   // --- Transitioned entities --------------------------------------------------------------------

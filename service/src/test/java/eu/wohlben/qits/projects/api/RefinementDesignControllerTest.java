@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.persistence.RefinementDesignRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
@@ -49,15 +50,7 @@ public class RefinementDesignControllerTest {
   }
 
   private String createEpic(String projectId, String title) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(Map.of("title", title, "description", "A draft."))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("epic.id");
+    return WorkRequests.epic(projectId, title);
   }
 
   /** A refinement of a fresh epic in a fresh project — the row every design hangs off. */
@@ -69,7 +62,7 @@ public class RefinementDesignControllerTest {
             .contentType(ContentType.JSON)
             .body(Map.of())
             .when()
-            .post("/projects/api/entities/" + epicId + "/refinement")
+            .post("/projects/api/work/" + epicId + "/refinement")
             .then()
             .statusCode(200)
             .extract()

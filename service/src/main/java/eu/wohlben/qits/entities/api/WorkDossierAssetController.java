@@ -31,7 +31,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 /**
  * <b>The figures a work entity's dossier inlines: {@code
  * /projects/api/work/{qualifiedId}/dossier-assets}</b> (qits-970, epic qits-965) — the {@code /work}
- * home of {@code /epics/{epicId}/dossier-assets}: the door that copies a figure of the entity's
+ * home of the deleted {@code /epics/{epicId}/dossier-assets}: the door that copies a figure of the entity's
  * refinement in, the listing, and the one hardened route that serves the copied bytes ({@link
  * DossierAssetContent}, shared with the epic route byte for byte).
  *
@@ -42,7 +42,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * <p><b>The {@code url} and {@code markdown} an answer carries keep the stored shape</b>, {@code
  * /epics/{epicId}/dossier-assets/{assetId}/content}: that URL is what page bodies hold and what
  * {@link DossierAssetService}'s reference count parses, so it is data, not an address this family
- * may restate. The bytes are served under both addresses.
+ * may restate. The route that spelling once named was deleted in qits-976: the bytes are served
+ * here alone, and a reader resolves a stored URL by its two ids — the epic's UUID is a valid
+ * {@code {qualifiedId}} — onto {@code GET /work/{epicId}/dossier-assets/{assetId}/content}.
  *
  * <p>The roles are the epic route's: {@code qits:agent} on all three, the inline bound to the
  * entity's project ({@link EntitiesAgentAccess}) — {@code inline_figure} performs it over MCP

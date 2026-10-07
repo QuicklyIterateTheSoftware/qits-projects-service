@@ -99,13 +99,13 @@ public class TicketMcpTools {
 
   /**
    * The phase a transition starts. Crossing into {@code projects.api} from here is the same
-   * crossing {@code EntityDispatchController} declares: a workspace is {@code domain}'s, and this
+   * crossing {@code projects.api.WorkDispatchController} declares: a workspace is {@code domain}'s, and this
    * module assembles both.
    */
   @Inject PhaseAdvance phaseAdvance;
 
   /**
-   * The block door's whole rule, shared with {@code TicketController}'s route over the same write.
+   * The block door's whole rule, shared with {@code POST /work/{qualifiedId}/blocked} over the same write.
    * The same crossing into {@code projects.api} the field above declares.
    */
   @Inject EntityBlocks blocks;

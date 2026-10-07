@@ -4,8 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.entities.api.ProjectEpicsController;
-import eu.wohlben.qits.entities.api.ProjectTicketsController;
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
@@ -224,31 +223,22 @@ class CommitSubjectEntitiesTest {
   }
 
   private static long createTicket(String projectId, String title) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(
-            new ProjectTicketsController.CreateTicketRequest(
-                title, "It occurs.", null, "BUG", null))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/tickets")
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .extract()
+    return WorkRequests.create(
+            WorkRequests.map(
+                "archetype", "TICKET",
+                "project", projectId,
+                "title", title,
+                "impetus", "It occurs.",
+                "ticketType", "BUG"))
         .jsonPath()
-        .getLong("ticket.number");
+        .getLong("number");
   }
 
   private static long createEpic(String projectId, String title) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(new ProjectEpicsController.CreateEpicRequest(title, null))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .extract()
+    return WorkRequests.create(
+            WorkRequests.map("archetype", "EPIC", "project", projectId, "title", title))
         .jsonPath()
-        .getLong("epic.number");
+        .getLong("number");
   }
 
   /**

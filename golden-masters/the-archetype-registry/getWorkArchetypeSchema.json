@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "TICKET create",
-  "description": "The body of POST /projects/api/entities, less its archetype (\"archetype\": \"TICKET\" is added beside these). The status is minted REPORTED by the writer.",
+  "description": "The body of POST /projects/api/work, less its archetype (\"archetype\": \"TICKET\" is added beside these). The status is minted REPORTED by the writer.",
   "type": "object",
   "properties": {
     "title": {

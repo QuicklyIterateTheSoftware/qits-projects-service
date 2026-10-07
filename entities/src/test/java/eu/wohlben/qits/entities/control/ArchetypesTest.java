@@ -48,7 +48,7 @@ class ArchetypesTest {
   void theTicketIsTheONLYKindWhoseTwoRequiredSetsDifferAndTheImpetusIsTheWholeDifference() {
     // The declaration this settlement is. Intake demands an impetus — a REPORTED ticket consists of
     // one — and entity.impetus is nullable because clearing one afterwards is a thing a person does
-    // (TicketServiceTest/TicketApiTest.theClearFlagsAreWhatEmptyTheNullableFields). Two axes could
+    // (TicketServiceTest/WorkTicketApiTest.theNullableFieldsEmptyThroughTheWholeRowEdit). Two axes could
     // say only one of those; the third says both.
     for (Archetype archetype : Archetype.values()) {
       ArchetypeSpec spec = Archetypes.spec(archetype);
@@ -239,7 +239,7 @@ class ArchetypesTest {
   @Test
   void anExistingTicketWithNoImpetusIsNotRefusedBecauseTheColumnAndThePersonBothAllowIt() {
     // The other half, and the reason the create axis exists. entity.impetus is nullable: rows that
-    // predate V7 have none and a person may clear one, which TicketServiceTest and TicketApiTest
+    // predate V7 have none and a person may clear one, which TicketServiceTest and WorkTicketApiTest
     // both assert of the live surface. An update judged by the intake set would refuse a write the
     // product performs, which is what the registry used to say and what a named concession on every
     // update path used to undo.

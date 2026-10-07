@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
-import eu.wohlben.qits.entities.api.EpicController;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
@@ -101,9 +100,9 @@ public class EpicMcpToolsTest {
   private void freeze(String epicId) {
     authenticated()
         .contentType(ContentType.JSON)
-        .body(new EpicController.TransitionEpicRequest("REFINED"))
+        .body(Map.of("target", "REFINED"))
         .when()
-        .post("/projects/api/epics/" + epicId + "/transition")
+        .post("/projects/api/work/" + epicId + "/status")
         .then()
         .statusCode(Response.Status.OK.getStatusCode());
   }
@@ -115,9 +114,9 @@ public class EpicMcpToolsTest {
         // Scheduling is a person's (qits-887): the session a browser keeps beside the headers.
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
         .contentType(ContentType.JSON)
-        .body(new EpicController.TransitionEpicRequest("READY_FOR_DEV"))
+        .body(Map.of("target", "READY_FOR_DEV"))
         .when()
-        .post("/projects/api/epics/" + epicId + "/transition")
+        .post("/projects/api/work/" + epicId + "/status")
         .then()
         .statusCode(Response.Status.OK.getStatusCode());
   }
@@ -624,10 +623,10 @@ public class EpicMcpToolsTest {
     // asserts the write and not a serialization shape.
     authenticated()
         .when()
-        .get("/projects/api/tasks/" + taskId)
+        .get("/projects/api/work/" + taskId)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("task.implementedAt", org.hamcrest.Matchers.notNullValue());
+        .body("implementedAt", org.hamcrest.Matchers.notNullValue());
   }
 
   /**
@@ -654,19 +653,19 @@ public class EpicMcpToolsTest {
     String first =
         authenticated()
             .when()
-            .get("/projects/api/tasks/" + taskId)
+            .get("/projects/api/work/" + taskId)
             .then()
             .statusCode(Response.Status.OK.getStatusCode())
-            .body("task.implementingAt", org.hamcrest.Matchers.notNullValue())
-            .body("task.implementedAt", org.hamcrest.Matchers.nullValue())
+            .body("implementingAt", org.hamcrest.Matchers.notNullValue())
+            .body("implementedAt", org.hamcrest.Matchers.nullValue())
             .extract()
-            .path("task.implementingAt");
+            .path("implementingAt");
     authenticated()
         .when()
-        .get("/projects/api/epics/" + epicId)
+        .get("/projects/api/work/" + epicId)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("epic.status", org.hamcrest.Matchers.equalTo("IMPLEMENTING"));
+        .body("status", org.hamcrest.Matchers.equalTo("IMPLEMENTING"));
     call(
         projectId,
         "get_epic",
@@ -684,16 +683,16 @@ public class EpicMcpToolsTest {
         response -> assertFalse(response.isError(), text(response)));
     authenticated()
         .when()
-        .get("/projects/api/tasks/" + taskId)
+        .get("/projects/api/work/" + taskId)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("task.implementingAt", org.hamcrest.Matchers.equalTo(first));
+        .body("implementingAt", org.hamcrest.Matchers.equalTo(first));
     authenticated()
         .when()
-        .get("/projects/api/epics/" + epicId)
+        .get("/projects/api/work/" + epicId)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("epic.status", org.hamcrest.Matchers.equalTo("IMPLEMENTING"));
+        .body("status", org.hamcrest.Matchers.equalTo("IMPLEMENTING"));
   }
 
   /**
@@ -723,18 +722,18 @@ public class EpicMcpToolsTest {
     }
     authenticated()
         .when()
-        .get("/projects/api/tasks/" + skipped)
+        .get("/projects/api/work/" + skipped)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("task.implementedAt", org.hamcrest.Matchers.notNullValue())
-        .body("task.implementingAt", org.hamcrest.Matchers.nullValue());
+        .body("implementedAt", org.hamcrest.Matchers.notNullValue())
+        .body("implementingAt", org.hamcrest.Matchers.nullValue());
     authenticated()
         .when()
-        .get("/projects/api/tasks/" + started)
+        .get("/projects/api/work/" + started)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("task.implementedAt", org.hamcrest.Matchers.notNullValue())
-        .body("task.implementingAt", org.hamcrest.Matchers.notNullValue());
+        .body("implementedAt", org.hamcrest.Matchers.notNullValue())
+        .body("implementingAt", org.hamcrest.Matchers.notNullValue());
   }
 
   /**
@@ -753,11 +752,11 @@ public class EpicMcpToolsTest {
     String qualified =
         authenticated()
             .when()
-            .get("/projects/api/epics/" + epicId)
+            .get("/projects/api/work/" + epicId)
             .then()
             .statusCode(Response.Status.OK.getStatusCode())
             .extract()
-            .path("epic.qualifiedId");
+            .path("qualifiedId");
 
     String[] remark = new String[1];
     call(
@@ -838,11 +837,11 @@ public class EpicMcpToolsTest {
     String qualified =
         authenticated()
             .when()
-            .get("/projects/api/epics/" + epicId)
+            .get("/projects/api/work/" + epicId)
             .then()
             .statusCode(Response.Status.OK.getStatusCode())
             .extract()
-            .path("epic.qualifiedId");
+            .path("qualifiedId");
 
     call(
         projectId,
@@ -881,13 +880,13 @@ public class EpicMcpToolsTest {
     String campaignId =
         authenticated()
             .contentType(ContentType.JSON)
-            .body(Map.of("title", "The order"))
+            .body(Map.of("archetype", "CAMPAIGN", "project", projectId, "title", "The order"))
             .when()
-            .post("/projects/api/projects/" + projectId + "/campaigns")
+            .post("/projects/api/work")
             .then()
-            .statusCode(Response.Status.OK.getStatusCode())
+            .statusCode(Response.Status.CREATED.getStatusCode())
             .extract()
-            .path("campaign.id");
+            .path("id");
     call(
         projectId,
         "block_entity",
@@ -1050,17 +1049,17 @@ public class EpicMcpToolsTest {
         });
 
     authenticated()
-        .get("/projects/api/tasks/" + taskId)
+        .get("/projects/api/work/" + taskId)
         .then()
-        .body("task.status", org.hamcrest.Matchers.equalTo("VERIFIED"));
+        .body("status", org.hamcrest.Matchers.equalTo("VERIFIED"));
     authenticated()
-        .get("/projects/api/tasks/" + siblingId)
+        .get("/projects/api/work/" + siblingId)
         .then()
-        .body("task.status", org.hamcrest.Matchers.equalTo("IMPLEMENTED"));
+        .body("status", org.hamcrest.Matchers.equalTo("IMPLEMENTED"));
     authenticated()
-        .get("/projects/api/epics/" + epicId)
+        .get("/projects/api/work/" + epicId)
         .then()
-        .body("epic.status", org.hamcrest.Matchers.equalTo("READY_FOR_DEV"));
+        .body("status", org.hamcrest.Matchers.equalTo("READY_FOR_DEV"));
     call(
         projectId,
         "get_epic",
@@ -1114,10 +1113,10 @@ public class EpicMcpToolsTest {
 
     authenticated()
         .when()
-        .get("/projects/api/epics/" + epicId)
+        .get("/projects/api/work/" + epicId)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("epic.status", org.hamcrest.Matchers.equalTo("REFINED"));
+        .body("status", org.hamcrest.Matchers.equalTo("REFINED"));
 
     call(
         projectId,
@@ -1148,17 +1147,17 @@ public class EpicMcpToolsTest {
         });
     authenticated()
         .when()
-        .get("/projects/api/epics/" + epicId)
+        .get("/projects/api/work/" + epicId)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
-        .body("epic.status", org.hamcrest.Matchers.equalTo("REFINED"));
+        .body("status", org.hamcrest.Matchers.equalTo("REFINED"));
 
     authenticated()
         .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
         .contentType(ContentType.JSON)
-        .body(new EpicController.TransitionEpicRequest("READY_FOR_DEV"))
+        .body(Map.of("target", "READY_FOR_DEV"))
         .when()
-        .post("/projects/api/epics/" + epicId + "/transition")
+        .post("/projects/api/work/" + epicId + "/status")
         .then()
         .statusCode(Response.Status.OK.getStatusCode());
     call(

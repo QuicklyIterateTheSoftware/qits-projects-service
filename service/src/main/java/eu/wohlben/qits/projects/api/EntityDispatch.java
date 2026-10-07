@@ -23,9 +23,8 @@ import org.jboss.logging.Logger;
 /**
  * <b>The one dispatch path</b> (qits-394): start the phase an entity's status implies, in the
  * workspace on its branch, and record whether the run continues past that phase. Every door that
- * puts an agent on an epic or a ticket comes through {@link #dispatch} — the unified {@code POST
- * /entities/{id}/dispatch} and, until the SPA stops calling them, the two old per-archetype doors,
- * which are thin delegates onto this.
+ * puts an agent on an epic or a ticket comes through {@link #dispatch} — {@code POST
+ * /work/{qualifiedId}/dispatch} through {@link DispatchDoors}, and the MCP tools.
  *
  * <h2>What it is, step by step, and why in this order</h2>
  *
@@ -259,7 +258,7 @@ public class EntityDispatch {
     return new Outcome(recorded, started.phase(), mode, target.repositoryId(), branch, made);
   }
 
-  /** What a press would do now — the read behind {@code GET /entities/{id}/dispatch}. */
+  /** What a press would do now — the read behind {@code GET /work/{qualifiedId}/dispatch}. */
   public EntityDispatchStateDto state(String id) {
     WorkEntity entity = entities.get(id);
     if (entity.archetype == Archetype.CAMPAIGN) {
@@ -377,7 +376,7 @@ public class EntityDispatch {
   /**
    * <b>A campaign is never dispatched onto a workspace</b> (qits-411, kept by qits-417 as a belt): it
    * has no branch, no workspace and no phase prompts — it orders work that is dispatched. Its press
-   * is its start, which {@code EntityDispatchController} branches to before this class is reached;
+   * is its start, which {@code DispatchDoors} branches to before this class is reached;
    * this refusal is what keeps an in-process caller from ever cutting a workspace for one.
    */
   private static void refuseCampaign(WorkEntity entity) {

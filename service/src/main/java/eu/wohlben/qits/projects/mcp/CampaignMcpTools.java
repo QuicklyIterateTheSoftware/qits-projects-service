@@ -1,7 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
 import eu.wohlben.qits.entities.control.Mover;
-import eu.wohlben.qits.entities.api.CampaignController;
+import eu.wohlben.qits.entities.api.CampaignDoors;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
@@ -33,8 +33,8 @@ import java.util.List;
  * <p><b>Use case: an agent builds a campaign's membership and order.</b> It proposes a campaign,
  * gathers the epics and tickets it gathers, orders them, and states each member's condition — what
  * the campaign waits for before dispatching that member. It is a thin layer over {@link
- * CampaignService}: every tool here does exactly what {@code CampaignController} /
- * {@code ProjectCampaignsController} do over HTTP, reusing the same service calls, the same
+ * CampaignService}: every tool here does what the campaign's {@code /work} routes do over
+ * HTTP ({@code WorkMembersController}, {@code WorkProgressController}, {@code POST /work}), reusing the same service calls, the same
  * in-flight default ({@link CampaignInFlight}), the same project binding and the same {@code EPICS}
  * hint on every write — and {@link CampaignViews} renders the identical DTOs both doors answer, so a
  * tool's JSON is byte-for-byte what the REST door would have answered for the same call.
@@ -345,10 +345,10 @@ public class CampaignMcpTools {
               description =
                   "the whole condition: a list of OR'd groups, each a list of AND'd criteria"
                       + " ({id?, kind, predicate}); an empty list means the member waits on nothing")
-          List<CampaignController.ConditionGroup> groups) {
+          List<CampaignDoors.ConditionGroup> groups) {
     requireCampaignInProject(campaignId);
     String projectId = scope.requireProjectId();
-    List<CampaignService.GroupSpec> specs = CampaignController.toGroupSpecs(groups);
+    List<CampaignService.GroupSpec> specs = CampaignDoors.toGroupSpecs(groups);
     CampaignService.Member member =
         campaigns.setCondition(campaignId, membershipId, specs, changedBy());
     announce(projectId);

@@ -190,7 +190,7 @@ public class TicketMcpToolsTest {
         .contentType(ContentType.JSON)
         .body(Map.of("target", "READY_FOR_DEV"))
         .when()
-        .post("/projects/api/entities/" + ticketId + "/status")
+        .post("/projects/api/work/" + ticketId + "/status")
         .then()
         .statusCode(200);
   }
@@ -404,7 +404,7 @@ public class TicketMcpToolsTest {
   private String soleComment(String ticketId, String field) {
     return authenticated()
         .when()
-        .get("/projects/api/tickets/{id}/comments", ticketId)
+        .get("/projects/api/work/{id}/comments", ticketId)
         .then()
         .statusCode(Response.Status.OK.getStatusCode())
         .extract()
@@ -727,7 +727,7 @@ public class TicketMcpToolsTest {
    * this surface's standing rule: an agent that blocked wrongly has to be able to read why and
    * correct itself inside the same turn, where a protocol error ends the call with nothing to act
    * on. The rules themselves — what blocking with no reason costs, and which statuses start no
-   * phase — are pinned at the REST door in {@code TicketApiTest}; what is asserted here is that
+   * phase — are pinned at the REST door in {@code WorkTicketApiTest}; what is asserted here is that
    * they arrive at all, and legibly.
    */
   @Test
@@ -842,7 +842,7 @@ public class TicketMcpToolsTest {
         .contentType(ContentType.JSON)
         .body(Map.of("target", "READY_FOR_DEV"))
         .when()
-        .post("/projects/api/entities/" + ticketId + "/status")
+        .post("/projects/api/work/" + ticketId + "/status")
         .then()
         .statusCode(200);
     assertEquals(0, turns.calls().size(), "scheduling starts nothing on its own");

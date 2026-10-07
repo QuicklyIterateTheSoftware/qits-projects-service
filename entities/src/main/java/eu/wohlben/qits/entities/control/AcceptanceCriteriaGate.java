@@ -52,6 +52,6 @@ public class AcceptanceCriteriaGate implements TransitionGate {
     return Optional.of(
         "it has no acceptance criteria — write them first (acceptanceCriteria: "
             + tool
-            + ", PATCH /entities/{id} or qits work update)");
+            + ", PATCH /work/{qualifiedId} or qits work update)");
   }
 }

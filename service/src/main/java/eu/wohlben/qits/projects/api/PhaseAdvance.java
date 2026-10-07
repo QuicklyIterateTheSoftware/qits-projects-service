@@ -39,9 +39,9 @@ import org.jboss.logging.Logger;
  * release exactly as a flow does. So does the IMPLEMENTED note about a release still standing open,
  * which is context about a release and not a phase started.
  *
- * <p><b>Epics.</b> Both lifecycle archetypes come through here: {@code TicketController} and {@code
- * transition_ticket} for a ticket, {@code EpicController.transition} and {@code transition_epic} for
- * an epic. The phase and its words come from {@link PhasePrompts}, which is archetype-aware; the
+ * <p><b>Epics.</b> Both lifecycle archetypes come through here: {@code POST /work/{qualifiedId}/status}
+ * ({@code WorkEntityDoors.move}) for either, {@code transition_ticket} for a ticket and {@code
+ * transition_epic} for an epic. The phase and its words come from {@link PhasePrompts}, which is archetype-aware; the
  * address from {@link EntityWorkspaces}, which knows both branch shapes. What differs for an epic:
  * it is looked up at the workspaces port by epic id, and its release request is titled "Epic
  * &lt;slug&gt;: …". An epic is blocked as a ticket is (qits-592, {@link EntityBlocks}), and a
@@ -183,10 +183,10 @@ import org.jboss.logging.Logger;
  *
  * <p>It needs {@code domain} — the project, the wrapper and the port — and the entities jar depends on
  * {@code domain} nowhere. The <em>service</em> layer may cross, which is the crossing {@code
- * ProjectTicketsController} already makes, and the package name is where that crossing is declared.
+ * WorkDispatchController} already makes, and the package name is where that crossing is declared.
  * It is {@code public} for one narrow reason: both transition surfaces are outside this package
- * ({@code eu.wohlben.qits.entities.api.TicketController} and {@code
- * eu.wohlben.qits.projects.mcp.TicketMcpTools}, and their epic twins), and the alternative — a copy
+ * ({@code eu.wohlben.qits.entities.api.WorkEntityDoors} and {@code
+ * eu.wohlben.qits.projects.mcp.TicketMcpTools} and its epic twin), and the alternative — a copy
  * per surface — is the drift this class exists to prevent. {@link PhasePrompts} stays package-private and is read
  * from here, which is the whole reason this class is in that package rather than beside either
  * caller.

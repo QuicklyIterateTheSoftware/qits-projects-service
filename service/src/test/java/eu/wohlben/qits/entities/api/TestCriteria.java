@@ -17,13 +17,13 @@ public final class TestCriteria {
 
   private TestCriteria() {}
 
-  /** Gives entity {@code id} {@link #CRITERIA} through {@code PATCH /entities/{id}}; answers the id. */
+  /** Gives entity {@code id} {@link #CRITERIA} through {@code PATCH /work/{id}}; answers the id. */
   public static String give(String id) {
     given()
         .contentType("application/merge-patch+json")
         .body(Map.of("acceptanceCriteria", CRITERIA))
         .when()
-        .patch("/projects/api/entities/" + id)
+        .patch("/projects/api/work/" + id)
         .then()
         .statusCode(200);
     return id;

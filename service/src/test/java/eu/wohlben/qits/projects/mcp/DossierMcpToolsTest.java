@@ -4,6 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkiverse.mcp.server.ToolResponse;
@@ -50,15 +51,7 @@ public class DossierMcpToolsTest {
   }
 
   private String createEpic(String projectId, String title) {
-    return authenticated()
-        .contentType(ContentType.JSON)
-        .body(Map.of("title", title, "description", "A draft."))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .extract()
-        .path("epic.id");
+    return WorkRequests.epic(DossierMcpToolsTest::authenticated, projectId, title);
   }
 
   private static String text(ToolResponse response) {
@@ -202,17 +195,12 @@ public class DossierMcpToolsTest {
   }
 
   private String createTicket(String projectId, String title) {
-    return authenticated()
-        .contentType(ContentType.JSON)
-        .body(
-            Map.of(
-                "title", title, "impetus", "A 500 occurs in the claim loop.", "type", "BUG"))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/tickets")
-        .then()
-        .statusCode(Response.Status.OK.getStatusCode())
-        .extract()
-        .path("ticket.id");
+    return WorkRequests.ticket(
+        DossierMcpToolsTest::authenticated,
+        projectId,
+        title,
+        "BUG",
+        "A 500 occurs in the claim loop.");
   }
 
   /**

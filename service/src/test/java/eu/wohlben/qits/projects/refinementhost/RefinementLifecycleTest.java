@@ -10,6 +10,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
 import eu.wohlben.qits.entities.api.TestCriteria;
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import eu.wohlben.qits.workspacedaemon.protocol.GitStatus;
@@ -59,15 +60,13 @@ public class RefinementLifecycleTest {
 
   private String createEpic(String projectId, String title) {
     return TestCriteria.give(
-            given()
-        .contentType(ContentType.JSON)
-        .body(java.util.Map.of("title", title, "description", "A draft."))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("epic.id"));
+            WorkRequests.create(
+                WorkRequests.map(
+                    "archetype", "EPIC",
+                    "project", projectId,
+                    "title", title,
+                    "description", "A draft."))
+            .path("id"));
   }
 
   private io.restassured.response.Response open(String epicId) {
@@ -75,7 +74,7 @@ public class RefinementLifecycleTest {
         .contentType(ContentType.JSON)
         .body(java.util.Map.of())
         .when()
-        .post("/projects/api/entities/" + epicId + "/refinement");
+        .post("/projects/api/work/" + epicId + "/refinement");
   }
 
   private void awaitStatus(long id, String expected) {
@@ -131,7 +130,7 @@ public class RefinementLifecycleTest {
         .contentType(ContentType.JSON)
         .body(java.util.Map.of("target", "REFINED"))
         .when()
-        .post("/projects/api/epics/" + epicId + "/transition")
+        .post("/projects/api/work/" + epicId + "/status")
         .then()
         .statusCode(200);
 
@@ -188,7 +187,7 @@ public class RefinementLifecycleTest {
         .contentType(ContentType.JSON)
         .body(java.util.Map.of("blocked", true, "reason", "the owner has to decide the scope"))
         .when()
-        .post("/projects/api/entities/" + epicId + "/blocked")
+        .post("/projects/api/work/" + epicId + "/blocked")
         .then()
         .statusCode(200);
 

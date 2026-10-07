@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.api.ProjectController;
 import eu.wohlben.qits.projects.api.ProjectRequests;
 import io.quarkus.test.junit.QuarkusTest;
@@ -48,15 +49,13 @@ public class RefinementDriftTest {
   }
 
   private String createEpic(String projectId, String title) {
-    return given()
-        .contentType(ContentType.JSON)
-        .body(java.util.Map.of("title", title, "description", "A draft."))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/epics")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("epic.id");
+    return WorkRequests.create(
+                WorkRequests.map(
+                    "archetype", "EPIC",
+                    "project", projectId,
+                    "title", title,
+                    "description", "A draft."))
+            .path("id");
   }
 
   private long open(String epicId) {
@@ -65,7 +64,7 @@ public class RefinementDriftTest {
             .contentType(ContentType.JSON)
             .body(java.util.Map.of())
             .when()
-            .post("/projects/api/entities/" + epicId + "/refinement")
+            .post("/projects/api/work/" + epicId + "/refinement")
             .then()
             .statusCode(200)
             .extract()

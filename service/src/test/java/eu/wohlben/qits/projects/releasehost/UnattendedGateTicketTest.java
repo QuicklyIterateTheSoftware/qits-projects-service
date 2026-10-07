@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
-import eu.wohlben.qits.entities.api.EntityPatchController;
+import eu.wohlben.qits.entities.api.WorkEntityDoors;
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
 import eu.wohlben.qits.projects.control.BuildStatusLedger;
@@ -48,7 +48,7 @@ import org.junit.jupiter.api.Test;
  * <p>This drives the shipped adapter rather than a recording double, on purpose: what is actually
  * under test is the crossing between {@code domain}'s gate and the {@code entities} ticket store, which
  * a double would replace with the thing that cannot go wrong. The tickets are then read back over
- * the ordinary ticket API, because that is what a person's browser reads.
+ * the ordinary {@code /work} API, because that is what a person's browser reads.
  *
  * <p>Every request here is created with an explicit {@code requester}, which is the whole subject:
  * {@code dev-qits-maintenance} is the platform's bump robot and nobody watches what it asks
@@ -148,19 +148,19 @@ public class UnattendedGateTicketTest {
         request(id).getBoolean("unattended"),
         "a machine asked, so nobody is waiting on this");
 
-    var ticket = given().get("/projects/api/tickets/" + ticketId).then().statusCode(200).extract();
+    var ticket = given().get("/projects/api/work/" + ticketId).then().statusCode(200).extract();
     assertEquals(
         "MAINTENANCE",
-        ticket.path("ticket.type"),
+        ticket.path("ticketType"),
         "the platform filed it, and the type is what lets the platform close it again");
-    assertEquals("REPORTED", ticket.path("ticket.status"));
+    assertEquals("REPORTED", ticket.path("status"));
     assertTrue(
-        ((String) ticket.path("ticket.impetus")).contains(REPO_NAME),
+        ((String) ticket.path("impetus")).contains(REPO_NAME),
         "the impetus says in one sentence what occurs");
-    assertNull(ticket.path("ticket.assignee"), "nobody was watching; nobody is assigned either");
-    assertEquals("qits-projects", ticket.path("ticket.createdBy"), "this service is what noticed");
+    assertNull(ticket.path("assignee"), "nobody was watching; nobody is assigned either");
+    assertEquals("qits-projects", ticket.path("createdBy"), "this service is what noticed");
 
-    String body = ticket.path("ticket.description");
+    String body = ticket.path("description");
     assertTrue(body.contains(REPO_NAME), body);
     assertTrue(body.contains("maintenance/dependencies"), body);
     assertTrue(body.contains(merged), "the ticket names the fold that was gated");
@@ -256,7 +256,7 @@ public class UnattendedGateTicketTest {
       given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
           .body("{\"target\":\"" + target + "\"}")
-          .post("/projects/api/tickets/" + first + "/transition")
+          .post("/projects/api/work/" + first + "/status")
           .then()
           .statusCode(200);
     }
@@ -297,12 +297,12 @@ public class UnattendedGateTicketTest {
     given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
         .body("{\"target\":\"DROPPED\"}")
-        .post("/projects/api/tickets/" + first + "/transition")
+        .post("/projects/api/work/" + first + "/status")
         .then()
         .statusCode(200);
     assertEquals(
         "DROPPED",
-        given().get("/projects/api/tickets/" + first).then().extract().path("ticket.status"),
+        given().get("/projects/api/work/" + first).then().extract().path("status"),
         "the drop has to have been stored, or the probe below is answering about an open ticket");
 
     headMoved("maintenance/dependencies");
@@ -484,9 +484,9 @@ public class UnattendedGateTicketTest {
     awaitState(id, "REJECTED");
     String ticketId = awaitTicketOn(id);
     given()
-        .contentType(EntityPatchController.MERGE_PATCH_JSON)
+        .contentType(WorkEntityDoors.MERGE_PATCH_JSON)
         .body(Map.of("ticketType", "BUG"))
-        .patch("/projects/api/entities/" + ticketId)
+        .patch("/projects/api/work/" + ticketId)
         .then()
         .statusCode(200);
 
@@ -515,7 +515,7 @@ public class UnattendedGateTicketTest {
         given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
             .contentType(ContentType.JSON)
             .body("{\"target\":\"" + target + "\"}")
-            .post("/projects/api/tickets/" + ticketId + "/transition")
+            .post("/projects/api/work/" + ticketId + "/status")
             .then()
             .statusCode(200);
       }
@@ -654,7 +654,7 @@ public class UnattendedGateTicketTest {
   }
 
   private String statusOf(String ticketId) {
-    return given().get("/projects/api/tickets/" + ticketId).then().extract().path("ticket.status");
+    return given().get("/projects/api/work/" + ticketId).then().extract().path("status");
   }
 
   private void awaitStatus(String ticketId, String expected) {
@@ -778,17 +778,17 @@ public class UnattendedGateTicketTest {
 
   private List<String> ticketsOnProject() {
     return given()
-        .get("/projects/api/projects/" + projectId + "/tickets")
+        .get("/projects/api/projects/" + projectId + "/work?archetype=TICKET")
         .then()
         .statusCode(200)
         .extract()
         .jsonPath()
-        .getList("entries.ticket.id", String.class);
+        .getList("entities.id", String.class);
   }
 
   private List<String> commentBodies(String ticketId) {
     return given()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .extract()

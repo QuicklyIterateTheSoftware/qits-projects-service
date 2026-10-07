@@ -44,7 +44,7 @@ import org.junit.jupiter.api.TestMethodOrder;
  * A structural change — the epic's title or description, and any feature or task create, update or
  * delete — needs the epic at {@code REPORTED}; the implemented markers need it at {@code
  * READY_FOR_DEV} or {@code IMPLEMENTING} — which is why the owner's own press schedules the epic
- * before the engineer ever reaches for a marker. So the same {@code PUT /tasks/{id}} is refused
+ * before the engineer ever reaches for a marker. So the same {@code PATCH /work/{id}} is refused
  * before the freeze and accepted after the scope is frozen and scheduled, depending on which field
  * it carries, and the two stories below are exactly those two sides. Two gates stand in front of
  * the freeze and the schedule: {@code ACCEPTANCE_CRITERIA} (an epic needs criteria to enter
@@ -140,26 +140,31 @@ public class EpicPlanningIT {
             .contentType(ContentType.JSON)
             .body(
                 Map.of(
+                    "archetype",
+                    "EPIC",
+                    "project",
+                    projectId,
                     "title",
                     "Checkout hardening",
                     "description",
                     "Make the checkout path survive a payment provider outage."))
             .when()
-            .post(StoryTarget.projectEpicsPath(projectId))
+            .post(StoryTarget.WORK_PATH)
             .then()
-            .statusCode(200)
+            .statusCode(201)
             .extract()
             .jsonPath();
-    epicId = epic.getString("epic.id");
+    epicId = epic.getString("id");
     assertNotNull(epicId);
-    assertEquals("REPORTED", epic.getString("epic.status"), "a new epic is a draft, always");
+    assertEquals("EPIC", epic.getString("archetype"));
+    assertEquals("REPORTED", epic.getString("status"), "a new epic is a draft, always");
     // startsWith rather than equals: a slug is unique within its project and takes the next free
     // -2, -3, … on a collision, so pinning the exact string would make this story a statement
     // about what else is in the database rather than about how a slug is minted.
     assertTrue(
-        epic.getString("epic.slug").startsWith("checkout-hardening"),
+        epic.getString("slug").startsWith("checkout-hardening"),
         "the slug is minted from the title at create and never changes — branches are cut from it");
-    assertNull(epic.getString("epic.supersededByEpicId"));
+    assertNull(epic.getString("supersededBy"));
     story.note("a product owner proposes an epic; it starts as a draft").as("epic-proposed");
 
     JsonPath feature =
@@ -172,14 +177,15 @@ public class EpicPlanningIT {
                     "description",
                     "Hold a checkout through a provider that is briefly unreachable."))
             .when()
-            .post(StoryTarget.epicFeaturesPath(epicId))
+            .post(StoryTarget.workChildrenPath(epicId))
             .then()
-            .statusCode(200)
+            .statusCode(201)
             .extract()
             .jsonPath();
-    featureId = feature.getString("feature.id");
+    featureId = feature.getString("id");
     assertNotNull(featureId);
-    assertEquals(epicId, feature.getString("feature.epicId"));
+    assertEquals("FEATURE", feature.getString("archetype"), "an epic's child is a feature");
+    assertEquals(epicId, feature.getString("parent"));
 
     JsonPath task =
         StoryIdentities.person(given(), OWNER_USER)
@@ -193,18 +199,19 @@ public class EpicPlanningIT {
                     "description",
                     "A timeout is about the moment; a declined card is about the request."))
             .when()
-            .post(StoryTarget.featureTasksPath(featureId))
+            .post(StoryTarget.workChildrenPath(featureId))
             .then()
-            .statusCode(200)
+            .statusCode(201)
             .extract()
             .jsonPath();
-    taskId = task.getString("task.id");
+    taskId = task.getString("id");
     assertNotNull(taskId);
+    assertEquals("TASK", task.getString("archetype"), "a feature's child is a task");
     assertEquals(
         StoryPlatform.componentRepositoryId(),
-        task.getString("task.repositoryId"),
+        task.getString("repositoryId"),
         "a task names the repository the work happens in, and it must be in this project");
-    assertNull(task.getString("task.implementedAt"), "nothing is done yet");
+    assertNull(task.getString("implementedAt"), "nothing is done yet");
     story
         .note("…a feature under it, and a task bound to one of the project's own repositories")
         .as("scope-drafted");
@@ -215,7 +222,7 @@ public class EpicPlanningIT {
         .contentType("application/merge-patch+json")
         .body(Map.of("acceptanceCriteria", List.of("The checkout completes without losing the cart.")))
         .when()
-        .patch(StoryTarget.entityPath(epicId))
+        .patch(StoryTarget.workPath(epicId))
         .then()
         .statusCode(200);
     story.note("the owner gives the epic acceptance criteria").as("criteria-given");
@@ -225,14 +232,14 @@ public class EpicPlanningIT {
             .contentType(ContentType.JSON)
             .body(Map.of("target", "REFINED"))
             .when()
-            .post(StoryTarget.epicTransitionPath(epicId))
+            .post(StoryTarget.workStatusPath(epicId))
             .then()
             .statusCode(200)
             .extract()
             .jsonPath();
-    assertEquals("REFINED", frozen.getString("epic.status"));
+    assertEquals("REFINED", frozen.getString("status"));
     assertNull(
-        frozen.getMap("successor"),
+        frozen.getString("supersededBy"),
         "only a supersede spawns a successor draft; a freeze spawns nothing");
     story.note("the scope is frozen: the epic moves to REFINED").as("scope-frozen");
 
@@ -242,7 +249,7 @@ public class EpicPlanningIT {
         .contentType(ContentType.JSON)
         .body(Map.of("title", "A feature nobody may add now"))
         .when()
-        .post(StoryTarget.epicFeaturesPath(epicId))
+        .post(StoryTarget.workChildrenPath(epicId))
         .then()
         .statusCode(409);
     story
@@ -259,12 +266,12 @@ public class EpicPlanningIT {
             .contentType(ContentType.JSON)
             .body(Map.of("target", "READY_FOR_DEV"))
             .when()
-            .post(StoryTarget.epicTransitionPath(epicId))
+            .post(StoryTarget.workStatusPath(epicId))
             .then()
             .statusCode(200)
             .extract()
             .jsonPath();
-    assertEquals("READY_FOR_DEV", scheduled.getString("epic.status"));
+    assertEquals("READY_FOR_DEV", scheduled.getString("status"));
     story
         .note("the owner schedules the epic for development: it moves to READY_FOR_DEV")
         .as("epic-scheduled");
@@ -276,8 +283,8 @@ public class EpicPlanningIT {
   @UserStoryDescription(
       """
       With the scope frozen and the epic scheduled — a person already moved it to READY_FOR_DEV —
-      the implemented markers open: the mirror image of the freeze, and on the very same route: PUT
-      /tasks/{id} carrying implementedAt is accepted where the same route carrying a title is
+      the implemented markers open: the mirror image of the freeze, and on the very same route: PATCH
+      /work/{id} carrying implementedAt is accepted where the same route carrying a title is
       refused, because the guard is per field. An engineer marks the task done and then its
       feature, and "done" for the epic is derived from exactly that rather than stored, so no fifth
       status can disagree with it. The audit subtree is then read back to see who did it: every row
@@ -292,10 +299,10 @@ public class EpicPlanningIT {
 
     // The refusal first, so the contrast is in one story: the SAME route, a different field.
     StoryIdentities.person(given(), ENGINEER_USER)
-        .contentType(ContentType.JSON)
+        .contentType("application/merge-patch+json")
         .body(Map.of("title", "A title nobody may change now"))
         .when()
-        .put(StoryTarget.taskPath(taskId))
+        .patch(StoryTarget.workPath(taskId))
         .then()
         .statusCode(409);
     story
@@ -304,30 +311,30 @@ public class EpicPlanningIT {
 
     JsonPath done =
         StoryIdentities.person(given(), ENGINEER_USER)
-            .contentType(ContentType.JSON)
+            .contentType("application/merge-patch+json")
             .body(Map.of("implementedAt", IMPLEMENTED_AT))
             .when()
-            .put(StoryTarget.taskPath(taskId))
+            .patch(StoryTarget.workPath(taskId))
             .then()
             .statusCode(200)
             .extract()
             .jsonPath();
     assertNotNull(
-        done.getString("task.implementedAt"),
+        done.getString("implementedAt"),
         "the same route, the marker field, accepted — the guard is per field");
     story.note("marking the task implemented is accepted on that same route").as("task-implemented");
 
     JsonPath shipped =
         StoryIdentities.person(given(), ENGINEER_USER)
-            .contentType(ContentType.JSON)
-            .body(Map.of("implementedOn", IMPLEMENTED_AT))
+            .contentType("application/merge-patch+json")
+            .body(Map.of("implementedAt", IMPLEMENTED_AT))
             .when()
-            .put(StoryTarget.featurePath(featureId))
+            .patch(StoryTarget.workPath(featureId))
             .then()
             .statusCode(200)
             .extract()
             .jsonPath();
-    assertNotNull(shipped.getString("feature.implementedOn"));
+    assertNotNull(shipped.getString("implementedAt"));
     story
         .note("and its feature is shipped — which is what makes the epic derivably done")
         .as("feature-shipped");
@@ -337,7 +344,7 @@ public class EpicPlanningIT {
     List<Map<String, Object>> audit =
         StoryIdentities.person(given(), ENGINEER_USER)
             .when()
-            .get(StoryTarget.epicAuditPath(epicId))
+            .get(StoryTarget.workAuditPath(epicId))
             .then()
             .statusCode(200)
             .extract()
@@ -380,35 +387,28 @@ public class EpicPlanningIT {
         NetworkEdge.HTTP,
         PRODUCT_OWNER,
         StoryTarget.SERVICE,
-        "PATCH " + StoryTarget.entityPath("{id}") + " -> 200");
+        "PATCH " + StoryTarget.workPath("{id}") + " -> 200");
     ReportAssertions.assertEdge(
         CATEGORY,
         PROPOSED_SLUG,
         NetworkEdge.HTTP,
         PRODUCT_OWNER,
         StoryTarget.SERVICE,
-        "POST " + StoryTarget.projectEpicsPath("{id}") + " -> 200");
+        "POST " + StoryTarget.WORK_PATH + " -> 201");
     ReportAssertions.assertEdge(
         CATEGORY,
         PROPOSED_SLUG,
         NetworkEdge.HTTP,
         PRODUCT_OWNER,
         StoryTarget.SERVICE,
-        "POST " + StoryTarget.epicFeaturesPath("{id}") + " -> 200");
+        "POST " + StoryTarget.workChildrenPath("{id}") + " -> 201");
     ReportAssertions.assertEdge(
         CATEGORY,
         PROPOSED_SLUG,
         NetworkEdge.HTTP,
         PRODUCT_OWNER,
         StoryTarget.SERVICE,
-        "POST " + StoryTarget.featureTasksPath("{id}") + " -> 200");
-    ReportAssertions.assertEdge(
-        CATEGORY,
-        PROPOSED_SLUG,
-        NetworkEdge.HTTP,
-        PRODUCT_OWNER,
-        StoryTarget.SERVICE,
-        "POST " + StoryTarget.epicTransitionPath("{id}") + " -> 200");
+        "POST " + StoryTarget.workStatusPath("{id}") + " -> 200");
     // The refused write is its own arrow: same route, same actor, a different answer.
     ReportAssertions.assertEdge(
         CATEGORY,
@@ -416,7 +416,7 @@ public class EpicPlanningIT {
         NetworkEdge.HTTP,
         PRODUCT_OWNER,
         StoryTarget.SERVICE,
-        "POST " + StoryTarget.epicFeaturesPath("{id}") + " -> 409");
+        "POST " + StoryTarget.workChildrenPath("{id}") + " -> 409");
     // The claim: shaping a plan reaches nothing. One initiator, and no git host on the path — the
     // whole planning surface is rows in this service's own epics database.
     ReportAssertions.assertOnlyEdgesFrom(CATEGORY, PROPOSED_SLUG, List.of(PRODUCT_OWNER));
@@ -435,29 +435,25 @@ public class EpicPlanningIT {
         NetworkEdge.HTTP,
         ENGINEER,
         StoryTarget.SERVICE,
-        "PUT " + StoryTarget.taskPath("{id}") + " -> 409");
+        "PATCH " + StoryTarget.workPath("{id}") + " -> 409");
+    // The task's marker and the feature's ride the same route and answer alike, so they draw one
+    // arrow: the door is the entity's, not the archetype's.
     ReportAssertions.assertEdge(
         CATEGORY,
         IMPLEMENTED_SLUG,
         NetworkEdge.HTTP,
         ENGINEER,
         StoryTarget.SERVICE,
-        "PUT " + StoryTarget.taskPath("{id}") + " -> 200");
+        "PATCH " + StoryTarget.workPath("{id}") + " -> 200");
     ReportAssertions.assertEdge(
         CATEGORY,
         IMPLEMENTED_SLUG,
         NetworkEdge.HTTP,
         ENGINEER,
         StoryTarget.SERVICE,
-        "PUT " + StoryTarget.featurePath("{id}") + " -> 200");
-    ReportAssertions.assertEdge(
-        CATEGORY,
-        IMPLEMENTED_SLUG,
-        NetworkEdge.HTTP,
-        ENGINEER,
-        StoryTarget.SERVICE,
-        "GET " + StoryTarget.epicAuditPath("{id}") + " -> 200");
-    ReportAssertions.assertEdgeCount(CATEGORY, IMPLEMENTED_SLUG, 4);
+        "GET " + StoryTarget.workAuditPath("{id}") + " -> 200");
+    // Four requests, three arrows: the task's marker and the feature's are one edge (see above).
+    ReportAssertions.assertEdgeCount(CATEGORY, IMPLEMENTED_SLUG, 3);
     ReportAssertions.assertOnlyEdgesFrom(CATEGORY, IMPLEMENTED_SLUG, List.of(ENGINEER));
     ReportAssertions.assertNoEdgesTo(CATEGORY, IMPLEMENTED_SLUG, StoryGitHost.SERVICE_NAME);
   }

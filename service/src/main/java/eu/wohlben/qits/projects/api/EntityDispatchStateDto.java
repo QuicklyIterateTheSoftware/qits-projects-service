@@ -2,7 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 /**
  * What a dispatch press on this entity would do now — the answer to {@code GET
- * /projects/api/entities/{id}/dispatch}, wrapped as {@code {"state": …}}. It is how the SPA learns
+ * /projects/api/work/{qualifiedId}/dispatch}, wrapped as {@code {"state": …}}. It is how the SPA learns
  * the status→phase rule without re-implementing it: the server owns {@code PhasePrompts.phaseOf} and
  * this is its answer for one row.
  *

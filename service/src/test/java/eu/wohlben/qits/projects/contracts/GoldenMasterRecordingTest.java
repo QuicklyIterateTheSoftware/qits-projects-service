@@ -89,22 +89,6 @@ class GoldenMasterRecordingTest {
     }
   }
 
-  /** The generic entity operations whose {@code /work} twin is recorded beside them. */
-  private static final Map<String, String> WORK_TWINS =
-      Map.ofEntries(
-          Map.entry("getEntity", "getWork"),
-          Map.entry("listEntityComments", "listWorkComments"),
-          Map.entry("listProjectEntities", "listProjectWork"),
-          Map.entry("listArchetypes", "listWorkArchetypes"),
-          Map.entry("moveEntityStatus", "setWorkStatus"),
-          // The work sub-resources (qits-970): a campaign's members, both dossier halves, the
-          // epic's figures and the dispatch press.
-          Map.entry("getCampaign", "listWorkMembers"),
-          Map.entry("listEpicDossierPages", "listWorkDossier"),
-          Map.entry("listTicketDossierPages", "listWorkDossier"),
-          Map.entry("listEpicDossierAssets", "listWorkDossierAssets"),
-          Map.entry("dispatchEntity", "dispatchWork"));
-
   /**
    * The whole state of {@link ProviderStates#A_REPORTED_TICKET}'s ticket, restated with a new title
    * and description — the body of a PUT, and an entry of the bulk transition.
@@ -119,16 +103,6 @@ class GoldenMasterRecordingTest {
           + "\"impetus\":\"A new container fails its migration at boot: the database refuses the"
           + " connection.\","
           + "\"acceptanceCriteria\":[\"It does what it says.\"]}";
-
-  // Declared before INTERACTIONS, whose initializer reads them through workPath.
-
-  /** {@code GET /campaigns/{<name>Id}}, the campaign's read the members twin replaces. */
-  private static final Pattern CAMPAIGN_READ =
-      Pattern.compile("/projects/api/campaigns/\\{([A-Za-z]+)Id}");
-
-  /** A per-archetype dossier half or the epic's figures, under the entity's id param. */
-  private static final Pattern DOSSIER =
-      Pattern.compile("/projects/api/(?:epics|tickets)/\\{[A-Za-z]+}/(dossier|dossier-assets)");
 
   static final List<Interaction> INTERACTIONS =
       withWorkFamily(
@@ -171,9 +145,9 @@ class GoldenMasterRecordingTest {
               "$.entries:repository.name"),
           new Interaction(
               ProviderStates.TWO_PROJECTS_EXIST,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
@@ -219,147 +193,147 @@ class GoldenMasterRecordingTest {
           // order (roots oldest first) is the provider's own and is fixed by the seed order.
           new Interaction(
               ProviderStates.A_PROJECT_WITH_REFINED_WORK,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_PROJECT_WITH_WORK_IN_EVERY_STATUS,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.AN_EPIC_WITH_FEATURES_AND_TASKS,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.AN_EPIC_WITH_TASKS_IN_EVERY_STATUS,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS,
-              "getCampaign",
+              "listWorkMembers",
               "GET",
-              "/projects/api/campaigns/{campaignId}",
+              "/projects/api/work/{campaignQualifiedId}/members",
               200,
               null,
               null),
           // The landing app's card screenshots: one state per card case no other state covers.
           new Interaction(
               ProviderStates.A_TICKET_OF_EVERY_TYPE,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_VERIFIED_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_DONE_EPIC_WITH_EVERY_TASK_IMPLEMENTED,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           // The params name every member, so both answers freeze an entity to the same id.
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_WORK_IN_EVERY_PHASE,
-              "getCampaign",
+              "listWorkMembers",
               "GET",
-              "/projects/api/campaigns/{campaignId}",
+              "/projects/api/work/{campaignQualifiedId}/members",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "getCampaign",
+              "listWorkMembers",
               "GET",
-              "/projects/api/campaigns/{campaignId}",
+              "/projects/api/work/{campaignQualifiedId}/members",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "getEntity",
+              "getWork",
               "GET",
-              "/projects/api/entities/{qualifiedId}",
+              "/projects/api/work/{qualifiedId}",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC,
-              "listEntityComments",
+              "listWorkComments",
               "GET",
-              "/projects/api/entities/{qualifiedId}/comments",
+              "/projects/api/work/{qualifiedId}/comments",
               200,
               null,
               null),
@@ -367,52 +341,33 @@ class GoldenMasterRecordingTest {
           // campaign is its own state over the same seed and params (same frozen ids).
           new Interaction(
               ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.AN_EPIC_IN_TWO_CAMPAIGNS,
-              "getCampaign",
+              "listWorkMembers",
               "GET",
-              "/projects/api/campaigns/{firstCampaignId}",
+              "/projects/api/work/{firstCampaignQualifiedId}/members",
               200,
               null,
               null),
           new Interaction(
               ProviderStates.THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS,
-              "getCampaign",
+              "listWorkMembers",
               "GET",
-              "/projects/api/campaigns/{secondCampaignId}",
+              "/projects/api/work/{secondCampaignQualifiedId}/members",
               200,
               null,
               null),
-          // Writes: the body is recorded with the answer, and a consumer's pact sends the same.
-          new Interaction(
-              ProviderStates.A_VERIFIED_EPIC,
-              "transitionEpic",
-              "POST",
-              "/projects/api/epics/{epicId}/transition",
-              200,
-              null,
-              null,
-              "{\"target\":\"DONE\"}"),
-          new Interaction(
-              ProviderStates.A_VERIFIED_TICKET,
-              "transitionTicket",
-              "POST",
-              "/projects/api/tickets/{ticketId}/transition",
-              200,
-              null,
-              null,
-              "{\"target\":\"DONE\"}"),
           new Interaction(
               ProviderStates.A_PROJECT_WITH_NO_WORK,
-              "listProjectEntities",
+              "listProjectWork",
               "GET",
-              "/projects/api/projects/{projectId}/entities",
+              "/projects/api/projects/{projectId}/work",
               200,
               null,
               null),
@@ -460,29 +415,13 @@ class GoldenMasterRecordingTest {
               null))));
 
   /**
-   * The work family ({@code /projects/api/work}, qits-969, epic qits-965): every generic entity read
-   * and move the table already records gets its {@code /work} twin in the same state — {@link
-   * #WORK_TWINS} — addressed by the qualified id wherever the original was addressed by a ticket's
-   * or an epic's UUID, so a consumer moving onto {@code /work} finds every state it used; and the
-   * family's own writes and thread operations are recorded once each.
+   * The work family's own writes and thread operations ({@code /projects/api/work}, qits-969, epic
+   * qits-965), recorded once each. Since qits-976 the work-entity surface is this family alone: the
+   * per-archetype and {@code /entities} operations this table once recorded beside their {@code
+   * /work} twins are deleted, and only the twins remain.
    */
   private static List<Interaction> withWorkFamily(List<Interaction> base) {
     List<Interaction> all = new ArrayList<>(base);
-    for (Interaction original : base) {
-      String twin = WORK_TWINS.get(original.operationId());
-      if (twin != null) {
-        all.add(
-            new Interaction(
-                original.state(),
-                twin,
-                original.method(),
-                workPath(original.path()),
-                original.status(),
-                original.listFilteredTo(),
-                original.sortedBy(),
-                original.requestBody()));
-      }
-    }
     all.add(
         read(
             ProviderStates.THE_ARCHETYPE_REGISTRY,
@@ -566,9 +505,8 @@ class GoldenMasterRecordingTest {
    * The work family's sub-resources (qits-970): every operation recorded once at least — the
    * dossier's reads and writes (a ticket's, writable at every status; pages by slug), the epic's
    * figures, the children, the history, a campaign's progress and membership writes, the dispatch
-   * read, the workspaces, the refinement room and the delete. The twins of the routes they replace are {@link
-   * #WORK_TWINS}'. {@code getWorkDossierAssetContent} serves bytes and has no golden master, as
-   * {@code getDossierAssetContent} has none.
+   * read, the workspaces, the refinement room and the delete. {@code getWorkDossierAssetContent}
+   * serves bytes and has no golden master.
    */
   private static List<Interaction> withWorkSubresources(List<Interaction> base) {
     List<Interaction> all = new ArrayList<>(base);
@@ -748,26 +686,6 @@ class GoldenMasterRecordingTest {
     return List.copyOf(all);
   }
 
-  /**
-   * An entity route's {@code /work} address: the archetype registry and a project's listing move
-   * under {@code work}, and an entity addressed by a ticket's or an epic's UUID is addressed by its
-   * qualified id — every state recording one returns it as {@code qualifiedId}.
-   */
-  private static String workPath(String path) {
-    // A campaign's read becomes its members, by the campaign's qualified id ({campaignId} →
-    // {campaignQualifiedId}); a dossier half and the epic's figures move under the entity the
-    // state focuses on, which is its {qualifiedId}.
-    Matcher campaign = CAMPAIGN_READ.matcher(path);
-    if (campaign.matches()) {
-      return "/projects/api/work/{" + campaign.group(1) + "QualifiedId}/members";
-    }
-    path = DOSSIER.matcher(path).replaceFirst("/projects/api/work/{qualifiedId}/$1");
-    return path.replace("/projects/api/projects/{projectId}/entities", "/projects/api/projects/{projectId}/work")
-        .replace("/projects/api/entities/{ticketId}", "/projects/api/work/{qualifiedId}")
-        .replace("/projects/api/entities/{epicId}", "/projects/api/work/{qualifiedId}")
-        .replace("/projects/api/entities/", "/projects/api/work/");
-  }
-
   private static Interaction write(
       String state, String operationId, String method, String path, String body) {
     return new Interaction(state, operationId, method, path, 200, null, null, body);
@@ -797,11 +715,9 @@ class GoldenMasterRecordingTest {
     List<Interaction> all = new ArrayList<>(base);
     ProviderStates.IN_DETAIL.forEach(
         (state, focus) -> {
-          all.add(read(state, "getEntity", "/projects/api/entities/{qualifiedId}"));
-          all.add(
-              read(state, "listEntityComments", "/projects/api/entities/{qualifiedId}/comments"));
-          all.add(
-              read(state, "listProjectEntities", "/projects/api/projects/{projectId}/entities"));
+          all.add(read(state, "getWork", "/projects/api/work/{qualifiedId}"));
+          all.add(read(state, "listWorkComments", "/projects/api/work/{qualifiedId}/comments"));
+          all.add(read(state, "listProjectWork", "/projects/api/projects/{projectId}/work"));
         });
     for (String member :
         List.of(
@@ -809,33 +725,21 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_BUG_TICKET_IN_DETAIL,
             ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL,
             ProviderStates.A_CAMPAIGN_IN_DETAIL)) {
-      all.add(read(member, "getCampaign", "/projects/api/campaigns/{campaignId}"));
+      all.add(read(member, "listWorkMembers", "/projects/api/work/{campaignQualifiedId}/members"));
+    }
+    for (String owner :
+        List.of(
+            ProviderStates.AN_EPIC_IN_DETAIL,
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL,
+            ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL)) {
+      all.add(read(owner, "listWorkDossier", "/projects/api/work/{qualifiedId}/dossier"));
     }
     all.add(
         read(
             ProviderStates.AN_EPIC_IN_DETAIL,
-            "listEpicDossierPages",
-            "/projects/api/epics/{epicId}/dossier"));
-    all.add(
-        read(
-            ProviderStates.AN_EPIC_IN_DETAIL,
-            "listEpicDossierAssets",
-            "/projects/api/epics/{epicId}/dossier-assets"));
-    all.add(
-        read(
-            ProviderStates.A_BUG_TICKET_IN_DETAIL,
-            "listTicketDossierPages",
-            "/projects/api/tickets/{bugTicketId}/dossier"));
-    all.add(
-        read(
-            ProviderStates.AN_IMPROVEMENT_TICKET_IN_DETAIL,
-            "listTicketDossierPages",
-            "/projects/api/tickets/{improvementTicketId}/dossier"));
-    all.add(
-        read(
-            ProviderStates.A_MAINTENANCE_TICKET_IN_DETAIL,
-            "listTicketDossierPages",
-            "/projects/api/tickets/{maintenanceTicketId}/dossier"));
+            "listWorkDossierAssets",
+            "/projects/api/work/{qualifiedId}/dossier-assets"));
     return List.copyOf(all);
   }
 
@@ -848,46 +752,46 @@ class GoldenMasterRecordingTest {
     all.add(
         new Interaction(
             ProviderStates.THE_ARCHETYPE_REGISTRY,
-            "listArchetypes",
+            "listWorkArchetypes",
             "GET",
-            "/projects/api/entities/archetypes",
+            "/projects/api/work/archetypes",
             200,
             null,
             null));
-    moves(all, ProviderStates.TICKET_IN_STATUS, "ticketId");
-    moves(all, ProviderStates.EPIC_IN_STATUS, "epicId");
-    all.add(dispatch(ProviderStates.AN_IMPLEMENTED_TICKET, "ticketId", "PHASE"));
+    moves(all, ProviderStates.TICKET_IN_STATUS);
+    moves(all, ProviderStates.EPIC_IN_STATUS);
+    all.add(dispatch(ProviderStates.AN_IMPLEMENTED_TICKET, "PHASE"));
     // qits-887: implement runs from READY_FOR_DEV; a REFINED entity waits for a person to schedule
     // it, and its press is the 409 that says so.
-    all.add(dispatch(ProviderStates.A_REFINED_TICKET, "ticketId", "FLOW", 409));
-    all.add(dispatch(ProviderStates.A_READY_FOR_DEV_TICKET, "ticketId", "FLOW"));
-    all.add(dispatch(ProviderStates.A_REPORTED_EPIC, "epicId", "PHASE"));
-    all.add(dispatch(ProviderStates.A_REFINED_EPIC, "epicId", "FLOW", 409));
-    all.add(dispatch(ProviderStates.A_READY_FOR_DEV_EPIC, "epicId", "FLOW"));
+    all.add(dispatch(ProviderStates.A_REFINED_TICKET, "FLOW", 409));
+    all.add(dispatch(ProviderStates.A_READY_FOR_DEV_TICKET, "FLOW"));
+    all.add(dispatch(ProviderStates.A_REPORTED_EPIC, "PHASE"));
+    all.add(dispatch(ProviderStates.A_REFINED_EPIC, "FLOW", 409));
+    all.add(dispatch(ProviderStates.A_READY_FOR_DEV_EPIC, "FLOW"));
     all.add(
         new Interaction(
             ProviderStates.AN_IMPLEMENTED_TICKET,
-            "getEntity",
+            "getWork",
             "GET",
-            "/projects/api/entities/{ticketId}",
+            "/projects/api/work/{qualifiedId}",
             200,
             null,
             null));
     all.add(
         new Interaction(
             ProviderStates.AN_IMPLEMENTED_TICKET,
-            "listEntityComments",
+            "listWorkComments",
             "GET",
-            "/projects/api/entities/{ticketId}/comments",
+            "/projects/api/work/{qualifiedId}/comments",
             200,
             null,
             null));
     all.add(
         new Interaction(
             ProviderStates.AN_IMPLEMENTED_TICKET,
-            "listProjectEntities",
+            "listProjectWork",
             "GET",
-            "/projects/api/projects/{projectId}/entities",
+            "/projects/api/projects/{projectId}/work",
             200,
             null,
             null));
@@ -895,7 +799,7 @@ class GoldenMasterRecordingTest {
   }
 
   private static void moves(
-      List<Interaction> all, Map<String, EntityStatus> statesByStatus, String idParam) {
+      List<Interaction> all, Map<String, EntityStatus> statesByStatus) {
     statesByStatus.forEach(
         (state, status) -> {
           List<EntityStateMachine.Transition> out = EntityStateMachine.transitionsFrom(status);
@@ -905,9 +809,9 @@ class GoldenMasterRecordingTest {
           all.add(
               new Interaction(
                   state,
-                  "moveEntityStatus",
+                  "setWorkStatus",
                   "POST",
-                  "/projects/api/entities/{" + idParam + "}/status",
+                  "/projects/api/work/{qualifiedId}/status",
                   200,
                   null,
                   null,
@@ -915,16 +819,16 @@ class GoldenMasterRecordingTest {
         });
   }
 
-  private static Interaction dispatch(String state, String idParam, String mode) {
-    return dispatch(state, idParam, mode, 200);
+  private static Interaction dispatch(String state, String mode) {
+    return dispatch(state, mode, 200);
   }
 
-  private static Interaction dispatch(String state, String idParam, String mode, int status) {
+  private static Interaction dispatch(String state, String mode, int status) {
     return new Interaction(
         state,
-        "dispatchEntity",
+        "dispatchWork",
         "POST",
-        "/projects/api/entities/{" + idParam + "}/dispatch",
+        "/projects/api/work/{qualifiedId}/dispatch",
         status,
         null,
         null,

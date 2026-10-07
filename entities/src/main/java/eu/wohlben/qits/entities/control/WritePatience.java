@@ -23,7 +23,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  *
  * <p><b>THE ONE RULE the bodies obey: they are database-only.</b> The retry re-runs the whole body,
  * so anything in it that is not a row — an SSE hint, an HTTP call, a git push — would happen twice.
- * That is why the wrap sits here in {@code entities} and not around the callers: {@code EpicController}
+ * That is why the wrap sits here in {@code entities} and not around the callers: {@code WorkEntityDoors}
  * and {@code EpicMcpTools} both fire an SSE change hint <em>after</em> the service call returns, and
  * neither notification is inside the retry.
  *

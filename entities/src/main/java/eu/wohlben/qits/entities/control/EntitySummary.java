@@ -9,7 +9,7 @@ import java.time.Instant;
  * <b>One entity in a list</b>: a {@link TransitionedEntity} without its {@code description}. The
  * body is long-form Markdown and only a detail view shows it, so a list neither reads it ({@link
  * EntityCatalogService#listByProjectWithoutDescription}) nor answers it. The REST detail ({@code GET
- * /projects/api/entities/{id}}) and the MCP {@code get_entity} answer it. See {@link
+ * /projects/api/work/{qualifiedId}}) and the MCP {@code get_entity} answer it. See {@link
  * TransitionedEntity} for each component.
  */
 public record EntitySummary(

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  * <p>Plain JUnit, with tokens hand-made the way {@link AgentTokens} makes them: by the time this
  * check runs quarkus-oidc has already validated the signature and audience, so what is pinned here
  * is which <em>validated</em> tokens are a person. The doors that call it are driven over HTTP in
- * {@code ReleaseRequestApprovalDoorTest} and {@code CampaignApiTest}.
+ * {@code ReleaseRequestApprovalDoorTest} and {@code WorkCampaignApiTest}.
  */
 class PersonCheckTest {
 

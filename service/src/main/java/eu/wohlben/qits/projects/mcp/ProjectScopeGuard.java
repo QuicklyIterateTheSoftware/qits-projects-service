@@ -69,7 +69,7 @@ public class ProjectScopeGuard {
    * is still planning work for the whole estate.
    *
    * <p>That is the same rule the REST door performing the identical write applies ({@code
-   * FeatureController.createTask}), and the same set of ids {@code
+   * WorkEntityDoors.create}, behind {@code POST /work} and {@code POST /work/{q}/children}), and the same set of ids {@code
    * EntityMcpTools.transition_entities} already accepts for a TASK. Reading a git target is the
    * other case and takes {@link #requireRepoInProject}.
    */

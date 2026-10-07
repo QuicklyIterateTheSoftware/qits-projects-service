@@ -14,7 +14,7 @@ import java.util.Optional;
 
 /**
  * <b>An entity named either way — its UUID or its qualified id {@code <project-slug>-<n>} — resolved
- * to the row.</b> The doors that take an id a person typed ({@code /entities/{id}/comments}, the
+ * to the row.</b> The doors that take an id a person typed ({@code /work/{qualifiedId}/comments}, the
  * {@code add_comment} tool, {@code qits work --entity qits-551}) accept both, and this is the one
  * place the second form is looked up. The grammar stays {@link CommitSubjectEntities}' ({@link
  * CommitSubjectEntities#parse}); what moved here with qits-551 is the lookup that class made for
@@ -71,7 +71,7 @@ public class EntityIdResolver {
 
   /**
    * <b>The project a person named, by its id or by its slug</b> (qits-548) — the {@code project} of
-   * {@code POST /entities} and the {@code {projectId}} of {@code GET /projects/{projectId}/entities},
+   * {@code POST /work} and the {@code {project}} of {@code GET /projects/{project}/work},
    * where {@code qits} is what a person types and the id is what a program holds. The slug first:
    * slugs are unique (V6) and never UUID-shaped by derivation, and a miss falls through to the id,
    * whose absence is {@code ProjectService.get}'s 404 naming what was asked for.

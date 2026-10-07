@@ -354,7 +354,7 @@ class CampaignExecutorTest {
 
     walk(f.campaign, "READY_FOR_DEV");
     asAdmin("dana")
-        .get("/projects/api/entities/" + f.campaign.id + "/dispatch")
+        .get("/projects/api/work/" + f.campaign.id + "/dispatch")
         .then()
         .statusCode(200)
         .body("state.status", equalTo("READY_FOR_DEV"))
@@ -383,7 +383,7 @@ class CampaignExecutorTest {
     assertEquals(0, executor.sweep());
     assertEquals(0, port.calls().size(), "the move started nothing");
     asAdmin("dana")
-        .get("/projects/api/entities/" + f.campaign.id + "/dispatch")
+        .get("/projects/api/work/" + f.campaign.id + "/dispatch")
         .then()
         .statusCode(200)
         .body("state.nextPhase", equalTo("start"))
@@ -472,7 +472,7 @@ class CampaignExecutorTest {
     asAdmin("dana")
         .body(Map.of("note", "go"))
         .post(
-            "/projects/api/campaigns/"
+            "/projects/api/work/"
                 + f.campaign.id
                 + "/members/"
                 + f.membershipIds.get(0)
@@ -584,7 +584,7 @@ class CampaignExecutorTest {
   @Test
   void thePressRefusesPhaseAndAnUnrefinedCampaignAndAnAgentAndTheReadSaysStartThenRecheck() {
     Fixture f = campaignOf(scheduled("Door"), false);
-    String path = "/projects/api/entities/" + f.campaign.id + "/dispatch";
+    String path = "/projects/api/work/" + f.campaign.id + "/dispatch";
 
     asAdmin("dana")
         .get(path)
@@ -741,7 +741,7 @@ class CampaignExecutorTest {
   private void press(String campaignId) {
     asAdmin("dana")
         .body(Map.of("mode", "FLOW"))
-        .post("/projects/api/entities/" + campaignId + "/dispatch")
+        .post("/projects/api/work/" + campaignId + "/dispatch")
         .then()
         .statusCode(200);
   }

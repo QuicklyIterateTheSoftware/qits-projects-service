@@ -33,7 +33,7 @@ import java.util.Optional;
  *
  * <p>Because the prompt is derived rather than passed in, pressing dispatch on a half-finished
  * entity <b>resumes</b> it at the phase it stands in, and the SPA learns the phase a press would
- * start from {@link #nextPhase} (served by {@code GET /entities/{id}/dispatch}) and never re-derives
+ * start from {@link #nextPhase} (served by {@code GET /work/{qualifiedId}/dispatch}) and never re-derives
  * it. The words are per archetype — a ticket is refined into its description, an epic into a
  * feature/task tree and a dossier — so {@link #render} takes the archetype, and a kind with no
  * templates (a campaign, and a feature or a task, which hold a status since qits-763 but run no

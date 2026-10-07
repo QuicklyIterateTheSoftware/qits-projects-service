@@ -802,12 +802,12 @@ public class ReleaseRequestApprovalGateTest {
 
   private List<String> ticketsOnProject() {
     return given()
-        .get("/projects/api/projects/" + projectId + "/tickets")
+        .get("/projects/api/projects/" + projectId + "/work?archetype=TICKET")
         .then()
         .statusCode(200)
         .extract()
         .jsonPath()
-        .getList("entries.ticket.id", String.class);
+        .getList("entities.id", String.class);
   }
 
   /** The execution runs on the request worker, so a terminal state is polled, never assumed. */

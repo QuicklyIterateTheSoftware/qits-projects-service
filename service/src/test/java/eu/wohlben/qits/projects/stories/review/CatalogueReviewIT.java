@@ -185,13 +185,14 @@ public class CatalogueReviewIT {
 
     assertNotNull(
         StoryIdentities.person(given(), OPERATOR_USER)
+            .queryParam("archetype", "EPIC")
             .when()
-            .get(StoryTarget.projectEpicsPath(projectId))
+            .get(StoryTarget.projectWorkPath(projectId))
             .then()
             .statusCode(200)
             .extract()
             .jsonPath()
-            .getList("entries"),
+            .getList("entities"),
         "a project with no epics answers with an empty list, never with nothing");
     story.note("…and the project's plan, which is rows in a second database").as("epics-listed");
   }
@@ -290,7 +291,7 @@ public class CatalogueReviewIT {
         NetworkEdge.HTTP,
         OPERATOR,
         StoryTarget.SERVICE,
-        "GET " + StoryTarget.projectEpicsPath("{id}") + " -> 200");
+        "GET " + StoryTarget.projectWorkPath("{id}") + " -> 200");
     // Four arrows, one person, and nothing left this process. That is the whole story.
     ReportAssertions.assertEdgeCount(CATEGORY, READS_SLUG, 4);
     ReportAssertions.assertOnlyEdgesFrom(CATEGORY, READS_SLUG, List.of(OPERATOR));

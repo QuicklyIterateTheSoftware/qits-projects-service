@@ -70,7 +70,7 @@ import java.util.stream.Collectors;
  * because clearing one afterwards is behaviour a person has and two tests assert. With two axes the
  * registry had to be wrong about one of those and was: it declared {@code IMPETUS} flatly required,
  * every update path carried a named concession tolerating the violation, and the document served at
- * {@code GET /projects/api/entities/archetypes} advertised a demand the server did not make. The
+ * {@code GET /projects/api/entities/archetypes} (now {@code /work/archetypes}) advertised a demand the server did not make. The
  * third axis is the shape that says both true things at once, and the concession is deleted rather
  * than moved. <b>{@code requiredOnTransition}</b>, served beside these, is the same observation from
  * the other end and predates it: {@code STATUS} is minted by the writer at create and must be

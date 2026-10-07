@@ -9,20 +9,21 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.api.CampaignInFlight;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
-import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.List;
+import java.util.Map;
 
 /**
- * <b>One campaign's doors, as one implementation behind two surfaces</b> (qits-970, epic qits-965):
- * {@code /campaigns/{id}/…} ({@code CampaignController}) and {@code /work/{qualifiedId}/…} ({@link
- * WorkCampaignController}). The rules that lived in the campaign controller live here, moved
- * verbatim, so the two surfaces cannot drift while both are served and deleting the old controller
- * deletes a thin resource. Every method takes the campaign's <b>id</b> — each surface resolves its
- * own path first — and answers DTOs; each controller wraps them in its own answer records.
+ * <b>One campaign's doors</b> (qits-970, epic qits-965): the rules behind {@code
+ * /work/{qualifiedId}/members…} and {@code …/progress} ({@link WorkMembersController}, {@link
+ * WorkProgressController}), moved here from the {@code /campaigns/{id}/…} controller that served them
+ * first and was deleted in qits-976. Every method takes the campaign's <b>id</b> — the surface
+ * resolves its own path first — and answers DTOs; the controller wraps them in its own answer
+ * records. {@code CampaignMcpTools}' {@code set_campaign_member_condition} reads its argument
+ * through {@link ConditionGroup} and {@link #toGroupSpecs}.
  *
  * <ul>
  *   <li><b>Every write but approve binds a {@code qits:agent} caller</b> to the campaign's project:
@@ -42,16 +43,11 @@ public class CampaignDoors {
 
   @Inject WorkEntityService workEntities;
 
-  @Inject EntityResolutions resolutions;
-
   @Inject CampaignInFlight inFlight;
 
   @Inject ProjectChangePublisher publisher;
 
   @Inject PersonCheck persons;
-
-  /** The caller as a mover (qits-887): a campaign's scheduling is a person's too. */
-  @Inject EntityMovers movers;
 
   /** The campaign with its start and its members in campaign order. */
   public CampaignDto campaign(String campaignId) {
@@ -61,14 +57,6 @@ public class CampaignDoors {
   /** How the campaign is doing (qits-418): derived on every read; nothing stored. */
   public CampaignProgressDto progress(String campaignId) {
     return views.progress(campaigns.progress(campaignId));
-  }
-
-  /** A lifecycle move of the campaign, by the caller as a {@code Mover}. */
-  public CampaignDto transition(SecurityIdentity identity, String campaignId, String target) {
-    String projectId = bind(identity, campaignId);
-    resolutions.transition(Archetype.CAMPAIGN, campaignId, target, movers.of(identity));
-    publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
-    return campaign(campaignId);
   }
 
   /**
@@ -134,6 +122,40 @@ public class CampaignDoors {
         campaigns.approve(campaignId, membershipId, criterionId, note, approver);
     publisher.fire(projectId, ProjectChangeHint.Topic.EPICS);
     return views.member(approved.member());
+  }
+
+  /** One criterion of a condition: {@code id} restates an existing one and keeps its latch. */
+  public record ConditionCriterion(String id, String kind, Map<String, Object> predicate) {}
+
+  /** One OR'd group of a condition: the MCP tool argument's shape. */
+  public record ConditionGroup(List<ConditionCriterion> criteria) {}
+
+  /**
+   * The tool argument's shape of a condition, translated into {@link CampaignService}'s own spec —
+   * {@code CampaignMcpTools}' {@code set_campaign_member_condition}, which takes the {@link
+   * ConditionGroup}/{@link ConditionCriterion} records as tool arguments. Ids are handed on as
+   * written: the tool reads UUIDs, as it always has.
+   */
+  public static List<CampaignService.GroupSpec> toGroupSpecs(List<ConditionGroup> groups) {
+    return groups == null
+        ? List.of()
+        : groups.stream()
+            .map(
+                group ->
+                    group == null || group.criteria() == null
+                        ? new CampaignService.GroupSpec(List.of())
+                        : new CampaignService.GroupSpec(
+                            group.criteria().stream()
+                                .map(
+                                    criterion ->
+                                        criterion == null
+                                            ? null
+                                            : new CampaignService.CriterionSpec(
+                                                criterion.id(),
+                                                criterion.kind(),
+                                                criterion.predicate()))
+                                .toList()))
+            .toList();
   }
 
   /** The campaign's project — its 404 first — with a bound agent held to it. */

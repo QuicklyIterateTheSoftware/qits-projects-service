@@ -66,52 +66,6 @@
           }
         },
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{campaignId}",
-          "status": 200,
-          "file": "a-bug-ticket-in-detail/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id",
-              "$.campaign.members[*].groups[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "a-bug-ticket-in-detail/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -129,52 +83,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-bug-ticket-in-detail/listEntityComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-bug-ticket-in-detail/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -203,25 +111,6 @@
             "strings": [
               "$.entities[*].qualifiedId"
             ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listTicketDossierPages",
-          "method": "GET",
-          "path": "/projects/api/tickets/{bugTicketId}/dossier",
-          "status": 200,
-          "file": "a-bug-ticket-in-detail/listTicketDossierPages.json",
-          "frozen": {
-            "ids": [
-              "$.pages[*].id",
-              "$.pages[*].ticketId"
-            ],
-            "instants": [
-              "$.pages[*].createdAt",
-              "$.pages[*].updatedAt"
-            ],
-            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -359,52 +248,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{campaignId}",
-          "status": 200,
-          "file": "a-campaign-in-detail/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id",
-              "$.campaign.members[*].groups[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "a-campaign-in-detail/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -446,52 +289,6 @@
               "$.progress.campaign.qualifiedId",
               "$.progress.members[*].entity.qualifiedId",
               "$.progress.members[*].groups[*].criteria[*].wouldBeSatisfiedBy"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-campaign-in-detail/listEntityComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-campaign-in-detail/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -582,52 +379,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{campaignId}",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id",
-              "$.campaign.members[*].groups[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -645,45 +396,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/listEntityComments.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-campaign-with-a-done-a-verified-and-an-implementing-epic/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -957,30 +669,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{campaignId}",
-          "status": 200,
-          "file": "a-campaign-with-ordered-developments/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id",
-              "$.campaign.members[*].groups[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{campaignQualifiedId}",
@@ -998,29 +686,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-campaign-with-ordered-developments/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -1087,30 +752,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{campaignId}",
-          "status": 200,
-          "file": "a-campaign-with-work-in-every-phase/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id",
-              "$.campaign.members[*].groups[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{campaignQualifiedId}",
@@ -1128,28 +769,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-campaign-with-work-in-every-phase/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -1208,31 +827,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-done-epic-with-every-task-implemented/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "listProjectWork",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/work",
@@ -1270,31 +864,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "REPORTED"
-          },
-          "status": 200,
-          "file": "a-dropped-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "setWorkStatus",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/status",
@@ -1331,31 +900,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "REPORTED"
-          },
-          "status": 200,
-          "file": "a-dropped-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "setWorkStatus",
           "method": "POST",
@@ -1411,31 +955,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "a-feature-in-detail/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope",
-              "$.dependsOn",
-              "$.parent"
-            ],
-            "instants": [
-              "$.implementingAt",
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -1456,52 +975,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-feature-in-detail/listEntityComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-feature-in-detail/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -1608,28 +1081,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "a-maintenance-ticket-in-detail/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -1647,46 +1098,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-maintenance-ticket-in-detail/listEntityComments.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-maintenance-ticket-in-detail/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -1715,25 +1126,6 @@
             "strings": [
               "$.entities[*].qualifiedId"
             ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listTicketDossierPages",
-          "method": "GET",
-          "path": "/projects/api/tickets/{maintenanceTicketId}/dossier",
-          "status": 200,
-          "file": "a-maintenance-ticket-in-detail/listTicketDossierPages.json",
-          "frozen": {
-            "ids": [
-              "$.pages[*].id",
-              "$.pages[*].ticketId"
-            ],
-            "instants": [
-              "$.pages[*].createdAt",
-              "$.pages[*].updatedAt"
-            ],
-            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -1907,19 +1299,6 @@
           }
         },
         {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-project-with-no-work/listProjectEntities.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "listProjectWork",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/work",
@@ -2005,28 +1384,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-project-with-refined-work/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "listProjectWork",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/work",
@@ -2092,31 +1449,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-project-with-work-in-every-status/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "listProjectWork",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/work",
@@ -2154,25 +1486,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "dispatchEntity",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/dispatch",
-          "body": {
-            "mode": "FLOW"
-          },
-          "status": 200,
-          "file": "a-ready-for-dev-epic/dispatchEntity.json",
-          "frozen": {
-            "ids": [
-              "$.dispatch.entityId",
-              "$.dispatch.repositoryId"
-            ],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "dispatchWork",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/dispatch",
@@ -2188,31 +1501,6 @@
             ],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "IMPLEMENTING"
-          },
-          "status": 200,
-          "file": "a-ready-for-dev-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         },
@@ -2254,25 +1542,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "dispatchEntity",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/dispatch",
-          "body": {
-            "mode": "FLOW"
-          },
-          "status": 200,
-          "file": "a-ready-for-dev-ticket/dispatchEntity.json",
-          "frozen": {
-            "ids": [
-              "$.dispatch.entityId",
-              "$.dispatch.repositoryId"
-            ],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "dispatchWork",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/dispatch",
@@ -2288,31 +1557,6 @@
             ],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "IMPLEMENTING"
-          },
-          "status": 200,
-          "file": "a-ready-for-dev-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         },
@@ -2354,24 +1598,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "dispatchEntity",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/dispatch",
-          "body": {
-            "mode": "FLOW"
-          },
-          "status": 409,
-          "file": "a-refined-epic/dispatchEntity.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [
-              "$.message"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "dispatchWork",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/dispatch",
@@ -2385,31 +1611,6 @@
             "instants": [],
             "strings": [
               "$.message"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "READY_FOR_DEV"
-          },
-          "status": 200,
-          "file": "a-refined-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -2452,24 +1653,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "dispatchEntity",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/dispatch",
-          "body": {
-            "mode": "FLOW"
-          },
-          "status": 409,
-          "file": "a-refined-ticket/dispatchEntity.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [
-              "$.message"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "dispatchWork",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/dispatch",
@@ -2483,31 +1666,6 @@
             "instants": [],
             "strings": [
               "$.message"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "READY_FOR_DEV"
-          },
-          "status": 200,
-          "file": "a-refined-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -2592,25 +1750,6 @@
           }
         },
         {
-          "operationId": "dispatchEntity",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/dispatch",
-          "body": {
-            "mode": "PHASE"
-          },
-          "status": 200,
-          "file": "a-reported-epic/dispatchEntity.json",
-          "frozen": {
-            "ids": [
-              "$.dispatch.entityId",
-              "$.dispatch.repositoryId"
-            ],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "dispatchWork",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/dispatch",
@@ -2626,31 +1765,6 @@
             ],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "REFINED"
-          },
-          "status": 200,
-          "file": "a-reported-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         },
@@ -2763,31 +1877,6 @@
             "ids": [],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "REFINED"
-          },
-          "status": 200,
-          "file": "a-reported-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         },
@@ -2990,33 +2079,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "a-task-in-detail/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope",
-              "$.repositoryId",
-              "$.dependsOn",
-              "$.parent"
-            ],
-            "instants": [
-              "$.implementedAt",
-              "$.implementingAt",
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -3039,52 +2101,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "a-task-in-detail/listEntityComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-task-in-detail/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -3145,28 +2161,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-ticket-of-every-type/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "listProjectWork",
           "method": "GET",
@@ -3313,31 +2307,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "DONE"
-          },
-          "status": 200,
-          "file": "a-verified-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "setWorkStatus",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/status",
@@ -3361,30 +2330,6 @@
             ],
             "listFilteredTo": null
           }
-        },
-        {
-          "operationId": "transitionEpic",
-          "method": "POST",
-          "path": "/projects/api/epics/{epicId}/transition",
-          "body": {
-            "target": "DONE"
-          },
-          "status": 200,
-          "file": "a-verified-epic/transitionEpic.json",
-          "frozen": {
-            "ids": [
-              "$.epic.id",
-              "$.epic.projectId"
-            ],
-            "instants": [
-              "$.epic.createdAt",
-              "$.epic.updatedAt"
-            ],
-            "strings": [
-              "$.epic.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
         }
       ]
     },
@@ -3396,31 +2341,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "a-verified-epic-with-every-task-implemented/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "listProjectWork",
           "method": "GET",
@@ -3459,31 +2379,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "DONE"
-          },
-          "status": 200,
-          "file": "a-verified-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "setWorkStatus",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/status",
@@ -3507,30 +2402,6 @@
             ],
             "listFilteredTo": null
           }
-        },
-        {
-          "operationId": "transitionTicket",
-          "method": "POST",
-          "path": "/projects/api/tickets/{ticketId}/transition",
-          "body": {
-            "target": "DONE"
-          },
-          "status": 200,
-          "file": "a-verified-ticket/transitionTicket.json",
-          "frozen": {
-            "ids": [
-              "$.ticket.id",
-              "$.ticket.projectId"
-            ],
-            "instants": [
-              "$.ticket.createdAt",
-              "$.ticket.updatedAt"
-            ],
-            "strings": [
-              "$.ticket.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
         }
       ]
     },
@@ -3544,31 +2415,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "VERIFIED"
-          },
-          "status": 200,
-          "file": "a-verifying-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "setWorkStatus",
           "method": "POST",
@@ -3606,31 +2452,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "VERIFIED"
-          },
-          "status": 200,
-          "file": "a-verifying-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "setWorkStatus",
           "method": "POST",
@@ -3686,52 +2507,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{campaignId}",
-          "status": 200,
-          "file": "an-epic-in-detail/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id",
-              "$.campaign.members[*].groups[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "an-epic-in-detail/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -3770,94 +2545,6 @@
             ],
             "strings": [
               "$.body"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "an-epic-in-detail/listEntityComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEpicDossierAssets",
-          "method": "GET",
-          "path": "/projects/api/epics/{epicId}/dossier-assets",
-          "status": 200,
-          "file": "an-epic-in-detail/listEpicDossierAssets.json",
-          "frozen": {
-            "ids": [
-              "$.assets[*].id",
-              "$.assets[*].pageIds[*]"
-            ],
-            "instants": [
-              "$.assets[*].createdAt"
-            ],
-            "strings": [
-              "$.assets[*].url",
-              "$.assets[*].markdown"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEpicDossierPages",
-          "method": "GET",
-          "path": "/projects/api/epics/{epicId}/dossier",
-          "status": 200,
-          "file": "an-epic-in-detail/listEpicDossierPages.json",
-          "frozen": {
-            "ids": [
-              "$.pages[*].id",
-              "$.pages[*].epicId"
-            ],
-            "instants": [
-              "$.pages[*].createdAt",
-              "$.pages[*].updatedAt"
-            ],
-            "strings": [
-              "$.pages[*].body"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-epic-in-detail/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -4013,27 +2700,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{firstCampaignId}",
-          "status": 200,
-          "file": "an-epic-in-two-campaigns/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{firstCampaignQualifiedId}",
@@ -4051,28 +2717,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-epic-in-two-campaigns/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -4128,32 +2772,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-epic-with-a-feature-whose-tasks-are-all-verified/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "listProjectWork",
           "method": "GET",
@@ -4227,32 +2845,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-epic-with-a-verified-feature-whose-tasks-are-all-verified/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "listProjectWork",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/work",
@@ -4289,31 +2881,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-epic-with-features-and-tasks/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "listProjectWork",
           "method": "GET",
           "path": "/projects/api/projects/{projectId}/work",
@@ -4349,32 +2916,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-epic-with-tasks-in-every-status/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementingAt",
-              "$.entities[*].implementedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "listProjectWork",
           "method": "GET",
@@ -4414,31 +2955,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "VERIFYING"
-          },
-          "status": 200,
-          "file": "an-implemented-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "setWorkStatus",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/status",
@@ -4476,25 +2992,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "dispatchEntity",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/dispatch",
-          "body": {
-            "mode": "PHASE"
-          },
-          "status": 200,
-          "file": "an-implemented-ticket/dispatchEntity.json",
-          "frozen": {
-            "ids": [
-              "$.dispatch.entityId",
-              "$.dispatch.repositoryId"
-            ],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "dispatchWork",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/dispatch",
@@ -4510,28 +3007,6 @@
             ],
             "instants": [],
             "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{ticketId}",
-          "status": 200,
-          "file": "an-implemented-ticket/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
             "listFilteredTo": null
           }
         },
@@ -4553,47 +3028,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{ticketId}/comments",
-          "status": 200,
-          "file": "an-implemented-ticket/listEntityComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-implemented-ticket/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -4640,31 +3074,6 @@
           }
         },
         {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "VERIFYING"
-          },
-          "status": 200,
-          "file": "an-implemented-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "setWorkStatus",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/status",
@@ -4702,31 +3111,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{epicId}/status",
-          "body": {
-            "target": "IMPLEMENTED"
-          },
-          "status": 200,
-          "file": "an-implementing-epic/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "setWorkStatus",
           "method": "POST",
           "path": "/projects/api/work/{qualifiedId}/status",
@@ -4762,32 +3146,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-implementing-epic-with-features-in-mixed-statuses/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "listProjectWork",
           "method": "GET",
@@ -4826,31 +3184,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "moveEntityStatus",
-          "method": "POST",
-          "path": "/projects/api/entities/{ticketId}/status",
-          "body": {
-            "target": "IMPLEMENTED"
-          },
-          "status": 200,
-          "file": "an-implementing-ticket/moveEntityStatus.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "setWorkStatus",
           "method": "POST",
@@ -4906,52 +3239,6 @@
       "dependsOn": [],
       "operations": [
         {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{campaignId}",
-          "status": 200,
-          "file": "an-improvement-ticket-in-detail/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id",
-              "$.campaign.members[*].groups[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].id",
-              "$.campaign.members[*].groups[*].criteria[*].predicate.entityId"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "getEntity",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}",
-          "status": 200,
-          "file": "an-improvement-ticket-in-detail/getEntity.json",
-          "frozen": {
-            "ids": [
-              "$.id",
-              "$.projectId",
-              "$.slugScope"
-            ],
-            "instants": [
-              "$.createdAt",
-              "$.updatedAt"
-            ],
-            "strings": [
-              "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "getWork",
           "method": "GET",
           "path": "/projects/api/work/{qualifiedId}",
@@ -4969,52 +3256,6 @@
             ],
             "strings": [
               "$.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listEntityComments",
-          "method": "GET",
-          "path": "/projects/api/entities/{qualifiedId}/comments",
-          "status": 200,
-          "file": "an-improvement-ticket-in-detail/listEntityComments.json",
-          "frozen": {
-            "ids": [
-              "$.entries[*].comment.id",
-              "$.entries[*].comment.entityId"
-            ],
-            "instants": [
-              "$.entries[*].comment.createdAt",
-              "$.entries[*].comment.updatedAt"
-            ],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "an-improvement-ticket-in-detail/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope",
-              "$.entities[*].parent",
-              "$.entities[*].repositoryId",
-              "$.entities[*].dependsOn"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt",
-              "$.entities[*].implementedAt",
-              "$.entities[*].implementingAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
             ],
             "listFilteredTo": null
           }
@@ -5043,19 +3284,6 @@
             "strings": [
               "$.entities[*].qualifiedId"
             ],
-            "listFilteredTo": null
-          }
-        },
-        {
-          "operationId": "listTicketDossierPages",
-          "method": "GET",
-          "path": "/projects/api/tickets/{improvementTicketId}/dossier",
-          "status": 200,
-          "file": "an-improvement-ticket-in-detail/listTicketDossierPages.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -5205,19 +3433,6 @@
           }
         },
         {
-          "operationId": "listArchetypes",
-          "method": "GET",
-          "path": "/projects/api/entities/archetypes",
-          "status": 200,
-          "file": "the-archetype-registry/listArchetypes.json",
-          "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [],
-            "listFilteredTo": null
-          }
-        },
-        {
           "operationId": "listWorkArchetypes",
           "method": "GET",
           "path": "/projects/api/work/archetypes",
@@ -5245,27 +3460,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "getCampaign",
-          "method": "GET",
-          "path": "/projects/api/campaigns/{secondCampaignId}",
-          "status": 200,
-          "file": "the-second-campaign-of-an-epic-in-two-campaigns/getCampaign.json",
-          "frozen": {
-            "ids": [
-              "$.campaign.id",
-              "$.campaign.projectId",
-              "$.campaign.members[*].membershipId",
-              "$.campaign.members[*].entity.id"
-            ],
-            "instants": [],
-            "strings": [
-              "$.campaign.qualifiedId",
-              "$.campaign.members[*].entity.qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "getWork",
           "method": "GET",
@@ -5317,28 +3511,6 @@
       },
       "dependsOn": [],
       "operations": [
-        {
-          "operationId": "listProjectEntities",
-          "method": "GET",
-          "path": "/projects/api/projects/{projectId}/entities",
-          "status": 200,
-          "file": "two-projects-exist/listProjectEntities.json",
-          "frozen": {
-            "ids": [
-              "$.entities[*].id",
-              "$.entities[*].projectId",
-              "$.entities[*].slugScope"
-            ],
-            "instants": [
-              "$.entities[*].createdAt",
-              "$.entities[*].updatedAt"
-            ],
-            "strings": [
-              "$.entities[*].qualifiedId"
-            ],
-            "listFilteredTo": null
-          }
-        },
         {
           "operationId": "listProjectRepositories",
           "method": "GET",

@@ -575,7 +575,7 @@ public class EpicMcpTools {
                   "id of another task IN THE SAME FEATURE that this one depends on; omit for none")
           String dependsOnTaskId) {
     requireFeatureInProject(featureId);
-    // Project membership, exactly what the REST create checks (FeatureController.createTask): a
+    // Project membership, exactly what the REST create checks (WorkEntityDoors.create): a
     // task must not bind a repository from another project. Deliberately NOT the session's
     // repository narrowing — this id is a reference to where the planned work belongs, not a git
     // target being read, and a refinement session stands on the project's wrapper while planning

@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  * from the registry ({@link Archetypes}) and the wire table ({@link EntityWireProperties}), and
  * nothing else.
  *
- * <p>Served as {@code GET /entities/archetypes/{archetype}/schemas/{door}}, so a client asks the
+ * <p>Served as {@code GET /work/archetypes/{archetype}/schemas/{door}}, so a client asks the
  * service what a new ticket needs instead of keeping its own mapping from {@code TICKET_TYPE} to
  * {@code ticketType} — the copy that drifted the old {@code qits ticket new} into a 400 on every
  * call. The generic create door validates <b>against the schema it would serve</b> ({@link
@@ -36,17 +36,17 @@ import java.util.regex.Pattern;
  * <h2>The three doors</h2>
  *
  * <ul>
- *   <li><b>create</b> — {@code POST /entities}. The kind's permitted properties, less the
+ *   <li><b>create</b> — {@code POST /work}. The kind's permitted properties, less the
  *       server-owned pair, less what the writer mints or a later move states (the status, starting
  *       REPORTED; a supersede) and less the two task markers, implemented and implementing — which
  *       move only while the owning epic is READY_FOR_DEV or IMPLEMENTING, while a create under it needs
  *       the epic REPORTED, so no create could ever carry one. Plus the placement: {@code project} for a kind that may be a root, {@code parent}
  *       for one that sits below one, described as the id of the kind {@code WorkEntityService} looks
  *       it up as. Required: {@code requiredAtCreate} less the status, plus the placement.
- *   <li><b>update</b> — {@code PATCH /entities/{id}}, a merge patch. The same properties less the
+ *   <li><b>update</b> — {@code PATCH /work/{qualifiedId}}, a merge patch. The same properties less the
  *       server-owned pair and the {@linkplain EntityWireProperties#MOVES moves}; a clearable one is
  *       typed {@code ["string","null"]}. Nothing is required, and at least one property must be named.
- *   <li><b>transition</b> — one entry of {@code POST /entities/transition}, the full post-state. The
+ *   <li><b>transition</b> — one entry of {@code POST /work/transition}, the full post-state. The
  *       kind's permitted properties less the server-owned pair and the implementing marker (which
  *       that door carries rather than states), plus {@code membership}. Required:
  *       {@code requiredOnTransition} as the registry document serves it — and {@code membership} for a
@@ -150,7 +150,7 @@ public final class EntitySchemas {
     return document(
         archetype,
         Door.CREATE,
-        "The body of POST /projects/api/entities, less its archetype (\"archetype\": \""
+        "The body of POST /projects/api/work, less its archetype (\"archetype\": \""
             + archetype
             + "\" is added beside these). The status is minted REPORTED by the writer.",
         properties,
@@ -172,8 +172,9 @@ public final class EntitySchemas {
         Door.UPDATE,
         "A JSON merge patch (RFC 7396) of one "
             + archetype
-            + ", sent to PATCH /projects/api/entities/{id}: an absent property is left unchanged,"
-            + " null clears it. The status is moved through POST /projects/api/entities/{id}/status.",
+            + ", sent to PATCH /projects/api/work/{qualifiedId}: an absent property is left"
+            + " unchanged, null clears it. The status is moved through POST"
+            + " /projects/api/work/{qualifiedId}/status.",
         properties,
         List.of(),
         1);
@@ -202,7 +203,7 @@ public final class EntitySchemas {
         Door.TRANSITION,
         "The full post-state of one row turned into a "
             + archetype
-            + ", one entry of POST /projects/api/entities/transition (keyed by the row's id, with"
+            + ", one entry of POST /projects/api/work/transition (keyed by the row's id, with"
             + " \"archetype\": \""
             + archetype
             + "\" beside these). An absent property is CLEARED, and an absent membership means a"
@@ -338,7 +339,7 @@ public final class EntitySchemas {
       case STATUS ->
           "status is not written at create: a new "
               + archetype
-              + " is REPORTED, and moves through POST /projects/api/entities/{id}/status";
+              + " is REPORTED, and moves through POST /projects/api/work/{qualifiedId}/status";
       case IMPLEMENTED_AT, IMPLEMENTING_AT ->
           name
               + " is not written at create: the marker moves only while the epic is READY_FOR_DEV"

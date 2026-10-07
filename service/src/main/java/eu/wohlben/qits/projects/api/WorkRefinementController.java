@@ -17,7 +17,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * <b>A work entity's refinement room: {@code /projects/api/work/{qualifiedId}/refinement}</b>
- * (qits-970, epic qits-965) — the {@code /work} home of {@code /entities/{id}/refinement}, addressed
+ * (qits-970, epic qits-965) — the {@code /work} home of the deleted {@code /entities/{id}/refinement}, addressed
  * by qualified id or UUID ({@link EntityIdResolver#resolve}).
  *
  * <pre>
@@ -26,7 +26,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * </pre>
  *
  * <p>Every rule is {@link RefinementService}'s — the same {@code findOrCreate}, {@code findByEntity}
- * and {@code view} the {@code /entities} door calls — and so are the roles: the open is {@code
+ * and {@code view} the deleted {@code /entities} door called — and so are the roles: the open is {@code
  * qits:admin} alone, the read admits {@code qits:agent}. The path's 404 is the resolver's, for an id
  * that names no entity, so the read's {@code null} still means "no room" and nothing else.
  */

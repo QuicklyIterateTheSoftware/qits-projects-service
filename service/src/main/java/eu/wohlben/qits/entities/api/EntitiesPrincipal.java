@@ -7,7 +7,7 @@ import io.quarkus.security.identity.SecurityIdentity;
  *
  * <p><b>Public because a second package in this module stamps through it.</b> {@code
  * projects.api.EntityDispatch} writes a comment onto a ticket's thread and has to stamp it
- * from the caller exactly as {@link TicketController} does; a copy of these five lines over there
+ * from the caller exactly as the {@code /work} comment door does; a copy of these five lines over there
  * would be a second answer to "who is calling", free to drift from this one. It is still module-
  * internal — nothing outside {@code service} sees it, and the {@code entities} jar carries no identity.
  */

@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import eu.wohlben.qits.projects.security.PersonCheck;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.entities.api.TestCriteria;
+import eu.wohlben.qits.entities.api.WorkRequests;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentDispatch;
@@ -24,7 +25,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A ticket dispatched as the whole flow through the one dispatch door ({@code POST
- * /entities/{id}/dispatch {"mode":"FLOW"}}), REST-level and end to end against the recording port.
+ * /work/{qualifiedId}/dispatch {"mode":"FLOW"}}, the {@code /entities/{id}/dispatch} door's home
+ * since qits-976), REST-level and end to end against the recording port.
  *
  * <p>What it pins is the half of the flow this service actually owns: <b>what is asked for</b> — the
  * wrapper's row id, {@code ticket/<slug>}, the whole-estate {@code branchTree}, the ticket's id and
@@ -42,7 +44,7 @@ import org.junit.jupiter.api.Test;
  * door instead. Its cases were kept and pointed at the door that replaced it, because every one of
  * them — the refusals past the work, the block, the second press, the failed dispatch — is a rule
  * of the one path ({@code EntityDispatch}) and not of the retired route; {@link
- * EntityDispatchControllerTest} is the door's own suite across both archetypes.
+ * WorkDispatchControllerTest} is the door's own suite across both archetypes.
  */
 @QuarkusTest
 public class TicketFlowDispatchTest {
@@ -81,39 +83,23 @@ public class TicketFlowDispatchTest {
 
   private String createTicket(String projectId, String title, String type, String description) {
     return TestCriteria.give(
-            asAdmin("setup")
-        .body(
-            java.util.Map.of(
-                "title",
-                title,
-                "type",
-                type,
-                "impetus",
-                "something occurs in this project",
-                "description",
-                description,
-                "assignee",
-                "dana"))
-        .when()
-        .post("/projects/api/projects/" + projectId + "/tickets")
-        .then()
-        .statusCode(200)
-        .extract()
-        .path("ticket.id"));
+        WorkRequests.create(
+                () -> asAdmin("setup"),
+                WorkRequests.map(
+                    "archetype", "TICKET",
+                    "project", projectId,
+                    "title", title,
+                    "ticketType", type,
+                    "impetus", "something occurs in this project",
+                    "description", description,
+                    "assignee", "dana"))
+            .path("id"));
   }
 
   /** One step along the lifecycle, through the door a person presses. */
   private void transition(String ticketId, String target) {
-    asAdmin("setup")
-        .body(new TicketControllerTransition(target))
-        .when()
-        .post("/projects/api/tickets/" + ticketId + "/transition")
-        .then()
-        .statusCode(200);
+    WorkRequests.status(() -> asAdmin("setup"), ticketId, target).then().statusCode(200);
   }
-
-  /** The transition body, spelled here so this suite needs nothing of the entities module's API. */
-  private record TicketControllerTransition(String target) {}
 
   /**
    * A block, through the door a person or an agent presses. It is the cheapest way to reach a
@@ -122,15 +108,12 @@ public class TicketFlowDispatchTest {
    */
   private void block(String ticketId, String reason) {
     asAdmin("setup")
-        .body(new TicketControllerBlock(true, reason))
+        .body(java.util.Map.of("blocked", true, "reason", reason))
         .when()
-        .post("/projects/api/tickets/" + ticketId + "/blocked")
+        .post("/projects/api/work/" + ticketId + "/blocked")
         .then()
         .statusCode(200);
   }
-
-  /** The block body, spelled here for {@link TicketControllerTransition}'s reason. */
-  private record TicketControllerBlock(boolean blocked, String reason) {}
 
   /**
    * The wrapper by a different route than the door takes — {@code findWrapper} reads the archetype
@@ -153,7 +136,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(200)
         .body("dispatch.workspaceRowId", equalTo(41))
@@ -192,7 +175,7 @@ public class TicketFlowDispatchTest {
 
     asAdmin("mallory")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(1))
@@ -207,7 +190,7 @@ public class TicketFlowDispatchTest {
     // A FLOW press is recorded as such, which the unified read reports.
     asAdmin("mallory")
         .when()
-        .get("/projects/api/entities/" + ticketId + "/dispatch")
+        .get("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(200)
         .body("state.mode", equalTo("FLOW"))
@@ -229,7 +212,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("REFINED waits for a person to schedule it (READY_FOR_DEV)"));
@@ -239,7 +222,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(200);
 
@@ -249,7 +232,7 @@ public class TicketFlowDispatchTest {
 
     asAdmin("mallory")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries[0].comment.body", containsString("for the implement phase"));
@@ -273,7 +256,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("is DONE"))
@@ -288,7 +271,7 @@ public class TicketFlowDispatchTest {
     // added nothing to it.
     asAdmin("mallory")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries.size()", equalTo(1))
@@ -310,7 +293,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("is VERIFIED"));
@@ -334,7 +317,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("is DROPPED"))
@@ -369,7 +352,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(409)
         .body("message", containsString("blocked"))
@@ -390,7 +373,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(200)
         .body("dispatch.workspaceRowId", equalTo(77))
@@ -399,7 +382,7 @@ public class TicketFlowDispatchTest {
 
     asAdmin("mallory")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body("entries[0].comment.body", containsString("already working on this ticket"));
@@ -410,7 +393,7 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/no-such-ticket/dispatch")
+        .post("/projects/api/work/no-such-ticket/dispatch")
         .then()
         .statusCode(404);
     assertTrue(dispatch.calls().isEmpty(), "a ticket that does not exist asks nothing of anybody");
@@ -426,14 +409,14 @@ public class TicketFlowDispatchTest {
     asAdmin("mallory")
         .body(FLOW)
         .when()
-        .post("/projects/api/entities/" + ticketId + "/dispatch")
+        .post("/projects/api/work/" + ticketId + "/dispatch")
         .then()
         .statusCode(502)
         .body("message", containsString("Could not dispatch an agent"));
 
     asAdmin("mallory")
         .when()
-        .get("/projects/api/tickets/" + ticketId + "/comments")
+        .get("/projects/api/work/" + ticketId + "/comments")
         .then()
         .statusCode(200)
         .body(

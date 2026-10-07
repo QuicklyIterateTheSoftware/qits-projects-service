@@ -124,7 +124,7 @@ public class ProviderStates {
 
   /**
    * The ticket states for the status door, by the status each leaves the ticket in. {@link
-   * #A_VERIFIED_TICKET} is one of them; it was here first, for {@code transitionTicket}.
+   * #A_VERIFIED_TICKET} is one of them.
    */
   public static final Map<String, EntityStatus> TICKET_IN_STATUS = ticketsInStatus();
 

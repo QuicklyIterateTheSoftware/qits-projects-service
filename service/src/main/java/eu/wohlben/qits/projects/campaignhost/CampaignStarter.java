@@ -12,8 +12,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 /**
- * <b>A campaign's start press</b> (qits-417): what {@code POST /entities/{id}/dispatch} does when
- * the entity is a campaign. {@code EntityDispatchController} branches here; {@code EntityDispatch}
+ * <b>A campaign's start press</b> (qits-417): what {@code POST /work/{qualifiedId}/dispatch} does
+ * when the entity is a campaign. {@code DispatchDoors} branches here; {@code EntityDispatch}
  * itself refuses a campaign, so no in-process path can cut a workspace for one.
  *
  * <ol>

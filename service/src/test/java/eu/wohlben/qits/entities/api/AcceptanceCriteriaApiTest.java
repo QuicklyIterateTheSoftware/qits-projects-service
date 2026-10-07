@@ -41,19 +41,19 @@ class AcceptanceCriteriaApiTest {
         .contentType(MERGE_PATCH)
         .body(body)
         .when()
-        .patch("/projects/api/entities/" + id)
+        .patch("/projects/api/work/" + id)
         .then();
   }
 
   private static ValidatableResponse read(String id) {
-    return given().when().get("/projects/api/entities/" + id).then().statusCode(200);
+    return given().when().get("/projects/api/work/" + id).then().statusCode(200);
   }
 
   private static void move(String id, String target) {
     person()
         .body(Map.of("target", target))
         .when()
-        .post("/projects/api/entities/" + id + "/status")
+        .post("/projects/api/work/" + id + "/status")
         .then()
         .statusCode(200)
         .body("status", equalTo(target));
@@ -73,7 +73,7 @@ class AcceptanceCriteriaApiTest {
         .contentType(ContentType.JSON)
         .body(Map.of(id, entry))
         .when()
-        .post("/projects/api/entities/transition")
+        .post("/projects/api/work/transition")
         .then();
   }
 
@@ -114,7 +114,7 @@ class AcceptanceCriteriaApiTest {
                 "title", "Planned with criteria",
                 "acceptanceCriteria", List.of("It is planned.")))
         .when()
-        .post("/projects/api/entities")
+        .post("/projects/api/work")
         .then()
         .statusCode(201)
         .body("acceptanceCriteria", equalTo(List.of("It is planned.")));

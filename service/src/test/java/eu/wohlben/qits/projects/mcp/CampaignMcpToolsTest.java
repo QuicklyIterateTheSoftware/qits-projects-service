@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 /**
- * The campaign MCP surface (qits-414): the same round trip {@code CampaignApiTest} pins over HTTP,
+ * The campaign MCP surface (qits-414): the same round trip {@code WorkCampaignApiTest} pins over HTTP,
  * experienced the way an agent on the other end of the socket sees it — a build that seeds a
  * dependency between members, a move that leaves conditions alone, a condition PUT, and a 409
  * (a claimed member's condition) surfacing as a readable tool error rather than a protocol one. The

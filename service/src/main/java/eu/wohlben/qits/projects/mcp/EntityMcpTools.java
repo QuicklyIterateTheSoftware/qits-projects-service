@@ -31,12 +31,12 @@ import java.util.Set;
  *
  * <h2>Why a class of its own, and not a method on {@code EpicMcpTools}</h2>
  *
- * <p>This is {@code EntityTransitionController}'s argument one layer up. <b>The unified entity is
+ * <p>This is {@code POST /work/transition}'s argument one layer up. <b>The unified entity is
  * the noun.</b> The four archetypes are one table discriminated by a column and the whole subject
  * here is a row changing which of them it is — so hanging the tool off the epic surface or the
  * ticket surface would file it under one of the two ends it moves between, and an agent looking for
  * "how do I restructure this plan" would have to already know the answer to find it. The REST
- * surface answers that question with a resource of its own ({@code /projects/api/entities}); the MCP
+ * surface answers that question with a resource of its own ({@code /projects/api/work/transition}); the MCP
  * surface answers it with a tool class of its own, in the same package as its three neighbours and
  * on the same server.
  *
@@ -315,7 +315,7 @@ public class EntityMcpTools {
 
   /**
    * Tell the project's browsers to re-read. <b>Both topics</b>, exactly as {@code
-   * EntityTransitionController} fires them: one batch may well have moved a ticket and an epic tree
+   * WorkEntityDoors.transition} fires them: one batch may well have moved a ticket and an epic tree
    * at once, and a client subscribed to one of the two channels would otherwise draw a stale board.
    * One project, because every entity the request named was just checked into this one.
    */

@@ -15,8 +15,8 @@ import jakarta.ws.rs.core.MediaType;
  * The refinement lifecycle surface the refining route drives — the projects-side replacement for
  * the workspace verbs it used to call on qits-workspaces, keyed by refinement row id.
  *
- * <p><b>The way in is not here</b> (qits-395): {@code POST /entities/{id}/refinement} ({@link
- * EntityRefinementController}) opens a room on an epic or a ticket — find-or-create in one
+ * <p><b>The way in is not here</b> (qits-395): {@code POST /work/{qualifiedId}/refinement} ({@link
+ * WorkRefinementController}) opens a room on an epic or a ticket — find-or-create in one
  * idempotent POST, the adopt-existing dance an older create needed being the server's ordinary path
  * now. {@code POST /refinements} with
  * an {@code epicId} body was the older SPA's door onto the same {@link RefinementService#findOrCreate}

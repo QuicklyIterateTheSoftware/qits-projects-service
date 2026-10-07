@@ -29,8 +29,7 @@ import java.util.List;
  * <p><b>{@link #qualifiedId} is the one component this module cannot fill.</b> The qualified form
  * is {@code <project-slug>-<number>} and the project slug lives in {@code domain}'s {@code project}
  * table, in a different physical database, which {@code entities} depends on nowhere. So {@link #of}
- * leaves it null and the {@code service} module puts it on through {@link #withQualifiedId} — the
- * device {@code EpicDto.withWorkspaces} already is, for the same boundary and the same reason. See
+ * leaves it null and the {@code service} module puts it on through {@link #withQualifiedId}. See
  * {@code projects/api/QualifiedEntityIds}.
  *
  * @param id the entity
@@ -111,8 +110,8 @@ public record TransitionedEntity(
     @JsonInclude(JsonInclude.Include.NON_NULL) List<String> acceptanceCriteria) {
 
   /**
-   * The same entity, told what it is called in a commit subject. {@code EpicDto.withWorkspaces}'
-   * device, for the same boundary: the value is resolved in {@code service} and put on here.
+   * The same entity, told what it is called in a commit subject: the value is resolved in {@code
+   * service} and put on here.
    */
   public TransitionedEntity withQualifiedId(String rendered) {
     return new TransitionedEntity(
@@ -166,8 +165,8 @@ public record TransitionedEntity(
    * and this is what spares the edit a second read. That read would be <b>wrong</b>, not merely
    * redundant: outside a transaction a request keeps one persistence context, the read before the
    * edit filled it, and the edit's own transaction is a different one — so a re-read in the same
-   * request answers the row as it stood before the edit (measured, through {@code PATCH
-   * /entities/{id}}).
+   * request answers the row as it stood before the edit (measured, through the {@code PATCH
+   * /entities/{id}} that {@code PATCH /work/{qualifiedId}} replaced).
    */
   public static TransitionedEntity edited(WorkEntity row, TransitionedEntity before) {
     return new TransitionedEntity(
@@ -203,7 +202,7 @@ public record TransitionedEntity(
   /**
    * The row a lifecycle move wrote ({@link WorkEntityService#transition}), hung where {@code before}
    * says it hung, told the status it moved from and who moved it — the answer of {@code POST
-   * /entities/{id}/status} (qits-548). A move changes no edge, so {@link #edited}'s reasoning about
+   * /work/{qualifiedId}/status} (qits-548, on {@code /entities} until qits-976). A move changes no edge, so {@link #edited}'s reasoning about
    * the membership and about a re-read holds here unchanged.
    */
   public static TransitionedEntity moved(

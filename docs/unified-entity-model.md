@@ -18,6 +18,21 @@ holding the mirror, so the write-behind mirror is gone and **no class under `src
 persists, updates or deletes an `Epic`, `Ticket`, `Feature` or `Task` row**. The four old tables
 have no writer and no referent; they are a frozen snapshot.
 
+> **2026-10-07, qits-976 (phase 3 of epic qits-965): the REST routes this record discusses are
+> deleted.** Every per-archetype route (`/epics…`, `/tickets…`, `/features…`, `/tasks…`,
+> `/campaigns…`, `/ticket-comments…`, the `/projects/{projectId}/epics|tickets|campaigns|entities`
+> listings) and the whole `/entities` family — `POST /entities/transition`, `/entities/archetypes`,
+> `/entities/{id}` and its `status`, `blocked`, `comments`, `dispatch` and `refinement` — now answer
+> 404, and so does `/comments/{commentId}`. With them went `EntityRoutes`, the per-archetype DTOs
+> (`EpicDto`, `TicketDto`, `FeatureDto`, `TaskDto`, `TicketCommentDto`), `mapper/WorkEntityMapper`
+> and `EntityStatusSchemaFilter`. **The surface is the archetype-free `/work` family**, addressed by
+> qualified id or UUID: `POST /work/transition` is the multi-entity transition, `GET
+> /work/archetypes` the served registry, `/work/{qualifiedId}[/status|/blocked|/comments|…]` the
+> rest — see the service's `AGENTS.md`, "The `/work` family", for the old→new map. Below, a route
+> or class named as current is the shape *at the time*; the decisions it records (the full-state
+> transition, the registry's members, the three required-lists) carry over to the `/work` doors
+> unchanged.
+
 ## Reserved migration versions
 
 | version | what it is | state |
@@ -1043,7 +1058,8 @@ the subject of this endpoint is a row changing which of them it is — so puttin
 `/tickets` would file the operation under one of the two ends it moves between, and a reader looking
 for the write surface of the merged model would have to know the answer before finding it.
 `/entities` is where that reader looks, and it is the segment the rest of the merged model's surface
-grows under as it arrives.
+grows under as it arrives. (Superseded: the same argument, carried one step further, is why the
+surface became `/work` — epic qits-965 — and qits-976 deleted `/entities` outright.)
 
 It is under `/projects` like every other machine surface here, so **`quarkus.quinoa.ignored-path-prefixes`
 needs no change**: that key already carries the one prefix, and the SPA fallback cannot swallow a path
@@ -1142,7 +1158,8 @@ on `EntityTransitionController` because that class is `@RolesAllowed("qits:admin
 with an argument for it, a method-level `@RolesAllowed` *replaces* the class list rather than adding
 to it, and the exception would be harder to read than the rule. A second root resource at `/entities`
 is the shape the segment already has (`EntityTransitionController` is the other; the verification
-door was a third until V13 deleted it).
+door was a third until V13 deleted it). (Since qits-976 both are deleted; the registry is
+`WorkArchetypesController`, `GET /projects/api/work/archetypes`, under the same roles.)
 
 **Three required-lists, and each is exactly what the server enforces at its own moment.**
 `requiredAtCreate` is intake's demand, `required` is the invariant every edit is judged against, and
@@ -1828,7 +1845,8 @@ indistinguishable to a later reader:**
   deprecated in their own epic, and leaving them untouched is the shorter path to the same end. The
   server is still `@McpServer("repository")`, which qits-workspace-daemon addresses by name.
 - **Every REST route, DTO field and JSON name** — `/projects/api/epics/…` and
-  `/projects/api/tickets/…` are the deployed contract and the SPA calls them.
+  `/projects/api/tickets/…` were the deployed contract and the SPA called them. (No longer a
+  constraint: qits-976 deleted both route families in favour of `/work`.)
 - **The SSE topics** `epics` and `tickets`. `ProjectEventBroadcaster` lowercases
   `ProjectChangeHint.Topic`'s enum name straight onto the frame, so the enum constant *is* the wire
   word. This is the one place in the rename where a name that reads "epic" reaches a client.
@@ -2208,11 +2226,11 @@ a FLOW press from REPORTED stops at REFINED (`flowFrom` = refine).
 | the registry | `entities/…/control/Archetypes.java`, `ArchetypeSpec.java`, `EntityProperty.java`, `EntityState.java`, `ArchetypeViolation.java` |
 | the five cut-over services | `entities/…/control/EpicService.java`, `TicketService.java`, `FeatureService.java`, `TaskService.java`, `DossierService.java` — answering `WorkEntity` and `control/Nested.java`; `WorkEntityProjections.java` is **deleted** |
 | the lifecycle guards | `entities/…/control/EntityLifecycle.java` (was `EpicLifecycle.java` + `TicketLifecycle.java` until qits-392) — every caller hands it the `entity` row itself; the walk and its moves are `entities/…/control/EntityStateMachine.java` |
-| the one mapper | `entities/…/mapper/WorkEntityMapper.java` — `toEpicDto`/`toTicketDto`/`toFeatureDto`/`toTaskDto`, replacing `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`, all four **deleted** |
+| the one mapper — **DELETED BY qits-976** | was `entities/…/mapper/WorkEntityMapper.java` — `toEpicDto`/`toTicketDto`/`toFeatureDto`/`toTaskDto`, replacing `EpicMapper`, `TicketMapper`, `FeatureMapper` and `TaskMapper`, all four **deleted**; it went with the per-archetype DTOs it fed, and the `/work` doors answer `TransitionedEntity` |
 | the four old entities and their repositories | **deleted** with their tables (V13): `entities/…/entity/Epic.java`, `Ticket.java`, `Feature.java`, `Task.java`; `entities/…/persistence/EpicRepository.java`, `TicketRepository.java`, `FeatureRepository.java`, `TaskRepository.java` |
 | the nesting rule | `entities/…/control/Nesting.java`, `EntityFact.java`, `EntityFacts.java`, `StoredEntityFacts.java`, `NestingViolation.java` |
-| the multi-entity transition | `entities/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/entities/api/EntityTransitionController.java` |
-| the registry, served | `entities/…/control/ArchetypeRegistryDocument.java` — derived from `Archetypes` at read time, and the `SERVER_OWNED` / `requiresStatusOnTransition` pair on `EntityTransitionService.java` it reads; `service/…/entities/api/EntityArchetypesController.java` — `GET /projects/api/entities/archetypes`, `qits:admin` + `qits:agent` |
+| the multi-entity transition | `entities/…/control/EntityTransitionService.java`, `EntityTransition.java`, `TransitionedEntity.java`, `TransitionAnnouncer.java`; `service/…/entities/api/WorkController.java` (`POST /projects/api/work/transition`, over `WorkEntityDoors.transition`; `EntityTransitionController` was deleted by qits-976) |
+| the registry, served | `entities/…/control/ArchetypeRegistryDocument.java` — derived from `Archetypes` at read time, and the `SERVER_OWNED` / `requiresStatusOnTransition` pair on `EntityTransitionService.java` it reads; `service/…/entities/api/WorkArchetypesController.java` — `GET /projects/api/work/archetypes`, `qits:admin` + `qits:agent` (`EntityArchetypesController` at `/entities/archetypes` was deleted by qits-976) |
 | the merged read | `entities/…/control/EntityCatalogService.java` — `listByProject`/`byIds`, answering `TransitionedEntity` |
 | the agent surface | `service/…/projects/mcp/EntityMcpTools.java` — `transition_entities` + `list_entities`, registered in `ReadOnlyRepositoryToolFilter` |
 | the qualified form | `service/…/projects/api/QualifiedEntityIds.java` — the only renderer; `domain`'s `ProjectRepository.list(ids)` / `ProjectService.slugsByIds` behind it |

@@ -20,7 +20,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * <b>A work entity's dispatch: {@code /projects/api/work/{qualifiedId}/dispatch}</b> (qits-970,
- * epic qits-965) — the {@code /work} home of {@code /entities/{id}/dispatch}, addressed by qualified
+ * epic qits-965) — the {@code /work} home of the deleted {@code /entities/{id}/dispatch}, addressed by qualified
  * id or UUID ({@link EntityIdResolver#resolve}).
  *
  * <pre>
@@ -29,7 +29,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  *   GET  /work/{qualifiedId}/dispatch                             → {"state": EntityDispatchStateDto}
  * </pre>
  *
- * <p>Every rule is {@link DispatchDoors}', shared with the {@code /entities} door, and so are the
+ * <p>Every rule is {@link DispatchDoors}' (it was shared with the deleted {@code /entities} door), and so are the
  * roles: the press is {@code qits:admin} alone (standing a workspace up is a person's press), the
  * read admits {@code qits:agent}. In {@code projects.api} for {@link EntityDispatch}'s reason: it
  * needs {@code domain}.
@@ -89,7 +89,7 @@ public class WorkDispatchController {
   public Response dispatch(
       @PathParam("qualifiedId") String qualifiedId, WorkDispatchRequest request) {
     String mode = request == null ? null : request.mode();
-    DispatchMode.parse(mode); // the 400 first, as the /entities door answers it
+    DispatchMode.parse(mode); // the 400 first, before the entity is looked up
     DispatchDoors.Pressed pressed = doors.press(identity, ids.resolve(qualifiedId).id, mode);
     if (pressed.progress() != null) {
       return Response.ok(new WorkProgressAnswer(pressed.progress())).build();

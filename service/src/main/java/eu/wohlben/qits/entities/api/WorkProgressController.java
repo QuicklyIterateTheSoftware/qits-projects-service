@@ -16,7 +16,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * <b>How a campaign is doing: {@code GET /projects/api/work/{qualifiedId}/progress}</b> (qits-970,
- * epic qits-965) — the {@code /work} home of {@code GET /campaigns/{id}/progress}, addressed by
+ * epic qits-965) — the {@code /work} home of the deleted {@code GET /campaigns/{id}/progress}, addressed by
  * qualified id or UUID ({@link EntityIdResolver#resolve}). Every member's derived state, what it
  * waits for, each criterion judged, and whether the criteria evaluator is listening; derived on
  * every read, nothing stored ({@link CampaignDoors#progress}). A read: {@code qits:agent} too. The

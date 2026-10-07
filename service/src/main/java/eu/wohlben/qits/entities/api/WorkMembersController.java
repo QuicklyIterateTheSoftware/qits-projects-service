@@ -30,7 +30,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * <b>A campaign's membership: {@code /projects/api/work/{qualifiedId}/members}</b> (qits-970, epic
- * qits-965) — the {@code /work} home of {@code GET /campaigns/{id}} (the members; the campaign's own
+ * qits-965) — the {@code /work} home of the deleted {@code GET /campaigns/{id}} (the members; the campaign's own
  * fields are {@code GET /work/{qualifiedId}}'s, its start {@code …/progress}') and of every
  * membership write on {@code /campaigns/{id}/members…}: add, move, remove, condition, and the
  * approve of a gated member's criterion.

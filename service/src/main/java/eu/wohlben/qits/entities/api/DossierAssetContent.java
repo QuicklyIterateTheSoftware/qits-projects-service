@@ -4,10 +4,10 @@ import eu.wohlben.qits.entities.entity.DossierAsset;
 import jakarta.ws.rs.core.Response;
 
 /**
- * <b>The one hardened content answer</b>, shared by both routes that serve a copied figure's bytes —
- * {@code GET /epics/{epicId}/dossier-assets/{assetId}/content} and {@code GET
- * /work/{qualifiedId}/dossier-assets/{assetId}/content} (qits-970) — so the hardening is one literal
- * and neither route can serve a document with less of it.
+ * <b>The one hardened content answer</b> for a copied figure's bytes — {@code GET
+ * /work/{qualifiedId}/dossier-assets/{assetId}/content} (qits-970). It was shared with the epic
+ * route {@code GET /epics/{epicId}/dossier-assets/{assetId}/content} until qits-976 deleted that
+ * route; that path's spelling lives on only as the stored reference in page bodies.
  *
  * <p>The headers go on every response, whatever the kind: an asset is addressed by id and its kind
  * is a column, and a route that decided its own hardening from a database value would be one bad row

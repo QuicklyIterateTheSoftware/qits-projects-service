@@ -143,7 +143,7 @@ public record ArchetypeRegistryDocument(
    * One phase a dispatch runs.
    *
    * @param phase the phase's word: {@code refine}, {@code implement} or {@code verify} — the word
-   *     the dispatch door answers in {@code phase} and {@code GET /entities/{id}/dispatch} in {@code
+   *     the dispatch door answers in {@code phase} and {@code GET /work/{qualifiedId}/dispatch} in {@code
    *     nextPhase}
    * @param from the status the phase runs from
    * @param enters the status the platform moves the entity into when the phase starts (READY_FOR_DEV →
@@ -190,7 +190,7 @@ public record ArchetypeRegistryDocument(
 
   /**
    * The document with every move's {@link LegalMove#gates} read off {@code gates} — what {@code GET
-   * /entities/archetypes} serves, handed the {@link TransitionGate} beans. {@link #describe()} is the
+   * /work/archetypes} serves, handed the {@link TransitionGate} beans. {@link #describe()} is the
    * same document with no gate named, for a caller that reads the declarations alone.
    */
   public static ArchetypeRegistryDocument describe(Collection<? extends TransitionGate> gates) {

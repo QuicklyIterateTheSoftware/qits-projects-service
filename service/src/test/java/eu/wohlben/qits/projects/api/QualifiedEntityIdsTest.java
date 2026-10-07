@@ -4,12 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
-import eu.wohlben.qits.entities.dto.EpicDto;
-import eu.wohlben.qits.entities.dto.TicketDto;
+import eu.wohlben.qits.entities.control.TransitionedEntity;
+import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.projects.control.ProjectService;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -55,26 +56,32 @@ class QualifiedEntityIdsTest {
     return qualifier;
   }
 
-  private static EpicDto epic(String id, String projectId, long number) {
-    return new EpicDto(
-        id, projectId, number, null, "T", "t", "REPORTED", false, null, null, List.of(), null, null,
-        null,
+  /** A work entity in the merged shape, its qualified id not yet filled. */
+  private static TransitionedEntity entity(
+      String id, Archetype archetype, String projectId, long number) {
+    return new TransitionedEntity(
+        id, archetype, projectId, number, null, "T", "t", projectId, null, "REPORTED", null, null,
+        null, null, null, null, null, null, null, null, null, null, null, null, null, false,
         List.of());
   }
 
+  private static TransitionedEntity epic(String id, String projectId, long number) {
+    return entity(id, Archetype.EPIC, projectId, number);
+  }
+
   /**
-   * <b>The N+1 answer.</b> Forty epics across two projects, one lookup — and the lookup is asked
+   * <b>The N+1 answer.</b> Forty entities across two projects, one lookup — and the lookup is asked
    * about the two DISTINCT project ids rather than about forty.
    */
   @Test
   void aListingIssuesExactlyOneProjectLookupHoweverLongItIs() {
     CountingProjects projects = new CountingProjects().with("p1", "one").with("p2", "two");
-    List<EpicDto> epics = new ArrayList<>();
+    List<TransitionedEntity> epics = new ArrayList<>();
     for (int i = 0; i < 40; i++) {
       epics.add(epic("e" + i, i % 2 == 0 ? "p1" : "p2", i));
     }
 
-    List<EpicDto> qualified = over(projects).qualifyEpics(epics);
+    List<TransitionedEntity> qualified = over(projects).qualifyEntities(epics);
 
     assertEquals(1, projects.calls.size(), "one lookup for the whole listing");
     assertEquals(List.of("p1", "p2"), List.copyOf(projects.calls.get(0)));
@@ -95,8 +102,8 @@ class QualifiedEntityIdsTest {
   @Test
   void anUnresolvableProjectLeavesTheFieldNull() {
     CountingProjects projects = new CountingProjects().with("p1", "qits");
-    List<EpicDto> qualified =
-        over(projects).qualifyEpics(List.of(epic("a", "p1", 1), epic("b", "gone", 2)));
+    List<TransitionedEntity> qualified =
+        over(projects).qualifyEntities(List.of(epic("a", "p1", 1), epic("b", "gone", 2)));
 
     assertEquals("qits-1", qualified.get(0).qualifiedId());
     assertNull(qualified.get(1).qualifiedId());
@@ -106,20 +113,31 @@ class QualifiedEntityIdsTest {
   @Test
   void anEmptyListingAsksNothing() {
     CountingProjects projects = new CountingProjects();
-    List<EpicDto> empty = List.of();
-    assertSame(empty, over(projects).qualifyEpics(empty));
+    List<TransitionedEntity> empty = List.of();
+    assertSame(empty, over(projects).qualifyEntities(empty));
+    Map<String, TransitionedEntity> none = Map.of();
+    assertSame(none, over(projects).qualifyEntities(none));
     assertEquals(0, projects.calls.size());
   }
 
-  /** The other shapes go through the same one implementation. */
+  /**
+   * A transition's answer is a map, and it goes through the same one lookup: every archetype
+   * alike, the keys kept exactly as they were handed in, a null slug left null there too.
+   */
   @Test
-  void ticketsAreQualifiedTheSameWay() {
+  void aTransitionsMapIsQualifiedInOneLookupAndKeepsItsKeys() {
     CountingProjects projects = new CountingProjects().with("p1", "qits");
-    TicketDto ticket =
-        new TicketDto(
-            "t", "p1", 42L, null, "T", "t", "BUG", "REPORTED", false, null, null, "i", null, List.of(), null,
-            null, List.of());
-    assertEquals("qits-42", over(projects).qualifyTickets(List.of(ticket)).get(0).qualifiedId());
+    Map<String, TransitionedEntity> written = new LinkedHashMap<>();
+    written.put("qits-42", entity("t", Archetype.TICKET, "p1", 42));
+    written.put("f", entity("f", Archetype.FEATURE, "p1", 43));
+    written.put("g", entity("g", Archetype.TASK, "gone", 44));
+
+    Map<String, TransitionedEntity> qualified = over(projects).qualifyEntities(written);
+
+    assertEquals(List.of("qits-42", "f", "g"), List.copyOf(qualified.keySet()));
+    assertEquals("qits-42", qualified.get("qits-42").qualifiedId());
+    assertEquals("qits-43", qualified.get("f").qualifiedId());
+    assertNull(qualified.get("g").qualifiedId());
     assertEquals(1, projects.calls.size());
   }
 }
