@@ -98,7 +98,9 @@ public class GitExecutor {
    * of the subcommand, as it must. Package-private so a test can assert the built argv directly.
    */
   static String[] withMaintenanceGuard(String[] command) {
-    if (command.length == 0) {
+    // Only a git invocation: a caller may hand this a non-git command (a test fixture's
+    // `sh -c ...`), whose own `-c` would otherwise swallow the guard as its script.
+    if (command.length == 0 || !"git".equals(new java.io.File(command[0]).getName())) {
       return command;
     }
     String[] result = new String[command.length + NO_DETACHED_MAINTENANCE.size()];

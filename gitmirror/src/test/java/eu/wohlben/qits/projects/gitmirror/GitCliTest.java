@@ -70,6 +70,21 @@ class GitCliTest {
   }
 
   @Test
+  void aCommandThatIsNotGitIsLeftAlone() {
+    String[] sh = {"sh", "-c", "printf x > f"};
+    assertArrayEquals(sh, GitCli.withMaintenanceGuard(sh));
+  }
+
+  @Test
+  void aGitBinaryGivenByPathIsStillGuarded() {
+    assertArrayEquals(
+        new String[] {
+          "/usr/bin/git", "-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false", "fetch"
+        },
+        GitCli.withMaintenanceGuard(new String[] {"/usr/bin/git", "fetch"}));
+  }
+
+  @Test
   void aRealInvocationStillRunsWithTheGuardSplicedIn() throws Exception {
     GitCli.Result result =
         new GitCli().run(tmp.toFile(), null, null, Duration.ofSeconds(30), "git", "init", "--bare", "--quiet");

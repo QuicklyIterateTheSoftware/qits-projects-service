@@ -76,6 +76,21 @@ class GitExecutorTest {
   }
 
   @Test
+  void aCommandThatIsNotGitIsLeftAlone() {
+    String[] sh = {"sh", "-c", "printf x > f"};
+    assertArrayEquals(sh, GitExecutor.withMaintenanceGuard(sh));
+  }
+
+  @Test
+  void aGitBinaryGivenByPathIsStillGuarded() {
+    assertArrayEquals(
+        new String[] {
+          "/usr/bin/git", "-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false", "fetch"
+        },
+        GitExecutor.withMaintenanceGuard(new String[] {"/usr/bin/git", "fetch"}));
+  }
+
+  @Test
   void aRealInvocationStillRunsWithTheGuardSplicedIn() throws Exception {
     GitExecutor git = new GitExecutor();
     String output = git.exec(tmp.toFile(), "git", "init", "--bare", "--quiet");

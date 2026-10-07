@@ -53,7 +53,9 @@ public final class GitCli {
    * of the subcommand, as it must. Package-private so a test can assert the built argv directly.
    */
   static String[] withMaintenanceGuard(String[] argv) {
-    if (argv.length == 0) {
+    // Only a git invocation: a caller may hand this a non-git command (a test fixture's
+    // `sh -c ...`), whose own `-c` would otherwise swallow the guard as its script.
+    if (argv.length == 0 || !"git".equals(new File(argv[0]).getName())) {
       return argv;
     }
     String[] result = new String[argv.length + NO_DETACHED_MAINTENANCE.size()];
