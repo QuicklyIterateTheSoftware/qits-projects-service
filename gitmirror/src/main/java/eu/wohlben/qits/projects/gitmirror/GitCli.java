@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -33,6 +34,38 @@ public final class GitCli {
   private static final Duration DRAIN_JOIN = Duration.ofSeconds(5);
 
   /**
+   * qits-1066: git 2.47+ runs {@code git maintenance run --auto --detach} after almost every
+   * command (fetch, commit, merge, …), and the detached grandchild is reparented to this
+   * process's PID 1 — a native Quarkus binary that never reaps — which is how this service piled
+   * up thousands of zombie {@code git} processes. These two flags keep any auto-gc or
+   * auto-maintenance such an invocation triggers running in the FOREGROUND, as a child this very
+   * call waits for, instead of detaching. {@code gc.auto}/{@code maintenance.auto} themselves are
+   * deliberately left alone — a bare mirror still needs its housekeeping to run, only not as an
+   * orphan.
+   */
+  static final List<String> NO_DETACHED_MAINTENANCE =
+      List.of("-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false");
+
+  /**
+   * Splices {@link #NO_DETACHED_MAINTENANCE} in right after the binary (index 0) and before
+   * whatever the caller asked for — a subcommand, or any {@code -c} flags the caller already
+   * added ({@link RepoMirror}'s causation and bearer headers) — so the guard always lands ahead
+   * of the subcommand, as it must. Package-private so a test can assert the built argv directly.
+   */
+  static String[] withMaintenanceGuard(String[] argv) {
+    if (argv.length == 0) {
+      return argv;
+    }
+    String[] result = new String[argv.length + NO_DETACHED_MAINTENANCE.size()];
+    result[0] = argv[0];
+    for (int i = 0; i < NO_DETACHED_MAINTENANCE.size(); i++) {
+      result[1 + i] = NO_DETACHED_MAINTENANCE.get(i);
+    }
+    System.arraycopy(argv, 1, result, 1 + NO_DETACHED_MAINTENANCE.size(), argv.length - 1);
+    return result;
+  }
+
+  /**
    * @param cwd the working directory, or null to inherit this process's
    * @param env an overlay applied last, so a supplied {@code GIT_AUTHOR_*}/{@code GIT_COMMITTER_*}
    *     replaces any ambient identity env inherited from the host (env outranks {@code -c} config)
@@ -44,7 +77,7 @@ public final class GitCli {
   public Result run(
       File cwd, Map<String, String> env, Consumer<String> onLine, Duration timeout, String... argv)
       throws Exception {
-    ProcessBuilder pb = new ProcessBuilder(argv);
+    ProcessBuilder pb = new ProcessBuilder(withMaintenanceGuard(argv));
     if (cwd != null) {
       pb.directory(cwd);
     }
