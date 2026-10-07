@@ -3008,14 +3008,20 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   loader at discovery, and JUnit's discovery request holds those `Class` objects until the fork
   exits — so every app that has booted keeps its ~16k classes (~125 MB of metaspace, measured with
   `jcmd <pid> VM.classloader_stats`) for the rest of the run. That retained metaspace is the
-  largest single term of the surefire fork's footprint (~1.2 GB of a ~2.7 GB RSS), and the release
-  gate's step container is capped at 4g memory+swap, maven and postgres included, which the suite
-  sits close to. A profile is keyed by its **class**, not its content: two classes returning the
-  same overrides are two boots. So reuse an existing profile (`NoDevUserProfile`,
-  `RepositoryCatalogueTest.DeployedPosture`, `workspacehost.NoWorkspacesContextProfile`) before
-  writing one, and make a new one only for config no existing one can carry. qits-965 hit the cap
-  (`OutOfMemoryError: unable to create native thread` ~1025 tests in, twice) by adding tests rather
-  than a profile, and was fixed by folding three duplicate profiles into those three.
+  largest single term of the surefire fork's footprint (~1.2 GB of a ~2.7 GB RSS). A profile is
+  keyed by its **class**, not its content: two classes returning the same overrides are two boots.
+  So reuse an existing profile (`NoDevUserProfile`, `RepositoryCatalogueTest.DeployedPosture`,
+  `workspacehost.NoWorkspacesContextProfile`) before writing one, and make a new one only for config
+  no existing one can carry.
+- **No background git from a test JVM.** The root pom sets `gc.auto=0`, `maintenance.auto=false`
+  and `receive.autogc=false` through `GIT_CONFIG_COUNT` for surefire and failsafe. A detached auto
+  gc/maintenance orphans itself, and in a qits-ci step the container's PID 1 is the ci-daemon, which
+  reaps nothing: every orphan stays a zombie holding a pid until the step ends. The step runs with
+  `--pids-limit 4096` (and 6g memory, the runner's `stepMemoryLimit`), and qits-965's gate counted
+  3822 `git` zombies at the limit — `OutOfMemoryError: unable to create native thread`, with the
+  step's memory at 2.2 of 6 GB. Memory was never the constraint. Other git paths still leave ~1.8k
+  zombies over a full run, so the headroom is finite: a change that multiplies git calls in the
+  suite should look at this number again.
 - A `Failed to start quarkus` / `Port already bound: 8081` failure is the known flake
   (`migration-plan.md` §9 item 14) — `@QuarkusTest` restarts racing for the test port. Re-run first.
 - `GitFixtures.path("<name>.git")` is how a test gets a git origin to clone. It returns the
