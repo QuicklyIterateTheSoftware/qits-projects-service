@@ -136,7 +136,7 @@
              green build that resolved nothing is not evidence that it could, which is the whole
              reason to name a release here. qits-githost cut one on 2026-08-12 and this is it. -->
         <qits.eventstream.version>2026.1003.44717</qits.eventstream.version>
-        <qits.githost-events.version>2026.1007.115741</qits.githost-events.version>
+        <qits.githost-events.version>2026.1007.123417</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
              starts, now that it holds no docker socket. Framework-free — one class, four answers,
@@ -210,7 +210,7 @@
         <qits.workspaces-pacts-qits-projects.version>2026.1002.170857</qits.workspaces-pacts-qits-projects.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1007.50835</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1007.51027</qits.projects-frontend-pacts-qits-projects-service.version>
-        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1007.53821</qits.platform-access-cli-pacts-qits-projects-service.version>
+        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1007.122439</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1007.53748</qits.maintenance-service-pacts-qits-projects-service.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
