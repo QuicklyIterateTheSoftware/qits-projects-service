@@ -277,7 +277,22 @@
                  classpath. The pinned jar IS the source of the pact; nothing is copied into this
                  tree. -->
             <groupId>eu.wohlben.qits</groupId>
-            <artifactId>qits-landing-pacts-qits-projects</artifactId>
+            <artifactId>qits-landing-app-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-projects-frontend-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-platform-access-cli-pacts-qits-projects-service</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-maintenance-service-pacts-qits-projects-service</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

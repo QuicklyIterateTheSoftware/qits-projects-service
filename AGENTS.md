@@ -2900,11 +2900,16 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   newest release is built against Quarkus 3.14.1, pins pact-jvm 4.6.17 against the consumers'
   4.6.21, and drags `quarkus-kotlin` into the test application). Five things are the rule:
   - **A consumer pact arrives as a pinned jar, never as a file in this tree.** Each consumer
-    publishes `eu.wohlben.qits:<consumer>-pacts-qits-projects` carrying
-    `pacts/<consumer>_qits-projects-service.json` (consumer and provider by repository name, e.g.
-    `qits-landing-app_qits-projects-service.json`); it is a test-scope dependency with its version
-    in a root pom property (`qits.workspaces-pacts-qits-projects.version` is the first), so
-    qits-maintenance bumps it when the consumer releases a changed pact.
+    publishes `eu.wohlben.qits:<consumer-repo>-pacts-qits-projects-service` carrying
+    `pacts/<consumer-repo>_qits-projects-service.json` (consumer and provider by repository name,
+    e.g. `qits-landing-app-pacts-qits-projects-service` with
+    `qits-landing-app_qits-projects-service.json`; qits-workspaces' jar still has the older
+    `qits-workspaces-pacts-qits-projects` name); it is a test-scope dependency with its version in a
+    root pom property, so qits-maintenance bumps it when the consumer releases a changed pact. Its
+    PomParser keys a pin on the dependency's `groupId:artifactId` and records the version's
+    location as `property:<name>` when the version is exactly one declared `${…}` — any property
+    name works, no convention is read; what matters is a literal `<version>${prop}</version>` in
+    `dependencyManagement` (a version-less dependency is no pin).
     `contracts/ClasspathPactLoader` reads every `pacts/*_qits-projects-service.json` on the test
     classpath, inside jars included; a pact under any other name is not loaded. **No pact on the
     classpath fails the run**; a new consumer is one more dependency, no code.
@@ -2919,6 +2924,15 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
     answer for fails before pact-jvm runs, naming the state and the consumer. `PlatformStateReset`
     still truncates first — it is a before-each callback and pact-jvm sets states up in the
     before-test-execution phase — but no state relies on it.
+  - **The request is sent as the consumer's caller sends it, and only the request is touched.**
+    An interaction whose `qits-trigger.kind` is `ui` rides a person's session cookie, as a browser
+    does and as `GoldenMasterRecordingTest` records (so a person's door — scheduling, a criterion's
+    approval — answers as it does for them); a CLI command or a service schedule calls as the plain
+    `%test` dev user. And `contracts/StateParamRequestBody` swaps a request-body string — value or
+    member name — that is exactly a state param's pinned example, or exactly the golden masters'
+    `"{name}"` placeholder, for what this run's `@State` returned: the `ProviderState` generator a
+    JSON key cannot carry (`transitionWork`'s body is keyed by qualified id). No response, no
+    matching rule and no interaction is touched.
   - **`comments.references` is not verified, and it is required.** Every interaction must carry
     `qits-call` and `qits-trigger`; one without them fails here, so a consumer that drops them is
     caught at the provider too.

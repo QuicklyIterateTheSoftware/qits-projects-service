@@ -11,12 +11,21 @@ import au.com.dius.pact.provider.junit5.PactVerificationInvocationContextProvide
 import au.com.dius.pact.provider.junitsupport.Provider;
 import au.com.dius.pact.provider.junitsupport.State;
 import au.com.dius.pact.provider.junitsupport.loader.PactSource;
+import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
+import eu.wohlben.qits.projects.security.PersonCheck;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import java.io.IOException;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.hc.core5.http.ClassicHttpRequest;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestTemplate;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +55,24 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * which one it is running), so there is one method per state, and an explicit check in {@link
  * #target} that fails an unknown state with its name and its consumer before pact-jvm gets to it.
  * Adding a state to the registry means adding its one-line method here.
+ *
+ * <p><b>The request, as the consumer's caller sends it</b> ({@link #asTheConsumerSendsIt}). Two
+ * things pact-jvm cannot do for us are done to the prepared request, and nothing else is: neither
+ * touches a response or a matching rule.
+ *
+ * <ul>
+ *   <li><b>A browser rides a person's session.</b> An interaction whose {@code qits-trigger.kind} is
+ *       {@code ui} is a click in a browser, which carries a session cookie — what lets a person's
+ *       door (scheduling, qits-887; a campaign criterion's approval) answer as it does for them, and
+ *       exactly what {@link GoldenMasterRecordingTest} sends when it records the answer the consumer
+ *       wrote against. Any other trigger (a CLI command, a service's schedule) calls as the plain
+ *       {@code %test} dev user, as before.
+ *   <li><b>State-param stand-ins in the body are this run's values</b> ({@link
+ *       StateParamRequestBody}): a member name or value that is exactly a param's pinned example, or
+ *       the golden masters' own {@code "{name}"} placeholder, becomes what the {@code @State}
+ *       returned — the {@code ProviderState} generator a JSON key cannot carry ({@code
+ *       transitionWork}'s body is keyed by qualified id).
+ * </ul>
  *
  * <p><b>References.</b> {@link #target} also fails an interaction that lacks {@code
  * comments.references.qits-call} or {@code qits-trigger}; the verification itself ignores them.
@@ -112,11 +139,48 @@ class ConsumerPactVerificationTest {
 
   @TestTemplate
   @ExtendWith(PactVerificationInvocationContextProvider.class)
-  void consumerPactHolds(PactVerificationContext context) {
+  void consumerPactHolds(PactVerificationContext context, ClassicHttpRequest request)
+      throws IOException {
     try {
+      asTheConsumerSendsIt(context, request);
       context.verifyInteraction();
     } finally {
       states.cleanUp();
+    }
+  }
+
+  /** The two things done to the prepared request — see the class comment. Nothing else. */
+  private static void asTheConsumerSendsIt(
+      PactVerificationContext context, ClassicHttpRequest request) throws IOException {
+    Interaction interaction = context.getInteraction();
+    var trigger = interaction.getComments().get("references").asObject().get("qits-trigger");
+    var kind = trigger.isObject() ? trigger.asObject().get("kind") : null;
+    if (kind != null && kind.isString() && "ui".equals(kind.asString())) {
+      request.addHeader(
+          "Cookie", PersonCheck.SESSION_COOKIE + "=" + FakeSessionIntrospection.admin("dev"));
+    }
+
+    HttpEntity entity = request.getEntity();
+    if (entity == null) {
+      return;
+    }
+    Map<String, Object> pinned = new HashMap<>();
+    interaction.getProviderStates().forEach(state -> pinned.putAll(state.getParams()));
+    Map<String, Object> executed = context.getExecutionContext();
+    Object returned = executed == null ? null : executed.get("providerState");
+    if (!(returned instanceof Map<?, ?> stateValues)) {
+      return;
+    }
+    @SuppressWarnings("unchecked")
+    Map<String, ?> values = (Map<String, ?>) stateValues;
+    var rewritten = StateParamRequestBody.rewrite(EntityUtils.toByteArray(entity), pinned, values);
+    if (rewritten != null) {
+      request.setEntity(
+          new ByteArrayEntity(
+              rewritten.body(),
+              entity.getContentType() == null
+                  ? ContentType.APPLICATION_JSON
+                  : ContentType.parse(entity.getContentType())));
     }
   }
 
@@ -180,6 +244,31 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS)
   Map<String, String> aCampaignWithOrderedDevelopments() {
     return states.params(ProviderStates.A_CAMPAIGN_WITH_ORDERED_DEVELOPMENTS);
+  }
+
+  @State(ProviderStates.AN_EPIC_WITH_TASKS_IN_EVERY_STATUS)
+  Map<String, String> anEpicWithTasksInEveryStatus() {
+    return states.params(ProviderStates.AN_EPIC_WITH_TASKS_IN_EVERY_STATUS);
+  }
+
+  @State(ProviderStates.AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED)
+  Map<String, String> anEpicWithAFeatureWhoseTasksAreAllVerified() {
+    return states.params(ProviderStates.AN_EPIC_WITH_A_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED);
+  }
+
+  @State(ProviderStates.AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED)
+  Map<String, String> anEpicWithAVerifiedFeatureWhoseTasksAreAllVerified() {
+    return states.params(ProviderStates.AN_EPIC_WITH_A_VERIFIED_FEATURE_WHOSE_TASKS_ARE_ALL_VERIFIED);
+  }
+
+  @State(ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES)
+  Map<String, String> anImplementingEpicWithFeaturesInMixedStatuses() {
+    return states.params(ProviderStates.AN_IMPLEMENTING_EPIC_WITH_FEATURES_IN_MIXED_STATUSES);
+  }
+
+  @State(ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC)
+  Map<String, String> aCampaignWithADoneAVerifiedAndAnImplementingEpic() {
+    return states.params(ProviderStates.A_CAMPAIGN_WITH_A_DONE_A_VERIFIED_AND_AN_IMPLEMENTING_EPIC);
   }
 
   @State(ProviderStates.A_VERIFIED_EPIC)

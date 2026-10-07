@@ -202,13 +202,16 @@
              newer reactor, and until then it names the release the mock idp actually shipped in. -->
         <qits.service-mock.version>2026.1002.70617</qits.service-mock.version>
         <!-- THE CONSUMER PACTS this provider verifies (epic qits-546): one jar per consumer
-             (workspaces, landing), each carrying `pacts/<consumer>_qits-projects-service.json`, and
+             (workspaces, landing, the projects frontend, the platform-access CLI, maintenance), each carrying `pacts/<consumer>_qits-projects-service.json`, and
              ConsumerPactVerificationTest loads every such resource off the test classpath. Test
              scope at the declaration site; a pin in <properties> like every other qits jar, so
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-pacts-qits-projects.version>2026.1002.170857</qits.workspaces-pacts-qits-projects.version>
-        <qits.landing-pacts-qits-projects.version>2026.1002.163025</qits.landing-pacts-qits-projects.version>
+        <qits.landing-app-pacts-qits-projects-service.version>2026.1007.50835</qits.landing-app-pacts-qits-projects-service.version>
+        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1007.51027</qits.projects-frontend-pacts-qits-projects-service.version>
+        <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1007.53821</qits.platform-access-cli-pacts-qits-projects-service.version>
+        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1007.53748</qits.maintenance-service-pacts-qits-projects-service.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
@@ -347,8 +350,29 @@
                 <!-- Test scope at every declaration site: a consumer's pact, verified by
                      ConsumerPactVerificationTest. -->
                 <groupId>eu.wohlben.qits</groupId>
-                <artifactId>qits-landing-pacts-qits-projects</artifactId>
-                <version>${qits.landing-pacts-qits-projects.version}</version>
+                <artifactId>qits-landing-app-pacts-qits-projects-service</artifactId>
+                <version>${qits.landing-app-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-projects-frontend-pacts-qits-projects-service</artifactId>
+                <version>${qits.projects-frontend-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-platform-access-cli-pacts-qits-projects-service</artifactId>
+                <version>${qits.platform-access-cli-pacts-qits-projects-service.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: a consumer's pact, verified by
+                     ConsumerPactVerificationTest. -->
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-maintenance-service-pacts-qits-projects-service</artifactId>
+                <version>${qits.maintenance-service-pacts-qits-projects-service.version}</version>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site. -->
