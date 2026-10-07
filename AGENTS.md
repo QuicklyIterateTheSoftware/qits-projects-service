@@ -3003,37 +3003,25 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   has to relaunch under `setsid`, because a JVM that is not a session leader passes on the broken
   code too, which is exactly why the suite stayed green while production died. `HangupImmunity` is
   the backstop: SIGHUP is a WARN here, never a shutdown.
-- **The test-profile budget rule: an application a surefire JVM has booted is never unloaded, so
-  `service` runs one fork per application.** Quarkus' `FacadeClassLoader` loads each test class into
-  its profile's runtime class loader at discovery, and JUnit's discovery request holds those `Class`
-  objects until the fork exits. Measured with `jcmd <pid> VM.classloader_stats` and NMT: a booted
-  application keeps ~20k classes (~110 MB of metaspace) plus whatever its statics hold on the heap
-  for the rest of the fork, and even a profile that is only *discovered* costs a ~9k-class loader
-  (~40 MB). A profile is keyed by its **class**, not its content — two classes returning the same
-  overrides are two boots — so reuse an existing profile (`NoDevUserProfile`,
-  `RepositoryCatalogueTest.DeployedPosture`, `workspacehost.NoWorkspacesContextProfile`) before
-  writing one.
-  <br>**`service/pom.xml` gives every application a JVM of its own**: `default-test` runs every class
-  on the default application, and one `app-*` surefire execution per `@TestProfile` /
-  `@WithTestResource` runs exactly the classes that boot it. A new profiled class goes into its
-  application's execution and `default-test`'s excludes; a new application is a new execution.
-  `OwnApplicationForksTest` derives the grouping from the sources and fails the build until the pom
-  agrees. `-Dtest=…` overrides includes and excludes, so the `selected-tests` profile skips the
-  `app-*` executions and a named selection runs once, in `default-test`.
-  <br>**Why (qits-965).** The release gate's verify step runs in a container capped by the runner's
-  `stepMemoryLimit` — **6g**, memory equal to memory+swap, pids-limit 4096, 2 CPUs — and everything
-  counts against it: maven's JVM, the surefire fork, the embedded postgres and every git child. (An
-  earlier note here said 4g; that was the platform default, not this runner's row.) With one fork
-  for the whole suite the profiled tail of the run held every application at once and was the
-  step's peak, and the qits-965 branch died in the gate three times (`unable to create native
-  thread` twice, then a SIGKILLed fork). Measured the CI way — both JVMs at `-XX:MaxRAM=6g
-  -XX:ActiveProcessorCount=2`, the PSS of every process of the build summed every 2 s — main at
-  aed432d8 peaked at **3.99 GB** (fork 3.12), the branch before the split at 3.13–3.27 GB, and one
-  fork per application at **2.09 GB** (no service fork above 1.1 GB; the domain fork and the
-  failsafe phase are the peak now), for about a minute more wall time. A fork exiting 137 while
-  the step is far below its cap is the host's OOM killer rather than the cap — step containers
-  carry an `oom-score-adj` so they go first — and the container's `memory.events` `oom_kill`
-  counts that too.
+- **The test-profile budget rule: every distinct `@TestProfile` class is a whole app that is never
+  unloaded.** Quarkus' `FacadeClassLoader` loads each test class into its profile's runtime class
+  loader at discovery, and JUnit's discovery request holds those `Class` objects until the fork
+  exits — so every app that has booted keeps its ~16k classes (~125 MB of metaspace, measured with
+  `jcmd <pid> VM.classloader_stats`) for the rest of the run. That retained metaspace is the
+  largest single term of the surefire fork's footprint (~1.2 GB of a ~2.7 GB RSS). A profile is
+  keyed by its **class**, not its content: two classes returning the same overrides are two boots.
+  So reuse an existing profile (`NoDevUserProfile`, `RepositoryCatalogueTest.DeployedPosture`,
+  `workspacehost.NoWorkspacesContextProfile`) before writing one, and make a new one only for config
+  no existing one can carry.
+- **No background git from a test JVM.** The root pom sets `gc.auto=0`, `maintenance.auto=false`
+  and `receive.autogc=false` through `GIT_CONFIG_COUNT` for surefire and failsafe. A detached auto
+  gc/maintenance orphans itself, and in a qits-ci step the container's PID 1 is the ci-daemon, which
+  reaps nothing: every orphan stays a zombie holding a pid until the step ends. The step runs with
+  `--pids-limit 4096` (and 6g memory, the runner's `stepMemoryLimit`), and qits-965's gate counted
+  3822 `git` zombies at the limit — `OutOfMemoryError: unable to create native thread`, with the
+  step's memory at 2.2 of 6 GB. Memory was never the constraint. Other git paths still leave ~1.8k
+  zombies over a full run, so the headroom is finite: a change that multiplies git calls in the
+  suite should look at this number again.
 - A `Failed to start quarkus` / `Port already bound: 8081` failure is the known flake
   (`migration-plan.md` §9 item 14) — `@QuarkusTest` restarts racing for the test port. Re-run first.
 - `GitFixtures.path("<name>.git")` is how a test gets a git origin to clone. It returns the
@@ -3203,8 +3191,7 @@ variable is what reaches a CI step) at `/artifacts/`, which that step already ex
 with no origin configured at all they skip, and that skip is defensive rather than a supported mode.
 Unlike every other class on the line they boot **no** Quarkus application — plain JUnit 5, no
 `@TestProfile` — deliberately, because nothing in either assertion needs the app and a second
-profile is a second whole qits-projects application to boot and hold inside the gate's 6g step
-container.
+profile is a second whole qits-projects at ~125 MB of retained metaspace inside a 4g step container.
 
 **A name reaches this list one release before its class gates anything.** The recipe is read from
 `main`, so the release that adds an entry runs the list `main` already had;
