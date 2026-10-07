@@ -60,7 +60,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  */
 @Path("/agent-mcp-catalog")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class AgentMcpCatalogController {
 
   @Inject AgentMcpCatalogService catalog;
@@ -107,7 +107,7 @@ public class AgentMcpCatalogController {
 
   /** Every entry, by key, each saying which surfaces attach it. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public CatalogListResponse list() {
     return new CatalogListResponse(
         catalog.listAll(),
@@ -117,7 +117,7 @@ public class AgentMcpCatalogController {
 
   /** One entry, or a 404 — unlike a surface, an entry that does not exist is not a default. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{key}")
   public AgentMcpCatalogEntryDto get(@PathParam("key") String key) {
     return catalog.get(key);

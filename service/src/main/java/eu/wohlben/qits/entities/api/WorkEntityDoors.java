@@ -404,7 +404,11 @@ public class WorkEntityDoors {
    */
   public TransitionedEntity move(SecurityIdentity identity, WorkEntity row, String target) {
     Archetype archetype = row.archetype;
-    if (archetype == Archetype.EPIC && !identity.hasRole(AgentAccess.ADMIN_ROLE)) {
+    // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
+    // stay human-only.
+    if (archetype == Archetype.EPIC
+        && !identity.hasRole(AgentAccess.ADMIN_ROLE)
+        && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)) {
       throw new ForbiddenException(
           "Moving an epic's status is qits:admin alone; an agent's claim goes through the"
               + " transition_epic MCP tool.");
@@ -704,8 +708,11 @@ public class WorkEntityDoors {
           "A campaign is not deleted: drop it — POST /projects/api/work/{qualifiedId}/status"
               + " {\"target\":\"DROPPED\"}.");
     }
+    // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
+    // stay human-only.
     if ((archetype == Archetype.EPIC || archetype == Archetype.TICKET)
-        && !identity.hasRole(AgentAccess.ADMIN_ROLE)) {
+        && !identity.hasRole(AgentAccess.ADMIN_ROLE)
+        && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)) {
       throw new ForbiddenException(
           "Deleting "
               + (archetype == Archetype.EPIC ? "an epic" : "a ticket")

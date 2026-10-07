@@ -209,6 +209,18 @@ public class ReleaseRequestAgentBoundsTest {
     assertEquals(foreign, door(operator).rerunPhase(FOREIGN_REPO, foreign, "QA").request().id());
   }
 
+  /**
+   * {@code qits:admin-agent} is wider too (qits-628 follow-up), with no {@code qits:admin} on the
+   * token at all — the owner's rule is "for now it may use everything {@code qits:admin} may use".
+   */
+  @Test
+  void anAdminAgentWithNoAdminRoleRerunsAnyRepositorysPhase() {
+    String foreign = requestBySomebodyElse(FOREIGN_REPO, "feature/elsewhere-admin-agent");
+    SecurityIdentity adminAgent = AgentTokens.token(Map.of(), "qits:admin-agent");
+
+    assertEquals(foreign, door(adminAgent).rerunPhase(FOREIGN_REPO, foreign, "QA").request().id());
+  }
+
   // ---- the roles, over HTTP ----------------------------------------------------------------------
 
   private static io.restassured.specification.RequestSpecification asForwardedAgent() {

@@ -91,7 +91,7 @@ public class GcController {
   @Operation(summary = "Decommission release tags no pin, gitlink or release in flight keeps")
   @APIResponse(responseCode = "200", description = "What was judged, deleted, kept and failed")
   @APIResponse(responseCode = "400", description = "A pin source is missing or malformed")
-  @RolesAllowed({"qits:admin", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system"})
   public TagCollectionReportDto collectTags(CollectTagsRequest request) {
     return collector.collect(pinnedVersions(request), request.dryRun());
   }

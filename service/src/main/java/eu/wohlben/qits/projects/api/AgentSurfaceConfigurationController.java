@@ -49,7 +49,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  */
 @Path("/agent-surfaces")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class AgentSurfaceConfigurationController {
 
   @Inject AgentSurfaceConfigurationService surfaces;
@@ -106,14 +106,14 @@ public class AgentSurfaceConfigurationController {
 
   /** Every surface, in the vocabulary's own order, with anything stored beyond it after. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public SurfaceListResponse list() {
     return new SurfaceListResponse(surfaces.listAll(), AgentSurfaceDefaults.BUILT_IN_SERVERS);
   }
 
   /** One surface. Answers its shipped default rather than 404ing when no row exists. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{surface}")
   public AgentSurfaceConfigurationDto get(@PathParam("surface") String surface) {
     return surfaces.get(surface);
@@ -162,7 +162,7 @@ public class AgentSurfaceConfigurationController {
    * history the first time a field is added.
    */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{surface}/revisions")
   public RevisionListResponse revisions(@PathParam("surface") String surface) {
     return new RevisionListResponse(

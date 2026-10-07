@@ -55,6 +55,8 @@ import org.junit.jupiter.api.TestFactory;
 class AgentReadAccessTest {
 
   private static final String AGENT = "qits:agent";
+  private static final String ADMIN = "qits:admin";
+  private static final String ADMIN_AGENT = "qits:admin-agent";
 
   private static final List<Class<?>> CLASSES =
       List.of(
@@ -224,6 +226,38 @@ class AgentReadAccessTest {
           "WorkController.setStatus",
           "WorkCommentController.list",
           "WorkCommentController.add");
+
+  /**
+   * <b>qits:admin-agent is admitted wherever qits:admin is</b> (qits-628 follow-up, owner's rule:
+   * for now it may use everything {@code qits:admin} may use) — read off the annotations, exactly
+   * as every other clause in this class is, so a route widened for {@code qits:admin} alone
+   * without its sibling is caught here rather than slipping past as one more role on a list nobody
+   * is checking.
+   */
+  @TestFactory
+  Stream<DynamicTest> everyRouteAdmittingAdminAlsoAdmitsAdminAgent() {
+    return CLASSES.stream()
+        .map(
+            type ->
+                DynamicTest.dynamicTest(
+                    type.getSimpleName(),
+                    () -> {
+                      for (Method method : type.getDeclaredMethods()) {
+                        if (!isRead(method) && !isWrite(method)) {
+                          continue;
+                        }
+                        List<String> roles = roles(type, method);
+                        if (roles.contains(ADMIN)) {
+                          assertTrue(
+                              roles.contains(ADMIN_AGENT),
+                              type.getSimpleName()
+                                  + "."
+                                  + method.getName()
+                                  + " admits qits:admin and must admit qits:admin-agent too");
+                        }
+                      }
+                    }));
+  }
 
   @Test
   void aPlatformServiceReachesTheGenericEntityDoors() {

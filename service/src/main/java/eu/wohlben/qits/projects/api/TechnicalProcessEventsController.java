@@ -31,7 +31,7 @@ import org.jboss.resteasy.reactive.RestStreamElementType;
  * {@code ping} frame keeps a quiet segment from looking like a dead connection.
  */
 @Path("/technical-processes/{id}/events")
-@RolesAllowed({"qits:admin", "qits:agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
 public class TechnicalProcessEventsController {
 
   @Inject TechnicalProcessRegistry registry;

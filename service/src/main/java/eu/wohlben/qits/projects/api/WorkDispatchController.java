@@ -37,7 +37,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @Path("/work/{qualifiedId}/dispatch")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class WorkDispatchController {
 
   @Inject EntityIdResolver ids;
@@ -98,7 +98,7 @@ public class WorkDispatchController {
   }
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "getWorkDispatch",
       summary = "What a dispatch press would start now",

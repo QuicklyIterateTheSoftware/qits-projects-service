@@ -28,7 +28,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  */
 @Path("/projects/{project}/work")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
 public class ProjectWorkController {
 
   @Inject WorkEntityDoors doors;

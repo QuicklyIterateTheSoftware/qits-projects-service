@@ -38,8 +38,15 @@ import io.quarkus.security.identity.SecurityIdentity;
  */
 final class EntitiesAgentAccess {
 
-  /** A caller holding one of these is judged as before, even if it also holds the agent role. */
-  private static final String[] WIDER = {AgentAccess.ADMIN_ROLE, AgentAccess.SYSTEM_ROLE};
+  /**
+   * A caller holding one of these is judged as before, even if it also holds the agent role.
+   * {@code qits:admin-agent} is named explicitly beside {@code qits:admin} (qits-628 follow-up)
+   * rather than implied, so it can be removed here without touching the others if this binding
+   * must ever apply to it.
+   */
+  private static final String[] WIDER = {
+    AgentAccess.ADMIN_ROLE, AgentAccess.ADMIN_AGENT_ROLE, AgentAccess.SYSTEM_ROLE
+  };
 
   private EntitiesAgentAccess() {}
 

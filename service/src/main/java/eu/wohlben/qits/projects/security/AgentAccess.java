@@ -34,6 +34,15 @@ public final class AgentAccess {
   /** People. */
   public static final String ADMIN_ROLE = "qits:admin";
 
+  /**
+   * An admin workspace's agent (qits-628 follow-up): the coding agent running inside a workspace
+   * that holds the host's docker socket. For now it may use everything {@link #ADMIN_ROLE} may
+   * use — stated explicitly beside every {@code qits:admin} check rather than implied by an
+   * augmentor or a prefix match, so an endpoint that must stay human-only can have it removed one
+   * at a time later.
+   */
+  public static final String ADMIN_AGENT_ROLE = "qits:admin-agent";
+
   /** The claim that lists the Git refs a token may push (plan contract C1). */
   public static final String GIT_REFS_CLAIM = "git_refs";
 

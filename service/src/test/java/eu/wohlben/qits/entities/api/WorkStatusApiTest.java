@@ -49,6 +49,14 @@ class WorkStatusApiTest {
     return given().header("X-Qits-User", "someone").header("X-Qits-Roles", "qits:agent");
   }
 
+  /**
+   * An admin workspace's agent (qits-628 follow-up): {@code qits:admin-agent} and nothing else —
+   * no {@code qits:admin}, so this is the identity the follow-up actually widens the door for.
+   */
+  private static RequestSpecification asForwardedAdminAgent() {
+    return given().header("X-Qits-User", "someone").header("X-Qits-Roles", "qits:admin-agent");
+  }
+
   @Test
   void aTicketMovesFromReportedToRefined() {
     EntityFixtures.Project project = EntityFixtures.project("Status Ticket");
@@ -170,5 +178,23 @@ class WorkStatusApiTest {
 
     // And an id naming nothing is still a 404 for the agent: the row is resolved first.
     move(asForwardedAgent(), "no-such-entity", "REFINED").statusCode(404);
+  }
+
+  /**
+   * {@code qits:admin-agent} may move an epic exactly as {@code qits:admin} may (qits-628
+   * follow-up, owner's rule: for now it may use everything {@code qits:admin} may use) — with no
+   * {@code qits:admin} on the identity at all — while {@code qits:agent} alone still answers 403
+   * for the identical move, as asserted above.
+   */
+  @Test
+  void anAdminAgentMovesAnEpicWithNoAdminRole() {
+    EntityFixtures.Project project = EntityFixtures.project("Status Admin Agent Epic");
+    String epic = EntityFixtures.epic(project.id());
+
+    move(asForwardedAdminAgent(), epic, "REFINED")
+        .statusCode(200)
+        .body("status", equalTo("REFINED"))
+        .body("statusBefore", equalTo("REPORTED"));
+    statusOf(epic, "REFINED");
   }
 }

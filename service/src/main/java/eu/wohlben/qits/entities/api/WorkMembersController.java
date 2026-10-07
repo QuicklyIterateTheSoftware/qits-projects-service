@@ -41,6 +41,9 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * {@code predicate.entityId}. The rules are {@link CampaignDoors}', shared with the campaign routes,
  * and so are the roles: every door admits {@code qits:agent}, bound to the campaign's project,
  * except approve — a person's sign-off, {@code qits:admin} and then a verified person.
+ * {@code qits:admin-agent} is admitted too, everywhere {@code qits:admin} is, approve included
+ * (qits-628 follow-up); remove it from approve if that door must stay human-only — the verified
+ * person check beneath it still refuses a commissioned bearer today.
  *
  * <p>The move and the remove answer the membership as they left it, {@code {"members": […]}}, the
  * list the read answers; the add, the condition and the approve answer the one member.
@@ -48,7 +51,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @Path("/work/{qualifiedId}/members")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class WorkMembersController {
 
   @Inject EntityIdResolver ids;
@@ -114,7 +117,7 @@ public class WorkMembersController {
   // --- the routes ------------------------------------------------------------------------------
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "listWorkMembers",
       summary = "A campaign's members",
@@ -135,7 +138,7 @@ public class WorkMembersController {
   }
 
   @POST
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "addWorkMember",
       summary = "Gather an entity into a campaign",
@@ -170,7 +173,7 @@ public class WorkMembersController {
 
   @PUT
   @Path("/{membershipId}/position")
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "moveWorkMember",
       summary = "Move a membership within its campaign",
@@ -196,7 +199,7 @@ public class WorkMembersController {
 
   @DELETE
   @Path("/{membershipId}")
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "removeWorkMember",
       summary = "Remove a membership from its campaign",
@@ -223,7 +226,7 @@ public class WorkMembersController {
 
   @PUT
   @Path("/{membershipId}/condition")
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "setWorkMemberCondition",
       summary = "Replace a membership's condition",

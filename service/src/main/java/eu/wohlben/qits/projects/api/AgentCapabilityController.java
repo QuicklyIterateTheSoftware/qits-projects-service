@@ -51,7 +51,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  */
 @Path("/agent-capabilities")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed({"qits:admin", "qits:system"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system"})
 public class AgentCapabilityController {
 
   @Inject AgentCapabilityCatalogueService capabilities;
@@ -164,7 +164,7 @@ public class AgentCapabilityController {
    * when it is the library's fallback rather than a binary's own answer.
    */
   @GET
-  @RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   public AgentCapabilityCatalogueDto catalogue() {
     return capabilities.catalogue();
   }

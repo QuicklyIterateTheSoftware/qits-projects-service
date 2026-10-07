@@ -90,7 +90,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
 @Path("/repositories/{repoId}/release-requests")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
 public class ReleaseRequestController {
 
   @Inject ReleaseRequests releaseRequests;
@@ -289,7 +289,7 @@ public class ReleaseRequestController {
 
   @POST
   @Path("/{requestId}/approve")
-  @jakarta.annotation.security.RolesAllowed("qits:admin")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   @Operation(
       summary = "Sign off this request's current fold, so it may release",
       description =
@@ -304,7 +304,9 @@ public class ReleaseRequestController {
               + " all — approving what has no gate is a caller error, not a no-op. A person only:"
               + " qits:admin, verified by this service from a browser session or a person's qits"
               + " CLI token — asserted identity headers alone answer 403. A machine may ask for a"
-              + " release and withdraw one, and may not sign off the estate.")
+              + " release and withdraw one, and may not sign off the estate. qits:admin-agent is"
+              + " admitted too (qits-628 follow-up); remove it here if this door must stay"
+              + " human-only — the verification below still refuses a commissioned bearer today.")
   public ApproveReleaseRequest.Response approve(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -331,7 +333,7 @@ public class ReleaseRequestController {
 
   @POST
   @Path("/{requestId}/decline")
-  @jakarta.annotation.security.RolesAllowed("qits:admin")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   @Operation(
       summary = "Refuse this request's current fold, answerably",
       description =
@@ -343,7 +345,8 @@ public class ReleaseRequestController {
               + " the branches and makes the next release ask mint a fresh request. Same body and"
               + " same refusals as approve, mergedSha included. No unattended-gate ticket is filed:"
               + " a person just said no, so somebody is watching by definition. A person only,"
-              + " verified exactly as approve verifies one.")
+              + " verified exactly as approve verifies one — qits:admin-agent admitted too on the"
+              + " same terms as approve (qits-628 follow-up).")
   public DeclineReleaseRequest.Response decline(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -593,7 +596,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Path("/{requestId}/pipeline/{phase}/rerun")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
       summary = "Run one phase of this release again",
       description =
@@ -635,7 +638,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Path("/{requestId}/automations/{kind}/runs")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
       summary = "Run one release-request automation again on this request's current fold",
       description =
@@ -678,10 +681,13 @@ public class ReleaseRequestController {
    * itself is broken and its own fix would otherwise hold behind it. {@code qits:admin} alone and a
    * verified person, on {@link #approve}'s terms: letting a fold through without its regenerations
    * is a sign-off, and a gate a machine could waive is not this gate.
+   *
+   * <p>{@code qits:admin-agent} is admitted too (qits-628 follow-up); remove it here if this door
+   * must stay human-only.
    */
   @POST
   @Path("/{requestId}/automations/waivers")
-  @jakarta.annotation.security.RolesAllowed("qits:admin")
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   @Operation(
       summary = "Waive the automations gate for this request's current fold",
       description =
@@ -692,7 +698,8 @@ public class ReleaseRequestController {
               + " that is READY or has concluded, one with no fold yet, and a repository the"
               + " automations gate does not hold; 400 for a blank foldSha or reason. A person only:"
               + " qits:admin, verified by this service from a browser session or a person's qits"
-              + " CLI token — asserted identity headers alone answer 403.")
+              + " CLI token — asserted identity headers alone answer 403. qits:admin-agent admitted"
+              + " too (qits-628 follow-up); remove it here if this door must stay human-only.")
   public WaiveReleaseRequestAutomations.Response waiveAutomations(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -709,8 +716,15 @@ public class ReleaseRequestController {
 
   // ---- what an agent may reach ---------------------------------------------------------------
 
-  /** A caller holding one of these is judged as before, even if it also holds the agent role. */
-  private static final String[] WIDER = {AgentAccess.ADMIN_ROLE, AgentAccess.SYSTEM_ROLE};
+  /**
+   * A caller holding one of these is judged as before, even if it also holds the agent role.
+   * {@code qits:admin-agent} is named explicitly beside {@code qits:admin} (qits-628 follow-up)
+   * rather than implied, so it can be removed here without touching the others if this binding
+   * must ever apply to it.
+   */
+  private static final String[] WIDER = {
+    AgentAccess.ADMIN_ROLE, AgentAccess.ADMIN_AGENT_ROLE, AgentAccess.SYSTEM_ROLE
+  };
 
   /** A bound agent reaches only the repositories of its own project. */
   private void requireAgentProject(String repoId) {

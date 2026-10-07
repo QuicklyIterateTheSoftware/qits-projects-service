@@ -58,6 +58,12 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
  * TEST}): with no edge and no idp in front of {@code quarkus:dev}, a forwarded {@code qits:admin}
  * identity — qits-auth-core's dev user — counts, so the doors can be clicked locally. A test sees
  * the deployed rule.
+ *
+ * <p>{@code qits:admin-agent} is admitted too (qits-628 follow-up); remove it here if this door
+ * must stay human-only. In practice a commissioned agent-container bearer still fails every proof
+ * above — it carries a {@code context_kind} claim, which {@link #cliPerson} already refuses, and
+ * presents no session cookie — so this is the explicit statement the owner's rule asks for rather
+ * than a change in who this method lets through today.
  */
 @ApplicationScoped
 public class PersonCheck {
@@ -133,7 +139,10 @@ public class PersonCheck {
       Optional<String> person =
           sessions
               .introspect(sessionCookie)
-              .filter(session -> session.roles().contains(AgentAccess.ADMIN_ROLE))
+              .filter(
+                  session ->
+                      session.roles().contains(AgentAccess.ADMIN_ROLE)
+                          || session.roles().contains(AgentAccess.ADMIN_AGENT_ROLE))
               .map(SessionIntrospection.Session::username)
               .filter(name -> !name.isBlank());
       if (person.isPresent()) {
@@ -143,16 +152,18 @@ public class PersonCheck {
     if (mode == LaunchMode.DEVELOPMENT
         && caller != null
         && !caller.isAnonymous()
-        && caller.hasRole(AgentAccess.ADMIN_ROLE)) {
+        && (caller.hasRole(AgentAccess.ADMIN_ROLE)
+            || caller.hasRole(AgentAccess.ADMIN_AGENT_ROLE))) {
       return Optional.of(caller.getPrincipal().getName());
     }
     return Optional.empty();
   }
 
   /**
-   * A validated bearer that is a person's CLI holding {@code qits:admin}, or empty. The groups are
-   * read off the token itself, not off the identity, so an augmentor that added a role cannot make
-   * a machine look like a person.
+   * A validated bearer that is a person's CLI holding {@code qits:admin} or {@code
+   * qits:admin-agent} (qits-628 follow-up), or empty. The groups are read off the token itself, not
+   * off the identity, so an augmentor that added a role cannot make a machine look like a person.
+   * In practice a {@code context_kind}-bearing commission is refused above regardless of its roles.
    */
   static Optional<String> cliPerson(JsonWebToken token) {
     if (!CLI_CREDENTIAL.equals(text(token.getClaim(CREDENTIAL_TYPE_CLAIM)))) {
@@ -163,7 +174,8 @@ public class PersonCheck {
     }
     List<String> groups = groups(token);
     if (groups.stream().anyMatch(group -> group.startsWith(CLIENT_GROUP_PREFIX))
-        || !groups.contains(AgentAccess.ADMIN_ROLE)) {
+        || (!groups.contains(AgentAccess.ADMIN_ROLE)
+            && !groups.contains(AgentAccess.ADMIN_AGENT_ROLE))) {
       return Optional.empty();
     }
     return Optional.ofNullable(token.getName()).filter(name -> !name.isBlank());

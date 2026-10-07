@@ -98,6 +98,15 @@ class EntityAgentBoundsTest {
       AgentTokens.token(Map.of("project", FOREIGN_PROJECT), "qits:admin", "qits:agent");
 
   /**
+   * An admin workspace's agent (qits-628 follow-up): {@code qits:admin-agent} and {@code
+   * qits:agent}, no {@code qits:admin} at all. The owner's rule is "for now it may use everything
+   * {@code qits:admin} may use", so {@code isBoundAgent}'s wider-role list must read this one as
+   * unbound too, exactly like {@link #OPERATOR_AGENT}.
+   */
+  private static final SecurityIdentity ADMIN_AGENT_OPERATOR =
+      AgentTokens.token(Map.of("project", FOREIGN_PROJECT), "qits:admin-agent", "qits:agent");
+
+  /**
    * A platform service's client token (qits-667): the fixed role {@code qits:system}, its {@code
    * sub} the client id, and no {@code project} claim at all — qits-maintenance filing a MAINTENANCE
    * ticket wherever a stuck release request belongs.
@@ -713,6 +722,21 @@ class EntityAgentBoundsTest {
         created(
                 children(OPERATOR_AGENT)
                     .create(rows.epicId(), child("Added by a person holding both roles")))
+            .title());
+  }
+
+  /**
+   * {@code qits:admin-agent} is wider too (qits-628 follow-up), with no {@code qits:admin} on the
+   * token at all: a write to a project the token's {@code project} claim does not name still goes
+   * through, exactly as {@link #anAdminIsUnaffectedByTheBinding} proves for {@code qits:admin}.
+   */
+  @Test
+  void anAdminAgentIsUnaffectedByTheBindingWithNoAdminRole() {
+    assertEquals(
+        "Added by an admin workspace's agent",
+        created(
+                children(ADMIN_AGENT_OPERATOR)
+                    .create(rows.epicId(), child("Added by an admin workspace's agent")))
             .title());
   }
 

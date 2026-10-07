@@ -44,7 +44,7 @@ import org.jboss.resteasy.reactive.ResponseStatus;
 @Path("/projects")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed("qits:admin")
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class ProjectController {
 
   @Inject ProjectService projectService;
@@ -145,7 +145,7 @@ public class ProjectController {
   }
 
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{id}")
   @Operation(operationId = "getProject")
   public GetProjectRequest.Response get(@PathParam("id") String id) {
@@ -166,7 +166,7 @@ public class ProjectController {
    * Spelled in full because a method-level {@code @RolesAllowed} REPLACES the class-level one.
    */
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(operationId = "listProjects")
   public ListProjectsRequest.Response list() {
     var projects = projectService.list();
@@ -289,7 +289,7 @@ public class ProjectController {
    */
   @GET
   @Path("/{projectId}/repositories")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(operationId = "listProjectRepositories")
   public ListProjectRepositoriesRequest.Response listRepositories(
       @PathParam("projectId") String projectId) {
@@ -450,7 +450,7 @@ public class ProjectController {
    */
   @POST
   @Path("/{projectId}/repositories")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @APIResponse(responseCode = "200", description = "The repository exists and the wrapper names it")
   @APIResponse(
       responseCode = "400",

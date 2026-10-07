@@ -40,7 +40,7 @@ import org.jboss.resteasy.reactive.ResponseStatus;
 @Path("/repositories")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@jakarta.annotation.security.RolesAllowed("qits:admin")
+@jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class RepositoryController {
 
   @Inject RepositoryService repositoryService;
@@ -92,7 +92,7 @@ public class RepositoryController {
    * the key, and a null archetype is a row whose name declares no role suffix.
    */
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
       summary = "Every repository with its public coordinates",
       description =
@@ -121,7 +121,7 @@ public class RepositoryController {
    */
   @GET
   @Path("/{repoId}")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(operationId = "getRepository")
   public GetRepositoryRequest.Response get(@PathParam("repoId") String repoId) {
     var repo = repositoryService.get(repoId);
@@ -133,14 +133,14 @@ public class RepositoryController {
   }
 
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/branches")
   public ListBranchesRequest.Response branches(@PathParam("repoId") String repoId) {
     return new ListBranchesRequest.Response(repositoryService.listBranchesWithCleanup(repoId));
   }
 
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/commits")
   public CommitLogDto commits(
       @PathParam("repoId") String repoId, @QueryParam("branch") @NotBlank String branch) {
@@ -148,7 +148,7 @@ public class RepositoryController {
   }
 
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/commits/{commitHash}/changes")
   public CommitChangesDto commitChanges(
       @PathParam("repoId") String repoId,
@@ -158,7 +158,7 @@ public class RepositoryController {
   }
 
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/commits/{commitHash}/diff")
   public CommitFileDiffDto commitFileDiff(
       @PathParam("repoId") String repoId,
@@ -179,7 +179,7 @@ public class RepositoryController {
    * service. A method-level {@code @RolesAllowed} replaces the class-level {@code qits:admin}.
    */
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
   @Path("/{repoId}/commit-subjects")
   @Operation(
       operationId = "measureCommitSubjects",
@@ -215,7 +215,7 @@ public class RepositoryController {
    */
   @GET
   @Path("/{repoId}/commits/{commitHash}/builds")
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:system", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
       summary = "Every CI verdict recorded for one commit",
       description =
@@ -339,7 +339,7 @@ public class RepositoryController {
   }
 
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/sync-status")
   public SyncStatusDto syncStatus(@PathParam("repoId") String repoId) {
     return repositoryService.syncStatus(repoId);
@@ -361,7 +361,7 @@ public class RepositoryController {
    * "none". Activeness changes ride the repository {@code PROCESS} SSE hint.
    */
   @GET
-  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:agent"})
+  @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/active-process")
   public ActiveProcessRequest.Response activeProcess(@PathParam("repoId") String repoId) {
     repositoryService.get(repoId); // 404 on an unknown/deleted repository

@@ -42,7 +42,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  */
 @Path("/work/{qualifiedId}/comments")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class WorkCommentController {
 
   @Inject EntityIdResolver ids;
@@ -84,7 +84,7 @@ public class WorkCommentController {
   public record WorkCommentDeleted(boolean success) {}
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
   @Operation(
       operationId = "listWorkComments",
       summary = "Read a work entity's comment thread",
@@ -106,7 +106,7 @@ public class WorkCommentController {
 
   @POST
   @Consumes(MediaType.APPLICATION_JSON)
-  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
   @Operation(
       operationId = "addWorkComment",
       summary = "Comment on a work entity",
@@ -134,7 +134,7 @@ public class WorkCommentController {
   @PATCH
   @Path("/{commentId}")
   @Consumes({WorkEntityDoors.MERGE_PATCH_JSON, MediaType.APPLICATION_JSON})
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "editWorkComment",
       summary = "Edit a comment's text (JSON merge patch)",

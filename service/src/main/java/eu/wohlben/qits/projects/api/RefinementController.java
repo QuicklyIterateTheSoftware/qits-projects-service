@@ -28,7 +28,7 @@ import jakarta.ws.rs.core.MediaType;
  */
 @Path("/refinements")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class RefinementController {
 
   @Inject RefinementService refinements;
@@ -42,7 +42,7 @@ public class RefinementController {
   public record DiscardResponse(boolean success) {}
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{id}")
   public RefinementResponse get(@PathParam("id") long id) {
     return new RefinementResponse(RefinementDto.of(refinements.view(refinements.get(id))));
@@ -71,7 +71,7 @@ public class RefinementController {
   }
 
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{id}/active-process")
   public ActiveProcessResponse activeProcess(@PathParam("id") long id) {
     refinements.get(id); // 404 an unknown row rather than answering a hopeful null

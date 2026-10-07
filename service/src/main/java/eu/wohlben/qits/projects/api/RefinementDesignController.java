@@ -40,7 +40,7 @@ import java.util.Set;
  */
 @Path("/refinements/{id}/designs")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class RefinementDesignController {
 
   /** What a write with no forwarded identity records as its author. */
@@ -84,7 +84,7 @@ public class RefinementDesignController {
    * own id, which is what makes "in use" answerable at all without a stored back-reference.
    */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public ListResponse list(@PathParam("id") long id) {
     var refinement = refinements.get(id);
     List<RefinementDesign> rows = designs.list(id);
@@ -115,7 +115,7 @@ public class RefinementDesignController {
 
   /** One design with its whole document — what the sandboxed iframe is fed. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{designId}")
   public DesignDto get(@PathParam("id") long id, @PathParam("designId") String designId) {
     refinements.get(id);

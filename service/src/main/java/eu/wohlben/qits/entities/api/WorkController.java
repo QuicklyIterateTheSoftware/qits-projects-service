@@ -67,7 +67,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  */
 @Path("/work")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class WorkController {
 
   @Inject EntityIdResolver ids;
@@ -202,7 +202,7 @@ public class WorkController {
 
   @GET
   @Path("/{qualifiedId}")
-  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
   @Operation(
       operationId = "getWork",
       summary = "Read one work entity of any archetype",
@@ -224,7 +224,7 @@ public class WorkController {
 
   @POST
   @Consumes(MediaType.APPLICATION_JSON)
-  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
   @Operation(
       operationId = "createWork",
       summary = "Create a work entity of any archetype",
@@ -272,7 +272,7 @@ public class WorkController {
   @PUT
   @Path("/{qualifiedId}")
   @Consumes(MediaType.APPLICATION_JSON)
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "putWork",
       summary = "State a work entity in full",
@@ -312,7 +312,7 @@ public class WorkController {
   @PATCH
   @Path("/{qualifiedId}")
   @Consumes({WorkEntityDoors.MERGE_PATCH_JSON, MediaType.APPLICATION_JSON})
-  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
   @Operation(
       operationId = "patchWork",
       summary = "Edit a work entity's fields (JSON merge patch)",
@@ -368,7 +368,7 @@ public class WorkController {
   @POST
   @Path("/transition")
   @Consumes(MediaType.APPLICATION_JSON)
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "transitionWork",
       summary = "State several work entities in full, as one post-state",
@@ -417,7 +417,7 @@ public class WorkController {
   @POST
   @Path("/{qualifiedId}/status")
   @Consumes(MediaType.APPLICATION_JSON)
-  @RolesAllowed({"qits:admin", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
   @Operation(
       operationId = "setWorkStatus",
       summary = "Move a work entity through its lifecycle",
@@ -457,7 +457,7 @@ public class WorkController {
   @POST
   @Path("/{qualifiedId}/blocked")
   @Consumes(MediaType.APPLICATION_JSON)
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "setWorkBlocked",
       summary = "Block or unblock a work entity",
@@ -498,7 +498,7 @@ public class WorkController {
 
   @DELETE
   @Path("/{qualifiedId}")
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Operation(
       operationId = "deleteWork",
       summary = "Delete a work entity and its subtree",

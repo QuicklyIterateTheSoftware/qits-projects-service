@@ -47,6 +47,21 @@ class PersonCheckTest {
         "the name is the token's principal");
   }
 
+  /**
+   * {@code qits:admin-agent} is admitted here too (qits-628 follow-up), stated explicitly on the
+   * same terms as {@code qits:admin} — even though, in practice, nothing commissioned with
+   * {@code context_kind} ever reaches this path (see {@link #anAgentOrWorkspaceTokenIsNotAPerson}).
+   * A session naming it is still the proof this method accepts.
+   */
+  @Test
+  void aSessionIdpSaysHoldsAdminAgentIsAPerson() {
+    SecurityIdentity forwarded = AgentTokens.forwarded("qits:admin-agent");
+
+    assertEquals(
+        Optional.of("ada"),
+        check.verify(forwarded, FakeSessionIntrospection.cookie("ada", "qits:admin-agent"), LaunchMode.NORMAL));
+  }
+
   // --- everything else ----------------------------------------------------------------------------
 
   @Test

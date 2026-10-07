@@ -2941,6 +2941,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
     get:
       responses:
@@ -2960,6 +2961,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/agent-configuration:
@@ -2981,6 +2983,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/agent-mcp-catalog:
@@ -3002,6 +3005,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/agent-mcp-catalog/{key}:
     put:
@@ -3036,6 +3040,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       parameters:
       - name: key
@@ -3060,6 +3065,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     delete:
       parameters:
@@ -3084,6 +3090,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/agent-surfaces:
     get:
       responses:
@@ -3103,6 +3110,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/agent-surfaces/{surface}:
     put:
@@ -3137,6 +3145,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       parameters:
       - name: surface
@@ -3161,6 +3170,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/agent-surfaces/{surface}/revisions:
     get:
@@ -3187,6 +3197,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/gc/tags:
     post:
@@ -3215,6 +3226,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
   /projects/api/pins:
     get:
@@ -3235,6 +3247,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/projects:
@@ -3257,6 +3270,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
     post:
@@ -3288,6 +3302,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{id}:
     put:
       parameters:
@@ -3321,6 +3336,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       operationId: getProject
       parameters:
@@ -3346,6 +3362,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     delete:
       parameters:
@@ -3371,6 +3388,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{projectId}/agent-container:
     get:
       parameters:
@@ -3396,6 +3414,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/projects/{projectId}/agent-container/ensure:
     post:
@@ -3422,6 +3441,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{projectId}/agent-container/stop:
     post:
       parameters:
@@ -3447,6 +3467,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{projectId}/events:
     get:
       parameters:
@@ -3474,6 +3495,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/projects/{projectId}/reconcile:
     post:
@@ -3510,6 +3532,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{projectId}/refinements:
     get:
       parameters:
@@ -3535,6 +3558,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/projects/{projectId}/release-requests:
     get:
@@ -3571,6 +3595,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/projects/{projectId}/repositories:
@@ -3599,6 +3624,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
     post:
@@ -3636,6 +3662,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/projects/{projectId}/repositories/adopt:
     post:
@@ -3705,6 +3732,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{projectId}/repositories/by-name/{repoName}:
     get:
       summary: Resolve a project-scoped repository name to its id
@@ -3783,6 +3811,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{project}/work:
     get:
       summary: List a project's work of every archetype
@@ -3829,6 +3858,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/refinements/{id}:
     get:
@@ -3856,6 +3886,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/refinements/{id}/active-process:
     get:
@@ -3883,6 +3914,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/refinements/{id}/designs:
     get:
@@ -3910,6 +3942,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     post:
       parameters:
@@ -3943,6 +3976,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/designs/{designId}:
     put:
       parameters:
@@ -3982,6 +4016,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       parameters:
       - name: designId
@@ -4012,6 +4047,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     delete:
       parameters:
@@ -4039,6 +4075,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/discard:
     post:
       parameters:
@@ -4065,6 +4102,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/ensure-container:
     post:
       parameters:
@@ -4091,6 +4129,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/events:
     get:
       parameters:
@@ -4119,6 +4158,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/refinements/{id}/prompt-attachments:
     get:
@@ -4146,6 +4186,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     post:
       parameters:
@@ -4179,6 +4220,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/prompt-attachments/{attachmentId}:
     put:
       parameters:
@@ -4218,6 +4260,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     delete:
       parameters:
       - name: attachmentId
@@ -4244,6 +4287,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/prompt-attachments/{attachmentId}/content:
     get:
       parameters:
@@ -4274,6 +4318,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/refinements/{id}/prompt-draft:
     put:
@@ -4309,6 +4354,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       parameters:
       - name: id
@@ -4334,6 +4380,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     delete:
       parameters:
@@ -4356,6 +4403,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/recreate-container:
     post:
       parameters:
@@ -4382,6 +4430,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/refinements/{id}/stop-container:
     post:
       parameters:
@@ -4408,6 +4457,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories:
     get:
       summary: Every repository with its public coordinates
@@ -4431,6 +4481,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}:
@@ -4478,6 +4529,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       operationId: getRepository
       parameters:
@@ -4503,6 +4555,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
     delete:
@@ -4535,6 +4588,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/active-process:
     get:
       parameters:
@@ -4560,6 +4614,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/repositories/{repoId}/backup-sync:
     post:
@@ -4591,6 +4646,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/branches:
     delete:
       parameters:
@@ -4622,6 +4678,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       parameters:
       - name: repoId
@@ -4646,6 +4703,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/repositories/{repoId}/commit-subjects:
     get:
@@ -4688,6 +4746,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
         - qits:system
   /projects/api/repositories/{repoId}/commits:
@@ -4721,6 +4780,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/builds:
     get:
@@ -4755,6 +4815,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/changes:
@@ -4791,6 +4852,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/diff:
     get:
@@ -4832,6 +4894,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/repositories/{repoId}/main-branch:
     put:
@@ -4866,6 +4929,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/pull:
     post:
       parameters:
@@ -4891,6 +4955,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/push:
     post:
       parameters:
@@ -4916,6 +4981,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/release-requests:
     get:
       summary: This repository's release requests
@@ -4950,6 +5016,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
     post:
@@ -4996,6 +5063,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}:
@@ -5028,6 +5096,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/approvals:
@@ -5069,6 +5138,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/approve:
@@ -5086,7 +5156,9 @@ paths:
         \ what has no gate is a caller error, not a no-op. A person only: qits:admin,\
         \ verified by this service from a browser session or a person's qits CLI token\
         \ — asserted identity headers alone answer 403. A machine may ask for a release\
-        \ and withdraw one, and may not sign off the estate."
+        \ and withdraw one, and may not sign off the estate. qits:admin-agent is admitted\
+        \ too (qits-628 follow-up); remove it here if this door must stay human-only\
+        \ — the verification below still refuses a commissioned bearer today."
       parameters:
       - name: repoId
         in: path
@@ -5122,6 +5194,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/artifacts:
     get:
       summary: "What this release published, and whether anything deploys it"
@@ -5160,6 +5233,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/automations/waivers:
@@ -5173,7 +5247,8 @@ paths:
         \ one with no fold yet, and a repository the automations gate does not hold;\
         \ 400 for a blank foldSha or reason. A person only: qits:admin, verified by\
         \ this service from a browser session or a person's qits CLI token — asserted\
-        \ identity headers alone answer 403."
+        \ identity headers alone answer 403. qits:admin-agent admitted too (qits-628\
+        \ follow-up); remove it here if this door must stay human-only."
       parameters:
       - name: repoId
         in: path
@@ -5209,6 +5284,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/automations/{kind}/runs:
     post:
       summary: Run one release-request automation again on this request's current
@@ -5254,6 +5330,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/changes:
@@ -5296,6 +5373,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/changes/diff:
@@ -5339,6 +5417,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/changes/submodule:
@@ -5391,6 +5470,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/changes/submodule/diff:
@@ -5444,6 +5524,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/commits:
@@ -5484,6 +5565,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/decline:
@@ -5498,7 +5580,8 @@ paths:
         \ the next release ask mint a fresh request. Same body and same refusals as\
         \ approve, mergedSha included. No unattended-gate ticket is filed: a person\
         \ just said no, so somebody is watching by definition. A person only, verified\
-        \ exactly as approve verifies one."
+        \ exactly as approve verifies one — qits:admin-agent admitted too on the same\
+        \ terms as approve (qits-628 follow-up)."
       parameters:
       - name: repoId
         in: path
@@ -5534,6 +5617,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/pipeline/{phase}/rerun:
     post:
       summary: Run one phase of this release again
@@ -5583,6 +5667,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/sources:
@@ -5628,6 +5713,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/sources/priority:
@@ -5676,6 +5762,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/release-requests/{requestId}/withdraw:
@@ -5721,6 +5808,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:system
         - qits:agent
   /projects/api/repositories/{repoId}/sync:
@@ -5748,6 +5836,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/repositories/{repoId}/sync-status:
     get:
       parameters:
@@ -5773,6 +5862,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/technical-processes/{id}/events:
     get:
@@ -5801,6 +5891,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work:
     post:
@@ -5845,6 +5936,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
         - qits:system
   /projects/api/work/archetypes:
@@ -5872,6 +5964,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/archetypes/{archetype}/schemas/{door}:
     get:
@@ -5912,6 +6005,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/transition:
     post:
@@ -5955,6 +6049,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}:
     put:
@@ -6004,6 +6099,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     patch:
       summary: Edit a work entity's fields (JSON merge patch)
@@ -6060,6 +6156,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
         - qits:system
     get:
@@ -6092,6 +6189,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
         - qits:system
     delete:
@@ -6130,6 +6228,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/audit:
     get:
@@ -6164,6 +6263,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/blocked:
     post:
@@ -6208,6 +6308,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/children:
     get:
@@ -6241,6 +6342,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     post:
       summary: Add a child to a work entity
@@ -6284,6 +6386,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/comments:
     get:
@@ -6315,6 +6418,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
         - qits:system
     post:
@@ -6354,6 +6458,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
         - qits:system
   /projects/api/work/{qualifiedId}/comments/{commentId}:
@@ -6406,6 +6511,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     delete:
       summary: Delete a comment
@@ -6441,6 +6547,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/work/{qualifiedId}/dispatch:
     get:
       summary: What a dispatch press would start now
@@ -6472,6 +6579,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     post:
       summary: "Put an agent on an epic or a ticket, or start a campaign"
@@ -6518,6 +6626,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/work/{qualifiedId}/dossier:
     get:
       summary: Read a work entity's dossier
@@ -6549,6 +6658,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     post:
       summary: Add a page to a work entity's dossier
@@ -6590,6 +6700,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/dossier-assets:
     get:
@@ -6622,6 +6733,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     post:
       summary: Copy a figure of the refinement into an epic's dossier
@@ -6663,6 +6775,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/dossier-assets/{assetId}/content:
     get:
@@ -6698,6 +6811,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/dossier/{page}:
     put:
@@ -6746,6 +6860,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     get:
       summary: Read one page of a work entity's dossier
@@ -6780,6 +6895,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     delete:
       summary: Remove a page from its dossier
@@ -6816,6 +6932,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/dossier/{page}/move:
     post:
@@ -6861,6 +6978,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/members:
     get:
@@ -6893,6 +7011,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
     post:
       summary: Gather an entity into a campaign
@@ -6934,6 +7053,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/members/{membershipId}:
     delete:
@@ -6972,6 +7092,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/members/{membershipId}/condition:
     put:
@@ -7018,6 +7139,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/members/{membershipId}/criteria/{criterionId}/approve:
     post:
@@ -7070,6 +7192,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
   /projects/api/work/{qualifiedId}/members/{membershipId}/position:
     put:
       summary: Move a membership within its campaign
@@ -7112,6 +7235,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/progress:
     get:
@@ -7145,6 +7269,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/refinement:
     post:
@@ -7182,6 +7307,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
     get:
       summary: Find a work entity's refinement room
       description: "The entity's room, or null when it has none; never creates one.\
@@ -7211,6 +7337,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
   /projects/api/work/{qualifiedId}/status:
     post:
@@ -7262,6 +7389,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
         - qits:system
   /projects/api/work/{qualifiedId}/workspaces:
@@ -7296,6 +7424,7 @@ paths:
       security:
       - SecurityScheme:
         - qits:admin
+        - qits:admin-agent
         - qits:agent
 info:
   title: qits-projects API

@@ -22,7 +22,7 @@ import java.time.Instant;
  */
 @Path("/refinements/{id}/prompt-draft")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("qits:admin")
+@RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class RefinementPromptDraftController {
 
   @Inject RefinementService refinements;
@@ -44,7 +44,7 @@ public class RefinementPromptDraftController {
 
   /** 404 when no draft has been saved — deliberately, so "none" and "empty" stay distinct. */
   @GET
-  @RolesAllowed({"qits:admin", "qits:agent"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public DraftResponse get(@PathParam("id") long id) {
     refinements.get(id);
     RefinementPromptDraft draft =

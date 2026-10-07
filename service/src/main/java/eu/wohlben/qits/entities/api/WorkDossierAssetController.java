@@ -51,7 +51,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * already.
  */
 @Path("/work/{qualifiedId}/dossier-assets")
-@RolesAllowed({"qits:admin", "qits:agent"})
+@RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
 public class WorkDossierAssetController {
 
   @Inject EntityIdResolver ids;

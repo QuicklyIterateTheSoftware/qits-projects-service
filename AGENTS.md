@@ -596,6 +596,7 @@ identity here.
 | role | how a caller holds it | what it opens |
 | --- | --- | --- |
 | `qits:admin` | the forwarded `X-Qits-Roles` header alone — the edge asserts it for an authenticated admin session | every REST controller here (class-level), the events stream and the remote-login socket |
+| `qits:admin-agent` | an admin workspace's agent — the coding agent running inside a workspace that holds the host's docker socket; qits-idp issues it beside `qits:agent` | wherever `qits:admin` opens, for now (qits-628 follow-up, owner's rule): every check naming `qits:admin` names this role too, explicitly rather than by an augmentor or a prefix match, so an endpoint that must stay human-only can have it removed one at a time later |
 | `qits:system` | a machine bearer alone — qits-idp copies a client's `roles` into the token's `groups` claim, and quarkus-oidc reads that claim as roles with no configuration at all | `GET /projects/{projectId}/repositories/by-name/{repoName}` (qits-githost), `POST /projects/{projectId}/repositories/adopt` (the bootstrap) and the agent control socket `/projects/daemon/{projectId}` |
 
 **`qits:agent` is an agent's own token (plan phase 4). An agent keeps every read and gains no
