@@ -33,11 +33,6 @@
     <name>qits-projects :: service</name>
     <packaging>quarkus</packaging>
 
-    <properties>
-        <!-- Flipped by the `selected-tests` profile only; see the surefire block. -->
-        <own-application-forks.skip>false</own-application-forks.skip>
-    </properties>
-
     <dependencies>
         <dependency>
             <!-- /<segment>/q/health/ready - the readiness endpoint qits-cd's health gate curls;
@@ -379,143 +374,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
             </plugin>
             <plugin>
-                <!-- ONE FORK PER QUARKUS APPLICATION (qits-965). A surefire JVM never unloads an
-                     application it has booted (AGENTS.md "The test-profile budget rule"), so a single
-                     fork running the whole suite ends holding the default application AND every
-                     profile's at once - measured, the fork's peak was the profiled tail of the run,
-                     not the ~1350 default-application tests before it. Each execution below is a fresh
-                     JVM that boots exactly ONE application: `default-test` every class that runs on
-                     the default one, and one `app-*` execution per @TestProfile / test resource with
-                     exactly the classes that boot it. No application boots twice, so the split costs
-                     a JVM start and an embedded postgres per execution and nothing else.
-
-                     A NEW PROFILED CLASS joins the execution of its application (reuse a profile
-                     before writing one), and a NEW APPLICATION is a new execution here plus an exclude
-                     in `default-test`. OwnApplicationForksTest fails the build until both are right.
-
-                     The excludes repeat surefire's default `**/*$*`: naming any exclude replaces the
-                     default list, and a nested profile class is not a test. Every `app-*` execution is
-                     skipped under `-Dtest=` (profile `selected-tests` below), because a named selection
-                     overrides includes AND excludes and would otherwise run once per execution. -->
                 <artifactId>maven-surefire-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-test</id>
-                        <configuration>
-                            <excludes>
-                                <exclude>**/*$*</exclude>
-                                <exclude>eu/wohlben/qits/entities/api/EntitiesAuditIdentityTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/api/ProjectRepositoryAdoptTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/api/ProjectRepositoryCreateDoorTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/releasehost/ReleaseRequestApprovalDoorTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/security/ForwardAuthTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/mcp/CampaignMcpToolsTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/mcp/DossierMcpToolsTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/mcp/EntityMcpToolsTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/mcp/EpicMcpToolsTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/mcp/RefinementDesignMcpToolsTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/mcp/RepositoryMcpToolsTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/mcp/TicketMcpToolsTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/api/EntityDispatchWithNoWorkspacesTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/releasehost/ReleaseWithNoWorkspaceResolutionTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/api/RepositoryCatalogueTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/api/RepositoryNameCutoverTest.java</exclude>
-                                <exclude>eu/wohlben/qits/projects/security/BearerJwksTest.java</exclude>
-                                <exclude>eu/wohlben/qits/entities/api/ScheduleNeedsAPersonDoorTest.java</exclude>
-                            </excludes>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <!-- NoDevUserProfile -->
-                        <id>app-no-dev-user</id>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <configuration>
-                            <skip>${own-application-forks.skip}</skip>
-                            <includes>
-                                <include>eu/wohlben/qits/entities/api/EntitiesAuditIdentityTest.java</include>
-                                <include>eu/wohlben/qits/projects/api/ProjectRepositoryAdoptTest.java</include>
-                                <include>eu/wohlben/qits/projects/api/ProjectRepositoryCreateDoorTest.java</include>
-                                <include>eu/wohlben/qits/projects/releasehost/ReleaseRequestApprovalDoorTest.java</include>
-                                <include>eu/wohlben/qits/projects/security/ForwardAuthTest.java</include>
-                            </includes>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <!-- McpStatelessTestProfile -->
-                        <id>app-mcp-stateless</id>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <configuration>
-                            <skip>${own-application-forks.skip}</skip>
-                            <includes>
-                                <include>eu/wohlben/qits/projects/mcp/CampaignMcpToolsTest.java</include>
-                                <include>eu/wohlben/qits/projects/mcp/DossierMcpToolsTest.java</include>
-                                <include>eu/wohlben/qits/projects/mcp/EntityMcpToolsTest.java</include>
-                                <include>eu/wohlben/qits/projects/mcp/EpicMcpToolsTest.java</include>
-                                <include>eu/wohlben/qits/projects/mcp/RefinementDesignMcpToolsTest.java</include>
-                                <include>eu/wohlben/qits/projects/mcp/RepositoryMcpToolsTest.java</include>
-                                <include>eu/wohlben/qits/projects/mcp/TicketMcpToolsTest.java</include>
-                            </includes>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <!-- NoWorkspacesContextProfile -->
-                        <id>app-no-workspaces</id>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <configuration>
-                            <skip>${own-application-forks.skip}</skip>
-                            <includes>
-                                <include>eu/wohlben/qits/projects/api/EntityDispatchWithNoWorkspacesTest.java</include>
-                                <include>eu/wohlben/qits/projects/releasehost/ReleaseWithNoWorkspaceResolutionTest.java</include>
-                            </includes>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <!-- RepositoryCatalogueTest.DeployedPosture -->
-                        <id>app-deployed-posture</id>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <configuration>
-                            <skip>${own-application-forks.skip}</skip>
-                            <includes>
-                                <include>eu/wohlben/qits/projects/api/RepositoryCatalogueTest.java</include>
-                                <include>eu/wohlben/qits/projects/api/RepositoryNameCutoverTest.java</include>
-                            </includes>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <!-- @WithTestResource(MockIdpTenant) -->
-                        <id>app-mock-idp-tenant</id>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <configuration>
-                            <skip>${own-application-forks.skip}</skip>
-                            <includes>
-                                <include>eu/wohlben/qits/projects/security/BearerJwksTest.java</include>
-                            </includes>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <!-- @WithTestResource(PersonGateIdpTenant) -->
-                        <id>app-person-gate-idp-tenant</id>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <configuration>
-                            <skip>${own-application-forks.skip}</skip>
-                            <includes>
-                                <include>eu/wohlben/qits/entities/api/ScheduleNeedsAPersonDoorTest.java</include>
-                            </includes>
-                        </configuration>
-                    </execution>
-                </executions>
             </plugin>
             <plugin>
                 <artifactId>maven-failsafe-plugin</artifactId>
@@ -565,21 +424,6 @@
                 <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
                 <skipITs>false</skipITs>
                 <quarkus.native.enabled>true</quarkus.native.enabled>
-            </properties>
-        </profile>
-        <!-- `-Dtest=…` overrides includes AND excludes, so without this every surefire execution
-             would run the named classes — each hand-picked test once per application fork. The
-             selection already reaches every class through `default-test` (its excludes no longer
-             apply), so the `app-*` forks have nothing left to add. -->
-        <profile>
-            <id>selected-tests</id>
-            <activation>
-                <property>
-                    <name>test</name>
-                </property>
-            </activation>
-            <properties>
-                <own-application-forks.skip>true</own-application-forks.skip>
             </properties>
         </profile>
     </profiles>
