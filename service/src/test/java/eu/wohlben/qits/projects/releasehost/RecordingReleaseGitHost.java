@@ -195,7 +195,7 @@ public class RecordingReleaseGitHost implements ReleaseGitHost {
 
   /**
    * The same, with the gating release declaration added — for a test that stages {@code
-   * refs/heads/main} for some other reader (the estate gate reads the wrapper's branches) and does
+   * refs/heads/main} for some other reader (a test staging the wrapper's branches) and does
    * not mean to change which gates the repository configures.
    */
   public void gatedTree(String rev, Map<String, String> files) {

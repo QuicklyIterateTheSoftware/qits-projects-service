@@ -71,11 +71,11 @@ public class ReleaseRequestApprovalDoorTest {
   @Inject RecordingBackingBranchMerger merger;
 
   /**
-   * Not a subject here, and injected precisely so that it is not one. The <b>estate gate</b> sits in
-   * front of the approval gate and holds a wrapper request whose gitlink pins it cannot read, so the
-   * fixture's wrapper is staged as a real one — an alias to be addressed by, and two source branches
-   * that declare no submodules and therefore pin no estate. Every request here then passes that gate
-   * on its first look and what holds it is the gate whose doors this class is about.
+   * Not a subject here, and injected precisely so that it is not one. The fixture's wrapper is
+   * staged as a real one — an alias to be addressed by, and two source branches that declare no
+   * submodules. The <b>automations gate</b> sits in front of the approval gate, and the suite's fake
+   * qits-maintenance answers that no automation applies, so every request here passes it on its
+   * first look and what holds it is the gate whose doors this class is about.
    */
   @Inject RecordingReleaseGitHost gitHost;
 
@@ -93,8 +93,7 @@ public class ReleaseRequestApprovalDoorTest {
     merger.reset();
     gitHost.reset();
     requestIds.clear();
-    // A wrapper whose branches declare no submodules: the estate gate reads them, finds nothing
-    // pinned and lets every request here through to the gate under test. See the field's javadoc.
+    // A wrapper whose branches declare no submodules. See the field's javadoc.
     gitHost.gatedTree("refs/heads/main", java.util.Map.of("README.md", "no estate here"));
     gitHost.tree("refs/heads/work", java.util.Map.of("README.md", "no estate here"));
     // Nothing in flight, so the build gate is out of the way and what holds a request here is only
@@ -122,8 +121,8 @@ public class ReleaseRequestApprovalDoorTest {
               project.name = "approval-door";
               project.slug = "approval-door-" + UUID.randomUUID();
               project.persist();
-              // The wrapper is ALIASED: a wrapper is a name-addressed thing, and the estate gate
-              // holds one it cannot address. The plain repository needs no name here.
+              // The wrapper is ALIASED: a wrapper is a name-addressed thing, and qits-maintenance
+              // addresses the automations it asks about by name. The plain one needs no name here.
               alias(project, persistRepository(project, wrapperRepoId, RepositoryArchetype.PROJECT));
               persistRepository(project, plainRepoId, RepositoryArchetype.SERVICE);
             });

@@ -24,8 +24,14 @@
           "kind": "CI",
           "state": "PENDING",
           "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
         }
       ],
+      "automations": null,
       "conflict": null,
       "version": null,
       "supersededBy": null,
@@ -60,8 +66,14 @@
           "kind": "CI",
           "state": "PENDING",
           "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
         }
       ],
+      "automations": null,
       "conflict": null,
       "version": "2026.101.100005",
       "supersededBy": null,
@@ -96,8 +108,14 @@
           "kind": "CI",
           "state": "PASSED",
           "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
         }
       ],
+      "automations": null,
       "conflict": null,
       "version": null,
       "supersededBy": null,
@@ -132,8 +150,14 @@
           "kind": "CI",
           "state": "FAILED",
           "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
         }
       ],
+      "automations": null,
       "conflict": null,
       "version": null,
       "supersededBy": null,
@@ -168,8 +192,14 @@
           "kind": "CI",
           "state": "PENDING",
           "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
         }
       ],
+      "automations": null,
       "conflict": null,
       "version": null,
       "supersededBy": null,
@@ -204,8 +234,14 @@
           "kind": "CI",
           "state": "PENDING",
           "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
         }
       ],
+      "automations": null,
       "conflict": null,
       "version": "2026.101.100001",
       "supersededBy": null,

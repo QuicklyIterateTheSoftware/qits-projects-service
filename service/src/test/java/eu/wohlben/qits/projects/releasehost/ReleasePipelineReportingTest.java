@@ -132,8 +132,11 @@ public class ReleasePipelineReportingTest {
     transition("run-ordinary", null, "main", "RUNNING");
 
     assertNull(pipeline(id), "absent, and deliberately not an empty block");
-    assertEquals(List.of("CI"), strings(id, "request.gates.kind"), "the flat list is untouched");
-    assertEquals(List.of("PENDING"), strings(id, "request.gates.state"));
+    assertEquals(
+        List.of("CI", "AUTOMATIONS"),
+        strings(id, "request.gates.kind"),
+        "the flat list is untouched");
+    assertEquals(List.of("PENDING", "PASSED"), strings(id, "request.gates.state"));
   }
 
   /**
@@ -203,7 +206,10 @@ public class ReleasePipelineReportingTest {
     verdict("BuildFailed", merged, first, null);
     awaitState(id, "REJECTED");
     assertEquals(List.of("FAILED"), strings(id, "request.pipeline.phases.state"));
-    assertEquals(List.of("FAILED"), strings(id, "request.gates.state"), "and they agree while red");
+    assertEquals(
+        List.of("FAILED", "PASSED"),
+        strings(id, "request.gates.state"),
+        "and they agree while red");
 
     // `qits ci retry`: a NEW run at the SAME fold, saying which run it re-fires.
     transitionAt(retry, "RELEASE_REQUEST", backing, "SUCCESS", Instant.parse("2026-09-20T10:05:00Z"));
@@ -216,7 +222,7 @@ public class ReleasePipelineReportingTest {
         "the retry is the QA phase now, newest transition winning");
     assertEquals(List.of(retry), strings(id, "request.pipeline.phases.runId"));
     assertEquals(
-        List.of("PASSED"),
+        List.of("PASSED", "PASSED"),
         strings(id, "request.gates.state"),
         "and the gate agrees rather than reading FAILED under a green phase");
     assertEquals(
@@ -281,9 +287,10 @@ public class ReleasePipelineReportingTest {
         Instant.parse("2026-09-16T10:00:00Z"));
 
     assertEquals(
-        List.of("CI", "APPROVAL", "DEPLOYMENT"), strings(id, "request.pipeline.gates.kind"));
+        List.of("CI", "AUTOMATIONS", "APPROVAL", "DEPLOYMENT"),
+        strings(id, "request.pipeline.gates.kind"));
     assertEquals(
-        List.of("QA_PUBLISH", "QA_PUBLISH", "DEPLOY_FINALIZED"),
+        List.of("QA_PUBLISH", "QA_PUBLISH", "QA_PUBLISH", "DEPLOY_FINALIZED"),
         strings(id, "request.pipeline.gates.between"));
     assertEquals(
         strings(id, "request.gates.kind"),
@@ -292,10 +299,10 @@ public class ReleasePipelineReportingTest {
     assertEquals(
         strings(id, "request.gates.state"), strings(id, "request.pipeline.gates.state"));
     assertEquals(
-        java.util.Arrays.asList(null, "configured by manual-review", null),
+        java.util.Arrays.asList(null, null, "configured by manual-review", null),
         strings(id, "request.pipeline.gates.detail"),
-        "no sentence is invented: CI and deployment carry none, and approval carries the policy's"
-            + " own reason for asking");
+        "no sentence is invented: CI, automations and deployment carry none, and approval carries"
+            + " the policy's own reason for asking");
     assertEquals(
         strings(id, "request.gates.detail"),
         strings(id, "request.pipeline.gates.detail"),
@@ -329,9 +336,11 @@ public class ReleasePipelineReportingTest {
     publishRuns.answer(Optional.of(true));
     finalization.sweep();
 
-    assertEquals(List.of("CI", "PUBLISH"), strings(id, "request.pipeline.gates.kind"));
     assertEquals(
-        List.of("QA_PUBLISH", "PUBLISH_DEPLOY"), strings(id, "request.pipeline.gates.between"));
+        List.of("CI", "AUTOMATIONS", "PUBLISH"), strings(id, "request.pipeline.gates.kind"));
+    assertEquals(
+        List.of("QA_PUBLISH", "QA_PUBLISH", "PUBLISH_DEPLOY"),
+        strings(id, "request.pipeline.gates.between"));
 
     QuarkusTransaction.requiringNew()
         .run(
@@ -339,7 +348,7 @@ public class ReleasePipelineReportingTest {
                 ReleasedTagPendingMerge.update(
                     "publishDetail = ?1 where repoId = ?2", "no run has reported yet", repoId));
     assertEquals(
-        java.util.Arrays.asList(null, "no run has reported yet"),
+        java.util.Arrays.asList(null, null, "no run has reported yet"),
         strings(id, "request.pipeline.gates.detail"),
         "sourced from the row the gate is already answered off, never invented");
   }

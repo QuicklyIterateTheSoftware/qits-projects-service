@@ -26,4 +26,16 @@ public interface FoldChanges {
    * @throws RuntimeException when the fold, the base or the diff cannot be read
    */
   List<CommitFileChangeDto> changes(String repoId, String mergedSha, String pathspec);
+
+  /**
+   * Every path that changed between two folds of one request — {@link CommitService#listChanges}
+   * from {@code previousFoldSha} to {@code foldSha} over the whole tree, a rename counting as both of
+   * its paths. This is the {@code changedSincePrevious} a release-request automation is carried over
+   * on (see {@link AutomationRefresh}), and the reason it is here rather than a call into the mirror
+   * from there is this port's own: the suite folds through shas no git repository holds.
+   *
+   * @throws RuntimeException when either fold or the diff cannot be read — never an empty list,
+   *     which would say "nothing changed" and carry every outcome over
+   */
+  List<String> pathsBetween(String repoId, String foldSha, String previousFoldSha);
 }

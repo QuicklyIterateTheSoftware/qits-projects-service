@@ -35,6 +35,8 @@ public class RecordingFoldChanges implements FoldChanges {
 
   private final Set<String> mirrored = ConcurrentHashMap.newKeySet();
 
+  private final Map<String, List<String>> betweenScripted = new ConcurrentHashMap<>();
+
   private final Map<String, AtomicInteger> reads = new ConcurrentHashMap<>();
 
   /** How many times {@code repoId}'s folds were read since the last reset. */
@@ -62,6 +64,7 @@ public class RecordingFoldChanges implements FoldChanges {
 
   public void reset() {
     scripted.clear();
+    betweenScripted.clear();
     unreadable.clear();
     mirrored.clear();
     reads.clear();
@@ -78,6 +81,27 @@ public class RecordingFoldChanges implements FoldChanges {
       throw new IllegalStateException(failure);
     }
     return scripted.getOrDefault(repoId, List.of());
+  }
+
+  /**
+   * Every two-fold read of {@code repoId} answers {@code paths}, from now until the next script or
+   * reset. Unscripted, it answers that nothing changed — this suite's folds are shas no repository
+   * holds, so the real read would fail every time.
+   */
+  public void between(String repoId, List<String> paths) {
+    betweenScripted.put(repoId, List.copyOf(paths));
+  }
+
+  @Override
+  public List<String> pathsBetween(String repoId, String foldSha, String previousFoldSha) {
+    if (mirrored.contains(repoId)) {
+      return mirror.pathsBetween(repoId, foldSha, previousFoldSha);
+    }
+    String failure = unreadable.get(repoId);
+    if (failure != null) {
+      throw new IllegalStateException(failure);
+    }
+    return betweenScripted.getOrDefault(repoId, List.of());
   }
 
   /** A changed blob, as the mirror read reports one. */
