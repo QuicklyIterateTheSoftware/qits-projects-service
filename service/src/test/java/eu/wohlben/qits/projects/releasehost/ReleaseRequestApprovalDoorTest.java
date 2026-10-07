@@ -9,12 +9,15 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import eu.wohlben.qits.eventstream.control.EventFrame;
 import eu.wohlben.qits.projects.bus.BuildStatusListener;
+import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.entity.ReleaseRequestApproval;
+import eu.wohlben.qits.projects.entity.ReleaseRequestAutomationWaiver;
 import eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.maintenancehost.FakeReleaseRequestAutomations;
 import eu.wohlben.qits.projects.security.FakeSessionIntrospection;
 import eu.wohlben.qits.projects.security.NoDevUserProfile;
 import eu.wohlben.qits.projects.security.PersonCheck;
@@ -55,10 +58,24 @@ import org.junit.jupiter.api.Test;
  * machine session is driven at four routes in one test, and it has to be refused at exactly two of
  * them. Asserting only the 403s would pass just as well against a class that had lost {@code
  * qits:system} altogether, which would break the bump robot and every peer that opens a request.
+ *
+ * <p><b>Since epic qits-978 it also covers the automations waiver and the forwarded re-run</b> — a
+ * person's escape for the day qits-maintenance itself is broken, and the one write {@code
+ * qits:agent} may press entirely unbound. Both are doors onto rows and a port call rather than a
+ * gate of their own kind, so they belong here beside approve and decline on the same reasoning that
+ * put those two in one class: {@link #anAgentMayNotWaive} is this feature's own load-bearing
+ * negative, on {@link #aMachineMayAskAndWithdrawButMayNotSignOff}'s terms — a waiver is a sign-off,
+ * so an agent and even an admin asserted through headers alone (no verified session) are refused
+ * alike, and only {@link #aPersonsWaiverReleasesTheHeldFold} proves the door is not simply dead.
+ * {@code AutomationGateTest} is the gate these two are escapes from, exactly as {@code
+ * ReleaseRequestApprovalGateTest} is this class's own.
  */
 @QuarkusTest
 @TestProfile(NoDevUserProfile.class)
 public class ReleaseRequestApprovalDoorTest {
+
+  /** The automation kind scripted red for {@link #automationRepoId}. */
+  private static final String SCREENSHOTS = "screenshot-baselines";
 
   @Inject BuildStatusListener listener;
 
@@ -79,9 +96,29 @@ public class ReleaseRequestApprovalDoorTest {
    */
   @Inject RecordingReleaseGitHost gitHost;
 
+  /**
+   * The suite's {@link eu.wohlben.qits.projects.control.ReleaseRequestAutomations}, scripted red for
+   * {@link #automationRepoId} alone — the gate the waiver and the re-run below (epic qits-978) are
+   * escapes from. Every other repository above is left at this fake's default ("no automation
+   * applies"), which is why their own tests are unaffected by its presence.
+   */
+  @Inject FakeReleaseRequestAutomations automations;
+
+  /**
+   * Holds the automations note the refresh wrote; forgotten in {@link #dropTheFixturesRows} so a
+   * waived or re-run request leaves nothing behind for the next test to read.
+   */
+  @Inject AutomationLedger ledger;
+
   private String projectId;
   private String wrapperRepoId;
   private String plainRepoId;
+
+  /** A third, aliased repository scripted with a red automation — see {@link #automations}. */
+  private String automationRepoId;
+
+  /** Its alias — the name the automations port addresses it by. */
+  private String automationRepoName;
 
   /** Every request this test opened, so the approval rows behind it can be dropped again. */
   private final List<String> requestIds = new ArrayList<>();
@@ -92,6 +129,7 @@ public class ReleaseRequestApprovalDoorTest {
     executor.reset();
     merger.reset();
     gitHost.reset();
+    automations.reset();
     requestIds.clear();
     // A wrapper whose branches declare no submodules. See the field's javadoc.
     gitHost.gatedTree("refs/heads/main", java.util.Map.of("README.md", "no estate here"));
@@ -113,6 +151,8 @@ public class ReleaseRequestApprovalDoorTest {
             "README.md", "no estate here",
             ".config/qits/release-requests.yml", "manual-review: true\n"));
     plainRepoId = "approval-door-plain-" + UUID.randomUUID();
+    automationRepoId = "approval-door-automation-" + UUID.randomUUID();
+    automationRepoName = "approval-door-automation";
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
@@ -123,9 +163,21 @@ public class ReleaseRequestApprovalDoorTest {
               project.persist();
               // The wrapper is ALIASED: a wrapper is a name-addressed thing, and qits-maintenance
               // addresses the automations it asks about by name. The plain one needs no name here.
-              alias(project, persistRepository(project, wrapperRepoId, RepositoryArchetype.PROJECT));
+              alias(
+                  project,
+                  persistRepository(project, wrapperRepoId, RepositoryArchetype.PROJECT),
+                  "approval-door-approval-door");
               persistRepository(project, plainRepoId, RepositoryArchetype.SERVICE);
+              // Aliased too — the automations port addresses this one by name exactly as it would
+              // the wrapper's, and a red answer is scripted for it below.
+              alias(
+                  project,
+                  persistRepository(project, automationRepoId, RepositoryArchetype.SERVICE),
+                  automationRepoName);
             });
+    // A red automation, so a request on this repository is held by the automations gate until it
+    // is waived or re-run (epic qits-978) — see the waiver and re-run tests below.
+    automations.answer(automationRepoName, SCREENSHOTS, "FAILED");
   }
 
   private static Repository persistRepository(
@@ -139,19 +191,20 @@ public class ReleaseRequestApprovalDoorTest {
     return repository;
   }
 
-  private static void alias(Project project, Repository repository) {
-    eu.wohlben.qits.projects.entity.RepositoryName name =
+  private static void alias(Project project, Repository repository, String name) {
+    eu.wohlben.qits.projects.entity.RepositoryName entry =
         new eu.wohlben.qits.projects.entity.RepositoryName();
-    name.project = project;
-    name.repository = repository;
-    name.name = "approval-door-approval-door";
-    name.persist();
+    entry.project = project;
+    entry.repository = repository;
+    entry.name = name;
+    entry.persist();
   }
 
   /**
    * {@code ReleaseRequestFlowTest}'s discipline — no open request outlives its test, because {@code
    * sweep()} walks every open row there is — plus the approval table, which has no foreign key to
-   * anything and is therefore cascaded away by nothing.
+   * anything and is therefore cascaded away by nothing. The waiver table and the ledger's in-memory
+   * notes (epic qits-978) get the same treatment, for the same reason.
    */
   @AfterEach
   void dropTheFixturesRows() {
@@ -161,10 +214,14 @@ public class ReleaseRequestApprovalDoorTest {
               ReleaseRequest.delete("projectId = ?1", projectId);
               ReleasedTagPendingMerge.delete("repoId = ?1", wrapperRepoId);
               ReleasedTagPendingMerge.delete("repoId = ?1", plainRepoId);
+              ReleasedTagPendingMerge.delete("repoId = ?1", automationRepoId);
               if (!requestIds.isEmpty()) {
                 ReleaseRequestApproval.delete("requestId in ?1", requestIds);
+                ReleaseRequestAutomationWaiver.delete("requestId in ?1", requestIds);
               }
             });
+    requestIds.forEach(ledger::forget);
+    automations.reset();
   }
 
   // -----------------------------------------------------------------------------------------
@@ -428,6 +485,126 @@ public class ReleaseRequestApprovalDoorTest {
   }
 
   // -----------------------------------------------------------------------------------------
+  // The automations waiver (epic qits-978)
+  // -----------------------------------------------------------------------------------------
+
+  /** A person waives the fold they are looking at, and the request releases on the press. */
+  @Test
+  public void aPersonsWaiverReleasesTheHeldFold() {
+    String id = create(admin(), automationRepoId, "wohlben");
+    String merged = held(id);
+
+    admin()
+        .body("{\"foldSha\":\"" + merged + "\",\"reason\":\"qits-maintenance is down\"}")
+        .post(base(automationRepoId) + "/" + id + "/automations/waivers")
+        .then()
+        .statusCode(200)
+        .body("request.id", org.hamcrest.Matchers.equalTo(id));
+
+    awaitState(automationRepoId, id, "RELEASED");
+    assertEquals(1, waivers(id).size());
+    assertEquals("ada", waivers(id).get(0).actor, "the verified person's name");
+  }
+
+  /** A waiver is a sign-off: an agent — or asserted headers alone — may not give one. */
+  @Test
+  public void anAgentMayNotWaive() {
+    String id = create(admin(), automationRepoId, "wohlben");
+    String merged = held(id);
+
+    as("an-agent", "qits:agent")
+        .body("{\"foldSha\":\"" + merged + "\",\"reason\":\"let me through\"}")
+        .post(base(automationRepoId) + "/" + id + "/automations/waivers")
+        .then()
+        .statusCode(403);
+    as("mallory", "qits:admin")
+        .body("{\"foldSha\":\"" + merged + "\",\"reason\":\"let me through\"}")
+        .post(base(automationRepoId) + "/" + id + "/automations/waivers")
+        .then()
+        .statusCode(403);
+
+    assertEquals(List.of(), waivers(id));
+    assertEquals("PENDING", stateOf(automationRepoId, id));
+  }
+
+  /** A push landed while the page was open: the waiver names a fold the request has left. */
+  @Test
+  public void aWaiverOfAMovedFoldIsRefusedWithTheCurrentOne() {
+    String id = create(admin(), automationRepoId, "wohlben");
+    String firstFold = held(id);
+    headMoved(automationRepoId, "work");
+    awaitFoldToMove(automationRepoId, id, firstFold);
+    String secondFold = mergedShaOf(automationRepoId, id);
+
+    String message =
+        admin()
+            .body("{\"foldSha\":\"" + firstFold + "\",\"reason\":\"qits-maintenance is down\"}")
+            .post(base(automationRepoId) + "/" + id + "/automations/waivers")
+            .then()
+            .statusCode(409)
+            .extract()
+            .path("message");
+    assertTrue(message.contains(secondFold), "the refusal names the fold it is on now: " + message);
+
+    assertEquals(List.of(), waivers(id), "and nothing was recorded");
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // The forwarded re-run (epic qits-978)
+  // -----------------------------------------------------------------------------------------
+
+  @Test
+  public void theRerunIsForwardedAndAnswers202WithTheRunsId() {
+    String id = create(admin(), automationRepoId, "wohlben");
+    held(id);
+
+    String runId =
+        as("an-agent", "qits:agent")
+            .body("{}")
+            .post(base(automationRepoId) + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+            .then()
+            .statusCode(202)
+            .extract()
+            .path("id");
+
+    assertTrue(runId.startsWith("bump-"), runId);
+    List<FakeReleaseRequestAutomations.Rerun> asked = automations.reruns();
+    assertEquals(1, asked.size());
+    assertEquals(id, asked.get(0).requestId());
+    assertEquals(SCREENSHOTS, asked.get(0).kind());
+    assertEquals(automationRepoName, asked.get(0).repositoryName(), "the repository travels with it");
+  }
+
+  /** The far side's refusal is the fact the person pressing has not got: status and sentence. */
+  @Test
+  public void aRerunRefusalPassesThrough() {
+    String id = create(admin(), automationRepoId, "wohlben");
+    held(id);
+    automations.refuseReruns(409, "screenshot-baselines is already running for this request");
+
+    as("ada", "qits:admin")
+        .body("{}")
+        .post(base(automationRepoId) + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+        .then()
+        .statusCode(409)
+        .body(
+            "message",
+            org.hamcrest.Matchers.equalTo("screenshot-baselines is already running for this request"));
+  }
+
+  @Test
+  public void aRerunWithNoMaintenanceIs503() {
+    String id = create(admin(), automationRepoId, "wohlben");
+    automations.unconfigure();
+
+    as("ada", "qits:admin")
+        .body("{}")
+        .post(base(automationRepoId) + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+        .then()
+        .statusCode(503);
+  }
+
+  // -----------------------------------------------------------------------------------------
   // Driving it
   // -----------------------------------------------------------------------------------------
 
@@ -454,6 +631,18 @@ public class ReleaseRequestApprovalDoorTest {
         .contentType(ContentType.JSON)
         .header("X-Qits-User", "qits-platform-maintenance")
         .header("X-Qits-Roles", "qits:system");
+  }
+
+  /**
+   * An arbitrary asserted caller, headers only and no session cookie — what {@link
+   * #anAgentMayNotWaive} needs to drive an agent's bearer and an admin's asserted-only headers at
+   * the same door in the same test.
+   */
+  private RequestSpecification as(String user, String roles) {
+    return given()
+        .contentType(ContentType.JSON)
+        .header("X-Qits-User", user)
+        .header("X-Qits-Roles", roles);
   }
 
   private String base(String repoId) {
@@ -502,6 +691,30 @@ public class ReleaseRequestApprovalDoorTest {
         .extract()
         .jsonPath()
         .getList("approvals.decision", String.class);
+  }
+
+  /**
+   * The automations waivers recorded for one request, oldest first — epic qits-978's own table,
+   * which {@link #approvals} does not read.
+   */
+  private List<ReleaseRequestAutomationWaiver> waivers(String id) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () ->
+                ReleaseRequestAutomationWaiver.<ReleaseRequestAutomationWaiver>list(
+                    "requestId", id));
+  }
+
+  /**
+   * A green verdict on {@link #automationRepoId}, after which only its scripted red automation
+   * holds the request — the fixture {@link #aPersonsWaiverReleasesTheHeldFold} and the rerun tests
+   * below all start from.
+   */
+  private String held(String id) {
+    String merged = mergedShaOf(automationRepoId, id);
+    verdict(automationRepoId, merged);
+    assertEquals("PENDING", stateOf(automationRepoId, id));
+    return merged;
   }
 
   /** A green verdict for one fold, over the real bus listener. */
