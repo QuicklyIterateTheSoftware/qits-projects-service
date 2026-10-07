@@ -162,7 +162,9 @@ public final class Qits965ThreadSampler implements LauncherSessionListener {
 
     private static void safePrint(String s) {
         try {
-            System.err.println(s);
+            // Through the logging the Quarkus apps use: surefire routes a bare System.err write from
+            // this daemon thread to the dumpstream file, which the gate's log never shows.
+            org.jboss.logging.Logger.getLogger("qits-965-diag").warn(s);
         } catch (Throwable ignored) {
             // diagnostics must never fail a test
         }
