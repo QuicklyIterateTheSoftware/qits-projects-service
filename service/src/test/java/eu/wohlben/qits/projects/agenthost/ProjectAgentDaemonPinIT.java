@@ -12,6 +12,7 @@ import eu.wohlben.qits.projectsdaemon.protocol.DaemonCodec;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonMessage;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import eu.wohlben.qits.projectsdaemon.protocol.Hello;
+import eu.wohlben.qits.projects.deskhost.FrontDeskSpecs;
 import eu.wohlben.qits.projectsdaemon.protocol.ProjectAgentImage;
 import eu.wohlben.qits.projectsdaemon.protocol.RunCommand;
 import eu.wohlben.qits.projectsdaemon.protocol.Stream;
@@ -48,7 +49,8 @@ import org.junit.jupiter.api.Test;
  * moment qits-projects-daemon pushed an image. So a new daemon reached the next real refinement run
  * with nothing having tested the pair, and a daemon that changed the wire would be discovered by a
  * person whose agent container came up healthy and never dialled home. The version is a pinned
- * dependency now ({@link ProjectAgentImage#VERSION}, off {@code
+ * dependency now ({@link FrontDeskSpecs#pinnedImageVersion()}, the image tag every front desk is
+ * composed with — {@link ProjectAgentImage#VERSION}, off {@code
  * eu.wohlben.qits:qits-projects-daemon-protocol}), and this is the test that makes the pin mean
  * something: a bump that breaks the protocol fails <em>this repository's</em> release request, which
  * is a red gate on a branch, rather than a live container.
@@ -204,7 +206,7 @@ public class ProjectAgentDaemonPinIT {
       // not "a daemon". If this ever disagrees, something downloaded a different build than the pom
       // names and every other assertion below is about the wrong thing.
       assertEquals(
-          ProjectAgentImage.VERSION,
+          FrontDeskSpecs.pinnedImageVersion(),
           said.daemonVersion(),
           "the daemon that answered is not the version this reactor pins");
       // The capability the host branches on, and the only one there is: AgentTunnels.originFor

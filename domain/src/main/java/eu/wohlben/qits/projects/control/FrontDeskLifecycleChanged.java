@@ -8,9 +8,10 @@ import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
  *
  * <p>Called by {@link WrapperReconcileService#reconcileProjectConfig(String)}, after the transaction
  * that stored the new value and <b>only when it actually moved</b>. The front-desk feature
- * implements it by recomputing the desk's desired state (and creating the desk row for {@link
- * FrontDeskLifecycle#ALWAYS_ON}); until that lands, {@link NoopFrontDeskLifecycleChanged} is the
- * {@code @DefaultBean} and the change is merely stored and announced.
+ * implements it ({@code deskhost/FrontDeskHooks}) by recomputing the desk's desired state (and
+ * creating the desk row for {@link FrontDeskLifecycle#ALWAYS_ON}); where nothing is wired, {@link
+ * NoopFrontDeskLifecycleChanged} is the {@code @DefaultBean} and the change is merely stored and
+ * announced.
  *
  * <p><b>Nothing here may fail the reconcile</b>: the caller catches and logs what an implementation
  * throws, and the next move of the wrapper's {@code main} (or the next boot) does not re-call it for

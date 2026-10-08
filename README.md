@@ -30,6 +30,7 @@ Concretely:
 | the project's domain | a `{domain, type, value}` dns record embedded on `Project` — required when a project is created, offered to a nameserver through a port nothing implements today, and a **declared placeholder**: when a service owns domain configuration the embeddable and its three columns go (`ProjectDnsRecord`, `main-environment-plan.md` §1) |
 | `.qits-config.yml` | ingestion of the repository's own committed configuration, degrading loudly and never blocking |
 | remote-login | an interactive PTY sign-in against a repository's backup remote, so a push can prompt for credentials — a `java.lang.foreign` pseudo-terminal (`ForeignPty`) with git launched onto it by `setsid --ctty`, which is the one thing this service needs from the host besides git itself |
+| `front_desk` | a project's front desk — its agent container running the `project.work` session — placed on a front-desk runner (`desk_runner`) by pull and kept by the runner; desired by the project's `front_desk.lifecycle` (`ALWAYS_ON` or `ON_DEMAND`) and by demand, and authenticated with its own `qits_tok_`. The env a desk is composed with is the table in `CLAUDE.md` § "Front desks" |
 | `entities/` | the planning module — epics → features → tasks, tickets → comments, and one audit log over both, on its own datasource, depending on nothing else here |
 
 ## What it deliberately does NOT own
@@ -136,7 +137,7 @@ list: the Git refs its agent may push. A ticket's agent gets its own branch,
 `refs/heads/ticket/<slug>`. An epic's agent gets the epic branch plus every feature and task branch
 of the epic (`feature/<epic>/<feature>`, `task/<epic>/<feature>/<task>`). `entities/control/WorkBranches`
 computes the branch and its refs together. This service's own idp commissions state refs too: an
-agent container states `gitRefs: []` (it pushes nothing), and a refinement container states
+front desk's token states `gitRefs: []` (it pushes nothing), and a refinement container states
 `gitRefs: ["refs/heads/refining/<epicSlug>"]`, the one branch it pushes. If the idp refuses a stated
 list (400), this service never commissions without `gitRefs`: a refinement is commissioned again
 with `gitRefs: []`, and an ERROR names the context and the idp's reason. See AGENTS.md, "Git refs an
@@ -296,17 +297,16 @@ Its own named datasource `projects`, its own persistence unit, its own Flyway li
 `classpath:db/projects/migration` — a **PostgreSQL** database of its own. `V1__init.sql` is the whole
 schema as it stood: the H2 lineage's V1–V6 arrived at and translated, not replayed, because the move
 onto postgres was an unwrap and a re-bootstrap rather than a data migration. V2 adds the platform's
-causation column, V3 the agent-container credential table.
+causation column, V3 the agent-container credential table (dropped by V38).
 
 Those three tables live in **one** database and keep **real foreign keys** between them; that is
 where the split was cut, and it is why `Repository.project` is still a JPA relation. Everything
 outside them is another context's database and is referenced by string id through a port — never a
 join, because a foreign key cannot span two databases.
 
-`agent_credential` (V3) is the one table in this database with **no** relation to the other three,
-deliberately: one row per project holding the idp client commissioned for that project's agent
-container. A container outlives its project, so a foreign key would drop the row while the container
-still held the credential. See AGENTS.md, "The commissioned credential".
+`agent_credential` (V3) held the direct agent path's per-container idp client; V38 dropped it with
+that path (qits-767). A project's front desk is `front_desk` (V37), which references `project` with
+`on delete cascade` and holds the desk's own token. See AGENTS.md, "Front desks".
 
 `entities/` keeps its own separate `epics` datasource, its own `db/epics/migration` lineage and its own
 physical database — which is what makes it liftable without moving anybody else's tables.

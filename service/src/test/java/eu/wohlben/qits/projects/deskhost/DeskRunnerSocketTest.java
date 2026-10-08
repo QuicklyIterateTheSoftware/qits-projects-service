@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import eu.wohlben.qits.projects.agenthost.AgentContainerFactory;
 import eu.wohlben.qits.projects.control.DeskRunners;
 import eu.wohlben.qits.projects.entity.DeskRunner;
 import eu.wohlben.qits.projects.entity.DeskRunnerCapabilities;
@@ -16,6 +15,7 @@ import eu.wohlben.qits.projects.persistence.DeskRunnerRepository;
 import eu.wohlben.qits.projects.security.MockIdpTenant;
 import eu.wohlben.qits.projectsdeskrunner.protocol.DeskRunnerBinary;
 import eu.wohlben.qits.projectsdeskrunner.protocol.DeskRunnerProtocol;
+import eu.wohlben.qits.projectsdeskrunner.protocol.Estate;
 import eu.wohlben.qits.projectsdeskrunner.protocol.HealthCheck;
 import eu.wohlben.qits.projectsdeskrunner.protocol.HealthChecked;
 import eu.wohlben.qits.projectsdeskrunner.protocol.LoginPresence;
@@ -78,7 +78,7 @@ class DeskRunnerSocketTest {
 
   @Inject DeskRunnerRepository rows;
 
-  @Inject AgentContainerFactory agentContainers;
+  @Inject FrontDeskSpecs specs;
 
   private final List<FakeDeskRunner> dialled = new ArrayList<>();
 
@@ -143,6 +143,7 @@ class DeskRunnerSocketTest {
     FakeDeskRunner runner = dial(clientId);
     runner.send(FakeDeskRunner.hello(PIN, List.of()));
     assertEquals(slots, runner.expect(Ack.class).slots());
+    runner.expect(Estate.class);
     UUID id =
         QuarkusTransaction.requiringNew()
             .call(() -> rows.findByClientId(clientId).orElseThrow().id);
@@ -151,7 +152,7 @@ class DeskRunnerSocketTest {
   }
 
   private String projectAgentImage() {
-    return "registry.qits." + DOMAIN + "/qits/project-agent:" + agentContainers.imageVersion();
+    return "registry.qits." + DOMAIN + "/qits/project-agent:" + specs.imageVersion();
   }
 
   private static void await(BooleanSupplier condition, String what) throws InterruptedException {
@@ -217,7 +218,7 @@ class DeskRunnerSocketTest {
    * A freshly registered runner is quarantined: {@code ack{0}}, {@code quarantined}, then {@code
    * healthCheck} naming the pinned project-agent image. Its reserve is answered nothing. A passing
    * check lifts it — {@code reinstated} and {@code ack} with the row's slots — and its reserve is
-   * still nothing, because no front desk is here yet.
+   * still nothing, because no front desk is queued. The greeting carries its (empty) estate.
    */
   @Test
   void aNewRunnerIsGreetedQuarantinedAndHealthChecked() throws Exception {
@@ -229,6 +230,7 @@ class DeskRunnerSocketTest {
     assertEquals(0, runner.expect(Ack.class).slots());
     assertEquals(
         DeskRunners.AWAITING_FIRST_HEALTH_CHECK, runner.expect(Quarantined.class).reason());
+    assertTrue(runner.expect(Estate.class).desks().isEmpty(), "the greeting's estate");
     HealthCheck check = runner.expect(HealthCheck.class);
     assertEquals(projectAgentImage(), check.image());
     assertNotNull(check.requestId());
@@ -277,6 +279,7 @@ class DeskRunnerSocketTest {
     runner.send(FakeDeskRunner.hello(PIN, List.of()));
     assertEquals(0, runner.expect(Ack.class).slots());
     runner.expect(Quarantined.class);
+    runner.expect(Estate.class);
     runner.expect(HealthCheck.class);
 
     given()
@@ -419,7 +422,7 @@ class DeskRunnerSocketTest {
     assertTrue(volume.startsWith("qits-projects-desk-runner-dot-claude-"), volume);
     assertEquals(
         "docker run --rm -it --user "
-            + agentContainers.hostUid()
+            + specs.deskUser()
             + " --entrypoint claude -v "
             + volume
             + ":/claude-home -e HOME=/claude-home -e CLAUDE_CONFIG_DIR=/claude-home/.claude "

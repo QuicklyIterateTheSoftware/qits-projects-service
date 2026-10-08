@@ -145,6 +145,12 @@ public class ProjectService {
   @Inject Instance<ProjectAnnouncer> projectAnnouncers;
 
   /**
+   * The project's front desk (qits-767), removed ahead of the project's rows: the runner holding it
+   * is told, its token revoked and its row dropped. Optional and never allowed to fail the delete.
+   */
+  @Inject Instance<ProjectFrontDeskRemoval> frontDeskRemovals;
+
+  /**
    * Creates a project with its slug <b>derived</b> from {@code name} (see {@link #slugify}) — the
    * convenience form for callers that have no slug of their own to give (the cli seeds, tests).
    *
@@ -576,6 +582,7 @@ public class ProjectService {
    */
   public void delete(String id) {
     String slug = QuarkusTransaction.requiringNew().call(() -> get(id).slug);
+    removeFrontDesk(id);
 
     QuarkusTransaction.requiringNew()
         .run(
@@ -598,6 +605,24 @@ public class ProjectService {
             });
 
     announceDeleted(id, slug, Instant.now());
+  }
+
+  /**
+   * Tell the front desk the project is going (qits-767), before its rows do: afterwards nothing is
+   * left naming the runner and the token. Best effort — a failure is logged and the delete proceeds;
+   * the token reconcile reaps an orphaned token and the runner's next estate drops the desk.
+   */
+  private void removeFrontDesk(String projectId) {
+    if (frontDeskRemovals == null) {
+      return;
+    }
+    for (ProjectFrontDeskRemoval removal : frontDeskRemovals) {
+      try {
+        removal.projectDeleting(projectId);
+      } catch (RuntimeException e) {
+        LOG.warnf(e, "Could not remove the front desk of project %s ahead of its deletion", projectId);
+      }
+    }
   }
 
   public List<Repository> getRepositories(String projectId) {

@@ -74,6 +74,12 @@ public class AgentDaemonRegistry {
    */
   @Inject Instance<AgentCapabilityRelay> capabilityRelay;
 
+  /**
+   * The front desk's demand (qits-767): a frame that evidences use is demand for the desk too,
+   * stamped at most once a minute per project. Optional for the same reason the relay is.
+   */
+  @Inject Instance<eu.wohlben.qits.projects.deskhost.FrontDeskDemand> frontDeskDemand;
+
   private final ConcurrentHashMap<String, DaemonConnection> clients = new ConcurrentHashMap<>();
 
   /**
@@ -105,7 +111,7 @@ public class AgentDaemonRegistry {
    * narrower than "did a frame arrive". The membership rule and the argument for its direction are
    * {@link #evidencesUse}'s; read it before adding a writer.
    *
-   * <p><b>Collapsing them is the defect this exists to end.</b> {@link AgentIdleSweep}'s window never
+   * <p><b>Collapsing them is the defect this exists to end.</b> {@code deskhost/FrontDeskSweep}'s window never
    * elapsed because it reads {@link #lastActivity}, and that is correct for what it measures; making
    * the heartbeat stop writing that map would instead make every live container look reapable. Two
    * clocks, two readers, and neither one is a refinement of the other.
@@ -148,7 +154,7 @@ public class AgentDaemonRegistry {
    * died, was killed, or whose container was replaced before its {@code Stop}/{@code SessionEnd} hook
    * fired leaves a {@code BUSY} nothing ever takes back — and the control socket's reconnect adoption
    * re-reports the daemon's retained per-command state, so the dead session is re-asserted every time
-   * this service restarts. Observed live on 2026-09-18: {@link AgentStaleImageSweep} named the same
+   * this service restarts. Observed live on 2026-09-18: {@code deskhost/FrontDeskSpecRoll} named the same
    * stale container in a WARN on three consecutive passes and could never stop it, because this fold
    * answered {@code BUSY} for a session that had not existed for hours.
    *
@@ -256,7 +262,7 @@ public class AgentDaemonRegistry {
 
   /**
    * When anything last happened in this project's container, or empty when nothing ever has — the
-   * heartbeat-free stamp, read by {@link AgentStaleImageSweep}. See {@link #lastAgentActivity} for
+   * heartbeat-free stamp, read by {@code deskhost/FrontDeskSpecRoll}. See {@link #lastAgentActivity} for
    * why it is not {@link #lastActivityAt}.
    *
    * <p>Empty is a real and useful answer here rather than a missing one: a container nothing has ever
@@ -348,7 +354,7 @@ public class AgentDaemonRegistry {
   /**
    * Why this project's {@code /workspace} is not provisioned, or empty when nothing said so.
    *
-   * <p>Read by {@link AgentContainers} on every lifecycle answer: a container whose self-clone
+   * <p>Read by {@code deskhost/FrontDesks} on every lifecycle answer: a container whose self-clone
    * failed is running and useless, and reporting it {@code RUNNING} sends a browser to open a
    * terminal on an empty checkout.
    */
@@ -435,7 +441,7 @@ public class AgentDaemonRegistry {
    *       container relayed {@code checkout-daemon: Cannot reach …/events/api/stream: ConnectException;
    *       reconnecting in 30 s} as a {@code DaemonLog} <b>every thirty seconds, for ever</b>. Under
    *       the denylist that stamped the clock twice a minute, so the container was never quiet and
-   *       {@link AgentStaleImageSweep} could never stop it — a self-generated periodic frame
+   *       {@code deskhost/FrontDeskSpecRoll} could never stop it — a self-generated periodic frame
    *       defeating a quietness window, exactly the heartbeat's defect one frame class over. Daemon
    *       self-talk is unbounded by construction and must never mean "in use".
    *   <li>{@link Hello} — <b>a reconnect is not use.</b> Counting it made the sweep sleep for a full
@@ -477,6 +483,9 @@ public class AgentDaemonRegistry {
     // container. The rule is an allowlist and the argument for that is in evidencesUse.
     if (evidencesUse(message)) {
       lastAgentActivity.put(projectId, Instant.now());
+      if (frontDeskDemand != null && frontDeskDemand.isResolvable()) {
+        frontDeskDemand.get().evidenced(projectId);
+      }
     }
     DaemonConnection client = clients.get(projectId);
     switch (message) {
@@ -545,7 +554,7 @@ public class AgentDaemonRegistry {
    * surface through the proxy, so the hint that says "re-read it" is unchanged and is fired for every
    * report, whatever the frame carries.
    *
-   * <p><b>What is new is the rollup</b>, kept so {@link AgentStaleImageSweep} can ask whether
+   * <p><b>What is new is the rollup</b>, kept so {@code deskhost/FrontDeskSpecRoll} can ask whether
    * anything is running in this container <em>right now</em>. The stamp one method up cannot answer
    * that: an agent thinking between two frames leaves a stamp that keeps ageing while it works, and a
    * container stopped in the middle of that loses the turn.

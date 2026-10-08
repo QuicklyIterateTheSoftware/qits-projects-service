@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.refinementhost;
 
-import eu.wohlben.qits.projects.agenthost.AgentCredentialException;
+import eu.wohlben.qits.projects.idphost.IdpCommissionException;
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.persistence.RefinementRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -128,9 +128,9 @@ public class RefinementCommissions {
       attempts++;
       try {
         return credentials.commission(refinementId, projectId, gitRefs);
-      } catch (AgentCredentialException e) {
+      } catch (IdpCommissionException e) {
         if (!e.retryable() || !Instant.now().isBefore(giveUpAt) || !sleep(pause)) {
-          throw new AgentCredentialException(
+          throw new IdpCommissionException(
               "Could not commission a credential for refinement "
                   + refinementId
                   + " after "

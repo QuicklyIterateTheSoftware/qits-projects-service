@@ -33,14 +33,6 @@ erDiagram
     string project_id FK "not null"
     string url
   }
-  %% agent_credential: eu.wohlben.qits.projects.entity.AgentCredential (domain)
-  agent_credential {
-    string project_id PK "not null"
-    uuid causation_id
-    string client_id "not null"
-    string client_secret "not null"
-    instant commissioned_at "not null"
-  }
   %% agent_harness_capability: eu.wohlben.qits.projects.entity.AgentHarnessCapability (domain)
   agent_harness_capability {
     string id PK "not null"
@@ -150,6 +142,25 @@ erDiagram
     string registration_token_id
     string registration_token_subject
     int slots "not null"
+  }
+  %% front_desk: eu.wohlben.qits.projects.entity.FrontDesk (domain)
+  front_desk {
+    string project_id PK "not null"
+    instant created_at "not null"
+    enum desired "not null"
+    string failure_detail
+    instant last_demand_at
+    instant placed_at
+    instant queued_at
+    instant reported_at
+    string reported_spec_hash
+    string reported_state
+    uuid runner_id
+    string spec_hash
+    jsonb spec_json
+    string token_id
+    string token_subject
+    string token_value
   }
   %% refinement: eu.wohlben.qits.projects.entity.Refinement (domain)
   refinement {

@@ -1,12 +1,17 @@
 package eu.wohlben.qits.projects.agenthost;
 
+import eu.wohlben.qits.projects.deskhost.FrontDesks;
+import io.quarkus.security.identity.SecurityIdentity;
+import io.quarkus.vertx.http.runtime.security.QuarkusHttpUser;
 import io.vertx.core.http.ServerWebSocket;
 import io.vertx.core.net.NetSocket;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.util.function.Function;
 import org.jboss.logging.Logger;
 
 /**
@@ -34,6 +39,14 @@ import org.jboss.logging.Logger;
  * names nothing: it is host-minted, single-use (the claim is an atomic map removal), short-lived,
  * and bound to the project it was sent to. An unknown or already-claimed nonce gets a bare 404 that
  * says nothing about which of the two it was.
+ *
+ * <h2>And a bearer, since the front desks (qits-767)</h2>
+ *
+ * <p>A desk runs on a runner's node and dials back through the edge, which refuses an anonymous
+ * upgrade, so it sends {@code Authorization: Bearer $QITS_TOKEN} and the edge forwards a JWT. The
+ * dial-back now <b>requires an authenticated caller</b>, and a {@code tok-} subject must be the
+ * nonce's project's {@code front_desk.token_subject}; the nonce stays the second factor. Anything
+ * else gets the same bare 404 an unknown nonce gets, and the parked connection is dropped.
  */
 @ApplicationScoped
 public class DaemonStreamRoute {
@@ -47,6 +60,9 @@ public class DaemonStreamRoute {
   private static final int ROUTE_ORDER = 100;
 
   @Inject AgentTunnels tunnels;
+
+  /** The desks' bound subjects, answered from memory (this runs on the event loop). */
+  @Inject Instance<FrontDesks> desks;
 
   void init(@Observes Router router) {
     router.route(AgentTunnels.STREAM_PATH_PREFIX + "*").order(ROUTE_ORDER).handler(this::handle);
@@ -67,6 +83,12 @@ public class DaemonStreamRoute {
       rc.response().setStatusCode(404).end();
       return;
     }
+    if (!admits(identityOf(rc), parked.projectId(), this::boundSubject)) {
+      LOG.debugf("refused a dial-back for project %s: not its desk's bearer", parked.projectId());
+      parked.socket().close();
+      rc.response().setStatusCode(404).end();
+      return;
+    }
     rc.request()
         .toWebSocket()
         .onFailure(
@@ -75,6 +97,29 @@ public class DaemonStreamRoute {
               parked.socket().close();
             })
         .onSuccess(socket -> pipe(socket, parked));
+  }
+
+  /**
+   * Whether a dial-back by {@code identity} may take a stream parked for {@code projectId}: an
+   * authenticated caller, and for a {@code tok-} subject the desk's own.
+   */
+  static boolean admits(
+      SecurityIdentity identity, String projectId, Function<String, String> boundSubject) {
+    if (identity == null || identity.isAnonymous()) {
+      return false;
+    }
+    String subject = AgentControlSocketAccess.subjectOf(identity);
+    return !AgentControlSocketAccess.isTokenSubject(subject)
+        || subject.equals(boundSubject.apply(projectId));
+  }
+
+  private String boundSubject(String projectId) {
+    return desks != null && desks.isResolvable() ? desks.get().tokenSubject(projectId) : null;
+  }
+
+  /** The identity the request authenticated as, or null when none was established. */
+  private static SecurityIdentity identityOf(RoutingContext rc) {
+    return rc.user() instanceof QuarkusHttpUser user ? user.getSecurityIdentity() : null;
   }
 
   /**

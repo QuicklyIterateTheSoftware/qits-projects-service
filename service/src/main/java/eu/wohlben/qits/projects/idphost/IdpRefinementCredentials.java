@@ -1,8 +1,6 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import eu.wohlben.qits.projects.agenthost.AgentCredentialException;
-import eu.wohlben.qits.projects.agenthost.AgentCredentials;
 import eu.wohlben.qits.projects.refinementhost.RefinementCredentials;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -24,7 +22,7 @@ import org.jboss.logging.Logger;
 
 /**
  * {@link RefinementCredentials} over qits-idp's commission API — the refinement sibling of
- * {@link IdpAgentCredentials}, one directory over, same shape on purpose: HTTP Basic with this
+ * {@code IdpAgentCredentials} (retired with the direct agent path), one directory over, same shape on purpose: HTTP Basic with this
  * service's own oidc pair — the {@code qits} named client (epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4) —
  * {@code Map}s and never DTOs (no native-image registration to owe), an instance {@link HttpClient},
  * and absent-as-shipped when {@code quarkus.oidc-client.qits.client-enabled} is off. The only
@@ -86,7 +84,7 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     Map<String, Object> body = new java.util.LinkedHashMap<>(context);
     String project = projectId == null ? "" : projectId.trim();
     if (!project.isEmpty()) {
-      body.put("claims", Map.of(AgentCredentials.PROJECT_CLAIM, project));
+      body.put("claims", Map.of(IdpCommissionWire.PROJECT_CLAIM, project));
     }
     return body;
   }
@@ -108,8 +106,8 @@ public class IdpRefinementCredentials implements RefinementCredentials {
             Map.of("contextKind", CONTEXT_KIND, "contextId", Long.toString(refinementId)),
             projectId);
     // Null is read as "may push nothing", never as "no scope stated".
-    List<String> refs = gitRefs == null ? IdpAgentCredentials.NO_GIT_REFS : List.copyOf(gitRefs);
-    body.put(IdpAgentCredentials.GIT_REFS, refs);
+    List<String> refs = gitRefs == null ? IdpCommissionWire.NO_GIT_REFS : List.copyOf(gitRefs);
+    body.put(IdpCommissionWire.GIT_REFS, refs);
     String doing = "commissioning a credential for refinement " + refinementId;
     HttpResponse<String> response = post(body, doing);
     if (response.statusCode() == 400 && !refs.isEmpty()) {
@@ -117,7 +115,7 @@ public class IdpRefinementCredentials implements RefinementCredentials {
           "qits-idp refused the Git refs %s of refinement %s (400: %s). Commissioning it again"
               + " with gitRefs [], so this refinement can push nothing and its auto-push fails",
           refs, refinementId, response.body());
-      body.put(IdpAgentCredentials.GIT_REFS, IdpAgentCredentials.NO_GIT_REFS);
+      body.put(IdpCommissionWire.GIT_REFS, IdpCommissionWire.NO_GIT_REFS);
       response = post(body, doing);
     }
     if (response.statusCode() != 201) {
@@ -127,7 +125,7 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     String commissionedId = text(answer.get("clientId"));
     String commissionedSecret = text(answer.get("secret"));
     if (commissionedId == null || commissionedSecret == null) {
-      throw new AgentCredentialException(
+      throw new IdpCommissionException(
           "qits-idp answered a commission with no clientId or no secret", false);
     }
     return new Commissioned(commissionedId, commissionedSecret);
@@ -149,7 +147,7 @@ public class IdpRefinementCredentials implements RefinementCredentials {
             "qits-idp answered %d decommissioning %s: %s",
             response.statusCode(), commissionedClientId, response.body());
       }
-    } catch (AgentCredentialException e) {
+    } catch (IdpCommissionException e) {
       LOG.warnf("Could not decommission %s: %s", commissionedClientId, e.getMessage());
     }
   }
@@ -162,7 +160,7 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     HttpResponse<String> response;
     try {
       response = send(request(clientsUrl()).GET().build(), "listing this service's commissions");
-    } catch (AgentCredentialException e) {
+    } catch (IdpCommissionException e) {
       LOG.warnf("Could not list this service's commissions: %s", e.getMessage());
       return List.of();
     }
@@ -204,7 +202,7 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     try {
       json = objectMapper.writeValueAsString(body);
     } catch (IOException e) {
-      throw new AgentCredentialException("Could not build the commission request", false, e);
+      throw new IdpCommissionException("Could not build the commission request", false, e);
     }
     return send(
         request(clientsUrl())
@@ -241,17 +239,17 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     try {
       return client.send(request, HttpResponse.BodyHandlers.ofString());
     } catch (IOException e) {
-      throw new AgentCredentialException("qits-idp unreachable " + doing + ": " + e, true, e);
+      throw new IdpCommissionException("qits-idp unreachable " + doing + ": " + e, true, e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new AgentCredentialException("Interrupted " + doing, false, e);
+      throw new IdpCommissionException("Interrupted " + doing, false, e);
     }
   }
 
-  private static AgentCredentialException refusal(String doing, HttpResponse<String> response) {
+  private static IdpCommissionException refusal(String doing, HttpResponse<String> response) {
     int status = response.statusCode();
     boolean retryable = status == 401 || status == 403 || status >= 500;
-    return new AgentCredentialException(
+    return new IdpCommissionException(
         "qits-idp answered " + status + " asked to " + doing + ": " + response.body(), retryable);
   }
 
@@ -259,7 +257,7 @@ public class IdpRefinementCredentials implements RefinementCredentials {
     try {
       return objectMapper.readValue(body, Map.class);
     } catch (IOException e) {
-      throw new AgentCredentialException("Could not read " + what + " from qits-idp", false, e);
+      throw new IdpCommissionException("Could not read " + what + " from qits-idp", false, e);
     }
   }
 

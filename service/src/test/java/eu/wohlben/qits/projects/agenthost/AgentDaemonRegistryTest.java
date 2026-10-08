@@ -170,7 +170,7 @@ class AgentDaemonRegistryTest {
    * thirty seconds, for ever</em> — {@code checkout-daemon: Cannot reach
    * http://dev-qits-events:8080/events/api/stream?names=SCMRelease: ConnectException; reconnecting in
    * 30 s}. Under the denylist that preceded this rule every one of those frames stamped the use
-   * clock, so the container was never quiet and {@link AgentStaleImageSweep} could never stop it:
+   * clock, so the container was never quiet and {@code deskhost/FrontDeskSpecRoll} could never stop it:
    * a self-generated periodic frame defeating a quietness window, which is the heartbeat's defect
    * reappearing one frame class over.
    *
@@ -202,7 +202,7 @@ class AgentDaemonRegistryTest {
 
   /**
    * A reconnect is not use. The {@link Hello} stamped the use clock until 2026-09-18, which meant
-   * every restart of <em>this</em> service blinded {@link AgentStaleImageSweep} for a whole quiet
+   * every restart of <em>this</em> service blinded {@code deskhost/FrontDeskSpecRoll} for a whole quiet
    * window: every daemon on the estate redials at once and every container's clock is reset to now.
    * On an estate that redeploys hourly that is most of the time the sweep could have been acting.
    */
@@ -307,7 +307,7 @@ class AgentDaemonRegistryTest {
    * <b>The live defect, in one test.</b> A session whose agent died, was killed, or whose container
    * was replaced before its {@code Stop} hook fired leaves a {@code BUSY} nothing ever takes back.
    * With only the {@code ENDED} TTL ageing entries out that entry was immortal — and because it gates
-   * {@link AgentStaleImageSweep}'s stop rather than merely colouring a chip in a UI, it was a
+   * {@code deskhost/FrontDeskSpecRoll}'s stop rather than merely colouring a chip in a UI, it was a
    * permanent veto on exactly the long-lived containers that sweep exists to reach. Observed on
    * 2026-09-18 as a WARN on three consecutive passes and a container that could never be stopped.
    */

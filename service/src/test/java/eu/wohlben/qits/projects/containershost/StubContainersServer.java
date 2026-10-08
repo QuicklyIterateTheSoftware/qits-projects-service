@@ -28,7 +28,7 @@ import java.util.TreeMap;
  * in qits-containers' own suite; this stub exists for the cases a real service will not produce on
  * demand — a 503, a connection nothing accepts — and for reading the request line off the wire.
  */
-final class StubContainersServer implements AutoCloseable {
+public final class StubContainersServer implements AutoCloseable {
 
   /**
    * One request that arrived, as the stub saw it.
@@ -38,7 +38,7 @@ final class StubContainersServer implements AutoCloseable {
    * carried it safely encoded — the client's encoding made invisible by the assertion meant to check
    * it. What is on the wire is what the service routes on.
    */
-  record Received(
+  public record Received(
       String method, String path, String query, Map<String, String> headers, String body) {}
 
   /**
@@ -63,19 +63,19 @@ final class StubContainersServer implements AutoCloseable {
   /** What is answered once the script runs out: an empty JSON object, which binds to most records. */
   private Scripted fallback = new Scripted(200, "{}");
 
-  StubContainersServer() throws IOException {
+  public StubContainersServer() throws IOException {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", this::handle);
     server.start();
   }
 
   /** Where this stub answers: scheme + host + port, no path — what the client's base URL is. */
-  String url() {
+  public String url() {
     return "http://127.0.0.1:" + server.getAddress().getPort();
   }
 
   /** Queue one answer. They are handed out in order, then the fallback repeats. */
-  StubContainersServer script(int status, String body) {
+  public StubContainersServer script(int status, String body) {
     synchronized (scripted) {
       scripted.add(new Scripted(status, body));
     }
@@ -88,12 +88,12 @@ final class StubContainersServer implements AutoCloseable {
   }
 
   /** What every unscripted request gets. */
-  StubContainersServer fallback(int status, String body) {
+  public StubContainersServer fallback(int status, String body) {
     fallback = new Scripted(status, body);
     return this;
   }
 
-  List<Received> received() {
+  public List<Received> received() {
     return List.copyOf(received);
   }
 

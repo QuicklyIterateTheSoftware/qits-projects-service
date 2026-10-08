@@ -9,9 +9,11 @@ import java.util.UUID;
  * {@code desks}, and what refuses its delete with 409 {@code RUNNER_OWNS_DESKS} while it is not
  * empty — a desk is sticky to its runner, so the runner cannot go before its desks do.
  *
- * <p>A port, because the {@code front_desk} table it reads arrives with the front-desk task; until
- * then {@link NoDeskRunnerDesks} answers "owns none". {@link #desksOn} is called inside the delete's
- * own transaction, so an implementation reads the rows it judges in that transaction.
+ * <p>A port, because a desk's state is the service's to compute (its runner's presence, its
+ * daemon): the service's {@code deskhost/FrontDeskRunnerDesks} reads {@code front_desk}, and {@link
+ * NoDeskRunnerDesks} answers "owns none" where nothing is wired. {@link #desksOn} is called inside
+ * the delete's own transaction, so an implementation reads the rows it judges in that
+ * transaction.
  */
 public interface DeskRunnerDesks {
 

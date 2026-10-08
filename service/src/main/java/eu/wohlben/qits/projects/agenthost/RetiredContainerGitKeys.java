@@ -70,7 +70,7 @@ import org.jboss.logging.Logger;
  * <p>Both are one rule, and its siblings {@link RetiredImageVersionKeys} and {@code
  * refinementhost.RetiredRefinementImageVersionKey} carry the same one: observing {@link
  * StartupEvent} <b>forces the observing bean to be created at boot</b>. Hanging this observer on
- * {@link AgentContainerFactory} — the obvious place, since that is a class the key used to decide
+ * {@code deskhost/FrontDeskSpecs} — the obvious place, since that is a class the key used to decide
  * for — would make every {@code @QuarkusTest} in this module satisfy that factory's required config
  * (the image repo, the idp block, the own-host pair), and the suite would go red on configuration
  * rather than on behaviour. A bean whose every {@code @ConfigProperty} is {@code Optional} can be

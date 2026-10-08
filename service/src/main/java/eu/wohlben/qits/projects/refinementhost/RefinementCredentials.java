@@ -30,7 +30,7 @@ public interface RefinementCredentials {
 
   /**
    * Commission a credential for this refinement's container. Throws
-   * {@code AgentCredentialException} rather than answering null — the failure belongs at the
+   * {@code IdpCommissionException} rather than answering null — the failure belongs at the
    * ensure that could not produce one.
    *
    * <p><b>The two arguments carry different facts and that is why there are two.</b> The refinement

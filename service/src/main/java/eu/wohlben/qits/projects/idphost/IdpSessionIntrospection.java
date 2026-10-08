@@ -25,7 +25,7 @@ import org.jboss.logging.Logger;
  * — the same door, body and credential the edge uses to turn the cookie into identity headers, asked
  * again here so that a decision rests on what this service heard from idp rather than on a header.
  *
- * <p><b>HTTP Basic with this service's own client pair</b>, exactly as {@link IdpAgentCredentials}
+ * <p><b>HTTP Basic with this service's own client pair</b>, exactly as {@code IdpAgentCredentials} (retired with the direct agent path)
  * presents it and read from the same three {@code quarkus.oidc-client.qits.*} keys: the door admits
  * a static service client holding {@code qits:system}, which is what the deployer's {@code
  * idp:client} resource provisions for {@code <env>-qits-projects}. No new key and no new secret.
@@ -38,7 +38,7 @@ import org.jboss.logging.Logger;
  *
  * <p>The value travels in the JSON body and never in a URL or a log line: it is a person's whole
  * session. {@code Map} rather than a DTO, so the native image needs nothing registered — the
- * discipline {@link IdpAgentCredentials} keeps.
+ * discipline {@code IdpAgentCredentials} (retired with the direct agent path) keeps.
  */
 @ApplicationScoped
 @DefaultBean

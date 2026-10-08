@@ -85,4 +85,45 @@ class AgentControlSocketAccessTest {
     assertTrue(check.appliesTo(AgentControlSocket.ENDPOINT_ID));
     assertFalse(check.appliesTo("projects-refinement-control-socket"));
   }
+
+  // --- a front desk's own token (qits-767) --------------------------------------------------------
+
+  private static SecurityIdentity deskToken(String subject, String project) {
+    return AgentTokens.token(Map.of("sub", subject, "project", project), "qits:agent");
+  }
+
+  @Test
+  void aDesksTokenOpensItsOwnDesksSocket() {
+    assertTrue(
+        AgentControlSocketAccess.decide(deskToken("tok-mine", "p-1"), "p-1", p -> "tok-mine")
+            .isUpgradePermitted());
+  }
+
+  @Test
+  void anotherDesksTokenIsRefusedWith403EvenForTheRightProject() {
+    HttpUpgradeCheck.CheckResult result =
+        AgentControlSocketAccess.decide(deskToken("tok-other", "p-1"), "p-1", p -> "tok-mine");
+    assertFalse(result.isUpgradePermitted());
+    assertEquals(403, result.getHttpResponseCode());
+  }
+
+  @Test
+  void aDeskTokenWithNoDeskIsRefused() {
+    assertFalse(
+        AgentControlSocketAccess.decide(deskToken("tok-revoked", "p-1"), "p-1", p -> null)
+            .isUpgradePermitted());
+    assertFalse(
+        upgrade(deskToken("tok-unbound", "p-1"), "p-1").isUpgradePermitted(),
+        "a check with no desks to ask refuses every tok- subject");
+  }
+
+  @Test
+  void anAgentTokenThatIsNotADesksIsJudgedAsBefore() {
+    assertTrue(
+        AgentControlSocketAccess.decide(
+                AgentTokens.token(Map.of("sub", "dyn-client", "project", "p-1"), "qits:agent"),
+                "p-1",
+                p -> "tok-mine")
+            .isUpgradePermitted());
+  }
 }

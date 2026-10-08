@@ -1,6 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.projects.agenthost.AgentContainerFactory;
+import eu.wohlben.qits.projects.deskhost.FrontDeskSpecs;
 import eu.wohlben.qits.projects.refinementhost.RefinementContainerFactory;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -28,7 +28,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * that has not reached this process yet, which is exactly the one a launch would not pull.
  *
  * <p><b>The config is read through the two container factories and nowhere else</b> — {@code
- * agenthost/AgentContainerFactory} and {@code refinementhost/RefinementContainerFactory}, which are
+ * deskhost/FrontDeskSpecs} and {@code refinementhost/RefinementContainerFactory}, which are
  * what a start actually reads. The pin answer and the launch must be one value, and a second
  * {@code @ConfigProperty} naming the same key is how two of them appear.
  *
@@ -52,7 +52,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
 public class PinsController {
 
-  @Inject AgentContainerFactory agentContainers;
+  @Inject FrontDeskSpecs agentContainers;
 
   @Inject RefinementContainerFactory refinementContainers;
 

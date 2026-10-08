@@ -58,7 +58,7 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
   }
 
   /**
-   * Empty the four projects tables, and try again when a previous test's worker is still reading
+   * Empty the projects tables, and try again when a previous test's worker is still reading
    * one of them.
    *
    * <p><b>The retry is the same race the wipe below has, one layer down.</b> The truncate takes an
@@ -68,15 +68,15 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
    * breaks by killing one side. That is a statement about the moment, not about the schema: the
    * worker is finishing, not stuck. Anything else fails on the first attempt, as it should.
    *
-   * <p>agent_credential is in the list even though it has no relation to the other three: a row one
-   * test commissioned would otherwise still be there for the next, and the credential reconcile
-   * reads the whole table.
+   * <p>front_desk (qits-767) references project, so it is truncated with it. (agent_credential was
+   * in the list until V38 dropped the table with the direct agent path.)
    */
   private static void truncate(AgroalDataSource dataSource) {
     for (int attempt = 1; ; attempt++) {
       try (Connection connection = dataSource.getConnection();
           Statement sql = connection.createStatement()) {
-        sql.execute("truncate table repository_name, repository, project, agent_credential");
+        sql.execute(
+            "truncate table front_desk, repository_name, repository, project");
         return;
       } catch (SQLException e) {
         if (attempt == 5 || !DEADLOCK.equals(e.getSQLState())) {
