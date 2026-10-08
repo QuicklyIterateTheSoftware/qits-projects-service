@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -139,6 +140,7 @@ class HttpReleaseRequestAutomationsTest {
     assertEquals("maintenance/automations/screenshot-baselines/rr-1", entry.branch());
     assertNull(entry.resultSha());
     assertEquals(Instant.parse("2026-10-06T12:00:00Z"), entry.updatedAt());
+    assertNull(entry.failure(), "an older qits-maintenance sends no failure, and that is no failure");
   }
 
   /** Null never carries an outcome over at the far side, empty says nothing changed: two answers. */
@@ -166,6 +168,32 @@ class HttpReleaseRequestAutomationsTest {
     assertEquals("/maintenance/api/release-requests/rr-1/automations", request.path());
     assertEquals("foldSha=" + FOLD, request.query());
     assertEquals(1, answer.automations().size());
+  }
+
+  /** A red run's failure is read field for field; a null exit code and excerpt stay null. */
+  @Test
+  void aFailedAutomationCarriesItsFailure() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        """
+        {"requestId":"rr-1","foldSha":"%s","automations":[
+          {"kind":"screenshot-baselines","label":"Screenshot baselines","state":"FAILED",
+           "bumpId":"b-1","runIds":["run-1"],
+           "failure":{"stepIndex":2,"image":"node:22","exitCode":1,"excerpt":"3 screenshots differ"}},
+          {"kind":"estate-pins","label":"Estate pins","state":"FAILED","bumpId":"b-2","runIds":[],
+           "failure":{"stepIndex":0,"image":"alpine:3","exitCode":null,"excerpt":null}},
+          {"kind":"openapi","label":"OpenAPI","state":"FRESH","bumpId":"b-3","runIds":[],
+           "failure":null}]}
+        """
+            .formatted(FOLD));
+
+    List<ReleaseRequestAutomations.Automation> entries =
+        against(base).status("qits-landing-app", "rr-1", FOLD).orElseThrow().automations();
+
+    assertEquals(
+        new AutomationLedger.Failure(2, "node:22", 1, "3 screenshots differ"), entries.get(0).failure());
+    assertEquals(new AutomationLedger.Failure(0, "alpine:3", null, null), entries.get(1).failure());
+    assertNull(entries.get(2).failure(), "null is no failure");
   }
 
   @Test

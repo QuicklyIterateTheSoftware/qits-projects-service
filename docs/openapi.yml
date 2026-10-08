@@ -1851,6 +1851,21 @@ components:
           type: string
         updatedAt:
           $ref: "#/components/schemas/Instant"
+        failure:
+          $ref: "#/components/schemas/ReleaseAutomationFailureDto"
+    ReleaseAutomationFailureDto:
+      type: object
+      properties:
+        stepIndex:
+          type: integer
+          format: int32
+        image:
+          type: string
+        exitCode:
+          type: integer
+          format: int32
+        excerpt:
+          type: string
     ReleaseGateDto:
       type: object
       properties:
