@@ -42,6 +42,13 @@ import java.time.Instant;
  * has only the first, and a run this service first heard about when it was already green — which is
  * what a catch-up over a disconnect delivers — has only the second. Null is "not known", never
  * "zero".
+ *
+ * <p><b>{@code detail} is a sentence where the state alone would mislead, and null everywhere
+ * else.</b> Today that is exactly one case: the {@code DEPLOY} phase reading {@code SUCCESS} for a
+ * deployment that went live and was later replaced — see {@code
+ * ReleasePipelineAssembler#deploymentStateOf} — carries a note saying so, because a bare {@code
+ * SUCCESS} does not say the version is no longer the one serving. {@code QA} and {@code PUBLISH}
+ * carry none, like a deployment that is simply still active.
  */
 public record ReleasePhaseDto(
-    String phase, String state, String runId, Instant startedAt, Instant finishedAt) {}
+    String phase, String state, String runId, Instant startedAt, Instant finishedAt, String detail) {}
