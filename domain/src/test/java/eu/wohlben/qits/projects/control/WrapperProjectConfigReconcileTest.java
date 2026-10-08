@@ -44,6 +44,7 @@ public class WrapperProjectConfigReconcileTest {
   @Inject RecordingFrontDeskLifecycleChanged lifecycleListener;
   @Inject WrapperProjectYml projectYml;
   @Inject ReleaseRequests releaseRequests;
+  @Inject jakarta.transaction.TransactionManager transactionManager;
 
   @BeforeEach
   void clean() {
@@ -194,7 +195,10 @@ public class WrapperProjectConfigReconcileTest {
   // -------------------------------------------------------------------------------------------
 
   private FrontDeskLifecycle storedLifecycleOf(String projectId) {
-    return projectService.get(projectId).frontDeskLifecycle;
+    // A transaction of its own: the re-read after a main move commits on another thread, and a read
+    // outside any transaction would answer from this thread's request-scoped session.
+    return io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+        .call(() -> projectService.get(projectId).frontDeskLifecycle);
   }
 
   /** A new project's template declares nothing for the desk, so it is ON_DEMAND and stays silent. */
@@ -279,8 +283,38 @@ public class WrapperProjectConfigReconcileTest {
 
     releaseRequests.onMainMoved(wrapper.id, sha);
 
-    assertEquals(FrontDeskLifecycle.ALWAYS_ON, storedLifecycleOf(project.id));
+    awaitLifecycle(project.id, FrontDeskLifecycle.ALWAYS_ON);
     assertEquals(1, lifecycleListener.callsOf(project.id).size());
+  }
+
+  /**
+   * The head listener calls {@code onMainMoved} inside the event funnel's transaction. The re-read
+   * must never join it: it runs on its own thread, and the caller's transaction stays committable.
+   */
+  @Test
+  public void mainMovingInsideACallersTransactionNeverTouchesThatTransaction() throws Exception {
+    Project project = greenfield("projcfg-desk-in-tx");
+    Repository wrapper = wrapperOf(project);
+    String sha = projectYml.commit(wrapper, "front_desk:\n  lifecycle: ALWAYS_ON\n");
+
+    int status =
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  releaseRequests.onMainMoved(wrapper.id, sha);
+                  return transactionManager.getStatus();
+                });
+
+    assertEquals(jakarta.transaction.Status.STATUS_ACTIVE, status);
+    awaitLifecycle(project.id, FrontDeskLifecycle.ALWAYS_ON);
+  }
+
+  private void awaitLifecycle(String projectId, FrontDeskLifecycle expected) throws Exception {
+    long deadline = System.nanoTime() + java.time.Duration.ofSeconds(20).toNanos();
+    while (storedLifecycleOf(projectId) != expected && System.nanoTime() < deadline) {
+      Thread.sleep(50);
+    }
+    assertEquals(expected, storedLifecycleOf(projectId));
   }
 
   /** ... and any other repository's {@code main} moving does not, even of the same project. */
@@ -297,6 +331,7 @@ public class WrapperProjectConfigReconcileTest {
 
     releaseRequests.onMainMoved(component.id, sha);
     releaseRequests.onMainMoved("no-such-repository", sha);
+    Thread.sleep(1_000); // the re-read is asynchronous: give a wrong one time to happen
 
     assertEquals(FrontDeskLifecycle.ON_DEMAND, storedLifecycleOf(project.id));
     assertEquals(List.of(), lifecycleListener.callsOf(project.id));

@@ -409,8 +409,18 @@ public class ReleaseRequests {
 
   private ExecutorService worker;
 
+  /**
+   * Where a wrapper's {@code project.yml} is re-read after its {@code main} moved: a thread of its
+   * own, never the caller's. {@link #onMainMoved} runs inside the event funnel's transaction (the
+   * head listener), and a reconcile joining that transaction poisoned it: any failure in it marked
+   * the funnel's transaction rollback-only, so the frame was redelivered forever and the listener
+   * behind it stopped (qits-767, 2026-10-08).
+   */
+  private ExecutorService wrapperConfigWorker;
+
   @PostConstruct
   void start() {
+    wrapperConfigWorker = Executors.newVirtualThreadPerTaskExecutor();
     worker =
         Executors.newSingleThreadExecutor(
             task -> {
@@ -423,6 +433,7 @@ public class ReleaseRequests {
   @PreDestroy
   void stop() {
     worker.shutdownNow();
+    wrapperConfigWorker.shutdownNow();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -2073,15 +2084,20 @@ public class ReleaseRequests {
    *
    * <p><b>A wrapper's {@code main} moving re-reads its project's configuration</b> (qits-767): when
    * {@code repoId} is a project's wrapper (archetype {@code PROJECT}), {@link
-   * WrapperReconcileService#reconcileProjectConfig(String)} runs after the tag work, outside every
-   * transaction of it and best effort — a failure there is logged and never fails this method.
+   * WrapperReconcileService#reconcileProjectConfig(String)} is handed to a thread of its own after
+   * the tag work — never inside the caller's transaction, which for the head listener is the event
+   * funnel's — and best effort: a failure there is logged and never reaches this method.
    * {@code main} only moves with finalized content, so this reads the <em>released</em> wrapper.
    */
   public void onMainMoved(String repoId, String mainSha) {
     try {
       settleTagsOnMain(repoId, mainSha);
     } finally {
-      reconcileWrapperConfig(repoId);
+      try {
+        wrapperConfigWorker.execute(() -> reconcileWrapperConfig(repoId));
+      } catch (RuntimeException e) {
+        LOG.warnf(e, "Could not hand %s's project.yml re-read to its worker", repoId);
+      }
     }
   }
 
