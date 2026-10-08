@@ -25,7 +25,7 @@ import org.jboss.logging.Logger;
 
 /**
  * {@link RefinementRuntime} over qits-containers — the refinement sibling of
- * {@link ContainersAgentRuntime}, in the same package because it is the same kind of adapter over
+ * {@code ContainersAgentRuntime} (retired with the direct agent path), in the same package because it is the same kind of adapter over
  * the same produced {@link ContainersClient}. The four-answers-never-throws discipline, the patient
  * bring-up and the MISSING/GONE reading all carry over; what differs is the workload word, the
  * teardown verb (refinements are removed, agents only ever stop), and the ref — the refinement row
@@ -174,7 +174,7 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
 
   /**
    * Refuse a provision whose container name is already held by another of this owner's places —
-   * the same one-arm guard {@link ContainersAgentRuntime#requireNameFree} carries, because a
+   * the same one-arm guard {@code ContainersAgentRuntime#requireNameFree} (retired with the direct agent path) carries, because a
    * human-derived name proves nothing and can still collide (an epic slug on a project whose slug
    * a deleted project used to hold). Fails open on an unreadable listing.
    */
@@ -209,7 +209,7 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
     return new ContainerInfo(envelope.containerName(), observed == Observed.RUNNING);
   }
 
-  /** The patient bring-up: {@link ContainersAgentRuntime#holdThrough}'s classifier, verbatim. */
+  /** The patient bring-up, holding through what {@link #holdThrough} classifies as the moment. */
   private void bringUp(Long refinementId, String name, EnsureRequest request) {
     Instant giveUpAt = Instant.now().plus(ensurePatience);
     Duration pause =
@@ -223,7 +223,7 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
         started(refinementId, name, answer.value());
         return;
       }
-      if (ContainersAgentRuntime.holdThrough(answer)
+      if (holdThrough(answer)
           && Instant.now().isBefore(giveUpAt)
           && sleep(pause)) {
         LOG.infof(
@@ -240,6 +240,20 @@ public class ContainersRefinementRuntime implements RefinementRuntime {
               + " attempt(s): "
               + answer.detail());
     }
+  }
+
+  /**
+   * Whether an answer is about the moment rather than the request, so a fresh attempt may land:
+   * nothing answering, 401 and 403 — qits-ci-service's classifier, measured across an idp cutover.
+   * Everything else ({@code SPEC_CONFLICT}, {@code IMAGE_MISSING}, a 400, a 404) is taken at its
+   * word. (It lived on the retired {@code ContainersAgentRuntime} until qits-767.)
+   */
+  static boolean holdThrough(ContainersAnswer<?> answer) {
+    if (answer.unreachable()) {
+      return true;
+    }
+    return answer instanceof ContainersAnswer.Refused<?> refused
+        && (refused.status() == 401 || refused.status() == 403);
   }
 
   /** A 2xx whose container is not there is a failed bring-up, not a started one. */

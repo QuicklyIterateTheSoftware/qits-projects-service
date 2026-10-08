@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import eu.wohlben.qits.projects.agenthost.AgentCredentialException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -29,7 +28,7 @@ import org.jboss.logging.Logger;
  * registration TOKEN, minted when an operator creates the runner (and at every rotation), and its
  * own CLIENT, minted by the register door. Both are given back when the runner is deleted. A copy of
  * qits-workspaces-service's {@code wiring/IdpRunnerCommissioner}; the HTTP is this service's own —
- * {@link IdpTokens} for the token, and the {@link IdpAgentCredentials} shape for the client.
+ * {@link IdpTokens} for the token, and the {@code IdpAgentCredentials} (retired with the direct agent path) shape for the client.
  *
  * <p><b>Two kinds, and qits-idp maps each to one role</b> ({@code CommissionRoles}): a {@link
  * #REGISTRATION_KIND} token grants {@code qits:desk-runner-registration}, which opens the register
@@ -158,12 +157,38 @@ public class IdpRunnerCommissioner {
                 + " it",
             status, runnerClientId);
       }
-    } catch (AgentCredentialException unreachable) {
+    } catch (IdpCommissionException unreachable) {
       LOG.warnf(
           "Could not reach qits-idp to decommission runner client %s; the reconcile will reap it:"
               + " %s",
           runnerClientId, unreachable.getMessage());
     }
+  }
+
+  /**
+   * Delete any client this service owns. One attempt; 404 is success. Answers whether the client is
+   * gone — false when it could not be asked or was refused, which the caller retries later.
+   */
+  public boolean deleteClient(String clientId) {
+    if (!enabled() || IdpTokens.blank(clientId)) {
+      return false;
+    }
+    try {
+      HttpResponse<String> response =
+          send(
+              request(clientsUrl() + "/" + URLEncoder.encode(clientId, StandardCharsets.UTF_8))
+                  .DELETE()
+                  .build(),
+              "deleting client " + clientId);
+      int status = response.statusCode();
+      if (status == 204 || status == 200 || status == 404) {
+        return true;
+      }
+      LOG.warnf("qits-idp answered %d while deleting client %s", status, clientId);
+    } catch (IdpCommissionException unreachable) {
+      LOG.warnf("Could not reach qits-idp to delete client %s: %s", clientId, unreachable.getMessage());
+    }
+    return false;
   }
 
   /** Delete a token. One attempt; 404 is success. Answers whether the token is gone. */
@@ -182,6 +207,15 @@ public class IdpRunnerCommissioner {
    * #liveTokens}, for the same reason.
    */
   public Optional<List<LiveClient>> liveRunnerClients() {
+    return liveClients(RUNNER_KIND);
+  }
+
+  /**
+   * Every live client of {@code kind} this service owns, or EMPTY when the listing could not be
+   * read (or nothing is wired). Also how the legacy one-shot finds the retired {@code
+   * agent-container} clients (qits-767).
+   */
+  public Optional<List<LiveClient>> liveClients(String kind) {
     if (!enabled()) {
       return Optional.empty();
     }
@@ -203,12 +237,12 @@ public class IdpRunnerCommissioner {
         if (!(row instanceof Map<?, ?> fields)) {
           continue;
         }
-        String kind = text(fields.get("contextKind"));
+        String rowKind = text(fields.get("contextKind"));
         String commissioned = text(fields.get("clientId"));
-        if (!RUNNER_KIND.equals(kind) || IdpTokens.blank(commissioned)) {
+        if (!kind.equals(rowKind) || IdpTokens.blank(commissioned)) {
           continue;
         }
-        live.add(new LiveClient(commissioned, kind, text(fields.get("contextId"))));
+        live.add(new LiveClient(commissioned, rowKind, text(fields.get("contextId"))));
       }
       return Optional.of(List.copyOf(live));
     } catch (IOException | RuntimeException e) {
@@ -226,7 +260,7 @@ public class IdpRunnerCommissioner {
     try {
       json = objectMapper.writeValueAsString(body);
     } catch (IOException e) {
-      throw new AgentCredentialException("Could not build the commission request", false, e);
+      throw new IdpCommissionException("Could not build the commission request", false, e);
     }
     HttpResponse<String> response =
         send(
@@ -237,7 +271,7 @@ public class IdpRunnerCommissioner {
             doing);
     int status = response.statusCode();
     if (status != 201 && status != 200) {
-      throw new AgentCredentialException(
+      throw new IdpCommissionException(
           "qits-idp answered " + status + " " + doing + ": " + response.body(),
           status == 401 || status == 403 || status >= 500);
     }
@@ -245,12 +279,12 @@ public class IdpRunnerCommissioner {
     try {
       answer = objectMapper.readValue(response.body(), Map.class);
     } catch (IOException e) {
-      throw new AgentCredentialException("Could not read the commission answer", false, e);
+      throw new IdpCommissionException("Could not read the commission answer", false, e);
     }
     String commissioned = text(answer.get("clientId"));
     String secret = text(answer.get("secret"));
     if (IdpTokens.blank(commissioned) || IdpTokens.blank(secret)) {
-      throw new AgentCredentialException(
+      throw new IdpCommissionException(
           "qits-idp answered a client commission for " + contextId + " with no usable pair", false);
     }
     return new RunnerClient(commissioned, secret);
@@ -265,7 +299,7 @@ public class IdpRunnerCommissioner {
       attempts++;
       try {
         return attempt.get();
-      } catch (AgentCredentialException e) {
+      } catch (IdpCommissionException e) {
         if (!e.retryable() || !Instant.now().isBefore(giveUpAt) || !sleep(pause)) {
           throw new CommissionFailedException(
               "Could not commission " + what + " after " + attempts + " attempt(s): " + e.getMessage(),
@@ -317,10 +351,10 @@ public class IdpRunnerCommissioner {
     try {
       return client.send(request, HttpResponse.BodyHandlers.ofString());
     } catch (IOException e) {
-      throw new AgentCredentialException("qits-idp unreachable " + doing + ": " + e, true, e);
+      throw new IdpCommissionException("qits-idp unreachable " + doing + ": " + e, true, e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new AgentCredentialException("Interrupted " + doing, false, e);
+      throw new IdpCommissionException("Interrupted " + doing, false, e);
     }
   }
 

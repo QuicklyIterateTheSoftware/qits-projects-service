@@ -38,7 +38,7 @@ import org.jboss.logging.Logger;
  *
  * <p><b>Verbatim means verbatim: this route rewrites no path.</b> The daemon receives {@code
  * /projects/container/{projectId}/commands}, not {@code /commands}, and is <em>configured</em> to
- * know that leading part is its own address — {@link AgentContainerFactory} injects {@link
+ * know that leading part is its own address — {@code deskhost/FrontDeskSpecs} injects {@link
  * ContainerProxyPath#base} as {@code QITS_PROJECTS_DAEMON_API_BASE_PATH} at container creation.
  * That is a deliberate rule rather than an inherited shape: a hop that rewrites a path leaves the
  * two ends disagreeing about the destination's own address, and the disagreement shows up in
@@ -73,7 +73,7 @@ public class ContainerProxyRoute {
 
   @Inject AgentTunnels tunnels;
 
-  /** The bearer the daemon requires; the same value {@link AgentContainerFactory} injects. */
+  /** The bearer the daemon requires; the same value {@code deskhost/FrontDeskSpecs} injects. */
   @ConfigProperty(name = "qits.projects.daemon-api-token", defaultValue = "qits-projects-daemon")
   String daemonApiToken;
 

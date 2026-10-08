@@ -63,13 +63,17 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   at all. Bring the package name back (qits-ci-service's `ci.notify` idiom) if a fire-and-forget notifier
   ever returns; `wiring` is deliberately not it, because a repository create is waited on and can
   fail the caller's request.
-- `service/…/containershost/` — the orchestrator client: the `ContainerRuntime` implementation, the
-  producer that gives the jar its bean and its bearer, and the native-image registration. It is an
-  *adapter* like `wiring` and `bus` are — the seam is `agenthost/ContainerRuntime`, and
-  what lives here is only what a deployable owes a plain jar. See "The container orchestrator".
-- `service/…/idphost/` — qits-idp's commission API, the same adapter shape one directory over: the
-  seam is `agenthost/AgentCredentials` and the whole of what lives here is one `@DefaultBean` HTTP
-  client. See "The commissioned credential".
+- `service/…/containershost/` — the orchestrator client: the producer that gives the jar its bean
+  and its bearer, the refinement runtime (`ContainersRefinementRuntime`, behind
+  `refinementhost/RefinementRuntime`) and the native-image registration. It is an *adapter* like
+  `wiring` and `bus` are — what lives here is only what a deployable owes a plain jar. See "The
+  container orchestrator". (The project agent's runtime, `ContainersAgentRuntime`, went with the
+  direct agent path in qits-767; front desks run on runners.)
+- `service/…/idphost/` — qits-idp's commission and token APIs, the same adapter shape one directory
+  over: `IdpRefinementCredentials` behind `refinementhost/RefinementCredentials`, `IdpTokens` and
+  `IdpRunnerCommissioner` for the front-desk runners and their desks (`IdpFrontDeskTokens` behind
+  `deskhost/FrontDeskTokens`), and the shared spellings (`IdpCommissionWire`) and failure
+  (`IdpCommissionException`) they all use.
 - `service/…/workspacehost/` — qits-workspaces, and `@DefaultBean` HTTP clients again. A package of
   its own rather than classes in `releasehost/` because **neither is a release verb** —
   qits-workspaces' release door left on 2026-09-03 and stays gone; what travels here are
@@ -817,7 +821,7 @@ working.
 
 `Project.slug` is **unique** (V6) and immutable (`@Column(updatable = false)`). Each project has its
 own upstream backup organisation and the slug names it; it also names the project's wrapper
-repository (`<slug>-<slug>`) and its agent container (`qits-proj-<slug>`).
+repository (`<slug>-<slug>`).
 
 It was deliberately non-unique until 2026-08-08. The correction had to be its own migration then —
 V1's column comment said the opposite and an applied file is checksummed — but the move to postgres
@@ -928,7 +932,7 @@ a pattern.
 
 The idp commissions of this service's own containers state refs too (contract C2):
 
-- **An agent container states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
+- **A front desk's token states `"gitRefs": []`**: it may push nothing. qits-projects-daemon only
   clones, and qits-coding-agents runs no git.
 - **A refinement container states `"gitRefs": ["refs/heads/refining/<slug>"]`**: its own branch
   and nothing else. Its qits-workspace-daemon auto-pushes each commit there (`OriginSync`,
@@ -941,8 +945,8 @@ The idp commissions of this service's own containers state refs too (contract C2
   never sent. This replaces contract C5's "commission without it" fallback for this service.
   - The refinement commission is sent again with `gitRefs: []` and logs an ERROR naming the
     refinement and the idp's reason. The container starts, but its auto-push fails.
-  - The agent container's list is already `[]`, so the same request is not sent twice: the 400 is
-    logged as an ERROR naming the project and the idp's reason, and the ensure fails with it.
+  - A desk token's list is already `[]`, so the same request is not sent twice: the mint fails and
+    the desk reads `FAILED` `TOKEN_UNAVAILABLE` until the sweep mints it.
 
 Roles do not change: a commission still carries its owner's roles until phase 4 of the plan.
 
@@ -1832,10 +1836,11 @@ assignment, not a comment, not a release.
 **A project's agent container is a front desk now, and this service no longer starts it.** A desk
 is a `front_desk` row (V37) placed on a front-desk runner (`desk_runner`, V36) — a machine an
 operator declared, holding a socket to `/projects/runners/socket` and running the desks it is given
-on its own node. `service/…/deskhost/` is the whole of it; the direct path (`AgentContainers`,
-`ContainersAgentRuntime`, `AgentContainerFactory`, the idle and stale-image sweeps and the
-`agent_credential` commissioning described under "Project agent harness" below) is no longer called
-and goes with qits-1111. The agent-container doors keep their paths:
+on its own node. `service/…/deskhost/` is the whole of it. **The direct path is gone** (qits-767):
+`AgentContainers`, `ContainerRuntime`, `ContainersAgentRuntime`, `AgentContainerFactory`, the idle
+and stale-image sweeps, `AgentCommissions`/`AgentCredentials`/`AgentCredentialReconcile`,
+`IdpAgentCredentials` and the `agent_credential` table (dropped by V38) — `DirectAgentPathRetiredTest`
+keeps it so. The agent-container doors keep their paths:
 
 | route | behaviour |
 | --- | --- |
@@ -1875,6 +1880,12 @@ and goes with qits-1111. The agent-container doors keep their paths:
   on DELETE, on project deletion (`ProjectFrontDeskRemoval`) and on `removed` of an unplaced row,
   never by stop; `FrontDeskTokenReconcile` reaps unclaimed ones. A failed mint is FAILED
   `TOKEN_UNAVAILABLE: …` until the sweep mints it.
+- **The legacy one-shot** (`LegacyAgentPlaces`, boot, NORMAL mode, on a virtual thread, idempotent)
+  clears what the direct path left: every project's `owner/project-agent/<projectId>` place is
+  deleted with its volumes (404 is done; any other failure is a WARN the next boot retries), every
+  idp client of kind `agent-container` is deleted, and a `qits_project_<projectId>` volume that
+  survives its place is named in a WARN for a person — there is deliberately no volume door. It is
+  the one production class left naming the `project-agent` workload.
 - **Binding**: `AgentControlSocketAccess` and `DaemonStreamRoute` require a `tok-` subject to be
   the desk's `token_subject`; the dial-back requires an authenticated caller (the nonce stays the
   second factor). `SocketBearerLifetime` keeps `/projects/daemon/*` and `/projects/daemon/stream/*`
@@ -1910,9 +1921,11 @@ belts).
 
 ## Project agent harness
 
-One container per project, holding a clone of that project's wrapper repository and running
-`qits-projects-daemon` over it, so a refinement agent can read and build the project it is drafting
-epics for. The host side is `service/…/agenthost/`; the container's process is its own repository
+One container per project — its **front desk** (see "Front desks" above for how it is placed, kept
+and composed) — holding a clone of that project's wrapper repository and running
+`qits-projects-daemon` over it, so an agent can read and build the project it is planning. What this
+section describes is the daemon's side of it: the control socket, the tunnel, the proxy, the pin, the
+MCP servers and the agent configuration. The host side is `service/…/agenthost/`; the container's process is its own repository
 (`qits-projects-daemon`), and that repo's `AGENTS.md` is the source of truth for every value below.
 The whole shape is qits-workspaces-service's daemon harness — registry, tunnels, proxy — adapted
 rather than reinvented, so read that repo before changing anything structural here.
@@ -1930,8 +1943,8 @@ repo published it nowhere; it does now, and the copy is deleted.
 
 **Its version IS the agent image pin, which is why the change was worth making.** That artifact's
 `${project.version}` is the tag both of qits-projects-daemon's images are pushed under, so
-`ProjectAgentImage.VERSION` is the `qits/project-agent` tag `AgentContainerFactory` starts containers
-from. The pin is one line — `qits.projects-daemon-protocol.version` in the root pom, written as a
+`ProjectAgentImage.VERSION` is the `qits/project-agent` tag every front desk is composed with
+(`FrontDeskSpecs.imageVersion()`). The pin is one line — `qits.projects-daemon-protocol.version` in the root pom, written as a
 single property reference so qits-maintenance's bump train can move it — and moving it moves which
 image the next agent runs. Before, the version arrived as `env.QITS_PROJECTS_AGENT_IMAGE_VERSION`,
 rewritten by qits-configuration's release listener the moment an image was pushed: a new daemon
@@ -1986,61 +1999,17 @@ go through `vertx-http-proxy` at all** — `proxyUpgrade` does it by hand, becau
 its whole interceptor chain on an upgrade (so the bearer never arrives) and pipes with no
 `writeQueueFull`/`pause`/`drainHandler` at all.
 
-**The env contract of the direct path** (superseded by the desk's table under "Front desks"; kept
-until qits-1111 deletes the direct path), read from the daemon repo and asserted by
-`AgentContainerFactoryTest`. Getting
-one wrong fails silently: no url leaves the daemon idle, no token leaves its API unbound.
-
-    QITS_PROJECTS_DAEMON_URL             the control socket, dialled verbatim
-    QITS_PROJECTS_DAEMON_API_BASE_PATH   /projects/container/<projectId>/
-    QITS_PROJECTS_DAEMON_PROJECT_ID      the project served
-    QITS_PROJECTS_DAEMON_REPO_NAME       the wrapper, <slug>-<slug> — the clone is name-addressed
-    QITS_PROJECTS_DAEMON_GIT_BASE        stated, never derived: the git host is qits-githost
-    QITS_PROJECTS_DAEMON_API_TOKEN       qits.projects.daemon-api-token
-    QITS_PROJECTS_DAEMON_API_PORT        13338, also the authority the proxy pins
-    QITS_PROJECTS_DAEMON_HOOKS_PORT      13337
-    QITS_PROJECTS_DAEMON_CLAUDE_MOUNT    /claude-home
-    QITS_REPOSITORY_MCP_URL              the one service-addressed MCP server — this service
-    QITS_PLATFORM_MCP_URL                the central `qits` server, on every surface (qits-630)
-    QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION       the resolved document — see "Injecting the document"
-    QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH  where the daemon writes it before it starts anything
-    QITS_COMMISSIONED_CLIENT_ID          this container's OWN idp client — absent with no idp
-    QITS_COMMISSIONED_CLIENT_SECRET      its secret, answered once and stored here
-    QITS_PROJECTS_DAEMON_AUTH_TOKEN_URL  the idp token endpoint used before dial-home
-    QITS_PROJECTS_DAEMON_AUTH_AUDIENCE   qits-platform — one audience for every service now (plan C4)
-    GIT_CONFIG_GLOBAL                    /etc/qits-gitconfig — the image's own credential helper
-    QITS_GIT_AUTH_HOST                   the AUTHORITY of the container git url, never the whole url
-    QITS_GIT_AUTH_TOKEN_URL              the idp token endpoint the helper exchanges at
-    QITS_GIT_AUTH_AUDIENCE               qits-platform, the same one — never a git-specific audience
-
-**The last four are the git credential helper `qits/workspace-base` bakes in**, the identical block
-`RefinementContainerFactory` has always injected, and they are what make `git` work for *every*
-process in the container rather than for one. `/etc/qits-gitconfig` names
-`/usr/local/bin/qits-git-credential` and `GIT_CONFIG_GLOBAL` is the only thing that makes git read
-that file: the image's `HOME` is the checkout and nothing ever writes a gitconfig there, so without
-it the helper ships installed and unconsulted, `git config --list` reports no `credential.helper` at
-all, and a fetch dies on `could not read Username`. The helper answers **Basic** and only the
-internal githost alias rewrites that to the Bearer the git host accepts, which is why the host is
-the authority of `qits.projects.container-git-url` — a blank one makes the helper fail closed and
-answer nothing, which is correct and also useless.
-<br>**qits-projects-daemon's `CheckoutFollower` derives the same four for the one child it
-supervises** and yields to an injected value, so stating them here turns that derivation into a
-no-op rather than a conflict, and keeps it the only source for a container an older qits-projects
-composed. **This grants reads and no writes**: an agent container is commissioned `"gitRefs": []`,
-which qits-githost reads as "may push no ref". Fetch, clone and worktree; never push.
-
-**The commissioned pair is a credential per container, not a shared one.** They are commissioned from
-qits-idp's `POST /idp/api/clients` as `{agent-container, <projectId>}` and handed back when the
-container is gone, so what a container authenticates its pulls, its maven/npm resolution and its git
-reads with has the container's lifetime and no other. Read the section below before touching them —
-in particular, they are the one part of this table whose *absence* is a supported configuration.
+**The env contract is the front desk's**, in the table under "Front desks": a desk dials home through
+the edge (`wss://projects.qits.<d>/…`) with its own `qits_tok_`, and git reads go through the image's
+credential helper against `githost.qits.<d>` (`GIT_CONFIG_GLOBAL`, `QITS_GIT_AUTH_HOST`). It grants
+reads and no writes: a desk token is commissioned `"gitRefs": []`. The direct path's commissioned
+client pair (`QITS_COMMISSIONED_*`, `*_AUTH_TOKEN_URL`) is gone with it.
 
 **The harness gets exactly one MCP server, and it is this one.** `QITS_REPOSITORY_MCP_URL` names
 this service's `repository` server at `/projects/mcp`, which carries `EpicMcpTools` beside
 `RepositoryMcpTools` — the epic surface is why the container exists. It is composed from
 `qits.projects.own-host`/`own-port` (`qits.projects.agent-mcp-url` overrides), so it is *stated*
-rather than left to the daemon's derivation; the daemon keeps that derivation as a fallback, so
-containers created before this env still work and nothing had to be recreated. The name carries no
+rather than left to the daemon's derivation — for a desk, `https://projects.qits.<d>/projects/mcp`. The name carries no
 `QITS_PROJECTS_DAEMON_` prefix because it is the daemon's existing `qits.repository-mcp.url` key.
 
 The exclusion is the other half of the decision: qits-workspace-daemon wires **three** servers into
@@ -2068,111 +2037,14 @@ replacing whatever the caller sent, and a forwarded one would be a credential le
 default so a deployment needs no configuration; the other end is still fail-closed, because a daemon
 handed no token does not bind its API at all.
 
-### The commissioned credential
+### The direct path's credential and runtime are retired
 
-**One idp client per container, and its lifetime is the container's.** `AgentCommissions` gets it
-from qits-idp's commission API — `POST /idp/api/clients` with `{"contextKind":"agent-container",
-"contextId":"<projectId>","claims":{"project":"<projectId>"},"gitRefs":[]}` (for `gitRefs` see "Git
-refs an agent may push"), HTTP Basic with **this service's own** oidc client id and secret,
-because a caller there already holds an idp credential and that is how the API authenticates one.
-`idphost/IdpAgentCredentials` is the adapter and `agenthost/AgentCredentials` the seam; the adapter
-is `@DefaultBean`, so the suite's `FakeAgentCredentials` wins the injection and no test reaches an
-idp. Everything is read from the keys the `qits` named oidc-client block already ships
-(`client-enabled`, `client-id`, `credentials.secret`, `auth-server-url` —
-epic qits-540 dossier, 'Plan (as of 2026-09-13)', C4) — there is no second address and no second
-credential to
-configure.
-
-**The `claims` member is the scope, and it is not the same fact as `contextId`.** The context id
-says which container this credential belongs to — what the reconcile compares against live places —
-and the claim says what the credential may act on, which qits-idp puts on every token the pair mints
-and every resource service reads back (`QitsClaims.PROJECT`). qits-ci's manual trigger uses exactly
-this to decide which repositories a caller may have evaluated, so an agent reaches its own project's
-pipelines and nobody else's. For the agent harness the two are the same string, because an agent
-container's context *is* a project; for the refinement harness beside it they are not, which is why
-`RefinementCredentials.commission` takes both. Neither ever states `"*"` — qits-idp refuses a
-commission that widens itself, and asking would be asking for the thing the scoping exists to stop
-granting. A refinement whose project cannot be named is commissioned unscoped, as every credential
-here was before.
-
-Four things bite.
-
-- **Absent is the posture under %dev and %test and must stay byte-identical.** With
-  `quarkus.oidc-client.qits.client-enabled=false` this process holds no secret, so it can
-  authenticate to nothing: nothing is commissioned, the two names are simply not in the env map, and
-  the spec a
-  container is started with is the spec it was before any of this existed. Same answer, plus one
-  WARN, when the switch is on and the secret is blank — which is now the ordinary deployed case
-  before the deployer's resource is declared.
-- **The fresh arm commissions and the wake arm must not.** `AgentContainerFactory.forProject` mints
-  a credential; `forRestart` reads back the pair the container already holds and sends it unchanged.
-  That is not a cache: qits-containers hashes a workload's whole spec, **environment included**, so
-  a wake that minted a fresh secret would be a spec change and would replace the container on every
-  wake — the exact defect `ContainerRuntime.restart` records, reintroduced through the one door left
-  open. `AgentCommissioningTest` compares the two arms' whole env maps for that reason.
-- **The pair is a row in this database (`agent_credential`, V3), secret included**, and that follows
-  from the point above rather than from convenience: the wake arm has to reproduce a value idp
-  answers exactly once. The row is keyed on the project id with **no foreign key** to `project`,
-  because an agent container outlives its project and a cascade would drop the row while the
-  container still held the credential.
-- **Decommissioning is a sweep here, and that is a fact about this repository.** Nothing in this
-  service removes an agent container: stop and the idle sweep both stop, deleting a project leaves
-  its container standing, and `ContainerRuntime` has no removal verb at all. So the lifecycle hook
-  the model asks for has no call site. The two real paths are `forFreshContainer`, which hands a
-  project's previous credential back before minting the replacement container's, and
-  `AgentCredentialReconcile`, which at boot and hourly compares idp's own listing of what this
-  service commissioned against what the orchestrator says exists. It asks
-  `ContainerRuntime.inspect` **per commissioned project** rather than reading the listing, because
-  the listing answers an empty list both for "no containers" and for "could not ask" and reaping on
-  the second would revoke every live agent's credential at once; `inspect` is empty for a true 404
-  and throws otherwise, and a pass that cannot ask reaps nothing. If a removal verb is ever added,
-  it decommissions there too and this becomes the belt it should be.
-
-A commission holds through 401, 403 and nothing answering for
-`qits.projects.agent-credentials.commission-patience` (PT30S) — the same classifier and the same
-measured idp-cutover window as `ContainersAgentRuntime.holdThrough`, shorter because it sits in
-front of an image pull somebody is waiting on. Past that it throws an `AgentCredentialException`,
-which is a plain `RuntimeException` **on purpose**: `AgentContainers.ensure` rethrows a
-`DomainException` with its status and turns everything else into `FAILED` with the reason on
-`failureDetail`, and this belongs in the second arm.
-
-**The shared volumes carry qits-workspaces' names on purpose** — `qits_shared_dot_claude`,
-`qits_shared_m2`, `qits_shared_pnpm`. They are platform-wide: a divergent credential volume here
-would give project agents their own unauthenticated agent home. The per-project checkout volume is
-`qits_project_<projectId>`, keyed on the id, while the container is named `qits-proj-<slug>` so
-`docker ps` reads well. `Project.slug` is unique (V6), but only among *live* projects, and deleting
-a project does not remove its agent container — so a later project taking the freed slug finds the
-old container on the name. The name therefore proves nothing, which is why it is not the address:
-a place is `owner/project-agent/<projectId>` and a row found under this project's id *is* this
-project's. What survives of the old label check is one arm down, in
-`ContainersAgentRuntime.run`: before provisioning it asks whether another of this owner's places
-already holds the name, and answers 409 rather than letting the registry refuse it as a unique
-constraint nobody can act on.
-
-**The stop policy is stop, never remove.** `POST …/agent-container/stop` and the
-`qits.projects.agent-idle-timeout` sweep (PT4H) both leave the container in place, so the next ensure
-starts *that* container again — same docker id, same writable layer. The checkout would survive a
-replacement too (it is a named volume the orchestrator will not remove under `IDLE_STOP`, and the
-daemon skips its self-clone on an already-populated `/workspace`), which is what makes a wake safe
-even when an image bump turns it into one — see "The container orchestrator" below. Idleness is
-measured from the
-last thing the daemon said — `Hello`, heartbeat, agent activity — so it means "nobody is using this
-project", not "nothing is happening": a long silent build still heartbeats. A container this process
-has never heard from is stamped on sight and ages out one window later, rather than being immortal
-or reaped immediately.
-
-**A failed provision is reported, not swallowed.** The daemon clones the project into
-`/workspace` on boot; when that fails it says `ProvisionFailed`, and docker still calls the
-container healthy. So the frame is *recorded* per project and the agent-container read answers
-`FAILED` with a `failureDetail` rather than `RUNNING` — otherwise the panel opens a terminal onto
-an empty checkout. The record lives in a map beside `lastActivity`, not on the connection, because a
-daemon that cannot clone usually drops its socket right after saying so and a failure held on the
-socket would vanish exactly when somebody came to read it. A `Provisioned`, a reconnect or a stop
-clears it. **There is no re-provision**: `ensure` no-ops on a running container and the daemon
-latches its attempt for the life of its process, so recovery is to remove the container and ensure
-it again — deliberately not automatic, since the `/workspace` volume a remove orphans is where
-uncommitted work lives. The detail is a field and not a sixth `AgentRuntimeStatus`: the SPA switches
-on those five strings and they are a published contract.
+The per-container idp client (`AgentCommissions`, `agent_credential`), the container runtime over
+qits-containers (`ContainersAgentRuntime`), the idle sweep, the stale-image sweep and the stop-never-
+remove policy went with qits-767. Their successors are the desk's token (`FrontDeskTokens`), the
+runner that holds the container, the demand and `FrontDeskSweep`, `FrontDeskSpecRoll` and the
+DELETE door — all under "Front desks". A daemon's `ProvisionFailed` is still recorded per project
+in `AgentDaemonRegistry` and still reads `FAILED` with its `failureDetail`.
 
 ### Agent surface configuration
 
@@ -2364,7 +2236,7 @@ interpolated into any message, including an exception's.
 
 ### Injecting the document into the project's agent container
 
-**A project agent container is born holding what its sessions run as.** `AgentContainerFactory`
+**A project agent container is born holding what its sessions run as.** `FrontDeskSpecs`
 builds the resolved document from the store **in process** — no fetch, because the store is here —
 and puts it in the container's spec beside the path it is to land at. The surface this
 container's sessions launch with is `project.work` (`project.epics` and `project.tickets`, the two
@@ -2401,12 +2273,9 @@ argument.
   volume every other container mounts, where a per-container document would be overwritten.
 - **The document is stamped with the store's last change, never with `now`, and that is
   load-bearing.** `AgentSurfaceConfigurationService.documentForContainerSpec()` reads the newest
-  revision instant instead of the wall clock the container door uses. These bytes are hashed into the
-  spec qits-containers stores, and `forRestart` sends `Recreate.ifChanged`: a document that differed
-  on every render would make **every wake a container replacement** — the exact defect this repo
-  carried while that service had no start verb, reintroduced through a timestamp.
-  `AgentContainerFactoryTest.aRestartPermitsAReplacementAndIsOtherwiseTheSameRequest` is what
-  notices. Nothing else needs a stamp: a catalog entry's url or a resolved credential changing moves
+  revision instant instead of the wall clock the container door uses. These bytes are part of the
+  desk's `spec_hash`, and the runner recreates a desk whose hash moved: a document that differed on
+  every render would make **every spec roll a container replacement**. Nothing else needs a stamp: a catalog entry's url or a resolved credential changing moves
   the bytes themselves.
   <br>**qits-workspaces solves the same problem by storing the document on the workspace row**
   (38534c4) — it has to, because over there the document arrives from a *fetch* and re-fetching per
@@ -2414,12 +2283,11 @@ argument.
   owns, so making the build deterministic is the whole fix and there is no column to keep in step.
   Same rule, different half of it: the spec must be reproducible from what the container already is.
 - **That same hash IS the epic's "an edit applies to the next container".** A store edit changes the
-  document, so the next wake's `ifChanged` replaces the container and the edit takes effect. No push,
+  document, so the spec roll replaces the desk once it is quiet and the edit takes effect. No push,
   no poll, no staleness flag, and nothing in the UI about it.
 - **A document that cannot be built fails the ensure, loudly.** A surface attaching an external MCP
   server whose qits-configuration credential does not resolve throws out of `document()` naming the
-  key and the surface, and that reaches `AgentContainers.ensure`, which reports the container
-  `FAILED` with the reason on `failureDetail`. **This is deliberately the opposite of
+  key and the surface, and the desk reads `FAILED` with the reason on `failureDetail`. **This is deliberately the opposite of
   qits-workspaces' policy**, and the difference is what fails: over there the document arrives over
   the network from a peer that can be down, so refusing to create the workspace would trade a
   configuration outage for a work outage. Here the build reaches a database this service already
@@ -2439,7 +2307,7 @@ own agent container. qits-workspaces writes the matching one for a workspace's.
 - **It fires on the daemon's `Hello`**, from `AgentDaemonRegistry`, on a virtual thread. That is the
   first moment the container is reachable at all — the daemon binds loopback and is only addressable
   through `AgentTunnels`, so a live control socket is the earliest evidence there is anything to ask.
-  It is structurally off every request path: **not** from `AgentContainers.ensure` (which returns
+  It is structurally off every request path: **not** from the ensure door (which returns
   while the container is still pulling an image, long before any daemon has spoken, so a relay there
   would either block the browser or read nothing) and **not** from the capability GET, which is the
   editor's and must never wait on a container. The one process spawn per harness happens inside the
@@ -2557,9 +2425,9 @@ Where it differs from the agent harness, each difference is the domain line:
   `SERVICE_PROXY_BASE`, no actions MCP server — the tab set this backs has no Services or Actions
   tab, and its web view frames the deployed environment, not a dev server.
 - **There is a removal verb.** Discard tears down container → volume → credential → branch → row,
-  in that order; the agent harness deliberately has no removal at all. `RefinementCommissions`
+  in that order; a front desk's removal is its DELETE door, on its runner. `RefinementCommissions`
   decommissions at the explicit seams; `RefinementCommissionReconcile` reaps `refinement`-kind idp
-  clients no row claims (its own CONTEXT_KIND, invisible to the agent reconcile and vice versa).
+  clients no row claims (its own CONTEXT_KIND, invisible to the desk token reconcile and vice versa).
 - **Resolving the entity is what calls that verb, and it is a rule of the service rather than a
   browser dance.** `refinementhost/EntityResolutions` (`EpicResolutions` until qits-395) is the only
   thing a door may use to move an epic's or a ticket's status: it previews the move
@@ -2618,8 +2486,8 @@ Where it differs from the agent harness, each difference is the domain line:
   (`QITS_PROJECTS_AGENT_IMAGE_VERSION`, `qits/project-agent`) is a different image on a different
   train and is **unchanged**, still configuration-driven and still declared there.
 - **Git is reached at the internal githost alias** (`qits.projects.container-git-url`, default
-  `http://githost.dev.internal:8080` — **the same key the agent harness reads**, one key for one
-  concept, carrying no path so each factory appends `/git` itself): the image's credential helper
+  `http://githost.dev.internal:8080`, carrying no path so the factory appends `/git` itself; a front
+  desk reaches git at the edge instead): the image's credential helper
   answers oauth2 Basic and only that alias's oauth2 transport rewrites it to the Bearer the git host
   accepts, exactly as a workspace's does. Neither the edge nor qits-githost's *service* alias
   answers that credential — the two names this key replaced,
@@ -2640,7 +2508,7 @@ below), `GET /work/{qualifiedId}/refinement` (find only), `GET/verbs /refinement
 the list redraws on every activity hint), the prompt draft and attachments (content URLs are
 embedded into epic markdown, so attachment ids are never renumbered), the per-row SSE hint channel,
 and the technical-process stream. The suite's seams are `FakeRefinementRuntime` and
-`FakeRefinementCredentials`, winning over the `@DefaultBean` adapters exactly as the agent fakes do
+`FakeRefinementCredentials`, winning over the `@DefaultBean` adapters
 — and read through METHODS, never public fields, because a client proxy does not proxy field access.
 
 **No read on that surface performs a git operation, and the single-row read is where that had to be
@@ -2750,75 +2618,35 @@ the spec hash and replace every standing refinement container at its next wake.
 
 ## The container orchestrator
 
-**This service holds no docker socket and spawns no process.** Every container verb the harness has
-— provision, bring back, stop, stamp, list, make a volume — is one HTTP call to **qits-containers**,
-which owns the daemon. `agenthost/ContainerRuntime` is still the seam; its sole implementation is
-`containershost/ContainersAgentRuntime`, and `DockerAgentRuntime` (a `ProcessBuilder` shelling
-`docker`) and the `AgentContainer` argv builder are **deleted**, not retired. If a docker argv ever
-reappears in this repository, that is the regression.
+**This service holds no docker socket and spawns no process.** The one container kind it still
+starts itself is a refinement container — provision, bring back, stop, stamp, list, make a volume —
+each one HTTP call to **qits-containers** through `containershost/ContainersRefinementRuntime`
+(seam `refinementhost/RefinementRuntime`). A project's agent container is a front desk on a runner
+now and qits-containers is not asked about it, except by the legacy one-shot that removes the
+direct path's `project-agent` places. If a docker argv ever appears in this repository, that is the
+regression.
 
-Five things bite.
-
-- **A place is `owner/workload/ref`, and this service's ref is the project id.** So the seam takes a
-  project id where it used to take a container name, and `qits-proj-<slug>` travels as the spec's
-  `explicitName` — a hint for `docker ps`, never an address. `qits.projects.containers.owner`
-  **must equal the machine token's `sub`** once the far side's gate is on (its `OwnerGuard` compares
-  them), which is why it defaults to reading `quarkus.oidc-client.qits.client-id`, the one named
-  client every outbound identity this service has (epic qits-540 dossier, 'Plan (as of
-  2026-09-13)', C4). Two instances must not
-  share it; two environments sharing one docker daemon are `dev-qits-projects` and
-  `prod-qits-projects` and neither one's rows name the other's containers.
+- **A place is `owner/workload/ref`.** `qits.projects.containers.owner` **must equal the machine
+  token's `sub`** once the far side's gate is on (its `OwnerGuard` compares them), which is why it
+  defaults to reading `quarkus.oidc-client.qits.client-id`. Two instances must not share it.
 - **The client never throws, and its four answers are the whole vocabulary.** A refusal and an
-  unreachable service mean opposite things — one is evidence about the request, the other about
-  nothing at all — so `inspect` answers empty for a **404 only** and throws for everything else. The
-  docker CLI it replaces could not tell those apart (a broken binary and an absent container both
-  exited non-zero), and reading "we could not ask" as "there is nothing there" is what would send the
-  ladder to provision a second container. Do not add a fifth outcome by catching something.
-- **A bring-up holds through 401, 403 and nothing answering, and through nothing else.**
-  `ContainersAgentRuntime.holdThrough` is qits-ci-service's classifier copied verbatim, and the measurement
-  behind it is that repository's: across a qits-platform-idp cutover those three are statements about
-  the moment rather than about the request, and each attempt asks the `TokenSource` again, which is
-  the only way a post-cutover token is ever picked up. Retrying is safe because `ensure` is a PUT per
-  place. `SPEC_CONFLICT`, `IMAGE_MISSING` and a 400 on a value are one attempt each — no window fixes
-  them. **A 2xx whose observed state is `MISSING`/`GONE` is a failed bring-up**, not a started one.
-- **Waking a stopped agent is a start in place, and a replacement only if the spec really changed.**
-  One `ensure` does both: qits-containers starts the container the row already names when the spec is
-  unchanged (same docker id, everything outside the volumes intact), and replaces it when it differs.
-  So `forRestart` sends `Recreate.ifChanged` and nothing else — that permission is what lets an
-  agent-image bump landing while the agent slept be applied at wake, which is the one moment it can
-  be applied without taking a container away from somebody working in it. The running arm asks for no
-  recreate at all.
-  <br>**This arm was a forced re-create until 2026-08-13**, and the reason is worth keeping: that
-  service had no start verb, its `RESTART` step fell through to a second `docker run` under a name
-  docker already held, and a stopped place asked for again settled `MISSING` behind a **200**. The
-  workaround here was an env stamp that differed per call, so the spec was never "unchanged" and the
-  recreate step ran instead. qits-containers-service 354fd7f fixed it — a bounded `start` on its driver seam,
-  a real-daemon test that stop-then-ensure returns the same docker id — and the stamp is gone with
-  it. Do not reintroduce a per-call value into this spec: a request that differs every time is a
-  request that can never be started in place.
-  <br>A delete-then-ensure was never the alternative: `ct_container`'s `container_name` is unique
-  across **every** row including the settled ones, and a deleted row keeps the name for
-  `qits.containers.row-prune-horizon` (P7D).
-- **The idle sweep stays here, and it resolves identity itself.** Its tunnel teardown and
-  `registry.forget` are in-memory state of this process that the orchestrator cannot touch. The spec
-  still carries an `IDLE_STOP` policy with the same window as the belt for a qits-projects that died
-  holding a container — and the sweep `touch`es what it keeps, because that clock is only ever
-  stamped when a row is written and would otherwise stop a container somebody is working in. The
-  listing carries no labels and no refs, so a container **name** is matched back against the live
-  projects' own `qits-proj-<slug>`; one that matches none is **skipped**, because every action past
-  the stop is addressed by a project id there is no longer one of.
+  unreachable service mean opposite things, so a 404 is "there is nothing there" and everything else
+  that is not a 2xx is "we could not ask". Do not add a fifth outcome by catching something.
+- **A bring-up holds through 401, 403 and nothing answering, and through nothing else**
+  (`qits.projects.containers.ensure-patience`), qits-ci-service's classifier: across an idp cutover
+  those three are statements about the moment rather than about the request. `SPEC_CONFLICT`,
+  `IMAGE_MISSING` and a 400 on a value are one attempt each.
+- **Waking a stopped container is a start in place, and a replacement only if the spec really
+  changed** (`Recreate.ifChanged`). Do not put a per-call value into a spec: a request that differs
+  every time can never be started in place.
 
-**Nothing here reaches an orchestrator under test.** `ContainersAgentRuntime` is `@DefaultBean`, so
-`FakeContainerRuntime` simply wins the injection, and the test config points `qits.containers.url` at
-`http://127.0.0.1:1` so a call that escaped the fake fails fast instead of reaching a real
-orchestrator on the developer's own machine. There is no startup observer left to gate: the network
-is the bootstrap's and this service creates none.
+**Nothing here reaches an orchestrator under test.** The test config points `qits.containers.url`
+at `http://127.0.0.1:1`, so a call that escaped a fake fails fast.
 
 **`containershost/ContainersWireReflection` is the native-image registration**, the second member of
-`bus/EventWireReflection`'s family and there for the identical reason — the client jar builds its own
-`ObjectMapper`, so the wire records are invisible to the build step that scans for what needs
-reflecting on, and without it the JVM suite stays green and the binary fails on every call. The list
-is the client's README's list; keep them the same.
+`bus/EventWireReflection`'s family — the client jar builds its own `ObjectMapper`, so the wire
+records are invisible to the build step that scans for what needs reflecting on. The list is the
+client's README's list; keep them the same.
 
 ## Schema changes
 
@@ -2943,8 +2771,7 @@ ordinary rule (keep appending, never edit an applied migration) is back from V1 
 **`V2__causation.sql`, once per lineage, is that rule being followed.** Both add the platform's
 generic `causation_id uuid` column (qits-eventstream's `CausedRow`): nullable, in no constraint,
 never a foreign key — the event it names lives in qits-events' store — and with no backfill, since
-no existing row has an answer to invent. Seven of the eight entities take it (the eighth,
-`AgentCredential`, arrived later with the column already in its own `create table` — V3). The stamp fills it from
+no existing row has an answer to invent. The entities of the time all took it. The stamp fills it from
 the ambient `CausationScope` at persist, and **nothing here sets it explicitly**, because no insert
 crosses a thread hop: the backup executor and the pull executor only ever UPDATE, and the stamp is
 insert-only. Where the decisions land, and why:
@@ -2955,7 +2782,7 @@ insert-only. Where the decisions land, and why:
 | `Repository` | `CausedRow` | The one worth tracing. All four mint paths run on the request thread, and `WrapperReconcileService` is the machine-driven one — a reconcile records, per adopted or cloned member, what asked for it. |
 | `RepositoryName` | `@Uncaused` | The only opt-out. An alias is derived, idempotent state; the repository it FKs to is a `CausedRow` one join away and is the row that was actually caused. Decisively, `RepositoryNameResolver` mints the self-name in its own transaction off any request context — the provision worker, or container creation — where no scope stands, so a stamp would record null forever. No event id is ever in reach to set as data. |
 | `Epic`, `Feature`, `Task` | `CausedRow` | `EpicMcpTools` reaches the same services the SPA does, on the same thread: an agent minting a task is exactly the flow worth tracing. |
-| `AgentCredential` | `CausedRow` | V3, and the column ships in its own `create table`. The only insert is `AgentCommissions.forFreshContainer`, on the request thread that asked for the container; the reconcile only ever deletes. |
+| `AgentCredential` | — | Dropped with the direct agent path (V38, qits-767). `FrontDesk` (V37) is `@Uncaused`: machine state written by sweeps and socket frames, where no scope stands. |
 | `AuditEntry` | `CausedRow` | Covers what the live rows cannot. The stamp is insert-only, so an epic row records the cause of its own creation and never of an update; and a deleted row is gone while its DELETE entry stays (audit rows are deliberately not FK'd back). |
 
 The decisions are **enforced, not documented**: `ArchRulesTest` (qits-arch-rules) sits in each entity

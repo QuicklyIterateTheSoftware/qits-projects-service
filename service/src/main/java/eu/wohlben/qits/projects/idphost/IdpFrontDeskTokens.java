@@ -17,15 +17,13 @@ import java.util.Optional;
 @DefaultBean
 public class IdpFrontDeskTokens implements FrontDeskTokens {
 
-  /** The claim naming the project a desk token may act on ({@code QitsClaims.PROJECT}). */
-  static final String PROJECT_CLAIM = "project";
-
   @Inject IdpTokens tokens;
 
   @Override
   public Minted mint(String projectId) {
     IdpTokens.Issued issued =
-        tokens.commission(CONTEXT_KIND, projectId, Map.of(PROJECT_CLAIM, projectId), List.of());
+        tokens.commission(CONTEXT_KIND, projectId, Map.of(IdpCommissionWire.PROJECT_CLAIM, projectId),
+        IdpCommissionWire.NO_GIT_REFS);
     return new Minted(issued.tokenId(), issued.token(), issued.subject());
   }
 

@@ -16,7 +16,7 @@ import org.jboss.logging.Logger;
  * The endpoint each project's in-container {@code qits-projects-daemon} dials on boot. It owns only
  * the WebSocket lifecycle and JSON framing — {@link AgentDaemonRegistry} owns the state.
  *
- * <p><b>The path is an append-only cross-repo contract.</b> {@link AgentContainerFactory} injects
+ * <p><b>The path is an append-only cross-repo contract.</b> {@code deskhost/FrontDeskSpecs} injects
  * {@code ws://<host>:<port>/projects/daemon/<projectId>} as {@code QITS_PROJECTS_DAEMON_URL} into
  * every container it creates, and the daemon dials exactly that, verbatim, parsing no path out of
  * it. Only a container recreate re-injects the value, so changing this literal breaks every

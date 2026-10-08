@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import eu.wohlben.qits.projects.agenthost.AgentCredentialException;
 import eu.wohlben.qits.projects.refinementhost.RefinementCredentials;
 import java.io.IOException;
 import java.time.Duration;
@@ -109,9 +108,9 @@ class IdpRefinementCredentialsTest {
       stub.answering(400, "{\"error\":\"invalid_request\"}")
           .answering(400, "{\"error\":\"invalid_request\"}");
 
-      AgentCredentialException refused =
+      IdpCommissionException refused =
           assertThrows(
-              AgentCredentialException.class,
+              IdpCommissionException.class,
               () -> credentials(stub.url()).commission(REFINEMENT, PROJECT, BRANCH));
 
       assertFalse(refused.retryable());
@@ -126,7 +125,7 @@ class IdpRefinementCredentialsTest {
       stub.answering(400, "{\"error\":\"invalid_request\"}");
 
       assertThrows(
-          AgentCredentialException.class,
+          IdpCommissionException.class,
           () -> credentials(stub.url()).commission(REFINEMENT, PROJECT, null));
 
       assertEquals(1, stub.received().size(), "the same request is not sent twice");

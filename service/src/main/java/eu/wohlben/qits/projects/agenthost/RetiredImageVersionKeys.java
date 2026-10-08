@@ -16,7 +16,7 @@ import org.jboss.logging.Logger;
  * <p>Until 2026-09-17 the agent image version came from {@code qits.projects.agent-image-version},
  * written into this deployment's environment as {@code QITS_PROJECTS_AGENT_IMAGE_VERSION} by
  * qits-configuration's release listener on every {@code qits/project-agent} release. Both halves of
- * that are gone here: {@link AgentContainerFactory} takes the version from the dependency this
+ * that are gone here: {@code deskhost/FrontDeskSpecs} takes the version from the dependency this
  * reactor pins ({@link ProjectAgentImage#VERSION}, whose own version <em>is</em> the image tag), and
  * the override that remains is at a different name, {@code
  * qits.projects.agent-image-version-override}.
@@ -48,7 +48,7 @@ import org.jboss.logging.Logger;
  *
  * <p>The qits-workspaces pilot put this on its container factory for one commit, which is a mistake
  * worth recording rather than repeating: observing {@link StartupEvent} forces the observing bean to
- * be <em>constructed</em> at boot, and {@link AgentContainerFactory} carries required config with no
+ * be <em>constructed</em> at boot, and {@code deskhost/FrontDeskSpecs} carries required config with no
  * defaults ({@code qits.projects.agent-image-repo}, the daemon api token, the git base). Every
  * {@code @QuarkusTest} in the module that had never needed the factory suddenly had to satisfy all
  * of it, and a whole suite went red on configuration rather than on behaviour. A bean whose every
@@ -69,7 +69,7 @@ public class RetiredImageVersionKeys {
   }
 
   /**
-   * Blank counts as unset, for the reason {@link AgentContainerFactory#imageVersion()} gives:
+   * Blank counts as unset, for the reason {@code FrontDeskSpecs#imageVersion()} gives:
    * SmallRye maps an environment variable onto the property, and a deployment that renders {@code
    * KEY=} produces a present, empty value rather than an absent one. Warning about that would be
    * warning about a template with nothing in it.

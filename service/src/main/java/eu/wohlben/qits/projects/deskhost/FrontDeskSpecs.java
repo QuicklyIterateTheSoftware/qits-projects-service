@@ -183,9 +183,16 @@ public class FrontDeskSpecs {
    * and every spec read it here.
    */
   public String imageVersion() {
-    return imageVersionOverride
-        .filter(version -> !version.isBlank())
-        .orElse(ProjectAgentImage.VERSION);
+    return imageVersionOverride.filter(version -> !version.isBlank()).orElse(pinnedImageVersion());
+  }
+
+  /**
+   * The pin alone, with no override: {@link ProjectAgentImage#VERSION}, the version of the
+   * daemon-protocol jar this reactor pins. {@code ProjectAgentDaemonPinIT} proves the daemon at this
+   * version still speaks this service's codec.
+   */
+  public static String pinnedImageVersion() {
+    return ProjectAgentImage.VERSION;
   }
 
   /** The configured image repository, as {@code GET /projects/api/pins} names it. */

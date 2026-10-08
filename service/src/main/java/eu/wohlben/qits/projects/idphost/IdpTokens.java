@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import eu.wohlben.qits.projects.agenthost.AgentCredentialException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -40,7 +39,7 @@ import org.jboss.logging.Logger;
  * <p><b>The value is answered once.</b> qits-idp stores a hash; the listing never carries a value,
  * and a caller that loses one deletes the token and commissions again.
  *
- * <p><b>Commissioning throws a classified {@link AgentCredentialException}; deleting and listing
+ * <p><b>Commissioning throws a classified {@link IdpCommissionException}; deleting and listing
  * never throw.</b> 401, 403 and 5xx are about the moment (an idp cutover) and are retryable;
  * anything else is about the request.
  */
@@ -90,7 +89,7 @@ public class IdpTokens {
    * Commission a token of {@code contextKind} for {@code contextId}, stating {@code claims} when
    * there are any. One attempt; the caller holds the patience.
    *
-   * @throws AgentCredentialException when not wired, or refused, classified retryable or not
+   * @throws IdpCommissionException when not wired, or refused, classified retryable or not
    */
   public Issued commission(String contextKind, String contextId, Map<String, String> claims) {
     return commission(contextKind, contextId, claims, null);
@@ -104,7 +103,7 @@ public class IdpTokens {
   public Issued commission(
       String contextKind, String contextId, Map<String, String> claims, List<String> gitRefs) {
     if (!enabled()) {
-      throw new AgentCredentialException(
+      throw new IdpCommissionException(
           "Cannot commission a "
               + contextKind
               + " token for "
@@ -119,14 +118,14 @@ public class IdpTokens {
       body.put("claims", claims);
     }
     if (gitRefs != null) {
-      body.put("gitRefs", List.copyOf(gitRefs));
+      body.put(IdpCommissionWire.GIT_REFS, List.copyOf(gitRefs));
     }
     String doing = "commissioning a " + contextKind + " token for " + contextId;
     String json;
     try {
       json = objectMapper.writeValueAsString(body);
     } catch (IOException e) {
-      throw new AgentCredentialException("Could not build the token request", false, e);
+      throw new IdpCommissionException("Could not build the token request", false, e);
     }
     HttpResponse<String> response =
         send(
@@ -137,7 +136,7 @@ public class IdpTokens {
             doing);
     if (response.statusCode() != 201 && response.statusCode() != 200) {
       int status = response.statusCode();
-      throw new AgentCredentialException(
+      throw new IdpCommissionException(
           "qits-idp answered " + status + " " + doing + ": " + response.body(),
           status == 401 || status == 403 || status >= 500);
     }
@@ -145,13 +144,13 @@ public class IdpTokens {
     try {
       answer = objectMapper.readValue(response.body(), Map.class);
     } catch (IOException e) {
-      throw new AgentCredentialException("Could not read the token answer from qits-idp", false, e);
+      throw new IdpCommissionException("Could not read the token answer from qits-idp", false, e);
     }
     String tokenId = text(answer.get("tokenId"));
     String token = text(answer.get("token"));
     String subject = text(answer.get("subject"));
     if (blank(tokenId) || blank(token) || blank(subject)) {
-      throw new AgentCredentialException(
+      throw new IdpCommissionException(
           "qits-idp answered a token commission for " + contextId + " with no usable token", false);
     }
     return new Issued(tokenId, token, subject);
@@ -178,7 +177,7 @@ public class IdpTokens {
       }
       LOG.warnf(
           "qits-idp answered %d while deleting token %s; the reconcile will reap it", status, tokenId);
-    } catch (AgentCredentialException unreachable) {
+    } catch (IdpCommissionException unreachable) {
       LOG.warnf(
           "Could not reach qits-idp to delete token %s; the reconcile will reap it: %s",
           tokenId, unreachable.getMessage());
@@ -254,10 +253,10 @@ public class IdpTokens {
     try {
       return client.send(request, HttpResponse.BodyHandlers.ofString());
     } catch (IOException e) {
-      throw new AgentCredentialException("qits-idp unreachable " + doing + ": " + e, true, e);
+      throw new IdpCommissionException("qits-idp unreachable " + doing + ": " + e, true, e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new AgentCredentialException("Interrupted " + doing, false, e);
+      throw new IdpCommissionException("Interrupted " + doing, false, e);
     }
   }
 
