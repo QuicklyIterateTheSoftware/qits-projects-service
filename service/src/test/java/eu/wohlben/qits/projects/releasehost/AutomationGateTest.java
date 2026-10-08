@@ -454,9 +454,31 @@ public class AutomationGateTest {
   // The waiver
   // -----------------------------------------------------------------------------------------
 
+  /** The far side's failure rides the row to the API, field for field; a running row has none. */
+  @Test
+  public void aFailedAutomationCarriesWhyItFailed() {
+    automations.answer(plainName, SCREENSHOTS, "FAILED");
+    automations.failWith(
+        plainName, SCREENSHOTS, new AutomationLedger.Failure(3, "node:22", 1, "2 screenshots differ"));
+    automations.answer(plainName, "estate-pins", "RUNNING");
+
+    String id = create(plainRepoId, "work");
+    verdict(plainRepoId, mergedShaOf(plainRepoId, id));
+
+    JsonPath held = request(plainRepoId, id);
+    assertEquals("FAILED", held.getString("automations[0].state"));
+    assertEquals(3, held.getInt("automations[0].failure.stepIndex"));
+    assertEquals("node:22", held.getString("automations[0].failure.image"));
+    assertEquals(1, held.getInt("automations[0].failure.exitCode"));
+    assertEquals("2 screenshots differ", held.getString("automations[0].failure.excerpt"));
+    assertNull(held.get("automations[1].failure"), "a running automation has no failure");
+  }
+
   @Test
   public void aWaiverAtThisFoldReleases() {
     automations.answer(plainName, SCREENSHOTS, "FAILED");
+    automations.failWith(
+        plainName, SCREENSHOTS, new AutomationLedger.Failure(0, "node:22", null, null));
     String id = create(plainRepoId, "work");
     String merged = mergedShaOf(plainRepoId, id);
     verdict(plainRepoId, merged);
@@ -466,6 +488,10 @@ public class AutomationGateTest {
     JsonPath waived = request(plainRepoId, id);
     assertEquals("PASSED", gateState(waived, "AUTOMATIONS"));
     assertEquals(List.of("WAIVED"), waived.getList("automations.state"));
+    assertEquals(
+        "node:22",
+        waived.getString("automations[0].failure.image"),
+        "a waiver changes the gate, not why the run failed");
 
     releaseRequests.sweep();
     awaitState(plainRepoId, id, "RELEASED");

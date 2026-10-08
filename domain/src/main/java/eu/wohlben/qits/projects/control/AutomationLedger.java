@@ -85,6 +85,8 @@ public class AutomationLedger {
    * nothing here reads.
    *
    * @param runIds the qits-ci runs behind it, oldest first
+   * @param failure why its newest run went red, as the far side read it off that run; null where it
+   *     did not fail, or where the far side does not say (an older qits-maintenance)
    */
   public record Automation(
       String kind,
@@ -94,7 +96,8 @@ public class AutomationLedger {
       List<String> runIds,
       String branch,
       String resultSha,
-      java.time.Instant updatedAt) {
+      java.time.Instant updatedAt,
+      Failure failure) {
 
     public Automation {
       runIds = runIds == null ? List.of() : List.copyOf(runIds);
@@ -105,6 +108,17 @@ public class AutomationLedger {
       return runIds.isEmpty() ? null : runIds.get(runIds.size() - 1);
     }
   }
+
+  /**
+   * Why an automation's run went red, as qits-maintenance reports it — passed through, never
+   * derived here.
+   *
+   * @param stepIndex the failing step's position in the run, zero-based
+   * @param image the step's image
+   * @param exitCode the step's exit code, or null where it did not exit (killed, never started)
+   * @param excerpt the tail of the step's log, or null where none was kept
+   */
+  public record Failure(int stepIndex, String image, Integer exitCode, String excerpt) {}
 
   /**
    * One request's note.

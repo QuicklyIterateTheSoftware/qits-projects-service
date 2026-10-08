@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.maintenancehost;
 
+import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Instant;
@@ -52,6 +53,10 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
   /** Per repository name: kind → state, in the order scripted. */
   private final Map<String, Map<String, String>> scripted = new ConcurrentHashMap<>();
 
+  /** Per repository name: kind → why its run went red, carried on that kind's entry. */
+  private final Map<String, Map<String, AutomationLedger.Failure>> failures =
+      new ConcurrentHashMap<>();
+
   private volatile boolean reachable = true;
 
   private volatile boolean configured = true;
@@ -84,6 +89,11 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
     scripted.computeIfAbsent(repositoryName, name -> new LinkedHashMap<>()).put(kind, state);
   }
 
+  /** From now on {@code kind} of {@code repositoryName} carries this failure on its entry. */
+  public void failWith(String repositoryName, String kind, AutomationLedger.Failure failure) {
+    failures.computeIfAbsent(repositoryName, name -> new ConcurrentHashMap<>()).put(kind, failure);
+  }
+
   /** Answer "could not ask" from here on: unreachable, refusing, unparseable. */
   public void answerNothing() {
     reachable = false;
@@ -104,6 +114,7 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
     reads.clear();
     reruns.clear();
     scripted.clear();
+    failures.clear();
     reachable = true;
     configured = true;
     rerunAnswer = null;
@@ -165,7 +176,8 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
                         "FRESH".equals(state) ? List.of() : List.of("run-" + kind),
                         null,
                         null,
-                        Instant.now())));
+                        Instant.now(),
+                        failures.getOrDefault(repositoryName, Map.of()).get(kind))));
     return new Answer(requestId, foldSha, entries);
   }
 

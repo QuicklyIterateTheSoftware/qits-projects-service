@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -291,11 +292,30 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
                 runIds,
                 text(entry, "branch"),
                 text(entry, "resultSha"),
-                updated == null ? null : parseInstant(updated)));
+                updated == null ? null : parseInstant(updated),
+                failure(entry.get("failure"))));
       }
     }
     return Optional.of(
         new Answer(text(root, "requestId"), text(root, "foldSha"), List.copyOf(automations)));
+  }
+
+  /**
+   * An automation's {@code failure}, or null — absent (an older qits-maintenance that does not send
+   * it), null, or not an object all read as "nothing said", never as a parse failure: it is a
+   * reason for a person, and the gate decides nothing on it.
+   */
+  private static AutomationLedger.Failure failure(JsonNode node) {
+    if (node == null || !node.isObject()) {
+      return null;
+    }
+    JsonNode exitCode = node.get("exitCode");
+    JsonNode stepIndex = node.get("stepIndex");
+    return new AutomationLedger.Failure(
+        stepIndex == null || !stepIndex.canConvertToInt() ? 0 : stepIndex.asInt(),
+        text(node, "image"),
+        exitCode == null || !exitCode.canConvertToInt() ? null : exitCode.asInt(),
+        text(node, "excerpt"));
   }
 
   private static String text(JsonNode node, String field) {
