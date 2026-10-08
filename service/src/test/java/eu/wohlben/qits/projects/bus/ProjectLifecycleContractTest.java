@@ -38,7 +38,7 @@ public class ProjectLifecycleContractTest {
     assertEquals(
         "ProjectCreated", new ProjectCreated("p", "s", "n", true, Instant.EPOCH).signature());
     assertEquals(
-        "ProjectChanged", new ProjectChanged("p", "s", "n", false, Instant.EPOCH).signature());
+        "ProjectChanged", new ProjectChanged("p", "s", "n", false, "ON_DEMAND", Instant.EPOCH).signature());
     assertEquals("ProjectDeleted", new ProjectDeleted("p", "s", Instant.EPOCH).signature());
   }
 
@@ -96,17 +96,25 @@ public class ProjectLifecycleContractTest {
                     "qits",
                     "QITS Platform",
                     false,
+                    "ALWAYS_ON",
                     Instant.parse("2026-09-07T10:15:30Z"))));
 
     assertEquals("p-1", payload.get("projectId").asText());
     assertEquals("qits", payload.get("slug").asText());
     assertEquals("QITS Platform", payload.get("projectName").asText());
     assertFalse(payload.get("supportsEnvironments").asBoolean());
+    assertEquals("ALWAYS_ON", payload.get("frontDeskLifecycle").asText());
     assertEquals("2026-09-07T10:15:30Z", payload.get("changedAt").asText());
     assertFalse(payload.has("eventId"), "identity travels in the envelope, never in the payload");
     assertFalse(payload.has("occurredAt"), "occurredAt is the envelope's; changedAt is the fact");
     assertEquals(
-        List.of("changedAt", "projectId", "projectName", "slug", "supportsEnvironments"),
+        List.of(
+            "changedAt",
+            "frontDeskLifecycle",
+            "projectId",
+            "projectName",
+            "slug",
+            "supportsEnvironments"),
         sortedFieldNames(payload));
   }
 
@@ -144,8 +152,25 @@ public class ProjectLifecycleContractTest {
         new ProjectCreated(null, "p-1", "qits", "QITS", null, Instant.EPOCH)
             .supportsEnvironments());
     assertTrue(
-        new ProjectChanged(null, "p-1", "qits", "QITS", null, Instant.EPOCH)
+        new ProjectChanged(null, "p-1", "qits", "QITS", null, null, Instant.EPOCH)
             .supportsEnvironments());
+  }
+
+  /**
+   * A {@code ProjectChanged} published before {@code frontDeskLifecycle} existed reads {@code
+   * ON_DEMAND} — what every project was then — and the value is present on the way out.
+   */
+  @Test
+  public void aChangedFrameWithoutTheLifecycleReadsOnDemand() throws Exception {
+    String oldFrame =
+        "{\"projectId\":\"p-1\",\"slug\":\"qits\",\"projectName\":\"QITS Platform\","
+            + "\"supportsEnvironments\":false,\"changedAt\":\"2026-09-07T10:15:30Z\"}";
+    ProjectChanged read = CanonicalJson.payloadTo(oldFrame, ProjectChanged.class);
+
+    assertEquals("ON_DEMAND", read.frontDeskLifecycle());
+    assertFalse(read.supportsEnvironments());
+    assertEquals(
+        "ON_DEMAND", MAPPER.readTree(CanonicalJson.payload(read)).get("frontDeskLifecycle").asText());
   }
 
   /**
@@ -219,7 +244,14 @@ public class ProjectLifecycleContractTest {
         List.of("eventId", "projectId", "slug", "projectName", "supportsEnvironments", "createdAt"),
         componentNames(ProjectCreated.class));
     assertEquals(
-        List.of("eventId", "projectId", "slug", "projectName", "supportsEnvironments", "changedAt"),
+        List.of(
+            "eventId",
+            "projectId",
+            "slug",
+            "projectName",
+            "supportsEnvironments",
+            "frontDeskLifecycle",
+            "changedAt"),
         componentNames(ProjectChanged.class));
     assertEquals(
         List.of("eventId", "projectId", "slug", "deletedAt"), componentNames(ProjectDeleted.class));
@@ -230,7 +262,7 @@ public class ProjectLifecycleContractTest {
   public void occurredAtIsTheMomentTheChangeCommitted() {
     Instant when = Instant.parse("2026-09-07T10:15:30Z");
     assertEquals(when, new ProjectCreated("p-1", "qits", "QITS", true, when).occurredAt());
-    assertEquals(when, new ProjectChanged("p-1", "qits", "QITS", false, when).occurredAt());
+    assertEquals(when, new ProjectChanged("p-1", "qits", "QITS", false, "ON_DEMAND", when).occurredAt());
     assertEquals(when, new ProjectDeleted("p-1", "qits", when).occurredAt());
   }
 
@@ -238,7 +270,7 @@ public class ProjectLifecycleContractTest {
   @Test
   public void anAbsentEventIdIsMinted() {
     assertTrue(new ProjectCreated("p-1", "qits", "QITS", true, Instant.EPOCH).eventId() != null);
-    assertTrue(new ProjectChanged("p-1", "qits", "QITS", true, Instant.EPOCH).eventId() != null);
+    assertTrue(new ProjectChanged("p-1", "qits", "QITS", true, "ON_DEMAND", Instant.EPOCH).eventId() != null);
     assertTrue(new ProjectDeleted("p-1", "qits", Instant.EPOCH).eventId() != null);
   }
 

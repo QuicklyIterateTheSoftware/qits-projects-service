@@ -8,6 +8,7 @@
       "domain": "example.test.eu",
       "type": "A",
       "value": "203.0.113.9"
-    }
+    },
+    "frontDeskLifecycle": "ON_DEMAND"
   }
 }

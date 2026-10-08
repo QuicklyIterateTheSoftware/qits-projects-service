@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.testsupport;
 
 import eu.wohlben.qits.projects.control.ProjectAnnouncer;
+import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public class RecordingProjectAnnouncer implements ProjectAnnouncer {
       String slug,
       String name,
       boolean supportsEnvironments,
+      FrontDeskLifecycle frontDeskLifecycle,
       Instant occurredAt) {}
 
   /** One deletion announcement, as the port stated it. */
@@ -58,8 +60,14 @@ public class RecordingProjectAnnouncer implements ProjectAnnouncer {
 
   @Override
   public synchronized void onProjectChanged(
-      String projectId, String slug, String name, boolean supportsEnvironments, Instant occurredAt) {
-    changed.add(new Changed(projectId, slug, name, supportsEnvironments, occurredAt));
+      String projectId,
+      String slug,
+      String name,
+      boolean supportsEnvironments,
+      FrontDeskLifecycle frontDeskLifecycle,
+      Instant occurredAt) {
+    changed.add(
+        new Changed(projectId, slug, name, supportsEnvironments, frontDeskLifecycle, occurredAt));
   }
 
   @Override

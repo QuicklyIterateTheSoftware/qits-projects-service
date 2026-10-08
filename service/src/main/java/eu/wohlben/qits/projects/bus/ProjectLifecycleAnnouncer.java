@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.bus;
 
 import eu.wohlben.qits.eventstream.QitsEventBus;
 import eu.wohlben.qits.projects.control.ProjectAnnouncer;
+import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -62,8 +63,16 @@ public class ProjectLifecycleAnnouncer implements ProjectAnnouncer {
       String slug,
       String name,
       boolean supportsEnvironments,
+      FrontDeskLifecycle frontDeskLifecycle,
       Instant occurredAt) {
-    bus.publish(new ProjectChanged(projectId, slug, name, supportsEnvironments, occurredAt));
+    bus.publish(
+        new ProjectChanged(
+            projectId,
+            slug,
+            name,
+            supportsEnvironments,
+            frontDeskLifecycle == null ? null : frontDeskLifecycle.name(),
+            occurredAt));
   }
 
   @Override

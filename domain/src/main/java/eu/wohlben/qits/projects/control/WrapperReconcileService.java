@@ -167,6 +167,9 @@ public class WrapperReconcileService {
   /** Absent is a supported configuration — see {@link ProjectAnnouncer}. */
   @Inject Instance<ProjectAnnouncer> projectAnnouncers;
 
+  /** Told when the stored front desk lifecycle moves; {@link NoopFrontDeskLifecycleChanged} ships. */
+  @Inject Instance<FrontDeskLifecycleChanged> lifecycleListeners;
+
   /**
    * Reconciles {@code projectId} against its wrapper and answers with what it came to.
    *
@@ -235,27 +238,40 @@ public class WrapperReconcileService {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * Brings {@code Project.supportsEnvironments} in line with the wrapper's {@code
-   * .config/qits/project.yml}, and announces the change when there is one.
+   * Brings the project's stored configuration — {@code Project.supportsEnvironments} and {@code
+   * Project.frontDeskLifecycle} — in line with its wrapper's {@code .config/qits/project.yml}, and
+   * announces the change when there is one. Callable alone: it reads the one file and does none of
+   * the {@code .gitmodules} work.
    *
-   * <p><b>Here because this is the pass that reads the wrapper.</b> The wrapper <em>is</em> the
-   * project's configuration, and the reconcile is what makes that true of the database — the
-   * {@code .gitmodules} entries are the repositories, and this one file is what the project says
-   * about itself. There is no second trigger to invent: a commit to {@code project.yml} takes
-   * effect the next time the project is reconciled, exactly as an added submodule does.
+   * <p><b>Its triggers</b> (qits-767): {@code ReleaseRequests.onMainMoved} for a project's wrapper —
+   * {@code main} only moves with finalized content, so this reads the <em>released</em> wrapper; one
+   * boot pass over every project ({@code service/…/startup/ProjectConfigBootPass}); and the full
+   * {@link #reconcile} behind the manual door, which calls this first.
    *
-   * <p><b>An absent file is the default and an unparseable one is left alone.</b> Absence, an
-   * absent key and {@code true} are one answer ({@link ProjectConfig#DEFAULT}); only an explicit
-   * {@code false} changes anything. A file that will not parse throws out of {@link
-   * ProjectConfigParser} — deliberately, so a typo cannot re-route a project — and this catches it,
-   * logs it and keeps the stored flag rather than reverting to a default the file did not ask for.
-   * The rest of the reconcile is unaffected either way: the repositories do not depend on this.
+   * <p><b>An absent file is the default and an unparseable one is left alone.</b> Absence and
+   * absent keys are one answer ({@link ProjectConfig#DEFAULT}). A file that will not parse throws
+   * out of {@link ProjectConfigParser} — deliberately, so a typo cannot re-route a project — and
+   * this catches it, logs it and keeps the stored values rather than reverting to a default the file
+   * did not ask for. A project with no wrapper has no declaration and is left alone too.
    *
-   * <p>{@code ProjectChanged} is published <b>only when the stored value actually moves</b>, after
-   * the transaction that moved it, fire-and-forget like every other announcement here. A reconcile
-   * runs on a timer and on demand, so announcing unconditionally would publish a frame per pass
-   * saying nothing happened.
+   * <p>{@code ProjectChanged} is published <b>only when a stored value actually moves</b>, after
+   * the transaction that moved it, fire-and-forget like every other announcement here; a moved
+   * front desk lifecycle additionally reaches {@link FrontDeskLifecycleChanged}, best effort.
+   *
+   * <p>{@link ActivateRequestContext} because the boot pass and the bus consumers call this on
+   * threads with no ambient request context.
    */
+  @ActivateRequestContext
+  public void reconcileProjectConfig(String projectId) {
+    Project project = projectService.get(projectId);
+    Optional<Repository> wrapper = projectService.findWrapper(projectId);
+    if (wrapper.isEmpty()) {
+      LOG.debugf("Project %s has no wrapper, so there is no project.yml to read", projectId);
+      return;
+    }
+    reconcileProjectConfig(project, wrapper.get());
+  }
+
   private void reconcileProjectConfig(Project project, Repository wrapper) {
     ProjectConfig config;
     try {
@@ -263,24 +279,56 @@ public class WrapperReconcileService {
     } catch (RuntimeException e) {
       LOG.warnf(
           "%s in the wrapper of project %s could not be read or does not parse; keeping"
-              + " supports_environments=%s as stored: %s",
-          ProjectConfigParser.CONFIG_PATH, project.id, project.supportsEnvironments, e.getMessage());
+              + " supports_environments=%s and front_desk.lifecycle=%s as stored: %s",
+          ProjectConfigParser.CONFIG_PATH,
+          project.id,
+          project.supportsEnvironments,
+          project.frontDeskLifecycle,
+          e.getMessage());
       return;
     }
-    if (config.supportsEnvironments() == project.supportsEnvironments) {
+    boolean environmentsMoved = config.supportsEnvironments() != project.supportsEnvironments;
+    boolean lifecycleMoved = config.frontDeskLifecycle() != project.frontDeskLifecycle;
+    if (!environmentsMoved && !lifecycleMoved) {
       return;
     }
     LOG.infof(
-        "Reconcile: project %s declares supports_environments=%s, stored as %s — updating.",
-        project.id, config.supportsEnvironments(), project.supportsEnvironments);
+        "Reconcile: project %s declares supports_environments=%s, front_desk.lifecycle=%s; stored"
+            + " as %s, %s — updating.",
+        project.id,
+        config.supportsEnvironments(),
+        config.frontDeskLifecycle(),
+        project.supportsEnvironments,
+        project.frontDeskLifecycle);
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
               Project row = projectService.get(project.id);
               row.supportsEnvironments = config.supportsEnvironments();
+              row.frontDeskLifecycle = config.frontDeskLifecycle();
             });
     project.supportsEnvironments = config.supportsEnvironments();
+    project.frontDeskLifecycle = config.frontDeskLifecycle();
+    if (lifecycleMoved) {
+      notifyLifecycleChanged(project);
+    }
     announceChanged(project);
+  }
+
+  /** Best effort, outside every transaction and never able to fail a reconcile. */
+  private void notifyLifecycleChanged(Project project) {
+    if (!lifecycleListeners.isResolvable()) {
+      return;
+    }
+    try {
+      lifecycleListeners.get().onChanged(project.id, project.frontDeskLifecycle);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Could not act on the front desk lifecycle %s of project %s",
+          project.frontDeskLifecycle,
+          project.id);
+    }
   }
 
   /** Fire and forget, outside every transaction and never able to fail a reconcile. */
@@ -296,6 +344,7 @@ public class WrapperReconcileService {
               project.slug,
               project.name,
               project.supportsEnvironments,
+              project.frontDeskLifecycle,
               Instant.now());
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the change of project %s", project.id);

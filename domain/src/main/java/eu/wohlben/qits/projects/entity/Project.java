@@ -8,6 +8,8 @@ import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
@@ -128,6 +130,18 @@ public class Project extends PanacheEntityBase implements CausedRow {
    */
   @Column(name = "supports_environments", nullable = false)
   public boolean supportsEnvironments = true;
+
+  /**
+   * How the project's front desk is kept, as the wrapper's {@code .config/qits/project.yml}
+   * declares it under {@code front_desk.lifecycle} ({@link
+   * eu.wohlben.qits.projects.control.ProjectConfigParser}). Stored beside {@link
+   * #supportsEnvironments} by the same wrapper reconcile, and {@code NOT NULL DEFAULT 'ON_DEMAND'}
+   * (V35) for the same reason: an absent key means {@link FrontDeskLifecycle#ON_DEMAND}, which is
+   * what every row that predates the key has always been.
+   */
+  @Enumerated(EnumType.STRING)
+  @Column(name = "front_desk_lifecycle", nullable = false)
+  public FrontDeskLifecycle frontDeskLifecycle = FrontDeskLifecycle.ON_DEMAND;
 
   @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
   public List<Repository> repositories;

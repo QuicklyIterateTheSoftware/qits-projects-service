@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.control.ProjectConfigParser.ProjectConfigException;
+import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -79,6 +80,68 @@ class ProjectConfigParserTest {
           assertThrows(ProjectConfigException.class, () -> parser.parse(bad), bad);
       assertTrue(e.getMessage().contains(ProjectConfigParser.CONFIG_PATH), bad);
       assertTrue(e.getMessage().contains(ProjectConfigParser.SUPPORTS_ENVIRONMENTS), bad);
+    }
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // front_desk.lifecycle (qits-767)
+  // -------------------------------------------------------------------------------------------
+
+  @Test
+  void anAbsentFrontDeskOrLifecycleIsOnDemand() {
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, parser.parse(null).frontDeskLifecycle());
+    assertEquals(
+        FrontDeskLifecycle.ON_DEMAND,
+        parser.parse("supports_environments: false\n").frontDeskLifecycle());
+    assertEquals(
+        FrontDeskLifecycle.ON_DEMAND, parser.parse("front_desk:\n").frontDeskLifecycle());
+    assertEquals(
+        FrontDeskLifecycle.ON_DEMAND,
+        parser.parse("front_desk:\n  something-later: 1\n").frontDeskLifecycle());
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, ProjectConfig.DEFAULT.frontDeskLifecycle());
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, ProjectConfig.SINGLE_ENVIRONMENT.frontDeskLifecycle());
+  }
+
+  @Test
+  void anExplicitOnDemandIsOnDemand() {
+    assertEquals(
+        FrontDeskLifecycle.ON_DEMAND,
+        parser.parse("front_desk:\n  lifecycle: ON_DEMAND\n").frontDeskLifecycle());
+  }
+
+  @Test
+  void alwaysOnIsReadBesideTheEnvironmentFlag() {
+    ProjectConfig config =
+        parser.parse("supports_environments: false\nfront_desk:\n  lifecycle: ALWAYS_ON\n");
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, config.frontDeskLifecycle());
+    assertFalse(config.supportsEnvironments());
+  }
+
+  /** Case-sensitive, and nothing else is guessed at: a typo throws and the stored value stays. */
+  @Test
+  void aLifecycleThatIsNotOneOfTheTwoValuesThrows() {
+    for (String bad :
+        new String[] {
+          "front_desk:\n  lifecycle: always_on\n",
+          "front_desk:\n  lifecycle: ALWAYS-ON\n",
+          "front_desk:\n  lifecycle: true\n",
+          "front_desk:\n  lifecycle: [ALWAYS_ON]\n"
+        }) {
+      ProjectConfigException e =
+          assertThrows(ProjectConfigException.class, () -> parser.parse(bad), bad);
+      assertTrue(e.getMessage().contains(ProjectConfigParser.CONFIG_PATH), bad);
+      assertTrue(e.getMessage().contains("front_desk.lifecycle"), bad);
+    }
+  }
+
+  @Test
+  void aFrontDeskThatIsNotAMappingThrows() {
+    for (String bad :
+        new String[] {"front_desk: ALWAYS_ON\n", "front_desk:\n  - lifecycle: ALWAYS_ON\n"}) {
+      ProjectConfigException e =
+          assertThrows(ProjectConfigException.class, () -> parser.parse(bad), bad);
+      assertTrue(e.getMessage().contains(ProjectConfigParser.CONFIG_PATH), bad);
+      assertTrue(e.getMessage().contains(ProjectConfigParser.FRONT_DESK), bad);
     }
   }
 }

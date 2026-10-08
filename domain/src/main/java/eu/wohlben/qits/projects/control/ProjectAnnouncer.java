@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.control;
 
+import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import java.time.Instant;
 
 /**
@@ -53,8 +54,9 @@ public interface ProjectAnnouncer {
       String projectId, String slug, String name, boolean supportsEnvironments, Instant occurredAt);
 
   /**
-   * A project's editable facts changed — today, exactly {@link
-   * eu.wohlben.qits.projects.entity.Project#supportsEnvironments}.
+   * A project's editable facts changed — today, {@link
+   * eu.wohlben.qits.projects.entity.Project#supportsEnvironments} and {@link
+   * eu.wohlben.qits.projects.entity.Project#frontDeskLifecycle}.
    *
    * <p><b>Why a third verb rather than a second create.</b> {@code ProjectCreated} states what was
    * true when the project came into existence, and its load-bearing field — the slug — is {@code
@@ -64,8 +66,9 @@ public interface ProjectAnnouncer {
    * consumer a project it already knows about has just been created.
    *
    * <p>Announced by {@code WrapperReconcileService}, after the transaction that moved the stored
-   * value and <b>only when it actually moved</b> — a reconcile runs on a timer, and a frame per
-   * pass saying nothing changed is noise a consumer has to filter.
+   * value and <b>only when it actually moved</b> — the configuration is re-read on every move of
+   * the wrapper's {@code main}, at every boot and on demand, and a frame per pass saying nothing
+   * changed is noise a consumer has to filter.
    *
    * @param projectId the row's id, unchanged and the key a consumer holds its own row by
    * @param slug the project's immutable identity, restated so a consumer that keyed on it can find
@@ -73,10 +76,16 @@ public interface ProjectAnnouncer {
    * @param name the free-form display name; see {@link #onProjectCreated} for why it travels as
    *     {@code projectName}
    * @param supportsEnvironments the value as it now stands
+   * @param frontDeskLifecycle the front desk lifecycle as it now stands
    * @param occurredAt when the change committed
    */
   void onProjectChanged(
-      String projectId, String slug, String name, boolean supportsEnvironments, Instant occurredAt);
+      String projectId,
+      String slug,
+      String name,
+      boolean supportsEnvironments,
+      FrontDeskLifecycle frontDeskLifecycle,
+      Instant occurredAt);
 
   /**
    * A project is gone, with every repository that was under it. Announced after the deleting

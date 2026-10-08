@@ -4,10 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projects.entity.Repository;
 import eu.wohlben.qits.projects.gitmirror.RepoMirror;
+import eu.wohlben.qits.projects.entity.RepositoryArchetype;
+import eu.wohlben.qits.projects.testsupport.RecordingFrontDeskLifecycleChanged;
 import eu.wohlben.qits.projects.testsupport.RecordingProjectAnnouncer;
+import eu.wohlben.qits.projects.testsupport.WrapperProjectYml;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +41,9 @@ public class WrapperProjectConfigReconcileTest {
   @Inject GitExecutor git;
   @Inject GitIdentity gitIdentity;
   @Inject RecordingProjectAnnouncer announcer;
+  @Inject RecordingFrontDeskLifecycleChanged lifecycleListener;
+  @Inject WrapperProjectYml projectYml;
+  @Inject ReleaseRequests releaseRequests;
 
   @BeforeEach
   void clean() {
@@ -45,6 +52,7 @@ public class WrapperProjectConfigReconcileTest {
         .toList()
         .forEach(p -> projectService.delete(p.id));
     announcer.clear();
+    lifecycleListener.clear();
   }
 
   private Project greenfield(String slug) {
@@ -179,5 +187,118 @@ public class WrapperProjectConfigReconcileTest {
     assertTrue(
         reconciliation != null && reconciliation.entries() != null,
         "and the repositories half of the reconcile is unaffected either way");
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // front_desk.lifecycle (qits-767)
+  // -------------------------------------------------------------------------------------------
+
+  private FrontDeskLifecycle storedLifecycleOf(String projectId) {
+    return projectService.get(projectId).frontDeskLifecycle;
+  }
+
+  /** A new project's template declares nothing for the desk, so it is ON_DEMAND and stays silent. */
+  @Test
+  public void aNewProjectIsOnDemandAndTheReconcileCallsNothing() {
+    Project project = greenfield("projcfg-desk-new");
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, storedLifecycleOf(project.id));
+
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, storedLifecycleOf(project.id));
+    assertEquals(List.of(), lifecycleListener.callsOf(project.id));
+    assertEquals(List.of(), announcer.changedOf(project.id));
+  }
+
+  /**
+   * ALWAYS_ON is stored, announced on {@code ProjectChanged} and handed to the port — once. The
+   * second pass finds nothing moved and says nothing, to either.
+   */
+  @Test
+  public void alwaysOnIsStoredAnnouncedAndHandedToThePortOnlyOnAChange() throws Exception {
+    Project project = greenfield("projcfg-desk-on");
+    projectYml.commit(wrapperOf(project), "front_desk:\n  lifecycle: ALWAYS_ON\n");
+
+    reconcileService.reconcileProjectConfig(project.id);
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, storedLifecycleOf(project.id));
+    assertEquals(
+        List.of(new RecordingFrontDeskLifecycleChanged.Call(project.id, FrontDeskLifecycle.ALWAYS_ON)),
+        lifecycleListener.callsOf(project.id));
+    var announced = announcer.changedOf(project.id);
+    assertEquals(1, announced.size(), "one change, one frame");
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, announced.get(0).frontDeskLifecycle());
+    assertTrue(announced.get(0).supportsEnvironments(), "the other fact is restated as it stands");
+
+    // Back to ON_DEMAND moves it again, and is said again.
+    projectYml.commit(wrapperOf(project), "front_desk:\n  lifecycle: ON_DEMAND\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, storedLifecycleOf(project.id));
+    assertEquals(2, lifecycleListener.callsOf(project.id).size());
+    assertEquals(2, announcer.changedOf(project.id).size());
+  }
+
+  /** Only the environment flag moving announces, and leaves the port alone. */
+  @Test
+  public void aChangeOfTheEnvironmentFlagAloneDoesNotCallThePort() throws Exception {
+    Project project = greenfield("projcfg-desk-env");
+    projectYml.commit(wrapperOf(project), "supports_environments: false\n");
+
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertEquals(1, announcer.changedOf(project.id).size());
+    assertEquals(
+        FrontDeskLifecycle.ON_DEMAND, announcer.changedOf(project.id).get(0).frontDeskLifecycle());
+    assertEquals(List.of(), lifecycleListener.callsOf(project.id));
+  }
+
+  /** A typo keeps the stored lifecycle, exactly as it keeps the stored flag. */
+  @Test
+  public void aLifecycleThatWillNotParseLeavesTheStoredValueAlone() throws Exception {
+    Project project = greenfield("projcfg-desk-typo");
+    projectYml.commit(wrapperOf(project), "front_desk:\n  lifecycle: ALWAYS_ON\n");
+    reconcileService.reconcileProjectConfig(project.id);
+    lifecycleListener.clear();
+    announcer.clear();
+
+    projectYml.commit(wrapperOf(project), "front_desk:\n  lifecycle: always-on\n");
+    reconcileService.reconcileProjectConfig(project.id);
+
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, storedLifecycleOf(project.id));
+    assertEquals(List.of(), lifecycleListener.callsOf(project.id));
+    assertEquals(List.of(), announcer.changedOf(project.id));
+  }
+
+  /** Trigger 1: the wrapper's {@code main} moving re-reads the declaration. */
+  @Test
+  public void mainMovingOnTheWrapperReconcilesTheProjectConfig() throws Exception {
+    Project project = greenfield("projcfg-desk-moved");
+    Repository wrapper = wrapperOf(project);
+    String sha = projectYml.commit(wrapper, "front_desk:\n  lifecycle: ALWAYS_ON\n");
+
+    releaseRequests.onMainMoved(wrapper.id, sha);
+
+    assertEquals(FrontDeskLifecycle.ALWAYS_ON, storedLifecycleOf(project.id));
+    assertEquals(1, lifecycleListener.callsOf(project.id).size());
+  }
+
+  /** ... and any other repository's {@code main} moving does not, even of the same project. */
+  @Test
+  public void mainMovingOnARepositoryThatIsNotAWrapperDoesNot() throws Exception {
+    Project project = greenfield("projcfg-desk-other");
+    Repository wrapper = wrapperOf(project);
+    String sha = projectYml.commit(wrapper, "front_desk:\n  lifecycle: ALWAYS_ON\n");
+    Repository component =
+        projectService
+            .createRepository(project.id, null, "projcfg-desk-javalib", RepositoryArchetype.LIBRARY)
+            .repository();
+    assertTrue(component.archetype != RepositoryArchetype.PROJECT);
+
+    releaseRequests.onMainMoved(component.id, sha);
+    releaseRequests.onMainMoved("no-such-repository", sha);
+
+    assertEquals(FrontDeskLifecycle.ON_DEMAND, storedLifecycleOf(project.id));
+    assertEquals(List.of(), lifecycleListener.callsOf(project.id));
   }
 }

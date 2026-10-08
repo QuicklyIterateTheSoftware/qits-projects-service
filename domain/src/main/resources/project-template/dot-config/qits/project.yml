@@ -12,3 +12,9 @@
 # It is not a value to guess at: a typo is refused rather than read as `false`, because silently
 # collapsing a project's environments is not something a misspelling should be able to do.
 supports_environments: true
+
+# The project's front desk (its agent container running the project.work session).
+# ON_DEMAND (the default, and what an absent key means): up while the desk panel is open,
+# plus the idle window. ALWAYS_ON: kept up permanently, and the session starts by itself.
+# front_desk:
+#   lifecycle: ON_DEMAND

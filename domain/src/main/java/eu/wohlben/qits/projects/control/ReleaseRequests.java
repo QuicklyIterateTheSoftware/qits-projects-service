@@ -403,6 +403,9 @@ public class ReleaseRequests {
    */
   @Inject ReleaseFinalization finalization;
 
+  /** Re-reads a wrapper's {@code project.yml} when its {@code main} moves — see {@link #onMainMoved}. */
+  @Inject WrapperReconcileService wrapperReconcile;
+
   private ExecutorService worker;
 
   @PostConstruct
@@ -2066,8 +2069,58 @@ public class ReleaseRequests {
    *       superseded, that is the record, and the successor is what finished. Only its row leaves
    *       the implicit set.
    * </ul>
+   *
+   * <p><b>A wrapper's {@code main} moving re-reads its project's configuration</b> (qits-767): when
+   * {@code repoId} is a project's wrapper (archetype {@code PROJECT}), {@link
+   * WrapperReconcileService#reconcileProjectConfig(String)} runs after the tag work, outside every
+   * transaction of it and best effort — a failure there is logged and never fails this method.
+   * {@code main} only moves with finalized content, so this reads the <em>released</em> wrapper.
    */
   public void onMainMoved(String repoId, String mainSha) {
+    try {
+      settleTagsOnMain(repoId, mainSha);
+    } finally {
+      reconcileWrapperConfig(repoId);
+    }
+  }
+
+  /**
+   * The wrapper half of {@link #onMainMoved}: re-reads {@code .config/qits/project.yml} when {@code
+   * repoId} is a project's wrapper, and does nothing for any other repository. Never throws.
+   */
+  private void reconcileWrapperConfig(String repoId) {
+    String projectId;
+    try {
+      projectId =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      repositories
+                          .findByIdOptional(repoId)
+                          .filter(repo -> repo.archetype == RepositoryArchetype.PROJECT)
+                          .filter(repo -> repo.project != null)
+                          .map(repo -> repo.project.id)
+                          .orElse(null));
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Could not tell whether %s is a project's wrapper; its project.yml is not re-read", repoId);
+      return;
+    }
+    if (projectId == null) {
+      return;
+    }
+    try {
+      wrapperReconcile.reconcileProjectConfig(projectId);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "Re-reading the project configuration of %s after its wrapper %s moved failed; the next"
+              + " move or boot reads it again",
+          projectId,
+          repoId);
+    }
+  }
+
+  private void settleTagsOnMain(String repoId, String mainSha) {
     ReleaseGitHost gitHost = gitHosts.isResolvable() ? gitHosts.get() : null;
     if (gitHost == null) {
       LOG.infof(

@@ -22,8 +22,9 @@ import java.util.UUID;
  * means a consumer can act on this frame without a lookup, and neither has changed nor can.
  *
  * <p><b>Published only when the stored value actually moves.</b> {@code WrapperReconcileService}
- * announces it after the transaction that moved it — a reconcile runs on a timer and on demand, so
- * an unconditional announcement would be a frame per pass saying nothing happened.
+ * announces it after the transaction that moved it — the project configuration is re-read whenever
+ * the wrapper's {@code main} moves, at every boot and on demand, so an unconditional announcement
+ * would be a frame per pass saying nothing happened.
  *
  * <p>Every rule {@link ProjectCreated}'s javadoc states applies here unchanged and for the same
  * reasons: the display name is {@code projectName} and may never be called {@code name} (a
@@ -38,6 +39,13 @@ import java.util.UUID;
  * on {@link ProjectCreated} — this frame is new, so no older one exists to read, but the two records
  * are transcribed together and a reader that handles one handles the other.
  *
+ * <p><b>{@code frontDeskLifecycle} is a {@code String} normalized to {@code ON_DEMAND}</b> (qits-767):
+ * the name of the project's {@code FrontDeskLifecycle}, {@code ALWAYS_ON} or {@code ON_DEMAND}, as
+ * its wrapper's {@code front_desk.lifecycle} declares it. A frame published before the field existed
+ * reads {@code ON_DEMAND}, which is what every project was then. A {@code String} rather than the
+ * enum because consumers transcribe this record by hand, and a value they do not know yet must bind
+ * rather than fail.
+ *
  * <p>Registered for reflection in {@link EventWireReflection}, without which every publish of it
  * dies inside {@code CanonicalJson} on a native binary with the JVM suite green.
  */
@@ -47,6 +55,7 @@ public record ProjectChanged(
     String slug,
     String projectName,
     Boolean supportsEnvironments,
+    String frontDeskLifecycle,
     Instant changedAt)
     implements QitsEvent {
 
@@ -57,6 +66,9 @@ public record ProjectChanged(
     if (supportsEnvironments == null) {
       supportsEnvironments = Boolean.TRUE;
     }
+    if (frontDeskLifecycle == null) {
+      frontDeskLifecycle = "ON_DEMAND";
+    }
   }
 
   /** The constructor a publisher uses: the facts, with the identity taken care of. */
@@ -65,8 +77,9 @@ public record ProjectChanged(
       String slug,
       String projectName,
       boolean supportsEnvironments,
+      String frontDeskLifecycle,
       Instant changedAt) {
-    this(null, projectId, slug, projectName, supportsEnvironments, changedAt);
+    this(null, projectId, slug, projectName, supportsEnvironments, frontDeskLifecycle, changedAt);
   }
 
   @Override
