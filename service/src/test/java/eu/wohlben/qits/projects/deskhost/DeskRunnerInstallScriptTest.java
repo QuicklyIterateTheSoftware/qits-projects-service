@@ -63,6 +63,20 @@ class DeskRunnerInstallScriptTest {
     assertFalse(script.contains("qits-workspaces-runner"), "no other runner's names");
   }
 
+  /** The node's shared volumes are tuning the line passes through when the operator sets them. */
+  @Test
+  void theScriptPassesTheDeskVolumesThroughAsTuning() {
+    String script = on(DOMAIN).script();
+
+    for (String variable :
+        java.util.List.of(
+            "QITS_PROJECTS_DESK_RUNNER_CLAUDE_VOLUME",
+            "QITS_PROJECTS_DESK_RUNNER_M2_VOLUME",
+            "QITS_PROJECTS_DESK_RUNNER_PNPM_VOLUME")) {
+      org.junit.jupiter.api.Assertions.assertTrue(script.contains(variable), variable);
+    }
+  }
+
   @Test
   void aDomainWithoutADotRefusesEveryRendering() {
     DeskRunnerInstallScript script = on("localhost");
