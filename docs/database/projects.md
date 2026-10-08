@@ -14,6 +14,7 @@ erDiagram
     string dns_domain
     enum dns_type
     string dns_value
+    enum front_desk_lifecycle "not null"
     string name "not null"
     string slug
     boolean supports_environments "not null"
