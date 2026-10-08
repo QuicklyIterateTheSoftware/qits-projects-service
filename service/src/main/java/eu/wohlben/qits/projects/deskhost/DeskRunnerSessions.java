@@ -7,9 +7,9 @@ import java.util.UUID;
 
 /**
  * What the runner doors need from the runners' sockets (qits-767): whether a runner is connected,
- * and the few frames a door sends one. A port, because the socket ({@code DeskRunnerSocket} and its
- * registry) is the next task's; until it lands {@link NoDeskRunnerSessions} answers that no runner
- * is connected, so every door that needs a live runner answers 409 {@code RUNNER_UNAVAILABLE}.
+ * and the few frames a door sends one. {@link DeskRunnerRegistry} — the sessions behind {@link
+ * DeskRunnerSocket} — implements it; a door that needs a live runner and finds none connected
+ * answers 409 {@code RUNNER_UNAVAILABLE}.
  */
 public interface DeskRunnerSessions {
 

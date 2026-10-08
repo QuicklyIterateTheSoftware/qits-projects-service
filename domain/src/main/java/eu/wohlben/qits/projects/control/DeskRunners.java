@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import eu.wohlben.qits.projects.dto.DeskRunnerDto;
 import eu.wohlben.qits.projects.dto.DeskRunnerHealthDto;
 import eu.wohlben.qits.projects.entity.DeskRunner;
@@ -293,6 +294,138 @@ public class DeskRunners {
               runner.lastSeenAt = now;
               runner.quarantinedAt = now;
               runner.quarantineReason = AWAITING_FIRST_HEALTH_CHECK;
+              return runner;
+            });
+  }
+
+  /** Stamps the runner as heard from now. A runner that no longer exists is not an error here. */
+  public void touchSeen(UUID id) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              DeskRunner runner = runners.findById(id);
+              if (runner != null) {
+                runner.lastSeenAt = Instant.now();
+              }
+            });
+  }
+
+  /**
+   * Merges what the runner said about itself into its capabilities: every key it sent replaces the
+   * stored one, every other key keeps its last known value (see {@link
+   * DeskRunnerCapabilities#merge}). This is where {@code version} lands from {@code hello}. It
+   * stamps the runner as heard from.
+   *
+   * @return the row as it now is, or null for a runner deleted meanwhile
+   * @throws BadRequestException when the report is not a JSON object or is too large to keep
+   */
+  public DeskRunner recordCapabilities(UUID id, JsonNode said) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              DeskRunner runner = runners.findById(id, LockModeType.PESSIMISTIC_WRITE);
+              if (runner == null) {
+                return null;
+              }
+              runner.capabilities = capabilitiesOf(runner.capabilities, said);
+              runner.lastSeenAt = Instant.now();
+              return runner;
+            });
+  }
+
+  /**
+   * Records the node's agent login as the runner's {@code loginState} frame reported it, {@code
+   * PRESENT} or {@code ABSENT}, and stamps the runner as heard from. Kept while the runner is
+   * offline: the page shows the last known login.
+   *
+   * @return the row as it now is, or null for a runner deleted meanwhile
+   */
+  public DeskRunner recordLoginState(UUID id, String state) {
+    if (!"PRESENT".equals(state) && !"ABSENT".equals(state)) {
+      throw new BadRequestException("A login state is PRESENT or ABSENT");
+    }
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              DeskRunner runner = runners.findById(id, LockModeType.PESSIMISTIC_WRITE);
+              if (runner == null) {
+                return null;
+              }
+              runner.loginState = state;
+              runner.lastSeenAt = Instant.now();
+              return runner;
+            });
+  }
+
+  /**
+   * Takes a runner out of service with {@code reason}, and answers the row when THIS call did: null
+   * when it was already out (its reason stands) or is gone. Its {@code slots} is untouched.
+   */
+  public DeskRunner quarantine(UUID id, String reason) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              DeskRunner runner = runners.findById(id, LockModeType.PESSIMISTIC_WRITE);
+              if (runner == null || runner.quarantined()) {
+                return null;
+              }
+              runner.quarantinedAt = Instant.now();
+              runner.quarantineReason = reason;
+              return runner;
+            });
+  }
+
+  /**
+   * What {@link #quarantineFor} did: the row as it now is (null for a runner that is gone), whether
+   * this call took it out of service, and whether its reason changed.
+   */
+  public record Quarantine(DeskRunner runner, boolean began, boolean reasonChanged) {}
+
+  /**
+   * Keeps a runner out of service for {@code reason}: a runner in service is quarantined now, and
+   * one already out keeps its {@code quarantined_at} — so a health check's back-off schedule, which
+   * counts from it, carries on — and takes {@code reason} as the newest word on why.
+   */
+  public Quarantine quarantineFor(UUID id, String reason) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              DeskRunner runner = runners.findById(id, LockModeType.PESSIMISTIC_WRITE);
+              if (runner == null) {
+                return new Quarantine(null, false, false);
+              }
+              boolean began = !runner.quarantined();
+              boolean changed = !Objects.equals(runner.quarantineReason, reason);
+              if (began) {
+                runner.quarantinedAt = Instant.now();
+              }
+              runner.quarantineReason = reason;
+              return new Quarantine(runner, began, changed);
+            });
+  }
+
+  /**
+   * Records a settled health check ({@code last_health_check_*}), keeping {@code report} — the
+   * check's whole answer, {@code {at, ok, detail, requestId, checks}} — as the capabilities' {@link
+   * DeskRunnerCapabilities#HEALTH} key. What the result does to the runner's standing is the
+   * caller's next call: {@link #greenlight} on a pass, {@link #quarantineFor} on a failure. A null
+   * report leaves the last one stored.
+   *
+   * @return the row as it now is, or null for a runner deleted meanwhile
+   */
+  public DeskRunner recordHealthCheck(UUID id, boolean ok, Instant at, ObjectNode report) {
+    return QuarkusTransaction.requiringNew()
+        .call(
+            () -> {
+              DeskRunner runner = runners.findById(id, LockModeType.PESSIMISTIC_WRITE);
+              if (runner == null) {
+                return null;
+              }
+              runner.lastHealthCheckAt = at == null ? Instant.now() : at;
+              runner.lastHealthCheckOk = ok;
+              if (report != null) {
+                runner.capabilities = DeskRunnerCapabilities.withHealth(runner.capabilities, report);
+              }
               return runner;
             });
   }

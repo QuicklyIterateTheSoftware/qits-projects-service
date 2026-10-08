@@ -66,8 +66,9 @@ import org.jboss.logging.Logger;
  * reaped by {@code DeskRunnerCommissionReconcile}.
  *
  * <p><b>The live half is a port.</b> Whether a runner is connected, and the frames a door sends one,
- * are {@link DeskRunnerSessions}' — the runner socket's, which is the next task; until it lands no
- * runner is connected and the health and login checks answer 409 {@code RUNNER_UNAVAILABLE}.
+ * are {@link DeskRunnerSessions}' — implemented by the runner socket's {@code DeskRunnerRegistry}.
+ * A runner holding no socket to this process answers the health and login checks 409 {@code
+ * RUNNER_UNAVAILABLE}.
  *
  * <p><b>The machine gate.</b> The register door reads the bearer's {@code sub} and nothing else:
  * with the gate ({@code qits.auth.machine.required}) off there is no subject, and every registration

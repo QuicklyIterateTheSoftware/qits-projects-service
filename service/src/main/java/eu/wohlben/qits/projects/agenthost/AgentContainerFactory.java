@@ -181,6 +181,15 @@ public class AgentContainerFactory {
   String claudeMount;
 
   /**
+   * {@link #claudeMount}, read by the front-desk runner's login command so the agent home it logs
+   * in is laid out exactly as a project agent container has it ({@code HOME} the mount, {@code
+   * CLAUDE_CONFIG_DIR} its {@code .claude}) — one value, never a second literal.
+   */
+  public String claudeMount() {
+    return claudeMount;
+  }
+
+  /**
    * Shared build caches — the Maven local repo and the pnpm store — so a dependency downloaded by
    * one container is reused by all. Blank disables the mount. Mount points are fixed and Maven/pnpm
    * are pointed at them by env, because the image's {@code HOME} is the checkout and the defaults
@@ -833,8 +842,12 @@ public class AgentContainerFactory {
     return timezone.filter(zone -> !zone.isBlank()).orElseGet(() -> ZoneId.systemDefault().getId());
   }
 
-  /** The host uid the container runs as, so cloned files are owned by the user. */
-  private long hostUid() {
+  /**
+   * The host uid the container runs as, so cloned files are owned by the user. Public because a
+   * front-desk runner's login command ({@code deskhost/DeskRunnerLoginCommand}) runs the agent CLI
+   * as the same user a project agent container does, so the login it writes is readable by it.
+   */
+  public long hostUid() {
     try {
       Object uid = Files.getAttribute(Path.of(System.getProperty("user.home")), "unix:uid");
       return ((Number) uid).longValue();

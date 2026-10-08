@@ -76,6 +76,18 @@ public class DeskRunnerAddresses {
     return registryHost() + "/" + DeskRunnerProtocol.IMAGE_REPOSITORY + ":" + version;
   }
 
+  /** The project-agent image's repository below the registry host, without a tag. */
+  public static final String PROJECT_AGENT_REPOSITORY = "qits/project-agent";
+
+  /**
+   * {@code registry.qits.<d>/qits/project-agent:<version>}: the project-agent image as a runner's
+   * node pulls it — the public reference of the image a desk runs, which a health check runs and a
+   * login command starts.
+   */
+  public String projectAgentImage(String version) {
+    return registryHost() + "/" + PROJECT_AGENT_REPOSITORY + ":" + version;
+  }
+
   /** Whether a public domain is configured, so every method above answers rather than refusing. */
   public boolean configured() {
     return publicDomain().isPresent();
