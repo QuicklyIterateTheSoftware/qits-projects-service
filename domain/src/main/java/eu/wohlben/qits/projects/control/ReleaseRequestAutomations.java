@@ -66,6 +66,7 @@ public interface ReleaseRequestAutomations {
    * @param branch the branch the deciding row writes, or null
    * @param resultSha the commit a COMMITTED outcome left, null otherwise
    * @param updatedAt when the deciding row last changed
+   * @param failure why the deciding row's run went red, or null — absent from an older far side
    */
   record Automation(
       String kind,
@@ -76,7 +77,8 @@ public interface ReleaseRequestAutomations {
       List<String> runIds,
       String branch,
       String resultSha,
-      Instant updatedAt) {
+      Instant updatedAt,
+      AutomationLedger.Failure failure) {
 
     public Automation {
       runIds = runIds == null ? List.of() : List.copyOf(runIds);

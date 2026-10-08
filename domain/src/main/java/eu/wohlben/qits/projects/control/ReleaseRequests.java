@@ -7,6 +7,7 @@ import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.MergeConflictDto;
 import eu.wohlben.qits.projects.dto.ReleaseAutomationDto;
+import eu.wohlben.qits.projects.dto.ReleaseAutomationFailureDto;
 import eu.wohlben.qits.projects.dto.ReleaseGateDto;
 import eu.wohlben.qits.projects.dto.ReleasePipelineDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
@@ -4072,6 +4073,14 @@ public class ReleaseRequests {
   private record AutomationView(
       boolean applies, ReleaseGates.State gate, List<ReleaseAutomationDto> rows) {}
 
+  /** The ledger's failure as the DTO carries it; null stays null. A WAIVED row keeps it too. */
+  private static ReleaseAutomationFailureDto failureOf(AutomationLedger.Failure failure) {
+    return failure == null
+        ? null
+        : new ReleaseAutomationFailureDto(
+            failure.stepIndex(), failure.image(), failure.exitCode(), failure.excerpt());
+  }
+
   /**
    * Read the automations gate for one request off the ledger and the waiver, deciding nothing.
    *
@@ -4100,7 +4109,8 @@ public class ReleaseRequests {
                             entry.newestRunId(),
                             entry.branch(),
                             entry.detail(),
-                            entry.updatedAt()))
+                            entry.updatedAt(),
+                            failureOf(entry.failure())))
                 .toList();
     if (!applies) {
       return new AutomationView(false, null, rows);
