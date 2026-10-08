@@ -22,6 +22,7 @@ import eu.wohlben.qits.projects.idphost.IdpRunnerCommissioner;
 import eu.wohlben.qits.projects.idphost.IdpRunnerCommissionerFixture;
 import eu.wohlben.qits.projects.idphost.RoutingIdpServer;
 import eu.wohlben.qits.projects.persistence.DeskRunnerRepository;
+import eu.wohlben.qits.projects.deskhost.DeskRunnerMockIdpTenant;
 import eu.wohlben.qits.projects.security.MockIdpTenant;
 import eu.wohlben.qits.projectsdeskrunner.protocol.DeskRunnerBinary;
 import eu.wohlben.qits.servicemock.idp.MockIdp;
@@ -54,7 +55,7 @@ import org.junit.jupiter.api.Test;
  * {@link DeskRunnerAddressesFixture#DOMAIN}, both installed per test with {@link QuarkusMock}.
  */
 @QuarkusTest
-@WithTestResource(MockIdpTenant.class)
+@WithTestResource(DeskRunnerMockIdpTenant.class)
 class DeskRunnerControllerTest {
 
   private static final String RUNNERS = "/projects/api/runners";

@@ -58,7 +58,7 @@ import org.junit.jupiter.api.Test;
  * RS256 JWTs the mock idp signs, so the upgrade's role check is quarkus-oidc's real one.
  */
 @QuarkusTest
-@WithTestResource(MockIdpTenant.class)
+@WithTestResource(DeskRunnerMockIdpTenant.class)
 class DeskRunnerSocketTest {
 
   private static final String PIN = DeskRunnerBinary.VERSION;
@@ -134,11 +134,19 @@ class DeskRunnerSocketTest {
     return runner;
   }
 
-  /** Dial, say hello at the pin, and read the ack of a runner in service. */
+  /**
+   * Dial, say hello at the pin, and read the ack of a runner in service — then wait until the
+   * registry serves the connection: the ack leaves before the session is marked greeted, so a door
+   * dialled the instant the ack is read can still find no serving session.
+   */
   private FakeDeskRunner greeted(String clientId, int slots) throws Exception {
     FakeDeskRunner runner = dial(clientId);
     runner.send(FakeDeskRunner.hello(PIN, List.of()));
     assertEquals(slots, runner.expect(Ack.class).slots());
+    UUID id =
+        QuarkusTransaction.requiringNew()
+            .call(() -> rows.findByClientId(clientId).orElseThrow().id);
+    await(() -> registry.serving(id) != null, "greeted but not serving");
     return runner;
   }
 

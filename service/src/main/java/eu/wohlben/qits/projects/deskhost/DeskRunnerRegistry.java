@@ -450,15 +450,20 @@ public class DeskRunnerRegistry implements DeskRunnerSessions {
     }
   }
 
-  /** The node's agent login, as last probed: kept on the row while the runner is offline. */
+  /**
+   * The node's agent login, as last probed: kept on the row while the runner is offline. The row is
+   * written <em>before</em> the report is stamped in memory, so a login command shown on the strength
+   * of a report never sits beside a row still holding the previous state.
+   */
   public void onLoginState(Session session, LoginState login) {
-    loginReportedAt.put(session.runnerId, Instant.now());
-    session.seenWrittenAt = Instant.now();
+    Instant arrived = Instant.now();
+    session.seenWrittenAt = arrived;
     try {
       runners.recordLoginState(session.runnerId, login.state().name());
     } catch (RuntimeException e) {
       LOG.warnf("Runner %s's login state was not recorded: %s", session.runnerName, e.getMessage());
     }
+    loginReportedAt.put(session.runnerId, arrived);
   }
 
   /** A health check settled: {@link DeskRunnerHealth} records it and acts on it. */
@@ -483,7 +488,6 @@ public class DeskRunnerRegistry implements DeskRunnerSessions {
    * now, and present for the reconnect grace.
    */
   public void onClose(Session session) {
-    session.closed = true;
     boolean[] last = {false};
     sessions.computeIfPresent(
         session.runnerId,
@@ -492,16 +496,21 @@ public class DeskRunnerRegistry implements DeskRunnerSessions {
           kept.remove(session);
           kept.removeIf(other -> !other.isOpen());
           last[0] = kept.isEmpty();
+          if (last[0]) {
+            // Inside the runner's compute, before the session reads closed: whoever sees it
+            // disconnected sees since when, and an admit of the same runner is ordered after.
+            connectedSince.remove(id);
+            droppedAt.put(id, Instant.now());
+          }
+          session.closed = true;
           return kept.isEmpty() ? null : List.copyOf(kept);
         });
-    if (!last[0] || sessions.containsKey(session.runnerId)) {
-      return;
+    session.closed = true;
+    if (last[0]) {
+      LOG.infof(
+          "Runner %s (%s) disconnected (connection %s); it is waited for %ss",
+          session.runnerName, session.runnerId, session.connection.id(), grace().toSeconds());
     }
-    LOG.infof(
-        "Runner %s (%s) disconnected (connection %s); it is waited for %ss",
-        session.runnerName, session.runnerId, session.connection.id(), grace().toSeconds());
-    connectedSince.remove(session.runnerId);
-    droppedAt.put(session.runnerId, Instant.now());
   }
 
   // --- presence -----------------------------------------------------------------------------------
