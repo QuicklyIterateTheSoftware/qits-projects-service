@@ -434,6 +434,76 @@ public class ReleasePipelineReportingTest {
   }
 
   /**
+   * <b>A deployment that shipped and was later replaced reads {@code SUCCESS}, not {@code
+   * CANCELLED}</b> — the live example this fix was filed for (qits-edge-service's request
+   * {@code 44385ca2}, deployment request {@code 268306e9}, deployed 19:04:39 then {@code
+   * DECOMMISSIONED} the moment the next release's cutover passed its own health gate).
+   * qits-deployments' own listing cannot tell "this attempt was once {@code ACTIVE}" apart from
+   * "this attempt never shipped at all", so the signal is this service's own: {@code
+   * deploymentActiveAt}, the DEPLOYMENT gate's stamp, set the moment a {@code DeploymentActive}
+   * first named this version — see {@code ReleasePipelineAssembler.deploymentStateOf}'s javadoc for
+   * why this is the documented fallback rather than a richer field qits-deployments' answer does not
+   * carry.
+   */
+  @Test
+  public void aDeploymentThatWentLiveAndWasLaterReplacedReadsSuccessWithANote() {
+    String id = releasedDeployableRequest();
+    stampDeploymentActive();
+
+    for (String replaced :
+        List.of("DECOMMISSIONED", "SUPERSEDED", "ROLLED_BACK", "GONE", "SCALED_TO_ZERO")) {
+      deployments.answerStatus("dr-1", replaced);
+      assertEquals(
+          "SUCCESS",
+          strings(id, "request.pipeline.phases.state").get(1),
+          replaced + " reads as a success once the gate recorded a live deployment");
+      assertEquals(
+          "replaced by a later deployment",
+          strings(id, "request.pipeline.phases.detail").get(1),
+          replaced + " carries the note, since a bare SUCCESS would not say it is no longer serving");
+    }
+  }
+
+  /**
+   * <b>A deployment that was cancelled or decommissioned without ever going live stays {@code
+   * CANCELLED}.</b> {@code deploymentActiveAt} is never stamped on this fixture's released tag —
+   * exactly as in the table above — so none of the "stopped" words is read as a success, and no
+   * note is invented for an ordinary cancellation.
+   */
+  @Test
+  public void aDeploymentCancelledWithoutEverGoingLiveStaysCancelled() {
+    String id = releasedDeployableRequest();
+
+    deployments.answerStatus("dr-1", "DECOMMISSIONED");
+    assertEquals("CANCELLED", strings(id, "request.pipeline.phases.state").get(1));
+    assertNull(
+        strings(id, "request.pipeline.phases.detail").get(1), "no note on an ordinary cancellation");
+
+    deployments.answerStatus("dr-1", "SUPERSEDED");
+    assertEquals("CANCELLED", strings(id, "request.pipeline.phases.state").get(1));
+  }
+
+  /** An active deployment is unaffected either way: it already reads {@code SUCCESS} and no note. */
+  @Test
+  public void anActiveDeploymentIsUnchangedByTheWentLiveSignal() {
+    String id = releasedDeployableRequest();
+    stampDeploymentActive();
+
+    deployments.answerStatus("dr-1", "ACTIVE");
+    assertEquals("SUCCESS", strings(id, "request.pipeline.phases.state").get(1));
+    assertNull(strings(id, "request.pipeline.phases.detail").get(1));
+  }
+
+  /** Stamps the fixture's released tag as having gone live, the way a real {@code DeploymentActive} does. */
+  private void stampDeploymentActive() {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ReleasedTagPendingMerge.update(
+                    "deploymentActiveAt = ?1 where repoId = ?2", Instant.now(), repoId));
+  }
+
+  /**
    * <b>qits-deployments unreachable is {@code UNKNOWN}, and never a false "no deployment".</b> This
    * is the whole reason the port answers an {@code Optional} of a list rather than a list: an outage
    * that read as "nothing is owed" would draw a release that is stuck waiting as though it had

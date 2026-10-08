@@ -82,6 +82,15 @@ import org.jboss.logging.Logger;
  * a {@code DEPLOYMENT} gate at all. An <em>unknown</em> gate set reports every kind, deployment
  * included, so such a request is asked about and answered honestly instead of being told it deploys
  * nothing on the strength of a configuration nobody could read.
+ *
+ * <p><b>A deployment that shipped and was later replaced reads {@code SUCCESS}, not {@code
+ * CANCELLED}.</b> qits-deployments' own listing cannot tell "this attempt was once {@code ACTIVE}"
+ * apart from "this attempt never left the ground" — see {@link #deploymentStateOf} for the full
+ * argument — so {@link #deployPhase} reads the one fact this service already keeps about whether
+ * THIS release ever went live: {@link ReleasedTagPendingMerge#deploymentActiveAt}, the DEPLOYMENT
+ * gate's own stamp. A {@code CANCELLED} answer with that stamp set becomes {@code SUCCESS} with a
+ * {@code detail} saying it was replaced; a {@code CANCELLED} answer with no stamp — a deployment
+ * refused or interrupted before it ever shipped — is left exactly as it reads.
  */
 @ApplicationScoped
 public class ReleasePipelineAssembler {
@@ -252,15 +261,25 @@ public class ReleasePipelineAssembler {
       answered = Optional.empty();
     }
     if (answered.isEmpty()) {
-      return new ReleasePhaseDto(PHASE_DEPLOY, "UNKNOWN", null, null, null);
+      return new ReleasePhaseDto(PHASE_DEPLOY, "UNKNOWN", null, null, null, null);
     }
     List<DeploymentRequests.DeploymentRequestView> requests = answered.get();
     if (requests.isEmpty()) {
-      return new ReleasePhaseDto(PHASE_DEPLOY, "PENDING", null, null, null);
+      return new ReleasePhaseDto(PHASE_DEPLOY, "PENDING", null, null, null, null);
     }
     DeploymentRequests.DeploymentRequestView newest = requests.get(0);
+    // Whether THIS release ever went live, independent of what the newest deployment request's
+    // own status says now — see deploymentStateOf for why the status word alone cannot tell
+    // "replaced after shipping" apart from "never shipped".
+    boolean wentLive = released.deploymentActiveAt != null;
+    String state = deploymentStateOf(newest.status());
+    String detail = null;
+    if ("CANCELLED".equals(state) && wentLive) {
+      state = "SUCCESS";
+      detail = "replaced by a later deployment";
+    }
     return new ReleasePhaseDto(
-        PHASE_DEPLOY, deploymentStateOf(newest.status()), newest.id(), newest.createdAt(), null);
+        PHASE_DEPLOY, state, newest.id(), newest.createdAt(), null, detail);
   }
 
   /**
@@ -271,10 +290,37 @@ public class ReleasePipelineAssembler {
    * SPEC_UNREADABLE}, {@code DECLARATION_REFUSED} and {@code FAILED} are four ways for a deployment
    * to be owed and not arriving, and which one it was belongs on the deployment's own page rather
    * than in the shape of a pipeline. <b>Stopped is not red</b>: a deployment that was superseded,
-   * rolled back, scaled to zero, torn down or is simply gone is {@code CANCELLED}, because a reader
-   * offered a rerun needs to know whether anything failed. And <b>a word this service cannot place
-   * is {@code UNKNOWN}, never a guess</b> — that vocabulary is qits-deployments' and may grow, so a
-   * new value shows up honestly instead of being folded into whichever neighbour looked closest.
+   * rolled back, scaled to zero, torn down or is simply gone is {@code CANCELLED} here, because a
+   * reader offered a rerun needs to know whether anything failed. And <b>a word this service cannot
+   * place is {@code UNKNOWN}, never a guess</b> — that vocabulary is qits-deployments' and may grow,
+   * so a new value shows up honestly instead of being folded into whichever neighbour looked
+   * closest.
+   *
+   * <p><b>"Stopped" is not "never shipped", and {@link #deployPhase} is what tells them apart.</b>
+   * qits-deployments' own enum says so in as many words for {@code DECOMMISSIONED} — "was ACTIVE;
+   * replaced by a newer deployment" — and every one of the five words this method folds to {@code
+   * CANCELLED} can equally be true of a deployment that served for hours first (a live example:
+   * qits-edge-service's request 44385ca2, deployment request 268306e9, active at 19:04:39 and
+   * {@code DECOMMISSIONED} the moment the next release's deployment passed its own health gate). A
+   * release that deployed fine and was later replaced is not a cancellation, and reading it as one
+   * tells a person offered a rerun that nothing ever shipped when something did.
+   *
+   * <p><b>This method still answers {@code CANCELLED} for all five, because it is not told which
+   * ones are which — the caller is.</b> The far side's listing carries no field distinguishing "this
+   * row was once ACTIVE" from "this row never left the ground", and asking qits-deployments for a
+   * richer answer here would make this service a second reader of a schema it does not own. What
+   * this service already has, read at the request rather than at the deployment row, is its own
+   * record of the DEPLOYMENT gate having passed for this exact release —
+   * {@code ReleasedTagPendingMerge.deploymentActiveAt}, stamped the moment a {@code
+   * DeploymentActive} first named this version and never cleared afterwards. {@link #deployPhase}
+   * reads that stamp and turns a {@code CANCELLED} answer from this method into {@code SUCCESS}
+   * with a "replaced by a later deployment" note exactly where it is set, and leaves every other
+   * {@code CANCELLED} alone — a deployment refused or interrupted before ever going live. This is
+   * the documented fallback for an answer that cannot tell the two apart any other way; the richer
+   * signal the port's own javadoc asks for (an activatedAt-shaped timestamp, or a status history) is
+   * not on the wire today — {@code DeploymentRequests.DeploymentRequestView} carries only {@code id},
+   * {@code status} and {@code createdAt}, and qits-deployments' own listing for {@code
+   * (repoId, version)} inlines no richer {@code PdDeploymentDto} either.
    *
    * <p><b>A null status is a real answer over there and it is {@code UNKNOWN} here.</b> It means the
    * deployment request exists and no deployment has been created for it — the quality gate has not
@@ -332,7 +378,7 @@ public class ReleasePipelineAssembler {
 
   private static ReleasePhaseDto phaseOf(String phase, ReleasePipelineRun run) {
     return new ReleasePhaseDto(
-        phase, stateOf(run.status), run.runId, run.startedAt, run.finishedAt);
+        phase, stateOf(run.status), run.runId, run.startedAt, run.finishedAt, null);
   }
 
   /**
