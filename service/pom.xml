@@ -71,6 +71,23 @@
             <artifactId>qits-workspace-daemon-protocol</artifactId>
         </dependency>
         <dependency>
+            <!-- The front-desk runner's wire contract (qits-767): DeskRunnerProtocol's identity roots
+                 and DeskRunnerBinary.VERSION, the runner pin. Versions and the *:* exclusions of the
+                 two qits-runner-javalib jars are the root pom's. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-projects-desk-runner-protocol</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-runner-protocol</artifactId>
+        </dependency>
+        <dependency>
+            <!-- For RunnerIdentity and install.InstallScript, and nothing else: the install line and
+                 install.sh are rendered from the toolkit's own template, never a copy of it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-runner-toolkit</artifactId>
+        </dependency>
+        <dependency>
             <!-- The platform event bus. It arrives HERE and not in `domain` on purpose, twice over:
                  `bus/` is an inbound adapter like `api/` and `wiring/`, and this jar brings a THIRD
                  datasource with its own Flyway lineage — putting it on domain's classpath would make

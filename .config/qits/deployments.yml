@@ -37,6 +37,9 @@ host: projects
 #
 # `system.Overview:1` is the environment's own door, first in the global group.
 #
+# `system.Runners:7=runners` is the front-desk runners page (qits-767), the SPA's top-level
+# `/runners`, beside Agent Configuration at 6 — the next free position in the global group.
+#
 # `project.detail.Work:1=work` is the project's work, at `/<project>/work` — the epics and the
 # tickets on one desk — and it is FIRST under the Project node because the work is what a project
 # mostly is; everything else under that node is a way of working on it. It was two rows until
@@ -114,7 +117,7 @@ host: projects
 # back: API documentation is a sub-item of Docs now (the docs app renders it from published @apidocs
 # bundles). This application's viewer route (`/<project>/services/<repo>/api-docs`, the live
 # swagger-ui frame) still answers; it is just not a sidebar row.
-navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-configuration, project.detail.Work:1=work, project.detail.Release Requests:5=release-requests, services.details.Release Requests:3=release-requests, daemons.details.Release Requests:3=release-requests, libs.details.Release Requests:3=release-requests, apps.details.Release Requests:3=release-requests, frontends.details.Release Requests:3=release-requests, cli.details.Release Requests:3=release-requests, images.details.Release Requests:3=release-requests
+navigation-entries: system.Overview:1, system.Agent Configuration:6=agent-configuration, system.Runners:7=runners, project.detail.Work:1=work, project.detail.Release Requests:5=release-requests, services.details.Release Requests:3=release-requests, daemons.details.Release Requests:3=release-requests, libs.details.Release Requests:3=release-requests, apps.details.Release Requests:3=release-requests, frontends.details.Release Requests:3=release-requests, cli.details.Release Requests:3=release-requests, images.details.Release Requests:3=release-requests
 
 # THREE DATABASES, because this application opens three datasources with three Flyway lineages:
 # `projects` (domain/), `epics` (entities/) and `eventstream` (the qits-eventstream jar's outbox and

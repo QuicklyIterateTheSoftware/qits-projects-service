@@ -135,6 +135,17 @@
              cached maven layer — so the resolution the pin governs was never actually performed. A
              green build that resolved nothing is not evidence that it could, which is the whole
              reason to name a release here. qits-githost cut one on 2026-08-12 and this is it. -->
+        <!-- THE FRONT-DESK RUNNER PIN (epic qits-767), qits-workspaces-service's runner pin in the
+             projects spelling: the jar carries the desk runner's wire frames AND
+             DeskRunnerBinary.VERSION, the tag of the qits/qits-projects-desk-runner image every desk
+             runner is told to upgrade to, so the frames this service speaks and the binary it hands
+             out are one release. Moved by qits-maintenance on maintenance/dependencies, gated here;
+             never by hand. -->
+        <qits.projects-desk-runner-protocol.version>1.0.0-SNAPSHOT</qits.projects-desk-runner-protocol.version>
+        <!-- qits-runner-javalib (qits-771): the lifecycle frames and their codec
+             (qits-runner-protocol), and the install script template plus RunnerIdentity
+             (qits-runner-toolkit). One release carries both, so one property pins both. -->
+        <qits.runner.version>2026.1008.104831</qits.runner.version>
         <qits.eventstream.version>2026.1003.44717</qits.eventstream.version>
         <qits.githost-events.version>2026.1008.104919</qits.githost-events.version>
 
@@ -338,6 +349,40 @@
                 <groupId>eu.wohlben.qits</groupId>
                 <artifactId>qits-workspace-daemon-protocol</artifactId>
                 <version>${qits.workspace-daemon-protocol.version}</version>
+            </dependency>
+            <!-- The front-desk runner's frames and its binary's version. Its one dependency is
+                 qits-runner-protocol, declared below at the same release it was built against. -->
+            <dependency>
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-projects-desk-runner-protocol</artifactId>
+                <version>${qits.projects-desk-runner-protocol.version}</version>
+            </dependency>
+            <!-- Both qits-runner-javalib jars with *:* exclusions, as a server takes them (copied from
+                 qits-workspaces-service): only the lifecycle frames and RunnerCodec, and
+                 RunnerIdentity and install.InstallScript, are reachable from this service, and every
+                 one of them is java.*-only. The toolkit's runtime (Vert.x, the docker driver) is the
+                 runner's, never this process's. -->
+            <dependency>
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-runner-protocol</artifactId>
+                <version>${qits.runner.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>*</groupId>
+                        <artifactId>*</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>eu.wohlben.qits</groupId>
+                <artifactId>qits-runner-toolkit</artifactId>
+                <version>${qits.runner.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>*</groupId>
+                        <artifactId>*</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <!-- Test scope at every declaration site: a consumer's pact, verified by

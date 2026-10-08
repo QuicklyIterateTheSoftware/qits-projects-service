@@ -78,6 +78,7 @@ class AgentReadAccessTest {
           AgentContainerController.class,
           AgentMcpCatalogController.class,
           AgentSurfaceConfigurationController.class,
+          DeskRunnerController.class,
           GcController.class,
           PinsController.class,
           ProjectController.class,
@@ -184,11 +185,20 @@ class AgentReadAccessTest {
           "WorkMembersController.remove",
           "WorkMembersController.setCondition");
 
+  /**
+   * <b>The front-desk runner write an agent reaches</b> (qits-767): asking a runner for a health
+   * check, as qits-workspaces' runner door admits it (qits-850). A check reads and self-tests and
+   * changes nothing a person set; its only effect on the runner's standing is its own result.
+   */
+  private static final Set<String> RUNNER_AGENT_WRITES = Set.of("DeskRunnerController.healthcheck");
+
   /** The union, which is what the per-class rule is read against. */
   private static final Set<String> AGENT_WRITES =
       union(
-          union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
-          CAMPAIGN_AGENT_WRITES);
+          union(
+              union(union(RELEASE_REQUEST_AGENT_WRITES, ENTITY_AGENT_WRITES), CATALOGUE_AGENT_WRITES),
+              CAMPAIGN_AGENT_WRITES),
+          RUNNER_AGENT_WRITES);
 
   /**
    * <b>The writes that must stay {@code qits:admin} alone, asserted positively.</b> Deleting a

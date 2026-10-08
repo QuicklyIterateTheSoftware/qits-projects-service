@@ -758,6 +758,21 @@ components:
           type: boolean
         failureDetail:
           type: string
+    CreateDeskRunnerRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          description: "[a-z][a-z0-9-]{0,63}, unique"
+        description:
+          type: string
+          description: "Free text, at most 1024 characters"
+        slots:
+          type: integer
+          format: int32
+          description: "How many desks it may hold at once, at least 1. Default 8"
     CreateProjectRepositoryRequest:
       type: object
       properties:
@@ -948,6 +963,144 @@ components:
           $ref: "#/components/schemas/Instant"
         html:
           type: string
+    DeskRunnerCheck:
+      type: object
+      properties:
+        name:
+          type: string
+        ok:
+          type: boolean
+        detail:
+          type: string
+    DeskRunnerCheckReport:
+      type: object
+      properties:
+        name:
+          type: string
+        ok:
+          type: boolean
+        detail:
+          type: string
+        data:
+          $ref: "#/components/schemas/JsonNode"
+    DeskRunnerDesk:
+      type: object
+      properties:
+        projectId:
+          type: string
+        slug:
+          type: string
+        state:
+          type: string
+    DeskRunnerDto:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/UUID"
+        name:
+          type: string
+        description:
+          type: string
+        slots:
+          type: integer
+          format: int32
+        version:
+          type: string
+        registered:
+          type: boolean
+        registeredAt:
+          $ref: "#/components/schemas/Instant"
+        quarantined:
+          type: boolean
+        quarantinedAt:
+          $ref: "#/components/schemas/Instant"
+        quarantineReason:
+          type: string
+        loginState:
+          type: string
+        lastSeenAt:
+          $ref: "#/components/schemas/Instant"
+        lastHealthCheckAt:
+          $ref: "#/components/schemas/Instant"
+        lastHealthCheckOk:
+          type: boolean
+        createdAt:
+          $ref: "#/components/schemas/Instant"
+        connected:
+          type: boolean
+        connectedSince:
+          $ref: "#/components/schemas/Instant"
+        pinnedVersion:
+          type: string
+        loginCommand:
+          type: string
+        desks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeskRunnerDesk"
+        health:
+          $ref: "#/components/schemas/DeskRunnerHealth"
+    DeskRunnerHealth:
+      type: object
+      properties:
+        at:
+          $ref: "#/components/schemas/Instant"
+        ok:
+          type: boolean
+        detail:
+          type: string
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeskRunnerCheck"
+    DeskRunnerHealthCheckRequested:
+      type: object
+      properties:
+        requestId:
+          type: string
+    DeskRunnerHealthDto:
+      type: object
+      properties:
+        at:
+          $ref: "#/components/schemas/Instant"
+        ok:
+          type: boolean
+        detail:
+          type: string
+        requestId:
+          type: string
+        dataOmitted:
+          type: boolean
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeskRunnerCheckReport"
+    DeskRunnerRegistered:
+      type: object
+      properties:
+        clientId:
+          type: string
+        secret:
+          type: string
+        tokenUrl:
+          type: string
+        audience:
+          type: string
+        socketUrl:
+          type: string
+    DeskRunnerRegistrationDto:
+      type: object
+      properties:
+        runner:
+          $ref: "#/components/schemas/DeskRunnerDto"
+        registrationToken:
+          type: string
+          description: The runner's one-use registration token. Returned once
+        installLine:
+          type: string
+          description: "The one line that installs the runner on a docker host: it\
+            \ fetches the generic install script with the registration token and pipes\
+            \ it into sudo sh with this runner's values. Returned once"
     DiscardResponse:
       type: object
       properties:
@@ -1311,6 +1464,65 @@ components:
       format: date-time
       examples:
       - 2022-03-10T16:15:50Z
+    JsonNode:
+      type: object
+      properties:
+        empty:
+          type: boolean
+        valueNode:
+          type: boolean
+        containerNode:
+          type: boolean
+        missingNode:
+          type: boolean
+        array:
+          type: boolean
+        object:
+          type: boolean
+        nodeType:
+          $ref: "#/components/schemas/JsonNodeType"
+        pojo:
+          type: boolean
+        number:
+          type: boolean
+        integralNumber:
+          type: boolean
+        floatingPointNumber:
+          type: boolean
+        short:
+          type: boolean
+        int:
+          type: boolean
+        long:
+          type: boolean
+        float:
+          type: boolean
+        double:
+          type: boolean
+        bigDecimal:
+          type: boolean
+        bigInteger:
+          type: boolean
+        textual:
+          type: boolean
+        boolean:
+          type: boolean
+        "null":
+          type: boolean
+        binary:
+          type: boolean
+    JsonNodeType:
+      type: string
+      enum:
+      - ARRAY
+      - BINARY
+      - BOOLEAN
+      - MISSING
+      - "NULL"
+      - NUMBER
+      - OBJECT
+      - POJO
+      - STRING
     KeptTags:
       type: object
       properties:
@@ -1485,6 +1697,19 @@ components:
       - SYNC_TARGET_UPDATED
       - UNDECLARED
       - SKIPPED
+    PatchDeskRunnerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: "[a-z][a-z0-9-]{0,63}, unique; absent leaves it"
+        description:
+          type: string
+          description: Blank clears it; absent leaves it
+        slots:
+          type: integer
+          format: int32
+          description: At least 1; absent leaves it
     ProcessResponse:
       type: object
       properties:
@@ -1575,6 +1800,14 @@ components:
       properties:
         refinement:
           $ref: "#/components/schemas/RefinementDto"
+    RegisterDeskRunnerRequest:
+      type: object
+      properties:
+        capabilities:
+          $ref: "#/components/schemas/JsonNode"
+          type: array
+          description: "What the runner says about itself — a JSON object, at most\
+            \ 16 KiB"
     ReleaseArtifactDto:
       type: object
       properties:
@@ -2364,6 +2597,10 @@ components:
           type: array
           items:
             type: string
+    UUID:
+      type: string
+      format: uuid
+      pattern: "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"
     UpdateDesign:
       type: object
       required:
@@ -5875,6 +6112,383 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:agent
+  /projects/api/runners:
+    get:
+      summary: "Every front-desk runner, by name, with its connection, login and desks"
+      responses:
+        "200":
+          description: "Every runner, by name"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeskRunnerDto"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
+    post:
+      summary: "Declare a front-desk runner; answers its install line, once"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeskRunnerRequest"
+        required: true
+      responses:
+        "201":
+          description: "The runner, its registration token and the install line carrying\
+            \ it"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerRegistrationDto"
+        "400":
+          description: "A malformed name, slots or description"
+        "409":
+          description: The name is taken
+        "502":
+          description: qits-idp refused the registration token
+        "503":
+          description: "This deployment commissions nothing, or RUNNER_PLANE_UNCONFIGURED:\
+            \ it knows no public domain to address a runner by"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+  /projects/api/runners/install.sh:
+    get:
+      summary: The generic front-desk runner install script the install line pipes
+        to sh
+      responses:
+        "200":
+          description: "A POSIX sh script, carrying no secret"
+          content:
+            text/plain:
+              schema:
+                type: string
+        "503":
+          description: "RUNNER_PLANE_UNCONFIGURED, or the script cannot be rendered"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:desk-runner-registration
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
+  /projects/api/runners/{id}:
+    patch:
+      summary: "Change a front-desk runner's name, description or slots"
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDeskRunnerRequest"
+        required: true
+      responses:
+        "200":
+          description: The runner as it now is
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerDto"
+        "400":
+          description: "A malformed name, slots below 1, or an overlong description"
+        "404":
+          description: No such runner
+        "409":
+          description: The name is taken
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+    get:
+      summary: One front-desk runner
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The runner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerDto"
+        "404":
+          description: No such runner
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
+    delete:
+      summary: Decommission a front-desk runner and give its credentials back
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Gone
+        "404":
+          description: No such runner
+        "409":
+          description: "RUNNER_OWNS_DESKS: a project's front desk is placed on it"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+  /projects/api/runners/{id}/greenlight:
+    post:
+      summary: Lift a front-desk runner's quarantine
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The runner as it now is
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerDto"
+        "404":
+          description: No such runner
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+  /projects/api/runners/{id}/health:
+    get:
+      summary: "A front-desk runner's newest health check, every check's data included"
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The newest health check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerHealthDto"
+        "204":
+          description: No health check has settled yet
+        "404":
+          description: No such runner
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
+  /projects/api/runners/{id}/healthcheck:
+    post:
+      summary: Ask a connected front-desk runner for a health check
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: "Sent, or one is pending already; its requestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerHealthCheckRequested"
+        "404":
+          description: No such runner
+        "409":
+          description: "RUNNER_UNAVAILABLE: the runner is not connected"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
+        - qits:agent
+  /projects/api/runners/{id}/login-check:
+    post:
+      summary: Ask a connected front-desk runner to re-check its node's agent login
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: Sent
+        "404":
+          description: No such runner
+        "409":
+          description: "RUNNER_UNAVAILABLE: the runner is not connected"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+  /projects/api/runners/{id}/register:
+    post:
+      summary: Register a front-desk runner with its registration token; answers its
+        client
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDeskRunnerRequest"
+        required: true
+      responses:
+        "200":
+          description: The runner's own client and where to use it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerRegistered"
+        "400":
+          description: Capabilities that are not a JSON object
+        "403":
+          description: The token is not this runner's
+        "404":
+          description: No such runner
+        "409":
+          description: The runner is already registered
+        "502":
+          description: qits-idp refused the runner's client
+        "503":
+          description: "This deployment commissions nothing, or RUNNER_PLANE_UNCONFIGURED"
+        "401":
+          description: Not Authorized
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:desk-runner-registration
+  /projects/api/runners/{id}/registration-token:
+    post:
+      summary: Replace a front-desk runner's registration token; answers a new install
+        line
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "The runner, its new registration token and the install line\
+            \ carrying it"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeskRunnerRegistrationDto"
+        "404":
+          description: No such runner
+        "409":
+          description: The runner is already registered
+        "502":
+          description: qits-idp refused the registration token
+        "503":
+          description: "This deployment commissions nothing, or RUNNER_PLANE_UNCONFIGURED"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Desk Runner Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
+        - qits:system
   /projects/api/technical-processes/{id}/events:
     get:
       parameters:

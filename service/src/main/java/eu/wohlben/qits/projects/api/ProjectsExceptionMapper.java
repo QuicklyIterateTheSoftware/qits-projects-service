@@ -1,11 +1,13 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.projects.error.CodedRefusalException;
 import eu.wohlben.qits.projects.error.DomainException;
 import eu.wohlben.qits.projects.error.StaleWriteException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -21,7 +23,9 @@ import java.util.Map;
  *
  * <p>One subtype is mapped with a body rather than a message alone: a {@link StaleWriteException}
  * answers 409 carrying {@code current}, the row as it stands, so the caller can see what its write
- * would have overwritten instead of losing the text it typed.
+ * would have overwritten instead of losing the text it typed. A {@link CodedRefusalException}
+ * (qits-767) answers its code as {@code error} beside the message — {@code
+ * {"message":…,"error":"RUNNER_OWNS_DESKS"}} — the stable word a client branches on.
  *
  * <p>Scoped to <em>this</em> context's exception type. An application that also runs the monorepo's
  * {@code eu.wohlben.qits.domain.error.DomainException}, or qits-workspaces' or epics' equivalents,
@@ -37,10 +41,17 @@ public class ProjectsExceptionMapper implements ExceptionMapper<DomainException>
     if (message == null || message.isBlank()) {
       message = Response.Status.fromStatusCode(status).getReasonPhrase();
     }
-    Object body =
-        exception instanceof StaleWriteException stale && stale.current() != null
-            ? Map.of("message", message, "current", stale.current())
-            : Map.of("message", message);
+    Object body;
+    if (exception instanceof StaleWriteException stale && stale.current() != null) {
+      body = Map.of("message", message, "current", stale.current());
+    } else if (exception instanceof CodedRefusalException coded && coded.code() != null) {
+      Map<String, Object> named = new LinkedHashMap<>();
+      named.put("message", message);
+      named.put("error", coded.code());
+      body = named;
+    } else {
+      body = Map.of("message", message);
+    }
     return Response.status(status).entity(body).type(MediaType.APPLICATION_JSON).build();
   }
 }
