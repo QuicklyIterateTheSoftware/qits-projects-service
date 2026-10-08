@@ -263,7 +263,8 @@ public class AutomationRefresh {
                         entry.runIds(),
                         entry.branch(),
                         entry.resultSha(),
-                        entry.updatedAt()))
+                        entry.updatedAt(),
+                        entry.failure()))
             .toList();
     return new AutomationLedger.Note(facts.foldSha(), stateOf(entries), entries, null, previous);
   }

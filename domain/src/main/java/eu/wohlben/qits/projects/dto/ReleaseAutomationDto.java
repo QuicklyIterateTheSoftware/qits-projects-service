@@ -16,6 +16,9 @@ import java.time.Instant;
  * @param runId the newest qits-ci run behind it, or null where it has not run
  * @param branch the branch it writes, or null
  * @param detail the far side's sentence, or null
+ * @param failure why the newest run went red — the failing step, its image, its exit code and the
+ *     tail of its log — or null where it did not fail or the far side did not say. A WAIVED row keeps
+ *     it: the waiver changes what the gate decides, not why the run failed.
  */
 public record ReleaseAutomationDto(
     String kind,
@@ -25,4 +28,5 @@ public record ReleaseAutomationDto(
     String runId,
     String branch,
     String detail,
-    Instant updatedAt) {}
+    Instant updatedAt,
+    ReleaseAutomationFailureDto failure) {}
