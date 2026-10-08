@@ -959,6 +959,18 @@ released, while any configured gate is unmet. One file at `main` turns on each g
 | `.config/qits/deployments.yml` | deployment — the release is not finished until the deployment is live |
 | `.config/qits/release-requests.yml` with `manual-review: true` | approval — a person's yes |
 
+**Two content rules require approval whatever `main` configures**, both `ApprovalPolicy`'s and
+both re-derived at the request's current fold on every ask (a refold that drops the cause drops the
+requirement; a decision counts only at the sha it judged): the fold **changes `.config/qits/`**
+(detail `changes .config/qits/: <paths>`, diffed against the newest release tag not containing the
+fold), and the fold **adds nothing to `main`** (qits-760, detail `no changes against main: the fold
+adds nothing to main`, read as `git diff main...<mergedSha>` being empty). The second exists because
+a request whose branches carry nothing fast-forwards onto `main`'s head — a commit the last release
+already tagged and built — so the CI gate was vouched at once by that old run and the request could
+release before its own QA run existed (qits-edge-service, request 44385ca2). A `maintenance/*` bump is
+never held by it: qits-maintenance opens a request only for a branch ahead of `main`. An unreadable
+read of either fails closed into approval.
+
 **A repository configuring none of these releases at once**, which is not the same as unreviewed:
 pressing release is still a person's act. **A configuration this service could not read is never
 treated as "none"** — every failed read holds the request rather than releasing it ungated. See

@@ -78,8 +78,9 @@ import java.util.List;
  *
  * <p><b>The approval fields are the SECOND gate, and every one of them is derived at the request's
  * current {@code mergedSha} and never stored on the request row.</b> {@code approvalRequired} is
- * {@code ApprovalPolicy}'s answer about this request — its repository's {@code manual-review}, or
- * its fold changing the repository's own {@code .config/qits/} — and the {@code APPROVAL} entry of
+ * {@code ApprovalPolicy}'s answer about this request — its repository's {@code manual-review}, its
+ * fold changing the repository's own {@code .config/qits/}, or its fold adding nothing to {@code
+ * main} — and the {@code APPROVAL} entry of
  * {@code gates} carries the reason; {@code approvalState} is {@code NOT_REQUIRED}, {@code WAITING},
  * {@code APPROVED} or {@code DECLINED}, a word rather than a closed set like {@code state} and {@code
  * priority} beside it, because the vocabulary may grow. Deriving

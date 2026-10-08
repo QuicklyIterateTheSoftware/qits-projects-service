@@ -34,16 +34,26 @@ import org.jboss.logging.Logger;
  *       Added, modified, deleted and renamed paths all count, a rename by its old path as well as
  *       its new one, and machine requesters are not exempt. <b>Gitlinks never count</b>: a wrapper moving a pin moves
  *       somebody else's tree, which that repository's own request has already answered for.
+ *   <li><b>The fold adds nothing to {@code main}</b> — a platform rule too (qits-760). A request
+ *       whose branches carry nothing folds, by fast-forward, to {@code main}'s own head: a commit
+ *       the last release already tagged and built, so the CI gate is vouched at once by that old run
+ *       and the request could release before its own QA run exists. Read as {@code git diff
+ *       main...mergedSha} being empty ({@link FoldChanges#addsNothingToMain}) — a different base from
+ *       the one below, because the newest tag not containing such a fold is the release before it.
+ *       Detail {@value #NO_CHANGES_DETAIL}. A {@code maintenance/*} bump is never held by it: its
+ *       request is opened only for a branch ahead of {@code main}, carrying the bump's commit.
  * </ul>
  *
  * <p>"Changes" is the diff the request's {@code …/changes} view shows — {@code mergedSha} against
  * the newest release tag that does not contain it ({@link FoldChanges}) — so what a person is shown
  * and what the gate counts are one reading. A request with no fold yet has no content, so only the
  * configuration applies to it; a fold whose changes cannot be read <b>requires approval</b>, because
- * "could not look" must not be the cheapest way past a person. The answer is derived from the
- * current {@code mergedSha} on every ask, and a decision is read at that same sha, so a refold that
- * drops the change clears the requirement and one that changes the directory again after an
- * approval asks again.
+ * "could not look" must not be the cheapest way past a person — and so does one whose diff against
+ * {@code main} cannot be read. The answer is derived from the current {@code mergedSha} on every
+ * ask, and a decision is read at that same sha, so a refold that drops the change clears the
+ * requirement and one that changes the directory again after an approval asks again; likewise a
+ * refold that now carries something (an automation's commit, say) is no longer held for being
+ * empty, and nothing remembers that an earlier fold was.
  *
  * <p><b>The content is read only for a request still before its tag</b> — {@link #BEFORE_RELEASE}.
  * A settled request ({@code RELEASED} and after, {@code FAILED}, {@code WITHDRAWN}) reads no git at
@@ -83,6 +93,9 @@ public class ApprovalPolicy {
   /** The sentence for the configuration half of the rule. */
   static final String MANUAL_REVIEW_DETAIL = "configured by manual-review";
 
+  /** The sentence for a fold that adds nothing to {@code main}. */
+  public static final String NO_CHANGES_DETAIL = "no changes against main: the fold adds nothing to main";
+
   @Inject RepositoryRepository repositories;
 
   @Inject ReleaseGates gates;
@@ -106,9 +119,9 @@ public class ApprovalPolicy {
    * The answer to the approval question for one request.
    *
    * @param detail which rule applied — {@code configured by manual-review}, {@code changes
-   *     .config/qits/: <paths>}, both joined with {@code "; "}, or the sentence saying the fold's
-   *     changes could not be read; null when {@code required} is false, and on a settled request
-   *     required only because an approval is recorded
+   *     .config/qits/: <paths>}, {@value #NO_CHANGES_DETAIL}, several of those joined with {@code
+   *     "; "}, or a sentence saying the fold could not be read; null when {@code required} is false,
+   *     and on a settled request required only because an approval is recorded
    */
   public record ApprovalRequirement(boolean required, String detail) {
 
@@ -165,26 +178,27 @@ public class ApprovalPolicy {
    * with no fold yet.
    */
   public ApprovalRequirement requirementFor(String repoId, String mergedSha) {
-    List<String> reasons = new ArrayList<>(2);
+    List<String> reasons = new ArrayList<>(3);
     if (gates.resolve(repoId).requires(ReleaseGates.Kind.APPROVAL)) {
       reasons.add(MANUAL_REVIEW_DETAIL);
     }
-    String content = contentReason(repoId, mergedSha);
-    if (content != null) {
-      reasons.add(content);
-    }
+    reasons.addAll(contentReasons(repoId, mergedSha));
     return reasons.isEmpty()
         ? ApprovalRequirement.NOT_REQUIRED
         : new ApprovalRequirement(true, String.join("; ", reasons));
   }
 
-  /** The content half: a sentence where the fold changes {@link #CONFIG_DIRECTORY}, else null. */
-  private String contentReason(String repoId, String mergedSha) {
+  /**
+   * The content half: a sentence where the fold changes {@link #CONFIG_DIRECTORY}, then one where it
+   * adds nothing to {@code main}; empty when neither holds. A fold whose changes could not be read is
+   * one sentence and no second read: it is already held, and the same mirror would be asked again.
+   */
+  private List<String> contentReasons(String repoId, String mergedSha) {
     if (mergedSha == null || mergedSha.isBlank()) {
-      return null;
+      return List.of();
     }
     if (repositories.findByIdOptional(repoId).isEmpty()) {
-      return null;
+      return List.of();
     }
     List<CommitFileChangeDto> files;
     try {
@@ -194,8 +208,42 @@ public class ApprovalPolicy {
       LOG.warnf(
           "Could not read whether %s of %s changes %s; requiring approval: %s",
           mergedSha, repoId, CONFIG_DIRECTORY, e.getMessage());
-      return "the changes to " + CONFIG_DIRECTORY + " could not be read: " + e.getMessage();
+      return List.of(
+          "the changes to " + CONFIG_DIRECTORY + " could not be read: " + e.getMessage());
     }
+    List<String> reasons = new ArrayList<>(2);
+    String config = configReason(files);
+    if (config != null) {
+      reasons.add(config);
+    }
+    String empty = emptyFoldReason(repoId, mergedSha);
+    if (empty != null) {
+      reasons.add(empty);
+    }
+    return reasons;
+  }
+
+  /**
+   * A sentence where the fold adds nothing to {@code main}, else null. Such a fold is a commit
+   * {@code main} already holds — a fast-forward onto its own head, tagged and built by the last
+   * release — so the CI gate would be vouched by that release's old run before this request's own QA
+   * run exists, and the request would release having been checked by nothing. A person decides
+   * whether an empty release is wanted.
+   */
+  private String emptyFoldReason(String repoId, String mergedSha) {
+    try {
+      return foldChanges.addsNothingToMain(repoId, mergedSha) ? NO_CHANGES_DETAIL : null;
+    } catch (RuntimeException e) {
+      // FAIL CLOSED, for the same reason as the configuration read beside it.
+      LOG.warnf(
+          "Could not read whether %s of %s changes anything against main; requiring approval: %s",
+          mergedSha, repoId, e.getMessage());
+      return "whether the fold changes anything against main could not be read: " + e.getMessage();
+    }
+  }
+
+  /** A sentence where {@code files} touch {@link #CONFIG_DIRECTORY}, else null. */
+  private static String configReason(List<CommitFileChangeDto> files) {
     Set<String> touched = new LinkedHashSet<>();
     for (CommitFileChangeDto file : files) {
       if (file.touchesGitlink()) {

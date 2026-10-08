@@ -164,6 +164,46 @@ public class ApprovalPolicyFoldContentTest {
     assertFalse(requirement.detail().contains("; "), "manual-review is not configured here");
   }
 
+  /**
+   * <b>A fold that adds nothing to main asks a person</b> (qits-760) — read against main with git's
+   * own three-dot diff, not against the newest release tag. Main's own head, an empty commit on top
+   * of it, and a fold main has since moved past all add nothing; a branch with one real commit adds
+   * something and asks nobody. The fixture configures no approval and touches no {@code
+   * .config/qits/}, so the empty-fold sentence is the whole detail.
+   */
+  @Test
+  public void aFoldThatAddsNothingToMainAsksAPersonAndOneThatAddsSomethingDoesNot()
+      throws Exception {
+    Repository repo = cloned("Empty Fold Approval");
+    Path work = checkout(repo);
+    String main = git.exec(work.toFile(), "git", "rev-parse", "--abbrev-ref", "HEAD").trim();
+    String mainHead = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "work");
+    commit(work, "--allow-empty", "Nothing at all");
+    String emptyCommit = push(work, repo, "work");
+    write(work, "src/Main.java", "class Main {}\n");
+    git.exec(work.toFile(), "git", "add", "src/Main.java");
+    commit(work, "Real work");
+    String something = push(work, repo, "work");
+
+    // Main moves on past the first fold (a pending tag finalizing, say): still nothing of its own.
+    git.exec(work.toFile(), "git", "checkout", "-q", main);
+    write(work, "docs/later.md", "landed on main afterwards\n");
+    git.exec(work.toFile(), "git", "add", "docs/later.md");
+    commit(work, "Main moves");
+    push(work, repo, main);
+
+    ApprovalPolicy.ApprovalRequirement expected =
+        new ApprovalPolicy.ApprovalRequirement(true, ApprovalPolicy.NO_CHANGES_DETAIL);
+    assertEquals(expected, policy.requirementFor(repo.id, mainHead), "main's own (old) head");
+    assertEquals(expected, policy.requirementFor(repo.id, emptyCommit), "an empty commit on main");
+    assertEquals(
+        ApprovalPolicy.ApprovalRequirement.NOT_REQUIRED,
+        policy.requirementFor(repo.id, something),
+        "a fold carrying a change is not held by this rule");
+  }
+
   /** A repository with no row is settled history, and no rule holds it. */
   @Test
   public void aRepositoryWithNoRowRequiresNothing() {
@@ -209,6 +249,11 @@ public class ApprovalPolicyFoldContentTest {
   /** Commits what is staged — the only way to keep a gitlink with no checkout behind it. */
   private void commit(Path work, String message) throws Exception {
     git.exec(work.toFile(), "git", "commit", "-q", "-m", message);
+  }
+
+  /** The same with one extra flag — {@code --allow-empty}, for a commit that changes no tree. */
+  private void commit(Path work, String flag, String message) throws Exception {
+    git.exec(work.toFile(), "git", "commit", "-q", flag, "-m", message);
   }
 
   private void gitlink(Path work, String path, String sha) throws Exception {

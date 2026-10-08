@@ -63,4 +63,18 @@ public class MirrorFoldChanges implements FoldChanges {
     }
     return List.copyOf(paths);
   }
+
+  /** The fold against {@code main}, with the same one fetch {@link #changes} allows itself. */
+  @Override
+  public boolean addsNothingToMain(String repoId, String mergedSha) {
+    CommitService.FoldAgainstMain answer = commits.foldAgainstMain(repoId, mergedSha);
+    if (!answer.present()) {
+      gitMirrors.of(repoId).markStale();
+      answer = commits.foldAgainstMain(repoId, mergedSha);
+    }
+    if (!answer.present()) {
+      throw new IllegalStateException("the fold " + mergedSha + " is not in the repository's mirror");
+    }
+    return answer.addsNothing();
+  }
 }

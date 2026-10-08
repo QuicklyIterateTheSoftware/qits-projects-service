@@ -37,6 +37,8 @@ public class RecordingFoldChanges implements FoldChanges {
 
   private final Map<String, List<String>> betweenScripted = new ConcurrentHashMap<>();
 
+  private final Set<String> empty = ConcurrentHashMap.newKeySet();
+
   private final Map<String, AtomicInteger> reads = new ConcurrentHashMap<>();
 
   /** How many times {@code repoId}'s folds were read since the last reset. */
@@ -48,12 +50,23 @@ public class RecordingFoldChanges implements FoldChanges {
   /** Every fold of {@code repoId} changes {@code files}, from now until the next script or reset. */
   public void changes(String repoId, List<CommitFileChangeDto> files) {
     unreadable.remove(repoId);
+    empty.remove(repoId);
     scripted.put(repoId, List.copyOf(files));
+  }
+
+  /**
+   * Every fold of {@code repoId} adds nothing to {@code main} — a request whose branches carry
+   * nothing, fast-forwarded onto main's own head — from now until the next script or reset.
+   */
+  public void empty(String repoId) {
+    unreadable.remove(repoId);
+    empty.add(repoId);
   }
 
   /** Every read of {@code repoId}'s folds fails with {@code message}. */
   public void unreadable(String repoId, String message) {
     scripted.remove(repoId);
+    empty.remove(repoId);
     unreadable.put(repoId, message);
   }
 
@@ -66,6 +79,7 @@ public class RecordingFoldChanges implements FoldChanges {
     scripted.clear();
     betweenScripted.clear();
     unreadable.clear();
+    empty.clear();
     mirrored.clear();
     reads.clear();
   }
@@ -102,6 +116,23 @@ public class RecordingFoldChanges implements FoldChanges {
       throw new IllegalStateException(failure);
     }
     return betweenScripted.getOrDefault(repoId, List.of());
+  }
+
+  /**
+   * Unscripted, every fold adds something to main: the suite's folds are shas no repository holds,
+   * and the real read would fail closed into "ask a person" for every request.
+   */
+  @Override
+  public boolean addsNothingToMain(String repoId, String mergedSha) {
+    reads.computeIfAbsent(repoId, key -> new AtomicInteger()).incrementAndGet();
+    if (mirrored.contains(repoId)) {
+      return mirror.addsNothingToMain(repoId, mergedSha);
+    }
+    String failure = unreadable.get(repoId);
+    if (failure != null) {
+      throw new IllegalStateException(failure);
+    }
+    return empty.contains(repoId);
   }
 
   /** A changed blob, as the mirror read reports one. */

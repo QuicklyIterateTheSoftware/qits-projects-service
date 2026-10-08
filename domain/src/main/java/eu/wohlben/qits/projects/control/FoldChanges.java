@@ -38,4 +38,15 @@ public interface FoldChanges {
    *     which would say "nothing changed" and carry every outcome over
    */
   List<String> pathsBetween(String repoId, String foldSha, String previousFoldSha);
+
+  /**
+   * Whether {@code mergedSha} adds nothing to the repository's {@code main} — {@link
+   * CommitService#foldAgainstMain}: the fold's tree is the tree of its merge base with {@code main},
+   * which is what a request whose branches carry nothing folds to (a fast-forward onto {@code main}'s
+   * own head). A different base from {@link #changes}' on purpose; see there.
+   *
+   * @throws RuntimeException when the fold, {@code main} or the diff cannot be read — never false,
+   *     which would say "this fold carries something" and wave it past the person it is held for
+   */
+  boolean addsNothingToMain(String repoId, String mergedSha);
 }

@@ -42,10 +42,11 @@ package eu.wohlben.qits.projects.dto;
  * "released, waiting on its deployment" is a real state today that the surface showed nothing for.
  *
  * <p><b>{@code detail} says why a person is being asked</b>, on the {@code APPROVAL} gate and nowhere
- * else: {@code configured by manual-review}, {@code changes .config/qits/: <paths>}, or both joined
- * with {@code "; "} — {@code ApprovalPolicy}'s own reason, never re-derived here. Null on every other
- * kind, and on an approval gate nobody has to be asked about. A repository whose main configures no
- * approval still reports an {@code APPROVAL} gate on a request whose fold changes its {@code
- * .config/qits/}, and this is the field that says so.
+ * else: {@code configured by manual-review}, {@code changes .config/qits/: <paths>}, {@code no
+ * changes against main: the fold adds nothing to main}, or several joined with {@code "; "} — {@code
+ * ApprovalPolicy}'s own reason, never re-derived here. Null on every other kind, and on an approval
+ * gate nobody has to be asked about. A repository whose main configures no approval still reports an
+ * {@code APPROVAL} gate on a request whose fold changes its {@code .config/qits/} or adds nothing to
+ * its {@code main}, and this is the field that says so.
  */
 public record ReleaseGateDto(String kind, String state, String detail) {}

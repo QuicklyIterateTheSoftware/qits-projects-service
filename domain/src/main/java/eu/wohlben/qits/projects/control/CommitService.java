@@ -15,6 +15,7 @@ import eu.wohlben.qits.projects.persistence.RepositoryRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -575,6 +576,72 @@ public class CommitService {
           == 0;
     } catch (Exception e) {
       throw new InternalServerErrorException("Git merge-base failed: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Whether a fold adds anything to the repository's main branch, and whether the fold is there to
+   * be asked at all.
+   *
+   * @param present whether the mirror holds the fold object — {@link MergeDiffBase#present()}'s
+   *     answer, for the same reasons
+   * @param addsNothing whether the fold's tree is the tree of its merge base with {@code main}: the
+   *     fold is {@code main}'s own head, an ancestor of it, or commits that net to no change. False
+   *     whenever {@code present} is false
+   */
+  public record FoldAgainstMain(boolean present, boolean addsNothing) {}
+
+  /**
+   * {@code git diff main...mergedSha} asked for emptiness: the fold against its merge base with the
+   * repository's main branch, the three-dot reading rather than a straight tree comparison with
+   * {@code main}'s head, so that {@code main} advancing past a fold that already held nothing of its
+   * own (a pending tag finalizing) does not turn "adds nothing" into "changes everything main gained
+   * since". A fold sharing no history with {@code main} adds its whole tree. A {@code main} the
+   * mirror does not hold is a failure to read, never an answer.
+   *
+   * <p>It is a different question from {@link #resolveDiffBase}, which diffs against the newest
+   * release tag that does not contain the fold: a fold that fast-forwards onto {@code main}'s head is
+   * contained by the tag that head carries, so that base is the release before it and the diff is the
+   * last release's content rather than nothing.
+   */
+  public FoldAgainstMain foldAgainstMain(String repoId, String mergedSha) {
+    requireRef(mergedSha, "commit");
+    Repository repo =
+        repositoryRepository
+            .findByIdOptional(repoId)
+            .orElseThrow(() -> new NotFoundException("Repository not found: " + repoId));
+    String main =
+        "refs/heads/"
+            + (repo.mainBranch == null || repo.mainBranch.isBlank() ? "main" : repo.mainBranch);
+    RepoMirror mirror = requireMirror(repoId);
+    File dir = mirror.gitDir().toFile();
+    try {
+      if (git.execAllowNonZero(dir, "git", "cat-file", "-e", mergedSha + "^{commit}").exitCode()
+          != 0) {
+        return new FoldAgainstMain(false, false);
+      }
+      if (git.execAllowNonZero(dir, "git", "cat-file", "-e", main + "^{commit}").exitCode() != 0) {
+        throw new IllegalStateException(main + " is not in the repository's mirror");
+      }
+      GitExecutor.ExecResult mergeBase =
+          git.execAllowNonZero(dir, "git", "merge-base", main, mergedSha, "--");
+      if (mergeBase.exitCode() != 0 || mergeBase.output().isBlank()) {
+        return new FoldAgainstMain(true, false);
+      }
+      GitExecutor.ExecResult diff =
+          git.execAllowNonZero(
+              dir, "git", "diff-tree", "--quiet", mergeBase.output().trim(), mergedSha, "--");
+      return switch (diff.exitCode()) {
+        case 0 -> new FoldAgainstMain(true, true);
+        case 1 -> new FoldAgainstMain(true, false);
+        default ->
+            throw new IllegalStateException(
+                "git diff-tree exited " + diff.exitCode() + ": " + diff.output().trim());
+      };
+    } catch (IllegalStateException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git diff against main failed: " + e.getMessage());
     }
   }
 

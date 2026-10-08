@@ -550,6 +550,92 @@ public class ReleaseRequestApprovalGateTest {
     assertEquals(0, executor.calls().size());
   }
 
+  // -----------------------------------------------------------------------------------------
+  // The empty-fold rule: a fold that adds nothing to main asks a person (qits-760)
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * <b>A request whose branches add nothing is held for a person</b>, however green. Its fold is a
+   * fast-forward onto main's head — a commit the last release already built — so the verdict that
+   * would release it is an old run's; the approval gate says why. No manual-review is configured and
+   * no {@code .config/qits/} changes: the empty fold alone holds it. A machine requester too.
+   */
+  @Test
+  public void anEmptyFoldIsHeldForAPersonAndSaysSo() {
+    foldChanges.empty(plainRepoId);
+    String id = create(plainRepoId, "work", ROBOT);
+    String merged = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, "BuildSuccessful", merged, "");
+
+    var request = request(plainRepoId, id);
+    assertEquals("PENDING", request.getString("state"), "green, and the fold carries nothing");
+    assertEquals(true, request.getBoolean("approvalRequired"));
+    assertEquals("WAITING", request.getString("approvalState"));
+    assertEquals("PENDING", request.getString("gates.find { it.kind == 'APPROVAL' }.state"));
+    assertEquals(
+        "no changes against main: the fold adds nothing to main",
+        request.getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+    assertEquals(0, executor.calls().size());
+  }
+
+  /** A person's yes at the empty fold releases it on the green it already had. */
+  @Test
+  public void anApprovedEmptyFoldReleases() {
+    foldChanges.empty(plainRepoId);
+    String id = create(plainRepoId, "work", "wohlben");
+    String merged = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, "BuildSuccessful", merged, "");
+    assertEquals("WAITING", request(plainRepoId, id).getString("approvalState"));
+
+    record(id, merged, ReleaseRequestApproval.Decision.APPROVED, "ada", "release it anyway");
+    reEvaluate(plainRepoId, merged);
+    awaitState(plainRepoId, id, "RELEASED");
+
+    var request = request(plainRepoId, id);
+    assertEquals("APPROVED", request.getString("approvalState"));
+    assertEquals("ada", request.getString("approvedBy"));
+    assertEquals(1, executor.calls().size());
+  }
+
+  /**
+   * The requirement is the current fold's, as for {@code .config/qits/}: a refold that now carries a
+   * change — an automation's commit, say — is not held because the first fold was empty.
+   */
+  @Test
+  public void aRefoldThatCarriesAChangeIsNoLongerHeldForBeingEmpty() {
+    foldChanges.empty(plainRepoId);
+    String id = create(plainRepoId, "work", "wohlben");
+    String firstFold = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, "BuildSuccessful", firstFold, "");
+    assertEquals("WAITING", request(plainRepoId, id).getString("approvalState"));
+
+    foldChanges.changes(plainRepoId, List.of(RecordingFoldChanges.file("MODIFIED", "README.md", null)));
+    headMoved(plainRepoId, "work");
+    String secondFold = awaitNewFold(plainRepoId, id, firstFold);
+    verdict(plainRepoId, "BuildSuccessful", secondFold, "");
+    awaitState(plainRepoId, id, "RELEASED");
+
+    var request = request(plainRepoId, id);
+    assertEquals(false, request.getBoolean("approvalRequired"));
+    assertEquals("NOT_REQUIRED", request.getString("approvalState"));
+    assertNull(request.get("gates.find { it.kind == 'APPROVAL' }"), "no approval gate at all");
+  }
+
+  /** Both content rules at once, the configuration's sentence first. */
+  @Test
+  public void aConfigChangeAndAnEmptyFoldAreBothNamed() {
+    foldChanges.changes(
+        plainRepoId, List.of(RecordingFoldChanges.file("MODIFIED", ".config/qits/release.yml", null)));
+    foldChanges.empty(plainRepoId);
+    String id = create(plainRepoId, "work", "wohlben");
+    verdict(plainRepoId, "BuildSuccessful", mergedShaOf(plainRepoId, id), "");
+
+    assertEquals(
+        "changes .config/qits/: .config/qits/release.yml;"
+            + " no changes against main: the fold adds nothing to main",
+        request(plainRepoId, id).getString("gates.find { it.kind == 'APPROVAL' }.detail"));
+  }
+
   /**
    * <b>A settled request reads no git.</b> Its {@code release/<id>} ref is gone, so a read would
    * fetch the mirror per row and then fail closed into a WAITING nobody can answer. Without a
