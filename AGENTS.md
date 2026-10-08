@@ -1311,7 +1311,8 @@ mode, and the mode is the only difference between the two actions the UI offers:
       → {"dispatch": {entityId, archetype, phase, mode, workspaceRowId, repositoryId, branch,
                       fresh, agentLaunch, assignee}}
     GET  /projects/api/work/{qualifiedId}/dispatch   (qits:admin, qits:agent)
-      → {"state": {entityId, archetype, status, nextPhase, blocked, dispatchable, mode}}
+      → {"state": {entityId, archetype, status, nextPhase, blocked, dispatchable, mode,
+                   preApprovedBy}}
 
 The GET is how the SPA learns which phase a press would start (`nextPhase`, or null) without
 re-implementing the status→phase rule, which lives only in `api/PhasePrompts.phaseOf`. For every
@@ -1323,6 +1324,23 @@ the phase prompts' forward claims read too, so the page and the agent cannot dis
 unknown mode is a 400; a feature or a task is a 409 (no phase of its own); a blocked ticket or epic is a
 409 naming the block, and a blocked campaign's start press is too; no workspaces context is a 503; a
 project with no wrapper is a 409.
+
+**A person's Dispatch pre-approves the scheduling (qits-1075), so one press goes REPORTED →
+VERIFIED.** `DispatchDoors.press` builds the caller's `Mover` with `EntityMovers.of` (qits-891's
+person check). A person's FLOW press at REPORTED stores their name in `entity.pre_approved_by`
+(epics V27, `EntityDispatchService.setPreApprovedBy`, audited; no body, tool or create writes it),
+and when the refine claim lands REFINED with `dispatchContinues` set, `PhaseAdvance` moves it
+REFINED → READY_FOR_DEV through `WorkEntityService.transitionFrom(…, Mover.person(name))` — every
+gate runs, and the audit row and `EntityTransitioned` name that person — clears the flag, and hands
+the implement turn to the same session (the FLOW arm's own `handOff`, so it ends IMPLEMENTING). A
+gate refusal moves nothing, keeps the flag and says so once on the thread. A person's FLOW press
+**at** REFINED is the scheduling itself (same gates, a refusal is the press's 409) and then a
+READY_FOR_DEV press. A machine's press (an agent, `qits:admin-agent` headers, the campaign executor)
+and a PHASE press at REFINED keep the 409; a PHASE press clears a pending pre-approval, a machine's
+press never touches it, and any move to DROPPED clears it (`WorkEntityService.move`,
+`EntityTransitionService`). So the registry's `flow` describes a person's press: REPORTED runs
+refine, implement, verify, REFINED runs implement, verify, and REFINED's `next` stays null; the
+read's `dispatchable` is true at an unblocked REFINED.
 
 **The assignee is the dispatched agent (qits-887).** `ASSIGNEE` is permitted on EPIC as on TICKET
 (declaration only: `entity.assignee` is on every row), and every successful press — refine, implement

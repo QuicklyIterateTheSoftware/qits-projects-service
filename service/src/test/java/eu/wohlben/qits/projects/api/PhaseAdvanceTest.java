@@ -510,6 +510,110 @@ public class PhaseAdvanceTest {
         List.of("Refined; waiting for a person to schedule it (READY_FOR_DEV)."), thread(ticketId));
   }
 
+  /**
+   * <b>The pre-approved twin</b> (qits-1075): the person who pressed Dispatch at REPORTED left their
+   * name on the row, so a FLOW refine that lands REFINED is scheduled as that person — the audit
+   * row and the {@code EntityTransitioned} name them — the pre-approval is spent, the implement turn
+   * is delivered into the same session, and the ticket ends IMPLEMENTING. No "waiting" sentence.
+   */
+  @Test
+  public void aPreApprovedFlowRefineThatLandsRefinedIsScheduledAsThePersonAndHandedOn() {
+    String projectId = createProject("Advance Pre-approved");
+    String ticketId = createTicket(projectId, "Goes all the way");
+    dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
+    workspaces.willReference(
+        standingOn(wrapperIdOf(projectId), "ticket/goes-all-the-way", ticketId));
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+
+    transition(ticketId, "REFINED"); // the refine agent's claim, made here by dana
+
+    assertEquals(1, turns.calls().size(), "one implement turn");
+    RecordingWorkspaceAgentTurns.Spoken implement = turns.lastCall();
+    assertEquals("ticket/goes-all-the-way", implement.branch());
+    assertTrue(implement.text().contains("Implement ticket \""), implement.text());
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent");
+    assertEquals(
+        List.of(
+            "REPORTED->REFINED by dana",
+            "REFINED->READY_FOR_DEV by mallory",
+            "READY_FOR_DEV->IMPLEMENTING by dana"),
+        transitions.published().stream()
+            .flatMap(event -> event.entities().stream())
+            .map(e -> e.statusBefore() + "->" + e.status() + " by " + e.changedBy())
+            .toList());
+    List<Map<String, Object>> audit =
+        asAdmin("dana")
+            .when()
+            .get("/projects/api/work/" + ticketId + "/audit")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("entries");
+    assertTrue(
+        audit.stream()
+            .anyMatch(
+                entry ->
+                    "mallory".equals(entry.get("changedBy"))
+                        && String.valueOf(entry.get("snapshot")).contains("READY_FOR_DEV")),
+        "the scheduling is audited as mallory's: " + audit);
+    assertEquals(
+        List.of(
+            "Started the implement phase: the agent working in the workspace on"
+                + " `ticket/goes-all-the-way` was told."),
+        thread(ticketId));
+  }
+
+  /**
+   * <b>A gate refuses the pre-approved scheduling</b> (qits-1075): with no acceptance criteria the
+   * move is refused, nothing moves and no turn is delivered, the pre-approval stays for a later
+   * press, and the thread says once which gate refused and what a person can do. Handed to the
+   * bean directly, because the claim to REFINED is itself gated on criteria — so the row reaches
+   * REFINED with them and loses them afterwards, as a person editing it at REFINED may.
+   */
+  @Test
+  public void aPreApprovedSchedulingAGateRefusesMovesNothingAndSaysWhyOnce() {
+    String projectId = createProject("Advance Pre-approved Gate");
+    String ticketId = createTicket(projectId, "Lost its criteria");
+    transition(ticketId, "REFINED");
+    given()
+        .contentType("application/merge-patch+json")
+        .body(Map.of("acceptanceCriteria", List.of()))
+        .when()
+        .patch("/projects/api/work/" + ticketId)
+        .then()
+        .statusCode(200);
+    dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
+    transitions.reset();
+
+    advance.afterTransition(dispatchEntities.fresh(ticketId), "REPORTED", "agent");
+
+    assertEquals("REFINED", statusOf(ticketId));
+    assertEquals(List.of(), turns.calls(), "no implement turn");
+    assertEquals(List.of(), transitions.published(), "nothing moved");
+    assertEquals("mallory", dispatchEntities.fresh(ticketId).preApprovedBy, "the flag stays");
+    List<String> said = thread(ticketId);
+    assertEquals(1, said.size(), said.toString());
+    assertTrue(said.get(0).startsWith("mallory pre-approved scheduling this ticket"), said.get(0));
+    assertTrue(said.get(0).contains("ACCEPTANCE_CRITERIA"), said.get(0));
+    assertTrue(
+        said.get(0).endsWith("a person can schedule it (READY_FOR_DEV), or press Dispatch."),
+        said.get(0));
+
+    // Fixed, a person's Dispatch at REFINED schedules it and spends the pending pre-approval.
+    TestCriteria.give(ticketId);
+    asAdmin("dana")
+        .body(Map.of("mode", "FLOW"))
+        .when()
+        .post("/projects/api/work/" + ticketId + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("dispatch.phase", equalTo("implement"));
+    assertEquals("IMPLEMENTING", statusOf(ticketId));
+    assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent by the press");
+  }
+
   /** A one-phase run that lands REFINED says nothing: the person who pressed knows it stops. */
   @Test
   public void aOnePhaseRefineThatLandsRefinedSaysNothing() {

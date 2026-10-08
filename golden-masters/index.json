@@ -1604,14 +1604,15 @@
           "body": {
             "mode": "FLOW"
           },
-          "status": 409,
+          "status": 200,
           "file": "a-refined-epic/dispatchWork.json",
           "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [
-              "$.message"
+            "ids": [
+              "$.dispatch.entityId",
+              "$.dispatch.repositoryId"
             ],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -1659,14 +1660,15 @@
           "body": {
             "mode": "FLOW"
           },
-          "status": 409,
+          "status": 200,
           "file": "a-refined-ticket/dispatchWork.json",
           "frozen": {
-            "ids": [],
-            "instants": [],
-            "strings": [
-              "$.message"
+            "ids": [
+              "$.dispatch.entityId",
+              "$.dispatch.repositoryId"
             ],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },

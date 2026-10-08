@@ -480,9 +480,15 @@ class ArchetypeRegistryDocumentTest {
                 .toList(),
             served.flow(),
             archetype + " " + status);
-        // A PHASE press runs the first phase of the FLOW press from the same status.
-        assertEquals(
-            served.flow().isEmpty() ? null : served.flow().get(0), served.next(), status + "");
+        // A PHASE press runs the first phase of the FLOW press from the same status — except at
+        // REFINED, where a person's FLOW press schedules first and a PHASE press starts nothing
+        // (qits-1075).
+        if (status == EntityStatus.REFINED) {
+          assertEquals(null, served.next(), status + "");
+        } else {
+          assertEquals(
+              served.flow().isEmpty() ? null : served.flow().get(0), served.next(), status + "");
+        }
       }
     }
   }
@@ -506,10 +512,11 @@ class ArchetypeRegistryDocumentTest {
         new ArchetypeRegistryDocument.DispatchPhase("verify", "VERIFYING", null, "VERIFIED");
 
     assertEquals(refine, phases.get("REPORTED").next());
-    // qits-887: a FLOW from REPORTED stops at REFINED, which waits for a person to schedule it.
-    assertEquals(List.of(refine), phases.get("REPORTED").flow());
+    // qits-1075: a person's FLOW press pre-approves the scheduling, so the flow from REPORTED runs
+    // on past REFINED; REFINED itself still starts no phase for a PHASE press (qits-887).
+    assertEquals(List.of(refine, implement, verify), phases.get("REPORTED").flow());
     assertEquals(null, phases.get("REFINED").next());
-    assertEquals(List.of(), phases.get("REFINED").flow());
+    assertEquals(List.of(implement, verify), phases.get("REFINED").flow());
     assertEquals(implement, phases.get("READY_FOR_DEV").next());
     assertEquals(List.of(implement, verify), phases.get("READY_FOR_DEV").flow());
     assertEquals(List.of(resume, verify), phases.get("IMPLEMENTING").flow());

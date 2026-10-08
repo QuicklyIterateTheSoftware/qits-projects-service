@@ -6,6 +6,7 @@
     "nextPhase": "refine",
     "blocked": false,
     "dispatchable": true,
-    "mode": "FLOW"
+    "mode": "FLOW",
+    "preApprovedBy": null
   }
 }

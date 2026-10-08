@@ -1114,6 +1114,8 @@ components:
           type: boolean
         mode:
           $ref: "#/components/schemas/DispatchMode"
+        preApprovedBy:
+          type: string
     EntityProperty:
       type: string
       enum:

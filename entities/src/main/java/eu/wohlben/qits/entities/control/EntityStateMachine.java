@@ -31,9 +31,10 @@ import java.util.Set;
  *                  IMPLEMENTED and VERIFYING → verify;  REFINED (it waits for a person), VERIFIED,
  *                  DONE and DROPPED start nothing.
  *   ends in:       refine → REFINED, implement → IMPLEMENTED, verify → VERIFIED ({@link #endOf}).
- *   runs phases:   EPIC and TICKET only ({@link #runsPhases}); a FLOW press chains the phases
- *                  ({@link #flowFrom}) until a status starts none — so a FLOW from REPORTED stops
- *                  at REFINED.
+ *   runs phases:   EPIC and TICKET only ({@link #runsPhases}); a person's FLOW press chains the
+ *                  phases ({@link #flowFrom}) until a status starts none — scheduling REFINED on
+ *                  the way under the press's pre-approval (qits-1075), so a FLOW from REPORTED
+ *                  runs refine, implement and verify.
  * </pre>
  *
  * <p><b>The walk</b> — REPORTED → REFINED → READY_FOR_DEV → IMPLEMENTING → IMPLEMENTED → VERIFYING
@@ -456,20 +457,35 @@ public final class EntityStateMachine {
   }
 
   /**
-   * The phases a FLOW press runs on {@code archetype} from {@code status}, in order, until the flow
-   * stops: each phase ends in its {@link PhaseRun#endsIn}, and the next one runs from there, until a
-   * status starts no phase (REFINED, where a person schedules it, or VERIFIED, where the release is
-   * asked for). Empty where a press starts
-   * nothing. The run also stops early when an agent blocks the entity; that is not in the data.
+   * The phases <b>a person's</b> FLOW press runs on {@code archetype} from {@code status}, in order,
+   * until the flow stops: each phase ends in its {@link PhaseRun#endsIn}, and the next one runs from
+   * there, until a status starts no phase (VERIFIED, where the release is asked for). Empty where a
+   * press starts nothing.
+   *
+   * <p><b>REFINED does not stop it</b> (qits-1075): a person's Dispatch press pre-approves the
+   * scheduling, so a flow that lands REFINED is scheduled (REFINED → READY_FOR_DEV) as that person
+   * and carries on with READY_FOR_DEV's runs — and a person's press <em>at</em> REFINED schedules
+   * and starts implement. So the flow from REPORTED is refine, implement, verify, and from REFINED
+   * implement, verify. A machine's press (an agent, the campaign executor) carries no pre-approval
+   * and still stops at REFINED; that, like an agent blocking the entity, is not in the data.
+   * {@link #phaseRunFrom} — what one press starts — is unchanged: REFINED starts no phase of its own.
    */
   public static List<PhaseRun> flowFrom(Archetype archetype, EntityStatus status) {
     List<PhaseRun> flow = new ArrayList<>();
-    Optional<PhaseRun> run = phaseRunFrom(archetype, status);
+    Optional<PhaseRun> run = phaseRunFrom(archetype, scheduledByThePress(status));
     while (run.isPresent() && flow.size() < STATES.size()) {
       flow.add(run.get());
-      run = phaseRunFrom(archetype, run.get().endsIn());
+      run = phaseRunFrom(archetype, scheduledByThePress(run.get().endsIn()));
     }
     return List.copyOf(flow);
+  }
+
+  /**
+   * Where a person's FLOW press carries {@code status} before a phase runs (qits-1075): REFINED is
+   * scheduled to READY_FOR_DEV under the pre-approval, and every other status stays as it is.
+   */
+  private static EntityStatus scheduledByThePress(EntityStatus status) {
+    return status == EntityStatus.REFINED ? EntityStatus.READY_FOR_DEV : status;
   }
 
   /**

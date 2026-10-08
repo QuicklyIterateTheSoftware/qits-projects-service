@@ -2,12 +2,15 @@ package eu.wohlben.qits.projects.api;
 
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityCommentService;
+import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
+import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
@@ -59,7 +62,10 @@ import org.jboss.logging.Logger;
  * the ticket is IMPLEMENTED, and the verify turn arrives in the session the agent is already in.
  * <b>Refine is the exception since qits-887</b>: it ends at REFINED, which starts nothing and waits
  * for a person to schedule the work (READY_FOR_DEV), and the scheduling move delivers no turn either
- * — starting the work is the next press. Pressing "Assign
+ * — starting the work is the next press. <b>Unless that person already said so</b> (qits-1075): a
+ * person's <em>Dispatch</em> press at REPORTED leaves a pre-approval on the row ({@link
+ * WorkEntity#preApprovedBy}), and the refine landing REFINED is then scheduled as that person and
+ * handed on to implement in the same session — one press, REPORTED to VERIFIED. Pressing "Assign
  * agent" stays the way to <em>resume</em> a ticket nobody is working on; it stops being the way to
  * continue one that is.
  *
@@ -90,7 +96,8 @@ import org.jboss.logging.Logger;
  * IMPLEMENTING or VERIFYING from anywhere else (BACK, rework or re-verification) the turn is
  * delivered as for any phase. {@code statusBefore} is passed in for this, and for the two qits-887
  * arms beside it: a person's scheduling (REFINED → READY_FOR_DEV) pushes nothing, and a refine that
- * lands REFINED under FLOW says on the thread that the run now waits for a person.
+ * lands REFINED under FLOW says on the thread that the run now waits for a person — or, with a
+ * pre-approval standing, is scheduled on it and carries on (qits-1075).
  *
  * <h2>Delivering a phase's turn starts the phase (qits-749)</h2>
  *
@@ -225,6 +232,9 @@ public class PhaseAdvance {
 
   @Inject EntityWorkspaces workspaces;
 
+  /** Where a spent pre-approval is cleared (qits-1075). */
+  @Inject EntityDispatchService entityDispatch;
+
   @Inject ProjectChangePublisher publisher;
 
   /**
@@ -342,36 +352,28 @@ public class PhaseAdvance {
     Optional<Phase> phase = PhasePrompts.phaseOf(entity);
     if (phase.isEmpty()) {
       // REFINED (it waits for a person to schedule it, qits-887), DONE and DROPPED, now that
-      // VERIFIED is answered above. A flow that has just refined stops here, and says so on the
-      // thread when an agent stands on the branch, so the run does not end in silence; otherwise
-      // there is nothing to do, and nothing to say about having done nothing.
+      // VERIFIED is answered above. A flow that has just refined is scheduled on the pre-approval
+      // its person's press left (qits-1075) and carries straight on into implement; without one it
+      // stops here, and says so on the thread when an agent stands on the branch, so the run does
+      // not end in silence. Otherwise there is nothing to do, and nothing to say about having done
+      // nothing.
       if (EntityStatus.REFINED.name().equals(entity.status)
           && EntityStatus.REPORTED.name().equals(statusBefore)
           && entity.dispatchContinues) {
-        noteTheFlowWaitsForAPerson(entity, changedBy);
+        if (entity.preApprovedBy != null) {
+          scheduleOnThePreApproval(entity, changedBy);
+        } else {
+          noteTheFlowWaitsForAPerson(entity, changedBy);
+        }
       }
       return;
     }
-    if (turns.isUnsatisfied()) {
-      return;
-    }
-    Optional<EntityWorkspaces.Target> target = workspaces.find(entity);
+    Optional<EntityWorkspaces.Target> target = addressOf(entity, phase.get());
     if (target.isEmpty()) {
-      LOG.warnf(
-          "Ticket %s moved to %s but its project (%s) has no wrapper repository, so there is no"
-              + " branch to start the %s phase on",
-          entity.id, entity.status, entity.projectId, phase.get().word());
       return;
     }
     if (entity.dispatchContinues) {
-      // The turn is rendered here, once a workspace could stand on the branch, with the same
-      // qualified id the dispatch named that workspace with (qits-301).
-      PhasePrompts.Started started =
-          PhasePrompts.start(entity, phase.get(), workspaces.qualifiedIdOf(entity));
-      boolean spoken = deliver(entity, started, target.get(), changedBy);
-      if (spoken) {
-        startPhase(entity, changedBy);
-      }
+      handOff(entity, phase.get(), target.get(), changedBy);
     } else {
       // The continue-or-stop bit, read at its one place: the press that started this run asked for
       // one phase, so the next one waits for somebody to press again. Nothing is said on a thread —
@@ -388,6 +390,131 @@ public class PhaseAdvance {
       // still at IMPLEMENTED for the skip. Read, never inferred from the direction of the move.
       noteTheReleaseThatStandsOpen(entity, target.get(), changedBy);
     }
+  }
+
+  /**
+   * Where {@code entity}'s {@code phase} would be handed to, or empty — with nothing said — when
+   * there is no turn port or no wrapper to stand a branch on (the latter a WARN). Shared by every
+   * hand-off this class makes, so the two arms that deliver a turn cannot disagree about where.
+   */
+  private Optional<EntityWorkspaces.Target> addressOf(WorkEntity entity, Phase phase) {
+    if (turns.isUnsatisfied()) {
+      return Optional.empty();
+    }
+    Optional<EntityWorkspaces.Target> target = workspaces.find(entity);
+    if (target.isEmpty()) {
+      LOG.warnf(
+          "Ticket %s moved to %s but its project (%s) has no wrapper repository, so there is no"
+              + " branch to start the %s phase on",
+          entity.id, entity.status, entity.projectId, phase.word());
+    }
+    return target;
+  }
+
+  /**
+   * <b>The FLOW hand-off</b>: render the turn {@code phase} starts, deliver it into the workspace on
+   * the branch, and — when it was spoken — move the entity into that phase's "-ING" status
+   * (qits-749). The one place a phase's turn is handed on, whether a transition landed the status
+   * that starts it or the platform's own scheduling did (qits-1075).
+   */
+  private void handOff(
+      WorkEntity entity, Phase phase, EntityWorkspaces.Target target, String changedBy) {
+    // The turn is rendered here, once a workspace could stand on the branch, with the same
+    // qualified id the dispatch named that workspace with (qits-301).
+    PhasePrompts.Started started =
+        PhasePrompts.start(entity, phase, workspaces.qualifiedIdOf(entity));
+    boolean spoken = deliver(entity, started, target, changedBy);
+    if (spoken) {
+      startPhase(entity, changedBy);
+    }
+  }
+
+  /**
+   * <b>The scheduling a person pre-approved</b> (qits-1075): a FLOW refine that lands REFINED on an
+   * entity whose person pressed Dispatch at REPORTED is moved REFINED → READY_FOR_DEV <em>as that
+   * person</em> — the audit row, the moved entity and its {@code EntityTransitioned} all name them
+   * — then the pre-approval is cleared (spent: it is good for one scheduling), and the implement
+   * phase is handed to the session that just refined it, exactly as the FLOW arm does at
+   * READY_FOR_DEV ({@link #handOff}, which moves it on to IMPLEMENTING once the turn is spoken).
+   *
+   * <p>The move goes through {@link WorkEntityService#transitionFrom}, never a route, so this class
+   * is not re-entered and the {@link #isScheduling} arm — which keeps a person's scheduling by hand
+   * from pushing anything — is not consulted. Every gate still runs: the person behind the mover is
+   * the one the press verified ({@code PERSON_APPROVAL}), and {@code ACCEPTANCE_CRITERIA} judges the
+   * row. For an epic the move carries its REFINED features and tasks with it, as any scheduling does.
+   *
+   * <p><b>A gate's refusal moves nothing and keeps the pre-approval</b>, and the thread says which
+   * gate and what a person can do about it — the run has stopped and a reader must not have to
+   * guess why. Never throws, for {@link #afterTransition}'s reason.
+   *
+   * <p><b>The race with a campaign</b>: a member scheduled here stands at READY_FOR_DEV for the
+   * moment between this move and the hand-off's move into IMPLEMENTING, and the campaign executor
+   * claims READY_FOR_DEV members — the {@code EntityTransitioned} this move announces even asks it
+   * to look. That window is exactly the one a person's READY_FOR_DEV press already opens (it too
+   * schedules nothing it does not then start), and the executor treats an unclaimed IMPLEMENTING
+   * member as started by hand and leaves it alone, so no new guard is added here.
+   */
+  private void scheduleOnThePreApproval(WorkEntity entity, String changedBy) {
+    String person = entity.preApprovedBy;
+    Optional<WorkEntityService.Transition> scheduled;
+    try {
+      scheduled =
+          lifecycle.transitionFrom(
+              entity.archetype,
+              entity.id,
+              EntityStatus.REFINED,
+              EntityStatus.READY_FOR_DEV,
+              Mover.person(person));
+    } catch (ConflictException refused) {
+      LOG.infof(
+          "%s %s was pre-approved by %s but could not be scheduled: %s",
+          entity.archetype, entity.id, person, refused.getMessage());
+      say(entity, scheduleRefused(entity, person, refused.getMessage()), changedBy);
+      return;
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e,
+          "%s %s was pre-approved by %s but its scheduling failed unexpectedly",
+          entity.archetype,
+          entity.id,
+          person);
+      return;
+    }
+    if (scheduled.isEmpty()) {
+      // Somebody moved it off REFINED a moment ago; whatever they did is the decision now.
+      LOG.infof(
+          "%s %s left REFINED before its pre-approved scheduling could be made; nothing moved",
+          entity.archetype, entity.id);
+      return;
+    }
+    WorkEntity row = scheduled.get().entity();
+    try {
+      row = entityDispatch.setPreApprovedBy(row.id, null, changedBy);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          e, "%s %s was scheduled but its pre-approval could not be cleared", row.archetype, row.id);
+    }
+    LOG.infof(
+        "%s %s was scheduled as %s on the pre-approval of their Dispatch press",
+        row.archetype, row.id, person);
+    Optional<EntityWorkspaces.Target> target = addressOf(row, Phase.IMPLEMENT);
+    if (target.isPresent()) {
+      handOff(row, Phase.IMPLEMENT, target.get(), changedBy);
+    }
+  }
+
+  /**
+   * What the thread is told when a pre-approved scheduling is refused (qits-1075): which gate and
+   * why, that the pre-approval stands, and the two ways on once it is fixed.
+   */
+  static String scheduleRefused(WorkEntity entity, String person, String refusal) {
+    return person
+        + " pre-approved scheduling this "
+        + noun(entity)
+        + ", but the platform could not schedule it: "
+        + refusal
+        + ". It stays REFINED. Once that is fixed, a person can schedule it (READY_FOR_DEV), or"
+        + " press Dispatch.";
   }
 
   /** Whether {@code from → to} is a person scheduling the entity: REFINED → READY_FOR_DEV. */

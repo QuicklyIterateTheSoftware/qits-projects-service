@@ -722,6 +722,11 @@ public class EntityTransitionService {
     row.title = target.title();
     row.description = blankToNull(target.description());
     row.status = blankToNull(target.status());
+    if (EntityStatus.DROPPED.name().equals(row.status)) {
+      // WorkEntityService.move's rule (qits-1075), on the other door that can land DROPPED: a
+      // pre-approval does not outlive the work that was decided against.
+      row.preApprovedBy = null;
+    }
     row.ticketType = target.ticketType();
     row.impetus = blankToNull(target.impetus());
     row.assignee = blankToNull(target.assignee());

@@ -91,6 +91,41 @@ public class EntityDispatchService {
   }
 
   /**
+   * Record, or clear, the pre-approval a person's FLOW press gives (qits-1075): {@code person} is
+   * the name of the person whose press pre-approved scheduling the row once its refine phase lands
+   * REFINED, or {@code null} to clear it. {@link #setDispatchContinues}' twin — the same write hold,
+   * the same refusal on a feature and a task, and an UPDATE audited under {@code changedBy}.
+   *
+   * <p><b>This module never decides that {@code person} is one</b>, {@link Mover}'s rule: the only
+   * caller that writes a name is the dispatch door, from a {@link Mover#person} a door verified. No
+   * REST body, MCP tool or create carries the value, so nothing else can put a name here.
+   */
+  public WorkEntity setPreApprovedBy(String id, String person, String changedBy) {
+    return writes.hold(
+        "entity pre-approval",
+        () -> {
+          WorkEntity row = entity(id);
+          if (Archetypes.isPlanPiece(row.archetype)) {
+            throw new ConflictException(
+                "A "
+                    + row.archetype
+                    + " is never scheduled on its own, so it takes no pre-approval — its epic's"
+                    + " does.");
+          }
+          row.preApprovedBy = person == null || person.isBlank() ? null : person;
+          entities.getEntityManager().flush();
+          auditService.record(
+              AuditEntityType.of(row.archetype),
+              row.id,
+              row.id,
+              AuditOperation.UPDATE,
+              changedBy,
+              row);
+          return row;
+        });
+  }
+
+  /**
    * Record who is on the row now (qits-887): the agent a press just put there, by the identity its
    * own calls carry. Written on every successful press whatever the phase, and the same for a
    * person's press and the campaign executor's — the assignee is the agent, never whoever pressed.

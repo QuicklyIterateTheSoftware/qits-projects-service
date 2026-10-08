@@ -12,6 +12,12 @@ package eu.wohlben.qits.entities.control;
  * #machine}. A machine is the default because a gate that needs a person must fail closed: a door
  * that forgot to say who is moving gets refused, never waved through.
  *
+ * <p><b>A person Mover may also come from a stored pre-approval</b> (qits-1075): a person's
+ * Dispatch press on a REPORTED entity stores their name ({@code WorkEntity.preApprovedBy}), and when
+ * the refine phase lands REFINED the platform schedules the entity as {@link #person} under that
+ * name. That is not this module deciding who is a person: the name was itself stamped only from a
+ * Mover a door verified as a person, at the press, and nothing else writes it.
+ *
  * @param name what the audit records as {@code changedBy} — for a person, the name the proof
  *     carries, never a header or a body field; for a machine, the caller's principal (null for an
  *     anonymous one)
