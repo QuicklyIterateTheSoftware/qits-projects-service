@@ -70,8 +70,7 @@ components:
         container:
           $ref: "#/components/schemas/ContainerView"
           type: object
-          description: "The project's agent container, as this service last observed\
-            \ it."
+          description: "The project's front desk, as this service last observed it."
     AgentDocumentSurfaceDto:
       type: object
       properties:
@@ -191,6 +190,8 @@ components:
       - PROVISIONING
       - FAILED
       - ABSENT
+      - QUEUED
+      - UNAVAILABLE
     AgentSurfaceConfigurationDto:
       type: object
       properties:
@@ -758,6 +759,14 @@ components:
           type: boolean
         failureDetail:
           type: string
+        runnerId:
+          $ref: "#/components/schemas/UUID"
+        runnerName:
+          type: string
+        lifecycle:
+          $ref: "#/components/schemas/FrontDeskLifecycle"
+        queuedAt:
+          $ref: "#/components/schemas/Instant"
     CreateDeskRunnerRequest:
       type: object
       required:
@@ -3679,6 +3688,28 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:agent
+    delete:
+      summary: "Delete the project's front desk: its container, its volume and its\
+        \ token"
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: "The desk is gone, or there was none"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Agent Container Controller
+      security:
+      - SecurityScheme:
+        - qits:admin
+        - qits:admin-agent
   /projects/api/projects/{projectId}/agent-container/ensure:
     post:
       parameters:

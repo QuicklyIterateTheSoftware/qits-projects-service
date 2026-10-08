@@ -1827,6 +1827,87 @@ assignment, not a comment, not a release.
   have their thread filled with "there was nobody to tell". The `TICKETS` hint fires only where a
   comment was written.
 
+## Front desks (qits-767)
+
+**A project's agent container is a front desk now, and this service no longer starts it.** A desk
+is a `front_desk` row (V37) placed on a front-desk runner (`desk_runner`, V36) — a machine an
+operator declared, holding a socket to `/projects/runners/socket` and running the desks it is given
+on its own node. `service/…/deskhost/` is the whole of it; the direct path (`AgentContainers`,
+`ContainersAgentRuntime`, `AgentContainerFactory`, the idle and stale-image sweeps and the
+`agent_credential` commissioning described under "Project agent harness" below) is no longer called
+and goes with qits-1111. The agent-container doors keep their paths:
+
+| route | behaviour |
+| --- | --- |
+| `POST …/agent-container/ensure` | creates the row and mints its token if absent, stamps demand, recomputes desired, pushes the runner's estate, answers the state |
+| `POST …/agent-container/stop` | ON_DEMAND: clears the demand, so desired is STOPPED (the token is kept). ALWAYS_ON: **409** `{"error":"FRONT_DESK_ALWAYS_ON"}` |
+| `GET …/agent-container` | the state; `+ qits:agent` |
+| `DELETE …/agent-container` | `remove` to the runner (container **and** volume), row deleted (which unplaces it), token revoked; 204. A wanted desk is created afresh and QUEUED by the next sweep |
+
+- **Desired state** (`FrontDeskDemand`, a list of `FrontDeskDemandSource` beans): RUNNING while the
+  project is `ALWAYS_ON` or `last_demand_at` is inside `qits.projects.agent-idle-timeout` (PT4H).
+  Demand is the ensure door and the daemon frames `AgentDaemonRegistry` counts as use, at most once
+  a minute per project and only on a wanted desk. `FrontDeskSweep` (`agent-idle-sweep-interval`,
+  and at boot, NORMAL mode) creates the row of every ALWAYS_ON project, re-mints a missing token,
+  recomputes desired and stamps `queued_at`; the project.yml flip does the same at once
+  (`FrontDeskHooks` implements `FrontDeskLifecycleChanged`).
+- **Placement is pull** (`FrontDesks.take`): a runner's `reserve` claims the oldest queued row with
+  `update … where runner_id is null`; one row updated answers `take`, else the next is tried, else
+  `nothing`. The server's count of the runner's wanted desks gates it against the row's slots, and
+  only new placement: an owned desk wanted again is started whatever the count. A desk is sticky.
+- **The estate** — the full list of a runner's desks, desired state and applied spec — is pushed on
+  the runner's greeting, on every change and every `qits.projects.desk-runner.estate-interval`;
+  `inventory` lands in `reported_*`, `launchFailed` in `failure_detail`, `removed` completes a
+  DELETE. `runtimeStatus` adds `QUEUED` (wanted, unplaced) and `UNAVAILABLE` (computed, never
+  stored: the runner gone longer than `qits.projects.desk-runner.reconnect-grace`); the answer adds
+  `runnerId`, `runnerName`, `lifecycle` and `queuedAt`.
+- **The spec** is `FrontDeskSpecs.compose`, pure and golden-tested (`FrontDeskSpecsTest`); its
+  `spec_hash` is SHA-256 over canonical JSON (sorted keys, env included). `FrontDeskSpecRoll`
+  (`agent-stale-sweep-interval`) applies a new spec only while the desk is not reported RUNNING or is
+  quiet (`agent-stale-quiet-window`). The image is `registry.qits.<d>/qits/project-agent:<pin>`
+  (the pin rule moved here: the override, else `ProjectAgentImage.VERSION`); `user` is
+  `qits.projects.agent-user`, else the host uid; memory and swap `agent-memory-limit`, then
+  `agent-pids-limit`, `agent-cpus`, `agent-oom-score-adj`. Mounts, network, init and restart policy
+  are the runner's. A blank, dotless or `localhost` `qits.domain` refuses to compose: FAILED
+  `EDGE_PLANE_UNCONFIGURED`.
+- **The token** is one `qits_tok_` per desk (`FrontDeskTokens`, idp kind `agent-container`,
+  claims `{project}`, `gitRefs []`), minted at row creation before the desk can be QUEUED, revoked
+  on DELETE, on project deletion (`ProjectFrontDeskRemoval`) and on `removed` of an unplaced row,
+  never by stop; `FrontDeskTokenReconcile` reaps unclaimed ones. A failed mint is FAILED
+  `TOKEN_UNAVAILABLE: …` until the sweep mints it.
+- **Binding**: `AgentControlSocketAccess` and `DaemonStreamRoute` require a `tok-` subject to be
+  the desk's `token_subject`; the dial-back requires an authenticated caller (the nonce stays the
+  second factor). `SocketBearerLifetime` keeps `/projects/daemon/*` and `/projects/daemon/stream/*`
+  open past the edge's 300 s JWT for `tok-` subjects.
+
+**The desk's environment, exactly** — and nothing else: no `QITS_COMMISSIONED_*`, no
+`*_AUTH_TOKEN_URL`, no `*.internal`, `-qits-` or `.localhost` value (the golden test asserts the
+belts).
+
+| name | value |
+| --- | --- |
+| `TZ` | `qits.projects.agent-timezone`, only when set |
+| `QITS_PROJECTS_DAEMON_URL` | `wss://projects.qits.<d>/projects/daemon/<projectId>` |
+| `QITS_PROJECTS_DAEMON_API_BASE_PATH` | `/projects/container/<projectId>/` |
+| `QITS_PROJECTS_DAEMON_PROJECT_ID` | `<projectId>` |
+| `QITS_PROJECTS_DAEMON_REPO_NAME` | the wrapper, `<slug>-<slug>` |
+| `QITS_PROJECTS_DAEMON_GIT_BASE` | `https://githost.qits.<d>/git` |
+| `QITS_PROJECTS_DAEMON_API_TOKEN` | `qits.projects.daemon-api-token` |
+| `QITS_PROJECTS_DAEMON_API_PORT` / `_HOOKS_PORT` | `13338` / `13337` |
+| `QITS_PROJECTS_DAEMON_CLAUDE_MOUNT` | `/claude-home` |
+| `QITS_PROJECTS_DAEMON_AGENT_CONFIGURATION_PATH` / `_AGENT_CONFIGURATION` | `qits.projects.agent-configuration-path` and the resolved document (both or neither) |
+| `QITS_PROJECTS_DAEMON_LIFECYCLE` | `ALWAYS_ON` or `ON_DEMAND` |
+| `QITS_TOKEN` / `QITS_TOKEN_SUBJECT` | the desk's `token_value` / `token_subject` |
+| `QITS_DOMAIN` | `<d>` |
+| `GIT_CONFIG_GLOBAL` | `/etc/qits-gitconfig` |
+| `QITS_GIT_AUTH_HOST` | `githost.qits.<d>` |
+| `QITS_REPOSITORY_MCP_URL` | `https://projects.qits.<d>/projects/mcp` |
+| `QITS_PLATFORM_MCP_URL` | `https://mcp.qits.<d>/mcp` |
+| `GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL` | `GitIdentity` |
+| `CLAUDE_CONFIG_DIR` / `KIMI_CODE_HOME` | `/claude-home/.claude` / `/claude-home/.kimi-code` |
+| `MAVEN_OPTS` | `-Dmaven.repo.local=/caches/m2` |
+| `npm_config_store_dir` | `/caches/pnpm/store` |
+
 ## Project agent harness
 
 One container per project, holding a clone of that project's wrapper repository and running
@@ -1905,7 +1986,9 @@ go through `vertx-http-proxy` at all** — `proxyUpgrade` does it by hand, becau
 its whole interceptor chain on an upgrade (so the bearer never arrives) and pipes with no
 `writeQueueFull`/`pause`/`drainHandler` at all.
 
-**The env contract**, read from the daemon repo and asserted by `AgentContainerFactoryTest`. Getting
+**The env contract of the direct path** (superseded by the desk's table under "Front desks"; kept
+until qits-1111 deletes the direct path), read from the daemon repo and asserted by
+`AgentContainerFactoryTest`. Getting
 one wrong fails silently: no url leaves the daemon idle, no token leaves its API unbound.
 
     QITS_PROJECTS_DAEMON_URL             the control socket, dialled verbatim
