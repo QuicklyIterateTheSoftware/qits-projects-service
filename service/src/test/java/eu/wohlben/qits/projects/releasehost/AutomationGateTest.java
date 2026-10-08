@@ -283,7 +283,11 @@ public class AutomationGateTest {
     assertEquals(0, executor.calls().size());
   }
 
-  /** A red automation run HOLDS: a person's turn (push, re-run or waive), never a rejection. */
+  /**
+   * A red automation run on a GREEN fold holds: a person's turn (push, re-run or waive), never a
+   * rejection. (Beside a red verdict it rejects — see {@link
+   * #aRedVerdictBesideFailedAutomationsRejectsAndIsRevivedByRetryAndPush}.)
+   */
   @Test
   public void aFailedAutomationHoldsAndIsNotRejected() {
     automations.answer(plainName, SCREENSHOTS, "FAILED");
@@ -334,6 +338,116 @@ public class AutomationGateTest {
     assertEquals(merged, mergedShaOf(plainRepoId, id), "the same fold, rejected as it always was");
     assertTrue(rejectingRunIdOf(id) != null, "and now the red run is the rejecting one");
     assertEquals(0, executor.calls().size());
+  }
+
+  /**
+   * A FAILED note can still carry a kind in flight — FAILED outranks RUNNING when the states are
+   * read together — and a kind in flight may yet commit and re-fold the request, so red still holds.
+   */
+  @Test
+  public void aRedVerdictBesideAFailedAndARunningAutomationHolds() {
+    automations.answer(plainName, SCREENSHOTS, "FAILED");
+    automations.answer(plainName, "estate-pins", "RUNNING");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+
+    redVerdict(plainRepoId, merged);
+
+    JsonPath held = request(plainRepoId, id);
+    assertEquals("PENDING", held.getString("state"), "something is still moving at this fold");
+    assertNull(rejectingRunIdOf(id));
+    assertEquals(0, executor.calls().size());
+  }
+
+  /** Automations that could not be read are an outage, and an outage never rejects. */
+  @Test
+  public void aRedVerdictWithUnreadableAutomationsHolds() {
+    automations.answerNothing();
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+
+    redVerdict(plainRepoId, merged);
+    releaseRequests.sweep();
+
+    JsonPath held = request(plainRepoId, id);
+    assertEquals("PENDING", held.getString("state"), "held, not rejected on an outage");
+    assertTrue(
+        held.getString("detail").startsWith("The automations could not be established for "),
+        held.getString("detail"));
+    assertNull(rejectingRunIdOf(id));
+  }
+
+  /**
+   * <b>qits-760.</b> A red verdict beside automations that have already FAILED — nothing in flight,
+   * so no commit is coming to supersede the fold — rejects exactly as an ungated red does, naming
+   * the run and the failed automation, instead of holding for ever on a real red build. Then the
+   * revivals: a retry of the rejecting run reconsiders it at the same fold; a re-run of the
+   * automation that ends with nothing to commit does not (the red build still stands); and a push —
+   * an automation's own branch joining after a re-run included — re-arms it.
+   */
+  @Test
+  public void aRedVerdictBesideFailedAutomationsRejectsAndIsRevivedByRetryAndPush() {
+    automations.answer(plainName, SCREENSHOTS, "FAILED");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+
+    String redRun = "run-" + UUID.randomUUID();
+    frame(plainRepoId, "BuildFailed", merged, redRun, null, ",\"outcome\":\"FAILED\"");
+
+    JsonPath rejected = request(plainRepoId, id);
+    assertEquals("REJECTED", rejected.getString("state"), "a real red build, nothing coming");
+    assertEquals(redRun, rejectingRunIdOf(id));
+    assertEquals(
+        "Run "
+            + redRun
+            + " finished FAILED for "
+            + merged
+            + "; the automations failed too: Screenshot baselines",
+        rejected.getString("detail"));
+    assertEquals(0, executor.calls().size());
+
+    // A retry of the rejecting run reconsiders it at the same fold: green now, and the automations
+    // gate — still failed — holds it, as it would any green fold.
+    String retry = "run-" + UUID.randomUUID();
+    frame(plainRepoId, "BuildSuccessful", merged, retry, redRun, "");
+    awaitState(plainRepoId, id, "PENDING");
+    assertEquals(merged, mergedShaOf(plainRepoId, id), "reconsidered, not re-folded");
+    assertEquals(
+        "Screenshot baselines failed at " + merged.substring(0, 10) + "; push, re-run, or waive this fold",
+        request(plainRepoId, id).getString("detail"));
+
+    // The retry is red too: rejected again, at the same fold, by the retry.
+    String secondRetry = "run-" + UUID.randomUUID();
+    frame(plainRepoId, "BuildFailed", merged, secondRetry, retry, ",\"outcome\":\"FAILED\"");
+    awaitState(plainRepoId, id, "REJECTED");
+    assertEquals(secondRetry, rejectingRunIdOf(id));
+
+    // The automation is re-run and ends with nothing to commit. No push, no retry: nothing revives
+    // the request, which is right — the red build that rejected it still stands.
+    automations.answer(plainName, SCREENSHOTS, "FRESH");
+    releaseRequests.sweep();
+    assertEquals("REJECTED", stateOf(plainRepoId, id));
+
+    // The automation's re-run commits instead: its branch joins the request, which re-folds it.
+    releaseRequests.addSource(id, "maintenance/automations/screenshot-baselines/x", "maint", null);
+    awaitFoldToMove(plainRepoId, id, merged);
+    awaitState(plainRepoId, id, "PENDING");
+    assertNull(rejectingRunIdOf(id), "the re-arm cleared the rejection");
+  }
+
+  /** A push to a source branch re-arms a request rejected beside failed automations. */
+  @Test
+  public void aPushRevivesARequestRejectedBesideFailedAutomations() {
+    automations.answer(plainName, SCREENSHOTS, "FAILED");
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    redVerdict(plainRepoId, merged);
+    assertEquals("REJECTED", stateOf(plainRepoId, id));
+
+    headMoved(plainRepoId, "work");
+    awaitFoldToMove(plainRepoId, id, merged);
+    awaitState(plainRepoId, id, "PENDING");
+    assertNull(rejectingRunIdOf(id));
   }
 
   // -----------------------------------------------------------------------------------------
@@ -527,6 +641,12 @@ public class AutomationGateTest {
   }
 
   private void frame(String repoId, String name, String sha, String extra) {
+    frame(repoId, name, sha, "run-" + UUID.randomUUID(), null, extra);
+  }
+
+  /** The same with the run pinned and, for {@code qits ci retry}'s shape, the run it re-fires. */
+  private void frame(
+      String repoId, String name, String sha, String runId, String retryOfRunId, String extra) {
     listener.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -536,8 +656,10 @@ public class AutomationGateTest {
                 + sha
                 + "\",\"repoId\":\""
                 + repoId
-                + "\",\"runId\":\"run-"
-                + UUID.randomUUID()
+                + "\""
+                + (retryOfRunId == null ? "" : ",\"retryOfRunId\":\"" + retryOfRunId + "\"")
+                + ",\"runId\":\""
+                + runId
                 + "\""
                 + extra
                 + "}",

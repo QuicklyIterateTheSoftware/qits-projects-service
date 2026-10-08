@@ -136,7 +136,9 @@ import org.jboss.logging.Logger;
  *
  * <ol>
  *   <li><b>No verdict is red.</b> One red verdict is a REJECTED request, immediately — nothing to
- *       wait for.
+ *       wait for — except while the fold's automations are still moving (or unreadable): a commit
+ *       from one may yet supersede the fold, so it holds. Automations that have already failed are
+ *       not moving, and a red verdict beside them rejects.
  *   <li><b>A verdict is green.</b> <b>No verdict is not a pass</b>: the request stays PENDING and
  *       the sweep asks again, for as long as it takes. A repository that <em>declares</em> a
  *       pipeline and whose pipeline never materializes therefore cannot release, and that is what a
@@ -2900,17 +2902,32 @@ public class ReleaseRequests {
                           .orElse(null);
                   // Asked once, here, because both the red arm and the gate below read it.
                   boolean automationsGated = automationsApply(row.repoId);
+                  // The labels of this fold's failed automations when nothing else about them is
+                  // still moving; null everywhere else, which is nearly always.
+                  String settledAutomationFailures = null;
                   if (red != null && automationsGated && !automationsPassed(row)) {
-                    // A RED VERDICT ON A FOLD WHOSE AUTOMATIONS ARE NOT FRESH HOLDS INSTEAD OF
-                    // REJECTING — the one ordering change the automations gate made. That fold is
-                    // about to be superseded by an automation's commit (or is waiting on a person's
-                    // re-run or waiver), and a stale screenshot reference failing QA is exactly the
-                    // red this must not turn into a rejection and an unattended-gate ticket. No
-                    // rejectingRunId, no ticket: once the automations are fresh at this same fold,
-                    // the verdict is read again on the next pass and rejects exactly as before.
-                    waiting(row, automationDetail(row));
-                    automationsHeld.set(true);
-                    return false;
+                    settledAutomationFailures = settledAutomationFailures(row);
+                    if (settledAutomationFailures == null) {
+                      // A RED VERDICT ON A FOLD WHOSE AUTOMATIONS ARE STILL MOVING HOLDS INSTEAD OF
+                      // REJECTING — the one ordering change the automations gate made. That fold is
+                      // about to be superseded by an automation's commit, and a stale screenshot
+                      // reference failing QA is exactly the red this must not turn into a rejection
+                      // and an unattended-gate ticket. No rejectingRunId, no ticket: once the
+                      // automations settle at this same fold, the verdict is read again on the next
+                      // pass. An automation state that could not be read holds here too: an outage
+                      // is a fact about the moment, never grounds to reject.
+                      waiting(row, automationDetail(row));
+                      automationsHeld.set(true);
+                      return false;
+                    }
+                    // BUT A RED VERDICT BESIDE AUTOMATIONS THAT HAVE ALREADY FAILED REJECTS
+                    // (qits-760). Nothing is in flight, so no commit is coming to supersede this
+                    // fold, and holding it would hide a real red build behind "push, re-run, or
+                    // waive" for ever — measured on qits-landing-app d69c96e5, PENDING on a genuine
+                    // test failure with its screenshot baselines red. It falls through to the red
+                    // arm and rejects exactly as an ungated fold would, naming both. A push (an
+                    // automation re-run's own commit included) re-arms it; a retry of the rejecting
+                    // run reconsiders it.
                   }
                   if (red != null) {
                     row.state = ReleaseRequest.State.REJECTED;
@@ -2926,7 +2943,10 @@ public class ReleaseRequests {
                             + " finished "
                             + red.status()
                             + " for "
-                            + row.mergedSha;
+                            + row.mergedSha
+                            + (settledAutomationFailures == null
+                                ? ""
+                                : "; the automations failed too: " + settledAutomationFailures);
                     row.updatedAt = Instant.now();
                     if (isUnattended(row) && row.projectId != null) {
                       unattended.set(
@@ -3125,6 +3145,36 @@ public class ReleaseRequests {
             + (note.detail() == null ? "" : ": " + note.detail());
       }
     }
+  }
+
+  /**
+   * The labels of the automations that failed at this request's current fold, <b>only when nothing
+   * about that fold's automations is still moving</b> — every kind FRESH or FAILED, at least one
+   * FAILED. Null otherwise: no note, a note about another fold, one still REQUESTED, RUNNING,
+   * COMMITTED or SUPERSEDED (a commit may yet re-fold the request), and one whose states could not
+   * be read. Null is the hold, so an outage never turns a red verdict into a rejection.
+   *
+   * <p>A FAILED note can still carry a kind in flight — FAILED outranks PENDING in {@link
+   * AutomationRefresh#stateOf} — which is why every entry is asked and not only the note's state.
+   */
+  private String settledAutomationFailures(ReleaseRequest row) {
+    AutomationLedger.Note note =
+        automationLedger
+            .noteFor(row.id)
+            .filter(held -> row.mergedSha.equals(held.foldSha()))
+            .orElse(null);
+    if (note == null
+        || note.state() != AutomationLedger.State.FAILED
+        || !note.automations().stream()
+            .allMatch(entry -> "FRESH".equals(entry.state()) || "FAILED".equals(entry.state()))) {
+      return null;
+    }
+    String failed =
+        note.automations().stream()
+            .filter(entry -> "FAILED".equals(entry.state()))
+            .map(AutomationLedger.Automation::label)
+            .collect(Collectors.joining(", "));
+    return failed.isEmpty() ? null : failed;
   }
 
   /** One kind's state as the hold sentence says it. */
