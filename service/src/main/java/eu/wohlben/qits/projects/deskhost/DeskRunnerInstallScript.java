@@ -32,9 +32,17 @@ public class DeskRunnerInstallScript {
   /** Where {@code install.sh} is served, under this service's public origin. */
   public static final String PATH = "/projects/api/runners/install.sh";
 
-  /** How the script names the place an operator got the line from. */
+  /**
+   * How the script names the place an operator got the line from, and the node's own tuning: the
+   * volumes a desk mounts as its agent home and its build caches. Unset, the runner uses volumes of
+   * its own; on a node that already has the platform's shared ones (the platform host's
+   * {@code qits_shared_dot_claude}, {@code qits_shared_m2}, {@code qits_shared_pnpm}) the line names
+   * them, so desks share the login and caches every other container there mounts (owner,
+   * 2026-10-08).
+   */
   static final InstallScript.InstallPage PAGE =
-      new InstallScript.InstallPage("the Projects UI's Runners page", List.of());
+      new InstallScript.InstallPage(
+          "the Projects UI's Runners page", List.of("CLAUDE_VOLUME", "M2_VOLUME", "PNPM_VOLUME"));
 
   /** The front-desk runner's identity at the pinned version — the runner's own, see the javadoc. */
   public static final RunnerIdentity IDENTITY =
