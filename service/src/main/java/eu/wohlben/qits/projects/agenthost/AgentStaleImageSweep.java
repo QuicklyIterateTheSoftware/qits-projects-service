@@ -4,7 +4,6 @@ import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Project;
 import eu.wohlben.qits.projectsdaemon.protocol.DaemonProtocol;
 import io.quarkus.runtime.LaunchMode;
-import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
@@ -112,9 +111,8 @@ public class AgentStaleImageSweep {
    * or a {@code quarkus:dev} session must not start stopping containers in the background. The suite
    * drives {@link #sweep(Instant)} directly instead, which is the whole reason it takes a clock.
    */
-  @Scheduled(
-      every = "{qits.projects.agent-stale-sweep-interval}",
-      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+  // qits-767: no longer scheduled — the front desk (deskhost/) replaced this direct-path pass, and
+  // two paths must never run. qits-1111 deletes the class.
   void sweepStaleAgents() {
     if (LaunchMode.current() != LaunchMode.NORMAL) {
       return;

@@ -45,9 +45,9 @@ import org.jboss.logging.Logger;
  * connection and what each was told. {@link DeskRunnerSocket} owns the WebSocket lifecycle and
  * forwards frames here. A copy of qits-workspaces-service's {@code WorkspaceRunnerRegistry}, in the
  * desk spelling, without the workspace rows: the desks themselves — {@code estate}, {@code take},
- * {@code remove}, the inventory — are {@link DeskRunnerWork}'s, a port the front-desk task
- * implements. What lands here greets, upgrades, quarantines and answers every {@code reserve}
- * {@code nothing}.
+ * {@code remove}, the inventory — are {@link DeskRunnerWork}'s ({@link FrontDeskWork}). What
+ * lands here greets, upgrades and quarantines, and answers {@code nothing} to a {@code reserve} the
+ * runner may not make.
  *
  * <p><b>It is the {@link DeskRunnerSessions} the runner doors read</b>: connected, connected-since,
  * the pin, the login command,

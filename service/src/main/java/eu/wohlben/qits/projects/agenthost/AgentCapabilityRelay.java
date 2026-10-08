@@ -167,7 +167,7 @@ public class AgentCapabilityRelay {
 
   @Inject AgentTunnels tunnels;
 
-  @Inject AgentContainerFactory factory;
+  @Inject eu.wohlben.qits.projects.deskhost.FrontDeskSpecs factory;
 
   @Inject ObjectMapper json;
 

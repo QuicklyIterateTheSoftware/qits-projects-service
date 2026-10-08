@@ -70,13 +70,14 @@ public class PlatformStateReset implements QuarkusTestBeforeEachCallback {
    *
    * <p>agent_credential is in the list even though it has no relation to the other three: a row one
    * test commissioned would otherwise still be there for the next, and the credential reconcile
-   * reads the whole table.
+   * reads the whole table. front_desk (qits-767) references project, so it is truncated with it.
    */
   private static void truncate(AgroalDataSource dataSource) {
     for (int attempt = 1; ; attempt++) {
       try (Connection connection = dataSource.getConnection();
           Statement sql = connection.createStatement()) {
-        sql.execute("truncate table repository_name, repository, project, agent_credential");
+        sql.execute(
+            "truncate table front_desk, repository_name, repository, project, agent_credential");
         return;
       } catch (SQLException e) {
         if (attempt == 5 || !DEADLOCK.equals(e.getSQLState())) {

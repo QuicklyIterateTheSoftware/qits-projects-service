@@ -74,6 +74,12 @@ public class AgentDaemonRegistry {
    */
   @Inject Instance<AgentCapabilityRelay> capabilityRelay;
 
+  /**
+   * The front desk's demand (qits-767): a frame that evidences use is demand for the desk too,
+   * stamped at most once a minute per project. Optional for the same reason the relay is.
+   */
+  @Inject Instance<eu.wohlben.qits.projects.deskhost.FrontDeskDemand> frontDeskDemand;
+
   private final ConcurrentHashMap<String, DaemonConnection> clients = new ConcurrentHashMap<>();
 
   /**
@@ -477,6 +483,9 @@ public class AgentDaemonRegistry {
     // container. The rule is an allowlist and the argument for that is in evidencesUse.
     if (evidencesUse(message)) {
       lastAgentActivity.put(projectId, Instant.now());
+      if (frontDeskDemand != null && frontDeskDemand.isResolvable()) {
+        frontDeskDemand.get().evidenced(projectId);
+      }
     }
     DaemonConnection client = clients.get(projectId);
     switch (message) {

@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The {@link DeskRunnerDesks} shipped until the front-desk task (qits-767) lands the {@code
- * front_desk} table: no runner owns a desk. {@code @DefaultBean}, so that implementation wins the
- * injection point simply by existing.
+ * The {@link DeskRunnerDesks} of this module on its own — its suite, which has no front desks wired:
+ * no runner owns a desk. {@code @DefaultBean}, so the service's {@code deskhost/FrontDeskRunnerDesks},
+ * which reads {@code front_desk} (qits-767), wins the injection point simply by existing.
  */
 @ApplicationScoped
 @DefaultBean

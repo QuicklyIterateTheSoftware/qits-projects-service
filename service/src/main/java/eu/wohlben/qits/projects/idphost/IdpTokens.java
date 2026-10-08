@@ -93,6 +93,16 @@ public class IdpTokens {
    * @throws AgentCredentialException when not wired, or refused, classified retryable or not
    */
   public Issued commission(String contextKind, String contextId, Map<String, String> claims) {
+    return commission(contextKind, contextId, claims, null);
+  }
+
+  /**
+   * {@link #commission(String, String, Map)} stating the refs the token may push: a non-null {@code
+   * gitRefs} is sent as {@code gitRefs} (an empty list is "may push nothing", the front desk's
+   * qits-767 commission), null leaves the member out.
+   */
+  public Issued commission(
+      String contextKind, String contextId, Map<String, String> claims, List<String> gitRefs) {
     if (!enabled()) {
       throw new AgentCredentialException(
           "Cannot commission a "
@@ -107,6 +117,9 @@ public class IdpTokens {
     body.put("contextId", contextId);
     if (claims != null && !claims.isEmpty()) {
       body.put("claims", claims);
+    }
+    if (gitRefs != null) {
+      body.put("gitRefs", List.copyOf(gitRefs));
     }
     String doing = "commissioning a " + contextKind + " token for " + contextId;
     String json;

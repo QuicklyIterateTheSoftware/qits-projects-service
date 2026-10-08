@@ -224,31 +224,8 @@ class AgentCommissioningTest {
         "a DomainException would be rethrown with a status; this must land in the FAILED arm");
   }
 
-  /**
-   * And that is what the ladder does with it: 200 with {@code FAILED} and the reason on {@code
-   * failureDetail}, the same overlay a provision that failed uses. A panel told "the runtime broke"
-   * can offer a retry; a 500 could not.
-   */
-  @Test
-  void aCommissioningFailureSurfacesThroughTheProvisionFailureOverlay() {
-    String id = createProject();
-    runtime.failNextRun(
-        new AgentCredentialException(
-            "Could not commission a credential for the agent container of project "
-                + id
-                + " after 3 attempt(s): qits-idp unreachable",
-            true));
-
-    given()
-        .when()
-        .post("/projects/api/projects/" + id + "/agent-container/ensure")
-        .then()
-        .statusCode(200)
-        .body("container.runtimeStatus", org.hamcrest.Matchers.is("FAILED"))
-        .body(
-            "container.failureDetail",
-            org.hamcrest.Matchers.containsString("Could not commission a credential"));
-  }
+  // The ladder's FAILED overlay went with the direct-path doors (qits-767); the front desk's FAILED
+  // states are FrontDeskTest's.
 
   /** Handing a credential back is idempotent — a project holding none is not an error. */
   @Test

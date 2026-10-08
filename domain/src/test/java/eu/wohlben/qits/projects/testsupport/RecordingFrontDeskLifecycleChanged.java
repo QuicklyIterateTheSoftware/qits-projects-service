@@ -2,17 +2,21 @@ package eu.wohlben.qits.projects.testsupport;
 
 import eu.wohlben.qits.projects.control.FrontDeskLifecycleChanged;
 import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Alternative;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * A TEST-SCOPE {@link FrontDeskLifecycleChanged} that records the calls instead of acting on them.
- * An ordinary bean, so it wins over the shipped {@code @DefaultBean} {@code
- * NoopFrontDeskLifecycleChanged} simply by existing — the arrangement {@link
- * RecordingProjectAnnouncer} makes with its port.
+ * {@code @Alternative @Priority}, so it wins over the shipped {@code @DefaultBean} {@code
+ * NoopFrontDeskLifecycleChanged} and, in the service's suite, over the front desk's real
+ * implementation too — a suite about the desk injects that one by its own type.
  */
 @ApplicationScoped
+@Alternative
+@Priority(1)
 public class RecordingFrontDeskLifecycleChanged implements FrontDeskLifecycleChanged {
 
   /** One call, as the reconcile made it. */

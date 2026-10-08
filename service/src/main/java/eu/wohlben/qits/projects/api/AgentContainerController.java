@@ -1,71 +1,70 @@
 package eu.wohlben.qits.projects.api;
 
-import eu.wohlben.qits.projects.agenthost.AgentContainerState;
-import eu.wohlben.qits.projects.agenthost.AgentContainers;
 import eu.wohlben.qits.projects.agenthost.AgentRuntimeStatus;
+import eu.wohlben.qits.projects.deskhost.FrontDeskState;
+import eu.wohlben.qits.projects.deskhost.FrontDesks;
+import eu.wohlben.qits.projects.entity.FrontDeskLifecycle;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.time.Instant;
+import java.util.UUID;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
- * The per-project agent container's lifecycle: ensure it is up, stop it, read what it is doing.
+ * The per-project front desk's lifecycle (qits-767): ensure it is wanted, stop it, delete it, read
+ * what it is doing. The paths keep their {@code agent-container} name — the desk <em>is</em> the
+ * project's agent container, now placed on a front-desk runner rather than started by this service.
  *
- * <p>Three routes and one response shape, deliberately. The panel that drives this has exactly one
- * question — "can I talk to the agent yet?" — and answering it the same way from all three keeps
- * the client's state machine to one branch: it renders {@code container.runtimeStatus} and, when
- * that is {@code RUNNING}, opens its terminal through {@code /projects/container/{projectId}/…}.
+ * <p>One response shape for every route that answers a body. The panel that drives this has one
+ * question — "can I talk to the agent yet?" — and renders {@code container.runtimeStatus}: QUEUED
+ * while the desk waits for a runner, PROVISIONING once one took it, RUNNING when its inventory says
+ * so, UNAVAILABLE while its runner is gone past the reconnect grace, FAILED with {@code
+ * failureDetail}. When it is RUNNING the panel opens its terminal through {@code
+ * /projects/container/{projectId}/…}, which reaches the desk's daemon down its own tunnel.
  *
- * <p>The two halves of the answer are independent on purpose. {@code runtimeStatus} is docker's
- * view; {@code daemonConnected} is whether the process inside has dialled home. A container can be
- * {@code RUNNING} with no daemon connected for the seconds between {@code docker start} and the
- * first {@code Hello}, and the client shows "starting" rather than a broken terminal.
- *
- * <p><b>A container whose provision failed is {@code FAILED}, not {@code RUNNING}.</b> The daemon
- * clones the project into {@code /workspace} on boot; when that fails the container stays up and
- * docker calls it healthy, so the honest answer comes from what the daemon said rather than from
- * what docker sees. {@code failureDetail} carries the reason, and it is what the panel shows
- * instead of a terminal onto an empty checkout.
- *
- * <p>Everything below the surface is in {@code agenthost/}. This class only names the routes.
+ * <p>Everything below the surface is in {@code deskhost/FrontDesks}. This class only names the
+ * routes.
  */
-// No @Consumes: all three routes are verbs on a resource and take no body, and declaring one would
-// make a POST with no Content-Type a 415 rather than the action it plainly is.
+// No @Consumes: every route is a verb on a resource and takes no body, and declaring one would make
+// a POST with no Content-Type a 415 rather than the action it plainly is.
 @Path("/projects/{projectId}/agent-container")
 @Produces(MediaType.APPLICATION_JSON)
 @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
 public class AgentContainerController {
 
-  @Inject AgentContainers agentContainers;
+  @Inject FrontDesks frontDesks;
 
-  /** The single response body all three routes answer with. */
+  /** The single response body the ensure, stop and read routes answer with. */
   public record AgentContainerResponse(
-      @Schema(description = "The project's agent container, as this service last observed it.")
+      @Schema(description = "The project's front desk, as this service last observed it.")
           ContainerView container) {
 
     /**
-     * @param runtimeStatus what the container is doing
+     * @param runtimeStatus what the desk is doing
      * @param daemonConnected whether the in-container daemon holds an open control socket
      * @param daemonVersion the daemon binary's release identity, or null when it has not said or
      *     was built without a version stamp
-     * @param pinnedDaemonVersion the daemon build this service would start a container on today —
-     *     the agent image's pinned tag, so a client can name the version a restart would move to and
-     *     not only the one the container is on. Present whenever there is a container to compare it
-     *     against, and null for {@code ABSENT} or while a bring-up is still in flight.
+     * @param pinnedDaemonVersion the daemon build a desk is composed on today — the project-agent
+     *     image's pinned tag. Null for {@code ABSENT}.
      * @param daemonVersionStale whether the connected daemon's version is not {@code
-     *     pinnedDaemonVersion}. False when no daemon is connected, because then nothing has said
-     *     what the container is running and "not stale" is the absence of a claim rather than a
-     *     verdict. A container reported stale is still {@code RUNNING} and still usable — it simply
-     *     will not pick the pin up until it is stopped, which the Stop verb below does and which a
-     *     host-side sweep also does once the container is quiet.
-     * @param failureDetail why {@code runtimeStatus} is {@code FAILED} — an ensure that could not
-     *     produce a container, or a daemon that could not clone the project into {@code /workspace}.
-     *     Null for every other status. A detail rather than a sixth status constant, because the
-     *     five status strings are a published contract this client already switches on.
+     *     pinnedDaemonVersion}. False when no daemon is connected. A stale desk is rolled onto the
+     *     pin by the spec roll once it is quiet.
+     * @param failureDetail why {@code runtimeStatus} is {@code FAILED}: the runner's launch failure,
+     *     the daemon's failed provision, {@code TOKEN_UNAVAILABLE: …} or {@code
+     *     EDGE_PLANE_UNCONFIGURED}. Null for every other status.
+     * @param runnerId the front-desk runner holding the desk, or null while it is unplaced
+     * @param runnerName that runner's name, or null
+     * @param lifecycle the project's {@code front_desk.lifecycle} from its {@code project.yml}
+     * @param queuedAt since when the desk has waited for a runner, or null
      */
     public record ContainerView(
         AgentRuntimeStatus runtimeStatus,
@@ -73,9 +72,13 @@ public class AgentContainerController {
         String daemonVersion,
         String pinnedDaemonVersion,
         boolean daemonVersionStale,
-        String failureDetail) {}
+        String failureDetail,
+        UUID runnerId,
+        String runnerName,
+        FrontDeskLifecycle lifecycle,
+        Instant queuedAt) {}
 
-    static AgentContainerResponse of(AgentContainerState state) {
+    static AgentContainerResponse of(FrontDeskState state) {
       return new AgentContainerResponse(
           new ContainerView(
               state.runtimeStatus(),
@@ -83,36 +86,53 @@ public class AgentContainerController {
               state.daemonVersion(),
               state.pinnedDaemonVersion(),
               state.daemonVersionStale(),
-              state.failureDetail()));
+              state.failureDetail(),
+              state.runnerId(),
+              state.runnerName(),
+              state.lifecycle(),
+              state.queuedAt()));
     }
   }
 
   /**
-   * Bring the agent container up and answer what it is now: running containers are a no-op, stopped
-   * ones are started in place (lossless — the checkout survives), and an absent one is provisioned.
-   * Synchronous, so a 200 means docker has accepted the container; the daemon's own boot self-clone
-   * runs after it and is reported through {@code daemonConnected} on a later read.
+   * Want the desk: created (with its token) if absent, demand stamped, its desired state
+   * recomputed and its runner told. Answers at once — a desk still waiting for a runner is QUEUED,
+   * one being brought up PROVISIONING.
    */
   @POST
   @Path("/ensure")
   public AgentContainerResponse ensure(@PathParam("projectId") String projectId) {
-    return AgentContainerResponse.of(agentContainers.ensure(projectId));
+    return AgentContainerResponse.of(frontDesks.ensure(projectId));
   }
 
   /**
-   * Stop the agent container gracefully, keeping it and its checkout for a later lossless start.
-   * Idempotent: a project with no container answers {@code ABSENT} rather than failing.
+   * Stop an ON_DEMAND desk: its demand is cleared, so it is desired STOPPED and its runner stops the
+   * container (keeping it and its volume). An ALWAYS_ON desk answers 409 {@code
+   * {"error":"FRONT_DESK_ALWAYS_ON"}}. A project with no desk answers {@code ABSENT}.
    */
   @POST
   @Path("/stop")
   public AgentContainerResponse stop(@PathParam("projectId") String projectId) {
-    return AgentContainerResponse.of(agentContainers.stop(projectId));
+    return AgentContainerResponse.of(frontDesks.stop(projectId));
   }
 
-  /** What the agent container is doing, changing nothing. {@code ABSENT} when there is none. */
+  /** What the desk is doing, changing nothing. {@code ABSENT} when there is none. */
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public AgentContainerResponse get(@PathParam("projectId") String projectId) {
-    return AgentContainerResponse.of(agentContainers.status(projectId));
+    return AgentContainerResponse.of(frontDesks.status(projectId));
+  }
+
+  /**
+   * Delete the desk: its runner is sent {@code remove} (container <b>and</b> volume), the desk is
+   * unplaced and its row deleted, and its token revoked. 204, also when there was none. An ALWAYS_ON
+   * desk is created afresh, with a new token, and QUEUED by the next sweep.
+   */
+  @DELETE
+  @Operation(summary = "Delete the project's front desk: its container, its volume and its token")
+  @APIResponse(responseCode = "204", description = "The desk is gone, or there was none")
+  public Response delete(@PathParam("projectId") String projectId) {
+    frontDesks.remove(projectId);
+    return Response.noContent().build();
   }
 }

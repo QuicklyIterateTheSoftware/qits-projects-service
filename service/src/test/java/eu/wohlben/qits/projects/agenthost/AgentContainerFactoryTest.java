@@ -121,40 +121,7 @@ class AgentContainerFactoryTest {
         "repo and the pinned jar's version joined as <repo>:<version>, fully qualified");
   }
 
-  /**
-   * The emergency hatch, and the state it is shipped in.
-   *
-   * <p>{@code qits.projects.agent-image-version-override} is what a deployment sets to start a
-   * different tag than the pin; absent — and blank, which is what a deployment rendering {@code KEY=}
-   * produces — the pin wins. That pair is the whole contract, and it replaced a much worse one:
-   * the key used to be {@code qits.projects.agent-image-version}, which is exactly the key
-   * qits-configuration's release listener writes on every image release, so the "override" was
-   * overwritten by the automatic pin on every deploy. A plain instance stands in for the injection,
-   * so both arms are exercised without rebooting the app.
-   */
-  @Test
-  void theOverrideWinsWhenSetAndThePinWinsWhenItIsNot() {
-    AgentContainerFactory overridden = new AgentContainerFactory();
-    overridden.imageRepo = "registry.dev.localhost:8080/qits/project-agent";
-    overridden.imageVersionOverride = Optional.of("2026.999.000000");
-
-    assertEquals("2026.999.000000", overridden.imageVersion());
-    assertEquals(
-        "registry.dev.localhost:8080/qits/project-agent:2026.999.000000", overridden.image());
-
-    AgentContainerFactory unset = new AgentContainerFactory();
-    unset.imageRepo = "registry.dev.localhost:8080/qits/project-agent";
-    unset.imageVersionOverride = Optional.empty();
-    assertEquals(ProjectAgentImage.VERSION, unset.imageVersion(), "absent is the shipped state");
-
-    AgentContainerFactory blank = new AgentContainerFactory();
-    blank.imageRepo = "registry.dev.localhost:8080/qits/project-agent";
-    blank.imageVersionOverride = Optional.of("   ");
-    assertEquals(
-        ProjectAgentImage.VERSION,
-        blank.imageVersion(),
-        "a deployment rendering KEY= is a present, empty value and must not become the image tag");
-  }
+  // The emergency-hatch case moved to FrontDeskSpecsTest with the pin rule (qits-767).
 
   /**
    * The container runs only {@code qits-projects-daemon}, via the image ENTRYPOINT, with no

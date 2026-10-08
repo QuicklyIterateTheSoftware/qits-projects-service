@@ -6,10 +6,8 @@ import java.util.List;
 
 /**
  * The front desk's half of a runner's socket (qits-767): what {@link DeskRunnerRegistry} asks once a
- * runner may be given work, and where the desk frames it does not handle itself go. A port, because
- * the front desk — the estate, {@code take}, {@code remove}, the inventory — is the front-desk
- * task's; until it lands {@link NoDeskRunnerWork} answers every {@code reserve} {@code nothing},
- * adopts no held desk and drops every desk frame.
+ * runner may be given work, and where the desk frames it does not handle itself go. {@link
+ * FrontDeskWork} implements it: the estate, {@code take}, {@code remove}, the inventory.
  *
  * <p><b>The quarantine gate is the registry's, not this port's.</b> {@link #reserve} is asked only
  * for a session greeted at the pin, not draining, of a runner in service: a quarantined runner, one

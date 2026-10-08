@@ -2,10 +2,8 @@ package eu.wohlben.qits.projects.agenthost;
 
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.runtime.StartupEvent;
-import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
-import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -61,7 +59,7 @@ public class AgentCredentialReconcile {
    * {@code StartupSelfSeed} precedent: it reaches two services over the network and readiness must
    * not wait on either.
    */
-  void onStart(@Observes StartupEvent event) {
+  void onStart(StartupEvent event) {
     if (LaunchMode.current() != LaunchMode.NORMAL) {
       return;
     }
@@ -73,9 +71,8 @@ public class AgentCredentialReconcile {
    * StartupSelfSeed} both carry: a suite or a {@code quarkus:dev} session must not start revoking
    * credentials in the background.
    */
-  @Scheduled(
-      every = "${qits.projects.agent-credentials.reconcile-interval:1h}",
-      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+  // qits-767: no longer scheduled — the front desk (deskhost/) replaced this direct-path pass, and
+  // two paths must never run. qits-1111 deletes the class.
   void sweep() {
     if (LaunchMode.current() != LaunchMode.NORMAL) {
       return;

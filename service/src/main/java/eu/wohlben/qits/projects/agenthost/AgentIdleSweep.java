@@ -2,7 +2,6 @@ package eu.wohlben.qits.projects.agenthost;
 
 import eu.wohlben.qits.projects.control.ProjectService;
 import eu.wohlben.qits.projects.entity.Project;
-import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Duration;
@@ -86,9 +85,8 @@ public class AgentIdleSweep {
    * How often the sweep runs. A floor on how late a stop is, not the timeout: a sweep that runs a
    * minute after the deadline still stops a container that became idle at the deadline.
    */
-  @Scheduled(
-      every = "{qits.projects.agent-idle-sweep-interval}",
-      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+  // qits-767: no longer scheduled — the front desk (deskhost/) replaced this direct-path pass, and
+  // two paths must never run. qits-1111 deletes the class.
   void sweepIdleAgents() {
     sweep(Instant.now());
   }

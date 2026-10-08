@@ -1,6 +1,5 @@
 package eu.wohlben.qits.projects.deskhost;
 
-import eu.wohlben.qits.projects.agenthost.AgentContainerFactory;
 import eu.wohlben.qits.projects.error.DomainException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -25,8 +24,8 @@ import java.util.regex.Pattern;
  *
  * <ul>
  *   <li><b>The user and the mount are a project agent container's</b>, read off the injected {@link
- *       AgentContainerFactory} — its host uid ({@link AgentContainerFactory#hostUid()}) and its
- *       {@code qits.projects.claude-mount} ({@link AgentContainerFactory#claudeMount()}), under
+ *       FrontDeskSpecs} — its host uid ({@link FrontDeskSpecs#deskUser()}) and its
+ *       {@code qits.projects.claude-mount} ({@link FrontDeskSpecs#claudeMount()}), under
  *       which it sets {@code CLAUDE_CONFIG_DIR=<mount>/.claude} — so a login lands where every desk
  *       reads it and is readable by the user it runs as. Two copies of one value is what let the
  *       workspaces command drift (qits-945); there is one.
@@ -57,7 +56,7 @@ public class DeskRunnerLoginCommand {
 
   @Inject DeskRunnerPins pins;
 
-  @Inject AgentContainerFactory agentContainers;
+  @Inject FrontDeskSpecs specs;
 
   /** The runner's agent home volume on its node, as the runner names it. */
   public static String dotClaudeVolume(UUID runnerId) {
@@ -80,7 +79,7 @@ public class DeskRunnerLoginCommand {
       return null;
     }
     return command(
-        volume, image, Long.toString(agentContainers.hostUid()), agentContainers.claudeMount());
+        volume, image, specs.deskUser(), specs.claudeMount());
   }
 
   /** Whether {@code volume} is a plain docker volume name, safe to splice into a shell line. */

@@ -157,8 +157,17 @@ public class AgentContainerFactory {
    * value rather than an absent one — which would otherwise be started as the image tag {@code ""}.
    */
   public String imageVersion() {
-    return imageVersionOverride.filter(version -> !version.isBlank()).orElse(ProjectAgentImage.VERSION);
+    // A hand-built instance (the direct path's own unit suites) has no FrontDeskSpecs; the rule is
+    // the same one.
+    return frontDeskSpecs != null
+        ? frontDeskSpecs.imageVersion()
+        : imageVersionOverride
+            .filter(version -> !version.isBlank())
+            .orElse(ProjectAgentImage.VERSION);
   }
+
+  /** The pin rule's one home since qits-767; this direct-path class is deleted by qits-1111. */
+  @Inject eu.wohlben.qits.projects.deskhost.FrontDeskSpecs frontDeskSpecs;
 
   /**
    * The shared Docker network every agent container joins (and qits-projects is on), so the daemon
