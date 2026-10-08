@@ -97,6 +97,7 @@ erDiagram
     instant implemented_at
     instant implementing_at
     long number "not null"
+    string pre_approved_by
     string project_id "not null"
     string repository_id
     string slug "not null"
