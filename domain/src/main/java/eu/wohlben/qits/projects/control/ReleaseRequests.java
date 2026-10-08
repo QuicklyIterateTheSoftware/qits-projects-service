@@ -54,6 +54,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -2958,20 +2959,40 @@ public class ReleaseRequests {
                       waiting(row, "Waiting for a CI verdict for " + shortSha(row.mergedSha));
                       return false;
                     }
-                    Integer active =
-                        activeBuilds.isResolvable()
-                            ? activeBuilds.get().activeFor(row.repoId, row.mergedSha).orElse(null)
-                            : null;
+                    ActiveBuilds probe = activeBuilds.isResolvable() ? activeBuilds.get() : null;
+                    Optional<Integer> asked =
+                        probe == null
+                            ? Optional.empty()
+                            : probe.activeFor(row.repoId, row.mergedSha);
+                    Integer active = asked == null ? null : asked.orElse(null);
                     if (active != null && active > 0) {
                       // Vouched, but qits-ci still has runs on this very fold: a second pipeline
-                      // can still come back red. Only a POSITIVE count holds — "could not
-                      // ask" (no probe, unreachable, unreadable) never overrides the vouch, or a
-                      // platform with no probe configured could never release a green commit. It
-                      // narrows the CI gate and never satisfies one, which is why it is inside this
-                      // arm: a repository with no CI gate has nothing for a probe to narrow.
+                      // can still come back red. It narrows the CI gate and never satisfies one,
+                      // which is why it is inside this arm: a repository with no CI gate has
+                      // nothing for a probe to narrow.
                       waiting(
                           row,
                           active + " CI run(s) are still in flight for " + shortSha(row.mergedSha));
+                      return false;
+                    }
+                    if (active == null && probe != null && probe.configured()) {
+                      // A PROBE THAT IS THERE AND COULD NOT ANSWER HOLDS (qits-760). The vouch
+                      // above may be any green run ever recorded at this sha — on a fold that
+                      // reproduces an already-released commit it is the PREVIOUS release's publish
+                      // run, days old — so the probe is the only thing standing between it and
+                      // this request's own QA run, which is still building. Measured 2026-10-07:
+                      // qits-ci restarted for its own deploy, the probe failed for the seconds it
+                      // was down, the sweep read that as "nothing in flight", and qits-edge-service
+                      // 44385ca2 released at 18:55:12 on a four-day-old publish verdict while its
+                      // QA run 42f7e30c was mid-step; the run was re-run on qits-ci's boot against
+                      // the backing branch the release had just deleted and came back FAILED,
+                      // leaving a published, deployed request behind a red CI gate. Unconfigured
+                      // (no ci-url on this tier) still does not hold — nothing will ever answer
+                      // there — but an outage is a fact about the moment, and the sweep asks again.
+                      waiting(
+                          row,
+                          "Could not ask qits-ci whether runs are still in flight for "
+                              + shortSha(row.mergedSha));
                       return false;
                     }
                   }

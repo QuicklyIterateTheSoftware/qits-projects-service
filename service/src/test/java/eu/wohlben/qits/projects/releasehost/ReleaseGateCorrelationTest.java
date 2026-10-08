@@ -215,6 +215,55 @@ public class ReleaseGateCorrelationTest {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // A vouch is not a release while the active-run probe cannot answer (qits-760)
+  // ---------------------------------------------------------------------------------------------
+
+  private String detailOf(String id) {
+    return given().get(base() + "/" + id).then().extract().path("request.detail");
+  }
+
+  /**
+   * The 2026-10-07 shape: the fold's sha already carries a green verdict (there, the previous
+   * release's publish run at the very same commit), the request's own QA run is still building, and
+   * qits-ci is restarting, so the probe that would have counted that run cannot answer. Reading that
+   * silence as "nothing in flight" released qits-edge-service 44385ca2 on a four-day-old vouch; its
+   * QA run was re-run after qits-ci came back, against the backing branch the release had deleted,
+   * and landed FAILED behind a published, deployed request.
+   */
+  @Test
+  public void aVouchedFoldIsHeldWhileAConfiguredProbeCannotAnswerAndReleasesOnceItCan() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+
+    activeBuilds.answer(Optional.empty());
+    verdict("BuildSuccessful", merged, "");
+
+    assertEquals("PENDING", stateOf(id), "could not ask is not \"nothing in flight\"");
+    assertTrue(executor.calls().isEmpty(), "nothing was tagged");
+    String detail = detailOf(id);
+    assertTrue(detail.contains("Could not ask qits-ci"), detail);
+
+    // qits-ci answers again and has nothing in flight for the fold: the next sweep releases.
+    activeBuilds.answer(Optional.of(0));
+    releaseRequests.sweep();
+    assertEquals("RELEASED", awaitState(id, "RELEASED"));
+    assertEquals(1, executor.calls().size());
+  }
+
+  @Test
+  public void aProbeNobodyConfiguredNeverHoldsAVouch() {
+    String id = create("work");
+    String merged = mergedShaOf(id);
+
+    // A tier with no ci-url: nothing will ever answer, so the vouch alone is the gate, as before.
+    activeBuilds.configured(false);
+    activeBuilds.answer(Optional.empty());
+    verdict("BuildSuccessful", merged, "");
+
+    assertEquals("RELEASED", awaitState(id, "RELEASED"));
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Superseding a fold cancels its runs, and nobody else's
   // ---------------------------------------------------------------------------------------------
 

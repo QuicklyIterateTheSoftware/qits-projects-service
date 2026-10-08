@@ -19,12 +19,14 @@ import org.jboss.logging.Logger;
  * java.net.http} client like every outbound client in this module, because the seam is one GET.
  *
  * <p>{@code qits.projects.release-requests.ci-url} is <b>unset shipped</b>: a deployment names its
- * tier's qits-ci ({@code http://dev-qits-ci:8080}), and unset answers {@code Optional.empty()} —
- * "could not ask" — which the gate reads as "stay pending, the settle window is the floor". Every
- * failure answers the same: an unreachable service, a non-200, an unreadable body. <b>An empty
+ * tier's qits-ci ({@code http://dev-qits-ci:8080}), and unset answers {@code Optional.empty()} with
+ * {@link #configured} false — nothing will ever answer, so the gate lets a vouch through. Every
+ * failure of a configured probe answers {@code Optional.empty()} with {@link #configured} true: an
+ * unreachable service, a non-200, an unreadable body — and the gate HOLDS on that. <b>An empty
  * answer is never derived from a failure</b>, the same rule the candidate listing and the backup
  * reconcile state — reading "we could not ask" as "no runs" would wave a release past builds that
- * are still running, which is the exact defect this whole feature exists to close.
+ * are still running, which is the exact defect this whole feature exists to close (and which the
+ * gate itself did until qits-760: qits-ci's own restart was read as "nothing in flight").
  *
  * <p>The credential is a machine bearer when the {@code ci} named client is enabled ({@link
  * IdpCiBearer}); while it is off (the shipped default, and any no-idp topology) the read falls
@@ -47,8 +49,13 @@ public class HttpActiveBuilds implements ActiveBuilds {
   @jakarta.inject.Inject IdpCiBearer bearer;
 
   @Override
+  public boolean configured() {
+    return ciUrl.isPresent() && !ciUrl.get().isBlank();
+  }
+
+  @Override
   public Optional<Integer> activeFor(String repoId, String commitSha) {
-    if (ciUrl.isEmpty() || ciUrl.get().isBlank()) {
+    if (!configured()) {
       return Optional.empty();
     }
     try {

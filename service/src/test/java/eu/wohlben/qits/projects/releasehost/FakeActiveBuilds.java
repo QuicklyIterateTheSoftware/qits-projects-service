@@ -23,8 +23,22 @@ public class FakeActiveBuilds implements ActiveBuilds {
     answer.set(value);
   }
 
+  private final java.util.concurrent.atomic.AtomicBoolean configured =
+      new java.util.concurrent.atomic.AtomicBoolean(true);
+
+  /** Whether the probe is pointed at a qits-ci at all — false stages a tier with no ci-url. */
+  public void configured(boolean value) {
+    configured.set(value);
+  }
+
   public void reset() {
     answer.set(Optional.of(0));
+    configured.set(true);
+  }
+
+  @Override
+  public boolean configured() {
+    return configured.get();
   }
 
   @Override
