@@ -57,7 +57,8 @@ public interface ReleaseRequestAutomations {
    *
    * @param kind the wire name, {@code screenshot-baselines}
    * @param label what a page prints, {@code Screenshot baselines}
-   * @param state FRESH, REQUESTED, RUNNING, COMMITTED, FAILED, UNKNOWN or SUPERSEDED — a plain
+   * @param state FRESH, REQUESTED, RUNNING, COMMITTED, FAILED, UNKNOWN, SUPERSEDED or NOT_APPLICABLE
+   *     (the kind does not apply to this fold; {@code detail} is the reason) — a plain
    *     string, because the far side owns the vocabulary and a word this side has never heard of is a
    *     hold rather than a parse failure
    * @param detail the far side's sentence, or null
@@ -90,7 +91,8 @@ public interface ReleaseRequestAutomations {
    *
    * @param foldSha the fold every entry is about; null on a read of a request nothing was ever asked
    *     about
-   * @param automations one entry per kind that applies. <b>Empty means no kind applies</b> on the
+   * @param automations one entry per kind — a kind that does not apply as NOT_APPLICABLE, where the
+   *     far side lists it (an older one leaves it out). <b>Empty means no kind applies</b> on the
    *     trigger's answer — a repository no automation touches, which releases as it always did — but
    *     on a {@link #status} read it can also mean nothing was ever asked at that fold, so a reader
    *     never takes an empty read as FRESH on its own

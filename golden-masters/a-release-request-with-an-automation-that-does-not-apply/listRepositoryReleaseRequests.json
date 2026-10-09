@@ -1,0 +1,176 @@
+{
+  "requests": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "repoId": "00000000-0000-4000-8000-000000000002",
+      "repoName": "contract-suite-app",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+      "sources": [
+        {
+          "kind": "BRANCH",
+          "name": "main",
+          "ref": "refs/heads/main",
+          "implicit": false,
+          "priority": "MEDIUM",
+          "addedBy": "contract-seeder"
+        },
+        {
+          "kind": "BRANCH",
+          "name": "bump/contract-service",
+          "ref": "refs/heads/bump/contract-service",
+          "implicit": false,
+          "priority": "HIGH",
+          "addedBy": "contract-seeder"
+        },
+        {
+          "kind": "BRANCH",
+          "name": "docs/approval",
+          "ref": "refs/heads/docs/approval",
+          "implicit": false,
+          "priority": "LOW",
+          "addedBy": "contract-seeder"
+        }
+      ],
+      "priority": "HIGH",
+      "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+      "state": "PENDING",
+      "summary": "Release the export across the suite",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": "Waiting for automations at bd6360a2c6: Estate pins running",
+      "approvalRequired": true,
+      "approvalState": "WAITING",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "kind": "APPROVAL",
+          "state": "PENDING",
+          "detail": "configured by manual-review"
+        }
+      ],
+      "automations": [
+        {
+          "kind": "estate-pins",
+          "label": "Estate pins",
+          "state": "RUNNING",
+          "foldSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+          "runId": "bump-00000000-0000-4000-8000-000000000004",
+          "branch": "maintenance/estate-pins",
+          "detail": null,
+          "updatedAt": "2026-01-01T00:00:00Z",
+          "failure": null
+        },
+        {
+          "kind": "screenshot-baselines",
+          "label": "Screenshot baselines",
+          "state": "NOT_APPLICABLE",
+          "foldSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+          "runId": null,
+          "branch": null,
+          "detail": "the fold carries no package.json",
+          "updatedAt": null,
+          "failure": null
+        }
+      ],
+      "conflict": null,
+      "version": null,
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": {
+        "phases": [
+          {
+            "phase": "QA",
+            "state": "SUCCESS",
+            "runId": "00000000-0000-4000-8000-000000000005",
+            "startedAt": "2026-01-01T00:00:00Z",
+            "finishedAt": "2026-01-01T00:00:00Z",
+            "detail": null
+          }
+        ],
+        "gates": [
+          {
+            "between": "QA_PUBLISH",
+            "kind": "CI",
+            "state": "PASSED",
+            "detail": null
+          },
+          {
+            "between": "QA_PUBLISH",
+            "kind": "AUTOMATIONS",
+            "state": "PENDING",
+            "detail": null
+          },
+          {
+            "between": "QA_PUBLISH",
+            "kind": "APPROVAL",
+            "state": "PENDING",
+            "detail": "configured by manual-review"
+          }
+        ]
+      },
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": "Run 00000000-0000-4000-8000-000000000006 passed for bd6360a2c6",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-000000000006",
+              "state": "PASSED",
+              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+              "runId": "00000000-0000-4000-8000-000000000006"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-000000000006",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for: Estate pins",
+          "checks": [
+            {
+              "name": "Estate pins",
+              "state": "PENDING",
+              "detail": "RUNNING",
+              "runId": "bump-00000000-0000-4000-8000-000000000004"
+            }
+          ],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "approval",
+          "label": "Approval",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "configured by manual-review",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
+    }
+  ]
+}

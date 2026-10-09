@@ -125,8 +125,8 @@ public class AutomationLedger {
    *
    * @param foldSha the {@code mergedSha} this is a statement about. A note never applies to another
    *     fold, which is the whole of how a re-arm invalidates it.
-   * @param automations one entry per kind that applies, as last answered; empty where none applies
-   *     or where nothing could be asked
+   * @param automations one entry per kind, as last answered — a kind that does not apply as
+   *     {@link #NOT_APPLICABLE} where the far side lists it; empty where nothing could be asked
    * @param detail a sentence, for the log and for the request's own {@code detail} — the reason on an
    *     UNKNOWN note, null otherwise
    * @param previousFoldSha the fold this one replaced, as the fold seam knew it — carried so that a
@@ -142,6 +142,18 @@ public class AutomationLedger {
     public Note {
       automations = automations == null ? List.of() : List.copyOf(automations);
     }
+  }
+
+  /**
+   * The far side's word for a kind that does not apply to this fold. Its {@code detail} is the
+   * reason. It holds nothing back, and it is listed so a reader sees every kind, not only those
+   * that apply.
+   */
+  public static final String NOT_APPLICABLE = "NOT_APPLICABLE";
+
+  /** True for a state that holds nothing back: FRESH, or NOT_APPLICABLE. */
+  public static boolean holdsNothing(String state) {
+    return "FRESH".equals(state) || NOT_APPLICABLE.equals(state);
   }
 
   private final Map<String, Note> notes = new ConcurrentHashMap<>();

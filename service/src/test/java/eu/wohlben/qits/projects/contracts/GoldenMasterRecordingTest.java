@@ -465,6 +465,11 @@ class GoldenMasterRecordingTest {
     }
     String awaiting = ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL;
     all.add(read(awaiting, "listRepositoryReleaseRequests", repository + "/release-requests"));
+    // Every automation kind is listed, the one that does not apply included — on both answers.
+    String notApplicable = ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_THAT_DOES_NOT_APPLY;
+    all.add(read(notApplicable, "getReleaseRequest", request));
+    all.add(
+        read(notApplicable, "listRepositoryReleaseRequests", repository + "/release-requests"));
     all.add(
         write(
             awaiting,

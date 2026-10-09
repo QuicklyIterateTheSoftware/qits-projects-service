@@ -57,6 +57,12 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
   private final Map<String, Map<String, AutomationLedger.Failure>> failures =
       new ConcurrentHashMap<>();
 
+  /** The far side's word for a kind that does not apply; scripted like any other state. */
+  public static final String NOT_APPLICABLE = AutomationLedger.NOT_APPLICABLE;
+
+  /** The reason a NOT_APPLICABLE entry carries as its detail. */
+  public static final String NOT_APPLICABLE_REASON = "the fold carries no package.json";
+
   private volatile boolean reachable = true;
 
   private volatile boolean configured = true;
@@ -167,17 +173,29 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
         .forEach(
             (kind, state) ->
                 entries.add(
-                    new Automation(
-                        kind,
-                        label(kind),
-                        state,
-                        null,
-                        "bump-" + kind,
-                        "FRESH".equals(state) ? List.of() : List.of("run-" + kind),
-                        null,
-                        null,
-                        Instant.now(),
-                        failures.getOrDefault(repositoryName, Map.of()).get(kind))));
+                    NOT_APPLICABLE.equals(state)
+                        ? new Automation(
+                            kind,
+                            label(kind),
+                            state,
+                            NOT_APPLICABLE_REASON,
+                            null,
+                            List.of(),
+                            null,
+                            null,
+                            null,
+                            null)
+                        : new Automation(
+                            kind,
+                            label(kind),
+                            state,
+                            null,
+                            "bump-" + kind,
+                            "FRESH".equals(state) ? List.of() : List.of("run-" + kind),
+                            null,
+                            null,
+                            Instant.now(),
+                            failures.getOrDefault(repositoryName, Map.of()).get(kind))));
     return new Answer(requestId, foldSha, entries);
   }
 

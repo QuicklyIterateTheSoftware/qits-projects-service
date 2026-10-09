@@ -3298,7 +3298,7 @@ public class ReleaseRequests {
       case PENDING -> {
         String moving =
             note.automations().stream()
-                .filter(entry -> !"FRESH".equals(entry.state()))
+                .filter(entry -> !AutomationLedger.holdsNothing(entry.state()))
                 .map(entry -> entry.label() + " " + doing(entry.state()))
                 .collect(Collectors.joining(", "));
         return "Waiting for automations at " + sha + ": " + moving;
@@ -3325,10 +3325,11 @@ public class ReleaseRequests {
 
   /**
    * The labels of the automations that failed at this request's current fold, <b>only when nothing
-   * about that fold's automations is still moving</b> — every kind FRESH or FAILED, at least one
-   * FAILED. Null otherwise: no note, a note about another fold, one still REQUESTED, RUNNING,
-   * COMMITTED or SUPERSEDED (a commit may yet re-fold the request), and one whose states could not
-   * be read. Null is the hold, so an outage never turns a red verdict into a rejection.
+   * about that fold's automations is still moving</b> — every kind FRESH, NOT_APPLICABLE or
+   * FAILED, at least one FAILED. Null otherwise: no note, a note about another fold, one still
+   * REQUESTED, RUNNING, COMMITTED or SUPERSEDED (a commit may yet re-fold the request), and one
+   * whose states could not be read. Null is the hold, so an outage never turns a red verdict into
+   * a rejection.
    *
    * <p>A FAILED note can still carry a kind in flight — FAILED outranks PENDING in {@link
    * AutomationRefresh#stateOf} — which is why every entry is asked and not only the note's state.
@@ -3342,7 +3343,10 @@ public class ReleaseRequests {
     if (note == null
         || note.state() != AutomationLedger.State.FAILED
         || !note.automations().stream()
-            .allMatch(entry -> "FRESH".equals(entry.state()) || "FAILED".equals(entry.state()))) {
+            .allMatch(
+                entry ->
+                    AutomationLedger.holdsNothing(entry.state())
+                        || "FAILED".equals(entry.state()))) {
       return null;
     }
     String failed =
@@ -4249,7 +4253,7 @@ public class ReleaseRequests {
                         new ReleaseAutomationDto(
                             entry.kind(),
                             entry.label(),
-                            current && waived && !"FRESH".equals(entry.state())
+                            current && waived && !AutomationLedger.holdsNothing(entry.state())
                                 ? "WAIVED"
                                 : entry.state(),
                             note.foldSha(),

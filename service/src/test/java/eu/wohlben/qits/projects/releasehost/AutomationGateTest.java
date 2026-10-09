@@ -284,6 +284,60 @@ public class AutomationGateTest {
   }
 
   /**
+   * A kind that does not apply is listed on the request with its reason, and holds nothing back:
+   * the gate passes on the kinds that apply, and its checks name only those.
+   */
+  @Test
+  public void aNotApplicableKindIsListedAndHoldsNothing() {
+    automations.answer(plainName, "entity-diagram", "FRESH");
+    automations.answer(plainName, SCREENSHOTS, FakeReleaseRequestAutomations.NOT_APPLICABLE);
+
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    JsonPath before = request(plainRepoId, id);
+    assertEquals(List.of("entity-diagram", SCREENSHOTS), before.getList("automations.kind"));
+    assertEquals(List.of("FRESH", "NOT_APPLICABLE"), before.getList("automations.state"));
+    assertEquals(
+        FakeReleaseRequestAutomations.NOT_APPLICABLE_REASON,
+        before.getString("automations[1].detail"));
+    assertEquals(null, before.getString("automations[1].runId"));
+    assertEquals("PASSED", gateState(before, "AUTOMATIONS"));
+    assertEquals(
+        List.of("Entity diagram"),
+        before.getList("qualityGates.find { it.kind == 'automations' }.checks.name"),
+        "a kind that does not apply is no check of the gate");
+
+    verdict(plainRepoId, merged);
+    awaitState(plainRepoId, id, "RELEASED");
+  }
+
+  /**
+   * Beside a kind that does not apply, the request waits for the running kind alone, and a waiver
+   * leaves the kind that does not apply as it is.
+   */
+  @Test
+  public void aNotApplicableKindBesideARunningOneWaitsOnlyForTheRunningOne() {
+    automations.answer(plainName, SCREENSHOTS, "RUNNING");
+    automations.answer(plainName, "entity-diagram", FakeReleaseRequestAutomations.NOT_APPLICABLE);
+
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    verdict(plainRepoId, merged);
+
+    JsonPath held = request(plainRepoId, id);
+    assertEquals("PENDING", held.getString("state"));
+    assertEquals(
+        "Waiting for automations at " + merged.substring(0, 10) + ": Screenshot baselines running",
+        held.getString("detail"));
+    assertEquals("PENDING", gateState(held, "AUTOMATIONS"));
+
+    waive(id, merged);
+    JsonPath waived = request(plainRepoId, id);
+    assertEquals("PASSED", gateState(waived, "AUTOMATIONS"));
+    assertEquals(List.of("WAIVED", "NOT_APPLICABLE"), waived.getList("automations.state"));
+  }
+
+  /**
    * A red automation run on a GREEN fold holds: a person's turn (push, re-run or waive), never a
    * rejection. (Beside a red verdict it rejects — see {@link
    * #aRedVerdictBesideFailedAutomationsRejectsAndIsRevivedByRetryAndPush}.)

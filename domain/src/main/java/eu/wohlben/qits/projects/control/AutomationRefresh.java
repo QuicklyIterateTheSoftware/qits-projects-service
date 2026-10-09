@@ -47,7 +47,8 @@ import org.jboss.logging.Logger;
  *
  * <h2>How an answer becomes a note</h2>
  *
- * <p>Every entry FRESH (an empty list included) is {@link AutomationLedger.State#FRESH}; any FAILED
+ * <p>Every entry FRESH or NOT_APPLICABLE (an empty list included) is {@link
+ * AutomationLedger.State#FRESH}; any FAILED
  * is FAILED; any UNKNOWN, or a word this side has never heard of, is UNKNOWN; and anything still
  * moving — REQUESTED, RUNNING, COMMITTED (a commit that re-folds the request, so this fold never
  * ships), SUPERSEDED (the far side saw the fold move on first) — is PENDING. No answer at all is
@@ -276,7 +277,7 @@ public class AutomationRefresh {
     boolean pending = false;
     for (AutomationLedger.Automation entry : entries) {
       switch (entry.state()) {
-        case "FRESH" -> {}
+        case "FRESH", AutomationLedger.NOT_APPLICABLE -> {}
         case "FAILED" -> failed = true;
         case "REQUESTED", "RUNNING", "COMMITTED", "SUPERSEDED" -> pending = true;
         default -> unknown = true;

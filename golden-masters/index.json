@@ -3220,6 +3220,83 @@
       ]
     },
     {
+      "name": "a release request with an automation that does not apply",
+      "slug": "a-release-request-with-an-automation-that-does-not-apply",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-with-an-automation-that-does-not-apply/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listRepositoryReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "status": 200,
+          "file": "a-release-request-with-an-automation-that-does-not-apply/listRepositoryReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId",
+              "$.requests[*].pipeline.phases[*].runId",
+              "$.requests[*].qualityGates[*].checks[*].runId",
+              "$.requests[*].qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.requests[*].automations[*].updatedAt",
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt",
+              "$.requests[*].pipeline.phases[*].startedAt",
+              "$.requests[*].pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.requests[*].backingBranch",
+              "$.requests[*].automations[*].runId",
+              "$.requests[*].qualityGates[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].name",
+              "$.requests[*].qualityGates[*].checks[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a released release request",
       "slug": "a-released-release-request",
       "params": {

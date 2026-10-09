@@ -9,8 +9,12 @@ import java.time.Instant;
  * <p>{@code kind} and {@code state} are words, not closed sets: qits-maintenance owns the kinds and
  * the states, and adding a kind must cost this surface nothing. {@code state} is the far side's
  * {@code FRESH}, {@code REQUESTED}, {@code RUNNING}, {@code COMMITTED}, {@code FAILED}, {@code
- * UNKNOWN} or {@code SUPERSEDED}, plus this service's own {@code WAIVED}: a person waived the gate
- * for this row's fold, and the row was not fresh.
+ * UNKNOWN}, {@code SUPERSEDED} or {@code NOT_APPLICABLE}, plus this service's own {@code WAIVED}: a
+ * person waived the gate for this row's fold, and the row was not fresh.
+ *
+ * <p>{@code NOT_APPLICABLE} is a kind that does not apply to this fold; {@code detail} says why. It
+ * holds nothing back. A reader that does not know the word must treat it as settled, not as a
+ * hold.
  *
  * @param foldSha the fold this row's outcome is about
  * @param runId the newest qits-ci run behind it, or null where it has not run
