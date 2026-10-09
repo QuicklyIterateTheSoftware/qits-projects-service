@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -314,6 +315,92 @@ public class RefinementDesignMcpToolsTest {
         response -> {
           assertTrue(response.isError(), "a stale write must be refused, never merged");
           assertTrue(text(response).contains("written since you read it"), text(response));
+        });
+  }
+
+  // --- Either form of the room's id (qits-954) ------------------------------
+
+  /** The qualified id {@code <project-slug>-<n>} of an entity, read off the {@code /work} door. */
+  private static String qualifiedIdOf(String entityId) {
+    return authenticated()
+        .when()
+        .get("/projects/api/work/" + entityId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .extract()
+        .path("qualifiedId");
+  }
+
+  /** Call a tool that must succeed, and answer its whole text. */
+  private String ok(String projectId, String tool, Map<String, Object> args) {
+    String[] body = new String[1];
+    call(
+        projectId,
+        tool,
+        args,
+        response -> {
+          assertFalse(response.isError(), tool + ": " + text(response));
+          body[0] = text(response);
+        });
+    return body[0];
+  }
+
+  /**
+   * The room is found by the entity's qualified id as readily as by its UUID — the refinement row
+   * is keyed by the UUID, so the qualified id is resolved before the room is looked for — under
+   * either argument name.
+   */
+  @Test
+  public void findsTheRoomByTheEntitysQualifiedId() {
+    String projectId = createProject("Design Qualified");
+    String epicId = createEpic(projectId, "Named either way");
+    String qualified = qualifiedIdOf(epicId);
+    String captured = capture(openRefinement(epicId), "Captured");
+
+    String byUuid = ok(projectId, "list_designs", Map.of("entityId", epicId));
+    assertTrue(byUuid.contains(captured), byUuid);
+    assertEquals(byUuid, ok(projectId, "list_designs", Map.of("entityId", qualified)));
+    assertEquals(byUuid, ok(projectId, "list_designs", Map.of("epicId", qualified)));
+
+    String written =
+        idIn(
+            ok(
+                projectId,
+                "put_design",
+                Map.of("entityId", qualified, "title", "Written by name", "html", DOC)));
+    assertTrue(
+        ok(projectId, "get_design", Map.of("entityId", qualified, "designId", written))
+            .contains("Written by name"));
+    assertTrue(
+        ok(projectId, "list_designs", Map.of("entityId", epicId)).contains(written),
+        "the design written by the qualified id is in the UUID's room");
+  }
+
+  @Test
+  public void aQualifiedIdOfAnotherProjectsEntityReadsAsNoRefinement() {
+    String owner = createProject("Design Qualified Owner");
+    String epicId = createEpic(owner, "Owned");
+    openRefinement(epicId);
+    String qualified = qualifiedIdOf(epicId);
+    String stranger = createProject("Design Qualified Stranger");
+
+    call(
+        stranger,
+        "list_designs",
+        Map.of("entityId", qualified),
+        response -> {
+          assertTrue(response.isError(), "cross-project access must be refused");
+          assertTrue(
+              text(response).contains("No refinement is open for " + qualified), text(response));
+        });
+    call(
+        stranger,
+        "list_designs",
+        Map.of("entityId", "nosuch-999999"),
+        response -> {
+          assertTrue(response.isError(), "an id naming nothing has no room either");
+          assertTrue(
+              text(response).contains("No refinement is open for nosuch-999999"), text(response));
         });
   }
 }

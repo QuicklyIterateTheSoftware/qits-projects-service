@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,7 @@ import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import io.vertx.core.MultiMap;
 import jakarta.ws.rs.core.Response;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -331,5 +333,105 @@ public class DossierMcpToolsTest {
         "list_dossier_pages",
         Map.of("epicId", epicId),
         response -> assertFalse(text(response).contains("\"two\""), text(response)));
+  }
+
+  // --- Either form of an owner's id (qits-954) ------------------------------
+
+  /** The qualified id {@code <project-slug>-<n>} of an entity, read off the {@code /work} door. */
+  private static String qualifiedIdOf(String entityId) {
+    return authenticated()
+        .when()
+        .get("/projects/api/work/" + entityId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .extract()
+        .path("qualifiedId");
+  }
+
+  /** Call a tool that must succeed, and answer its whole text. */
+  private String ok(String projectId, String tool, Map<String, Object> args) {
+    String[] body = new String[1];
+    call(
+        projectId,
+        tool,
+        args,
+        response -> {
+          assertFalse(response.isError(), tool + ": " + text(response));
+          body[0] = text(response);
+        });
+    return body[0];
+  }
+
+  /**
+   * Every dossier tool takes the owner's qualified id as readily as its UUID, and a page written
+   * under the qualified id is owned by the row the UUID names — the owner column holds the UUID.
+   */
+  @Test
+  public void takesTheOwnersQualifiedIdAsReadilyAsItsUuid() {
+    String projectId = createProject("Dossier Qualified");
+    for (String owner : List.of("epicId", "ticketId")) {
+      String uuid =
+          owner.equals("epicId")
+              ? createEpic(projectId, "Qualified epic")
+              : createTicket(projectId, "Qualified ticket");
+      String qualified = qualifiedIdOf(uuid);
+
+      String pageId =
+          idIn(
+              ok(
+                  projectId,
+                  "put_dossier_page",
+                  Map.of(owner, qualified, "title", "First page", "body", "written by name")));
+      ok(projectId, "put_dossier_page", Map.of(owner, uuid, "title", "Second page", "body", "x"));
+
+      String byUuid = ok(projectId, "list_dossier_pages", Map.of(owner, uuid));
+      assertTrue(byUuid.contains(pageId), "the page is the UUID's owner's: " + byUuid);
+      assertEquals(byUuid, ok(projectId, "list_dossier_pages", Map.of(owner, qualified)));
+      assertTrue(
+          ok(projectId, "get_dossier_page", Map.of(owner, qualified, "pageId", pageId))
+              .contains("written by name"));
+      ok(
+          projectId,
+          "put_dossier_page",
+          Map.of(
+              owner, qualified,
+              "pageId", pageId,
+              "title", "First page",
+              "body", "rewritten by name",
+              "version", 0));
+      ok(
+          projectId,
+          "move_dossier_page",
+          Map.of(owner, qualified, "pageId", pageId, "position", 1));
+      ok(projectId, "remove_dossier_page", Map.of(owner, qualified, "pageId", pageId));
+      assertFalse(
+          ok(projectId, "list_dossier_pages", Map.of(owner, uuid)).contains(pageId),
+          "the removal by the qualified id took the UUID's owner's page");
+    }
+  }
+
+  @Test
+  public void aQualifiedIdOfAnotherProjectsOwnerIsNotFound() {
+    String owner = createProject("Dossier Qualified Owner");
+    String epic = qualifiedIdOf(createEpic(owner, "Owned"));
+    String ticket = qualifiedIdOf(createTicket(owner, "Owned ticket"));
+    String stranger = createProject("Dossier Qualified Stranger");
+
+    call(
+        stranger,
+        "list_dossier_pages",
+        Map.of("epicId", epic),
+        response -> {
+          assertTrue(response.isError(), "cross-project access must be refused");
+          assertTrue(text(response).contains("Epic not found: " + epic), text(response));
+        });
+    call(
+        stranger,
+        "put_dossier_page",
+        Map.of("ticketId", ticket, "title", "Smuggled", "body", "x"),
+        response -> {
+          assertTrue(response.isError(), "cross-project access must be refused");
+          assertTrue(text(response).contains("Ticket not found: " + ticket), text(response));
+        });
   }
 }

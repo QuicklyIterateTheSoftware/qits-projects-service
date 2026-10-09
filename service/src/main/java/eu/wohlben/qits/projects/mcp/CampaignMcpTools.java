@@ -9,13 +9,13 @@ import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignSummaryDto;
 import eu.wohlben.qits.entities.api.CampaignViews;
 import eu.wohlben.qits.entities.campaign.CampaignService;
-import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.CampaignInFlight;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
+import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.refinementhost.EntityResolutions;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
@@ -24,7 +24,9 @@ import io.quarkiverse.mcp.server.WrapBusinessError;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * <b>The campaign half of the "repository" MCP server</b> (qits-414), mounted beside {@link
@@ -78,9 +80,15 @@ public class CampaignMcpTools {
    */
   private static final String AGENT = "mcp-agent";
 
-  @Inject ProjectScope scope;
+  /**
+   * Every campaign id argument's description: either form names the campaign (qits-954), and the
+   * description is where the model learns that the {@code qualifiedId} {@code get_campaign} answers
+   * is one it may hand straight back.
+   */
+  private static final String CAMPAIGN_ID =
+      "id of a campaign in this project: its UUID or its qualified id (<project-slug>-<n>)";
 
-  @Inject WorkEntityService workEntities;
+  @Inject ProjectScope scope;
 
   /** The campaign's own thread, embedded in {@code get_campaign} (qits-551). */
   @Inject eu.wohlben.qits.entities.control.EntityCommentService thread;
@@ -96,6 +104,13 @@ public class CampaignMcpTools {
   @Inject ProjectChangePublisher changePublisher;
 
   @Inject SecurityIdentity identity;
+
+  /**
+   * The UUID-or-qualified-id lookup {@code get_entity} and the {@code /work} doors share (qits-954),
+   * for the campaign, the member a tool adds and an {@code ENTITY_STATUS} criterion's target. Its
+   * reads are {@code requiringNew}, which this class's transaction-free rule already allows for.
+   */
+  @Inject EntityIdResolver ids;
 
   // --- Reads ------------------------------------------------------------------
 
@@ -122,10 +137,10 @@ public class CampaignMcpTools {
               + " the order and conditions you extend are the ones that exist. It also carries the"
               + " campaign's own comment thread, oldest first.")
   public CampaignDetail getCampaign(
-      @ToolArg(description = "id of a campaign in this project") String id) {
-    requireCampaignInProject(id);
+      @ToolArg(description = CAMPAIGN_ID) String id) {
+    String campaignId = requireCampaignInProject(id).id;
     return CampaignDetail.of(
-        views.campaign(campaigns.get(id)), CommentMcpTools.threadOf(thread, id));
+        views.campaign(campaigns.get(campaignId)), CommentMcpTools.threadOf(thread, campaignId));
   }
 
   /**
@@ -187,9 +202,8 @@ public class CampaignMcpTools {
               + " derived afresh on"
               + " every call.")
   public CampaignProgressDto getCampaignProgress(
-      @ToolArg(description = "id of a campaign in this project") String id) {
-    requireCampaignInProject(id);
-    return views.progress(campaigns.progress(id));
+      @ToolArg(description = CAMPAIGN_ID) String id) {
+    return views.progress(campaigns.progress(requireCampaignInProject(id).id));
   }
 
   // --- Create and transition ---------------------------------------------------
@@ -233,19 +247,19 @@ public class CampaignMcpTools {
               + " Starting a REFINED or READY_FOR_DEV campaign, and approving an APPROVAL criterion,"
               + " are both a person's press and are not reachable from this server.")
   public CampaignDto transitionCampaign(
-      @ToolArg(description = "id of a campaign in this project") String id,
+      @ToolArg(description = CAMPAIGN_ID) String id,
       @ToolArg(
               description =
                   "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTED, VERIFIED,"
                       + " DONE or DROPPED (never IMPLEMENTING or VERIFYING). It must be a neighbour of the campaign's"
                       + " current status on that walk; DONE is final and moves nowhere")
           String target) {
-    requireCampaignInProject(id);
+    String campaignId = requireCampaignInProject(id).id;
     String projectId = scope.requireProjectId();
     // The agent surface: a machine, whatever the session says (qits-887).
-    resolutions.transition(Archetype.CAMPAIGN, id, target, Mover.machine(changedBy()));
+    resolutions.transition(Archetype.CAMPAIGN, campaignId, target, Mover.machine(changedBy()));
     announce(projectId);
-    return views.campaign(campaigns.get(id));
+    return views.campaign(campaigns.get(campaignId));
   }
 
   // --- Membership ---------------------------------------------------------------
@@ -269,8 +283,12 @@ public class CampaignMcpTools {
               + " branch — both mean its work is already under way and the campaign should not wait"
               + " on a fresh dispatch of it.")
   public CampaignMemberDto addCampaignMember(
-      @ToolArg(description = "id of a campaign in this project") String campaignId,
-      @ToolArg(description = "id of an epic or ticket of this project to gather") String entityId,
+      @ToolArg(description = CAMPAIGN_ID) String campaignId,
+      @ToolArg(
+              description =
+                  "id of an epic or ticket of this project to gather: its UUID or its qualified id"
+                      + " (<project-slug>-<n>)")
+          String entityId,
       @ToolArg(required = false, description = "where to insert it; omit or past the end appends")
           Integer position,
       @ToolArg(
@@ -279,11 +297,12 @@ public class CampaignMcpTools {
                   "whether the member joins already in flight; omit to let the service decide from"
                       + " the member's status and any active workspace on its branch")
           Boolean inFlight) {
-    requireCampaignInProject(campaignId);
+    String campaign = requireCampaignInProject(campaignId).id;
     String projectId = scope.requireProjectId();
-    boolean running = this.inFlight.resolve(inFlight, campaigns.entity(entityId));
+    WorkEntity member = memberOf(entityId);
+    boolean running = this.inFlight.resolve(inFlight, member);
     CampaignService.Member added =
-        campaigns.addMember(campaignId, entityId, position, running, changedBy());
+        campaigns.addMember(campaign, member.id, position, running, changedBy());
     announce(projectId);
     return views.member(added);
   }
@@ -297,13 +316,13 @@ public class CampaignMcpTools {
               + " the criteria, not the order, so moving a member does not change what it or anything"
               + " else waits on.")
   public CampaignDto moveCampaignMember(
-      @ToolArg(description = "id of a campaign in this project") String campaignId,
+      @ToolArg(description = CAMPAIGN_ID) String campaignId,
       @ToolArg(description = "id of a member of this campaign") String membershipId,
       @ToolArg(description = "the new position, zero-based; clamped to the last one") int position) {
-    requireCampaignInProject(campaignId);
+    String campaign = requireCampaignInProject(campaignId).id;
     String projectId = scope.requireProjectId();
     CampaignService.Campaign moved =
-        campaigns.moveMember(campaignId, membershipId, position, changedBy());
+        campaigns.moveMember(campaign, membershipId, position, changedBy());
     announce(projectId);
     return views.campaign(moved);
   }
@@ -317,11 +336,11 @@ public class CampaignMcpTools {
               + " member's condition still targets this one; edit that member's condition first, or"
               + " see which members wait on it with get_campaign.")
   public String removeCampaignMember(
-      @ToolArg(description = "id of a campaign in this project") String campaignId,
+      @ToolArg(description = CAMPAIGN_ID) String campaignId,
       @ToolArg(description = "id of a member of this campaign") String membershipId) {
-    requireCampaignInProject(campaignId);
+    String campaign = requireCampaignInProject(campaignId).id;
     String projectId = scope.requireProjectId();
-    campaigns.removeMember(campaignId, membershipId, changedBy());
+    campaigns.removeMember(campaign, membershipId, changedBy());
     announce(projectId);
     return "Removed member " + membershipId + " from campaign " + campaignId;
   }
@@ -338,7 +357,8 @@ public class CampaignMcpTools {
               + " the member wait on nothing. Restate an existing criterion by its id to keep its"
               + " satisfied marker; a criterion given no id is a new one. There are four kinds, each"
               + " with its own predicate fields: ENTITY_STATUS {entityId, status} — another member of"
-              + " THIS campaign reaches that lifecycle status; DEPLOYMENT_ACTIVE {applicationName,"
+              + " THIS campaign, named by its UUID or its qualified id (<project-slug>-<n>), reaches"
+              + " that lifecycle status; DEPLOYMENT_ACTIVE {applicationName,"
               + " environmentName?, minimumVersion?} — that application goes live, optionally in one"
               + " environment and at least one version; SCM_RELEASE {repositoryName, projectId?,"
               + " minimumVersion?} — that repository releases, optionally in one project and at least"
@@ -346,18 +366,18 @@ public class CampaignMcpTools {
               + " tool here for it). Refused with a 409 once the member is claimed: a claimed member's"
               + " condition is settled and does not change.")
   public CampaignMemberDto setCampaignMemberCondition(
-      @ToolArg(description = "id of a campaign in this project") String campaignId,
+      @ToolArg(description = CAMPAIGN_ID) String campaignId,
       @ToolArg(description = "id of a member of this campaign") String membershipId,
       @ToolArg(
               description =
                   "the whole condition: a list of OR'd groups, each a list of AND'd criteria"
                       + " ({id?, kind, predicate}); an empty list means the member waits on nothing")
           List<CampaignDoors.ConditionGroup> groups) {
-    requireCampaignInProject(campaignId);
+    String campaign = requireCampaignInProject(campaignId).id;
     String projectId = scope.requireProjectId();
-    List<CampaignService.GroupSpec> specs = CampaignDoors.toGroupSpecs(groups);
+    List<CampaignService.GroupSpec> specs = resolveTargets(CampaignDoors.toGroupSpecs(groups));
     CampaignService.Member member =
-        campaigns.setCondition(campaignId, membershipId, specs, changedBy());
+        campaigns.setCondition(campaign, membershipId, specs, changedBy());
     announce(projectId);
     return views.member(member);
   }
@@ -365,15 +385,84 @@ public class CampaignMcpTools {
   // --- Scoping ------------------------------------------------------------------
 
   /**
-   * Ensures {@code campaignId} names a campaign of the scoped project. A campaign elsewhere reads as
+   * Ensures {@code campaignId} names a campaign of the scoped project, and answers the row — <b>whose
+   * {@code id} is what every tool hands on</b>, never the argument. A campaign elsewhere reads as
    * not found rather than as forbidden — the model is told nothing about what other projects hold.
+   *
+   * <p>The argument is either form (qits-954): the UUID, or the qualified id {@code
+   * <project-slug>-<n>} the campaign's answers carry, resolved by {@link EntityIdResolver} exactly as
+   * {@code WorkMembersController} resolves its path. {@code CampaignService} reads by primary key,
+   * so only the resolved row's UUID may travel past this check. A row of another kind keeps the
+   * refusal {@code WorkEntityService.get} always gave it, naming what was asked for.
    */
   private WorkEntity requireCampaignInProject(String campaignId) {
-    WorkEntity campaign = workEntities.get(Archetype.CAMPAIGN, campaignId);
+    WorkEntity campaign;
+    try {
+      campaign = ids.resolve(campaignId);
+    } catch (NotFoundException e) {
+      throw new NotFoundException("Campaign not found in this project: " + campaignId);
+    }
+    if (campaign.archetype != Archetype.CAMPAIGN) {
+      throw new NotFoundException("Campaign not found: " + campaignId);
+    }
     if (!scope.requireProjectId().equals(campaign.projectId)) {
       throw new NotFoundException("Campaign not found in this project: " + campaignId);
     }
     return campaign;
+  }
+
+  /**
+   * The entity {@code add_campaign_member} gathers, from either form, with the refusal {@code
+   * CampaignService.entity} gives an id naming nothing. Its project is deliberately not checked
+   * here: {@code CampaignService.addMember} refuses a member of another project with its own 409,
+   * on the resolved id, exactly as it does for the REST door.
+   */
+  private WorkEntity memberOf(String entityId) {
+    try {
+      return ids.resolve(entityId);
+    } catch (NotFoundException e) {
+      throw new NotFoundException("Entity not found: " + entityId);
+    }
+  }
+
+  /**
+   * The condition with every {@code ENTITY_STATUS} target's {@code entityId} resolved to its UUID —
+   * {@code WorkMembersController}'s rule for the REST door, applied to the tool's argument, because
+   * {@code CampaignService} matches a target against the campaign's members by UUID. A value naming
+   * nothing is handed on unchanged, for the service's own refusal about it; any other predicate is
+   * untouched, so a criterion of another kind is never reshaped.
+   */
+  private List<CampaignService.GroupSpec> resolveTargets(List<CampaignService.GroupSpec> groups) {
+    return groups.stream()
+        .map(
+            group ->
+                group.criteria() == null
+                    ? group
+                    : new CampaignService.GroupSpec(
+                        group.criteria().stream()
+                            .map(
+                                criterion ->
+                                    criterion == null
+                                        ? null
+                                        : new CampaignService.CriterionSpec(
+                                            criterion.id(),
+                                            criterion.kind(),
+                                            resolveTarget(criterion.predicate())))
+                            .toList()))
+        .toList();
+  }
+
+  private Map<String, Object> resolveTarget(Map<String, Object> predicate) {
+    if (predicate == null || !(predicate.get("entityId") instanceof String named)) {
+      return predicate;
+    }
+    Map<String, Object> resolved = new LinkedHashMap<>(predicate);
+    try {
+      resolved.put("entityId", ids.resolve(named).id);
+    } catch (NotFoundException unknown) {
+      // Left as named: the service says what is wrong with it, as on the REST door.
+    }
+    return resolved;
   }
 
   // --- Plumbing -----------------------------------------------------------------

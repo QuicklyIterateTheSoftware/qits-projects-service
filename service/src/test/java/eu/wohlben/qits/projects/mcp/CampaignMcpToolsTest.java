@@ -340,6 +340,155 @@ public class CampaignMcpToolsTest {
         });
   }
 
+  // --- Either form of an id (qits-954) ------------------------------------------
+
+  /** The qualified id {@code <project-slug>-<n>} of an entity, read off the {@code /work} door. */
+  private static String qualifiedIdOf(String entityId) {
+    return authenticated()
+        .when()
+        .get("/projects/api/work/" + entityId)
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode())
+        .extract()
+        .path("qualifiedId");
+  }
+
+  /**
+   * Every campaign tool takes the qualified id {@code get_campaign} answers as readily as the UUID,
+   * and so do the member a tool adds and an {@code ENTITY_STATUS} criterion's target — and what
+   * reaches the service is the UUID in every case, which the stored predicate and the member row
+   * show.
+   */
+  @Test
+  public void takesQualifiedIdsForTheCampaignItsMembersAndItsCriteria() {
+    String projectId = createProject("Campaign qualified");
+    WorkEntity first = ticket(projectId, "First");
+    WorkEntity second = ticket(projectId, "Second");
+    String[] campaign = new String[2];
+    call(
+        projectId,
+        "create_campaign",
+        Map.of("title", "Named either way"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          campaign[0] = json(response).get("id").asText();
+          campaign[1] = json(response).get("qualifiedId").asText();
+        });
+    String qualified = campaign[1];
+    assertFalse(qualified.equals(campaign[0]), "the qualified id is not the UUID: " + qualified);
+
+    call(
+        projectId,
+        "add_campaign_member",
+        Map.of("campaignId", qualified, "entityId", qualifiedIdOf(first.id)),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertEquals(first.id, json(response).get("entity").get("id").asText());
+        });
+    String[] membershipId = new String[1];
+    call(
+        projectId,
+        "add_campaign_member",
+        Map.of("campaignId", qualified, "entityId", qualifiedIdOf(second.id)),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          JsonNode member = json(response);
+          membershipId[0] = member.get("membershipId").asText();
+          assertEquals(second.id, member.get("entity").get("id").asText());
+        });
+
+    call(
+        projectId,
+        "set_campaign_member_condition",
+        Map.of(
+            "campaignId",
+            qualified,
+            "membershipId",
+            membershipId[0],
+            "groups",
+            List.of(
+                Map.of(
+                    "criteria",
+                    List.of(
+                        Map.of(
+                            "kind",
+                            "ENTITY_STATUS",
+                            "predicate",
+                            Map.of("entityId", qualifiedIdOf(first.id), "status", "DONE")))))),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          JsonNode criterion = json(response).get("groups").get(0).get("criteria").get(0);
+          assertEquals(
+              first.id,
+              criterion.get("predicate").get("entityId").asText(),
+              "the target is stored as the UUID: " + criterion);
+        });
+
+    // A read by either form is one answer.
+    String[] byUuid = new String[1];
+    call(
+        projectId,
+        "get_campaign",
+        Map.of("id", campaign[0]),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          byUuid[0] = text(response);
+        });
+    call(
+        projectId,
+        "get_campaign",
+        Map.of("id", qualified),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertEquals(byUuid[0], text(response));
+        });
+    call(
+        projectId,
+        "get_campaign_progress",
+        Map.of("id", qualified),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertEquals(campaign[0], json(response).get("campaign").get("id").asText());
+        });
+
+    call(
+        projectId,
+        "transition_campaign",
+        Map.of("id", qualified, "target", "REFINED"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertEquals(campaign[0], json(response).get("id").asText());
+          assertEquals("REFINED", json(response).get("status").asText());
+        });
+  }
+
+  @Test
+  public void refusesAQualifiedIdOfAnotherProjectsCampaign() {
+    String owner = createProject("Campaign qualified owner");
+    String stranger = createProject("Campaign qualified stranger");
+    String[] qualified = new String[1];
+    call(
+        owner,
+        "create_campaign",
+        Map.of("title", "Owned"),
+        response -> qualified[0] = json(response).get("qualifiedId").asText());
+
+    for (String tool : List.of("get_campaign", "get_campaign_progress", "transition_campaign")) {
+      Map<String, Object> args =
+          tool.equals("transition_campaign")
+              ? Map.of("id", qualified[0], "target", "REFINED")
+              : Map.of("id", qualified[0]);
+      call(
+          stranger,
+          tool,
+          args,
+          response -> {
+            assertTrue(response.isError(), tool + " must refuse another project's campaign");
+            assertTrue(text(response).contains("not found in this project"), text(response));
+          });
+    }
+  }
+
   // --- The 409 ------------------------------------------------------------------
 
   /** A claimed member's condition is settled; the service's ConflictException reads as a tool error. */

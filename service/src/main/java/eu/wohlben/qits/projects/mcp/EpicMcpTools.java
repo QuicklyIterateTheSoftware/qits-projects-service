@@ -83,6 +83,19 @@ public class EpicMcpTools {
    */
   private static final String AGENT = "mcp-agent";
 
+  /**
+   * The tail every work-entity id argument's description carries (qits-954): either form names the
+   * row, and the description is where the model learns that the {@code qualifiedId} these tools
+   * answer is one it may hand straight back.
+   */
+  private static final String EITHER_FORM = ": its UUID or its qualified id (<project-slug>-<n>)";
+
+  private static final String EPIC_ID = "id of an epic in this project" + EITHER_FORM;
+
+  private static final String FEATURE_ID = "id of a feature in this project" + EITHER_FORM;
+
+  private static final String TASK_ID = "id of a task in this project" + EITHER_FORM;
+
   @Inject ProjectScope scope;
 
   @Inject ProjectScopeGuard scopeGuard;
@@ -102,7 +115,10 @@ public class EpicMcpTools {
   /** The next phase after an agent's claim — see {@code PhaseAdvance}. */
   @Inject PhaseAdvance phaseAdvance;
 
-  /** The UUID-or-qualified-id lookup the REST doors share, for {@code transition_task}. */
+  /**
+   * The UUID-or-qualified-id lookup the REST doors share — for {@code transition_task} first, and
+   * since qits-954 behind every scope check here, so each tool takes either form of every id.
+   */
   @Inject EntityIdResolver ids;
 
   private static final Logger LOG = Logger.getLogger(EpicMcpTools.class);
@@ -294,7 +310,7 @@ public class EpicMcpTools {
               + " mark_task_implementing and mark_task_implemented, and move a task further with"
               + " transition_task.")
   public EpicDetail getEpic(
-      @ToolArg(description = "id of an epic in this project") String id) {
+      @ToolArg(description = EPIC_ID) String id) {
     WorkEntity epic = requireEpicInProject(id);
     String projectSlug = projectSlug(); // once for the whole tree, never once per node
     List<FeatureDetail> features =
@@ -391,7 +407,7 @@ public class EpicMcpTools {
               + " REFINED; from READY_FOR_DEV on they are frozen, because a person scheduled what"
               + " they say.")
   public EpicSummary updateEpic(
-      @ToolArg(description = "id of an epic in this project") String id,
+      @ToolArg(description = EPIC_ID) String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
       @ToolArg(required = false, description = "new description; omit to keep it")
           String description,
@@ -404,13 +420,13 @@ public class EpicMcpTools {
                       + " Each item: no line break, at most one '.', and fewer than 20 whitespace"
                       + " characters.")
           List<String> acceptanceCriteria) {
-    requireEpicInProject(id);
+    WorkEntity named = requireEpicInProject(id);
     // Only what was supplied is written, so a criteria-only call does not restate the frozen scope.
     WorkEntity epic =
         entities
             .update(
                 Archetype.EPIC,
-                id,
+                named.id,
                 EntityWrite.epic((title == null || title.isBlank()) ? null : title, description)
                     .withAcceptanceCriteria(acceptanceCriteria),
                 changedBy())
@@ -463,7 +479,7 @@ public class EpicMcpTools {
               + " block_entity. Do NOT drop an epic merely because it is hard or you could not"
               + " finish it: block_entity with what is missing instead.")
   public EpicSummary transitionEpic(
-      @ToolArg(description = "id of an epic in this project") String id,
+      @ToolArg(description = EPIC_ID) String id,
       @ToolArg(
               description =
                   "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
@@ -473,7 +489,7 @@ public class EpicMcpTools {
                       + " IMPLEMENTED"
                       + " (the skips); DONE is final and moves nowhere")
           String target) {
-    requireEpicInProject(id);
+    WorkEntity named = requireEpicInProject(id);
     if (target != null && WorkEntityService.SUPERSEDE.equals(target)) {
       throw new eu.wohlben.qits.entities.error.ConflictException(
           "SUPERSEDED is an operation on a plan, not a status an agent claims — a person"
@@ -481,7 +497,7 @@ public class EpicMcpTools {
     }
     String changedBy = changedBy();
     WorkEntityService.Transition moved =
-        resolutions.transition(Archetype.EPIC, id, target, Mover.machine(changedBy));
+        resolutions.transition(Archetype.EPIC, named.id, target, Mover.machine(changedBy));
     WorkEntity epic = moved.entity();
     announce();
     // The agent's claim IS the trigger for the next phase: after the move, outside its transaction.
@@ -503,20 +519,21 @@ public class EpicMcpTools {
               + " the epic; give it a body that says what it is, not how far along it is. Refused"
               + " once the epic leaves REPORTED.")
   public FeatureSummary addFeature(
-      @ToolArg(description = "id of a REPORTED epic in this project") String epicId,
+      @ToolArg(description = "id of a REPORTED epic in this project" + EITHER_FORM) String epicId,
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
       @ToolArg(required = false, description = "the long-form Markdown body") String description,
       @ToolArg(
               required = false,
               description =
-                  "id of another feature IN THE SAME EPIC that this one depends on; omit for none")
+                  "id of another feature IN THE SAME EPIC that this one depends on — its UUID or"
+                      + " its qualified id (<project-slug>-<n>); omit for none")
           String dependsOnFeatureId) {
-    requireEpicInProject(epicId);
+    WorkEntity epic = requireEpicInProject(epicId);
     Nested feature =
         entities.create(
             Archetype.FEATURE,
-            epicId,
-            EntityWrite.feature(title, description, dependsOnFeatureId),
+            epic.id,
+            EntityWrite.feature(title, description, dependencyId(dependsOnFeatureId)),
             changedBy());
     announce();
     return summarizeFeature(feature, projectSlug());
@@ -531,22 +548,23 @@ public class EpicMcpTools {
               + " implemented marker is editable here: the marker is recorded by people as work"
               + " ships, and the status moves with transition_task once the epic is refined.")
   public FeatureSummary updateFeature(
-      @ToolArg(description = "id of a feature in this project") String id,
+      @ToolArg(description = FEATURE_ID) String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
       @ToolArg(required = false, description = "new description; omit to keep it")
           String description,
       @ToolArg(
               required = false,
               description =
-                  "id of another feature in the same epic to depend on; omit to keep the current"
-                      + " one")
+                  "id of another feature in the same epic to depend on — its UUID or its"
+                      + " qualified id (<project-slug>-<n>); omit to keep the current one")
           String dependsOnFeatureId) {
-    requireFeatureInProject(id);
+    WorkEntity named = requireFeatureInProject(id).entity();
     Nested feature =
         entities.update(
             Archetype.FEATURE,
-            id,
-            EntityWrite.nodeEdit(title, description, dependsOnFeatureId, false, null, false),
+            named.id,
+            EntityWrite.nodeEdit(
+                title, description, dependencyId(dependsOnFeatureId), false, null, false),
             changedBy());
     announce();
     return summarizeFeature(feature, projectSlug());
@@ -559,9 +577,9 @@ public class EpicMcpTools {
           "Remove a feature of a REPORTED epic, along with its tasks. Refused once the owning epic"
               + " leaves REPORTED.")
   public String removeFeature(
-      @ToolArg(description = "id of a feature in this project") String id) {
-    requireFeatureInProject(id);
-    entities.delete(Archetype.FEATURE, id, changedBy());
+      @ToolArg(description = FEATURE_ID) String id) {
+    WorkEntity named = requireFeatureInProject(id).entity();
+    entities.delete(Archetype.FEATURE, named.id, changedBy());
     announce();
     return "Removed feature " + id;
   }
@@ -576,7 +594,7 @@ public class EpicMcpTools {
               + " split a feature that spans several. Use list_repositories to pick a repositoryId;"
               + " it has to belong to this project. Refused once the owning epic leaves REPORTED.")
   public TaskSummary addTask(
-      @ToolArg(description = "id of a feature in this project") String featureId,
+      @ToolArg(description = FEATURE_ID) String featureId,
       @ToolArg(description = "id of a repository in this project — see list_repositories")
           String repositoryId,
       @ToolArg(description = "short label for lists and breadcrumbs") String title,
@@ -584,9 +602,10 @@ public class EpicMcpTools {
       @ToolArg(
               required = false,
               description =
-                  "id of another task IN THE SAME FEATURE that this one depends on; omit for none")
+                  "id of another task IN THE SAME FEATURE that this one depends on — its UUID or"
+                      + " its qualified id (<project-slug>-<n>); omit for none")
           String dependsOnTaskId) {
-    requireFeatureInProject(featureId);
+    WorkEntity feature = requireFeatureInProject(featureId).entity();
     // Project membership, exactly what the REST create checks (WorkEntityDoors.create): a
     // task must not bind a repository from another project. Deliberately NOT the session's
     // repository narrowing — this id is a reference to where the planned work belongs, not a git
@@ -596,8 +615,8 @@ public class EpicMcpTools {
     Nested task =
         entities.create(
             Archetype.TASK,
-            featureId,
-            EntityWrite.task(repositoryId, title, description, dependsOnTaskId),
+            feature.id,
+            EntityWrite.task(repositoryId, title, description, dependencyId(dependsOnTaskId)),
             changedBy());
     announce();
     return summarizeTask(task, projectSlug());
@@ -613,22 +632,23 @@ public class EpicMcpTools {
               + " mark_task_implementing and mark_task_implemented, which move the task's status"
               + " too, and moves it further with transition_task.")
   public TaskSummary updateTask(
-      @ToolArg(description = "id of a task in this project") String id,
+      @ToolArg(description = TASK_ID) String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
       @ToolArg(required = false, description = "new description; omit to keep it")
           String description,
       @ToolArg(
               required = false,
               description =
-                  "id of another task in the same feature to depend on; omit to keep the current"
-                      + " one")
+                  "id of another task in the same feature to depend on — its UUID or its"
+                      + " qualified id (<project-slug>-<n>); omit to keep the current one")
           String dependsOnTaskId) {
-    requireTaskInProject(id);
+    WorkEntity named = requireTaskInProject(id).entity();
     Nested task =
         entities.update(
             Archetype.TASK,
-            id,
-            EntityWrite.nodeEdit(title, description, dependsOnTaskId, false, null, false),
+            named.id,
+            EntityWrite.nodeEdit(
+                title, description, dependencyId(dependsOnTaskId), false, null, false),
             changedBy());
     announce();
     return summarizeTask(task, projectSlug());
@@ -675,11 +695,12 @@ public class EpicMcpTools {
               + " (a task already further on, say VERIFIED, stays where it is). Calling"
               + " mark_task_implementing first is expected but not required.")
   public TaskImplemented markTaskImplemented(
-      @ToolArg(description = "id of a task in this project") String id) {
-    requireTaskInProject(id);
+      @ToolArg(description = TASK_ID) String id) {
+    WorkEntity named = requireTaskInProject(id).entity();
     WorkEntity task =
         entities
-            .update(Archetype.TASK, id, EntityWrite.implementedAt(Instant.now()), changedBy())
+            .update(
+                Archetype.TASK, named.id, EntityWrite.implementedAt(Instant.now()), changedBy())
             .entity();
     announce();
     return new TaskImplemented(
@@ -716,9 +737,9 @@ public class EpicMcpTools {
               + " Idempotent: a task already marked keeps its first time. Call it as you start each"
               + " task, then mark_task_implemented as its work lands.")
   public TaskImplementing markTaskImplementing(
-      @ToolArg(description = "id of a task in this project") String id) {
-    requireTaskInProject(id);
-    WorkEntity task = entities.markImplementing(id, changedBy()).entity();
+      @ToolArg(description = TASK_ID) String id) {
+    WorkEntity named = requireTaskInProject(id).entity();
+    WorkEntity task = entities.markImplementing(named.id, changedBy()).entity();
     announce();
     return new TaskImplementing(
         task.id,
@@ -777,8 +798,7 @@ public class EpicMcpTools {
   public PieceTransitioned transitionTask(
       @ToolArg(
               description =
-                  "id of a feature or a task in this project: its UUID or its qualified id"
-                      + " (<project>-<n>)")
+                  "id of a feature or a task in this project" + EITHER_FORM)
           String id,
       @ToolArg(
               description =
@@ -815,9 +835,9 @@ public class EpicMcpTools {
       name = "remove_task",
       description =
           "Remove a task of a REPORTED epic. Refused once the owning epic leaves REPORTED.")
-  public String removeTask(@ToolArg(description = "id of a task in this project") String id) {
-    requireTaskInProject(id);
-    entities.delete(Archetype.TASK, id, changedBy());
+  public String removeTask(@ToolArg(description = TASK_ID) String id) {
+    WorkEntity named = requireTaskInProject(id).entity();
+    entities.delete(Archetype.TASK, named.id, changedBy());
     announce();
     return "Removed task " + id;
   }
@@ -825,11 +845,18 @@ public class EpicMcpTools {
   // --- Scoping --------------------------------------------------------------
 
   /**
-   * Ensures {@code epicId} names an epic of the scoped project. An epic elsewhere reads as not
+   * Ensures {@code epicId} names an epic of the scoped project, and answers the row — <b>whose
+   * {@code id} is what every tool hands on</b>, never the argument. An epic elsewhere reads as not
    * found rather than as forbidden — the model is told nothing about what other projects hold.
+   *
+   * <p>The argument is either form (qits-954): the UUID, or the qualified id {@code
+   * <project-slug>-<n>} every answer here carries, resolved by {@link EntityIdResolver} exactly as
+   * {@code get_entity} and the {@code /work} doors resolve it. The services' writes are primary-key
+   * writes, so {@code qits-7} handed on as written would name nothing there — which is why only the
+   * resolved row's UUID travels past these checks.
    */
   private WorkEntity requireEpicInProject(String epicId) {
-    WorkEntity epic = entities.get(Archetype.EPIC, epicId);
+    WorkEntity epic = resolveOf(Archetype.EPIC, "Epic", epicId);
     if (!scope.requireProjectId().equals(epic.projectId)) {
       throw new NotFoundException("Epic not found in this project: " + epicId);
     }
@@ -838,15 +865,53 @@ public class EpicMcpTools {
 
   /** The owning epic is the membership edge's parent now, carried beside the row as a {@link Nested}. */
   private Nested requireFeatureInProject(String featureId) {
-    Nested feature = entities.nested(Archetype.FEATURE, featureId);
+    Nested feature =
+        entities.nested(Archetype.FEATURE, resolveOf(Archetype.FEATURE, "Feature", featureId).id);
     requireEpicInProject(feature.parentId());
     return feature;
   }
 
   private Nested requireTaskInProject(String taskId) {
-    Nested task = entities.nested(Archetype.TASK, taskId);
+    Nested task = entities.nested(Archetype.TASK, resolveOf(Archetype.TASK, "Task", taskId).id);
     requireFeatureInProject(task.parentId());
     return task;
+  }
+
+  /**
+   * The row {@code id} names, in either form, if it is of {@code archetype}. A miss reads as "not
+   * found in this project", as the scope checks' own refusal does — from the caller's side the two
+   * are one answer — and a row of another kind keeps the refusal {@code WorkEntityService.get}
+   * always gave it, naming what was asked for rather than the UUID it resolved to.
+   */
+  private WorkEntity resolveOf(Archetype archetype, String noun, String id) {
+    WorkEntity row;
+    try {
+      row = ids.resolve(id);
+    } catch (NotFoundException e) {
+      throw new NotFoundException(noun + " not found in this project: " + id);
+    }
+    if (row.archetype != archetype) {
+      throw new NotFoundException(noun + " not found: " + id);
+    }
+    return row;
+  }
+
+  /**
+   * A {@code dependsOn*} argument as the UUID the service stores, from either form. Null and blank
+   * are handed on as they came — they keep meaning what they meant (none, or unchanged) — and so is
+   * a value naming nothing, for the service's own refusal about it, the rule {@code
+   * WorkMembersController} applies to a criterion's {@code entityId}. Whether the row is a sibling,
+   * and so in this project at all, is the service's check, which runs on the resolved id.
+   */
+  private String dependencyId(String named) {
+    if (named == null || named.isBlank()) {
+      return named;
+    }
+    try {
+      return ids.resolve(named).id;
+    } catch (NotFoundException unknown) {
+      return named;
+    }
   }
 
   /**

@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.mcp;
 
+import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import eu.wohlben.qits.projects.entity.Refinement;
 import eu.wohlben.qits.projects.entity.RefinementDesign;
 import eu.wohlben.qits.projects.error.BadRequestException;
@@ -56,6 +57,13 @@ public class RefinementDesignMcpTools {
   @Inject RefinementRepository refinements;
 
   @Inject RefinementDesigns designs;
+
+  /**
+   * The UUID-or-qualified-id lookup {@code get_entity} and the {@code /work} doors share (qits-954):
+   * a refinement row is keyed by the entity's UUID, so a qualified id is turned into one before the
+   * row is looked for. Its reads are {@code requiringNew}, like the refinement read beside it.
+   */
+  @Inject EntityIdResolver ids;
 
   @Inject SecurityIdentity identity;
 
@@ -169,7 +177,8 @@ public class RefinementDesignMcpTools {
 
   /** The argument naming the room: the refined entity, of either archetype. */
   private static final String ENTITY_ARG =
-      "id of the epic or ticket in this project whose refinement this is; give this or epicId";
+      "id of the epic or ticket in this project whose refinement this is: its UUID or its qualified"
+          + " id (<project-slug>-<n>); give this or epicId";
 
   /** The argument these tools shipped with, kept for sessions already using it. */
   private static final String EPIC_ARG =
@@ -191,14 +200,28 @@ public class RefinementDesignMcpTools {
               : "Give entityId: the id of the epic or ticket whose refinement this is.");
     }
     String id = hasEntity ? entityId : epicId;
+    String entity = entityOf(id);
     Refinement refinement =
         QuarkusTransaction.requiringNew()
-            .call(() -> refinements.findByEntity(id))
+            .call(() -> refinements.findByEntity(entity))
             .orElseThrow(() -> noRefinement(id));
     if (!scope.requireProjectId().equals(refinement.projectId)) {
       throw noRefinement(id);
     }
     return refinement;
+  }
+
+  /**
+   * The UUID {@code id} names, in either form (qits-954) — {@code refinement.entity_id} holds the
+   * UUID, so {@code qits-7} looked up as written would find no room. An id naming nothing is the
+   * same answer as an entity with no room open: {@link #noRefinement}, naming what was asked for.
+   */
+  private String entityOf(String id) {
+    try {
+      return ids.resolve(id).id;
+    } catch (eu.wohlben.qits.entities.error.NotFoundException e) {
+      throw noRefinement(id);
+    }
   }
 
   private static NotFoundException noRefinement(String entityId) {
