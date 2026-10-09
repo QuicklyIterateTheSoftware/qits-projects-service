@@ -5462,15 +5462,21 @@ paths:
       description: "Creates (or converges on) the repository's one open release request.\
         \ A fresh request's sources are main plus the named branch, plus every released\
         \ tag of the repository not yet merged to main; they are folded onto release/<id>\
-        \ and it is that MERGE the gates evaluate — mergedSha on the answer. A repository\
-        \ has at most one unreleased request, whatever its archetype: a branch that\
-        \ already participates answers that request, and a branch nothing has asked\
-        \ about JOINS it as a further source, so the answer may carry an id you did\
-        \ not create, sources you did not name and somebody else's summary. Only when\
-        \ your branch is the request's sole asked-for source do your summary and requester\
-        \ replace the request's; otherwise the words of the ask that opened it stand,\
-        \ and yours are recorded on your own source row. Poll until RELEASED, REJECTED,\
-        \ CONFLICTED or FAILED; detail says why, and conflict says what to resolve."
+        \ and it is that MERGE the gates evaluate — mergedSha on the answer. Every\
+        \ refold rebuilds release/<id> from the sources alone (never onto the previous\
+        \ fold), so main..release/<id> is the sources' own commits plus one merge,\
+        \ whose parents are the sources in source order: main, the branches as they\
+        \ were added, then the released tags oldest first, leaving out any source\
+        \ another one contains. A refold therefore need not descend from the fold\
+        \ before it. A repository has at most one unreleased request, whatever its\
+        \ archetype: a branch that already participates answers that request, and\
+        \ a branch nothing has asked about JOINS it as a further source, so the answer\
+        \ may carry an id you did not create, sources you did not name and somebody\
+        \ else's summary. Only when your branch is the request's sole asked-for source\
+        \ do your summary and requester replace the request's; otherwise the words\
+        \ of the ask that opened it stand, and yours are recorded on your own source\
+        \ row. Poll until RELEASED, REJECTED, CONFLICTED or FAILED; detail says why,\
+        \ and conflict says what to resolve."
       operationId: createReleaseRequest
       parameters:
       - name: repoId
