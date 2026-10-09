@@ -658,6 +658,7 @@ public class ReleaseRequestSourcesTest {
         folds.get(folds.size() - 2).resolutions(),
         "the fold that conflicted asked for nothing, exactly as every fold did before this existed");
     assertTrue(second.versionPins(), "the gitlink re-fold asks for version pins like the first");
+    assertTrue(second.rebuild(), "and is rebuilt from the sources like the first");
   }
 
   /**
@@ -745,6 +746,9 @@ public class ReleaseRequestSourcesTest {
       List<RecordingBackingBranchMerger.Fold> folds = merger.foldsOf(target);
       assertEquals(foldsBefore + 1, folds.size(), "the git host decided it; nothing folds again");
       assertTrue(folds.get(folds.size() - 1).versionPins(), "every fold asks for version pins");
+      assertTrue(
+          folds.stream().allMatch(RecordingBackingBranchMerger.Fold::rebuild),
+          "every fold is rebuilt from main and the sources, never made onto the previous fold");
       assertEquals(List.of(), folds.get(folds.size() - 1).resolutions());
       String line =
           logged.stream()

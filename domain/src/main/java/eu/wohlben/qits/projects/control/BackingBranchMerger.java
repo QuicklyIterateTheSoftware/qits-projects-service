@@ -84,6 +84,32 @@ public interface BackingBranchMerger {
    * side decided comes back as {@link Outcome#resolvedVersions}. A git host that predates the flag
    * ignores it, which is the fold it always made. The flag is still release vocabulary-free: it
    * says "version tokens may be ordered", not what a release is.
+   *
+   * <p>This form folds onto the target's tip; see the nine-argument form for a rebuild.
+   */
+  default Outcome merge(
+      String repoId,
+      String projectId,
+      String repoName,
+      String target,
+      List<String> sources,
+      String message,
+      List<Resolution> resolutions,
+      boolean versionPins) {
+    return merge(
+        repoId, projectId, repoName, target, sources, message, resolutions, versionPins, false);
+  }
+
+  /**
+   * The full form: {@code rebuild} asks the git host to leave the target's own tip out of the
+   * fold, so the result is built from {@code sources} alone and the target is moved onto it with a
+   * lease, ancestor of the old tip or not. The parents of a rebuilt merge are the effective sources
+   * in the order given; a target whose tip already has exactly those parents is {@code unchanged}.
+   *
+   * <p>Without it every fold is made onto the previous one, so a source that moves N times leaves
+   * N two-parent merges on the target (51 commits on one request, measured 2026-10-09). A git host
+   * that predates the flag ignores it and folds onto the tip, as it always did. Still no release
+   * vocabulary: it says "this branch is a function of its sources", not what a release is.
    */
   Outcome merge(
       String repoId,
@@ -93,7 +119,8 @@ public interface BackingBranchMerger {
       List<String> sources,
       String message,
       List<Resolution> resolutions,
-      boolean versionPins);
+      boolean versionPins,
+      boolean rebuild);
 
   /**
    * "Whatever the merge would have made of {@code path}, put this gitlink there instead."
