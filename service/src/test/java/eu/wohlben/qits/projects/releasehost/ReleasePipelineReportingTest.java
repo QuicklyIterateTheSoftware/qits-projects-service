@@ -232,6 +232,53 @@ public class ReleasePipelineReportingTest {
   }
 
   /**
+   * <b>A re-fold's late CANCELLED does not take the QA phase back.</b> Release request dd113f4c,
+   * 2026-10-09: the request re-folded, qits-ci started the new fold's run, and the old fold's run was
+   * cancelled a moment AFTER — so its CANCELLED frame was the newest transition and the QA phase read
+   * CANCELLED over a running gate. The QA phase is the run at the current fold.
+   */
+  @Test
+  public void aSupersededFoldsCancelArrivingAfterTheNewRunStartsLeavesTheQaPhaseWithTheNewRun() {
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
+    String id = create("work");
+    String backing = ReleaseRequest.backingBranchOf(id);
+    String fold = mergedShaOf(id);
+    String old = "run-old-" + UUID.randomUUID();
+    String current = "run-new-" + UUID.randomUUID();
+
+    transitionAt(old, "RELEASE_REQUEST", backing, "RUNNING", Instant.parse("2026-10-09T16:54:21Z"), "old-fold");
+    transitionAt(current, "RELEASE_REQUEST", backing, "QUEUED", Instant.parse("2026-10-09T17:15:34.100Z"), fold);
+    transitionAt(current, "RELEASE_REQUEST", backing, "RUNNING", Instant.parse("2026-10-09T17:15:34.500Z"), fold);
+    transitionAt(old, "RELEASE_REQUEST", backing, "CANCELLED", Instant.parse("2026-10-09T17:15:34.946Z"), "old-fold");
+
+    assertEquals(List.of(current), strings(id, "request.pipeline.phases.runId"));
+    assertEquals(List.of("RUNNING"), strings(id, "request.pipeline.phases.state"));
+
+    transitionAt(current, "RELEASE_REQUEST", backing, "SUCCESS", Instant.parse("2026-10-09T17:30:00Z"), fold);
+    assertEquals(List.of("SUCCESS"), strings(id, "request.pipeline.phases.state"));
+  }
+
+  /** The same race the other way round: the cancel lands first, then the new run starts. */
+  @Test
+  public void aSupersededFoldsCancelArrivingBeforeTheNewRunStartsHandsTheQaPhaseOver() {
+    gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
+    String id = create("work");
+    String backing = ReleaseRequest.backingBranchOf(id);
+    String fold = mergedShaOf(id);
+    String old = "run-old-" + UUID.randomUUID();
+    String current = "run-new-" + UUID.randomUUID();
+
+    transitionAt(old, "RELEASE_REQUEST", backing, "RUNNING", Instant.parse("2026-10-09T16:54:21Z"), "old-fold");
+    transitionAt(old, "RELEASE_REQUEST", backing, "CANCELLED", Instant.parse("2026-10-09T17:15:34Z"), "old-fold");
+    // The old fold's run is not this fold's QA phase, so until the new run reports there is none.
+    assertEquals(List.of(), strings(id, "request.pipeline.phases.phase"));
+
+    transitionAt(current, "RELEASE_REQUEST", backing, "QUEUED", Instant.parse("2026-10-09T17:15:35Z"), fold);
+    assertEquals(List.of(current), strings(id, "request.pipeline.phases.runId"));
+    assertEquals(List.of("PENDING"), strings(id, "request.pipeline.phases.state"));
+  }
+
+  /**
    * <b>The publish phase appears after the tag and not before</b>, and it is correlated the way the
    * publish gate already correlates: a release run's branch IS the version, which is the tag name
    * {@code released_tag_pending_merge} is keyed on beside the repository. Nothing before the tag can
@@ -728,8 +775,26 @@ public class ReleasePipelineReportingTest {
     transitionAt(runId, phase, branch, status, Instant.now());
   }
 
+  /**
+   * A QA run on a backing branch builds that request's current fold, so its commit is the request's
+   * {@code mergedSha} unless a test says otherwise; any other run gets a commit of its own.
+   */
   private void transitionAt(
       String runId, String phase, String branch, String status, Instant at) {
+    String sha = "sha-" + runId;
+    if ("RELEASE_REQUEST".equals(phase)
+        && branch != null
+        && branch.startsWith(ReleaseRequest.BACKING_BRANCH_PREFIX)) {
+      String folded = mergedShaOf(branch.substring(ReleaseRequest.BACKING_BRANCH_PREFIX.length()));
+      if (folded != null) {
+        sha = folded;
+      }
+    }
+    transitionAt(runId, phase, branch, status, at, sha);
+  }
+
+  private void transitionAt(
+      String runId, String phase, String branch, String status, Instant at, String sha) {
     transitions.onFrame(
         new EventFrame(
             UUID.randomUUID().toString(),
@@ -737,8 +802,8 @@ public class ReleasePipelineReportingTest {
             at,
             "{\"branch\":\""
                 + branch
-                + "\",\"commitSha\":\"sha-"
-                + runId
+                + "\",\"commitSha\":\""
+                + sha
                 + "\""
                 + (phase == null ? "" : ",\"phase\":\"" + phase + "\"")
                 + ",\"repoId\":\""

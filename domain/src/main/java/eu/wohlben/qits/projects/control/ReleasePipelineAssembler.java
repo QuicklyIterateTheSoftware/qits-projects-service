@@ -166,6 +166,8 @@ public class ReleasePipelineAssembler {
    *     invented — see {@link ReleasePipelineGateDto#detail()}
    * @param released this request's released tag, or null where it produced none — the deploy phase's
    *     input, since it carries the version qits-deployments is keyed on
+   * @param foldSha the request's current fold ({@code mergedSha}), or null where it has none; the QA
+   *     phase is the run at this commit — see {@link #newestPerPhase}
    * @param reach whether this read may ask qits-deployments for the third phase; see {@link
    *     DeployReach}
    */
@@ -174,13 +176,14 @@ public class ReleasePipelineAssembler {
       List<ReleaseGates.Gate> gates,
       Map<ReleaseGates.Kind, String> details,
       ReleasedTagPendingMerge released,
+      String foldSha,
       DeployReach reach) {
     ReleasePhaseDto deploy = deployPhase(released, gates, reach);
     if (!hasSomethingToShow(runs, deploy)) {
       return null;
     }
     List<ReleasePhaseDto> phases = new ArrayList<>();
-    Map<String, ReleasePipelineRun> newest = newestPerPhase(runs);
+    Map<String, ReleasePipelineRun> newest = newestPerPhase(runs, foldSha);
     ReleasePipelineRun qa = newest.get(PHASE_QA);
     if (qa != null) {
       phases.add(phaseOf(PHASE_QA, qa));
@@ -346,21 +349,53 @@ public class ReleasePipelineAssembler {
   }
 
   /**
-   * The newest run of each phase, keyed by the <b>DTO's</b> phase word.
+   * The current run of each phase, keyed by the <b>DTO's</b> phase word.
    *
-   * <p>The rows arrive newest-transition-first, so the first row of a phase is that phase's current
-   * run and every later one is a run it superseded — a retry, or a re-fold's run that a newer fold
-   * replaced. A stored phase word this service cannot translate is dropped rather than drawn under a
-   * guessed name: qits-ci owns that vocabulary and may grow it, and a word nobody here has taught is
-   * honestly unreportable.
+   * <p>The rows arrive newest-transition-first, so the first row of a phase is its newest run and
+   * every later one is a run it superseded — a retry, or a re-fold's run that a newer fold replaced.
+   * A stored phase word this service cannot translate is dropped rather than drawn under a guessed
+   * name: qits-ci owns that vocabulary and may grow it.
+   *
+   * <p><b>The QA phase is the run at the current fold, not the run that moved last.</b> A re-fold
+   * cancels the old fold's run, and that CANCELLED frame can carry a later instant than the new
+   * run's QUEUED or RUNNING frame. Newest-transition alone then draws the dead run over the live one
+   * (release request dd113f4c, 2026-10-09). So for QA:
+   *
+   * <ul>
+   *   <li>a run at {@code foldSha} wins over any other, newest of them first;
+   *   <li>a run with no recorded commit (written before the column existed) is a fallback;
+   *   <li>a run at a different commit is a superseded fold's run and is never the QA phase. Where
+   *       only such runs exist, the current fold has not run yet and the phase is absent.
+   * </ul>
+   *
+   * <p>With no {@code foldSha} nothing is filtered. The publish phase is not filtered either: all its
+   * runs build the one tag.
    */
-  private static Map<String, ReleasePipelineRun> newestPerPhase(List<ReleasePipelineRun> runs) {
+  private static Map<String, ReleasePipelineRun> newestPerPhase(
+      List<ReleasePipelineRun> runs, String foldSha) {
     Map<String, ReleasePipelineRun> newest = new LinkedHashMap<>();
+    ReleasePipelineRun qaAtFold = null;
+    ReleasePipelineRun qaUnknownCommit = null;
     for (ReleasePipelineRun run : runs) {
       String phase = phaseWordOf(run.phase);
-      if (phase != null) {
-        newest.putIfAbsent(phase, run);
+      if (phase == null) {
+        continue;
       }
+      if (PHASE_QA.equals(phase) && foldSha != null) {
+        if (run.commitSha == null) {
+          if (qaUnknownCommit == null) {
+            qaUnknownCommit = run;
+          }
+        } else if (run.commitSha.equals(foldSha) && qaAtFold == null) {
+          qaAtFold = run;
+        }
+        continue;
+      }
+      newest.putIfAbsent(phase, run);
+    }
+    ReleasePipelineRun qa = qaAtFold != null ? qaAtFold : qaUnknownCommit;
+    if (qa != null) {
+      newest.put(PHASE_QA, qa);
     }
     return newest;
   }
