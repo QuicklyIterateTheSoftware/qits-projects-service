@@ -8,7 +8,13 @@
       "email": "seeder@contract.example.test",
       "date": "2026-01-01T00:00:00Z",
       "message": "Release the export across the suite",
-      "files": []
+      "files": [],
+      "parents": [
+        "5eab9635f653a85136ce4d8babd44edfa83cf1da",
+        "907e9dfd0c676bbcd8091fe55b64ddf0bd03727a",
+        "e447df8a0cabaeafedbf4c0235e013bb29697cd9"
+      ],
+      "fold": true
     },
     {
       "hash": "e447df8a0cabaeafedbf4c0235e013bb29697cd9",
@@ -19,7 +25,11 @@
       "message": "Say who approves a suite release",
       "files": [
         "README.md"
-      ]
+      ],
+      "parents": [
+        "5eab9635f653a85136ce4d8babd44edfa83cf1da"
+      ],
+      "fold": false
     },
     {
       "hash": "907e9dfd0c676bbcd8091fe55b64ddf0bd03727a",
@@ -30,8 +40,52 @@
       "message": "Bump contract-service to its export release",
       "files": [
         "components/contract/contract-service"
-      ]
+      ],
+      "parents": [
+        "5eab9635f653a85136ce4d8babd44edfa83cf1da"
+      ],
+      "fold": false
     }
   ],
-  "detail": null
+  "detail": null,
+  "foldParents": [
+    {
+      "sha": "5eab9635f653a85136ce4d8babd44edfa83cf1da",
+      "role": "SOURCE",
+      "source": "main",
+      "ref": "refs/heads/main"
+    },
+    {
+      "sha": "907e9dfd0c676bbcd8091fe55b64ddf0bd03727a",
+      "role": "SOURCE",
+      "source": "bump/contract-service",
+      "ref": "refs/heads/bump/contract-service"
+    },
+    {
+      "sha": "e447df8a0cabaeafedbf4c0235e013bb29697cd9",
+      "role": "SOURCE",
+      "source": "docs/approval",
+      "ref": "refs/heads/docs/approval"
+    }
+  ],
+  "sources": [
+    {
+      "name": "main",
+      "kind": "BRANCH",
+      "ref": "refs/heads/main",
+      "tipSha": "5eab9635f653a85136ce4d8babd44edfa83cf1da"
+    },
+    {
+      "name": "bump/contract-service",
+      "kind": "BRANCH",
+      "ref": "refs/heads/bump/contract-service",
+      "tipSha": "907e9dfd0c676bbcd8091fe55b64ddf0bd03727a"
+    },
+    {
+      "name": "docs/approval",
+      "kind": "BRANCH",
+      "ref": "refs/heads/docs/approval",
+      "tipSha": "e447df8a0cabaeafedbf4c0235e013bb29697cd9"
+    }
+  ]
 }

@@ -1,0 +1,142 @@
+{
+  "mergedSha": "a1e24622a6b22ddf43a4f8d7674758a6d9b42a31",
+  "commits": [
+    {
+      "hash": "a1e24622a6b22ddf43a4f8d7674758a6d9b42a31",
+      "shortHash": "a1e2462",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Release the CSV export and the rounding fix",
+      "files": [],
+      "parents": [
+        "478af8a68942d293dfd6c9997f74f9d86bd9ca56",
+        "6fab3034decc13560999c3a2af1a3d2eaf856b9d"
+      ],
+      "fold": true
+    },
+    {
+      "hash": "6fab3034decc13560999c3a2af1a3d2eaf856b9d",
+      "shortHash": "6fab303",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Describe the export in the README",
+      "files": [
+        "README.md"
+      ],
+      "parents": [
+        "019f0d272475dfef0ace655cc6d8672c8cd9c80c"
+      ],
+      "fold": false
+    },
+    {
+      "hash": "478af8a68942d293dfd6c9997f74f9d86bd9ca56",
+      "shortHash": "478af8a",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Release the CSV export and the rounding fix",
+      "files": [],
+      "parents": [
+        "41abbb59566ac3435fb3a25ed814c84d5c465cd8",
+        "3ea15c14abffbe22bdd59abd6c421231a19634d3"
+      ],
+      "fold": true
+    },
+    {
+      "hash": "3ea15c14abffbe22bdd59abd6c421231a19634d3",
+      "shortHash": "3ea15c1",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Round negative totals too",
+      "files": [
+        "src/invoice.txt"
+      ],
+      "parents": [
+        "d1e51733040b8ab999c107104cb82c2e62a28c48"
+      ],
+      "fold": false
+    },
+    {
+      "hash": "41abbb59566ac3435fb3a25ed814c84d5c465cd8",
+      "shortHash": "41abbb5",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Release the CSV export and the rounding fix",
+      "files": [],
+      "parents": [
+        "019f0d272475dfef0ace655cc6d8672c8cd9c80c",
+        "d1e51733040b8ab999c107104cb82c2e62a28c48"
+      ],
+      "fold": true
+    },
+    {
+      "hash": "d1e51733040b8ab999c107104cb82c2e62a28c48",
+      "shortHash": "d1e5173",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Round totals half to even",
+      "files": [
+        "src/invoice.txt"
+      ],
+      "parents": [
+        "edf350dfabb86b68f03f6d9448036d47924efc0a"
+      ],
+      "fold": false
+    },
+    {
+      "hash": "019f0d272475dfef0ace655cc6d8672c8cd9c80c",
+      "shortHash": "019f0d2",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Add the CSV export",
+      "files": [
+        "src/export.txt"
+      ],
+      "parents": [
+        "edf350dfabb86b68f03f6d9448036d47924efc0a"
+      ],
+      "fold": false
+    }
+  ],
+  "detail": null,
+  "foldParents": [
+    {
+      "sha": "478af8a68942d293dfd6c9997f74f9d86bd9ca56",
+      "role": "PREVIOUS_FOLD",
+      "source": null,
+      "ref": "refs/heads/release/00000000-0000-4000-8000-000000000003"
+    },
+    {
+      "sha": "6fab3034decc13560999c3a2af1a3d2eaf856b9d",
+      "role": "SOURCE",
+      "source": "feature/export",
+      "ref": "refs/heads/feature/export"
+    }
+  ],
+  "sources": [
+    {
+      "name": "main",
+      "kind": "BRANCH",
+      "ref": "refs/heads/main",
+      "tipSha": "edf350dfabb86b68f03f6d9448036d47924efc0a"
+    },
+    {
+      "name": "feature/export",
+      "kind": "BRANCH",
+      "ref": "refs/heads/feature/export",
+      "tipSha": "6fab3034decc13560999c3a2af1a3d2eaf856b9d"
+    },
+    {
+      "name": "fix/rounding",
+      "kind": "BRANCH",
+      "ref": "refs/heads/fix/rounding",
+      "tipSha": "3ea15c14abffbe22bdd59abd6c421231a19634d3"
+    }
+  ]
+}

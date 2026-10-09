@@ -12,7 +12,13 @@
       "email": "seeder@contract.example.test",
       "date": "2026-01-01T00:00:00Z",
       "message": "Release the CSV export and the rounding fix",
-      "files": []
+      "files": [],
+      "parents": [
+        "edf350dfabb86b68f03f6d9448036d47924efc0a",
+        "2c5ca7094579eabffd87e5357f012136e6c692ad",
+        "9e9b62ddc848fa4ee6386e7f4473f7ea96fad6f5"
+      ],
+      "fold": false
     },
     {
       "hash": "9e9b62ddc848fa4ee6386e7f4473f7ea96fad6f5",
@@ -23,7 +29,11 @@
       "message": "Round totals half to even",
       "files": [
         "src/invoice.txt"
-      ]
+      ],
+      "parents": [
+        "edf350dfabb86b68f03f6d9448036d47924efc0a"
+      ],
+      "fold": false
     },
     {
       "hash": "2c5ca7094579eabffd87e5357f012136e6c692ad",
@@ -34,7 +44,11 @@
       "message": "Describe the export in the README",
       "files": [
         "README.md"
-      ]
+      ],
+      "parents": [
+        "019f0d272475dfef0ace655cc6d8672c8cd9c80c"
+      ],
+      "fold": false
     },
     {
       "hash": "019f0d272475dfef0ace655cc6d8672c8cd9c80c",
@@ -45,7 +59,11 @@
       "message": "Add the CSV export",
       "files": [
         "src/export.txt"
-      ]
+      ],
+      "parents": [
+        "edf350dfabb86b68f03f6d9448036d47924efc0a"
+      ],
+      "fold": false
     }
   ],
   "files": [

@@ -31,4 +31,4 @@ import java.util.List;
  * reported.
  */
 public record ReleasePipelineDto(
-    List<ReleasePhaseDto> phases, List<ReleasePipelineGateDto> gates) {}
+    List<ReleasePhaseDto> phases, @Deprecated List<ReleasePipelineGateDto> gates) {}

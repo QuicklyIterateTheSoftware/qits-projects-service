@@ -925,7 +925,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.approvedAt",
@@ -937,7 +939,11 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -1609,14 +1615,19 @@
           "frozen": {
             "ids": [
               "$.requests[*].id",
-              "$.requests[*].repoId"
+              "$.requests[*].repoId",
+              "$.requests[*].qualityGates[*].checks[*].runId",
+              "$.requests[*].qualityGates[*].runId"
             ],
             "instants": [
               "$.requests[*].createdAt",
               "$.requests[*].updatedAt"
             ],
             "strings": [
-              "$.requests[*].backingBranch"
+              "$.requests[*].backingBranch",
+              "$.requests[*].qualityGates[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].name",
+              "$.requests[*].qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -1674,14 +1685,25 @@
           "frozen": {
             "ids": [
               "$.requests[*].id",
-              "$.requests[*].repoId"
+              "$.requests[*].repoId",
+              "$.requests[*].qualityGates[*].checks[*].runId",
+              "$.requests[*].qualityGates[*].runId",
+              "$.requests[*].pipeline.phases[*].runId"
             ],
             "instants": [
+              "$.requests[*].automations[*].updatedAt",
               "$.requests[*].createdAt",
-              "$.requests[*].updatedAt"
+              "$.requests[*].updatedAt",
+              "$.requests[*].pipeline.phases[*].startedAt",
+              "$.requests[*].pipeline.phases[*].finishedAt"
             ],
             "strings": [
               "$.requests[*].backingBranch",
+              "$.requests[*].automations[*].runId",
+              "$.requests[*].qualityGates[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].name",
+              "$.requests[*].qualityGates[*].checks[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].runId",
               "$.requests[*].detail",
               "$.requests[*].conflict.target"
             ],
@@ -1700,14 +1722,19 @@
           "frozen": {
             "ids": [
               "$.request.id",
-              "$.request.repoId"
+              "$.request.repoId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
               "$.request.updatedAt"
             ],
             "strings": [
-              "$.request.backingBranch"
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -2022,6 +2049,136 @@
       ]
     },
     {
+      "name": "a refolded release request",
+      "slug": "a-refolded-release-request",
+      "params": {
+        "mergedSha": "a1e24622a6b22ddf43a4f8d7674758a6d9b42a31",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-refolded-release-request/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-refolded-release-request/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "status": 200,
+          "file": "a-refolded-release-request/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-refolded-release-request/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-refolded-release-request/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-refolded-release-request/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-refolded-release-request/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [
+              "$.foldParents[*].ref"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a release request awaiting approval",
       "slug": "a-release-request-awaiting-approval",
       "params": {
@@ -2046,7 +2203,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.approvedAt",
@@ -2058,8 +2217,25 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getCommitFileDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/e447df8a0cabaeafedbf4c0235e013bb29697cd9/diff?path=README.md",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getCommitFileDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -2073,7 +2249,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.automations[*].updatedAt",
@@ -2084,7 +2262,11 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -2165,6 +2347,19 @@
           }
         },
         {
+          "operationId": "listCommitChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/e447df8a0cabaeafedbf4c0235e013bb29697cd9/changes",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listCommitChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listReleaseRequestApprovals",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
@@ -2217,7 +2412,9 @@
             "ids": [
               "$.requests[*].id",
               "$.requests[*].repoId",
-              "$.requests[*].pipeline.phases[*].runId"
+              "$.requests[*].pipeline.phases[*].runId",
+              "$.requests[*].qualityGates[*].checks[*].runId",
+              "$.requests[*].qualityGates[*].runId"
             ],
             "instants": [
               "$.requests[*].automations[*].updatedAt",
@@ -2228,7 +2425,11 @@
             ],
             "strings": [
               "$.requests[*].backingBranch",
-              "$.requests[*].automations[*].runId"
+              "$.requests[*].automations[*].runId",
+              "$.requests[*].qualityGates[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].name",
+              "$.requests[*].qualityGates[*].checks[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -2247,7 +2448,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.automations[*].updatedAt",
@@ -2258,7 +2461,11 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -2276,7 +2483,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -2285,7 +2494,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch"
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -2328,7 +2540,8 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -2353,7 +2566,8 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -2493,7 +2707,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.automations[*].updatedAt",
@@ -2504,7 +2720,11 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -2657,7 +2877,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.automations[*].updatedAt",
@@ -2668,7 +2890,11 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }
@@ -2696,7 +2922,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -2706,7 +2934,10 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.detail"
+              "$.request.detail",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -2808,7 +3039,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -2818,7 +3051,10 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.detail"
+              "$.request.detail",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -2846,7 +3082,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -2855,7 +3093,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch"
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -2957,7 +3198,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -2966,7 +3209,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch"
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -2985,6 +3231,19 @@
       "dependsOn": [],
       "operations": [
         {
+          "operationId": "getCommitFileDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/019f0d272475dfef0ace655cc6d8672c8cd9c80c/diff?path=src/export.txt",
+          "status": 200,
+          "file": "a-released-release-request/getCommitFileDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getReleaseRequest",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
@@ -2994,7 +3253,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -3003,7 +3264,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch"
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -3050,6 +3314,19 @@
             "strings": [
               "$.builds[*].branch"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/019f0d272475dfef0ace655cc6d8672c8cd9c80c/changes",
+          "status": 200,
+          "file": "a-released-release-request/listCommitChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -3105,7 +3382,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -3114,7 +3393,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch"
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -3958,7 +4240,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.createdAt",
@@ -3967,7 +4251,10 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
-              "$.request.backingBranch"
+              "$.request.backingBranch",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }
@@ -4081,7 +4368,9 @@
             "ids": [
               "$.request.id",
               "$.request.repoId",
-              "$.request.pipeline.phases[*].runId"
+              "$.request.pipeline.phases[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
             ],
             "instants": [
               "$.request.approvedAt",
@@ -4093,7 +4382,11 @@
             ],
             "strings": [
               "$.request.backingBranch",
-              "$.request.automations[*].runId"
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name",
+              "$.request.qualityGates[*].checks[*].detail",
+              "$.request.qualityGates[*].checks[*].runId"
             ],
             "listFilteredTo": null
           }

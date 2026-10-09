@@ -1049,6 +1049,44 @@ one tree listing, both gates, and the merge to `main` when every configured one 
 `OPEN` (what a listing answers) and `UNRELEASED` (what may still be folded, added to or approved) are
 two different constants now, and mixing them up is the defect to watch for.
 
+### One class per gate (2026-10-09)
+
+Each gate is a CDI bean implementing `control/gate/ReleaseGate`: a `kind` (`[a-z0-9-]+`), a
+`label`, a `position` (`qa-publish`, `publish-deploy`, `deploy-finalized`), an `order`, an
+`applicability` for a request and an `evaluate` that answers state, detail, named checks and a run
+id. `ReleaseGateEvaluator` finds them through `Instance<ReleaseGate>`, orders them and puts them on
+the wire. It is the shape of qits-maintenance's `ReleaseRequestAutomation` and of the `entities`
+module's `TransitionGate`.
+
+| class | kind | position |
+| --- | --- | --- |
+| `CiBuildGate` | `ci` | `qa-publish` |
+| `AutomationsGate` | `automations` | `qa-publish` |
+| `ApprovalGate` | `approval` | `qa-publish` |
+| `PublishRunGate` | `publish` | `publish-deploy` |
+| `DeploymentRollbackGate` | `deployment-not-rolled-back` | `deploy-finalized` |
+
+- **The tag reaching `main` is the finalize step, not a gate** (`mergedToMainAt`). The deployment's
+  gate is "went live and not rolled back": live is `deploymentActiveAt`, rolled back is
+  qits-deployments' `ROLLED_BACK` on the newest deployment request for the version. Only a
+  single-request read asks qits-deployments (once for this gate, once for the deploy phase); a list
+  read reports a live release PASSED and says it did not check. The deprecated `DEPLOYMENT` entry
+  of `gates[]` keeps its old meaning, "reached main", through `LegacyGates`, which has no class.
+- **A gate reads a `GateSubject`, it does not fetch.** `ReleaseRequests` batches the inputs per page;
+  a gate that made a call would put one on every row of the busiest read.
+- **The answer is generic.** `qualityGates[]` on the request carries `kind`, `label`, `position`,
+  `state`, `detail`, `checks[]` (`name`, `state`, `detail`, `runId`), `runId` and `link`, so a page
+  needs no code per kind. The project list carries it too, with `automations[]`, so a menu can show
+  "Automations 2/3" and one pip per gate. `gates[]` and `pipeline.gates[]` (with `between`) are
+  unchanged and deprecated; they carry only the five kinds `ReleaseGates.Kind` names.
+  `ReleaseGateEvaluatorTest` compares every combination of inputs against the pre-refactor report.
+- **The classes report; they do not move a request.** `ReleaseRequests.evaluate` and
+  `ReleaseFinalization` still decide the built-ins in their own fixed order, because their interplay — a red build beside
+  moving automations holds instead of rejecting — belongs to no single gate. A new gate class shows
+  on the answer; making it hold a release is a change to that sweep.
+- **`ReleaseGateRegistryTest` checks every discovered gate**: unique well-formed kinds, labels,
+  positions, unique orders, and one class per legacy kind but `DEPLOYMENT`, in the old order.
+
 ### The same release read as one pipeline of three phases
 
 **A release is one pipeline and the gates above are what stands between its phases.** Nothing in

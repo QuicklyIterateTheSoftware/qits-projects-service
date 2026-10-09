@@ -80,6 +80,7 @@ public class ProviderStates {
       "a release request held by a failed automation";
   public static final String A_WITHDRAWN_RELEASE_REQUEST = "a withdrawn release request";
   public static final String A_CONFLICTED_RELEASE_REQUEST = "a conflicted release request";
+  public static final String A_REFOLDED_RELEASE_REQUEST = "a refolded release request";
   public static final String A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE =
       "a project with release requests in every state";
 
@@ -95,7 +96,8 @@ public class ProviderStates {
           A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD,
           A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION,
           A_WITHDRAWN_RELEASE_REQUEST,
-          A_CONFLICTED_RELEASE_REQUEST);
+          A_CONFLICTED_RELEASE_REQUEST,
+          A_REFOLDED_RELEASE_REQUEST);
 
   /** The detail states focused on contract-suite-app, whose fold moves a submodule pin. */
   public static final Set<String> RELEASE_REQUEST_ESTATE_DETAILS =
@@ -1805,7 +1807,10 @@ public class ProviderStates {
     ServiceShas service;
     String estateFold;
     try {
-      service = seedService(serviceId);
+      service =
+          state.equals(A_REFOLDED_RELEASE_REQUEST)
+              ? seedRefoldedService(serviceId)
+              : seedService(serviceId);
       estateFold = seedEstate(estateId, service.base(), service.fold());
     } catch (Exception e) {
       throw new IllegalStateException("Could not seed the release fixture's repositories", e);
@@ -1836,6 +1841,45 @@ public class ProviderStates {
     repo.branch("release/fold", "main");
     String fold =
         repo.merge(5, "Release the CSV export and the rounding fix", "feature/export", "fix/rounding");
+    repo.push("main", "feature/export", "fix/rounding", "release/fold");
+    goCold(repoId);
+    return new ServiceShas(base, export, readmeSha, rounding, fold);
+  }
+
+  /**
+   * contract-service as a re-folded request leaves it: the backing branch is a chain of fold
+   * merges, the way qits-githost builds it when sources move after the first fold. {@code
+   * release/fold} starts as a merge of the two branches, then takes fix/rounding's second commit,
+   * then feature/export's second commit — three fold merges, each with the previous fold as its
+   * first parent. In the answer: {@code export} and {@code readme} are feature/export's two commits,
+   * {@code rounding} is fix/rounding's tip and {@code fold} the newest fold.
+   */
+  private ServiceShas seedRefoldedService(String repoId) throws Exception {
+    SeededGit repo = SeededGit.init(gitWork, gitHost.fetchUrl(repoId));
+    String readme = "# contract-service\n\nInvoices for the contract project.\n";
+    repo.write(Map.of("README.md", readme, "src/invoice.txt", "Totals round half up.\n"));
+    String base = repo.commit(1, "Import the invoice service");
+    repo.tag(BASE_VERSION);
+    repo.branch("feature/export", "main");
+    repo.write(Map.of("src/export.txt", "Export a quarter of invoices as CSV.\n"));
+    String export = repo.commit(2, "Add the CSV export");
+    repo.branch("fix/rounding", "main");
+    repo.write(Map.of("src/invoice.txt", "Totals round half to even.\n"));
+    repo.commit(3, "Round totals half to even");
+    repo.branch("release/fold", "feature/export");
+    String summary = "Release the CSV export and the rounding fix";
+    repo.merge(4, summary, "fix/rounding");
+    repo.checkout("fix/rounding");
+    repo.write(
+        Map.of("src/invoice.txt", "Totals round half to even, negative totals too.\n"));
+    String rounding = repo.commit(5, "Round negative totals too");
+    repo.checkout("release/fold");
+    repo.merge(6, summary, "fix/rounding");
+    repo.checkout("feature/export");
+    repo.write(Map.of("README.md", readme + "\nExport a quarter as CSV: see src/export.txt.\n"));
+    String readmeSha = repo.commit(7, "Describe the export in the README");
+    repo.checkout("release/fold");
+    String fold = repo.merge(8, summary, "feature/export");
     repo.push("main", "feature/export", "fix/rounding", "release/fold");
     goCold(repoId);
     return new ServiceShas(base, export, readmeSha, rounding, fold);
@@ -2095,6 +2139,17 @@ public class ProviderStates {
                 });
         serviceSources(id);
       }
+      case A_REFOLDED_RELEASE_REQUEST -> {
+        repoId = service;
+        fold = serviceFold;
+        id =
+            releaseRow(
+                project, service, "contract-service", serviceSummary, State.READY, 10, fold,
+                row -> {});
+        serviceSources(id);
+        verdict(project, service, "contract-service", id, fold, "SUCCESS", 12);
+        phaseRun(id, service, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+      }
       default -> throw new IllegalArgumentException("No release request variant for " + state);
     }
     Map<String, String> params = new TreeMap<>();
@@ -2143,6 +2198,14 @@ public class ProviderStates {
             project, frontend, "contract-frontend", "Release the invoice screens", State.RELEASED,
             2, madeUpSha(2), row -> row.version = "2026.101.100200");
     verdict(project, frontend, "contract-frontend", released, madeUpSha(2), "SUCCESS", 2);
+    // The released one is deployed: its QA and publish runs are mirrored, its tag published and
+    // went live, so the list answer draws its pipeline and every gate including the rollback one.
+    releaseGitHost
+        .get()
+        .gatedTreeFor(frontend, "refs/heads/main", Map.of(DEPLOYMENTS_FILE, DEPLOYMENTS));
+    phaseRun(released, frontend, "RELEASE_REQUEST", "SUCCESS", 2, 2);
+    String publishRun = phaseRun(released, frontend, "RELEASE", "SUCCESS", 2, 3);
+    liveTag(frontend, released, "2026.101.100200", madeUpSha(20), publishRun, 4);
     String failed =
         releaseRow(
             project, frontend, "contract-frontend", "Release the PDF download", State.FAILED, 3,
@@ -2188,6 +2251,25 @@ public class ProviderStates {
     source(waiting, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 6);
     source(
         waiting, "bump/contract-service", eu.wohlben.qits.projects.entity.ReleasePriority.BLOCKING, 7);
+    // Two of its three automations are fresh and one is still running: "Automations 2/3".
+    automationLedger.record(
+        waiting,
+        new eu.wohlben.qits.projects.control.AutomationLedger.Note(
+            madeUpSha(7),
+            eu.wohlben.qits.projects.control.AutomationLedger.State.PENDING,
+            List.of(
+                automation("estate-pins", "Estate pins", "FRESH", madeUpSha(7), null, null),
+                automation(
+                    "screenshot-baselines", "Screenshot baselines", "FRESH", madeUpSha(7), null, null),
+                automation(
+                    "entity-diagram",
+                    "Entity diagram",
+                    "PENDING",
+                    madeUpSha(7),
+                    "Run in flight",
+                    null)),
+            null,
+            null));
     return new Setup(
         params("projectId", project.id, "repositoryId", estate, "requestId", waiting),
         List.of(token));
@@ -2380,6 +2462,27 @@ public class ProviderStates {
               tag.publishState = publish;
               tag.publishDetail = publishDetail;
               tag.publishRunId = publishRunId;
+              tag.persist();
+            });
+  }
+
+  /** A released tag that published and went live, not yet merged to main. */
+  private void liveTag(
+      String repoId, String requestId, String version, String releasedSha, String publishRunId, int minute) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var tag = new eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge();
+              tag.id = UUID.randomUUID().toString();
+              tag.repoId = repoId;
+              tag.tagName = version;
+              tag.releasedSha = releasedSha;
+              tag.releaseRequestId = requestId;
+              tag.releasedAt = SEEDED_AT.plusSeconds(60L * minute);
+              tag.publishState =
+                  eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.PublishState.PASSED;
+              tag.publishRunId = publishRunId;
+              tag.deploymentActiveAt = SEEDED_AT.plusSeconds(60L * (minute + 1));
               tag.persist();
             });
   }

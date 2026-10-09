@@ -127,6 +127,12 @@ import java.util.List;
  * to name the repository with, and an opaque id is not a thing to show a person. The project list
  * resolves it live from the alias table so a rename is reflected; every other read answers the name
  * recorded when the request was made.
+ *
+ * <p><b>{@code qualityGates} is the gate list to draw</b>: one {@link ReleaseQualityGateDto} per gate
+ * that holds this request, with its kind, label, pipeline slot, state, sentence, named checks and
+ * run, so a page renders every gate with no code per kind. It is the same evaluation as {@code
+ * gates} and {@code pipeline.gates}, which stay for the readers that draw them and are deprecated.
+ * Unlike {@code pipeline} it is never null: it does not need a phase run to be drawn.
  */
 public record ReleaseRequestDto(
     String id,
@@ -147,7 +153,7 @@ public record ReleaseRequestDto(
     String approvedBy,
     Instant approvedAt,
     String approvalNote,
-    List<ReleaseGateDto> gates,
+    @Deprecated List<ReleaseGateDto> gates,
     List<ReleaseAutomationDto> automations,
     MergeConflictDto conflict,
     String version,
@@ -157,4 +163,5 @@ public record ReleaseRequestDto(
     boolean retryable,
     Instant createdAt,
     Instant updatedAt,
-    ReleasePipelineDto pipeline) {}
+    ReleasePipelineDto pipeline,
+    List<ReleaseQualityGateDto> qualityGates) {}

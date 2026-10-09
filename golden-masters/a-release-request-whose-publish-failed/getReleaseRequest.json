@@ -135,6 +135,55 @@
           "detail": null
         }
       ]
-    }
+    },
+    "qualityGates": [
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": "Run 00000000-0000-4000-8000-000000000006 passed for cb97768559",
+        "checks": [
+          {
+            "name": "Run 00000000-0000-4000-8000-000000000006",
+            "state": "PASSED",
+            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+            "runId": "00000000-0000-4000-8000-000000000006"
+          }
+        ],
+        "runId": "00000000-0000-4000-8000-000000000006",
+        "link": null
+      },
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "publish",
+        "label": "Publish run",
+        "position": "publish-deploy",
+        "state": "FAILED",
+        "detail": "The release run failed publishing the npm package: the registry refused the upload.",
+        "checks": [],
+        "runId": "00000000-0000-4000-8000-000000000005",
+        "link": null
+      },
+      {
+        "kind": "deployment-not-rolled-back",
+        "label": "Deployment not rolled back",
+        "position": "deploy-finalized",
+        "state": "PENDING",
+        "detail": "Waiting for 2026.101.100500 to go live",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ]
   }
 }

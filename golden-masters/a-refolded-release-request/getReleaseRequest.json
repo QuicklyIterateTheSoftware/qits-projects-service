@@ -1,0 +1,144 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "repoId": "00000000-0000-4000-8000-000000000002",
+    "repoName": "contract-service",
+    "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "feature/export",
+        "ref": "refs/heads/feature/export",
+        "implicit": false,
+        "priority": "HIGH",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "fix/rounding",
+        "ref": "refs/heads/fix/rounding",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      }
+    ],
+    "priority": "HIGH",
+    "mergedSha": "a1e24622a6b22ddf43a4f8d7674758a6d9b42a31",
+    "state": "READY",
+    "summary": "Release the CSV export and the rounding fix",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": null,
+    "approvalRequired": false,
+    "approvalState": "NOT_REQUIRED",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "gates": [
+      {
+        "kind": "CI",
+        "state": "PASSED",
+        "detail": null
+      },
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PASSED",
+        "detail": null
+      },
+      {
+        "kind": "DEPLOYMENT",
+        "state": "PENDING",
+        "detail": null
+      }
+    ],
+    "automations": null,
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": {
+      "phases": [
+        {
+          "phase": "QA",
+          "state": "SUCCESS",
+          "runId": "00000000-0000-4000-8000-000000000004",
+          "startedAt": "2026-01-01T00:00:00Z",
+          "finishedAt": "2026-01-01T00:00:00Z",
+          "detail": null
+        }
+      ],
+      "gates": [
+        {
+          "between": "QA_PUBLISH",
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "between": "QA_PUBLISH",
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "between": "DEPLOY_FINALIZED",
+          "kind": "DEPLOYMENT",
+          "state": "PENDING",
+          "detail": null
+        }
+      ]
+    },
+    "qualityGates": [
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": "Run 00000000-0000-4000-8000-000000000005 passed for a1e24622a6",
+        "checks": [
+          {
+            "name": "Run 00000000-0000-4000-8000-000000000005",
+            "state": "PASSED",
+            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+            "runId": "00000000-0000-4000-8000-000000000005"
+          }
+        ],
+        "runId": "00000000-0000-4000-8000-000000000005",
+        "link": null
+      },
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "deployment-not-rolled-back",
+        "label": "Deployment not rolled back",
+        "position": "deploy-finalized",
+        "state": "PENDING",
+        "detail": "Nothing is released yet",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ]
+  }
+}

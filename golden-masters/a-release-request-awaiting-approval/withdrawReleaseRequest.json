@@ -100,6 +100,45 @@
           "detail": "configured by manual-review"
         }
       ]
-    }
+    },
+    "qualityGates": [
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": "Run 00000000-0000-4000-8000-000000000005 passed for bd6360a2c6",
+        "checks": [
+          {
+            "name": "Run 00000000-0000-4000-8000-000000000005",
+            "state": "PASSED",
+            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+            "runId": "00000000-0000-4000-8000-000000000005"
+          }
+        ],
+        "runId": "00000000-0000-4000-8000-000000000005",
+        "link": null
+      },
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "Waiting for the automations to answer",
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "approval",
+        "label": "Approval",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "configured by manual-review",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ]
   }
 }
