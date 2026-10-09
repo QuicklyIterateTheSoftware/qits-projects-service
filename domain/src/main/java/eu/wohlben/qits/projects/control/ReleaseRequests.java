@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.projects.control.gate.GateSubject;
+import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
 import eu.wohlben.qits.projects.dto.CommitDto;
 import eu.wohlben.qits.projects.dto.FoldParentDto;
@@ -11,6 +13,7 @@ import eu.wohlben.qits.projects.dto.MergeConflictDto;
 import eu.wohlben.qits.projects.dto.ReleaseAutomationDto;
 import eu.wohlben.qits.projects.dto.ReleaseAutomationFailureDto;
 import eu.wohlben.qits.projects.dto.ReleaseGateDto;
+import eu.wohlben.qits.projects.dto.ReleaseQualityGateDto;
 import eu.wohlben.qits.projects.dto.ReleasePipelineDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
@@ -290,6 +293,8 @@ public class ReleaseRequests {
    * bean rather than a port: what is behind a port is the git host it reads through.
    */
   @Inject ReleaseGates gates;
+
+  @Inject ReleaseGateEvaluator gateEvaluator;
 
   /**
    * The automations gate's halves, in the approval gate's own shape one field up — the thing that
@@ -4083,11 +4088,16 @@ public class ReleaseRequests {
    *       released there is nothing yet to deploy, so it is PENDING too.
    * </ul>
    *
-   * <p><b>It answers the same gates twice and decides them once.</b> The flat list is the published
-   * surface it always was; the pipeline block is that same list <em>placed</em> between the phases
-   * each gate separates, plus the phase runs themselves. One evaluation feeds both, which is the
-   * whole reason the placement is done here rather than by a second reader: two readings of one gate
-   * that shared no computation would be free to disagree.
+   * <p><b>Each gate is a {@code control.gate.ReleaseGate} class</b> and {@link ReleaseGateEvaluator}
+   * asks them all once. The list above is what those classes say; this method only gathers their
+   * inputs, batched by the caller.
+   *
+   * <p><b>It answers the same gates three times and decides them once.</b> {@code qualityGates} is
+   * the generic shape a page draws; the flat {@code gates} list is the deprecated surface it always
+   * was; the pipeline block is that same list <em>placed</em> between the phases each gate
+   * separates, plus the phase runs themselves. One evaluation feeds all three, which is the whole
+   * reason the placement is done here rather than by a second reader: two readings of one gate that
+   * shared no computation would be free to disagree.
    *
    * @param phaseRuns this request's mirrored phase runs, newest transition first — empty for a
    *     request open across the cutover, which is what makes the pipeline block absent rather than
@@ -4106,50 +4116,30 @@ public class ReleaseRequests {
       ReleasedTagPendingMerge released,
       List<ReleasePipelineRun> phaseRuns,
       ReleasePipelineAssembler.DeployReach reach) {
-    Map<ReleaseGates.Kind, ReleaseGates.State> states = new java.util.EnumMap<>(ReleaseGates.Kind.class);
-    if (verdicts.stream().anyMatch(v -> !"SUCCESS".equals(v.status()))) {
-      states.put(ReleaseGates.Kind.CI, ReleaseGates.State.FAILED);
-    } else if (verdicts.stream().anyMatch(v -> "SUCCESS".equals(v.status()))) {
-      states.put(ReleaseGates.Kind.CI, ReleaseGates.State.PASSED);
+    // Every gate class answers once; the two deprecated shapes below are that one answer.
+    List<ReleaseGateEvaluator.Evaluated> evaluated =
+        gateEvaluator.evaluate(
+            new GateSubject(
+                row,
+                set,
+                new GateSubject.Approval(
+                    approval.required(),
+                    approval.state(),
+                    approval.actor(),
+                    approval.decidedAt(),
+                    approval.note(),
+                    approval.detail()),
+                new GateSubject.Automations(
+                    automations.applies(), automations.gate(), automations.rows()),
+                verdicts,
+                released));
+    // The deprecated gates[] and pipeline.gates[] carry the five kinds ReleaseGates.Kind names, in
+    // the same order and with the same details they always had.
+    List<ReleaseGates.Gate> decided = new ArrayList<>();
+    for (ReleaseGateEvaluator.Evaluated answer : evaluated) {
+      ReleaseGateEvaluator.legacyKind(answer.gate().kind())
+          .ifPresent(kind -> decided.add(new ReleaseGates.Gate(kind, answer.evaluation().state())));
     }
-    switch (approval.state()) {
-      case APPROVED -> states.put(ReleaseGates.Kind.APPROVAL, ReleaseGates.State.PASSED);
-      case DECLINED -> states.put(ReleaseGates.Kind.APPROVAL, ReleaseGates.State.FAILED);
-      default -> {}
-    }
-    if (released != null && released.mergedAt != null) {
-      states.put(ReleaseGates.Kind.DEPLOYMENT, ReleaseGates.State.PASSED);
-    }
-    // The content rule can require approval of a repository whose main configures none, so a
-    // required approval is what puts the kind in the set here — the same seam PUBLISH uses below.
-    ReleaseGates.GateSet reported = approval.required() ? set.with(ReleaseGates.Kind.APPROVAL) : set;
-    // The automations gate is configured by qits-maintenance being there (and for the wrapper by
-    // being the wrapper), never by main, so it joins the reported set the same way.
-    if (automations.applies()) {
-      reported = reported.with(ReleaseGates.Kind.AUTOMATIONS);
-      states.put(ReleaseGates.Kind.AUTOMATIONS, automations.gate());
-    }
-    if (released != null && released.publishState != null) {
-      reported = reported.with(ReleaseGates.Kind.PUBLISH);
-      states.put(
-          ReleaseGates.Kind.PUBLISH,
-          switch (released.publishState) {
-            case PASSED -> ReleaseGates.State.PASSED;
-            case FAILED -> ReleaseGates.State.FAILED;
-            case PENDING -> ReleaseGates.State.PENDING;
-          });
-    }
-    // An unreadable gate set answers every kind UNKNOWN — except this one, which is not read from
-    // main at all: it is reported exactly where it holds, with its own state.
-    List<ReleaseGates.Gate> decided =
-        ReleaseGates.report(reported, states).stream()
-            .filter(gate -> gate.kind() != ReleaseGates.Kind.AUTOMATIONS || automations.applies())
-            .map(
-                gate ->
-                    gate.kind() == ReleaseGates.Kind.AUTOMATIONS
-                        ? new ReleaseGates.Gate(gate.kind(), automations.gate())
-                        : gate)
-            .toList();
     return new GateView(
         decided.stream()
             .map(
@@ -4161,7 +4151,8 @@ public class ReleaseRequests {
             .toList(),
         automations.rows(),
         pipelineAssembler.assemble(
-            phaseRuns, decided, gateDetails(set, released, approval), released, reach));
+            phaseRuns, decided, gateDetails(set, released, approval), released, reach),
+        evaluated.stream().map(ReleaseGateEvaluator::toDto).toList());
   }
 
   /**
@@ -4285,7 +4276,8 @@ public class ReleaseRequests {
   private record GateView(
       List<ReleaseGateDto> gates,
       List<ReleaseAutomationDto> automations,
-      ReleasePipelineDto pipeline) {}
+      ReleasePipelineDto pipeline,
+      List<ReleaseQualityGateDto> qualityGates) {}
 
   /**
    * The approval gate as a <b>read</b> answers it: whether a person had to be asked, what the newest
@@ -4440,7 +4432,8 @@ public class ReleaseRequests {
         row.retryable,
         row.createdAt,
         row.updatedAt,
-        gates.pipeline());
+        gates.pipeline(),
+        gates.qualityGates());
   }
 
   // ---------------------------------------------------------------------------------------------

@@ -1609,14 +1609,19 @@
           "frozen": {
             "ids": [
               "$.requests[*].id",
-              "$.requests[*].repoId"
+              "$.requests[*].repoId",
+              "$.requests[*].qualityGates[*].checks[*].runId",
+              "$.requests[*].qualityGates[*].runId"
             ],
             "instants": [
               "$.requests[*].createdAt",
               "$.requests[*].updatedAt"
             ],
             "strings": [
-              "$.requests[*].backingBranch"
+              "$.requests[*].backingBranch",
+              "$.requests[*].qualityGates[*].detail",
+              "$.requests[*].qualityGates[*].checks[*].name",
+              "$.requests[*].qualityGates[*].checks[*].detail"
             ],
             "listFilteredTo": null
           }

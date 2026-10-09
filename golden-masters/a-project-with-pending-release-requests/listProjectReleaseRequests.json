@@ -40,7 +40,29 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Nothing is folded yet",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for the automations to answer",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
       "id": "00000000-0000-4000-8000-000000000004",
@@ -82,7 +104,29 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Nothing is folded yet",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
       "id": "00000000-0000-4000-8000-000000000006",
@@ -124,13 +168,42 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": "Run 00000000-0000-4000-8000-000000000007 passed for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-000000000007",
+              "state": "PASSED",
+              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000006",
+              "runId": "00000000-0000-4000-8000-000000000007"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-000000000007",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000007",
+      "id": "00000000-0000-4000-8000-000000000008",
       "repoId": "00000000-0000-4000-8000-000000000005",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000007",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000008",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000003",
@@ -166,13 +239,42 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "FAILED",
+          "detail": "Run 00000000-0000-4000-8000-000000000009 finished FAILURE for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-000000000009",
+              "state": "FAILED",
+              "detail": "FAILURE on release/00000000-0000-4000-8000-000000000008",
+              "runId": "00000000-0000-4000-8000-000000000009"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-000000000009",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for the automations to answer",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000008",
+      "id": "00000000-0000-4000-8000-00000000000a",
       "repoId": "00000000-0000-4000-8000-000000000005",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000008",
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000a",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": null,
@@ -208,13 +310,35 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Nothing is folded yet",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for the automations to answer",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000009",
+      "id": "00000000-0000-4000-8000-00000000000b",
       "repoId": "00000000-0000-4000-8000-000000000003",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000009",
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000b",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": null,
@@ -250,7 +374,29 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Nothing is folded yet",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     }
   ]
 }

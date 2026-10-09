@@ -1939,6 +1939,17 @@ components:
           format: int32
         excerpt:
           type: string
+    ReleaseGateCheckDto:
+      type: object
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+        detail:
+          type: string
+        runId:
+          type: string
     ReleaseGateDto:
       type: object
       properties:
@@ -1972,6 +1983,7 @@ components:
             $ref: "#/components/schemas/ReleasePhaseDto"
         gates:
           type: array
+          deprecated: true
           items:
             $ref: "#/components/schemas/ReleasePipelineGateDto"
     ReleasePipelineGateDto:
@@ -1984,6 +1996,27 @@ components:
         state:
           type: string
         detail:
+          type: string
+    ReleaseQualityGateDto:
+      type: object
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        position:
+          type: string
+        state:
+          type: string
+        detail:
+          type: string
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseGateCheckDto"
+        runId:
+          type: string
+        link:
           type: string
     ReleaseRequestApprovalDto:
       type: object
@@ -2079,6 +2112,7 @@ components:
           type: string
         gates:
           type: array
+          deprecated: true
           items:
             $ref: "#/components/schemas/ReleaseGateDto"
         automations:
@@ -2103,6 +2137,10 @@ components:
           $ref: "#/components/schemas/Instant"
         pipeline:
           $ref: "#/components/schemas/ReleasePipelineDto"
+        qualityGates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseQualityGateDto"
     ReleaseRequestSourceDto:
       type: object
       properties:
