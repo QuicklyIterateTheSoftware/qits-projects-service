@@ -77,7 +77,12 @@ public class ReleaseRequestFoldDiffTest {
   @AfterEach
   void dropTheFixturesRequests() {
     for (String id : requestIds) {
-      QuarkusTransaction.requiringNew().run(() -> ReleaseRequest.delete("id = ?1", id));
+      QuarkusTransaction.requiringNew()
+          .run(
+              () -> {
+                eu.wohlben.qits.projects.entity.ReleaseRequestSource.delete("requestId = ?1", id);
+                ReleaseRequest.delete("id = ?1", id);
+              });
     }
     requestIds.clear();
   }
@@ -203,6 +208,107 @@ public class ReleaseRequestFoldDiffTest {
     assertTrue(
         changes.files().stream().allMatch(file -> "ADDED".equals(file.changeType())),
         "every path of the history reads as added against the empty tree: " + changes.files());
+  }
+
+  /**
+   * <b>The fold's parents are named after their sources</b> (qits-112: the landing page draws one
+   * lane per source). A first fold reads every parent as a source, in source order — and {@code
+   * main}, which both lanes contain, is no parent at all, so position alone cannot name a lane;
+   * after one lane
+   * is pushed again and the request re-folds, the first parent is the previous fold and the pushed
+   * lane is a source again. Every commit carries its parents, first parent first.
+   */
+  @Test
+  public void theFoldsParentsAreNamedAfterTheirSources() throws Exception {
+    Repository repo = cloned("Fold Parents Project");
+    Path work = checkout(repo);
+    String main = repo.mainBranch;
+
+    git.exec(work.toFile(), "git", "tag", "2026.900.100000", main);
+    branchWithCommit(work, main, "lane-one", "one.txt", "Add one");
+    branchWithCommit(work, main, "lane-two", "two.txt", "Add two");
+    git.exec(work.toFile(), "git", "checkout", "-q", "-b", "release/lanes", main);
+    git.exec(
+        work.toFile(), "git", "merge", "-q", "-m", "Release request: fold", "lane-one", "lane-two");
+    String first = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "push", "-q", "origin", "lane-one", "lane-two");
+    push(work, repo, "release/lanes");
+    String requestId = request(repo, first);
+    sources(requestId, main, "lane-one", "lane-two");
+
+    var commits = releaseRequests.mergedCommits(repo.id, requestId);
+
+    assertEquals(first, commits.commits().get(0).hash(), "the fold leads");
+    List<String> parents = commits.commits().get(0).parents();
+    assertEquals(2, parents.size(), "main is contained in both lanes, so it is dropped");
+    assertEquals(parents, commits.foldParents().stream().map(p -> p.sha()).toList());
+    assertEquals(
+        List.of("lane-one", "lane-two"),
+        commits.foldParents().stream().map(p -> p.source()).toList());
+    assertTrue(commits.foldParents().stream().allMatch(p -> "SOURCE".equals(p.role())));
+    String mainTip = git.exec(work.toFile(), "git", "rev-parse", main).trim();
+    assertEquals(
+        List.of(mainTip),
+        commits.commits().stream()
+            .filter(c -> c.hash().equals(parents.get(1)))
+            .findFirst()
+            .orElseThrow()
+            .parents(),
+        "a lane's own commit names main as its one parent");
+
+    // lane-two moves on and the request re-folds onto its previous fold.
+    git.exec(work.toFile(), "git", "checkout", "-q", "lane-two");
+    commit(work, "three.txt", "Add three");
+    git.exec(work.toFile(), "git", "checkout", "-q", "release/lanes");
+    git.exec(work.toFile(), "git", "merge", "-q", "-m", "Release request: refold", "lane-two");
+    String second = git.exec(work.toFile(), "git", "rev-parse", "HEAD").trim();
+    git.exec(work.toFile(), "git", "push", "-q", "origin", "lane-two");
+    push(work, repo, "release/lanes");
+    QuarkusTransaction.requiringNew()
+        .run(() -> ReleaseRequest.update("mergedSha = ?1 where id = ?2", second, requestId));
+
+    var answer = releaseRequests.mergedCommits(repo.id, requestId);
+    var refolded = answer.foldParents();
+
+    assertEquals(
+        List.of(second, first),
+        answer.commits().stream().filter(c -> c.fold()).map(c -> c.hash()).toList(),
+        "both folds are marked, newest first; no source commit is");
+    String laneTwo = git.exec(work.toFile(), "git", "rev-parse", "lane-two").trim();
+    assertEquals(
+        List.of(main, "lane-one", "lane-two"),
+        answer.sources().stream().map(t -> t.name()).toList());
+    assertEquals(laneTwo, answer.sources().get(2).tipSha(), "the tip as the ref stands now");
+    assertEquals(mainTip, answer.sources().get(0).tipSha());
+
+    assertEquals(2, refolded.size());
+    assertEquals(first, refolded.get(0).sha());
+    assertEquals("PREVIOUS_FOLD", refolded.get(0).role());
+    assertEquals("refs/heads/release/" + requestId, refolded.get(0).ref());
+    assertEquals("SOURCE", refolded.get(1).role());
+    assertEquals("lane-two", refolded.get(1).source());
+    assertEquals("refs/heads/lane-two", refolded.get(1).ref());
+  }
+
+  /** Named sources of a request, added a second apart in the order given. */
+  private void sources(String requestId, String... branches) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              Instant at = Instant.parse("2026-01-01T00:00:00Z");
+              for (String branch : branches) {
+                var source = new eu.wohlben.qits.projects.entity.ReleaseRequestSource();
+                source.id = UUID.randomUUID().toString();
+                source.requestId = requestId;
+                source.kind = eu.wohlben.qits.projects.entity.ReleaseRequestSource.Kind.BRANCH;
+                source.name = branch;
+                source.addedAt = at;
+                source.addedBy = "fixtures";
+                source.priority = eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM;
+                source.persist();
+                at = at.plusSeconds(1);
+              }
+            });
   }
 
   /** A request whose first fold has not landed has nothing to diff, and says so. */

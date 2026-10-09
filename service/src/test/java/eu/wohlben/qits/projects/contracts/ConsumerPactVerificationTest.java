@@ -391,6 +391,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE);
   }
 
+  @State(ProviderStates.A_REFOLDED_RELEASE_REQUEST)
+  Map<String, String> aRefoldedReleaseRequest() {
+    return states.params(ProviderStates.A_REFOLDED_RELEASE_REQUEST);
+  }
+
   @State(ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS)
   Map<String, String> aProjectWithRepositoriesInComponents() {
     return states.params(ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS);

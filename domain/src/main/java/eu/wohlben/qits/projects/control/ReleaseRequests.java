@@ -3,6 +3,8 @@ package eu.wohlben.qits.projects.control;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
 import eu.wohlben.qits.projects.dto.CommitDto;
+import eu.wohlben.qits.projects.dto.FoldParentDto;
+import eu.wohlben.qits.projects.dto.FoldSourceDto;
 import eu.wohlben.qits.projects.dto.CommitFileChangeDto;
 import eu.wohlben.qits.projects.dto.CommitFileDiffDto;
 import eu.wohlben.qits.projects.dto.MergeConflictDto;
@@ -56,6 +58,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -1478,7 +1481,91 @@ public class ReleaseRequests {
           "The fold brought nothing in: every source was already contained in what it was folded"
               + " onto");
     }
-    return new ReleaseRequestCommitsDto(row.mergedSha, range.commits(), null);
+    return lanes(row, range.commits());
+  }
+
+  /**
+   * The answer with what a reader needs to draw the fold as lanes: each source's tip, the fold's
+   * own merge commits marked, and the newest fold's parents named.
+   *
+   * <p><b>What a fold looks like.</b> qits-githost folds by an octopus onto the backing branch's
+   * previous tip; a source another head contains is dropped. In practice a re-folded request's
+   * backing branch is a <b>chain</b>: each fold is a merge whose first parent is the previous fold
+   * and whose other parents are the sources that moved. So a reader names a lane by the source whose
+   * tip reaches it first (in source order), and collapses the commits marked {@code fold}.
+   *
+   * <p>Everything is read off the mirror at read time: a source pushed again after the newest fold
+   * already has its new tip here, which the fold has not merged yet.
+   */
+  private ReleaseRequestCommitsDto lanes(ReleaseRequest row, List<CommitDto> folded) {
+    List<String> refs =
+        QuarkusTransaction.requiringNew()
+            .call(() -> refsOf(sources.listByRequest(row.id), implicitFor(row.repoId)));
+    Map<String, String> tips = commits.resolveRefs(row.repoId, refs);
+    Set<String> tipShas = new HashSet<>(tips.values());
+    Map<String, CommitDto> byHash = new HashMap<>();
+    folded.forEach(c -> byHash.put(c.hash(), c));
+
+    // The fold chain: from mergedSha along first parents, while the commit is a merge that is no
+    // source's tip. The commits it names are the backing branch's own folds.
+    Set<String> chain = new HashSet<>();
+    CommitDto at = byHash.get(row.mergedSha);
+    while (at != null && at.parents().size() > 1 && !tipShas.contains(at.hash())) {
+      chain.add(at.hash());
+      at = byHash.get(at.parents().get(0));
+    }
+    List<CommitDto> marked =
+        folded.stream().map(c -> chain.contains(c.hash()) ? c.withFold(true) : c).toList();
+
+    List<FoldSourceDto> sourceTips =
+        refs.stream()
+            .map(
+                ref ->
+                    new FoldSourceDto(
+                        sourceNameOf(ref),
+                        ref.startsWith("refs/tags/")
+                            ? ReleaseRequestSource.Kind.RELEASED_TAG.name()
+                            : ReleaseRequestSource.Kind.BRANCH.name(),
+                        ref,
+                        tips.get(ref)))
+            .toList();
+
+    List<FoldParentDto> parents = new ArrayList<>();
+    CommitDto fold = byHash.get(row.mergedSha);
+    if (fold != null && fold.parents().size() > 1) {
+      for (int i = 0; i < fold.parents().size(); i++) {
+        String parent = fold.parents().get(i);
+        String ref =
+            refs.stream().filter(r -> parent.equals(tips.get(r))).findFirst().orElse(null);
+        if (ref != null) {
+          parents.add(new FoldParentDto(parent, "SOURCE", sourceNameOf(ref), ref));
+          continue;
+        }
+        CommitDto known = byHash.get(parent);
+        boolean merge =
+            known != null ? known.parents().size() > 1 : commits.isMerge(row.repoId, parent);
+        if (i == 0 && merge) {
+          parents.add(
+              new FoldParentDto(
+                  parent, "PREVIOUS_FOLD", null, "refs/heads/" + row.backingBranch()));
+        } else {
+          parents.add(new FoldParentDto(parent, "UNMATCHED", null, null));
+        }
+      }
+    }
+    return new ReleaseRequestCommitsDto(
+        row.mergedSha, marked, null, List.copyOf(parents), sourceTips);
+  }
+
+  /** A source's name as the request spells it: the ref without its refs/heads/ or refs/tags/. */
+  private static String sourceNameOf(String ref) {
+    if (ref.startsWith("refs/heads/")) {
+      return ref.substring("refs/heads/".length());
+    }
+    if (ref.startsWith("refs/tags/")) {
+      return ref.substring("refs/tags/".length());
+    }
+    return ref;
   }
 
   /** A change list longer than this answers its first {@value} entries with {@code truncated}. */

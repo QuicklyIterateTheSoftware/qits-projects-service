@@ -20,11 +20,33 @@ import java.util.List;
  *
  * @param mergedSha the fold this list is about, null on a request whose first fold has not landed
  * @param commits the commits the fold brought in, newest first — <b>the fold itself leads them</b>,
+ *     and the backing branch's own fold merges carry {@code fold: true},
  *     because a range ending at a commit contains it. That is the honest shape: the merge is the
  *     newest thing in the release and its message is the request's own summary. Empty is a real
  *     answer.
  * @param detail why the list is empty, where the emptiness needs a sentence — nothing folded yet,
  *     the fold pruned out of the repository's history, or a fold that genuinely added nothing. Null
  *     whenever the list stands on its own.
+ * @param foldParents the fold commit's parents, in its own parent order (the same shas as the
+ *     leading commit's {@code parents}), each named after the source it stands for — see {@link
+ *     FoldParentDto}. Empty when the fold is not a merge (a first fold that fast-forwarded onto its
+ *     one effective source: {@code mergedSha} is then that source's own commit) or there is no
+ *     fold to read. On a re-folded request it names the newest fold's parents only: the previous
+ *     fold, then the sources that moved.
+ * @param sources every source of the request in source order ({@code main}, the named branches as
+ *     they were added, then the released tags oldest first), each with the commit its ref points at
+ *     now. A reader names a lane after the first source, in this order, whose tip reaches it. Empty
+ *     on every empty answer.
  */
-public record ReleaseRequestCommitsDto(String mergedSha, List<CommitDto> commits, String detail) {}
+public record ReleaseRequestCommitsDto(
+    String mergedSha,
+    List<CommitDto> commits,
+    String detail,
+    List<FoldParentDto> foldParents,
+    List<FoldSourceDto> sources) {
+
+  /** Nothing to draw lanes for: every empty answer. */
+  public ReleaseRequestCommitsDto(String mergedSha, List<CommitDto> commits, String detail) {
+    this(mergedSha, commits, detail, List.of(), List.of());
+  }
+}

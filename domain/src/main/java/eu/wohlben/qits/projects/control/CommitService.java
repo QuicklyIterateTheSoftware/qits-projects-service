@@ -19,6 +19,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -38,7 +39,9 @@ public class CommitService {
    */
   private static final String RECORD_SEP = "\u001e";
 
-  private static final String LOG_FORMAT = "--format=%x1e%H%x1f%h%x1f%an%x1f%ae%x1f%cI%x1f%s";
+  /** Hash, short hash, parents ({@code %P}, space-separated), author, email, date, subject. */
+  private static final String LOG_FORMAT =
+      "--format=%x1e%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%cI%x1f%s";
 
   @Inject RepositoryRepository repositoryRepository;
 
@@ -175,6 +178,52 @@ public class CommitService {
    * -e} first, because {@code git log} against an unknown rev exits non-zero the same way a real
    * failure does and the caller must be able to tell "that commit is gone" from "the read broke".
    */
+  /**
+   * The commit each of {@code refs} points at in the repository's mirror, keyed by the full ref; a
+   * ref the mirror does not hold is absent. An annotated tag answers the commit it tags.
+   */
+  public Map<String, String> resolveRefs(String repoId, List<String> refs) {
+    if (refs.isEmpty()) {
+      return Map.of();
+    }
+    RepoMirror mirror = requireMirror(repoId);
+    List<String> command =
+        new ArrayList<>(
+            List.of(
+                "git",
+                "for-each-ref",
+                "--format=%(refname)%09%(objectname)%09%(*objectname)",
+                "--"));
+    command.addAll(refs);
+    try {
+      String output = git.exec(mirror.gitDir().toFile(), command.toArray(String[]::new));
+      Map<String, String> out = new java.util.HashMap<>();
+      for (String line : output.split("\n")) {
+        String[] f = line.split("\t", -1);
+        if (f.length == 3 && refs.contains(f[0])) {
+          out.put(f[0], f[2].isBlank() ? f[1] : f[2]);
+        }
+      }
+      return out;
+    } catch (Exception e) {
+      throw new InternalServerErrorException("Git for-each-ref failed: " + e.getMessage());
+    }
+  }
+
+  /** Whether {@code sha} has two or more parents in the repository's mirror; false if unknown. */
+  public boolean isMerge(String repoId, String sha) {
+    requireRef(sha, "commit");
+    RepoMirror mirror = requireMirror(repoId);
+    try {
+      GitExecutor.ExecResult result =
+          git.execAllowNonZero(
+              mirror.gitDir().toFile(), "git", "rev-list", "--parents", "-n", "1", sha, "--");
+      return result.exitCode() == 0 && result.output().trim().split(" ").length > 2;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
   public MergeRange listMergeRange(String repoId, String mergedSha) {
     requireRef(mergedSha, "commit");
     RepoMirror mirror = requireMirror(repoId);
@@ -887,9 +936,9 @@ public class CommitService {
         continue;
       }
       String[] lines = block.split("\n", -1);
-      // Keep trailing empties (-1) so an empty commit message still yields a 6th field.
+      // Keep trailing empties (-1) so an empty commit message still yields a 7th field.
       String[] f = lines[0].split(FIELD_SEP, -1);
-      if (f.length != 6) {
+      if (f.length != 7) {
         continue;
       }
       List<String> files = new ArrayList<>();
@@ -898,7 +947,8 @@ public class CommitService {
           files.add(lines[i]);
         }
       }
-      commits.add(new CommitDto(f[0], f[1], f[2], f[3], f[4], f[5], files));
+      List<String> parents = f[2].isBlank() ? List.of() : List.of(f[2].trim().split(" "));
+      commits.add(new CommitDto(f[0], f[1], f[3], f[4], f[5], f[6], files, parents, false));
     }
     return commits;
   }
