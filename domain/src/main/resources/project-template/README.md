@@ -32,6 +32,6 @@ repository until it earns it — that decision is meant to be deferred, not made
 
 - `AGENTS.md` — the contract for coding agents working in this repository. `CLAUDE.md` is a symlink
   to it, so agents that look for either name find the same file.
-- `.qits-config.yml` — this repository's qits configuration: its services, actions and bootstrap
-  chain. It is read in-container per workspace from your branch's checkout, so editing it is an
-  ordinary commit.
+- `.qits-config.yml` — this repository's qits configuration: its actions and bootstrap chain. It
+  is read in-container per workspace from your branch's checkout, so editing it is an ordinary
+  commit.

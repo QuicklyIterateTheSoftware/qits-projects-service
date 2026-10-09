@@ -3,10 +3,7 @@ package eu.wohlben.qits.projects.control;
 import eu.wohlben.qits.projects.control.QitsConfig.ActionDecl;
 import eu.wohlben.qits.projects.control.QitsConfig.BootstrapDecl;
 import eu.wohlben.qits.projects.control.QitsConfig.FrameworkDecl;
-import eu.wohlben.qits.projects.control.QitsConfig.HealthCheckDecl;
 import eu.wohlben.qits.projects.control.QitsConfig.RepositorySection;
-import eu.wohlben.qits.projects.control.QitsConfig.ServiceDecl;
-import eu.wohlben.qits.projects.control.QitsConfig.WebViewDecl;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -31,8 +28,10 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  *
  * <p>{@link #parse} is stricter: a structurally invalid file (bad YAML, wrong {@code version},
  * unknown enum) throws {@link QitsConfigException} so the caller can surface it as a warning while
- * keeping the last-good state. Per-entry <em>validation</em> (regex, web-view, health-check ranges)
- * is left to the consumers downstream.
+ * keeping the last-good state. Per-entry <em>validation</em> of what is still read (regex and the
+ * like) is left to the consumers downstream. An unread top-level key — including a leftover {@code
+ * services:} or {@code daemons:} block from the retired workspace-services concept (qits-947) — is
+ * silently ignored rather than rejected: {@link #parse} only ever looks up the keys it knows.
  */
 @ApplicationScoped
 public class QitsConfigParser {
@@ -111,9 +110,6 @@ public class QitsConfigParser {
         repositorySection(map.get("repository")),
         frameworks(map.get("frameworks")),
         actions(map.get("actions")),
-        // Accept the new `services:` key, falling back to the legacy `daemons:` (TEMPORARY — the
-        // fixtures still use `daemons:`; drop once their submodule round-trip lands `services:`).
-        services(map.containsKey("services") ? map.get("services") : map.get("daemons")),
         bootstrap(map.get("bootstrap")));
   }
 
@@ -184,60 +180,6 @@ public class QitsConfigParser {
     return out;
   }
 
-  private List<ServiceDecl> services(Object raw) {
-    List<ServiceDecl> out = new ArrayList<>();
-    for (Object item : asList(raw, "services")) {
-      Map<String, Object> m = asMap(item, "services[]");
-      String name = reqStr(m, "name", "services[]");
-      out.add(
-          new ServiceDecl(
-              str(m, "id"),
-              name,
-              str(m, "description"),
-              str(m, "start"),
-              str(m, "ready-pattern"),
-              boolOrNull(m.get("otel")),
-              boolOrNull(m.get("auto-start")),
-              enumOf(RestartPolicy.class, m.get("restart-policy"), "restart-policy"),
-              intOrNull(m.get("max-restarts"), "max-restarts"),
-              str(m, "stop-signal"),
-              strMap(m.get("environment"), "services[].environment"),
-              webView(m.get("web-view")),
-              healthChecks(m.get("health-checks"))));
-    }
-    return out;
-  }
-
-  private WebViewDecl webView(Object raw) {
-    if (raw == null) {
-      return null;
-    }
-    Map<String, Object> m = asMap(raw, "web-view");
-    return new WebViewDecl(
-        intOrNull(m.get("port"), "web-view.port"), str(m, "entry-path"), str(m, "base-path"));
-  }
-
-  private List<HealthCheckDecl> healthChecks(Object raw) {
-    List<HealthCheckDecl> out = new ArrayList<>();
-    for (Object item : asList(raw, "health-checks")) {
-      Map<String, Object> m = asMap(item, "health-checks[]");
-      out.add(
-          new HealthCheckDecl(
-              reqStr(m, "name", "health-checks[]"),
-              enumOf(HealthCheckKind.class, m.get("kind"), "health-checks[].kind"),
-              intOrNull(m.get("port"), "health-checks[].port"),
-              str(m, "path"),
-              str(m, "expect-status"),
-              str(m, "command"),
-              longOrNull(m.get("interval-ms"), "interval-ms"),
-              longOrNull(m.get("timeout-ms"), "timeout-ms"),
-              intOrNull(m.get("healthy-threshold"), "healthy-threshold"),
-              intOrNull(m.get("unhealthy-threshold"), "unhealthy-threshold"),
-              longOrNull(m.get("initial-delay-ms"), "initial-delay-ms")));
-    }
-    return out;
-  }
-
   // ---- typed extraction helpers --------------------------------------------------------------
 
   private Map<String, Object> asMap(Object raw, String where) {
@@ -289,26 +231,6 @@ public class QitsConfigParser {
       return b;
     }
     throw new QitsConfigException("Expected a boolean, got: " + typeOf(v));
-  }
-
-  private Integer intOrNull(Object v, String where) {
-    if (v == null) {
-      return null;
-    }
-    if (v instanceof Number n) {
-      return n.intValue();
-    }
-    throw new QitsConfigException("Expected an integer at " + where + ", got: " + typeOf(v));
-  }
-
-  private Long longOrNull(Object v, String where) {
-    if (v == null) {
-      return null;
-    }
-    if (v instanceof Number n) {
-      return n.longValue();
-    }
-    throw new QitsConfigException("Expected a number at " + where + ", got: " + typeOf(v));
   }
 
   private Map<String, String> strMap(Object raw, String where) {

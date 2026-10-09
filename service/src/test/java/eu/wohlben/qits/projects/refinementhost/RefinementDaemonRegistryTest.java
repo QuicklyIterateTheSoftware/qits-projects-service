@@ -28,9 +28,6 @@ import eu.wohlben.qits.workspacedaemon.protocol.Provisioned;
 import eu.wohlben.qits.workspacedaemon.protocol.PullBranch;
 import eu.wohlben.qits.workspacedaemon.protocol.RunBootstrap;
 import eu.wohlben.qits.workspacedaemon.protocol.RunCommand;
-import eu.wohlben.qits.workspacedaemon.protocol.ServiceTransition;
-import eu.wohlben.qits.workspacedaemon.protocol.SignalService;
-import eu.wohlben.qits.workspacedaemon.protocol.StartService;
 import eu.wohlben.qits.workspacedaemon.protocol.Stream;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceChanged;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceInfo;
@@ -157,8 +154,6 @@ class RefinementDaemonRegistryTest {
     verdicts.put(
         new BootstrapOutcome(WORKSPACE, "maven", BootstrapOutcome.Result.SUCCEEDED, 0), false);
     verdicts.put(new Bootstrapped(WORKSPACE, true), false);
-    verdicts.put(
-        new ServiceTransition(WORKSPACE, "api", ServiceTransition.State.READY, null), false);
     verdicts.put(new EditorState(EditorState.State.RUNNING), false);
     verdicts.put(new WorkspaceInfo(WORKSPACE, "repo-1", "main", null, "abc1234", true), false);
     verdicts.put(new ConfigView(WORKSPACE, "yaml", "{}", null), false);
@@ -169,13 +164,11 @@ class RefinementDaemonRegistryTest {
     verdicts.put(new Describe(WORKSPACE), false);
     verdicts.put(new DescribeConfig(WORKSPACE), false);
     verdicts.put(new RunBootstrap(WORKSPACE, null), false);
-    verdicts.put(new StartService(WORKSPACE, "api", "/workspace", Map.of()), false);
-    verdicts.put(new SignalService(WORKSPACE, "api", "TERM"), false);
     verdicts.put(new PullBranch(WORKSPACE, "main"), false);
     verdicts.put(new OpenStream("nonce-1", "/api"), false);
 
     assertEquals(
-        26,
+        23,
         verdicts.size(),
         "one case per permit of DaemonMessage — a frame added to the protocol is a decision to make"
             + " here as well as in evidencesUse");
