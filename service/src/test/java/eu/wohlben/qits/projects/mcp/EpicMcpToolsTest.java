@@ -1,7 +1,9 @@
 package eu.wohlben.qits.projects.mcp;
 
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.security.PersonCheck;
@@ -1165,5 +1167,168 @@ public class EpicMcpToolsTest {
         "transition_epic",
         Map.of("id", epicId, "target", "REFINED"),
         response -> assertFalse(response.isError(), text(response)));
+  }
+
+  // --- Either form of an id (qits-954) --------------------------------------
+
+  /** The {@code "<field>"} string of a tool's JSON result — the first one, the row's own. */
+  private static String fieldIn(String json, String field) {
+    int at = json.indexOf("\"" + field + "\"");
+    int open = json.indexOf('"', json.indexOf(':', at) + 1);
+    return json.substring(open + 1, json.indexOf('"', open + 1));
+  }
+
+  /** Call a tool that must succeed, and answer its whole text. */
+  private String ok(String projectId, String tool, Map<String, Object> args) {
+    String[] body = new String[1];
+    call(
+        projectId,
+        tool,
+        args,
+        response -> {
+          assertFalse(response.isError(), tool + ": " + text(response));
+          body[0] = text(response);
+        });
+    return body[0];
+  }
+
+  /**
+   * Every epic, feature and task tool takes the qualified id the answers carry as readily as the
+   * UUID — the reads are the same answer, each write lands on the row the UUID names, and a {@code
+   * dependsOn*} named by its qualified id is stored as the UUID.
+   */
+  @Test
+  public void takesQualifiedIdsForEpicsFeaturesAndTasks() {
+    String projectId = createProject("Qualified Plan");
+    String repoId = createRepository(projectId);
+    String epicId = proposeEpic(projectId, "Named either way");
+    String epic = fieldIn(ok(projectId, "get_epic", Map.of("id", epicId)), "qualifiedId");
+    assertNotEquals(epicId, epic);
+    assertTrue(epic.matches(".+-\\d+"), "a qualified id is <project-slug>-<n>: " + epic);
+
+    String featureBody =
+        ok(projectId, "add_feature", Map.of("epicId", epic, "title", "First slice"));
+    String featureId = idIn(featureBody);
+    String feature = fieldIn(featureBody, "qualifiedId");
+    String laterFeature =
+        ok(
+            projectId,
+            "add_feature",
+            Map.of("epicId", epic, "title", "Second slice", "dependsOnFeatureId", feature));
+    assertEquals(
+        featureId,
+        fieldIn(laterFeature, "dependsOnFeatureId"),
+        "a dependency named by its qualified id is stored as the UUID: " + laterFeature);
+    assertEquals(
+        featureId,
+        idIn(
+            ok(
+                projectId,
+                "update_feature",
+                Map.of("id", feature, "title", "First slice, renamed"))));
+
+    String taskBody =
+        ok(
+            projectId,
+            "add_task",
+            Map.of("featureId", feature, "repositoryId", repoId, "title", "First task"));
+    String taskId = idIn(taskBody);
+    String task = fieldIn(taskBody, "qualifiedId");
+    String laterTask =
+        ok(
+            projectId,
+            "add_task",
+            Map.of(
+                "featureId",
+                feature,
+                "repositoryId",
+                repoId,
+                "title",
+                "Second task",
+                "dependsOnTaskId",
+                task));
+    assertEquals(taskId, fieldIn(laterTask, "dependsOnTaskId"), laterTask);
+    String doomedTask =
+        fieldIn(
+            ok(
+                projectId,
+                "add_task",
+                Map.of("featureId", feature, "repositoryId", repoId, "title", "Doomed task")),
+            "qualifiedId");
+    String doomedFeature =
+        fieldIn(ok(projectId, "add_feature", Map.of("epicId", epic, "title", "Doomed")), "qualifiedId");
+    assertEquals(
+        taskId,
+        idIn(ok(projectId, "update_task", Map.of("id", task, "title", "First task, renamed"))));
+    assertTrue(ok(projectId, "remove_task", Map.of("id", doomedTask)).contains(doomedTask));
+    assertTrue(ok(projectId, "remove_feature", Map.of("id", doomedFeature)).contains(doomedFeature));
+    assertEquals(
+        epicId, idIn(ok(projectId, "update_epic", Map.of("id", epic, "title", "Renamed epic"))));
+
+    // A read by either form is one answer, and it shows every write above on the right rows.
+    String byUuid = ok(projectId, "get_epic", Map.of("id", epicId));
+    assertEquals(byUuid, ok(projectId, "get_epic", Map.of("id", epic)));
+    assertTrue(byUuid.contains("Renamed epic"), byUuid);
+    assertTrue(byUuid.contains("First slice, renamed"), byUuid);
+    assertTrue(byUuid.contains("First task, renamed"), byUuid);
+    assertFalse(byUuid.contains("Doomed"), byUuid);
+
+    // The lifecycle tools and the markers, by the qualified id.
+    assertTrue(
+        ok(projectId, "transition_epic", Map.of("id", epic, "target", "REFINED"))
+            .contains("\"status\":\"REFINED\""));
+    authenticated()
+        .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
+        .contentType(ContentType.JSON)
+        .body(Map.of("target", "READY_FOR_DEV"))
+        .when()
+        .post("/projects/api/work/" + epicId + "/status")
+        .then()
+        .statusCode(Response.Status.OK.getStatusCode());
+    assertEquals(taskId, idIn(ok(projectId, "mark_task_implementing", Map.of("id", task))));
+    String implemented = ok(projectId, "mark_task_implemented", Map.of("id", task));
+    assertEquals(taskId, idIn(implemented));
+    assertTrue(implemented.contains("\"status\":\"IMPLEMENTED\""), implemented);
+  }
+
+  @Test
+  public void refusesQualifiedIdsOfAnotherProjectsPlan() {
+    String owner = createProject("Qualified Owner");
+    String repoId = createRepository(owner);
+    String epicId = proposeEpic(owner, "Owned");
+    String epic = fieldIn(ok(owner, "get_epic", Map.of("id", epicId)), "qualifiedId");
+    String feature =
+        fieldIn(ok(owner, "add_feature", Map.of("epicId", epicId, "title", "Slice")), "qualifiedId");
+    String task =
+        fieldIn(
+            ok(
+                owner,
+                "add_task",
+                Map.of("featureId", feature, "repositoryId", repoId, "title", "Task")),
+            "qualifiedId");
+    String stranger = createProject("Qualified Stranger");
+
+    Map<String, Map<String, Object>> calls =
+        Map.of(
+            "get_epic", Map.of("id", epic),
+            "update_epic", Map.of("id", epic, "title", "Stolen"),
+            "transition_epic", Map.of("id", epic, "target", "REFINED"),
+            "add_feature", Map.of("epicId", epic, "title", "Smuggled"),
+            "update_feature", Map.of("id", feature, "title", "Stolen"),
+            "remove_feature", Map.of("id", feature),
+            "update_task", Map.of("id", task, "title", "Stolen"),
+            "remove_task", Map.of("id", task),
+            "mark_task_implementing", Map.of("id", task),
+            "mark_task_implemented", Map.of("id", task));
+    calls.forEach(
+        (tool, args) ->
+            call(
+                stranger,
+                tool,
+                args,
+                response -> {
+                  assertTrue(response.isError(), tool + " must refuse another project's row");
+                  assertTrue(text(response).contains("not found in this project"), text(response));
+                }));
   }
 }

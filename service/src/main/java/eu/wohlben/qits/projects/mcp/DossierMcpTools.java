@@ -1,7 +1,6 @@
 package eu.wohlben.qits.projects.mcp;
 
 import eu.wohlben.qits.entities.control.DossierService;
-import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.DossierOwner;
 import eu.wohlben.qits.entities.entity.DossierPage;
@@ -10,6 +9,7 @@ import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
+import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -67,10 +67,23 @@ public class DossierMcpTools {
   /** What the audit log records for a write with no forwarded identity. */
   private static final String AGENT = "mcp-agent";
 
+  /**
+   * The owner arguments' descriptions: either form names the epic or the ticket (qits-954), the
+   * qualified id {@code get_epic} and {@code get_ticket} answer included.
+   */
+  private static final String EPIC_ID =
+      "id of an epic in this project: its UUID or its qualified id (<project-slug>-<n>)";
+
+  private static final String TICKET_ID =
+      "id of a ticket in this project: its UUID or its qualified id (<project-slug>-<n>)";
+
   @Inject ProjectScope scope;
 
-  @Inject WorkEntityService entities;
-
+  /**
+   * The UUID-or-qualified-id lookup {@code get_entity} and the {@code /work} doors share (qits-954).
+   * Its reads are {@code requiringNew}, which this class's transaction-free rule already allows for.
+   */
+  @Inject EntityIdResolver ids;
 
   @Inject DossierService dossier;
 
@@ -115,8 +128,8 @@ public class DossierMcpTools {
               + " to see what the dossier already covers before adding a page that repeats it, then"
               + " read the one you mean with get_dossier_page.")
   public List<PageSummary> listDossierPages(
-      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
-      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+      @ToolArg(required = false, description = EPIC_ID) String epicId,
+      @ToolArg(required = false, description = TICKET_ID) String ticketId) {
     Owner owner = requireOwnerInProject(epicId, ticketId);
     return dossier.listByOwner(owner.owner()).stream().map(DossierMcpTools::summarize).toList();
   }
@@ -131,8 +144,8 @@ public class DossierMcpTools {
               + " so writing without reading is how an argument gets flattened.")
   public PageDetail getDossierPage(
       @ToolArg(description = "id of a page of that dossier") String pageId,
-      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
-      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+      @ToolArg(required = false, description = EPIC_ID) String epicId,
+      @ToolArg(required = false, description = TICKET_ID) String ticketId) {
     Owner owner = requireOwnerInProject(epicId, ticketId);
     return detail(requireOfOwner(owner.owner(), pageId));
   }
@@ -164,8 +177,8 @@ public class DossierMcpTools {
   public PageSummary putDossierPage(
       @ToolArg(description = "the page's heading, which also mints its slug at create") String title,
       @ToolArg(description = "the page's markdown") String body,
-      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
-      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId,
+      @ToolArg(required = false, description = EPIC_ID) String epicId,
+      @ToolArg(required = false, description = TICKET_ID) String ticketId,
       @ToolArg(required = false, description = "id of the page to rewrite; omit to add a new one")
           String pageId,
       @ToolArg(
@@ -196,8 +209,8 @@ public class DossierMcpTools {
   public PageSummary moveDossierPage(
       @ToolArg(description = "id of a page of that dossier") String pageId,
       @ToolArg(description = "zero-based position to put it at") int position,
-      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
-      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+      @ToolArg(required = false, description = EPIC_ID) String epicId,
+      @ToolArg(required = false, description = TICKET_ID) String ticketId) {
     Owner owner = requireOwnerInProject(epicId, ticketId);
     requireOfOwner(owner.owner(), pageId);
     PageSummary moved = summarize(dossier.move(pageId, position, changedBy()));
@@ -215,8 +228,8 @@ public class DossierMcpTools {
               + " an epic's dossier, a figure nothing else inlines goes with the page.")
   public String removeDossierPage(
       @ToolArg(description = "id of a page of that dossier") String pageId,
-      @ToolArg(required = false, description = "id of an epic in this project") String epicId,
-      @ToolArg(required = false, description = "id of a ticket in this project") String ticketId) {
+      @ToolArg(required = false, description = EPIC_ID) String epicId,
+      @ToolArg(required = false, description = TICKET_ID) String ticketId) {
     Owner owner = requireOwnerInProject(epicId, ticketId);
     requireOfOwner(owner.owner(), pageId);
     dossier.delete(pageId, changedBy());
@@ -238,7 +251,7 @@ public class DossierMcpTools {
               + " so the page keeps rendering after the refinement it came from is discarded, and"
               + " inlining the same figure twice is the same line rather than a second copy.")
   public DossierFigure inlineFigure(
-      @ToolArg(description = "id of an epic in this project") String epicId,
+      @ToolArg(description = EPIC_ID) String epicId,
       @ToolArg(description = "id of the attachment or design to inline") String sourceId,
       @ToolArg(description = "IMAGE for a sketch, DESIGN for a design") String kind) {
     WorkEntity epic = requireEpicInProject(epicId);
@@ -249,22 +262,37 @@ public class DossierMcpTools {
 
   // --- Scoping --------------------------------------------------------------
 
-  /** The epic, if it is in the scoped project. One in another project reads as absent. */
+  /**
+   * The epic, if it is in the scoped project. One in another project reads as absent. The argument
+   * is either form (qits-954), resolved by {@link EntityIdResolver}; the row is what is answered, and
+   * its {@code id} — never the argument — is what the {@link DossierOwner} and the figure copy are
+   * built from, because a page's owner column holds the UUID.
+   */
   private WorkEntity requireEpicInProject(String epicId) {
-    WorkEntity epic = entities.get(Archetype.EPIC, epicId);
-    if (!scope.requireProjectId().equals(epic.projectId)) {
-      throw new NotFoundException("Epic not found: " + epicId);
-    }
-    return epic;
+    return requireInProject(Archetype.EPIC, "Epic", epicId);
   }
 
   /** The ticket, checked back to the session's project the same way, and absent otherwise. */
   private WorkEntity requireTicketInProject(String ticketId) {
-    WorkEntity ticket = entities.get(Archetype.TICKET, ticketId);
-    if (!scope.requireProjectId().equals(ticket.projectId)) {
-      throw new NotFoundException("Ticket not found: " + ticketId);
+    return requireInProject(Archetype.TICKET, "Ticket", ticketId);
+  }
+
+  /**
+   * The row of {@code archetype} {@code id} names, in either form, within the scoped project. A miss,
+   * a row of another kind and a row elsewhere are one refusal in this class's own wording — {@code
+   * "Epic not found: "} — naming what was asked for rather than the UUID it resolved to.
+   */
+  private WorkEntity requireInProject(Archetype archetype, String noun, String id) {
+    WorkEntity row;
+    try {
+      row = ids.resolve(id);
+    } catch (NotFoundException e) {
+      throw new NotFoundException(noun + " not found: " + id);
     }
-    return ticket;
+    if (row.archetype != archetype || !scope.requireProjectId().equals(row.projectId)) {
+      throw new NotFoundException(noun + " not found: " + id);
+    }
+    return row;
   }
 
   /** A resolved owner, with what a change hint needs: whose channel, and which topic. */

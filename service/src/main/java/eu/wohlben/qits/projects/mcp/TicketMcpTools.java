@@ -13,6 +13,7 @@ import eu.wohlben.qits.projects.api.ProjectChangePublisher;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.api.PhaseAdvance;
+import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import io.quarkiverse.mcp.server.McpServer;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
@@ -81,6 +82,14 @@ public class TicketMcpTools {
    */
   private static final String AGENT = "mcp-agent";
 
+  /**
+   * Every ticket id argument's description: either form names the ticket (qits-954), and the
+   * description is where the model learns that the qualified id {@code get_ticket} answers is one
+   * it may hand straight back.
+   */
+  private static final String TICKET_ID =
+      "id of a ticket in this project: its UUID or its qualified id (<project-slug>-<n>)";
+
   @Inject ProjectScope scope;
 
   /** The session's project slug, which is the qualifier in {@code <project-slug>-<number>}. */
@@ -109,6 +118,13 @@ public class TicketMcpTools {
    * The same crossing into {@code projects.api} the field above declares.
    */
   @Inject EntityBlocks blocks;
+
+  /**
+   * The UUID-or-qualified-id lookup {@code get_entity} and the {@code /work} doors share (qits-954).
+   * Its reads are {@code requiringNew}, which is why this class's transaction-free rule costs it
+   * nothing.
+   */
+  @Inject EntityIdResolver ids;
 
   // --- Result shapes --------------------------------------------------------
 
@@ -199,7 +215,7 @@ public class TicketMcpTools {
           "Read one ticket of this project in full: its description plus every comment on it,"
               + " oldest first. Read it before working on a ticket — the thread is usually where"
               + " the reproduction and the decisions are.")
-  public TicketDetail getTicket(@ToolArg(description = "id of a ticket in this project") String id) {
+  public TicketDetail getTicket(@ToolArg(description = TICKET_ID) String id) {
     WorkEntity ticket = requireTicketInProject(id);
     List<CommentDetail> comments =
         thread.listComments(ticket.id).stream()
@@ -294,7 +310,7 @@ public class TicketMcpTools {
               + " tells the next reader nothing about why it stopped. The status is not editable"
               + " here — use transition_ticket, which is the only thing that moves it.")
   public TicketSummary updateTicket(
-      @ToolArg(description = "id of a ticket in this project") String id,
+      @ToolArg(description = TICKET_ID) String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
       @ToolArg(
               required = false,
@@ -323,7 +339,7 @@ public class TicketMcpTools {
                       + " frozen from READY_FOR_DEV on. Each item: no line break, at most one '.',"
                       + " and fewer than 20 whitespace characters.")
           List<String> acceptanceCriteria) {
-    requireTicketInProject(id);
+    WorkEntity named = requireTicketInProject(id);
     // Omitted means unchanged on this surface: the clear flags the REST route carries are a
     // deliberate act in a form, and a model that meant "no value" would reach for a null it cannot
     // express here anyway.
@@ -331,7 +347,7 @@ public class TicketMcpTools {
         entities
             .update(
                 Archetype.TICKET,
-                id,
+                named.id,
                 EntityWrite.ticketEdit(
                         title, impetus, false, description, false, type, assignee, false)
                     .withAcceptanceCriteria(acceptanceCriteria),
@@ -395,10 +411,7 @@ public class TicketMcpTools {
               + " IMPLEMENTING's is reversible, and DROPPED reopens to REPORTED, so a wrong answer costs one more"
               + " call.")
   public TicketSummary transitionTicket(
-      @ToolArg(
-              description =
-                  "id of a ticket in this project")
-          String id,
+      @ToolArg(description = TICKET_ID) String id,
       @ToolArg(
               description =
                   "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
@@ -407,11 +420,11 @@ public class TicketMcpTools {
                       + " READY_FOR_DEV or VERIFIED from IMPLEMENTED (the skips); DROPPED is reachable from any status that is not DONE, and"
                       + " reopens only to REPORTED; DONE is final and moves nowhere")
           String target) {
-    requireTicketInProject(id);
+    WorkEntity named = requireTicketInProject(id);
     String changedBy = changedBy();
     // Through EntityResolutions (qits-395): a resolving move discards the ticket's refinement first.
     WorkEntityService.Transition moved =
-        resolutions.transition(Archetype.TICKET, id, target, Mover.machine(changedBy));
+        resolutions.transition(Archetype.TICKET, named.id, target, Mover.machine(changedBy));
     WorkEntity ticket = moved.entity();
     announce();
     // The agent's claim IS the trigger for the next phase, and this is where it lands: after the
@@ -451,7 +464,7 @@ public class TicketMcpTools {
               + " ticket that is VERIFIED, DONE or DROPPED. block_entity does the same for an epic"
               + " or a campaign.")
   public TicketSummary blockTicket(
-      @ToolArg(description = "id of a ticket in this project") String ticketId,
+      @ToolArg(description = TICKET_ID) String ticketId,
       @ToolArg(
               description =
                   "what is in the way, and what would clear it — one or two sentences, named"
@@ -476,7 +489,7 @@ public class TicketMcpTools {
               + " optional and is worth writing where the answer is not obvious from the thread:"
               + " say what cleared it, not merely that it did.")
   public TicketSummary unblockTicket(
-      @ToolArg(description = "id of a ticket in this project") String ticketId,
+      @ToolArg(description = TICKET_ID) String ticketId,
       @ToolArg(
               required = false,
               description =
@@ -501,10 +514,10 @@ public class TicketMcpTools {
               + " the way you did. The thread is what the next reader has to go on, so a resolution"
               + " with no comment is a resolution nobody can check.")
   public CommentDetail addTicketComment(
-      @ToolArg(description = "id of a ticket in this project") String ticketId,
+      @ToolArg(description = TICKET_ID) String ticketId,
       @ToolArg(description = "the remark, Markdown") String body) {
-    requireTicketInProject(ticketId);
-    EntityComment comment = thread.addComment(ticketId, body, changedBy());
+    WorkEntity ticket = requireTicketInProject(ticketId);
+    EntityComment comment = thread.addComment(ticket.id, body, changedBy());
     announce();
     return new CommentDetail(comment.id, comment.author, comment.body, comment.createdAt);
   }
@@ -533,11 +546,27 @@ public class TicketMcpTools {
   // --- Scoping --------------------------------------------------------------
 
   /**
-   * Ensures {@code ticketId} names a ticket of the scoped project. A ticket elsewhere reads as not
+   * Ensures {@code ticketId} names a ticket of the scoped project, and answers the row — <b>whose
+   * {@code id} is what every tool hands on</b>, never the argument. A ticket elsewhere reads as not
    * found rather than as forbidden — the model is told nothing about what other projects hold.
+   *
+   * <p>The argument is either form a person types (qits-954): the UUID, or the qualified id {@code
+   * <project-slug>-<n>} that {@code get_ticket} answers and a commit subject carries, resolved by
+   * {@link EntityIdResolver} exactly as {@code get_entity} and the {@code /work} doors resolve it.
+   * Only the resolved row's UUID may travel past this check: the writes below are primary-key
+   * writes, and {@code qits-7} handed on as written would name nothing there.
    */
   private WorkEntity requireTicketInProject(String ticketId) {
-    WorkEntity ticket = entities.get(Archetype.TICKET, ticketId);
+    WorkEntity ticket;
+    try {
+      ticket = ids.resolve(ticketId);
+    } catch (NotFoundException e) {
+      throw new NotFoundException("Ticket not found in this project: " + ticketId);
+    }
+    if (ticket.archetype != Archetype.TICKET) {
+      // The wording WorkEntityService.get gives a row of another kind, naming what was asked for.
+      throw new NotFoundException("Ticket not found: " + ticketId);
+    }
     if (!scope.requireProjectId().equals(ticket.projectId)) {
       throw new NotFoundException("Ticket not found in this project: " + ticketId);
     }

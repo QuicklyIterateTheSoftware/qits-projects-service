@@ -270,6 +270,137 @@ public class TicketMcpToolsTest {
     }
   }
 
+  // --- Either form of an id (qits-954) --------------------------------------
+
+  /** The {@code "qualifiedId"} field of a tool's JSON result — {@code <project-slug>-<n>}. */
+  private static String qualifiedIdIn(String json) {
+    int at = json.indexOf("\"qualifiedId\"");
+    int open = json.indexOf('"', json.indexOf(':', at) + 1);
+    return json.substring(open + 1, json.indexOf('"', open + 1));
+  }
+
+  /** The qualified id of a ticket, as {@code get_ticket} hands it out. */
+  private String qualifiedIdOf(String projectId, String ticketId) {
+    String[] qualified = new String[1];
+    call(
+        projectId,
+        "get_ticket",
+        Map.of("id", ticketId),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          qualified[0] = qualifiedIdIn(text(response));
+        });
+    return qualified[0];
+  }
+
+  /**
+   * Every ticket tool takes the qualified id {@code get_ticket} answers as readily as the UUID —
+   * the read is the same answer, and each write lands on the same row, which the UUID read back
+   * shows.
+   */
+  @Test
+  public void takesTheQualifiedIdAsReadilyAsTheUuid() {
+    String projectId = createProject("Ticket Qualified");
+    String ticketId = createTicket(projectId, "Named either way", "BUG");
+    String qualified = qualifiedIdOf(projectId, ticketId);
+    assertNotEquals(ticketId, qualified);
+    assertTrue(qualified.matches(".+-\\d+"), "a qualified id is <project-slug>-<n>: " + qualified);
+
+    String[] byUuid = new String[1];
+    call(projectId, "get_ticket", Map.of("id", ticketId), response -> byUuid[0] = text(response));
+    call(
+        projectId,
+        "get_ticket",
+        Map.of("id", qualified),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertEquals(byUuid[0], text(response), "either form reads the same ticket");
+        });
+
+    call(
+        projectId,
+        "update_ticket",
+        Map.of("id", qualified, "title", "Renamed by its qualified id"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertEquals(ticketId, idIn(text(response)));
+        });
+    call(
+        projectId,
+        "add_ticket_comment",
+        Map.of("ticketId", qualified, "body", "commented by its qualified id"),
+        response -> assertFalse(response.isError(), text(response)));
+    call(
+        projectId,
+        "block_ticket",
+        Map.of("ticketId", qualified, "reason", "waiting on a sibling"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"blocked\":true"), text(response));
+        });
+    call(
+        projectId,
+        "unblock_ticket",
+        Map.of("ticketId", qualified, "note", "it cleared"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"blocked\":false"), text(response));
+        });
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", qualified, "target", "REFINED"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertEquals(ticketId, idIn(text(response)));
+        });
+
+    call(
+        projectId,
+        "get_ticket",
+        Map.of("id", ticketId),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains("Renamed by its qualified id"), body);
+          assertTrue(body.contains("commented by its qualified id"), body);
+          assertTrue(body.contains("\"status\":\"REFINED\""), body);
+        });
+  }
+
+  @Test
+  public void refusesAQualifiedIdOfAnotherProjectsTicket() {
+    String owner = createProject("Ticket Qualified Owner");
+    String qualified = qualifiedIdOf(owner, createTicket(owner, "Owned", "BUG"));
+    String stranger = createProject("Ticket Qualified Stranger");
+
+    for (String tool :
+        List.of(
+            "get_ticket",
+            "update_ticket",
+            "transition_ticket",
+            "add_ticket_comment",
+            "block_ticket",
+            "unblock_ticket")) {
+      Map<String, Object> args =
+          switch (tool) {
+            case "add_ticket_comment" -> Map.of("ticketId", qualified, "body", "hello");
+            case "update_ticket" -> Map.of("id", qualified, "title", "Stolen");
+            case "transition_ticket" -> Map.of("id", qualified, "target", "REFINED");
+            case "block_ticket" -> Map.of("ticketId", qualified, "reason", "waiting on a sibling");
+            case "unblock_ticket" -> Map.of("ticketId", qualified, "note", "it cleared");
+            default -> Map.of("id", qualified);
+          };
+      call(
+          stranger,
+          tool,
+          args,
+          response -> {
+            assertTrue(response.isError(), tool + " must refuse another project's ticket");
+            assertTrue(text(response).contains("not found in this project"), text(response));
+          });
+    }
+  }
+
   // --- Filing and working ---------------------------------------------------
 
   @Test
