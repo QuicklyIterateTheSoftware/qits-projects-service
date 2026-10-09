@@ -2668,6 +2668,16 @@ public class ReleaseRequests {
    * {@code versionPins} — see {@link #remerge}. Two call sites and exactly two: a fold, and — only when the first answered CONFLICT and every conflicting path was
    * decidable — the same fold again carrying the directives.
    *
+   * <p><b>Every fold is a rebuild</b> (user decision 2026-10-09): the git host builds it from
+   * {@code main} and the request's sources alone and moves {@code release/<id>} onto it with a
+   * lease, so the previous fold is never a parent. Folding onto the previous fold made every source
+   * move one more two-parent merge on the branch — 23 of them and 51 commits on
+   * {@code main..release/<id>} on request dd113f4c — and kept a source's old commits in the fold after
+   * the source was force-pushed. The parents of the merge are the effective refs in {@link
+   * #refsOf} order. Nothing on this side assumed the old fold is an ancestor of the new one: the gate
+   * is keyed on the sha, {@link FoldChanges#pathsBetween} is a tree diff, and a moved fold already
+   * cancels the runs it superseded.
+   *
    * <p><b>Two is the ceiling and there is no mechanism here that could raise it.</b> The second call
    * is made from a straight line of code with no loop around it, on an outcome that is examined once;
    * a second conflict is applied as it stands. That matters more than it looks: {@link #sweep()}
@@ -2688,7 +2698,7 @@ public class ReleaseRequests {
     try {
       return mergers
           .get()
-          .merge(repoId, projectId, repoName, target, refs, message, resolutions, true);
+          .merge(repoId, projectId, repoName, target, refs, message, resolutions, true, true);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not lose the request.
       LOG.warnf(e, "The backing-branch merger threw for release request %s", id);

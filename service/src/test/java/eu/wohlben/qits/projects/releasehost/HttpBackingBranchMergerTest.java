@@ -271,6 +271,24 @@ class HttpBackingBranchMergerTest {
   }
 
   @Test
+  void aRebuildAsksTheGitHostToLeaveTheTargetsTipOut() throws Exception {
+    String base = startServer();
+
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true, true);
+
+    assertTrue(MAPPER.readTree(received.get(0).body()).path("rebuild").asBoolean(false));
+  }
+
+  @Test
+  void aFoldNotAskingForARebuildSendsNoSuchKey() throws Exception {
+    String base = startServer();
+
+    against(base).merge(REPO, PROJECT, NAME, TARGET, SOURCES, "a fold", List.of(), true);
+
+    assertFalse(MAPPER.readTree(received.get(0).body()).has("rebuild"));
+  }
+
+  @Test
   void theVersionPinsTheGitHostDecidedAreRead() throws Exception {
     String base = startServer();
     responseBody.set(

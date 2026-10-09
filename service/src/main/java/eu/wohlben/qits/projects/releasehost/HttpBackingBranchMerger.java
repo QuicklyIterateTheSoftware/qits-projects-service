@@ -79,7 +79,8 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
       List<String> sources,
       String message,
       List<Resolution> resolutions,
-      boolean versionPins) {
+      boolean versionPins,
+      boolean rebuild) {
     if (githostUrl.isEmpty() || githostUrl.get().isBlank()) {
       return Outcome.unreachable(
           "qits.projects.release-requests.githost-url is not configured; nothing can fold this"
@@ -110,6 +111,11 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
         // decoding does not fail on unknown properties, as projectId/repoName already rely on — and
         // folds exactly as it always did.
         body.put("versionPins", true);
+      }
+      if (rebuild) {
+        // The git host leaves the target's tip out and builds the fold from the sources alone. One
+        // that predates the flag ignores it and folds onto the tip, which is the old fold.
+        body.put("rebuild", true);
       }
       if (resolutions != null && !resolutions.isEmpty()) {
         // OMITTED ENTIRELY when there is nothing to direct, which is almost every fold: a git host

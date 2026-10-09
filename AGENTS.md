@@ -996,6 +996,25 @@ branch the release had just removed — its QA steps never ran once.
 declares nothing and is no gate — because this service must not become a second reader of qits-ci's
 slot schema.
 
+**Every fold is rebuilt from the sources, never made onto the previous fold** (user decision
+2026-10-09). `ReleaseRequests.fold` asks qits-githost's merge door with `rebuild: true`: the
+backing branch's old tip is no head, the fold is built from the request's sources alone and
+`release/<id>` is moved onto it with a lease (a concurrent move is `ref-moved`, which the sweep
+folds again). Before, each moved source added one two-parent merge onto the previous fold —
+request dd113f4c (qits-workspaces-service) carried 23 of them and 51 commits on
+`main..release/<id>` — and a force-pushed source kept its old commits in the fold. The guarantees
+a consumer may rely on:
+
+- `main..release/<id>` is the sources' own commits plus at most one merge commit.
+- **That merge's parents are the effective sources in source order**: `main`, the named branches in
+  the order they were added (`addedAt`, then name), then the released tags still pending, oldest
+  first. A source another source contains is left out (the git host's `skipped`); with one source
+  left there is no merge commit and the branch points at that source's tip.
+- Same parents in the same order is `unchanged`: no new commit, no re-arm, no cancelled run.
+- **A refold need not descend from the fold before it.** Nothing here assumes it: the gates,
+  approvals and waivers are keyed on `mergedSha`, `FoldChanges.pathsBetween` is a tree diff, the
+  diff base is the newest release tag, and a moved fold cancels the request's runs as before.
+
 **Release and withdrawal both ask qits-ci to cancel the request's queued or running runs**, best
 effort and never able to fail the release or the withdrawal itself (`ReleaseRequests.cancel`) — so a
 run still building a branch the release just deleted, or a branch a withdrawal just dropped, cannot
