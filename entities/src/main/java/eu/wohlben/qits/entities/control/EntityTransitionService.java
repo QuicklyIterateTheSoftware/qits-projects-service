@@ -257,8 +257,16 @@ public class EntityTransitionService {
       statusBefore.put(id, rows.get(id).status);
     }
 
+    Instant now = Instant.now();
     for (Map.Entry<String, EntityTransition> entry : stated.entrySet()) {
-      write(rows.get(entry.getKey()), entry.getValue(), scopeOf(entry.getValue(), rows.get(entry.getKey())));
+      WorkEntity row = rows.get(entry.getKey());
+      write(row, entry.getValue(), scopeOf(entry.getValue(), row));
+      if (!Objects.equals(statusBefore.get(entry.getKey()), row.status)) {
+        // A move clears both blocks, WorkEntityService.move's rule (qits-895) on the other door
+        // that moves a status. A reshape that leaves the status where it was moves no phase, so it
+        // leaves both alone — "a reshape says nothing about whether somebody is stuck".
+        WorkEntityService.clearBlocks(row, now);
+      }
     }
     replaceMemberships(stated);
 

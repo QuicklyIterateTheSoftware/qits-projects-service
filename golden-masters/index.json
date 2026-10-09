@@ -2156,6 +2156,55 @@
       ]
     },
     {
+      "name": "a ticket its agent is waiting on",
+      "slug": "a-ticket-its-agent-is-waiting-on",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-1",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getWork",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}",
+          "status": 200,
+          "file": "a-ticket-its-agent-is-waiting-on/getWork.json",
+          "frozen": {
+            "ids": [
+              "$.id",
+              "$.projectId",
+              "$.slugScope"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [
+              "$.qualifiedId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWorkDispatch",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}/dispatch",
+          "status": 200,
+          "file": "a-ticket-its-agent-is-waiting-on/getWorkDispatch.json",
+          "frozen": {
+            "ids": [
+              "$.state.entityId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a ticket of every type",
       "slug": "a-ticket-of-every-type",
       "params": {

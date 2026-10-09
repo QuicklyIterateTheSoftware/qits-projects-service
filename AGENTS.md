@@ -1378,6 +1378,30 @@ Every transition clears the flag. A blocked campaign's executor claims no new me
 are untouched) and its unblock runs the campaign's sweep straight after; `blocked` is on the merged shape for every lifecycle kind and on the campaign DTOs
 (`CampaignDtos`).
 
+**BLOCKED has two sources and one effective flag (qits-895, epics V28).** `entity.blocked` is the
+EXPLICIT block — set only by the doors above, which now also keep `blocked_by`/`blocked_reason` (the
+thread is still where the blocker is said) — and the only one any gate reads: `EntityDispatch`'s
+refusals and the state read's `dispatchable`, `PhaseAdvance`, `CampaignStarter` and
+`CampaignExecutor`'s claim and sweep SQL. The DERIVED block is an agent session waiting for a
+person: `POST /work/{qualifiedId}/agent-waiting` (`WorkAgentWaitingController` → `api/AgentWaiting`
+→ `entities/control/AgentWaitingService`, `qits:system` alone, `{waiting, cause, sessionId, at}`,
+always 204 for a known entity) records `agent_waiting_since`/`_cause`/`agent_activity_at` with one
+native UPDATE (no audit, no comment, `updated_at` untouched), and only where `EntityBlocks.blockable`
+says a block could stand. A frame older than `agent_activity_at` less
+`qits.projects.agent-waiting.skew` (5s) is ignored; every status move (`WorkEntityService.move` and a
+status-changing `EntityTransitionService` write — a reshape that keeps the status keeps both blocks)
+clears both sources and stamps `agent_activity_at`. **Every answer's `blocked` is the effective
+value**, computed at read time by `entities/control/EntityBlockState` (explicit OR a wait standing
+for `qits.projects.agent-waiting.debounce`, 30s), with three NON_NULL scalars beside it —
+`blockSource` (`EXPLICIT`/`AGENT_WAITING`/`BOTH`), `blockReason` (the stated reason, else a fixed
+sentence) and `blockedBy` — on `TransitionedEntity`, `EntitySummary`, `EntityBlock`,
+`EntityDispatchStateDto`, the campaign DTOs and the ticket/epic/campaign MCP records. An explicit
+unblock clears the derived wait too and counts as a change whenever the effective value was true.
+`AgentWaiting.sweep` (every `qits.projects.agent-waiting.sweep-interval`, NORMAL mode only — the
+suite calls it) announces each wait as it crosses the debounce: the archetype's hint and
+`AgentEntitySignals`, which sends the effective flag. A dispatch's seed and a refinement container's
+`_BLOCKED` env stay the explicit flag.
+
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
 it means "outcome unknown". **On a CAMPAIGN the press is its start** — the branch is in

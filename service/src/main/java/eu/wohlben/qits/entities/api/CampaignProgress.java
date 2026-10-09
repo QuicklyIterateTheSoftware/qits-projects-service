@@ -4,7 +4,6 @@ import eu.wohlben.qits.entities.api.CampaignDtos.CampaignCriterionProgressDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDispatchDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignEvaluatorDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignGroupProgressDto;
-import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberEntityDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberProgressDto;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignMemberState;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignProgressCampaignDto;
@@ -18,6 +17,7 @@ import eu.wohlben.qits.entities.campaign.CriterionKind;
 import eu.wohlben.qits.entities.campaign.CriterionPredicate;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.EntityStatus;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -83,17 +83,21 @@ public final class CampaignProgress {
       memberIds.add(member.membership().childId);
     }
     Context context = new Context(read.targets(), memberIds, qualified);
+    EntityBlockState block = EntityBlockState.of(row);
     return new CampaignProgressDto(
         new CampaignProgressCampaignDto(
             row.id,
             qualified.apply(row),
             row.title,
             row.status,
-            row.blocked,
+            block.blocked(),
             start == null
                 ? null
                 : new CampaignStartDto(
-                    start.firstStartedAt, start.startedAt, start.startedBy, start.active)),
+                    start.firstStartedAt, start.startedAt, start.startedBy, start.active),
+            block.source(),
+            block.reason(),
+            block.blockedBy()),
         evaluator,
         campaign.members().stream().map(member -> member(member, context)).toList());
   }
@@ -194,13 +198,7 @@ public final class CampaignProgress {
         edge.position,
         entity == null
             ? null
-            : new CampaignMemberEntityDto(
-                entity.id,
-                entity.archetype.name(),
-                context.qualified().apply(entity),
-                entity.title,
-                entity.status,
-                entity.blocked),
+            : CampaignViews.memberEntity(entity, context.qualified().apply(entity)),
         stateOf(member),
         waitsFor(member),
         edge.joinedRunning,

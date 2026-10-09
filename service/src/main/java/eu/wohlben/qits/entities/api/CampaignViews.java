@@ -15,6 +15,7 @@ import eu.wohlben.qits.entities.campaign.CampaignCriterion;
 import eu.wohlben.qits.entities.campaign.CampaignService;
 import eu.wohlben.qits.entities.campaign.CampaignStartRecord;
 import eu.wohlben.qits.entities.entity.EntityMembership;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.projects.api.QualifiedEntityIds;
 import eu.wohlben.qits.projects.campaignhost.CampaignEvaluatorHealth;
@@ -50,6 +51,7 @@ public class CampaignViews {
             summary -> {
               WorkEntity row = summary.campaign();
               CampaignStartRecord start = summary.start();
+              EntityBlockState block = EntityBlockState.of(row);
               return new CampaignSummaryDto(
                   row.id,
                   row.number,
@@ -57,10 +59,13 @@ public class CampaignViews {
                   row.projectId,
                   row.title,
                   row.status,
-                  row.blocked,
+                  block.blocked(),
                   start != null,
                   start != null && start.active,
-                  summary.members());
+                  summary.members(),
+                  block.source(),
+                  block.reason(),
+                  block.blockedBy());
             })
         .toList();
   }
@@ -70,6 +75,7 @@ public class CampaignViews {
     WorkEntity row = campaign.campaign();
     String slug = slugOf(row.projectId);
     CampaignStartRecord start = campaign.start();
+    EntityBlockState block = EntityBlockState.of(row);
     return new CampaignDto(
         row.id,
         row.number,
@@ -79,12 +85,15 @@ public class CampaignViews {
         row.title,
         row.description,
         row.status,
-        row.blocked,
+        block.blocked(),
         start == null
             ? null
             : new CampaignStartDto(
                 start.firstStartedAt, start.startedAt, start.startedBy, start.active),
-        campaign.members().stream().map(member -> member(slug, member)).toList());
+        campaign.members().stream().map(member -> member(slug, member)).toList(),
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 
   /** One member. */
@@ -98,15 +107,7 @@ public class CampaignViews {
     return new CampaignMemberDto(
         edge.id,
         edge.position,
-        entity == null
-            ? null
-            : new CampaignMemberEntityDto(
-                entity.id,
-                entity.archetype.name(),
-                qualified(slug, entity),
-                entity.title,
-                entity.status,
-                entity.blocked),
+        entity == null ? null : memberEntity(entity, qualified(slug, entity)),
         edge.claimedAt,
         edge.joinedRunning,
         edge.dispatchedAt,
@@ -169,5 +170,23 @@ public class CampaignViews {
 
   private static String qualified(String slug, WorkEntity row) {
     return slug == null ? null : QualifiedEntityIds.render(slug, row.number);
+  }
+
+  /**
+   * A member's entity as a member row draws it, its block the effective one (qits-895) — shared
+   * with {@link CampaignProgress}, so the two member shapes cannot disagree about it.
+   */
+  static CampaignMemberEntityDto memberEntity(WorkEntity entity, String qualifiedId) {
+    EntityBlockState block = EntityBlockState.of(entity);
+    return new CampaignMemberEntityDto(
+        entity.id,
+        entity.archetype.name(),
+        qualifiedId,
+        entity.title,
+        entity.status,
+        block.blocked(),
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 }

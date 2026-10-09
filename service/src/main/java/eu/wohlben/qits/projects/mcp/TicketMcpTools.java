@@ -1,5 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.EntityCommentService;
@@ -121,6 +123,11 @@ public class TicketMcpTools {
    * <p>{@code qualifiedId} ({@code qits-1337}) and never the bare number — the decision and its
    * reason are on {@link EpicMcpTools.EpicSummary}, and they are this server's rule rather than
    * that class's.
+   *
+   * <p>{@code blocked} is the EFFECTIVE block (qits-895) — the explicit one, or the agent session on
+   * the ticket waiting for a person past the debounce — with {@code blockSource}, {@code
+   * blockReason} and {@code blockedBy} beside it, absent while it is not blocked. The same holds for
+   * {@link TicketDetail} and for the epic records.
    */
   public record TicketSummary(
       String id,
@@ -134,7 +141,10 @@ public class TicketMcpTools {
       String createdBy,
       String impetus,
       String description,
-      List<String> acceptanceCriteria) {}
+      List<String> acceptanceCriteria,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   /** One remark inside {@link TicketDetail}. */
   public record CommentDetail(String id, String author, String body, Instant createdAt) {}
@@ -153,7 +163,10 @@ public class TicketMcpTools {
       String impetus,
       String description,
       List<String> acceptanceCriteria,
-      List<CommentDetail> comments) {}
+      List<CommentDetail> comments,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   // --- Tickets --------------------------------------------------------------
 
@@ -205,6 +218,7 @@ public class TicketMcpTools {
         thread.listComments(ticket.id).stream()
             .map(c -> new CommentDetail(c.id, c.author, c.body, c.createdAt))
             .toList();
+    EntityBlockState block = EntityBlockState.of(ticket);
     return new TicketDetail(
         ticket.id,
         QualifiedEntityIds.render(projectSlug(), ticket.number),
@@ -212,13 +226,16 @@ public class TicketMcpTools {
         ticket.title,
         ticket.ticketType.name(),
         ticket.status,
-        ticket.blocked,
+        block.blocked(),
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,
         ticket.description,
         List.copyOf(ticket.acceptanceCriteria),
-        comments);
+        comments,
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 
   @McpServer("repository")
@@ -588,6 +605,7 @@ public class TicketMcpTools {
   }
 
   private static TicketSummary summarize(WorkEntity ticket, String projectSlug) {
+    EntityBlockState block = EntityBlockState.of(ticket);
     return new TicketSummary(
         ticket.id,
         QualifiedEntityIds.render(projectSlug, ticket.number),
@@ -595,11 +613,14 @@ public class TicketMcpTools {
         ticket.title,
         ticket.ticketType.name(),
         ticket.status,
-        ticket.blocked,
+        block.blocked(),
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,
         ticket.description,
-        List.copyOf(ticket.acceptanceCriteria));
+        List.copyOf(ticket.acceptanceCriteria),
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 }

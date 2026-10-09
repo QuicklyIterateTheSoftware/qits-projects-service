@@ -1,0 +1,14 @@
+{
+  "state": {
+    "entityId": "00000000-0000-4000-8000-000000000002",
+    "archetype": "TICKET",
+    "status": "REPORTED",
+    "nextPhase": "refine",
+    "blocked": true,
+    "dispatchable": true,
+    "mode": "FLOW",
+    "preApprovedBy": null,
+    "blockSource": "AGENT_WAITING",
+    "blockReason": "The agent ended its turn with nothing in flight and is waiting for a person."
+  }
+}

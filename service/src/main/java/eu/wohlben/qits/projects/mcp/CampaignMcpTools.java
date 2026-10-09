@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.mcp;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.CampaignDoors;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
@@ -144,7 +145,10 @@ public class CampaignMcpTools {
       boolean blocked,
       eu.wohlben.qits.entities.api.CampaignDtos.CampaignStartDto start,
       List<CampaignMemberDto> members,
-      List<CommentMcpTools.CommentDetail> comments) {
+      List<CommentMcpTools.CommentDetail> comments,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {
 
     static CampaignDetail of(CampaignDto campaign, List<CommentMcpTools.CommentDetail> comments) {
       return new CampaignDetail(
@@ -159,7 +163,10 @@ public class CampaignMcpTools {
           campaign.blocked(),
           campaign.start(),
           campaign.members(),
-          comments);
+          comments,
+          campaign.blockSource(),
+          campaign.blockReason(),
+          campaign.blockedBy());
     }
   }
 

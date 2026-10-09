@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.campaign.CampaignStartRecordRepository;
 import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.control.ReadPatience;
 import eu.wohlben.qits.entities.control.EntityCommentService;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
 import eu.wohlben.qits.entities.control.Mover;
@@ -318,15 +319,21 @@ public class EntityDispatch {
     // "A FLOW press would run something" (qits-1075): at REFINED a person's Dispatch schedules the
     // entity and starts implement, so it is dispatchable there although no phase is next.
     boolean flowRuns = nextPhase != null || (lifecycle && isRefined(entity));
+    // blocked is what the entity reads as (qits-895); dispatchable reads the EXPLICIT flag alone,
+    // because a derived block — an agent waiting for a person — never refuses a press.
+    EntityBlockState block = EntityBlockState.of(entity);
     return new EntityDispatchStateDto(
         entity.id,
         entity.archetype.name(),
         entity.status,
         nextPhase,
-        entity.blocked,
+        block.blocked(),
         flowRuns && !entity.blocked,
         lifecycle ? DispatchMode.of(entity.dispatchContinues) : null,
-        entity.preApprovedBy);
+        entity.preApprovedBy,
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 
   /**
@@ -343,15 +350,19 @@ public class EntityDispatch {
             "a campaign's start",
             () -> QuarkusTransaction.requiringNew().call(() -> starts.startOf(campaign.id)));
     boolean active = start.map(row -> row.active).orElse(false);
+    EntityBlockState block = EntityBlockState.of(campaign);
     return new EntityDispatchStateDto(
         campaign.id,
         campaign.archetype.name(),
         campaign.status,
         active ? "recheck" : "start",
-        campaign.blocked,
+        block.blocked(),
         EntityStateMachine.campaignRunsAt(campaign.status) && !campaign.blocked,
         start.isPresent() ? DispatchMode.FLOW : null,
-        null);
+        null,
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 
   // ---- the pieces --------------------------------------------------------------------------

@@ -45,7 +45,10 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
    * <b>{@link #listByProject} without the description column</b>, which is long-form Markdown and
    * only a detail view shows. The rows are built here, not loaded: they are <b>not managed</b>, so
    * never persist or merge one. {@code description}, {@code causationId} and {@code
-   * dispatchContinues} are left at their defaults; {@code preApprovedBy} is carried (qits-1075).
+   * dispatchContinues} are left at their defaults; {@code preApprovedBy} is carried (qits-1075), and
+   * so are the block's source columns (qits-895) — the listing answers the effective block, which
+   * {@code EntityBlockState} derives from all of them. {@code agentActivityAt} is not carried: only
+   * the session door reads it, and it reads a managed row.
    */
   public List<WorkEntity> listByProjectWithoutDescription(String projectId) {
     return getEntityManager()
@@ -54,7 +57,8 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.status, e.blocked, e.ticketType, e.impetus, e.assignee, e.createdBy,"
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
                 + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
-                + " e.preApprovedBy"
+                + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
+                + " e.agentWaitingCause"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
         .setParameter(1, projectId)
@@ -86,6 +90,10 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.createdAt = (Instant) c[18];
     row.updatedAt = (Instant) c[19];
     row.preApprovedBy = (String) c[20];
+    row.blockedBy = (String) c[21];
+    row.blockedReason = (String) c[22];
+    row.agentWaitingSince = (Instant) c[23];
+    row.agentWaitingCause = (String) c[24];
     return row;
   }
 

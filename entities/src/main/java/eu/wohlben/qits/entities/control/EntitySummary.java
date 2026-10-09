@@ -10,7 +10,8 @@ import java.time.Instant;
  * body is long-form Markdown and only a detail view shows it, so a list neither reads it ({@link
  * EntityCatalogService#listByProjectWithoutDescription}) nor answers it. The REST detail ({@code GET
  * /projects/api/work/{qualifiedId}}) and the MCP {@code get_entity} answer it. See {@link
- * TransitionedEntity} for each component.
+ * TransitionedEntity} for each component — {@code blocked} is the effective block there and here,
+ * with its {@code blockSource}, {@code blockReason} and {@code blockedBy} (qits-895).
  */
 public record EntitySummary(
     String id,
@@ -37,7 +38,10 @@ public record EntitySummary(
     Instant createdAt,
     Instant updatedAt,
     String changedBy,
-    @JsonInclude(JsonInclude.Include.NON_NULL) Boolean blocked) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) Boolean blocked,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {
 
   public static EntitySummary of(TransitionedEntity e) {
     return new EntitySummary(
@@ -65,6 +69,9 @@ public record EntitySummary(
         e.createdAt(),
         e.updatedAt(),
         e.changedBy(),
-        e.blocked());
+        e.blocked(),
+        e.blockSource(),
+        e.blockReason(),
+        e.blockedBy());
   }
 }

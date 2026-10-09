@@ -62,7 +62,7 @@ class QualifiedEntityIdsTest {
     return new TransitionedEntity(
         id, archetype, projectId, number, null, "T", "t", projectId, null, "REPORTED", null, null,
         null, null, null, null, null, null, null, null, null, null, null, null, null, false,
-        List.of());
+        List.of(), null, null, null);
   }
 
   private static TransitionedEntity epic(String id, String projectId, long number) {

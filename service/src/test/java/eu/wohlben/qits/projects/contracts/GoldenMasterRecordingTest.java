@@ -469,6 +469,18 @@ class GoldenMasterRecordingTest {
             "/projects/api/work/{qualifiedId}/blocked",
             "{\"blocked\":true,"
                 + "\"reason\":\"Waiting for the database team to confirm the new limit.\"}"));
+    // The derived block (qits-895): blocked, AGENT_WAITING, the fixed sentence, and still
+    // dispatchable — no gate reads it.
+    all.add(
+        read(
+            ProviderStates.A_TICKET_ITS_AGENT_IS_WAITING_ON,
+            "getWork",
+            "/projects/api/work/{qualifiedId}"));
+    all.add(
+        read(
+            ProviderStates.A_TICKET_ITS_AGENT_IS_WAITING_ON,
+            "getWorkDispatch",
+            "/projects/api/work/{qualifiedId}/dispatch"));
     all.add(read(ProviderStates.A_TICKET_WITH_A_COMMENT, "getWork", "/projects/api/work/{qualifiedId}"));
     all.add(
         read(

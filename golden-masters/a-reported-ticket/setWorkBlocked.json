@@ -3,6 +3,9 @@
     "entityId": "00000000-0000-4000-8000-000000000002",
     "archetype": "TICKET",
     "status": "REPORTED",
-    "blocked": true
+    "blocked": true,
+    "blockSource": "EXPLICIT",
+    "blockReason": "Waiting for the database team to confirm the new limit.",
+    "blockedBy": "dev"
   }
 }

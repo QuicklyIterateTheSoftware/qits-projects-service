@@ -92,6 +92,12 @@ public class ProviderStates {
       "the second campaign of an epic in two campaigns";
   public static final String THE_ARCHETYPE_REGISTRY = "the archetype registry";
   public static final String A_TICKET_WITH_A_COMMENT = "a ticket with a comment";
+
+  /**
+   * A REPORTED ticket whose agent session has stood waiting for a person past the debounce, and that
+   * nobody blocked (qits-895): the derived block, {@code blockSource: AGENT_WAITING}.
+   */
+  public static final String A_TICKET_ITS_AGENT_IS_WAITING_ON = "a ticket its agent is waiting on";
   public static final String A_CAMPAIGN_WITH_MEMBERS_TO_EDIT = "a campaign with members to edit";
   public static final String AN_EPIC_WITH_A_SKETCH_TO_INLINE = "an epic with a sketch to inline";
   public static final String A_REPORTED_TICKET = "a reported ticket";
@@ -170,6 +176,9 @@ public class ProviderStates {
 
   @Inject eu.wohlben.qits.projects.api.EntityBlocks blocks;
 
+  /** The derived block's door, for the state whose agent is waiting (qits-895). */
+  @Inject eu.wohlben.qits.projects.api.AgentWaiting agentWaiting;
+
   /** Opens a refinement room, for the state whose epic inlines one of its sketches. */
   @Inject eu.wohlben.qits.projects.refinementhost.RefinementService refinements;
 
@@ -243,6 +252,7 @@ public class ProviderStates {
     states.put(THE_SECOND_CAMPAIGN_OF_AN_EPIC_IN_TWO_CAMPAIGNS, this::anEpicInTwoCampaigns);
     states.put(THE_ARCHETYPE_REGISTRY, ProviderStates::theArchetypeRegistry);
     states.put(A_TICKET_WITH_A_COMMENT, this::aTicketWithAComment);
+    states.put(A_TICKET_ITS_AGENT_IS_WAITING_ON, this::aTicketItsAgentIsWaitingOn);
     states.put(A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, this::aCampaignWithMembersToEdit);
     states.put(AN_EPIC_WITH_A_SKETCH_TO_INLINE, this::anEpicWithASketchToInline);
     TICKET_IN_STATUS.forEach(
@@ -905,6 +915,25 @@ public class ProviderStates {
    * (qits-969): the comment is the {@code commentId} param an edit and a delete address, under the
    * ticket's {@code qualifiedId}.
    */
+  /**
+   * {@link #A_TICKET_ITS_AGENT_IS_WAITING_ON}: the session's Stop is reported as stamped a minute
+   * ago, past the 30s debounce, so the derived block stands the moment the state is set up.
+   */
+  private Setup aTicketItsAgentIsWaitingOn() {
+    String token = token();
+    Project project = project(token, A_TICKET_ITS_AGENT_IS_WAITING_ON);
+    String ticket = ticket(project, "Export waits on a question nobody answered");
+    agentWaiting.report(
+        work.get(Archetype.TICKET, ticket),
+        true,
+        "Stop",
+        "contract-session",
+        java.time.Instant.now().minusSeconds(60));
+    return new Setup(
+        params("projectId", project.id, "qualifiedId", qualified(project, ticket), "ticketId", ticket),
+        List.of(token));
+  }
+
   private Setup aTicketWithAComment() {
     String token = token();
     Project project = project(token, A_TICKET_WITH_A_COMMENT);

@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.RetitleAnnouncer;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -42,6 +43,8 @@ import org.jboss.logging.Logger;
  *       announces through when an edit actually changed the title, so the REST patch, the routes and
  *       the {@code update_ticket} / {@code update_epic} tools are all covered at the one layer they
  *       share.
+ *   <li><b>A derived block starting or ending</b> (qits-895) — {@link AgentWaiting}, when a
+ *       session's wait crosses the debounce (its sweep) or ends after it had.
  * </ul>
  *
  * <h2>The two targets, and why both are asked</h2>
@@ -94,7 +97,10 @@ public class AgentEntitySignals implements RetitleAnnouncer {
 
   /**
    * Tell every agent working {@code entity} its title, status and blocked flag as they stand on it.
-   * A no-op for anything but a ticket or an epic. <b>Never throws.</b>
+   * A no-op for anything but a ticket or an epic. <b>Never throws.</b> The flag is the EFFECTIVE
+   * block (qits-895, {@code EntityBlockState}) — the explicit one, or the session itself standing
+   * idle past the debounce — so the name pales while either holds; {@link AgentWaiting} calls this
+   * when a derived block starts or ends.
    *
    * @param entity the row <b>after</b> the write — its title, status and flag are what is sent, and
    *     its archetype, id, project and slug address the targets
@@ -104,9 +110,10 @@ public class AgentEntitySignals implements RetitleAnnouncer {
         || (entity.archetype != Archetype.TICKET && entity.archetype != Archetype.EPIC)) {
       return;
     }
-    tellTheWorkspace(entity);
+    boolean blocked = EntityBlockState.of(entity).blocked();
+    tellTheWorkspace(entity, blocked);
     try {
-      refinementEntities.changed(entity.id, entity.title, entity.status, entity.blocked);
+      refinementEntities.changed(entity.id, entity.title, entity.status, blocked);
     } catch (RuntimeException e) {
       LOG.warnf(
           e, "Could not tell the refinement of %s %s its entity changed", entity.archetype,
@@ -140,6 +147,8 @@ public class AgentEntitySignals implements RetitleAnnouncer {
     row.slugScope = moved.slugScope();
     row.title = moved.title();
     row.status = moved.status();
+    // The announcement's flag is already the effective one; carried as the explicit flag of a row
+    // with no agent wait, EntityBlockState reads it back unchanged.
     row.blocked = Boolean.TRUE.equals(moved.blocked());
     changed(row);
   }
@@ -150,7 +159,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
     changed(entity);
   }
 
-  private void tellTheWorkspace(WorkEntity entity) {
+  private void tellTheWorkspace(WorkEntity entity, boolean blocked) {
     if (workspaceEntities.isUnsatisfied()) {
       return;
     }
@@ -170,7 +179,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
               target.get().branch(),
               entity.title,
               entity.status,
-              entity.blocked);
+              blocked);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug (or a catalog read that failed), and
       // neither may touch a write that is already recorded.

@@ -262,7 +262,10 @@
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
       "changedBy": null,
-      "blocked": true
+      "blocked": true,
+      "blockSource": "EXPLICIT",
+      "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
+      "blockedBy": "qits-agent"
     },
     {
       "id": "00000000-0000-4000-8000-00000000000b",
