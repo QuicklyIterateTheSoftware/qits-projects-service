@@ -13,7 +13,7 @@ the project, and reconciling the wrapper is what puts a stray one back.
 
 ## Files
 
-- `.config/qits/repository.yml` — this repository's qits configuration: its services, actions and
-  bootstrap chain. It is read in-container per workspace from your branch's checkout, so editing it
-  is an ordinary commit.
+- `.config/qits/repository.yml` — this repository's qits configuration: its actions and bootstrap
+  chain. It is read in-container per workspace from your branch's checkout, so editing it is an
+  ordinary commit.
 - `.gitignore` — build output and local state, per language. Add yours as the component grows.

@@ -37,7 +37,11 @@ import org.jboss.logging.Logger;
  *   <li><b>No bootstrap, no services.</b> {@code BOOTSTRAP_AUTORUN=false} and {@code
  *       SERVICES_AUTOSTART=false} — a refinement runs no code, which is why the Services and
  *       Actions tabs do not exist on its route — and no {@code SERVICE_PROXY_BASE}, so a
- *       web-viewable spawn (which never happens) would WARN rather than guess.
+ *       web-viewable spawn (which never happens) would WARN rather than guess. The workspace
+ *       services concept itself is retired estate-wide (qits-947): the {@code SERVICES_AUTOSTART}
+ *       line stays here only because today's pinned {@code qits/workspace} image still defaults
+ *       autostart to true and still reads the flag to turn it off. Drop the line once the
+ *       refinement image carries a services-free daemon that has nothing left to autostart.
  *   <li><b>The dial-home addresses are this service's</b>: the control socket, the proxy base and
  *       the auth audience all name qits-projects.
  *   <li><b>One extra MCP server beside {@code repository}</b>: observability, the same pair a
@@ -375,6 +379,9 @@ public class RefinementContainerFactory {
     env.put("QITS_WORKSPACE_DAEMON_GIT_BASE_URL", trimSlash(containerGitUrl) + "/git");
     // A refinement runs no code: no bootstrap chain (the daemon then emits a benign ok so nothing
     // ever awaits one), and no service autostart. Deliberate, and load-bearing for the tab set.
+    // The services concept this flag disables is retired estate-wide (qits-947); this line stays
+    // only because today's pinned qits/workspace image still carries a daemon that defaults
+    // autostart to true, and goes away once the refinement image carries the services-free one.
     env.put("QITS_WORKSPACE_DAEMON_BOOTSTRAP_AUTORUN", "false");
     env.put("QITS_WORKSPACE_DAEMON_SERVICES_AUTOSTART", "false");
     env.put("QITS_WORKSPACE_DAEMON_API_TOKEN", daemonApiToken);

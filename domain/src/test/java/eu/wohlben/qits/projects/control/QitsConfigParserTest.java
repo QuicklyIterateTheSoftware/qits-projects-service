@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.control.QitsConfig.ActionDecl;
 import eu.wohlben.qits.projects.control.QitsConfig.BootstrapDecl;
-import eu.wohlben.qits.projects.control.QitsConfig.ServiceDecl;
 import eu.wohlben.qits.projects.control.QitsConfigParser.QitsConfigException;
 import eu.wohlben.qits.projects.entity.RepositoryArchetype;
 import java.nio.file.Files;
@@ -138,49 +137,56 @@ class QitsConfigParserTest {
         QitsConfigException.class, () -> parser.parse("version: 1\nactions:\n  - execute: ./go\n"));
   }
 
+  /**
+   * {@code services:} (and the older {@code daemons:} alias) named a workspace-container dev
+   * server the daemon's {@code ServiceSupervisor} ran. That concept is retired estate-wide
+   * (qits-947): no repository declares an active {@code services:} key any more, this parser
+   * carries no field for one, and a leftover block of either name must keep parsing rather than
+   * error — the rest of the file comes through exactly as if the block were absent. The
+   * {@code restart-policy: SOMETIMES} value below would have thrown as an invalid enum before the
+   * key was read at all; now it is simply never looked at.
+   */
   @Test
-  void parsesFullServiceWithNestedEmbeddables() {
+  void aLeftoverServicesOrDaemonsBlockParsesSilentlyAndTheRestOfTheFileStillComesThrough() {
     QitsConfig config =
         parser.parse(
             """
             version: 1
-            daemons:
+            repository:
+              main-branch: develop
+              archetype: SERVICE_TEMPLATE
+            services:
               - name: dev-server
-                description: Quarkus dev mode
                 start: ./mvnw quarkus:dev
-                ready-pattern: "Listening on"
-                otel: true
-                auto-start: true
-                restart-policy: ON_FAILURE
-                max-restarts: 3
-                stop-signal: TERM
-                environment:
-                  QUARKUS_HTTP_HOST: 0.0.0.0
+                restart-policy: SOMETIMES
                 web-view:
                   port: 4200
-                  entry-path: /
                 health-checks:
                   - name: Quarkus
                     kind: HTTP
                     port: 8080
-                    path: /q/health
-                    expect-status: 2xx,3xx
-                    interval-ms: 5000
+            daemons:
+              - name: legacy-dev-server
+                start: ./mvnw quarkus:dev
+            actions:
+              - name: build-project
+                execute: ./mvnw package
+            bootstrap:
+              - name: install
+                execute: ./mvnw install -DskipTests
+            frameworks:
+              - kind: java-quarkus
+                root: .
             """);
-    assertEquals(1, config.services().size());
-    ServiceDecl d = config.services().get(0);
-    assertEquals("dev-server", d.name());
-    assertEquals("./mvnw quarkus:dev", d.start());
-    assertEquals("Listening on", d.readyPattern());
-    assertEquals(Boolean.TRUE, d.otel());
-    assertEquals(RestartPolicy.ON_FAILURE, d.restartPolicy());
-    assertEquals(3, d.maxRestarts());
-    assertEquals("0.0.0.0", d.environment().get("QUARKUS_HTTP_HOST"));
-    assertEquals(4200, d.webView().port());
-    assertEquals("/", d.webView().entryPath());
-    assertEquals(HealthCheckKind.HTTP, d.healthChecks().get(0).kind());
-    assertEquals(8080, d.healthChecks().get(0).port());
-    assertEquals(Long.valueOf(5000), d.healthChecks().get(0).intervalMs());
+
+    assertEquals("develop", config.repository().mainBranch());
+    assertEquals(RepositoryArchetype.SERVICE_TEMPLATE, config.repository().archetype());
+    assertEquals(1, config.actions().size());
+    assertEquals("build-project", config.actions().get(0).name());
+    assertEquals(1, config.bootstrap().size());
+    assertEquals("install", config.bootstrap().get(0).name());
+    assertEquals(1, config.frameworks().size());
+    assertEquals("java-quarkus", config.frameworks().get(0).kind());
   }
 
   @Test
@@ -220,15 +226,6 @@ class QitsConfigParserTest {
   }
 
   @Test
-  void unknownEnumInServiceThrows() {
-    assertThrows(
-        QitsConfigException.class,
-        () ->
-            parser.parse(
-                "version: 1\ndaemons:\n  - name: d\n    start: go\n    restart-policy: SOMETIMES\n"));
-  }
-
-  @Test
   void parsesTheShippedFixtureConfig() throws Exception {
     // The .qits-config.yml committed into the testing-repo-quarkus-angular fixture must always
     // parse
@@ -239,13 +236,6 @@ class QitsConfigParserTest {
     org.junit.jupiter.api.Assumptions.assumeTrue(
         java.nio.file.Files.exists(file), "fixture submodule not checked out");
     QitsConfig config = parser.parse(java.nio.file.Files.readString(file));
-    assertEquals(1, config.services().size());
-    ServiceDecl daemon = config.services().get(0);
-    assertEquals("Quarkus dev server", daemon.name());
-    assertEquals(4200, daemon.webView().port());
-    assertEquals("greeting", daemon.webView().entryPath());
-    assertEquals(2, daemon.healthChecks().size());
-    assertEquals(HealthCheckKind.COMMAND, daemon.healthChecks().get(0).kind());
     assertEquals(5, config.actions().size());
     assertTrue(config.actions().stream().anyMatch(a -> a.name().equals("build-project")));
     assertTrue(config.actions().stream().anyMatch(a -> a.name().equals("Stack info")));

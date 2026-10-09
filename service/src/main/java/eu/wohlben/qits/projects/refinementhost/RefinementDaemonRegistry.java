@@ -24,9 +24,6 @@ import eu.wohlben.qits.workspacedaemon.protocol.Provisioned;
 import eu.wohlben.qits.workspacedaemon.protocol.PullBranch;
 import eu.wohlben.qits.workspacedaemon.protocol.RunBootstrap;
 import eu.wohlben.qits.workspacedaemon.protocol.RunCommand;
-import eu.wohlben.qits.workspacedaemon.protocol.ServiceTransition;
-import eu.wohlben.qits.workspacedaemon.protocol.SignalService;
-import eu.wohlben.qits.workspacedaemon.protocol.StartService;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceChanged;
 import eu.wohlben.qits.workspacedaemon.protocol.WorkspaceInfo;
 import io.quarkus.websockets.next.WebSocketConnection;
@@ -436,8 +433,6 @@ public class RefinementDaemonRegistry {
    *       automated lifecycle one stage further on. Autorun is off for refinements, so only the
    *       benign {@code Bootstrapped} is expected at all, and an automated bootstrap is not
    *       somebody using the container either way.
-   *   <li>{@link ServiceTransition} — a supervised process's lifecycle, daemon-driven; autostart is
-   *       off here. A service coming up says nothing about who, if anyone, is present.
    *   <li>{@link EditorState} — the supervised web editor's lifecycle, and a refinement host has no
    *       editor surface for it to answer. It arrives only because the same image serves
    *       qits-workspaces.
@@ -445,11 +440,15 @@ public class RefinementDaemonRegistry {
    *       DescribeConfig} <b>this host sent</b>. A reply to our own question is this service
    *       talking to itself.
    *   <li>{@link Ack}, {@link RunCommand}, {@link Describe}, {@link DescribeConfig}, {@link
-   *       RunBootstrap}, {@link StartService}, {@link SignalService}, {@link PullBranch}, {@link
-   *       OpenStream} — <b>host→daemon frames, which never arrive here at all.</b> They are the
-   *       outbound half of the protocol (the daemon only ever handles them; it constructs none of
-   *       them), so they are listed purely to keep this {@code switch} exhaustive. Were an echo of
-   *       one to turn up, it would be this host's own request coming back and still not use.
+   *       RunBootstrap}, {@link PullBranch}, {@link OpenStream} — <b>host→daemon frames, which
+   *       never arrive here at all.</b> They are the outbound half of the protocol (the daemon only
+   *       ever handles them; it constructs none of them), so they are named purely for the record.
+   *       A supervised process's lifecycle frame and any other subtype this host does not name fall
+   *       to the {@code default} arm below, which answers {@code false} exactly as they did named:
+   *       the switch no longer enumerates every subtype because the workspace-daemon protocol is
+   *       dropping the service-supervision ones, and naming them here would stop this file
+   *       compiling against that jar. Were an echo of a host→daemon frame to turn up, it would be
+   *       this host's own request coming back and still not use.
    * </ul>
    */
   private static boolean evidencesUse(DaemonMessage message) {
@@ -467,7 +466,6 @@ public class RefinementDaemonRegistry {
       case BootstrapStep ignored -> false;
       case BootstrapOutcome ignored -> false;
       case Bootstrapped ignored -> false;
-      case ServiceTransition ignored -> false;
       case EditorState ignored -> false;
       case WorkspaceInfo ignored -> false;
       case ConfigView ignored -> false;
@@ -476,10 +474,9 @@ public class RefinementDaemonRegistry {
       case Describe ignored -> false;
       case DescribeConfig ignored -> false;
       case RunBootstrap ignored -> false;
-      case StartService ignored -> false;
-      case SignalService ignored -> false;
       case PullBranch ignored -> false;
       case OpenStream ignored -> false;
+      default -> false;
     };
   }
 
