@@ -105,6 +105,7 @@ public class ReleasePipelineRuns {
    * @param releaseRequestId what the publisher said, or null where it said nothing; see the class
    *     javadoc's "Correlating a run to its release request"
    * @param branch the ref the run built, which is what the correlation falls back to
+   * @param commitSha the commit the run built, or null where the frame names none
    * @param occurredAt the frame's own instant: the run row's timestamp for the state it just
    *     reached, which is where {@code startedAt}, {@code finishedAt} and the ordering all come from
    */
@@ -115,6 +116,7 @@ public class ReleasePipelineRuns {
       String phase,
       String status,
       String branch,
+      String commitSha,
       Instant occurredAt,
       UUID causationId) {}
 
@@ -140,10 +142,17 @@ public class ReleasePipelineRuns {
                 row = new ReleasePipelineRun();
                 row.runId = transition.runId();
                 row.causationId = transition.causationId();
-              } else if (!transition.occurredAt().isAfter(row.updatedAt)) {
+              }
+              if (transition.commitSha() != null && !transition.commitSha().isBlank()) {
+                // A run builds one commit, so any frame may fill it — also a stale one, which is
+                // how a row written before the column existed learns its commit.
+                row.commitSha = transition.commitSha();
+              }
+              if (row.updatedAt != null && !transition.occurredAt().isAfter(row.updatedAt)) {
                 // A frame older than, or equal to, what the row already holds. Applying it would let
                 // a catch-up sweep walk a settled run back into RUNNING; a redelivery of the newest
-                // frame has nothing to add either. Both are silent no-ops.
+                // frame has nothing to add either. Both are silent no-ops — beyond the commit above,
+                // which a managed row keeps.
                 return;
               }
               row.releaseRequestId = requestId;

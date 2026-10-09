@@ -90,6 +90,13 @@ public class ReleasePipelineRun extends PanacheEntityBase implements CausedRow {
   @Column(name = "status", nullable = false)
   public String status;
 
+  /**
+   * The commit the run built. For a QA run this is the fold it tested, which is how the read tells
+   * the current fold's run from a superseded one. Null on rows written before the column existed.
+   */
+  @Column(name = "commit_sha")
+  public String commitSha;
+
   /** When the run started, from the frame that said {@code RUNNING}. Null until one arrives. */
   @Column(name = "started_at")
   public Instant startedAt;

@@ -95,6 +95,7 @@ class ReleasePipelineRunListenerTest {
     assertEquals("RELEASE_REQUEST", transition.phase());
     assertEquals("RUNNING", transition.status());
     assertEquals("release/req-1", transition.branch());
+    assertEquals("abc123", transition.commitSha(), "the fold the QA phase is matched against");
     assertNull(transition.releaseRequestId(), "BuildStatusChanged carries none; the branch is why");
     assertEquals(running.occurredAt(), transition.occurredAt());
     assertEquals(UUID.fromString(running.id()), transition.causationId());

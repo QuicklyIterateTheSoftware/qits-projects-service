@@ -45,6 +45,8 @@ import org.jboss.logging.Logger;
  *   <li>{@code status} — qits-ci's own word, stored verbatim.
  *   <li>{@code branch} — the ref the run built, which is what the request correlation falls back to
  *       when the payload names no request; see {@code ReleasePipelineRuns}.
+ *   <li>{@code commitSha} — the commit the run built. The QA phase is the run at the request's
+ *       current fold, and this is how the read tells it from a superseded fold's run.
  *   <li>{@code releaseRequestId} — <b>bound leniently and absent today</b>. {@code
  *       BuildStatusChanged} does not carry it, so the field reads null and the correlation is
  *       derived from the phase and the branch. It is bound anyway because the publisher's own answer
@@ -101,7 +103,8 @@ public class ReleasePipelineRunListener implements QitsDurableEventListener {
       String releaseRequestId,
       String phase,
       String status,
-      String branch) {}
+      String branch,
+      String commitSha) {}
 
   @Inject ReleasePipelineRuns pipelineRuns;
 
@@ -142,6 +145,7 @@ public class ReleasePipelineRunListener implements QitsDurableEventListener {
             run.phase(),
             run.status(),
             run.branch(),
+            run.commitSha(),
             frame.occurredAt(),
             causeOf(frame)));
   }

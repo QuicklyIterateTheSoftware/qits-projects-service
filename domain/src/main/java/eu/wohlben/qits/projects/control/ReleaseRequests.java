@@ -4074,7 +4074,12 @@ public class ReleaseRequests {
             .toList(),
         automations.rows(),
         pipelineAssembler.assemble(
-            phaseRuns, decided, gateDetails(set, released, approval), released, reach));
+            phaseRuns,
+            decided,
+            gateDetails(set, released, approval),
+            released,
+            row.mergedSha,
+            reach));
   }
 
   /**
