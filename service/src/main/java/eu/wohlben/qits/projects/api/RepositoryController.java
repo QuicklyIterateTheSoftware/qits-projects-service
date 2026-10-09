@@ -150,6 +150,7 @@ public class RepositoryController {
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/commits/{commitHash}/changes")
+  @Operation(operationId = "listCommitChanges", summary = "The files one commit changed, against its first parent or a named parent")
   public CommitChangesDto commitChanges(
       @PathParam("repoId") String repoId,
       @PathParam("commitHash") String commitHash,
@@ -160,6 +161,7 @@ public class RepositoryController {
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/commits/{commitHash}/diff")
+  @Operation(operationId = "getCommitFileDiff", summary = "The patch of one file in one commit, against its first parent or a named parent")
   public CommitFileDiffDto commitFileDiff(
       @PathParam("repoId") String repoId,
       @PathParam("commitHash") String commitHash,

@@ -1,0 +1,16 @@
+{
+  "commit": "019f0d272475dfef0ace655cc6d8672c8cd9c80c",
+  "parent": null,
+  "files": [
+    {
+      "path": "src/export.txt",
+      "oldPath": null,
+      "changeType": "ADDED",
+      "oldMode": null,
+      "newMode": "100644",
+      "oldSha": null,
+      "newSha": "ee9055ccdb2bfa77f38610857e2a00ad69ffb4c5",
+      "submodule": null
+    }
+  ]
+}

@@ -2064,6 +2064,19 @@
           }
         },
         {
+          "operationId": "getCommitFileDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/e447df8a0cabaeafedbf4c0235e013bb29697cd9/diff?path=README.md",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getCommitFileDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getReleaseRequest",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
@@ -2161,6 +2174,19 @@
             "strings": [
               "$.builds[*].branch"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/e447df8a0cabaeafedbf4c0235e013bb29697cd9/changes",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listCommitChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -2985,6 +3011,19 @@
       "dependsOn": [],
       "operations": [
         {
+          "operationId": "getCommitFileDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/019f0d272475dfef0ace655cc6d8672c8cd9c80c/diff?path=src/export.txt",
+          "status": 200,
+          "file": "a-released-release-request/getCommitFileDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "getReleaseRequest",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
@@ -3050,6 +3089,19 @@
             "strings": [
               "$.builds[*].branch"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/019f0d272475dfef0ace655cc6d8672c8cd9c80c/changes",
+          "status": 200,
+          "file": "a-released-release-request/listCommitChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
             "listFilteredTo": null
           }
         },

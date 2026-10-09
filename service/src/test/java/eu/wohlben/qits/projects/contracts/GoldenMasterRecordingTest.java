@@ -89,6 +89,12 @@ class GoldenMasterRecordingTest {
     }
   }
 
+  /** contract-service's "Add the CSV export", as SeededGit makes it on every run. */
+  private static final String ADD_THE_CSV_EXPORT = "019f0d272475dfef0ace655cc6d8672c8cd9c80c";
+
+  /** contract-suite-app's "Say who approves a suite release", as SeededGit makes it. */
+  private static final String SAY_WHO_APPROVES = "e447df8a0cabaeafedbf4c0235e013bb29697cd9";
+
   /**
    * The whole state of {@link ProviderStates#A_REPORTED_TICKET}'s ticket, restated with a new title
    * and description — the body of a PUT, and an entry of the bulk transition.
@@ -530,6 +536,24 @@ class GoldenMasterRecordingTest {
             "{\"foldSha\":\"{mergedSha}\","
                 + "\"reason\":\"qits-maintenance cannot read the suite; the pin was checked by"
                 + " hand.\"}"));
+    // One commit of "What this release folds in", opened. The fold is a merge, whose changes
+    // against no named parent are empty, so a commit it brought in is opened instead: shas are
+    // stable because the states seed through SeededGit. contract-service's "Add the CSV export"
+    // adds a file; contract-suite-app's "Say who approves a suite release" changes one.
+    String commits = repository + "/commits/";
+    all.add(
+        read(
+            ProviderStates.A_RELEASED_RELEASE_REQUEST,
+            "listCommitChanges",
+            commits + ADD_THE_CSV_EXPORT + "/changes"));
+    all.add(
+        read(
+            ProviderStates.A_RELEASED_RELEASE_REQUEST,
+            "getCommitFileDiff",
+            commits + ADD_THE_CSV_EXPORT + "/diff?path=src/export.txt"));
+    all.add(read(awaiting, "listCommitChanges", commits + SAY_WHO_APPROVES + "/changes"));
+    all.add(
+        read(awaiting, "getCommitFileDiff", commits + SAY_WHO_APPROVES + "/diff?path=README.md"));
     String list = ProviderStates.A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE;
     all.add(
         read(list, "listProjectReleaseRequests", "/projects/api/projects/{projectId}/release-requests"));

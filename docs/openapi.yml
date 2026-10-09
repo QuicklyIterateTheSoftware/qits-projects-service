@@ -5179,6 +5179,9 @@ paths:
         - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/changes:
     get:
+      summary: "The files one commit changed, against its first parent or a named\
+        \ parent"
+      operationId: listCommitChanges
       parameters:
       - name: commitHash
         in: path
@@ -5205,7 +5208,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Commit Changes
       tags:
       - Repository Controller
       security:
@@ -5215,6 +5217,9 @@ paths:
         - qits:agent
   /projects/api/repositories/{repoId}/commits/{commitHash}/diff:
     get:
+      summary: "The patch of one file in one commit, against its first parent or a\
+        \ named parent"
+      operationId: getCommitFileDiff
       parameters:
       - name: commitHash
         in: path
@@ -5247,7 +5252,6 @@ paths:
           description: Not Authorized
         "403":
           description: Not Allowed
-      summary: Commit File Diff
       tags:
       - Repository Controller
       security:
