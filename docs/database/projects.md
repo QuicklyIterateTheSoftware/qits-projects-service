@@ -216,6 +216,7 @@ erDiagram
   release_pipeline_run {
     string run_id PK "not null"
     uuid causation_id
+    string commit_sha
     instant finished_at
     string phase "not null"
     string release_request_id "not null"
