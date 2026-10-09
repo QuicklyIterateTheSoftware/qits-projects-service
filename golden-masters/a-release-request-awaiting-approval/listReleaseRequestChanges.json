@@ -1,0 +1,35 @@
+{
+  "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+  "base": "5eab9635f653a85136ce4d8babd44edfa83cf1da",
+  "baseTag": "2026.101.100000",
+  "files": [
+    {
+      "path": "README.md",
+      "oldPath": null,
+      "changeType": "MODIFIED",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "oldSha": "dab97c3b6e97345f158d40c78e4857db8d019b59",
+      "newSha": "0f79179575bc37b34af3ad4aae0ff07ac39eb2af",
+      "submodule": null
+    },
+    {
+      "path": "components/contract/contract-service",
+      "oldPath": null,
+      "changeType": "MODIFIED",
+      "oldMode": "160000",
+      "newMode": "160000",
+      "oldSha": "edf350dfabb86b68f03f6d9448036d47924efc0a",
+      "newSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+      "submodule": {
+        "repositoryId": "00000000-0000-4000-8000-000000000004",
+        "name": "contract-service",
+        "oldSha": "edf350dfabb86b68f03f6d9448036d47924efc0a",
+        "newSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+        "detail": null
+      }
+    }
+  ],
+  "truncated": false,
+  "detail": null
+}

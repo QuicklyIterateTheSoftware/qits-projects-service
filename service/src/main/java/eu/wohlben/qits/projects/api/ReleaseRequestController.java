@@ -148,6 +148,7 @@ public class ReleaseRequestController {
    */
   @POST
   @Operation(
+      operationId = "createReleaseRequest",
       summary = "Ask for a branch to be released once its builds are green",
       description =
           "Creates (or converges on) the repository's one open release request. A fresh"
@@ -186,6 +187,7 @@ public class ReleaseRequestController {
   @POST
   @Path("/{requestId}/sources")
   @Operation(
+      operationId = "addReleaseRequestSource",
       summary = "Add a branch to an open release request",
       description =
           "The request is re-folded with the new source and, if the fold produces a new commit, the"
@@ -221,6 +223,7 @@ public class ReleaseRequestController {
   @POST
   @Path("/{requestId}/sources/priority")
   @Operation(
+      operationId = "setReleaseSourcePriority",
       summary = "Re-state how urgently one of a request's branches wants to be released",
       description =
           "Priority is per participating branch and the request answers with the max over them, so"
@@ -256,6 +259,7 @@ public class ReleaseRequestController {
   @POST
   @Path("/{requestId}/withdraw")
   @Operation(
+      operationId = "withdrawReleaseRequest",
       summary = "Withdraw an open release request",
       description =
           "The ask is moot — nothing should land this branch. WITHDRAWN is terminal and frees the"
@@ -291,6 +295,7 @@ public class ReleaseRequestController {
   @Path("/{requestId}/approve")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   @Operation(
+      operationId = "approveReleaseRequest",
       summary = "Sign off this request's current fold, so it may release",
       description =
           "The person's half of the second gate: where the repository's releases have to be approved"
@@ -335,6 +340,7 @@ public class ReleaseRequestController {
   @Path("/{requestId}/decline")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   @Operation(
+      operationId = "declineReleaseRequest",
       summary = "Refuse this request's current fold, answerably",
       description =
           "The request is REJECTED carrying the decider's own sentence as its detail. This is NOT a"
@@ -382,6 +388,7 @@ public class ReleaseRequestController {
   @GET
   @Path("/{requestId}/approvals")
   @Operation(
+      operationId = "listReleaseRequestApprovals",
       summary = "Every decision made about this request, newest first",
       description =
           "The trail across every fold the request has ever had, superseded ones included — what was"
@@ -408,6 +415,7 @@ public class ReleaseRequestController {
    */
   @GET
   @Operation(
+      operationId = "listRepositoryReleaseRequests",
       summary = "This repository's release requests",
       description =
           "Newest first. With no state the answer is the open requests — everything that can still"
@@ -426,6 +434,7 @@ public class ReleaseRequestController {
 
   @GET
   @Path("/{requestId}")
+  @Operation(operationId = "getReleaseRequest", summary = "One release request")
   public GetReleaseRequest.Response get(
       @PathParam("repoId") String repoId, @PathParam("requestId") String requestId) {
     return new GetReleaseRequest.Response(releaseRequests.get(requestId));
@@ -434,6 +443,7 @@ public class ReleaseRequestController {
   @GET
   @Path("/{requestId}/commits")
   @Operation(
+      operationId = "listReleaseRequestCommits",
       summary = "The commits this request's fold brought in",
       description =
           "The fold minus every release tag that does not contain it — main only ever advances by"
@@ -453,6 +463,7 @@ public class ReleaseRequestController {
   @GET
   @Path("/{requestId}/changes")
   @Operation(
+      operationId = "listReleaseRequestChanges",
       summary = "The files this request's fold changed",
       description =
           "Diffed against the newest release tag that does not contain the fold, resolved to one"
@@ -472,6 +483,7 @@ public class ReleaseRequestController {
   @GET
   @Path("/{requestId}/changes/diff")
   @Operation(
+      operationId = "getReleaseRequestChangeDiff",
       summary = "The patch of one file in this request's fold",
       description =
           "The unified diff of path, against the same base …/changes lists: the newest release tag"
@@ -489,6 +501,7 @@ public class ReleaseRequestController {
   @GET
   @Path("/{requestId}/changes/submodule")
   @Operation(
+      operationId = "getReleaseRequestSubmoduleChanges",
       summary = "One submodule this request's fold moves, expanded into its own history",
       description =
           "A wrapper's release is almost entirely 160000 gitlinks, and the fold's own patch for one"
@@ -514,6 +527,7 @@ public class ReleaseRequestController {
   @GET
   @Path("/{requestId}/changes/submodule/diff")
   @Operation(
+      operationId = "getReleaseRequestSubmoduleChangeDiff",
       summary = "The patch of one file inside a submodule this request's fold moves",
       description =
           "The unified diff of file within the submodule at path, taken in the SIBLING repository"
@@ -535,6 +549,7 @@ public class ReleaseRequestController {
   @GET
   @Path("/{requestId}/artifacts")
   @Operation(
+      operationId = "getReleaseRequestArtifacts",
       summary = "What this release published, and whether anything deploys it",
       description =
           "Read out of the released tag's own tree: deployable is whether it declares"
@@ -598,6 +613,7 @@ public class ReleaseRequestController {
   @Path("/{requestId}/pipeline/{phase}/rerun")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
+      operationId = "rerunReleasePipelinePhase",
       summary = "Run one phase of this release again",
       description =
           "phase is QA, PUBLISH or DEPLOY — the three phases of a release pipeline. QA and PUBLISH"
@@ -640,6 +656,7 @@ public class ReleaseRequestController {
   @Path("/{requestId}/automations/{kind}/runs")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
+      operationId = "rerunReleaseRequestAutomation",
       summary = "Run one release-request automation again on this request's current fold",
       description =
           "kind is the automation's wire name — estate-pins, screenshot-baselines, … — and the"
@@ -689,6 +706,7 @@ public class ReleaseRequestController {
   @Path("/{requestId}/automations/waivers")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent"})
   @Operation(
+      operationId = "waiveReleaseRequestAutomations",
       summary = "Waive the automations gate for this request's current fold",
       description =
           "Recorded durably, like an approval, and about one fold: foldSha names the fold being"

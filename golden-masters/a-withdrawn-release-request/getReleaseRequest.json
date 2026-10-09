@@ -1,0 +1,105 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "repoId": "00000000-0000-4000-8000-000000000002",
+    "repoName": "contract-service",
+    "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "feature/export",
+        "ref": "refs/heads/feature/export",
+        "implicit": false,
+        "priority": "HIGH",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "fix/rounding",
+        "ref": "refs/heads/fix/rounding",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      }
+    ],
+    "priority": "HIGH",
+    "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+    "state": "WITHDRAWN",
+    "summary": "Release the CSV export and the rounding fix",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "Withdrawn by dana.weber: the export moves to next quarter's release",
+    "approvalRequired": false,
+    "approvalState": "NOT_REQUIRED",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "gates": [
+      {
+        "kind": "CI",
+        "state": "PASSED",
+        "detail": null
+      },
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "DEPLOYMENT",
+        "state": "PENDING",
+        "detail": null
+      }
+    ],
+    "automations": null,
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": {
+      "phases": [
+        {
+          "phase": "QA",
+          "state": "SUCCESS",
+          "runId": "00000000-0000-4000-8000-000000000004",
+          "startedAt": "2026-01-01T00:00:00Z",
+          "finishedAt": "2026-01-01T00:00:00Z",
+          "detail": null
+        }
+      ],
+      "gates": [
+        {
+          "between": "QA_PUBLISH",
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "between": "QA_PUBLISH",
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "between": "DEPLOY_FINALIZED",
+          "kind": "DEPLOYMENT",
+          "state": "PENDING",
+          "detail": null
+        }
+      ]
+    }
+  }
+}

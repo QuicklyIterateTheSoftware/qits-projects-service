@@ -1,0 +1,66 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "repoId": "00000000-0000-4000-8000-000000000002",
+    "repoName": "contract-suite-app",
+    "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "bump/contract-service",
+        "ref": "refs/heads/bump/contract-service",
+        "implicit": false,
+        "priority": "BLOCKING",
+        "addedBy": "contract-seeder"
+      }
+    ],
+    "priority": "BLOCKING",
+    "mergedSha": "0000000000000000000000000000000000000007",
+    "state": "WITHDRAWN",
+    "summary": "Release the export across the suite",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "The export moves to next quarter's release.",
+    "approvalRequired": true,
+    "approvalState": "WAITING",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "gates": [
+      {
+        "kind": "CI",
+        "state": "PASSED",
+        "detail": null
+      },
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "APPROVAL",
+        "state": "PENDING",
+        "detail": "configured by manual-review"
+      }
+    ],
+    "automations": null,
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": null
+  }
+}

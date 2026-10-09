@@ -336,6 +336,61 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_PROJECT_WITH_NO_RELEASE_REQUESTS);
   }
 
+  @State(ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL)
+  Map<String, String> aReleaseRequestAwaitingApproval() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL);
+  }
+
+  @State(ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS)
+  Map<String, String> aReleaseRequestAwaitingApprovalWhileItsBuildRuns() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS);
+  }
+
+  @State(ProviderStates.AN_APPROVED_RELEASE_REQUEST)
+  Map<String, String> anApprovedReleaseRequest() {
+    return states.params(ProviderStates.AN_APPROVED_RELEASE_REQUEST);
+  }
+
+  @State(ProviderStates.A_DECLINED_RELEASE_REQUEST)
+  Map<String, String> aDeclinedReleaseRequest() {
+    return states.params(ProviderStates.A_DECLINED_RELEASE_REQUEST);
+  }
+
+  @State(ProviderStates.A_RELEASED_RELEASE_REQUEST)
+  Map<String, String> aReleasedReleaseRequest() {
+    return states.params(ProviderStates.A_RELEASED_RELEASE_REQUEST);
+  }
+
+  @State(ProviderStates.A_RELEASE_REQUEST_WHOSE_PUBLISH_FAILED)
+  Map<String, String> aReleaseRequestWhosePublishFailed() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_WHOSE_PUBLISH_FAILED);
+  }
+
+  @State(ProviderStates.A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD)
+  Map<String, String> aReleaseRequestRejectedByItsBuild() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD);
+  }
+
+  @State(ProviderStates.A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION)
+  Map<String, String> aReleaseRequestHeldByAFailedAutomation() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION);
+  }
+
+  @State(ProviderStates.A_WITHDRAWN_RELEASE_REQUEST)
+  Map<String, String> aWithdrawnReleaseRequest() {
+    return states.params(ProviderStates.A_WITHDRAWN_RELEASE_REQUEST);
+  }
+
+  @State(ProviderStates.A_CONFLICTED_RELEASE_REQUEST)
+  Map<String, String> aConflictedReleaseRequest() {
+    return states.params(ProviderStates.A_CONFLICTED_RELEASE_REQUEST);
+  }
+
+  @State(ProviderStates.A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE)
+  Map<String, String> aProjectWithReleaseRequestsInEveryState() {
+    return states.params(ProviderStates.A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE);
+  }
+
   @State(ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS)
   Map<String, String> aProjectWithRepositoriesInComponents() {
     return states.params(ProviderStates.A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS);

@@ -1,0 +1,37 @@
+{
+  "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+  "commits": [
+    {
+      "hash": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+      "shortHash": "bd6360a",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Release the export across the suite",
+      "files": []
+    },
+    {
+      "hash": "e447df8a0cabaeafedbf4c0235e013bb29697cd9",
+      "shortHash": "e447df8",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Say who approves a suite release",
+      "files": [
+        "README.md"
+      ]
+    },
+    {
+      "hash": "907e9dfd0c676bbcd8091fe55b64ddf0bd03727a",
+      "shortHash": "907e9df",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Bump contract-service to its export release",
+      "files": [
+        "components/contract/contract-service"
+      ]
+    }
+  ],
+  "detail": null
+}

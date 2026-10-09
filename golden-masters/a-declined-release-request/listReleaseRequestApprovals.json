@@ -1,0 +1,12 @@
+{
+  "approvals": [
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+      "decision": "DECLINED",
+      "actor": "dana.weber",
+      "note": "The README promises an approval policy nobody has signed off yet.",
+      "decidedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

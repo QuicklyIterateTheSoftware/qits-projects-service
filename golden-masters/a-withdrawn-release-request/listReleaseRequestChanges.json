@@ -1,0 +1,39 @@
+{
+  "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+  "base": "edf350dfabb86b68f03f6d9448036d47924efc0a",
+  "baseTag": "2026.101.100000",
+  "files": [
+    {
+      "path": "README.md",
+      "oldPath": null,
+      "changeType": "MODIFIED",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "oldSha": "22b4cdd1e9aa8f6a1f65252647e56fe9db425929",
+      "newSha": "6fe0d928f526e702a761ee14f250998a0ff257ad",
+      "submodule": null
+    },
+    {
+      "path": "src/export.txt",
+      "oldPath": null,
+      "changeType": "ADDED",
+      "oldMode": null,
+      "newMode": "100644",
+      "oldSha": null,
+      "newSha": "ee9055ccdb2bfa77f38610857e2a00ad69ffb4c5",
+      "submodule": null
+    },
+    {
+      "path": "src/invoice.txt",
+      "oldPath": null,
+      "changeType": "MODIFIED",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "oldSha": "0dd8ac591582a7f6197b301d4ca76a681aef07dc",
+      "newSha": "791c2f69836935c053ae1dcb146f7e39766db119",
+      "submodule": null
+    }
+  ],
+  "truncated": false,
+  "detail": null
+}

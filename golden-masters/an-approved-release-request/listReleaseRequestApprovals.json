@@ -1,0 +1,12 @@
+{
+  "approvals": [
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+      "decision": "APPROVED",
+      "actor": "dana.weber",
+      "note": "Read the diff: the pin moves to the export release.",
+      "decidedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
