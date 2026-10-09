@@ -83,6 +83,7 @@ final class GateFixtures {
     tag.publishRunId = publish == null ? null : "publish-run";
     tag.publishDetail = publish == ReleasedTagPendingMerge.PublishState.FAILED ? "Run red" : null;
     tag.mergedAt = merged ? Instant.parse("2026-10-09T11:00:00Z") : null;
+    tag.deploymentActiveAt = merged ? Instant.parse("2026-10-09T10:30:00Z") : null;
     return tag;
   }
 
@@ -92,7 +93,8 @@ final class GateFixtures {
       GateSubject.Automations automations,
       List<CommitBuildStatusDto> verdicts,
       ReleasedTagPendingMerge released) {
-    return new GateSubject(request(), set, approval, automations, verdicts, released);
+    return new GateSubject(
+        request(), set, approval, automations, verdicts, released, GateSubject.Deployment.NOT_ASKED);
   }
 
   static GateSubject subject(ReleaseGates.GateSet set) {

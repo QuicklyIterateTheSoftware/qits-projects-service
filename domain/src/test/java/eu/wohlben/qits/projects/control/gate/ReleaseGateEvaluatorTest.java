@@ -27,7 +27,7 @@ class ReleaseGateEvaluatorTest {
 
   private static final List<ReleaseGate> GATES =
       List.of(
-          new DeploymentGate(),
+          new DeploymentRollbackGate(),
           new PublishRunGate(),
           new ApprovalGate(),
           new AutomationsGate(),
@@ -70,11 +70,8 @@ class ReleaseGateEvaluatorTest {
           for (List<CommitBuildStatusDto> verdict : verdicts) {
             for (ReleasedTagPendingMerge released : releases) {
               GateSubject subject = subject(set, approval, automation, verdict, released);
-              List<ReleaseGates.Gate> now = new ArrayList<>();
-              for (ReleaseGateEvaluator.Evaluated answer : ReleaseGateEvaluator.evaluate(GATES, subject)) {
-                ReleaseGateEvaluator.legacyKind(answer.gate().kind())
-                    .ifPresent(kind -> now.add(new ReleaseGates.Gate(kind, answer.evaluation().state())));
-              }
+              List<ReleaseGates.Gate> now =
+                  LegacyGates.of(ReleaseGateEvaluator.evaluate(GATES, subject), subject);
               assertEquals(before(subject), now, subject.toString());
               compared++;
             }
@@ -97,7 +94,7 @@ class ReleaseGateEvaluatorTest {
                 List.of(),
                 null));
     assertEquals(
-        List.of("ci", "automations", "approval", "publish", "deployment"),
+        List.of("ci", "automations", "approval", "publish", "deployment-not-rolled-back"),
         answers.stream().map(answer -> answer.gate().kind()).toList());
     for (ReleaseGateEvaluator.Evaluated answer : answers) {
       if (answer.gate().kind().equals("automations")) {
@@ -142,13 +139,17 @@ class ReleaseGateEvaluatorTest {
   }
 
   @Test
-  void theFiveBuiltInsCoverEveryLegacyKindOnce() {
+  void everyLegacyKindButDeploymentHasOneClassAndTheRollbackGateHasNone() {
     List<ReleaseGates.Kind> covered =
         GATES.stream()
-            .map(gate -> ReleaseGateEvaluator.legacyKind(gate.kind()).orElseThrow())
+            .flatMap(gate -> ReleaseGateEvaluator.legacyKind(gate.kind()).stream())
             .sorted()
             .toList();
-    assertEquals(Arrays.asList(ReleaseGates.Kind.values()), covered);
+    assertEquals(
+        Arrays.stream(ReleaseGates.Kind.values())
+            .filter(kind -> kind != ReleaseGates.Kind.DEPLOYMENT)
+            .toList(),
+        covered);
   }
 
   /** {@code ReleaseRequests.gateReport}'s evaluation before the gate classes, unchanged. */

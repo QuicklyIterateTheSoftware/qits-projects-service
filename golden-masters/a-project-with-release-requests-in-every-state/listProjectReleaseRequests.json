@@ -53,7 +53,41 @@
           "detail": "configured by manual-review"
         }
       ],
-      "automations": null,
+      "automations": [
+        {
+          "kind": "estate-pins",
+          "label": "Estate pins",
+          "state": "FRESH",
+          "foldSha": "0000000000000000000000000000000000000007",
+          "runId": "bump-00000000-0000-4000-8000-000000000004",
+          "branch": "maintenance/estate-pins",
+          "detail": null,
+          "updatedAt": "2026-01-01T00:00:00Z",
+          "failure": null
+        },
+        {
+          "kind": "screenshot-baselines",
+          "label": "Screenshot baselines",
+          "state": "FRESH",
+          "foldSha": "0000000000000000000000000000000000000007",
+          "runId": "bump-00000000-0000-4000-8000-000000000005",
+          "branch": "maintenance/screenshot-baselines",
+          "detail": null,
+          "updatedAt": "2026-01-01T00:00:00Z",
+          "failure": null
+        },
+        {
+          "kind": "entity-diagram",
+          "label": "Entity diagram",
+          "state": "PENDING",
+          "foldSha": "0000000000000000000000000000000000000007",
+          "runId": "bump-00000000-0000-4000-8000-000000000006",
+          "branch": "maintenance/entity-diagram",
+          "detail": "Run in flight",
+          "updatedAt": "2026-01-01T00:00:00Z",
+          "failure": null
+        }
+      ],
       "conflict": null,
       "version": null,
       "supersededBy": null,
@@ -62,13 +96,71 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": "Run 00000000-0000-4000-8000-000000000007 passed for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-000000000007",
+              "state": "PASSED",
+              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+              "runId": "00000000-0000-4000-8000-000000000007"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-000000000007",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for: Entity diagram",
+          "checks": [
+            {
+              "name": "Estate pins",
+              "state": "PASSED",
+              "detail": "FRESH",
+              "runId": "bump-00000000-0000-4000-8000-000000000004"
+            },
+            {
+              "name": "Screenshot baselines",
+              "state": "PASSED",
+              "detail": "FRESH",
+              "runId": "bump-00000000-0000-4000-8000-000000000005"
+            },
+            {
+              "name": "Entity diagram",
+              "state": "PENDING",
+              "detail": "PENDING: Run in flight",
+              "runId": "bump-00000000-0000-4000-8000-000000000006"
+            }
+          ],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "approval",
+          "label": "Approval",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "configured by manual-review",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000004",
-      "repoId": "00000000-0000-4000-8000-000000000005",
+      "id": "00000000-0000-4000-8000-000000000008",
+      "repoId": "00000000-0000-4000-8000-000000000009",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000004",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000008",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000006",
@@ -104,13 +196,42 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": "Run 00000000-0000-4000-8000-00000000000a passed for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-00000000000a",
+              "state": "PASSED",
+              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000008",
+              "runId": "00000000-0000-4000-8000-00000000000a"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-00000000000a",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000006",
-      "repoId": "00000000-0000-4000-8000-000000000005",
+      "id": "00000000-0000-4000-8000-00000000000b",
+      "repoId": "00000000-0000-4000-8000-000000000009",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000006",
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000b",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000005",
@@ -119,7 +240,7 @@
       "requester": "contract-seeder",
       "unattended": false,
       "gateTicketId": null,
-      "detail": "Run 00000000-0000-4000-8000-000000000007 finished FAILURE for 0000000000000000000000000000000000000005",
+      "detail": "Run 00000000-0000-4000-8000-00000000000c finished FAILURE for 0000000000000000000000000000000000000005",
       "approvalRequired": false,
       "approvalState": "NOT_REQUIRED",
       "approvedBy": null,
@@ -146,14 +267,52 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "FAILED",
+          "detail": "Run 00000000-0000-4000-8000-00000000000c finished FAILURE for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-00000000000c",
+              "state": "FAILED",
+              "detail": "FAILURE on release/00000000-0000-4000-8000-00000000000b",
+              "runId": "00000000-0000-4000-8000-00000000000c"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-00000000000c",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for the automations to answer",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000008",
-      "repoId": "00000000-0000-4000-8000-000000000009",
+      "id": "00000000-0000-4000-8000-00000000000d",
+      "repoId": "00000000-0000-4000-8000-00000000000e",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000008",
-      "sources": [],
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000d",
+      "sources": [
+        {
+          "kind": "RELEASED_TAG",
+          "name": "2026.101.100200",
+          "ref": "refs/tags/2026.101.100200",
+          "implicit": true,
+          "priority": null,
+          "addedBy": null
+        }
+      ],
       "priority": "MEDIUM",
       "mergedSha": null,
       "state": "CONFLICTED",
@@ -177,11 +336,16 @@
           "kind": "AUTOMATIONS",
           "state": "PENDING",
           "detail": null
+        },
+        {
+          "kind": "DEPLOYMENT",
+          "state": "PENDING",
+          "detail": null
         }
       ],
       "automations": null,
       "conflict": {
-        "target": "release/00000000-0000-4000-8000-000000000008",
+        "target": "release/00000000-0000-4000-8000-00000000000d",
         "conflicts": [
           {
             "path": "src/theme.css",
@@ -202,14 +366,55 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Nothing is folded yet",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for the automations to answer",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "deployment-not-rolled-back",
+          "label": "Deployment not rolled back",
+          "position": "deploy-finalized",
+          "state": "PENDING",
+          "detail": "Nothing is released yet",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000a",
-      "repoId": "00000000-0000-4000-8000-000000000009",
+      "id": "00000000-0000-4000-8000-00000000000f",
+      "repoId": "00000000-0000-4000-8000-00000000000e",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-00000000000a",
-      "sources": [],
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000f",
+      "sources": [
+        {
+          "kind": "RELEASED_TAG",
+          "name": "2026.101.100200",
+          "ref": "refs/tags/2026.101.100200",
+          "implicit": true,
+          "priority": null,
+          "addedBy": null
+        }
+      ],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000003",
       "state": "FAILED",
@@ -233,6 +438,11 @@
           "kind": "AUTOMATIONS",
           "state": "PASSED",
           "detail": null
+        },
+        {
+          "kind": "DEPLOYMENT",
+          "state": "PENDING",
+          "detail": null
         }
       ],
       "automations": null,
@@ -244,14 +454,62 @@
       "retryable": true,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": "Run 00000000-0000-4000-8000-000000000010 passed for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-000000000010",
+              "state": "PASSED",
+              "detail": "SUCCESS on release/00000000-0000-4000-8000-00000000000f",
+              "runId": "00000000-0000-4000-8000-000000000010"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-000000000010",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "deployment-not-rolled-back",
+          "label": "Deployment not rolled back",
+          "position": "deploy-finalized",
+          "state": "PENDING",
+          "detail": "Nothing is released yet",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000b",
-      "repoId": "00000000-0000-4000-8000-000000000009",
+      "id": "00000000-0000-4000-8000-000000000011",
+      "repoId": "00000000-0000-4000-8000-00000000000e",
       "repoName": "contract-frontend",
-      "backingBranch": "release/00000000-0000-4000-8000-00000000000b",
-      "sources": [],
+      "backingBranch": "release/00000000-0000-4000-8000-000000000011",
+      "sources": [
+        {
+          "kind": "RELEASED_TAG",
+          "name": "2026.101.100200",
+          "ref": "refs/tags/2026.101.100200",
+          "implicit": true,
+          "priority": null,
+          "addedBy": null
+        }
+      ],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000002",
       "state": "RELEASED",
@@ -275,24 +533,128 @@
           "kind": "AUTOMATIONS",
           "state": "PASSED",
           "detail": null
+        },
+        {
+          "kind": "PUBLISH",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "DEPLOYMENT",
+          "state": "PENDING",
+          "detail": null
         }
       ],
       "automations": null,
       "conflict": null,
       "version": "2026.101.100200",
       "supersededBy": null,
-      "releasedSha": null,
+      "releasedSha": "0000000000000000000000000000000000000014",
       "mergedToMainAt": null,
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": {
+        "phases": [
+          {
+            "phase": "QA",
+            "state": "SUCCESS",
+            "runId": "00000000-0000-4000-8000-000000000012",
+            "startedAt": "2026-01-01T00:00:00Z",
+            "finishedAt": "2026-01-01T00:00:00Z",
+            "detail": null
+          },
+          {
+            "phase": "PUBLISH",
+            "state": "SUCCESS",
+            "runId": "00000000-0000-4000-8000-000000000013",
+            "startedAt": "2026-01-01T00:00:00Z",
+            "finishedAt": "2026-01-01T00:00:00Z",
+            "detail": null
+          }
+        ],
+        "gates": [
+          {
+            "between": "QA_PUBLISH",
+            "kind": "CI",
+            "state": "PASSED",
+            "detail": null
+          },
+          {
+            "between": "QA_PUBLISH",
+            "kind": "AUTOMATIONS",
+            "state": "PASSED",
+            "detail": null
+          },
+          {
+            "between": "PUBLISH_DEPLOY",
+            "kind": "PUBLISH",
+            "state": "PASSED",
+            "detail": null
+          },
+          {
+            "between": "DEPLOY_FINALIZED",
+            "kind": "DEPLOYMENT",
+            "state": "PENDING",
+            "detail": null
+          }
+        ]
+      },
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": "Run 00000000-0000-4000-8000-000000000014 passed for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-000000000014",
+              "state": "PASSED",
+              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000011",
+              "runId": "00000000-0000-4000-8000-000000000014"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-000000000014",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "publish",
+          "label": "Publish run",
+          "position": "publish-deploy",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": "00000000-0000-4000-8000-000000000013",
+          "link": null
+        },
+        {
+          "kind": "deployment-not-rolled-back",
+          "label": "Deployment not rolled back",
+          "position": "deploy-finalized",
+          "state": "PASSED",
+          "detail": "2026.101.100200 went live; a list read does not check for a rollback",
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-00000000000c",
-      "repoId": "00000000-0000-4000-8000-000000000005",
+      "id": "00000000-0000-4000-8000-000000000015",
+      "repoId": "00000000-0000-4000-8000-000000000009",
       "repoName": "contract-service",
-      "backingBranch": "release/00000000-0000-4000-8000-00000000000c",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000015",
       "sources": [],
       "priority": "MEDIUM",
       "mergedSha": "0000000000000000000000000000000000000001",
@@ -328,7 +690,36 @@
       "retryable": false,
       "createdAt": "2026-01-01T00:00:00Z",
       "updatedAt": "2026-01-01T00:00:00Z",
-      "pipeline": null
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": "Run 00000000-0000-4000-8000-000000000016 passed for 0000000000",
+          "checks": [
+            {
+              "name": "Run 00000000-0000-4000-8000-000000000016",
+              "state": "PASSED",
+              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000015",
+              "runId": "00000000-0000-4000-8000-000000000016"
+            }
+          ],
+          "runId": "00000000-0000-4000-8000-000000000016",
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
     }
   ]
 }

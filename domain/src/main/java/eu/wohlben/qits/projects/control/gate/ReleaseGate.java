@@ -11,10 +11,11 @@ package eu.wohlben.qits.projects.control.gate;
  * which the caller batches for a whole page of requests. A gate that made a call per request would
  * put a call per row on the busiest read this service has.
  *
- * <p><b>This is the gate as the answer reports it.</b> The sweep that moves a request ({@code
- * ReleaseRequests.evaluate}) still decides the five built-in gates in its own fixed order, because
- * their interplay (a red build beside moving automations holds instead of rejecting) is not a
- * property of any one gate. A gate here never moves a request.
+ * <p><b>This is the gate as the answer reports it.</b> What moves a request ({@code
+ * ReleaseRequests.evaluate} before the tag, {@code ReleaseFinalization} after it) still decides the
+ * built-in gates in its own fixed order, because their interplay (a red build beside moving
+ * automations holds instead of rejecting) is not a property of any one gate. A gate here never
+ * moves a request.
  */
 public interface ReleaseGate {
 
@@ -28,7 +29,7 @@ public interface ReleaseGate {
   ReleaseGatePosition position();
 
   /**
-   * Where the gate sorts among the others in the answer. The built-in five keep the order the
+   * Where the gate sorts among the others in the answer. The built-ins keep the order the
    * {@code gates} list always had: 100 to 500 in steps of 100.
    */
   int order();

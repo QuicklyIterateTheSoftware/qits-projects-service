@@ -2198,6 +2198,14 @@ public class ProviderStates {
             project, frontend, "contract-frontend", "Release the invoice screens", State.RELEASED,
             2, madeUpSha(2), row -> row.version = "2026.101.100200");
     verdict(project, frontend, "contract-frontend", released, madeUpSha(2), "SUCCESS", 2);
+    // The released one is deployed: its QA and publish runs are mirrored, its tag published and
+    // went live, so the list answer draws its pipeline and every gate including the rollback one.
+    releaseGitHost
+        .get()
+        .gatedTreeFor(frontend, "refs/heads/main", Map.of(DEPLOYMENTS_FILE, DEPLOYMENTS));
+    phaseRun(released, frontend, "RELEASE_REQUEST", "SUCCESS", 2, 2);
+    String publishRun = phaseRun(released, frontend, "RELEASE", "SUCCESS", 2, 3);
+    liveTag(frontend, released, "2026.101.100200", madeUpSha(20), publishRun, 4);
     String failed =
         releaseRow(
             project, frontend, "contract-frontend", "Release the PDF download", State.FAILED, 3,
@@ -2243,6 +2251,25 @@ public class ProviderStates {
     source(waiting, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 6);
     source(
         waiting, "bump/contract-service", eu.wohlben.qits.projects.entity.ReleasePriority.BLOCKING, 7);
+    // Two of its three automations are fresh and one is still running: "Automations 2/3".
+    automationLedger.record(
+        waiting,
+        new eu.wohlben.qits.projects.control.AutomationLedger.Note(
+            madeUpSha(7),
+            eu.wohlben.qits.projects.control.AutomationLedger.State.PENDING,
+            List.of(
+                automation("estate-pins", "Estate pins", "FRESH", madeUpSha(7), null, null),
+                automation(
+                    "screenshot-baselines", "Screenshot baselines", "FRESH", madeUpSha(7), null, null),
+                automation(
+                    "entity-diagram",
+                    "Entity diagram",
+                    "PENDING",
+                    madeUpSha(7),
+                    "Run in flight",
+                    null)),
+            null,
+            null));
     return new Setup(
         params("projectId", project.id, "repositoryId", estate, "requestId", waiting),
         List.of(token));
@@ -2435,6 +2462,27 @@ public class ProviderStates {
               tag.publishState = publish;
               tag.publishDetail = publishDetail;
               tag.publishRunId = publishRunId;
+              tag.persist();
+            });
+  }
+
+  /** A released tag that published and went live, not yet merged to main. */
+  private void liveTag(
+      String repoId, String requestId, String version, String releasedSha, String publishRunId, int minute) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var tag = new eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge();
+              tag.id = UUID.randomUUID().toString();
+              tag.repoId = repoId;
+              tag.tagName = version;
+              tag.releasedSha = releasedSha;
+              tag.releaseRequestId = requestId;
+              tag.releasedAt = SEEDED_AT.plusSeconds(60L * minute);
+              tag.publishState =
+                  eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.PublishState.PASSED;
+              tag.publishRunId = publishRunId;
+              tag.deploymentActiveAt = SEEDED_AT.plusSeconds(60L * (minute + 1));
               tag.persist();
             });
   }

@@ -47,12 +47,18 @@ public class ReleaseGateRegistryTest {
   }
 
   @Test
-  void everyLegacyKindHasExactlyOneGateClassInTheOldOrder() {
+  void everyLegacyKindButDeploymentHasExactlyOneGateClassInTheOldOrder() {
     List<ReleaseGates.Kind> legacy =
         evaluator.gates().stream()
             .map(gate -> ReleaseGateEvaluator.legacyKind(gate.kind()))
             .flatMap(java.util.Optional::stream)
             .toList();
-    assertEquals(Arrays.asList(ReleaseGates.Kind.values()), legacy);
+    // DEPLOYMENT meant "the tag reached main": the finalize step, kept for the deprecated lists by
+    // LegacyGates. The deployment's gate is deployment-not-rolled-back, which has no legacy kind.
+    assertEquals(
+        Arrays.stream(ReleaseGates.Kind.values())
+            .filter(kind -> kind != ReleaseGates.Kind.DEPLOYMENT)
+            .toList(),
+        legacy);
   }
 }

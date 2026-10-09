@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.control;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.wohlben.qits.projects.control.gate.GateSubject;
+import eu.wohlben.qits.projects.control.gate.LegacyGates;
 import eu.wohlben.qits.projects.control.gate.ReleaseGateEvaluator;
 import eu.wohlben.qits.projects.dto.CommitBuildStatusDto;
 import eu.wohlben.qits.projects.dto.CommitDto;
@@ -295,6 +296,9 @@ public class ReleaseRequests {
   @Inject ReleaseGates gates;
 
   @Inject ReleaseGateEvaluator gateEvaluator;
+
+  /** qits-deployments, asked by a single-request read for the rollback gate. */
+  @Inject Instance<DeploymentRequests> deploymentRequests;
 
   /**
    * The automations gate's halves, in the approval gate's own shape one field up — the thing that
@@ -4117,29 +4121,26 @@ public class ReleaseRequests {
       List<ReleasePipelineRun> phaseRuns,
       ReleasePipelineAssembler.DeployReach reach) {
     // Every gate class answers once; the two deprecated shapes below are that one answer.
-    List<ReleaseGateEvaluator.Evaluated> evaluated =
-        gateEvaluator.evaluate(
-            new GateSubject(
-                row,
-                set,
-                new GateSubject.Approval(
-                    approval.required(),
-                    approval.state(),
-                    approval.actor(),
-                    approval.decidedAt(),
-                    approval.note(),
-                    approval.detail()),
-                new GateSubject.Automations(
-                    automations.applies(), automations.gate(), automations.rows()),
-                verdicts,
-                released));
+    GateSubject subject =
+        new GateSubject(
+            row,
+            set,
+            new GateSubject.Approval(
+                approval.required(),
+                approval.state(),
+                approval.actor(),
+                approval.decidedAt(),
+                approval.note(),
+                approval.detail()),
+            new GateSubject.Automations(
+                automations.applies(), automations.gate(), automations.rows()),
+            verdicts,
+            released,
+            deploymentOf(set, released, reach));
+    List<ReleaseGateEvaluator.Evaluated> evaluated = gateEvaluator.evaluate(subject);
     // The deprecated gates[] and pipeline.gates[] carry the five kinds ReleaseGates.Kind names, in
     // the same order and with the same details they always had.
-    List<ReleaseGates.Gate> decided = new ArrayList<>();
-    for (ReleaseGateEvaluator.Evaluated answer : evaluated) {
-      ReleaseGateEvaluator.legacyKind(answer.gate().kind())
-          .ifPresent(kind -> decided.add(new ReleaseGates.Gate(kind, answer.evaluation().state())));
-    }
+    List<ReleaseGates.Gate> decided = LegacyGates.of(evaluated, subject);
     return new GateView(
         decided.stream()
             .map(
@@ -4153,6 +4154,43 @@ public class ReleaseRequests {
         pipelineAssembler.assemble(
             phaseRuns, decided, gateDetails(set, released, approval), released, reach),
         evaluated.stream().map(ReleaseGateEvaluator::toDto).toList());
+  }
+
+  /**
+   * What qits-deployments says about the released version, for the rollback gate. Asked only on a
+   * single-request read ({@code ASK}), of a released version whose repository declares a
+   * deployment: a list read would be one call per row with nothing to batch. The pipeline
+   * assembler asks the same question for the deploy phase; the two answers are read separately.
+   */
+  private GateSubject.Deployment deploymentOf(
+      ReleaseGates.GateSet set,
+      ReleasedTagPendingMerge released,
+      ReleasePipelineAssembler.DeployReach reach) {
+    if (reach != ReleasePipelineAssembler.DeployReach.ASK
+        || released == null
+        || released.tagName == null
+        || released.tagName.isBlank()
+        || !set.requires(ReleaseGates.Kind.DEPLOYMENT)
+        || !deploymentRequests.isResolvable()) {
+      return GateSubject.Deployment.NOT_ASKED;
+    }
+    Optional<List<DeploymentRequests.DeploymentRequestView>> answered;
+    try {
+      answered = deploymentRequests.get().forRelease(released.repoId, released.tagName);
+    } catch (RuntimeException e) {
+      LOG.warnf(
+          "Could not read the deployment of %s %s for its rollback gate: %s",
+          released.repoId, released.tagName, e.toString());
+      answered = Optional.empty();
+    }
+    if (answered == null || answered.isEmpty()) {
+      return GateSubject.Deployment.COULD_NOT_ASK;
+    }
+    if (answered.get().isEmpty()) {
+      return GateSubject.Deployment.NOTHING_YET;
+    }
+    DeploymentRequests.DeploymentRequestView newest = answered.get().get(0);
+    return GateSubject.Deployment.newest(newest.id(), newest.status());
   }
 
   /**

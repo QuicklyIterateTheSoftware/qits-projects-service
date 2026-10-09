@@ -123,6 +123,51 @@
           "detail": "configured by manual-review"
         }
       ]
-    }
+    },
+    "qualityGates": [
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "Waiting for a CI verdict for bd6360a2c6",
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [
+          {
+            "name": "Estate pins",
+            "state": "PASSED",
+            "detail": "FRESH",
+            "runId": "bump-00000000-0000-4000-8000-000000000004"
+          },
+          {
+            "name": "Screenshot baselines",
+            "state": "PASSED",
+            "detail": "FRESH",
+            "runId": "bump-00000000-0000-4000-8000-000000000005"
+          }
+        ],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "approval",
+        "label": "Approval",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": "Approved by dev",
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ]
   }
 }
