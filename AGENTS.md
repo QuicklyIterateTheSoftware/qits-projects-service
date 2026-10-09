@@ -2445,9 +2445,8 @@ Where it differs from the agent harness, each difference is the domain line:
   `[preamble]` binding keeps its name down to the prompt panel because `POST /prompt-refinements` is
   where the word comes from — renaming it here while the wire kept the old one would be two names for
   one thing.
-- **A refinement runs no code.** `BOOTSTRAP_AUTORUN=false`, `SERVICES_AUTOSTART=false`, no
-  `SERVICE_PROXY_BASE`, no actions MCP server — the tab set this backs has no Services or Actions
-  tab, and its web view frames the deployed environment, not a dev server.
+- **A refinement runs no code.** `BOOTSTRAP_AUTORUN=false` and no actions MCP server — the tab set
+  this backs has no Actions tab, and its web view frames the deployed environment, not a dev server.
 - **There is a removal verb.** Discard tears down container → volume → credential → branch → row,
   in that order; a front desk's removal is its DELETE door, on its runner. `RefinementCommissions`
   decommissions at the explicit seams; `RefinementCommissionReconcile` reaps `refinement`-kind idp
