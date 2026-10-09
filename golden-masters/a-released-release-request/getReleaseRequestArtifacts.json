@@ -1,0 +1,18 @@
+{
+  "version": "2026.101.100500",
+  "releasedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+  "deployable": true,
+  "artifacts": [
+    {
+      "type": "maven",
+      "name": "eu.wohlben.qits:contract-service",
+      "version": "2026.101.100500"
+    },
+    {
+      "type": "npm",
+      "name": "@contract/service-golden-masters",
+      "version": "2026.101.100500"
+    }
+  ],
+  "detail": null
+}

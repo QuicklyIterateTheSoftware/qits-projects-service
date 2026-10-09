@@ -217,6 +217,7 @@ public class RepositoryController {
   @Path("/{repoId}/commits/{commitHash}/builds")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
+      operationId = "listCommitBuilds",
       summary = "Every CI verdict recorded for one commit",
       description =
           "One entry per terminal CI run of this commit, newest first, fed from qits-ci's build"

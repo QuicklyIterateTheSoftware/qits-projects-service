@@ -61,6 +61,51 @@ public class ProviderStates {
       "a project with pending release requests";
   public static final String A_PROJECT_WITH_NO_RELEASE_REQUESTS =
       "a project with no release requests";
+  // The landing app's release-request pages (epic qits-112): one state per variant of the detail
+  // page and its panels, and one project-wide list. Every detail state seeds the same project and
+  // the same two real repositories (see #releaseFixture), so its fold, commits and changes are the
+  // same shas on every run, and differs only in the request it focuses on.
+  public static final String A_RELEASE_REQUEST_AWAITING_APPROVAL =
+      "a release request awaiting approval";
+  public static final String A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS =
+      "a release request awaiting approval while its build runs";
+  public static final String AN_APPROVED_RELEASE_REQUEST = "an approved release request";
+  public static final String A_DECLINED_RELEASE_REQUEST = "a declined release request";
+  public static final String A_RELEASED_RELEASE_REQUEST = "a released release request";
+  public static final String A_RELEASE_REQUEST_WHOSE_PUBLISH_FAILED =
+      "a release request whose publish failed";
+  public static final String A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD =
+      "a release request rejected by its build";
+  public static final String A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION =
+      "a release request held by a failed automation";
+  public static final String A_WITHDRAWN_RELEASE_REQUEST = "a withdrawn release request";
+  public static final String A_CONFLICTED_RELEASE_REQUEST = "a conflicted release request";
+  public static final String A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE =
+      "a project with release requests in every state";
+
+  /** Every release-request detail state, in the order the recorder walks them. */
+  public static final List<String> RELEASE_REQUEST_DETAILS =
+      List.of(
+          A_RELEASE_REQUEST_AWAITING_APPROVAL,
+          A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS,
+          AN_APPROVED_RELEASE_REQUEST,
+          A_DECLINED_RELEASE_REQUEST,
+          A_RELEASED_RELEASE_REQUEST,
+          A_RELEASE_REQUEST_WHOSE_PUBLISH_FAILED,
+          A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD,
+          A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION,
+          A_WITHDRAWN_RELEASE_REQUEST,
+          A_CONFLICTED_RELEASE_REQUEST);
+
+  /** The detail states focused on contract-suite-app, whose fold moves a submodule pin. */
+  public static final Set<String> RELEASE_REQUEST_ESTATE_DETAILS =
+      Set.of(
+          A_RELEASE_REQUEST_AWAITING_APPROVAL,
+          A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS,
+          AN_APPROVED_RELEASE_REQUEST,
+          A_DECLINED_RELEASE_REQUEST,
+          A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION);
+
   public static final String A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS =
       "a project with repositories in components";
   public static final String AN_EPIC_WITH_FEATURES_AND_TASKS = "an epic with features and tasks";
@@ -198,6 +243,45 @@ public class ProviderStates {
   jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.testsupport.RecordingWorkspaceAgentTurns>
       turns;
 
+  /** Writes the release fixture's commits; see {@link SeededGit}. */
+  @Inject eu.wohlben.qits.projects.control.GitExecutor gitWork;
+
+  @Inject eu.wohlben.qits.projects.control.GitHostAddress gitHost;
+
+  @Inject eu.wohlben.qits.projects.control.GitMirrorRegistry mirrors;
+
+  /** Holds a request's automations note in memory; forgotten again by {@link #cleanUp()}. */
+  @Inject eu.wohlben.qits.projects.control.AutomationLedger automationLedger;
+
+  // The release flow's shared fakes. Instances for the reason {@link #dispatches} is one.
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.releasehost.RecordingReleaseGitHost>
+      releaseGitHost;
+
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.releasehost.FakeActiveBuilds>
+      activeBuilds;
+
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.releasehost.FakeReleaseDecisions>
+      releaseDecisions;
+
+  @Inject
+  jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.deploymenthost.FakeDeploymentRequests>
+      deploymentRequests;
+
+  /** The repository's release-request settings, where {@code manual-review} is declared. */
+  private static final String SETTINGS_FILE = ".config/qits/release-requests.yml";
+
+  /** The deployment declaration at a repository's main or tag. */
+  private static final String DEPLOYMENTS_FILE = ".config/qits/deployments.yml";
+
+  /** Repositories whose released tags and verdicts {@link #cleanUp()} removes. */
+  private final List<String> seededRepos = new ArrayList<>();
+
+  /** Whether a state scripted the decisions or deployments fakes, which cleanUp resets. */
+  private boolean fakesTouched;
+
   private final Map<String, Supplier<Setup>> states = new LinkedHashMap<>();
 
   /** Release requests and CI verdicts the states wrote, removed again by {@link #cleanUp()}. */
@@ -216,6 +300,9 @@ public class ProviderStates {
     states.put(A_PROJECT_WITH_NO_WORK, this::aProjectWithNoWork);
     states.put(A_PROJECT_WITH_PENDING_RELEASE_REQUESTS, this::aProjectWithPendingReleaseRequests);
     states.put(A_PROJECT_WITH_NO_RELEASE_REQUESTS, this::aProjectWithNoReleaseRequests);
+    RELEASE_REQUEST_DETAILS.forEach(name -> states.put(name, () -> releaseRequestInDetail(name)));
+    states.put(
+        A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE, this::aProjectWithReleaseRequestsInEveryState);
     states.put(
         A_PROJECT_WITH_REPOSITORIES_IN_COMPONENTS, this::aProjectWithRepositoriesInComponents);
     states.put(A_PROJECT_WITH_WORK_IN_EVERY_STATUS, this::aProjectWithWorkInEveryStatus);
@@ -294,19 +381,42 @@ public class ProviderStates {
    * verification.
    */
   public void cleanUp() {
-    if (seededRequests.isEmpty() && seededVerdicts.isEmpty()) {
+    if (fakesTouched) {
+      fakesTouched = false;
+      releaseDecisions.get().reset();
+      deploymentRequests.get().reset();
+    }
+    if (seededRequests.isEmpty() && seededVerdicts.isEmpty() && seededRepos.isEmpty()) {
       return;
     }
     List<String> ids = List.copyOf(seededRequests);
     List<String> runs = List.copyOf(seededVerdicts);
+    List<String> repos = List.copyOf(seededRepos);
     seededRequests.clear();
     seededVerdicts.clear();
+    seededRepos.clear();
     QuarkusTransaction.requiringNew()
         .run(
             () -> {
-              if (!ids.isEmpty()) ReleaseRequest.delete("id in ?1", ids);
+              if (!ids.isEmpty()) {
+                // What the release states and the doors they record wrote about each request.
+                eu.wohlben.qits.projects.entity.ReleaseRequestSource.delete("requestId in ?1", ids);
+                eu.wohlben.qits.projects.entity.ReleaseRequestApproval.delete(
+                    "requestId in ?1", ids);
+                eu.wohlben.qits.projects.entity.ReleaseRequestAutomationWaiver.delete(
+                    "requestId in ?1", ids);
+                eu.wohlben.qits.projects.entity.ReleasePipelineRun.delete(
+                    "releaseRequestId in ?1", ids);
+                ReleaseRequest.delete("id in ?1", ids);
+              }
               if (!runs.isEmpty()) CommitBuildStatus.delete("runId in ?1", runs);
+              if (!repos.isEmpty()) {
+                eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.delete(
+                    "repoId in ?1", repos);
+                CommitBuildStatus.delete("repoId in ?1", repos);
+              }
             });
+    ids.forEach(automationLedger::forget);
   }
 
   /** {@link #setUp} for a pact {@code @State} method, which returns only the params. */
@@ -1637,6 +1747,696 @@ public class ProviderStates {
               row.lastBackupAt = SEEDED_AT;
               row.lastBackupDetail = detail;
             });
+  }
+
+  // --- release requests ------------------------------------------------------------------------
+
+  /** The release every seeded fold is diffed against: the tag on both repositories' first commit. */
+  private static final String BASE_VERSION = "2026.101.100000";
+
+  /** The version a released seeded request carries. */
+  private static final String RELEASED_VERSION = "2026.101.100500";
+
+  /** Where the suite pins contract-service — the house grammar, components/<component>/<name>. */
+  static final String ESTATE_SUBMODULE = "components/contract/contract-service";
+
+  /** The suite's settings: a person approves every release of it. */
+  private static final String MANUAL_REVIEW = "manual-review: true\n";
+
+  /** The deployment declaration: its presence is the DEPLOYMENT gate and the deploy phase. */
+  private static final String DEPLOYMENTS = "services:\n  contract-service: {}\n";
+
+  /** The contract-service commits every detail state seeds, oldest first. */
+  private record ServiceShas(String base, String export, String readme, String rounding, String fold) {}
+
+  /**
+   * What every release-request detail state seeds: a project with two real repositories on the git
+   * host, both with the same history on every run.
+   *
+   * <ul>
+   *   <li>{@code contract-service} — {@code main} released as {@value #BASE_VERSION}, then {@code
+   *       feature/export} (two commits: a new file and a README change) and {@code fix/rounding}
+   *       (one change), folded by one octopus merge on {@code release/fold}. It deploys.
+   *   <li>{@code contract-suite-app} — an app pinning contract-service as a submodule at {@value
+   *       #ESTATE_SUBMODULE}: {@code main} pins the service's base, {@code bump/contract-service}
+   *       moves the pin to the service's fold, {@code docs/approval} changes the README, and the
+   *       two are folded the same way. A person approves its releases ({@code manual-review}).
+   * </ul>
+   */
+  private record ReleaseFixture(
+      Project project,
+      String token,
+      String serviceId,
+      String estateId,
+      ServiceShas service,
+      String estateFold) {}
+
+  private ReleaseFixture releaseFixture(String state) {
+    String token = token();
+    Project project = project(token, state);
+    String serviceId =
+        projectService.createRepository(project.id, null, "contract-service", null, "contract")
+            .repository()
+            .id;
+    String estateId =
+        projectService.createRepository(project.id, null, "contract-suite-app", null).repository().id;
+    seededRepos.add(serviceId);
+    seededRepos.add(estateId);
+    ServiceShas service;
+    String estateFold;
+    try {
+      service = seedService(serviceId);
+      estateFold = seedEstate(estateId, service.base(), service.fold());
+    } catch (Exception e) {
+      throw new IllegalStateException("Could not seed the release fixture's repositories", e);
+    }
+    eu.wohlben.qits.projects.releasehost.RecordingReleaseGitHost host = releaseGitHost.get();
+    host.gatedTreeFor(estateId, "refs/heads/main", Map.of(SETTINGS_FILE, MANUAL_REVIEW));
+    host.gatedTreeFor(serviceId, "refs/heads/main", Map.of(DEPLOYMENTS_FILE, DEPLOYMENTS));
+    // A gate re-asked by a door (approve, decline, waive) reads whether CI runs are in flight; the
+    // probe is a shared fake, so it is told here rather than left to whichever test ran last.
+    activeBuilds.get().answer(java.util.Optional.of(0));
+    return new ReleaseFixture(project, token, serviceId, estateId, service, estateFold);
+  }
+
+  private ServiceShas seedService(String repoId) throws Exception {
+    SeededGit repo = SeededGit.init(gitWork, gitHost.fetchUrl(repoId));
+    String readme = "# contract-service\n\nInvoices for the contract project.\n";
+    repo.write(Map.of("README.md", readme, "src/invoice.txt", "Totals round half up.\n"));
+    String base = repo.commit(1, "Import the invoice service");
+    repo.tag(BASE_VERSION);
+    repo.branch("feature/export", "main");
+    repo.write(Map.of("src/export.txt", "Export a quarter of invoices as CSV.\n"));
+    String export = repo.commit(2, "Add the CSV export");
+    repo.write(Map.of("README.md", readme + "\nExport a quarter as CSV: see src/export.txt.\n"));
+    String readmeSha = repo.commit(3, "Describe the export in the README");
+    repo.branch("fix/rounding", "main");
+    repo.write(Map.of("src/invoice.txt", "Totals round half to even.\n"));
+    String rounding = repo.commit(4, "Round totals half to even");
+    repo.branch("release/fold", "main");
+    String fold =
+        repo.merge(5, "Release the CSV export and the rounding fix", "feature/export", "fix/rounding");
+    repo.push("main", "feature/export", "fix/rounding", "release/fold");
+    goCold(repoId);
+    return new ServiceShas(base, export, readmeSha, rounding, fold);
+  }
+
+  private String seedEstate(String repoId, String servicePin, String serviceFold) throws Exception {
+    SeededGit repo = SeededGit.init(gitWork, gitHost.fetchUrl(repoId));
+    String readme = "# contract-suite-app\n\nThe contract suite: one pin per component.\n";
+    repo.write(
+        Map.of(
+            ".gitmodules",
+            "[submodule \"contract-service\"]\n\tpath = "
+                + ESTATE_SUBMODULE
+                + "\n\turl = ../contract-service.git\n\tbranch = main\n\tignore = all\n"
+                + "\tupdate = merge\n",
+            "README.md",
+            readme));
+    repo.gitlink(ESTATE_SUBMODULE, servicePin);
+    repo.commit(1, "Declare the suite");
+    repo.tag(BASE_VERSION);
+    repo.branch("bump/contract-service", "main");
+    repo.gitlink(ESTATE_SUBMODULE, serviceFold);
+    repo.commit(2, "Bump contract-service to its export release");
+    repo.branch("docs/approval", "main");
+    repo.write(Map.of("README.md", readme + "\nA person approves every release of the suite.\n"));
+    repo.commit(3, "Say who approves a suite release");
+    repo.branch("release/fold", "main");
+    String fold =
+        repo.merge(
+            4, "Release the export across the suite", "bump/contract-service", "docs/approval");
+    repo.push("main", "bump/contract-service", "docs/approval", "release/fold");
+    goCold(repoId);
+    return fold;
+  }
+
+  /** Drops a repository's mirror, so the next read clones what was just pushed. */
+  private void goCold(String repoId) throws java.io.IOException {
+    java.nio.file.Path mirror = mirrors.of(repoId).gitDir();
+    if (!java.nio.file.Files.exists(mirror)) {
+      return;
+    }
+    try (var paths = java.nio.file.Files.walk(mirror)) {
+      for (java.nio.file.Path path :
+          paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+        java.nio.file.Files.deleteIfExists(path);
+      }
+    }
+  }
+
+  /**
+   * One release request in detail, by the variant the state names — see {@link
+   * #RELEASE_REQUEST_DETAILS}. The params are the project, the request's repository, the request
+   * and, where it has one, its fold ({@code mergedSha}): what the detail page's route and its
+   * decisions carry.
+   */
+  private Setup releaseRequestInDetail(String state) {
+    ReleaseFixture f = releaseFixture(state);
+    Project project = f.project();
+    String estate = f.estateId();
+    String service = f.serviceId();
+    String estateFold = f.estateFold();
+    String serviceFold = f.service().fold();
+    String estateSummary = "Release the export across the suite";
+    String serviceSummary = "Release the CSV export and the rounding fix";
+    String repoId;
+    String fold;
+    String id;
+    switch (state) {
+      case A_RELEASE_REQUEST_AWAITING_APPROVAL -> {
+        repoId = estate;
+        fold = estateFold;
+        id =
+            releaseRow(
+                project, estate, "contract-suite-app", estateSummary, State.PENDING, 10, fold,
+                row -> row.detail = "Waiting for a person to approve " + shortSha(fold));
+        estateSources(id);
+        verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
+        phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+        automationsFresh(id, fold);
+      }
+      case A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS -> {
+        repoId = estate;
+        fold = estateFold;
+        id =
+            releaseRow(
+                project, estate, "contract-suite-app", estateSummary, State.PENDING, 10, fold,
+                row -> row.detail = "Waiting for a CI verdict for " + shortSha(fold));
+        estateSources(id);
+        phaseRun(id, estate, "RELEASE_REQUEST", "RUNNING", 11, null);
+        automationsFresh(id, fold);
+      }
+      case AN_APPROVED_RELEASE_REQUEST -> {
+        repoId = estate;
+        fold = estateFold;
+        id = releaseRow(project, estate, "contract-suite-app", estateSummary, State.READY, 10, fold, row -> {});
+        estateSources(id);
+        verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
+        phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+        automationsFresh(id, fold);
+        decision(
+            id, fold, eu.wohlben.qits.projects.entity.ReleaseRequestApproval.Decision.APPROVED,
+            "Read the diff: the pin moves to the export release.", 13);
+      }
+      case A_DECLINED_RELEASE_REQUEST -> {
+        repoId = estate;
+        fold = estateFold;
+        String note = "The README promises an approval policy nobody has signed off yet.";
+        id =
+            releaseRow(
+                project, estate, "contract-suite-app", estateSummary, State.REJECTED, 10, fold,
+                row -> row.detail = "Declined by " + PERSON + ": " + note);
+        estateSources(id);
+        verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
+        phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+        automationsFresh(id, fold);
+        decision(
+            id, fold, eu.wohlben.qits.projects.entity.ReleaseRequestApproval.Decision.DECLINED,
+            note, 13);
+      }
+      case A_RELEASED_RELEASE_REQUEST, A_RELEASE_REQUEST_WHOSE_PUBLISH_FAILED -> {
+        boolean published = state.equals(A_RELEASED_RELEASE_REQUEST);
+        repoId = service;
+        fold = serviceFold;
+        id =
+            releaseRow(
+                project, service, "contract-service", serviceSummary, State.RELEASED, 10, fold,
+                row -> row.version = RELEASED_VERSION);
+        serviceSources(id);
+        verdict(project, service, "contract-service", id, fold, "SUCCESS", 12);
+        phaseRun(id, service, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+        String publishRun =
+            phaseRun(id, service, "RELEASE", published ? "SUCCESS" : "FAILED", 14, 15);
+        releasedTag(
+            service, id, fold, publishRun,
+            published
+                ? eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.PublishState.PASSED
+                : eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.PublishState.FAILED,
+            published
+                ? null
+                : "The release run failed publishing the npm package: the registry refused the"
+                    + " upload.");
+        // What the tag declares and what qits-ci decided to publish at it.
+        releaseGitHost
+            .get()
+            .treeFor(
+                service,
+                "refs/tags/" + RELEASED_VERSION,
+                Map.of(
+                    eu.wohlben.qits.projects.releasehost.RecordingReleaseGitHost.RELEASE_CONFIG,
+                    eu.wohlben.qits.projects.releasehost.RecordingReleaseGitHost
+                        .GATING_RELEASE_CONFIG,
+                    DEPLOYMENTS_FILE,
+                    DEPLOYMENTS));
+        fakesTouched = true;
+        if (published) {
+          releaseDecisions
+              .get()
+              .decisions(
+                  new eu.wohlben.qits.projects.control.ReleaseDecisions.Decision(
+                      "maven", "eu.wohlben.qits:contract-service", "published", null),
+                  new eu.wohlben.qits.projects.control.ReleaseDecisions.Decision(
+                      "npm", "@contract/service-golden-masters", "published", null),
+                  new eu.wohlben.qits.projects.control.ReleaseDecisions.Decision(
+                      "maven", "eu.wohlben.qits:contract-service-pacts", "unchanged",
+                      BASE_VERSION));
+          deploymentRequests.get().answerStatus(UUID.randomUUID().toString(), "STARTING");
+        } else {
+          releaseDecisions
+              .get()
+              .decisions(
+                  new eu.wohlben.qits.projects.control.ReleaseDecisions.Decision(
+                      "maven", "eu.wohlben.qits:contract-service", "published", null),
+                  new eu.wohlben.qits.projects.control.ReleaseDecisions.Decision(
+                      "npm", "@contract/service-golden-masters", "pending", null));
+          deploymentRequests.get().answerNothingYet();
+        }
+      }
+      case A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD -> {
+        repoId = service;
+        fold = serviceFold;
+        String run = UUID.randomUUID().toString();
+        id =
+            releaseRow(
+                project, service, "contract-service", serviceSummary, State.REJECTED, 10, fold,
+                row -> {
+                  row.rejectingRunId = run;
+                  row.detail = "Run " + run + " finished FAILURE for " + fold;
+                });
+        serviceSources(id);
+        verdictOf(run, project, service, "contract-service", id, fold, "FAILURE", 12);
+        phaseRunWithId(run, id, service, "RELEASE_REQUEST", "FAILED", 11, 12);
+      }
+      case A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION -> {
+        repoId = estate;
+        fold = estateFold;
+        id =
+            releaseRow(
+                project, estate, "contract-suite-app", estateSummary, State.PENDING, 10, fold,
+                row ->
+                    row.detail =
+                        "Waiting for automations at " + shortSha(fold) + ": Estate pins failed");
+        estateSources(id);
+        verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
+        phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+        automationLedger.record(
+            id,
+            new eu.wohlben.qits.projects.control.AutomationLedger.Note(
+                fold,
+                eu.wohlben.qits.projects.control.AutomationLedger.State.FAILED,
+                List.of(
+                    automation(
+                        "estate-pins", "Estate pins", "FAILED", fold,
+                        "contract-service is pinned at a commit its main does not contain.",
+                        new eu.wohlben.qits.projects.control.AutomationLedger.Failure(
+                            2,
+                            "registry.example.test/qits/maintenance:2026.101.90000",
+                            1,
+                            "error: contract-service: " + shortSha(serviceFold)
+                                + " is not on main")),
+                    automation("screenshot-baselines", "Screenshot baselines", "FRESH", fold, null, null)),
+                "Estate pins failed",
+                null));
+      }
+      case A_WITHDRAWN_RELEASE_REQUEST -> {
+        repoId = service;
+        fold = serviceFold;
+        id =
+            releaseRow(
+                project, service, "contract-service", serviceSummary, State.WITHDRAWN, 10, fold,
+                row ->
+                    row.detail =
+                        "Withdrawn by " + PERSON + ": the export moves to next quarter's release");
+        serviceSources(id);
+        verdict(project, service, "contract-service", id, fold, "SUCCESS", 12);
+        phaseRun(id, service, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+      }
+      case A_CONFLICTED_RELEASE_REQUEST -> {
+        repoId = service;
+        fold = null;
+        ServiceShas shas = f.service();
+        id =
+            releaseRow(
+                project, service, "contract-service", serviceSummary, State.CONFLICTED, 10, null,
+                row -> {
+                  row.detail = "The sources cannot be folded: src/invoice.txt, README.md";
+                  row.conflictDetail =
+                      conflict(
+                          row.backingBranch(),
+                          new String[] {
+                            "src/invoice.txt", "refs/heads/fix/rounding", shas.rounding(),
+                            shas.base(), shas.export(), shas.rounding()
+                          },
+                          new String[] {
+                            "README.md", "refs/heads/feature/export", shas.readme(),
+                            shas.base(), null, shas.readme()
+                          });
+                });
+        serviceSources(id);
+      }
+      default -> throw new IllegalArgumentException("No release request variant for " + state);
+    }
+    Map<String, String> params = new TreeMap<>();
+    params.put("projectId", project.id);
+    params.put("repositoryId", repoId);
+    params.put("requestId", id);
+    if (fold != null) {
+      params.put("mergedSha", fold);
+    }
+    return new Setup(Collections.unmodifiableMap(params), List.of(f.token()));
+  }
+
+  /**
+   * The release list across a project (the landing app's release-requests page): three
+   * repositories and one request in each state the default list shows — waiting for a person
+   * (with a BLOCKING branch on it), ready, rejected by CI, unable to fold, failed at execution,
+   * released and finalized. Each moved at its own minute, so the order is fixed. Params name the
+   * request awaiting approval, which the page can withdraw. No git is read: the shas are made up.
+   */
+  private Setup aProjectWithReleaseRequestsInEveryState() {
+    String token = token();
+    Project project = project(token, A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE);
+    String service =
+        projectService.createRepository(project.id, null, "contract-service", null, "contract")
+            .repository()
+            .id;
+    String frontend =
+        projectService.createRepository(project.id, null, "contract-frontend", null, "contract")
+            .repository()
+            .id;
+    String estate =
+        projectService.createRepository(project.id, null, "contract-suite-app", null).repository().id;
+    seededRepos.add(service);
+    seededRepos.add(frontend);
+    seededRepos.add(estate);
+    releaseGitHost.get().gatedTreeFor(estate, "refs/heads/main", Map.of(SETTINGS_FILE, MANUAL_REVIEW));
+    activeBuilds.get().answer(java.util.Optional.of(0));
+
+    String finalized =
+        releaseRow(
+            project, service, "contract-service", "Release the invoice service", State.FINALIZED,
+            1, madeUpSha(1), row -> row.version = "2026.101.100100");
+    verdict(project, service, "contract-service", finalized, madeUpSha(1), "SUCCESS", 1);
+    String released =
+        releaseRow(
+            project, frontend, "contract-frontend", "Release the invoice screens", State.RELEASED,
+            2, madeUpSha(2), row -> row.version = "2026.101.100200");
+    verdict(project, frontend, "contract-frontend", released, madeUpSha(2), "SUCCESS", 2);
+    String failed =
+        releaseRow(
+            project, frontend, "contract-frontend", "Release the PDF download", State.FAILED, 3,
+            madeUpSha(3),
+            row -> {
+              row.detail = "The release could not push its tag: the git host refused the push.";
+              row.retryable = true;
+            });
+    verdict(project, frontend, "contract-frontend", failed, madeUpSha(3), "SUCCESS", 3);
+    releaseRow(
+        project, frontend, "contract-frontend", "Release the dark theme", State.CONFLICTED, 4, null,
+        row -> {
+          row.detail = "The sources cannot be folded: src/theme.css";
+          row.conflictDetail =
+              conflict(
+                  row.backingBranch(),
+                  new String[] {
+                    "src/theme.css", "refs/heads/feature/dark-theme", madeUpSha(41),
+                    madeUpSha(40), madeUpSha(42), madeUpSha(41)
+                  });
+        });
+    String rejectingRun = UUID.randomUUID().toString();
+    String rejected =
+        releaseRow(
+            project, service, "contract-service", "Release the CSV export", State.REJECTED, 5,
+            madeUpSha(5),
+            row -> {
+              row.rejectingRunId = rejectingRun;
+              row.detail = "Run " + rejectingRun + " finished FAILURE for " + madeUpSha(5);
+            });
+    verdictOf(rejectingRun, project, service, "contract-service", rejected, madeUpSha(5), "FAILURE", 5);
+    String ready =
+        releaseRow(
+            project, service, "contract-service", "Release the rounding fix", State.READY, 6,
+            madeUpSha(6), row -> {});
+    verdict(project, service, "contract-service", ready, madeUpSha(6), "SUCCESS", 6);
+    String waiting =
+        releaseRow(
+            project, estate, "contract-suite-app", "Release the export across the suite",
+            State.PENDING, 7, madeUpSha(7),
+            row -> row.detail = "Waiting for a person to approve " + shortSha(madeUpSha(7)));
+    verdict(project, estate, "contract-suite-app", waiting, madeUpSha(7), "SUCCESS", 7);
+    source(waiting, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 6);
+    source(
+        waiting, "bump/contract-service", eu.wohlben.qits.projects.entity.ReleasePriority.BLOCKING, 7);
+    return new Setup(
+        params("projectId", project.id, "repositoryId", estate, "requestId", waiting),
+        List.of(token));
+  }
+
+  /** A 40-hex sha no repository holds, for rows whose git is never read. */
+  private static String madeUpSha(int n) {
+    return String.format("%040x", n);
+  }
+
+  /** The house abbreviation ReleaseRequests uses in every sentence it writes. */
+  private static String shortSha(String sha) {
+    return sha.length() <= 10 ? sha : sha.substring(0, 10);
+  }
+
+  /**
+   * A release request row written straight to the table, as {@link #request} does: driving it
+   * through the gates would make the fixture depend on the state machine's timing.
+   */
+  private String releaseRow(
+      Project project,
+      String repoId,
+      String repoName,
+      String summary,
+      State state,
+      int minute,
+      String mergedSha,
+      java.util.function.Consumer<ReleaseRequest> more) {
+    Instant when = SEEDED_AT.plusSeconds(60L * minute);
+    String id =
+        QuarkusTransaction.requiringNew()
+            .call(
+                () -> {
+                  ReleaseRequest row = new ReleaseRequest();
+                  row.id = UUID.randomUUID().toString();
+                  row.repoId = repoId;
+                  row.projectId = project.id;
+                  row.repoName = repoName;
+                  row.summary = summary;
+                  row.requester = SEEDER;
+                  row.state = state;
+                  row.mergedSha = mergedSha;
+                  row.createdAt = when;
+                  row.armedAt = when;
+                  row.updatedAt = when;
+                  more.accept(row);
+                  row.persist();
+                  return row.id;
+                });
+    seededRequests.add(id);
+    return id;
+  }
+
+  /** The suite request's branches: main, the bump (urgent) and the README change (not). */
+  private void estateSources(String requestId) {
+    source(requestId, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 9);
+    source(
+        requestId, "bump/contract-service", eu.wohlben.qits.projects.entity.ReleasePriority.HIGH, 10);
+    source(requestId, "docs/approval", eu.wohlben.qits.projects.entity.ReleasePriority.LOW, 11);
+  }
+
+  /** The service request's branches: main, the export (urgent) and the rounding fix. */
+  private void serviceSources(String requestId) {
+    source(requestId, "main", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 9);
+    source(requestId, "feature/export", eu.wohlben.qits.projects.entity.ReleasePriority.HIGH, 10);
+    source(requestId, "fix/rounding", eu.wohlben.qits.projects.entity.ReleasePriority.MEDIUM, 11);
+  }
+
+  private void source(
+      String requestId, String branch, eu.wohlben.qits.projects.entity.ReleasePriority priority, int minute) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var source = new eu.wohlben.qits.projects.entity.ReleaseRequestSource();
+              source.id = UUID.randomUUID().toString();
+              source.requestId = requestId;
+              source.kind = eu.wohlben.qits.projects.entity.ReleaseRequestSource.Kind.BRANCH;
+              source.name = branch;
+              source.priority = priority;
+              source.addedAt = SEEDED_AT.plusSeconds(60L * minute);
+              source.addedBy = SEEDER;
+              source.persist();
+            });
+  }
+
+  /** qits-ci's verdict about the fold, in the build-status ledger. */
+  private void verdict(
+      Project project, String repoId, String repoName, String requestId, String sha, String status, int minute) {
+    verdictOf(UUID.randomUUID().toString(), project, repoId, repoName, requestId, sha, status, minute);
+  }
+
+  private void verdictOf(
+      String runId,
+      Project project,
+      String repoId,
+      String repoName,
+      String requestId,
+      String sha,
+      String status,
+      int minute) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              CommitBuildStatus verdict = new CommitBuildStatus();
+              verdict.runId = runId;
+              verdict.repoId = repoId;
+              verdict.projectId = project.id;
+              verdict.repoName = repoName;
+              verdict.branch = ReleaseRequest.backingBranchOf(requestId);
+              verdict.commitSha = sha;
+              verdict.status = status;
+              verdict.finishedAt = SEEDED_AT.plusSeconds(60L * minute);
+              verdict.persist();
+            });
+    seededVerdicts.add(runId);
+  }
+
+  /** A phase run as qits-ci reported it; {@code finished} null for one still running. */
+  private String phaseRun(
+      String requestId, String repoId, String phase, String status, int started, Integer finished) {
+    return phaseRunWithId(
+        UUID.randomUUID().toString(), requestId, repoId, phase, status, started, finished);
+  }
+
+  private String phaseRunWithId(
+      String runId,
+      String requestId,
+      String repoId,
+      String phase,
+      String status,
+      int started,
+      Integer finished) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var run = new eu.wohlben.qits.projects.entity.ReleasePipelineRun();
+              run.runId = runId;
+              run.releaseRequestId = requestId;
+              run.repoId = repoId;
+              run.phase = phase;
+              run.status = status;
+              run.startedAt = SEEDED_AT.plusSeconds(60L * started);
+              run.finishedAt = finished == null ? null : SEEDED_AT.plusSeconds(60L * finished);
+              run.updatedAt = SEEDED_AT.plusSeconds(60L * (finished == null ? started : finished));
+              run.persist();
+            });
+    return runId;
+  }
+
+  /** A person's decision about the fold. */
+  private void decision(
+      String requestId,
+      String fold,
+      eu.wohlben.qits.projects.entity.ReleaseRequestApproval.Decision decision,
+      String note,
+      int minute) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var approval = new eu.wohlben.qits.projects.entity.ReleaseRequestApproval();
+              approval.id = UUID.randomUUID().toString();
+              approval.requestId = requestId;
+              approval.mergedSha = fold;
+              approval.decision = decision;
+              approval.actor = PERSON;
+              approval.note = note;
+              approval.decidedAt = SEEDED_AT.plusSeconds(60L * minute);
+              approval.persist();
+            });
+  }
+
+  /** The request's own released tag, not yet merged to main. */
+  private void releasedTag(
+      String repoId,
+      String requestId,
+      String releasedSha,
+      String publishRunId,
+      eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.PublishState publish,
+      String publishDetail) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var tag = new eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge();
+              tag.id = UUID.randomUUID().toString();
+              tag.repoId = repoId;
+              tag.tagName = RELEASED_VERSION;
+              tag.releasedSha = releasedSha;
+              tag.releaseRequestId = requestId;
+              tag.releasedAt = SEEDED_AT.plusSeconds(60L * 13);
+              tag.publishState = publish;
+              tag.publishDetail = publishDetail;
+              tag.publishRunId = publishRunId;
+              tag.persist();
+            });
+  }
+
+  /** Every automation fresh at the fold: the gate passed. */
+  private void automationsFresh(String requestId, String fold) {
+    automationLedger.record(
+        requestId,
+        new eu.wohlben.qits.projects.control.AutomationLedger.Note(
+            fold,
+            eu.wohlben.qits.projects.control.AutomationLedger.State.FRESH,
+            List.of(
+                automation("estate-pins", "Estate pins", "FRESH", fold, null, null),
+                automation("screenshot-baselines", "Screenshot baselines", "FRESH", fold, null, null)),
+            null,
+            null));
+  }
+
+  private static eu.wohlben.qits.projects.control.AutomationLedger.Automation automation(
+      String kind,
+      String label,
+      String state,
+      String fold,
+      String detail,
+      eu.wohlben.qits.projects.control.AutomationLedger.Failure failure) {
+    return new eu.wohlben.qits.projects.control.AutomationLedger.Automation(
+        kind,
+        label,
+        state,
+        detail,
+        List.of("bump-" + UUID.randomUUID()),
+        "maintenance/" + kind,
+        fold,
+        SEEDED_AT.plusSeconds(60L * 12),
+        failure);
+  }
+
+  /**
+   * The conflict a CONFLICTED row carries, as the fold wrote it: per path {@code {path, head,
+   * headSha, base, ours, theirs}}, every one a file conflict on content. A null side is a deletion.
+   */
+  private static String conflict(String target, String[]... paths) {
+    var node = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    node.put("target", target);
+    var conflicts = node.putArray("conflicts");
+    for (String[] p : paths) {
+      var entry = conflicts.addObject();
+      entry.put("path", p[0]);
+      entry.put("head", p[1]);
+      entry.put("headSha", p[2]);
+      entry.put("reason", "content");
+      entry.put("kind", "file");
+      entry.put("base", p[3]);
+      entry.put("ours", p[4]);
+      entry.put("theirs", p[5]);
+    }
+    return node.toString();
   }
 
   private void request(

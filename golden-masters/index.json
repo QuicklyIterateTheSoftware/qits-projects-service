@@ -819,6 +819,254 @@
       ]
     },
     {
+      "name": "a conflicted release request",
+      "slug": "a-conflicted-release-request",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-conflicted-release-request/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.conflict.target"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-conflicted-release-request/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-conflicted-release-request/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-conflicted-release-request/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-conflicted-release-request/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a declined release request",
+      "slug": "a-declined-release-request",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-declined-release-request/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.approvedAt",
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-declined-release-request/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "status": 200,
+          "file": "a-declined-release-request/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "status": 200,
+          "file": "a-declined-release-request/getReleaseRequestSubmoduleChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "status": 200,
+          "file": "a-declined-release-request/getReleaseRequestSubmoduleChanges.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-declined-release-request/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-declined-release-request/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [
+              "$.approvals[*].id"
+            ],
+            "instants": [
+              "$.approvals[*].decidedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-declined-release-request/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [
+              "$.files[*].submodule.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-declined-release-request/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a done epic with every task implemented",
       "slug": "a-done-epic-with-every-task-implemented",
       "params": {
@@ -1408,6 +1656,65 @@
       ]
     },
     {
+      "name": "a project with release requests in every state",
+      "slug": "a-project-with-release-requests-in-every-state",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listProjectReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/release-requests",
+          "status": 200,
+          "file": "a-project-with-release-requests-in-every-state/listProjectReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId"
+            ],
+            "instants": [
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt"
+            ],
+            "strings": [
+              "$.requests[*].backingBranch",
+              "$.requests[*].detail",
+              "$.requests[*].conflict.target"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "withdrawReleaseRequest",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/withdraw",
+          "body": {
+            "reason": "The export moves to next quarter's release."
+          },
+          "status": 200,
+          "file": "a-project-with-release-requests-in-every-state/withdrawReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with repositories in components",
       "slug": "a-project-with-repositories-in-components",
       "params": {
@@ -1708,6 +2015,1106 @@
             "instants": [],
             "strings": [
               "$.message"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a release request awaiting approval",
+      "slug": "a-release-request-awaiting-approval",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "declineReleaseRequest",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/decline",
+          "body": {
+            "mergedSha": "{mergedSha}",
+            "note": "The README promises an approval policy nobody has signed off yet."
+          },
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/declineReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.approvedAt",
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getReleaseRequestSubmoduleChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/getReleaseRequestSubmoduleChanges.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [
+              "$.files[*].submodule.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listRepositoryReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listRepositoryReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId",
+              "$.requests[*].pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.requests[*].automations[*].updatedAt",
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt",
+              "$.requests[*].pipeline.phases[*].startedAt",
+              "$.requests[*].pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.requests[*].backingBranch",
+              "$.requests[*].automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "setReleaseSourcePriority",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/sources/priority",
+          "body": {
+            "branch": "docs/approval",
+            "priority": "BLOCKING"
+          },
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/setReleaseSourcePriority.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "withdrawReleaseRequest",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/withdraw",
+          "body": {
+            "reason": "The export moves to next quarter's release."
+          },
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/withdrawReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a release request awaiting approval while its build runs",
+      "slug": "a-release-request-awaiting-approval-while-its-build-runs",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "approveReleaseRequest",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approve",
+          "body": {
+            "mergedSha": "{mergedSha}",
+            "note": "Read the diff: the pin moves to the export release."
+          },
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/approveReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.approvedAt",
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequestSubmoduleChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequestSubmoduleChanges.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/listCommitBuilds.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [
+              "$.files[*].submodule.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval-while-its-build-runs/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a release request held by a failed automation",
+      "slug": "a-release-request-held-by-a-failed-automation",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/getReleaseRequestSubmoduleChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/getReleaseRequestSubmoduleChanges.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [
+              "$.files[*].submodule.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "rerunReleaseRequestAutomation",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/automations/estate-pins/runs",
+          "body": {},
+          "status": 202,
+          "file": "a-release-request-held-by-a-failed-automation/rerunReleaseRequestAutomation.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [
+              "$.id"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "waiveReleaseRequestAutomations",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/automations/waivers",
+          "body": {
+            "foldSha": "{mergedSha}",
+            "reason": "qits-maintenance cannot read the suite; the pin was checked by hand."
+          },
+          "status": 200,
+          "file": "a-release-request-held-by-a-failed-automation/waiveReleaseRequestAutomations.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a release request rejected by its build",
+      "slug": "a-release-request-rejected-by-its-build",
+      "params": {
+        "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.detail"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "rerunReleasePipelinePhase",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/pipeline/QA/rerun",
+          "body": {},
+          "status": 200,
+          "file": "a-release-request-rejected-by-its-build/rerunReleasePipelinePhase.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.detail"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a release request whose publish failed",
+      "slug": "a-release-request-whose-publish-failed",
+      "params": {
+        "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "rerunReleasePipelinePhase",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/pipeline/PUBLISH/rerun",
+          "body": {},
+          "status": 200,
+          "file": "a-release-request-whose-publish-failed/rerunReleasePipelinePhase.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a released release request",
+      "slug": "a-released-release-request",
+      "params": {
+        "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-released-release-request/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-released-release-request/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "status": 200,
+          "file": "a-released-release-request/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-released-release-request/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-released-release-request/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-released-release-request/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-released-release-request/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "rerunReleasePipelinePhase",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/pipeline/DEPLOY/rerun",
+          "body": {},
+          "status": 200,
+          "file": "a-released-release-request/rerunReleasePipelinePhase.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
             ],
             "listFilteredTo": null
           }
@@ -2525,6 +3932,291 @@
             "strings": [
               "$.qualifiedId"
             ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a withdrawn release request",
+      "slug": "a-withdrawn-release-request",
+      "params": {
+        "mergedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-withdrawn-release-request/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "a-withdrawn-release-request/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "status": 200,
+          "file": "a-withdrawn-release-request/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "a-withdrawn-release-request/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "a-withdrawn-release-request/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "a-withdrawn-release-request/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "a-withdrawn-release-request/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an approved release request",
+      "slug": "an-approved-release-request",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "an-approved-release-request/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.pipeline.phases[*].runId"
+            ],
+            "instants": [
+              "$.request.approvedAt",
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt",
+              "$.request.pipeline.phases[*].startedAt",
+              "$.request.pipeline.phases[*].finishedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch",
+              "$.request.automations[*].runId"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestArtifacts",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/artifacts",
+          "status": 200,
+          "file": "an-approved-release-request/getReleaseRequestArtifacts.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "status": 200,
+          "file": "an-approved-release-request/getReleaseRequestChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChangeDiff",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "status": 200,
+          "file": "an-approved-release-request/getReleaseRequestSubmoduleChangeDiff.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getReleaseRequestSubmoduleChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "status": 200,
+          "file": "an-approved-release-request/getReleaseRequestSubmoduleChanges.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listCommitBuilds",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
+          "status": 200,
+          "file": "an-approved-release-request/listCommitBuilds.json",
+          "frozen": {
+            "ids": [
+              "$.builds[*].runId"
+            ],
+            "instants": [
+              "$.builds[*].finishedAt"
+            ],
+            "strings": [
+              "$.builds[*].branch"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestApprovals",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/approvals",
+          "status": 200,
+          "file": "an-approved-release-request/listReleaseRequestApprovals.json",
+          "frozen": {
+            "ids": [
+              "$.approvals[*].id"
+            ],
+            "instants": [
+              "$.approvals[*].decidedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestChanges",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes",
+          "status": 200,
+          "file": "an-approved-release-request/listReleaseRequestChanges.json",
+          "frozen": {
+            "ids": [
+              "$.files[*].submodule.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listReleaseRequestCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/commits",
+          "status": 200,
+          "file": "an-approved-release-request/listReleaseRequestCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
             "listFilteredTo": null
           }
         }

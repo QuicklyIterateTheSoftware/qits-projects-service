@@ -1,0 +1,334 @@
+{
+  "requests": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "repoId": "00000000-0000-4000-8000-000000000002",
+      "repoName": "contract-suite-app",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+      "sources": [
+        {
+          "kind": "BRANCH",
+          "name": "main",
+          "ref": "refs/heads/main",
+          "implicit": false,
+          "priority": "MEDIUM",
+          "addedBy": "contract-seeder"
+        },
+        {
+          "kind": "BRANCH",
+          "name": "bump/contract-service",
+          "ref": "refs/heads/bump/contract-service",
+          "implicit": false,
+          "priority": "BLOCKING",
+          "addedBy": "contract-seeder"
+        }
+      ],
+      "priority": "BLOCKING",
+      "mergedSha": "0000000000000000000000000000000000000007",
+      "state": "PENDING",
+      "summary": "Release the export across the suite",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": "Waiting for a person to approve 0000000000",
+      "approvalRequired": true,
+      "approvalState": "WAITING",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "kind": "APPROVAL",
+          "state": "PENDING",
+          "detail": "configured by manual-review"
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": null,
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "repoId": "00000000-0000-4000-8000-000000000005",
+      "repoName": "contract-service",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000004",
+      "sources": [],
+      "priority": "MEDIUM",
+      "mergedSha": "0000000000000000000000000000000000000006",
+      "state": "READY",
+      "summary": "Release the rounding fix",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": null,
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": null,
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "repoId": "00000000-0000-4000-8000-000000000005",
+      "repoName": "contract-service",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000006",
+      "sources": [],
+      "priority": "MEDIUM",
+      "mergedSha": "0000000000000000000000000000000000000005",
+      "state": "REJECTED",
+      "summary": "Release the CSV export",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": "Run 00000000-0000-4000-8000-000000000007 finished FAILURE for 0000000000000000000000000000000000000005",
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "FAILED",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": null,
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000008",
+      "repoId": "00000000-0000-4000-8000-000000000009",
+      "repoName": "contract-frontend",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000008",
+      "sources": [],
+      "priority": "MEDIUM",
+      "mergedSha": null,
+      "state": "CONFLICTED",
+      "summary": "Release the dark theme",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": "The sources cannot be folded: src/theme.css",
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": {
+        "target": "release/00000000-0000-4000-8000-000000000008",
+        "conflicts": [
+          {
+            "path": "src/theme.css",
+            "head": "refs/heads/feature/dark-theme",
+            "headSha": "0000000000000000000000000000000000000029",
+            "reason": "content",
+            "kind": "file",
+            "base": "0000000000000000000000000000000000000028",
+            "ours": "000000000000000000000000000000000000002a",
+            "theirs": "0000000000000000000000000000000000000029"
+          }
+        ]
+      },
+      "version": null,
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000000a",
+      "repoId": "00000000-0000-4000-8000-000000000009",
+      "repoName": "contract-frontend",
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000a",
+      "sources": [],
+      "priority": "MEDIUM",
+      "mergedSha": "0000000000000000000000000000000000000003",
+      "state": "FAILED",
+      "summary": "Release the PDF download",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": "The release could not push its tag: the git host refused the push.",
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": null,
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": true,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000000b",
+      "repoId": "00000000-0000-4000-8000-000000000009",
+      "repoName": "contract-frontend",
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000b",
+      "sources": [],
+      "priority": "MEDIUM",
+      "mergedSha": "0000000000000000000000000000000000000002",
+      "state": "RELEASED",
+      "summary": "Release the invoice screens",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": null,
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": "2026.101.100200",
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000000c",
+      "repoId": "00000000-0000-4000-8000-000000000005",
+      "repoName": "contract-service",
+      "backingBranch": "release/00000000-0000-4000-8000-00000000000c",
+      "sources": [],
+      "priority": "MEDIUM",
+      "mergedSha": "0000000000000000000000000000000000000001",
+      "state": "FINALIZED",
+      "summary": "Release the invoice service",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": null,
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": "2026.101.100100",
+      "supersededBy": null,
+      "releasedSha": null,
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null
+    }
+  ]
+}

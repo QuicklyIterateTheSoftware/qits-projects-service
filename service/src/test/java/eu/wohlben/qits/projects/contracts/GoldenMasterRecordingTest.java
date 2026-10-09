@@ -105,6 +105,7 @@ class GoldenMasterRecordingTest {
           + "\"acceptanceCriteria\":[\"It does what it says.\"]}";
 
   static final List<Interaction> INTERACTIONS =
+      withReleaseRequests(
       withWorkFamily(
           withWorkActions(
           List.of(
@@ -412,7 +413,136 @@ class GoldenMasterRecordingTest {
               "/projects/api/repositories/{repositoryId}",
               404,
               null,
-              null))));
+              null)))));
+
+  /**
+   * The landing app's release-request pages (epic qits-112): every read the detail page makes, in
+   * every detail state ({@link ProviderStates#RELEASE_REQUEST_DETAILS}), and each door it offers,
+   * recorded where it answers: decline, withdraw and the source priority on the request awaiting
+   * approval; approve where the build still runs (a green one would start a release inside the
+   * call); a pipeline rerun per phase; the automation rerun and the waiver where an automation
+   * failed. Plus the project-wide list and its withdraw.
+   */
+  private static List<Interaction> withReleaseRequests(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    String repository = "/projects/api/repositories/{repositoryId}";
+    String request = repository + "/release-requests/{requestId}";
+    for (String state : ProviderStates.RELEASE_REQUEST_DETAILS) {
+      boolean estate = ProviderStates.RELEASE_REQUEST_ESTATE_DETAILS.contains(state);
+      boolean folded = !state.equals(ProviderStates.A_CONFLICTED_RELEASE_REQUEST);
+      all.add(read(state, "getReleaseRequest", request));
+      all.add(read(state, "listReleaseRequestCommits", request + "/commits"));
+      all.add(read(state, "listReleaseRequestChanges", request + "/changes"));
+      all.add(read(state, "getReleaseRequestArtifacts", request + "/artifacts"));
+      all.add(read(state, "listReleaseRequestApprovals", request + "/approvals"));
+      if (folded) {
+        all.add(read(state, "listCommitBuilds", repository + "/commits/{mergedSha}/builds"));
+        all.add(
+            read(
+                state,
+                "getReleaseRequestChangeDiff",
+                request + "/changes/diff?path=" + (estate ? "README.md" : "src/invoice.txt")));
+      }
+      if (estate) {
+        String submodule = "?path=" + ProviderStates.ESTATE_SUBMODULE;
+        all.add(
+            read(
+                state,
+                "getReleaseRequestSubmoduleChanges",
+                request + "/changes/submodule" + submodule));
+        all.add(
+            read(
+                state,
+                "getReleaseRequestSubmoduleChangeDiff",
+                request + "/changes/submodule/diff" + submodule + "&file=src/export.txt"));
+      }
+    }
+    String awaiting = ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL;
+    all.add(read(awaiting, "listRepositoryReleaseRequests", repository + "/release-requests"));
+    all.add(
+        write(
+            awaiting,
+            "declineReleaseRequest",
+            "POST",
+            request + "/decline",
+            "{\"mergedSha\":\"{mergedSha}\","
+                + "\"note\":\"The README promises an approval policy nobody has signed off yet.\"}"));
+    all.add(
+        write(
+            awaiting,
+            "withdrawReleaseRequest",
+            "POST",
+            request + "/withdraw",
+            "{\"reason\":\"The export moves to next quarter's release.\"}"));
+    all.add(
+        write(
+            awaiting,
+            "setReleaseSourcePriority",
+            "POST",
+            request + "/sources/priority",
+            "{\"branch\":\"docs/approval\",\"priority\":\"BLOCKING\"}"));
+    all.add(
+        write(
+            ProviderStates.A_RELEASE_REQUEST_AWAITING_APPROVAL_WHILE_ITS_BUILD_RUNS,
+            "approveReleaseRequest",
+            "POST",
+            request + "/approve",
+            "{\"mergedSha\":\"{mergedSha}\","
+                + "\"note\":\"Read the diff: the pin moves to the export release.\"}"));
+    all.add(
+        write(
+            ProviderStates.A_RELEASED_RELEASE_REQUEST,
+            "rerunReleasePipelinePhase",
+            "POST",
+            request + "/pipeline/DEPLOY/rerun",
+            "{}"));
+    all.add(
+        write(
+            ProviderStates.A_RELEASE_REQUEST_WHOSE_PUBLISH_FAILED,
+            "rerunReleasePipelinePhase",
+            "POST",
+            request + "/pipeline/PUBLISH/rerun",
+            "{}"));
+    all.add(
+        write(
+            ProviderStates.A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD,
+            "rerunReleasePipelinePhase",
+            "POST",
+            request + "/pipeline/QA/rerun",
+            "{}"));
+    String held = ProviderStates.A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION;
+    all.add(
+        new Interaction(
+            held,
+            "rerunReleaseRequestAutomation",
+            "POST",
+            request + "/automations/estate-pins/runs",
+            202,
+            null,
+            null,
+            "{}"));
+    all.add(
+        write(
+            held,
+            "waiveReleaseRequestAutomations",
+            "POST",
+            request + "/automations/waivers",
+            "{\"foldSha\":\"{mergedSha}\","
+                + "\"reason\":\"qits-maintenance cannot read the suite; the pin was checked by"
+                + " hand.\"}"));
+    String list = ProviderStates.A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE;
+    all.add(
+        read(list, "listProjectReleaseRequests", "/projects/api/projects/{projectId}/release-requests"));
+    all.add(
+        write(
+            list,
+            "withdrawReleaseRequest",
+            "POST",
+            request + "/withdraw",
+            "{\"reason\":\"The export moves to next quarter's release.\"}"));
+    return List.copyOf(all);
+  }
+
 
   /**
    * The work family's own writes and thread operations ({@code /projects/api/work}, qits-969, epic

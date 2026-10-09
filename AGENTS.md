@@ -2895,7 +2895,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   path's and recorded unexpanded. A member name holding a state's token — `transitionWork`'s answer,
   keyed by qualified id — is frozen like a value, and that operation's index entry gains
   `frozen.keys` (the objects whose keys were frozen; written only where there is one) with `.*`
-  standing for the key in every path beneath. **Only `/work` operations are recorded** — `getWork`,
+  standing for the key in every path beneath. **The `/work` operations are recorded** — `getWork`,
   `listWorkComments`, `listProjectWork`, `listWorkArchetypes`, `setWorkStatus`, `listWorkMembers`
   (by a `campaignQualifiedId`-style param the campaign states gained), `listWorkDossier`,
   `listWorkDossierAssets`, `dispatchWork` and the rest of the family. Until qits-976 each was a twin
@@ -2908,6 +2908,15 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   audit entry's `snapshot` is JSON held as text — is frozen in place and the string listed under
   `frozen.strings`. `startWorkRefinement` is recorded as its 409: a room's row id is a database
   sequence no freezing reaches, and `getWorkDossierAssetContent` serves bytes and has none.
+  <br>**The release-request family is recorded too** (qits-112, the landing app's release pages):
+  every read of the detail page in each `RELEASE_REQUEST_DETAILS` state, each door it offers, and
+  the project-wide list. Those states seed two real repositories through `contracts/SeededGit`,
+  which commits at fixed times as a fixed person with the ambient git config shut out, so a fold,
+  its commits and its diffs are the same shas on every run. Approve and the waiver are recorded
+  where no release can start inside the call (CI not green, or a person still to approve). The
+  release flow's shared fakes the states need (`FakeActiveBuilds`, `FakeReleaseDecisions`,
+  `FakeDeploymentRequests`, `RecordingReleaseGitHost` per repository) are set by the state, never
+  assumed.
   <br>**The platform publishes it, from `release.yml`'s `contracts:` declaration** (epic qits-620;
   README "What a release publishes"): the jar `eu.wohlben.qits:qits-projects-golden-masters`, the
   npm package `@qits/projects-golden-masters` and the `@contracts/qits-projects` docs bundle, each

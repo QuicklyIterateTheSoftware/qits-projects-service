@@ -1,0 +1,98 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "repoId": "00000000-0000-4000-8000-000000000002",
+    "repoName": "contract-service",
+    "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "feature/export",
+        "ref": "refs/heads/feature/export",
+        "implicit": false,
+        "priority": "HIGH",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "fix/rounding",
+        "ref": "refs/heads/fix/rounding",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      }
+    ],
+    "priority": "HIGH",
+    "mergedSha": null,
+    "state": "CONFLICTED",
+    "summary": "Release the CSV export and the rounding fix",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "The sources cannot be folded: src/invoice.txt, README.md",
+    "approvalRequired": false,
+    "approvalState": "NOT_REQUIRED",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "gates": [
+      {
+        "kind": "CI",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "DEPLOYMENT",
+        "state": "PENDING",
+        "detail": null
+      }
+    ],
+    "automations": null,
+    "conflict": {
+      "target": "release/00000000-0000-4000-8000-000000000003",
+      "conflicts": [
+        {
+          "path": "src/invoice.txt",
+          "head": "refs/heads/fix/rounding",
+          "headSha": "9e9b62ddc848fa4ee6386e7f4473f7ea96fad6f5",
+          "reason": "content",
+          "kind": "file",
+          "base": "edf350dfabb86b68f03f6d9448036d47924efc0a",
+          "ours": "019f0d272475dfef0ace655cc6d8672c8cd9c80c",
+          "theirs": "9e9b62ddc848fa4ee6386e7f4473f7ea96fad6f5"
+        },
+        {
+          "path": "README.md",
+          "head": "refs/heads/feature/export",
+          "headSha": "2c5ca7094579eabffd87e5357f012136e6c692ad",
+          "reason": "content",
+          "kind": "file",
+          "base": "edf350dfabb86b68f03f6d9448036d47924efc0a",
+          "ours": null,
+          "theirs": "2c5ca7094579eabffd87e5357f012136e6c692ad"
+        }
+      ]
+    },
+    "version": null,
+    "supersededBy": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": null
+  }
+}

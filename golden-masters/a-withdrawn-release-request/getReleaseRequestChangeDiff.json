@@ -1,0 +1,5 @@
+{
+  "path": "src/invoice.txt",
+  "changeType": "MODIFIED",
+  "diff": "diff --git a/src/invoice.txt b/src/invoice.txt\nindex 0dd8ac5..791c2f6 100644\n--- a/src/invoice.txt\n+++ b/src/invoice.txt\n@@ -1 +1 @@\n-Totals round half up.\n+Totals round half to even."
+}

@@ -1,0 +1,85 @@
+{
+  "path": "components/contract/contract-service",
+  "repositoryId": "00000000-0000-4000-8000-000000000004",
+  "name": "contract-service",
+  "oldSha": "edf350dfabb86b68f03f6d9448036d47924efc0a",
+  "newSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+  "commits": [
+    {
+      "hash": "cb9776855921387be1951de5bbbf0914aa54b1bf",
+      "shortHash": "cb97768",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Release the CSV export and the rounding fix",
+      "files": []
+    },
+    {
+      "hash": "9e9b62ddc848fa4ee6386e7f4473f7ea96fad6f5",
+      "shortHash": "9e9b62d",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Round totals half to even",
+      "files": [
+        "src/invoice.txt"
+      ]
+    },
+    {
+      "hash": "2c5ca7094579eabffd87e5357f012136e6c692ad",
+      "shortHash": "2c5ca70",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Describe the export in the README",
+      "files": [
+        "README.md"
+      ]
+    },
+    {
+      "hash": "019f0d272475dfef0ace655cc6d8672c8cd9c80c",
+      "shortHash": "019f0d2",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Add the CSV export",
+      "files": [
+        "src/export.txt"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "oldPath": null,
+      "changeType": "MODIFIED",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "oldSha": "22b4cdd1e9aa8f6a1f65252647e56fe9db425929",
+      "newSha": "6fe0d928f526e702a761ee14f250998a0ff257ad",
+      "submodule": null
+    },
+    {
+      "path": "src/export.txt",
+      "oldPath": null,
+      "changeType": "ADDED",
+      "oldMode": null,
+      "newMode": "100644",
+      "oldSha": null,
+      "newSha": "ee9055ccdb2bfa77f38610857e2a00ad69ffb4c5",
+      "submodule": null
+    },
+    {
+      "path": "src/invoice.txt",
+      "oldPath": null,
+      "changeType": "MODIFIED",
+      "oldMode": "100644",
+      "newMode": "100644",
+      "oldSha": "0dd8ac591582a7f6197b301d4ca76a681aef07dc",
+      "newSha": "791c2f69836935c053ae1dcb146f7e39766db119",
+      "submodule": null
+    }
+  ],
+  "truncated": false,
+  "detail": null
+}
