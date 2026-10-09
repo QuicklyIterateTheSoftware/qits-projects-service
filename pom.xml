@@ -147,7 +147,7 @@
              (qits-runner-toolkit). One release carries both, so one property pins both. -->
         <qits.runner.version>2026.1008.135546</qits.runner.version>
         <qits.eventstream.version>2026.1003.44717</qits.eventstream.version>
-        <qits.githost-events.version>2026.1008.104919</qits.githost-events.version>
+        <qits.githost-events.version>2026.1009.80803</qits.githost-events.version>
 
         <!-- qits-containers' client jar: the orchestrator that owns every container this service
              starts, now that it holds no docker socket. Framework-free — one class, four answers,
