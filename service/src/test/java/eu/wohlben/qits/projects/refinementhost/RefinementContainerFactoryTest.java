@@ -66,9 +66,9 @@ public class RefinementContainerFactoryTest {
     assertEquals("project-1", env.get("QITS_WORKSPACE_DAEMON_PROJECT_ID"));
     assertEquals("demo-demo", env.get("QITS_WORKSPACE_DAEMON_REPO_NAME"));
     assertEquals("http://githost.dev.internal:8080/git", env.get("QITS_WORKSPACE_DAEMON_GIT_BASE_URL"));
-    // A refinement runs no code: no bootstrap chain and no service autostart, structurally.
+    // A refinement runs no code: no bootstrap chain, structurally; and no service switch exists.
     assertEquals("false", env.get("QITS_WORKSPACE_DAEMON_BOOTSTRAP_AUTORUN"));
-    assertEquals("false", env.get("QITS_WORKSPACE_DAEMON_SERVICES_AUTOSTART"));
+    assertFalse(env.containsKey("QITS_WORKSPACE_DAEMON_SERVICES_AUTOSTART"));
     assertFalse(env.containsKey("QITS_WORKSPACE_DAEMON_SERVICE_PROXY_BASE"));
     assertFalse(env.get("QITS_WORKSPACE_DAEMON_API_TOKEN").isBlank());
     // Two MCP servers, and no actions server — there is no actions surface on this route.
