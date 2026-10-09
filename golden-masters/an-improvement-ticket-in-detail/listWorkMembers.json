@@ -57,7 +57,10 @@
         "qualifiedId": "contract-00000001-10",
         "title": "Invoice totals are off by one cent",
         "status": "IMPLEMENTING",
-        "blocked": true
+        "blocked": true,
+        "blockSource": "EXPLICIT",
+        "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
+        "blockedBy": "qits-agent"
       },
       "claimedAt": null,
       "joinedRunning": false,

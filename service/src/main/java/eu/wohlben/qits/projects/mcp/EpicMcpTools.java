@@ -1,5 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -131,7 +133,10 @@ public class EpicMcpTools {
       String status,
       boolean blocked,
       String description,
-      List<String> acceptanceCriteria) {}
+      List<String> acceptanceCriteria,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   /**
    * A task inside {@link EpicDetail}. {@code qualifiedId} only — see {@link EpicSummary}. {@code
@@ -177,7 +182,10 @@ public class EpicMcpTools {
       List<String> acceptanceCriteria,
       String supersededByEpicId,
       List<FeatureDetail> features,
-      List<CommentMcpTools.CommentDetail> comments) {}
+      List<CommentMcpTools.CommentDetail> comments,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   /** A feature on its own, as returned by the feature write tools. */
   public record FeatureSummary(
@@ -322,18 +330,22 @@ public class EpicMcpTools {
                           .toList());
                 })
             .toList();
+    EntityBlockState block = EntityBlockState.of(epic);
     return new EpicDetail(
         epic.id,
         QualifiedEntityIds.render(projectSlug, epic.number),
         epic.slug,
         epic.title,
         epic.status,
-        epic.blocked,
+        block.blocked(),
         epic.description,
         List.copyOf(epic.acceptanceCriteria),
         epic.supersededByEntityId,
         features,
-        CommentMcpTools.threadOf(thread, epic.id));
+        CommentMcpTools.threadOf(thread, epic.id),
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 
   @McpServer("repository")
@@ -887,6 +899,7 @@ public class EpicMcpTools {
   }
 
   private static EpicSummary summarizeEpic(WorkEntity epic, String projectSlug) {
+    EntityBlockState block = EntityBlockState.of(epic);
     return new EpicSummary(
         epic.id,
         QualifiedEntityIds.render(projectSlug, epic.number),
@@ -894,9 +907,12 @@ public class EpicMcpTools {
         epic.title,
         // The merged column holds the enum's own name(), which is what the old status.name() was.
         epic.status,
-        epic.blocked,
+        block.blocked(),
         epic.description,
-        List.copyOf(epic.acceptanceCriteria));
+        List.copyOf(epic.acceptanceCriteria),
+        block.source(),
+        block.reason(),
+        block.blockedBy());
   }
 
   /**

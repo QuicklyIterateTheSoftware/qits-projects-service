@@ -27,5 +27,8 @@
   "blocked": true,
   "acceptanceCriteria": [
     "It does what it says."
-  ]
+  ],
+  "blockSource": "EXPLICIT",
+  "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
+  "blockedBy": "qits-agent"
 }

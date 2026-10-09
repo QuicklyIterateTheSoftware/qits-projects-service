@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.api;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +17,10 @@ public final class CampaignDtos {
   /**
    * A campaign in a project's listing. {@code blocked} here and on {@link CampaignDto} and {@link
    * CampaignProgressCampaignDto} is the campaign's own flag (qits-592): while it holds, the executor
-   * claims no new member.
+   * claims no new member. Since qits-895 every {@code blocked} in these records is the EFFECTIVE
+   * block ({@code EntityBlockState}), with {@code blockSource}, {@code blockReason} and {@code
+   * blockedBy} beside it and absent while it is not blocked; the executor reads the explicit flag
+   * alone.
    */
   public record CampaignSummaryDto(
       String id,
@@ -28,7 +32,10 @@ public final class CampaignDtos {
       boolean blocked,
       boolean started,
       boolean active,
-      int members) {}
+      int members,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   /** A campaign with its start and its members, ordered by position. */
   public record CampaignDto(
@@ -42,7 +49,10 @@ public final class CampaignDtos {
       String status,
       boolean blocked,
       CampaignStartDto start,
-      List<CampaignMemberDto> members) {}
+      List<CampaignMemberDto> members,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   /** A campaign's start; null on a campaign never started. */
   public record CampaignStartDto(
@@ -69,7 +79,10 @@ public final class CampaignDtos {
       String qualifiedId,
       String title,
       String status,
-      boolean blocked) {}
+      boolean blocked,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   /** Where the campaign's dispatch of a member landed; every field null until it has. */
   public record CampaignDispatchDto(String workspaceId, String branch, String agentLaunch) {}
@@ -112,7 +125,10 @@ public final class CampaignDtos {
       String title,
       String status,
       boolean blocked,
-      CampaignStartDto start) {}
+      CampaignStartDto start,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+      @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
 
   /**
    * The criteria evaluator's health — what tells a correct wait from nothing listening.

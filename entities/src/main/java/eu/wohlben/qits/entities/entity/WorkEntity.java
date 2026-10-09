@@ -1,5 +1,6 @@
 package eu.wohlben.qits.entities.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import eu.wohlben.qits.eventstream.CausationStamp;
 import eu.wohlben.qits.eventstream.CausedRow;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
@@ -192,6 +193,13 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    * {@link Archetype#CAMPAIGN} — and false on a feature and a task, which hold a status (qits-763)
    * but run no phase of their own to block.
    *
+   * <p><b>It is the EXPLICIT block, and the only one a gate reads</b> (qits-895). An answer's
+   * {@code blocked} is the effective value — this OR an agent session that has stood waiting for a
+   * person past the debounce ({@link #agentWaitingSince}, {@code EntityBlockState}) — but the
+   * dispatch refusal, the phase advance and the campaign executor read this column alone, so a
+   * derived block never stops work. Who set it and why are {@link #blockedBy} and {@link
+   * #blockedReason}.
+   *
    * <p><b>It is a flag and not a status, and that is the decision rather than a shortcut.</b>
    * {@link EntityStatus} forbids a word for what is being <em>done</em> — there is no {@code
    * IN_PROGRESS} there and there must never be one — and a {@code BLOCKED} word would be worse than
@@ -255,6 +263,57 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
    */
   @Column(name = "pre_approved_by")
   public String preApprovedBy;
+
+  /**
+   * <b>Who set the explicit block</b> ({@link #blocked}), or {@code null} while it is not set
+   * (qits-895). Written with {@link #blockedReason} by {@code WorkEntityService.setBlocked} and
+   * cleared with the flag — by an unblock and by every transition. Not an {@code EntityProperty},
+   * for {@link #blocked}'s reason.
+   */
+  @Column(name = "blocked_by")
+  public String blockedBy;
+
+  /**
+   * <b>The stated blocker of the explicit block</b>, as the door said it on the entity's thread, or
+   * {@code null} while it is not set (qits-895). The thread stays where the blocker is said; this
+   * copy exists so an answer — a listing included — can say why an entity is blocked without
+   * reading the thread. Null on a row blocked before epics V28, which nothing backfills.
+   */
+  @Column(name = "blocked_reason")
+  public String blockedReason;
+
+  /**
+   * <b>When the agent session working this entity began waiting for a person</b>, or {@code null}
+   * — the source of the <em>derived</em> block (qits-895). The session reports it through {@code
+   * POST /work/{id}/agent-waiting}; the block is effective only once it has stood for the debounce
+   * ({@code EntityBlockState}), so a turn that ends and is answered at once never reads as blocked.
+   *
+   * <p><b>It never touches {@link #blocked}</b>, and no gate reads it: a derived block is something
+   * to show a person, never a reason to refuse a dispatch or withhold a phase turn. Cleared by the
+   * session's own {@code waiting=false}, by an explicit unblock and by every transition.
+   *
+   * <p>{@code @JsonIgnore}, with its two siblings: an audit snapshot is this row serialised, and
+   * session state is not audited — nothing derived writes an audit row, so none should leave a
+   * trace in the rows a person's write does.
+   */
+  @JsonIgnore
+  @Column(name = "agent_waiting_since")
+  public Instant agentWaitingSince;
+
+  /** What the session said it is waiting for — the hook that reported it — or {@code null}. */
+  @JsonIgnore
+  @Column(name = "agent_waiting_cause")
+  public String agentWaitingCause;
+
+  /**
+   * <b>The newest session frame applied to this row, or its last transition</b> (qits-895). A frame
+   * stamped earlier than this, less a skew tolerance, is ignored: frames race, and one sent before a
+   * transition must not re-derive a block at the status the transition moved to — which is why
+   * every transition stamps it.
+   */
+  @JsonIgnore
+  @Column(name = "agent_activity_at")
+  public Instant agentActivityAt;
 
   /**
    * Bug, improvement or the platform's own maintenance failure ({@link TicketType}), on a ticket and

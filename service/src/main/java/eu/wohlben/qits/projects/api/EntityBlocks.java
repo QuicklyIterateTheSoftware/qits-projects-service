@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.api;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import eu.wohlben.qits.entities.control.Archetypes;
+import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.EntityCommentService;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -52,7 +54,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * the same reason and are the precedent: what an entity's status <em>means for the work</em> is
  * decided in this package, and the row is written one module down.
  *
- * <h2>The reason is a comment and not a column</h2>
+ * <h2>The reason is a comment first, and a column only as its copy</h2>
  *
  * <p>A blocker is a remark with an author and a time — which is what the thread already is, and
  * every archetype has one since qits-551 — so it lands through {@code EntityCommentService
@@ -61,6 +63,19 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * It is <b>required when blocking</b> because a block with no stated blocker is one nobody can
  * clear: the next reader is told the work stopped and not what would restart it. It is optional
  * when unblocking, where the entity simply resumes and there may be nothing to add.
+ *
+ * <p>Since qits-895 the row also keeps the last stated blocker and who stated it ({@code
+ * blocked_reason}, {@code blocked_by}): every answer now says why an entity is blocked beside the
+ * flag, a listing included, and a listing cannot read threads. The thread stays the record; the
+ * columns are cleared with the flag.
+ *
+ * <h2>Two sources, one effective flag (qits-895)</h2>
+ *
+ * <p>Besides this explicit block an entity reads as blocked while its agent session has stood
+ * waiting for a person past the debounce ({@link AgentWaiting}, {@code EntityBlockState}). This door
+ * writes only the explicit one, with one exception: an <b>unblock clears the derived wait too</b>,
+ * and counts as a change — the comment and the agents' signal — whenever the <em>effective</em>
+ * value was true, even when only the derived block stood. Unblocking is never refused.
  *
  * <p><b>The comment is written before the row is, and never after.</b> A comment that failed would
  * otherwise leave a blocked entity with no stated blocker, which is the one state this door exists
@@ -108,10 +123,34 @@ public class EntityBlocks {
   @Schema(
       name = "EntityBlock",
       description = "An entity's block flag as the write left it, with its archetype and status.")
-  public record Blocked(String entityId, Archetype archetype, String status, boolean blocked) {
+  public record Blocked(
+      String entityId,
+      Archetype archetype,
+      String status,
+      @Schema(
+              description =
+                  "The effective block: an explicit block, or the agent session waiting for a"
+                      + " person past the debounce")
+          boolean blocked,
+      @Schema(description = "EXPLICIT, AGENT_WAITING or BOTH; absent while not blocked")
+          @JsonInclude(JsonInclude.Include.NON_NULL)
+          String blockSource,
+      @Schema(
+              description =
+                  "The explicit block's stated reason, else the agent-waiting sentence; absent while"
+                      + " not blocked")
+          @JsonInclude(JsonInclude.Include.NON_NULL)
+          String blockReason,
+      @Schema(description = "Who set the explicit block; absent otherwise")
+          @JsonInclude(JsonInclude.Include.NON_NULL)
+          String blockedBy) {
 
+    /** The row's effective block ({@link EntityBlockState}), as it stands now. */
     public static Blocked of(WorkEntity row) {
-      return new Blocked(row.id, row.archetype, row.status, row.blocked);
+      EntityBlockState block = EntityBlockState.of(row);
+      return new Blocked(
+          row.id, row.archetype, row.status, block.blocked(), block.source(), block.reason(),
+          block.blockedBy());
     }
   }
 
@@ -140,13 +179,16 @@ public class EntityBlocks {
       requireBlockable(entity);
     }
     // Read before the write: the door's row is the value the flag had, and only a change is told.
-    boolean was = entity.blocked;
+    // The EFFECTIVE value (qits-895): an unblock that clears only a derived block is a change too.
+    boolean was = EntityBlockState.of(entity).blocked();
     thread.addComment(entity.id, remark(blocked, stated), changedBy);
-    WorkEntity written = entities.setBlocked(entity.archetype, entity.id, blocked, changedBy);
+    WorkEntity written =
+        entities.setBlocked(
+            entity.archetype, entity.id, blocked, blocked ? stated : null, changedBy);
     if (!blocked && written.archetype == Archetype.CAMPAIGN) {
       executor.sweep(written.id);
     }
-    if (was != blocked) {
+    if (was != EntityBlockState.of(written).blocked()) {
       // Ticket and epic only, never throws — AgentEntitySignals filters and swallows both.
       agents.changed(written);
     }
@@ -186,14 +228,7 @@ public class EntityBlocks {
               + " runs no phase of its own, so there is nothing to block — its phase is its"
               + " epic's; block the epic instead.");
     }
-    // A campaign runs no phase of its own; its block is about its executor (qits-592). Asked by
-    // status rather than through phaseOf, because since qits-887 REFINED starts no phase, and a
-    // REFINED campaign is exactly the one that runs.
-    boolean blockable =
-        entity.archetype == Archetype.CAMPAIGN
-            ? campaignBlockable(entity.status)
-            : PhasePrompts.phaseOf(entity).isPresent();
-    if (!blockable) {
+    if (!blockable(entity)) {
       throw new ConflictException(
           noun
               + " "
@@ -203,6 +238,24 @@ public class EntityBlocks {
               + ", so no phase is running and there is nothing to block — a block says the work"
               + " that runs now cannot finish, and no work runs while this status holds.");
     }
+  }
+
+  /**
+   * <b>Whether this entity may be blocked at all</b>: a kind with a phase, at a status that starts
+   * one — {@link #requireBlockable}'s question without its refusal. Also the rule the derived block
+   * reads ({@link AgentWaiting}, qits-895): a session waiting on an entity nothing could block
+   * derives nothing, so the two sources agree on where a block can stand.
+   */
+  static boolean blockable(WorkEntity entity) {
+    if (Archetypes.isPlanPiece(entity.archetype)) {
+      return false;
+    }
+    // A campaign runs no phase of its own; its block is about its executor (qits-592). Asked by
+    // status rather than through phaseOf, because since qits-887 REFINED starts no phase, and a
+    // REFINED campaign is exactly the one that runs.
+    return entity.archetype == Archetype.CAMPAIGN
+        ? campaignBlockable(entity.status)
+        : PhasePrompts.phaseOf(entity).isPresent();
   }
 
   /**

@@ -433,6 +433,12 @@ components:
           type: string
         blocked:
           type: boolean
+        blockSource:
+          type: string
+        blockReason:
+          type: string
+        blockedBy:
+          type: string
     CampaignMemberProgressDto:
       type: object
       properties:
@@ -491,6 +497,12 @@ components:
           type: boolean
         start:
           $ref: "#/components/schemas/CampaignStartDto"
+        blockSource:
+          type: string
+        blockReason:
+          type: string
+        blockedBy:
+          type: string
     CampaignProgressDto:
       type: object
       properties:
@@ -1235,6 +1247,18 @@ components:
           type: string
         blocked:
           type: boolean
+          description: "The effective block: an explicit block, or the agent session\
+            \ waiting for a person past the debounce"
+        blockSource:
+          type: string
+          description: "EXPLICIT, AGENT_WAITING or BOTH; absent while not blocked"
+        blockReason:
+          type: string
+          description: "The explicit block's stated reason, else the agent-waiting\
+            \ sentence; absent while not blocked"
+        blockedBy:
+          type: string
+          description: Who set the explicit block; absent otherwise
     EntityDispatchDto:
       type: object
       properties:
@@ -1277,6 +1301,12 @@ components:
         mode:
           $ref: "#/components/schemas/DispatchMode"
         preApprovedBy:
+          type: string
+        blockSource:
+          type: string
+        blockReason:
+          type: string
+        blockedBy:
           type: string
     EntityProperty:
       type: string
@@ -1350,6 +1380,12 @@ components:
           type: string
         blocked:
           type: boolean
+        blockSource:
+          type: string
+        blockReason:
+          type: string
+        blockedBy:
+          type: string
     EntityTransition:
       type: object
       properties:
@@ -2621,6 +2657,12 @@ components:
           type: array
           items:
             type: string
+        blockSource:
+          type: string
+        blockReason:
+          type: string
+        blockedBy:
+          type: string
     UUID:
       type: string
       format: uuid
@@ -2664,6 +2706,28 @@ components:
       properties:
         reason:
           type: string
+    WorkAgentWaitingReport:
+      type: object
+      required:
+      - waiting
+      description: Whether the agent session working an entity is waiting for a person.
+      properties:
+        waiting:
+          type: boolean
+          description: true when the session ended its turn with nothing in flight;
+            false when it is working again
+        cause:
+          type: string
+          description: What the session says it is waiting for (the hook that reported
+            it)
+        sessionId:
+          type: string
+          description: "The reporting session, for the log"
+        at:
+          type: integer
+          format: int64
+          description: "When the session stamped the frame, epoch milliseconds; absent\
+            \ reads as now. A frame older than the entity's last activity is ignored"
     WorkAudit:
       type: object
       description: "A work entity's change history, newest first."
@@ -6901,6 +6965,44 @@ paths:
         - qits:admin
         - qits:admin-agent
         - qits:agent
+  /projects/api/work/{qualifiedId}/agent-waiting:
+    post:
+      summary: Report whether the agent session on a work entity is waiting for a
+        person
+      description: "A session that stays waiting past the debounce makes the entity\
+        \ read as blocked (blockSource AGENT_WAITING) without setting its explicit\
+        \ block; waiting=false clears it. Ignored for a status that starts no phase,\
+        \ a feature or a task, and a frame older than the entity's last activity.\
+        \ Never refuses a dispatch."
+      operationId: reportWorkAgentWaiting
+      parameters:
+      - name: qualifiedId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkAgentWaitingReport"
+        required: true
+      responses:
+        "204":
+          description: The frame was taken (or ignored)
+        "400":
+          description: No waiting value
+        "404":
+          description: No entity with this id
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+      tags:
+      - Work Agent Waiting Controller
+      security:
+      - SecurityScheme:
+        - qits:system
   /projects/api/work/{qualifiedId}/audit:
     get:
       summary: A work entity's change history

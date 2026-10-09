@@ -969,7 +969,7 @@ public class WorkEntityService {
         kind.supersedable() && SUPERSEDE.equals(target) ? supersede(kind, row, changedBy) : null;
     List<Carried> carried = carryDescendants(row, statusOf(statusBefore), to, changedBy);
     row.status = to.name();
-    row.blocked = false;
+    clearBlocks(row, Instant.now());
     if (to == EntityStatus.DROPPED) {
       // A pre-approval (qits-1075) is for the run of work that was decided against: it does not
       // survive into whatever a reopen starts. Cleared here, where every lifecycle move lands, so
@@ -1175,6 +1175,22 @@ public class WorkEntityService {
   }
 
   /**
+   * <b>Every transition clears both blocks</b> (qits-895): the explicit flag with who set it and why,
+   * and the derived agent wait — a block is scoped to the phase it blocks, and a move starts another
+   * one. It also stamps {@code agentActivityAt}, so a session frame sent before the move (frames
+   * race) is older than the row's activity and cannot re-derive a block at the new status. Shared by
+   * {@link #transition} and {@code EntityTransitionService}, the two doors that move a status.
+   */
+  static void clearBlocks(WorkEntity row, Instant now) {
+    row.blocked = false;
+    row.blockedBy = null;
+    row.blockedReason = null;
+    row.agentWaitingSince = null;
+    row.agentWaitingCause = null;
+    row.agentActivityAt = now;
+  }
+
+  /**
    * <b>Sets or clears {@code blocked}, and it is a door of its own for the reason {@link
    * #transition} is.</b> {@link #update} cannot touch the status, because a statement about where the
    * work stands is not the same act as editing the text that describes it; the flag gets that same
@@ -1187,17 +1203,35 @@ public class WorkEntityService {
    * second list of the phased statuses written here would be the drift the machine exists to
    * prevent.
    *
-   * <p>The reason is not stored on the row and this method does not take one: a blocker is a remark
-   * with an author and a time, which is what the thread already is. Idempotent: blocking a blocked
-   * row records the UPDATE again, because the door's comment is the point of the call.
+   * <p>The blocker is said on the thread, by the door, and a copy of it is kept on the row with who
+   * set it ({@code blockedReason}, {@code blockedBy}, qits-895) so an answer can say why an entity is
+   * blocked without reading its thread; both are cleared with the flag. <b>An unblock clears the
+   * derived agent wait too</b>: a person saying "go on" answers whatever the session was waiting
+   * for. Idempotent: blocking a blocked row records the UPDATE again, because the door's comment is
+   * the point of the call.
    */
   public WorkEntity setBlocked(Archetype archetype, String id, boolean blocked, String changedBy) {
+    return setBlocked(archetype, id, blocked, null, changedBy);
+  }
+
+  /** {@link #setBlocked(Archetype, String, boolean, String)}, keeping the stated reason. */
+  public WorkEntity setBlocked(
+      Archetype archetype, String id, boolean blocked, String reason, String changedBy) {
     Kind kind = kind(archetype);
     return writes.hold(
         kind.label("blocked"),
         () -> {
           WorkEntity row = lookup(archetype, id);
           row.blocked = blocked;
+          if (blocked) {
+            row.blockedBy = changedBy;
+            row.blockedReason = reason == null || reason.isBlank() ? null : reason.trim();
+          } else {
+            row.blockedBy = null;
+            row.blockedReason = null;
+            row.agentWaitingSince = null;
+            row.agentWaitingCause = null;
+          }
           requireArchetypeValid(row, Demand.ON_UPDATE);
           WorkEntity written = settled(row);
           audit(written, written.id, AuditOperation.UPDATE, changedBy);

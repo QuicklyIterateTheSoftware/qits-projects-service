@@ -1,0 +1,33 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "archetype": "TICKET",
+  "projectId": "00000000-0000-4000-8000-000000000001",
+  "number": 1,
+  "qualifiedId": "contract-00000001-1",
+  "title": "Export waits on a question nobody answered",
+  "slug": "export-waits-on-a-question-nobody-answered",
+  "slugScope": "00000000-0000-4000-8000-000000000001",
+  "description": null,
+  "status": "REPORTED",
+  "statusBefore": null,
+  "ticketType": "BUG",
+  "impetus": "Seeded work.",
+  "assignee": null,
+  "createdBy": "contract-seeder",
+  "supersededBy": null,
+  "repositoryId": null,
+  "implementedAt": null,
+  "implementingAt": null,
+  "dependsOn": null,
+  "parent": null,
+  "position": null,
+  "createdAt": "2026-01-01T00:00:00Z",
+  "updatedAt": "2026-01-01T00:00:00Z",
+  "changedBy": null,
+  "blocked": true,
+  "acceptanceCriteria": [
+    "It does what it says."
+  ],
+  "blockSource": "AGENT_WAITING",
+  "blockReason": "The agent ended its turn with nothing in flight and is waiting for a person."
+}

@@ -70,7 +70,9 @@ import java.util.List;
  * @param updatedAt when the transition committed
  * @param changedBy who made the transition — the audit principal the write was recorded under.
  *     <b>Null on every read</b>, for {@link #statusBefore}'s reason
- * @param blocked whether the phase the entity's status starts is stuck — {@code entity.blocked}, on
+ * @param blocked whether the phase the entity's status starts is stuck — the EFFECTIVE block
+ *     (qits-895, {@link EntityBlockState}): {@code entity.blocked}, the explicit block, OR an agent
+ *     session that has stood waiting for a person past the debounce. On
  *     every archetype with a lifecycle (a ticket since qits-548, an epic and a campaign since
  *     qits-592, when the block door stopped being a ticket's alone). <b>Null, and left off the wire,
  *     for a feature and a task</b>: they hold a status since qits-763 but run no phase of their own
@@ -79,6 +81,14 @@ import java.util.List;
  * @param acceptanceCriteria an epic's or a ticket's acceptance criteria, in order (qits-887) — an
  *     empty list when it has none. <b>Null, and left off the wire, for every other kind</b>, which
  *     has no slot for them
+ * @param blockSource why {@link #blocked} is true (qits-895): {@code EXPLICIT}, {@code
+ *     AGENT_WAITING} or {@code BOTH}. <b>Null, and left off the wire</b>, while it is not blocked
+ *     and on a feature and a task
+ * @param blockReason the explicit block's stated reason, else — for a derived block alone — the
+ *     fixed sentence {@link EntityBlockState#AGENT_WAITING_REASON}. Null and left off the wire while
+ *     not blocked, and on an explicit block set before the reason was stored
+ * @param blockedBy who set the explicit block; null and left off the wire otherwise, a derived block
+ *     included — nobody set it
  */
 public record TransitionedEntity(
     String id,
@@ -107,7 +117,10 @@ public record TransitionedEntity(
     Instant updatedAt,
     String changedBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) Boolean blocked,
-    @JsonInclude(JsonInclude.Include.NON_NULL) List<String> acceptanceCriteria) {
+    @JsonInclude(JsonInclude.Include.NON_NULL) List<String> acceptanceCriteria,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {
 
   /**
    * The same entity, told what it is called in a commit subject: the value is resolved in {@code
@@ -141,7 +154,10 @@ public record TransitionedEntity(
         updatedAt,
         changedBy,
         blocked,
-        acceptanceCriteria);
+        acceptanceCriteria,
+        blockSource,
+        blockReason,
+        blockedBy);
   }
 
   /**
@@ -169,6 +185,7 @@ public record TransitionedEntity(
    * /entities/{id}} that {@code PATCH /work/{qualifiedId}} replaced).
    */
   public static TransitionedEntity edited(WorkEntity row, TransitionedEntity before) {
+    EntityBlockState block = blockOf(row);
     return new TransitionedEntity(
         row.id,
         row.archetype,
@@ -195,8 +212,11 @@ public record TransitionedEntity(
         row.createdAt,
         row.updatedAt,
         null,
-        blockedOf(row),
-        criteriaOf(row));
+        block == null ? null : block.blocked(),
+        criteriaOf(row),
+        block == null ? null : block.source(),
+        block == null ? null : block.reason(),
+        block == null ? null : block.blockedBy());
   }
 
   /**
@@ -235,7 +255,10 @@ public record TransitionedEntity(
         read.updatedAt(),
         changedBy,
         read.blocked(),
-        read.acceptanceCriteria());
+        read.acceptanceCriteria(),
+        read.blockSource(),
+        read.blockReason(),
+        read.blockedBy());
   }
 
   /**
@@ -245,6 +268,7 @@ public record TransitionedEntity(
    */
   static TransitionedEntity of(
       WorkEntity row, EntityMembership edge, String statusBefore, String changedBy) {
+    EntityBlockState block = blockOf(row);
     return new TransitionedEntity(
         row.id,
         row.archetype,
@@ -271,8 +295,11 @@ public record TransitionedEntity(
         row.createdAt,
         row.updatedAt,
         changedBy,
-        blockedOf(row),
-        criteriaOf(row));
+        block == null ? null : block.blocked(),
+        criteriaOf(row),
+        block == null ? null : block.source(),
+        block == null ? null : block.reason(),
+        block == null ? null : block.blockedBy());
   }
 
   /**
@@ -287,10 +314,10 @@ public record TransitionedEntity(
   }
 
   /**
-   * A phased kind's flag, and null for a kind no door raises it on — a feature and a task, which
-   * hold a status but no phase. See {@link #blocked}.
+   * A phased kind's effective block ({@link EntityBlockState}), and null for a kind nothing blocks —
+   * a feature and a task, which hold a status but no phase. See {@link #blocked}.
    */
-  private static Boolean blockedOf(WorkEntity row) {
-    return Archetypes.isPlanPiece(row.archetype) ? null : row.blocked;
+  private static EntityBlockState blockOf(WorkEntity row) {
+    return Archetypes.isPlanPiece(row.archetype) ? null : EntityBlockState.of(row);
   }
 }
