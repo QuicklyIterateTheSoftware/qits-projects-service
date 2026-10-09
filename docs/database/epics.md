@@ -84,9 +84,14 @@ erDiagram
   %% entity: eu.wohlben.qits.entities.entity.WorkEntity (entities)
   entity {
     string id PK "not null"
+    instant agent_activity_at
+    string agent_waiting_cause
+    instant agent_waiting_since
     enum archetype "not null"
     string assignee
     boolean blocked "not null"
+    string blocked_by
+    string blocked_reason
     uuid causation_id
     instant created_at "not null"
     string created_by
