@@ -177,7 +177,10 @@ class FrontDeskTest {
     return runners.greenlight(id);
   }
 
-  /** Dial as {@code clientId}, say hello at the pin, read the ack and the greeting's estate. */
+  /**
+   * Dial as {@code clientId}, say hello at the pin, read the ack, the greeting's estate and the
+   * backlog that follows it.
+   */
   private FakeDeskRunner greeted(String clientId) throws Exception {
     String bearer =
         MockIdp.attach()
@@ -191,6 +194,7 @@ class FrontDeskTest {
     runner.send(FakeDeskRunner.hello(DeskRunnerBinary.VERSION, List.of()));
     runner.expect(Ack.class);
     runner.await(Estate.class);
+    runner.expectBacklog();
     return runner;
   }
 
@@ -383,6 +387,111 @@ class FrontDeskTest {
     assertTrue(again.desks().stream().allMatch(d -> d.desired() == DesiredState.RUNNING));
   }
 
+  // --- the backlog (qits-1110) -------------------------------------------------------------------
+
+  /** Dial as {@code clientId} and say hello at the pin, reading nothing. */
+  private FakeDeskRunner hello(String clientId) throws Exception {
+    String bearer =
+        MockIdp.attach()
+            .token()
+            .subject(clientId)
+            .audience("qits-platform")
+            .groups(DeskRunnerSocket.RUNNER_ROLE)
+            .mint();
+    FakeDeskRunner runner = FakeDeskRunner.connect(vertx, endpoint, bearer);
+    dialled.add(runner);
+    runner.send(FakeDeskRunner.hello(DeskRunnerBinary.VERSION, List.of()));
+    return runner;
+  }
+
+  /**
+   * A runner greeted while a desk waits is told the backlog right after its estate — without it the
+   * runner's slot ledger never reserves — and its reserve then takes the desk.
+   */
+  @Test
+  void aGreetingWithADeskQueuedIsToldTheBacklogAndTakesIt() throws Exception {
+    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
+    sweep.sweep(Instant.now());
+    assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
+    runner("fd-backlog-greet", 1);
+
+    FakeDeskRunner runner = hello("fd-backlog-greet");
+    runner.expect(Ack.class);
+    runner.expect(Estate.class);
+    assertTrue(runner.expectBacklog().queued() >= 1, "the queued desk is in the backlog");
+    List<String> order = runner.arrivals();
+    assertTrue(
+        order.indexOf("Estate") < order.indexOf("Backlog"),
+        "the backlog follows the estate: " + order);
+
+    runner.send(new Reserve());
+    assertEquals(projectId, runner.expect(Take.class).projectId());
+  }
+
+  /**
+   * A runner answered {@code nothing} is parked; a desk queued after its greeting is announced to it
+   * as a backlog, which is what un-parks it, and its reserve then takes the desk.
+   */
+  @Test
+  void aDeskQueuedAfterTheGreetingUnparksARunnerAnsweredNothing() throws Exception {
+    runner("fd-backlog-park", 1);
+    FakeDeskRunner runner = greeted("fd-backlog-park");
+    runner.send(new Reserve());
+    runner.expect(Nothing.class);
+    runner.drain();
+
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+
+    assertTrue(runner.expectBacklog().queued() >= 1, "the queued desk is announced");
+    runner.send(new Reserve());
+    assertEquals(projectId, runner.expect(Take.class).projectId());
+    assertEquals(AgentRuntimeStatus.PROVISIONING, status(projectId));
+  }
+
+  /** A desk whose token is minted after it was wanted joins the queue then, and that is announced. */
+  @Test
+  void aLateTokenIsAnnouncedAsBacklog() throws Exception {
+    runner("fd-backlog-late", 1);
+    FakeDeskRunner runner = greeted("fd-backlog-late");
+    String projectId = project(FrontDeskLifecycle.ALWAYS_ON);
+    tokens.failMint(true);
+    sweep.sweep(Instant.now());
+    tokens.failMint(false);
+    assertNull(row(projectId).tokenValue);
+    assertNull(runner.pollBacklog(Duration.ofMillis(300)), "a tokenless desk is not placeable");
+
+    sweep.sweep(Instant.now());
+
+    assertNotNull(row(projectId).tokenValue);
+    assertTrue(runner.expectBacklog().queued() >= 1, "the late-tokened desk is announced");
+    runner.send(new Reserve());
+    assertEquals(projectId, runner.expect(Take.class).projectId());
+  }
+
+  /**
+   * A quarantined runner is told no backlog — not at its greeting, not when a desk is queued — and
+   * its reserve takes nothing; the desk stays QUEUED.
+   */
+  @Test
+  void aQuarantinedRunnerIsToldNoBacklogAndTakesNothing() throws Exception {
+    UUID id = UUID.randomUUID();
+    runners.create(id, "fd-" + id.toString().substring(0, 8), null, 2, "tok-" + id, "s-" + id);
+    createdRunners.add(id);
+    runners.markRegistered(id, "fd-backlog-quarantined", null);
+    FakeDeskRunner runner = hello("fd-backlog-quarantined");
+    assertEquals(0, runner.expect(Ack.class).slots());
+    runner.await(Estate.class);
+
+    String projectId = project(FrontDeskLifecycle.ON_DEMAND);
+    person().post(base(projectId) + "/ensure").then().statusCode(200);
+
+    assertNull(runner.pollBacklog(Duration.ofMillis(500)), "a quarantined runner is told no backlog");
+    runner.send(new Reserve());
+    runner.await(Nothing.class);
+    assertEquals(AgentRuntimeStatus.QUEUED, status(projectId));
+  }
+
   // --- estate and inventory ----------------------------------------------------------------------
 
   /** The inventory lands on the row and the status follows it; launchFailed reads FAILED. */
@@ -437,8 +546,10 @@ class FrontDeskTest {
     person().get(base(projectId)).then().body("container.runtimeStatus", is("UNAVAILABLE"));
     assertEquals("RUNNING", row(projectId).reportedState, "UNAVAILABLE is never stored");
 
-    FakeDeskRunner back = greeted("fd-gone");
-    assertNotNull(back);
+    // Back after the grace it is quarantined until a health check passes, so it is told no backlog.
+    FakeDeskRunner back = hello("fd-gone");
+    back.expect(Ack.class);
+    back.await(Estate.class);
     assertEquals(AgentRuntimeStatus.RUNNING, status(projectId));
   }
 

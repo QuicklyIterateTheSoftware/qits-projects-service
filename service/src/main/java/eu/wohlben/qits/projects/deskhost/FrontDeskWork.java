@@ -34,6 +34,11 @@ public class FrontDeskWork implements DeskRunnerWork {
   }
 
   @Override
+  public long backlog(DeskRunnerRegistry.Session session) {
+    return desks.backlog();
+  }
+
+  @Override
   public List<String> adopted(DeskRunnerRegistry.Session session, List<String> held) {
     return desks.adopted(session.runnerId(), held);
   }

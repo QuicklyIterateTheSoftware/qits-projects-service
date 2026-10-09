@@ -10,7 +10,8 @@ import org.jboss.logging.Logger;
 
 /**
  * Sends a runner its full {@code estate} (qits-767): on its greeting, on every change to one of its
- * desks, and every {@code qits.projects.desk-runner.estate-interval}.
+ * desks, and every {@code qits.projects.desk-runner.estate-interval} — and on that interval its
+ * {@code backlog} too (qits-1110), so a runner parked by a {@code nothing} never waits for ever.
  *
  * <p><b>The estate is the server's list and it wins</b> — a desk container the runner holds whose
  * project is not on it is removed — so it is sent only from a read that succeeded, never as an empty
@@ -67,5 +68,7 @@ public class FrontDeskEstates {
     } catch (RuntimeException e) {
       LOG.warn("The estate interval failed — retried on the next one.", e);
     }
+    // The belt: a runner parked by a nothing, whose un-parking backlog was lost, waits one interval.
+    registry.backlogChanged();
   }
 }

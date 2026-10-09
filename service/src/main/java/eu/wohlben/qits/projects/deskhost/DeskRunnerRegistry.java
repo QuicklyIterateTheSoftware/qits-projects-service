@@ -12,6 +12,7 @@ import eu.wohlben.qits.projectsdeskrunner.protocol.HealthChecked;
 import eu.wohlben.qits.projectsdeskrunner.protocol.LoginState;
 import eu.wohlben.qits.projectsdeskrunner.protocol.ProbeLogin;
 import eu.wohlben.qits.runner.protocol.Ack;
+import eu.wohlben.qits.runner.protocol.Backlog;
 import eu.wohlben.qits.runner.protocol.Hello;
 import eu.wohlben.qits.runner.protocol.Nothing;
 import eu.wohlben.qits.runner.protocol.Quarantined;
@@ -68,8 +69,16 @@ import org.jboss.logging.Logger;
  *
  * <p><b>What a greeted connection is told, in order</b>: {@code ack} with the row's slots — 0 while
  * the runner is quarantined, followed by {@code quarantined} — then whatever the front desk sends
- * ({@link DeskRunnerWork#greeted}); and {@code healthCheck} when the runner is still awaiting its
- * first one or has just come back ({@link DeskRunnerHealth}, which owns every check).
+ * ({@link DeskRunnerWork#greeted}), then {@code backlog}; and {@code healthCheck} when the runner is
+ * still awaiting its first one or has just come back ({@link DeskRunnerHealth}, which owns every
+ * check).
+ *
+ * <p><b>{@code backlog} is what makes a runner reserve</b> (qits-1110): the runner toolkit's slot
+ * ledger sends {@code reserve} only while a slot is free and the last {@code backlog} was above
+ * zero, and a {@code nothing} parks it until the next {@code backlog}. It is sent to a session that
+ * may take work — greeted at the pin, not draining, its runner in service — and to no other: after
+ * the greeting's estate, after every re-sent {@code ack}, whenever a desk joins or leaves the queue
+ * ({@link #backlogChanged}), and with every periodic estate push.
  *
  * <p><b>Presence.</b> "Connected" means a live session. A runner that lost its last socket is
  * remembered as disconnected since that moment ({@link #disconnectedSince}), and still counts as
@@ -313,6 +322,7 @@ public class DeskRunnerRegistry implements DeskRunnerSessions {
     }
     session.greeted = true;
     greetedByWork(session);
+    sendBacklog(session);
     health.onGreeted(row);
     catchUp(session, row, slots);
     for (Session old : retiring) {
@@ -425,7 +435,12 @@ public class DeskRunnerRegistry implements DeskRunnerSessions {
    * otherwise whatever the front desk answers ({@link DeskRunnerWork#reserve}).
    */
   public void onReserve(Session session) {
-    send(session, reserveAnswer(session));
+    RunnerMessage answer = reserveAnswer(session);
+    send(session, answer);
+    if (!(answer instanceof Nothing)) {
+      // A desk left the queue: every runner in service is told the count it left behind.
+      backlogChanged();
+    }
   }
 
   private RunnerMessage reserveAnswer(Session session) {
@@ -682,7 +697,8 @@ public class DeskRunnerRegistry implements DeskRunnerSessions {
 
   /**
    * A runner learns its slots only from an {@code ack}, so every change of what a greeted runner
-   * may hold re-sends one with the value it has now.
+   * may hold re-sends one with the value it has now, then {@code backlog}, which un-parks a runner
+   * that was answered {@code nothing} earlier.
    */
   private void reAck(Session session) {
     DeskRunner row;
@@ -694,6 +710,44 @@ public class DeskRunnerRegistry implements DeskRunnerSessions {
     int slots = slots(row);
     LOG.infof("Runner %s may hold %d desk(s) now; re-sending its ack", row.name, slots);
     send(session, ack(slots, null));
+    sendBacklog(session);
+  }
+
+  /**
+   * The queue of placeable desks changed (or the estate interval came round): every runner with a
+   * session that may take work is told its {@code backlog}, which un-parks one answered {@code
+   * nothing} earlier. Never throws.
+   */
+  public void backlogChanged() {
+    for (UUID runnerId : connectedRunnerIds()) {
+      Session session = serving(runnerId);
+      if (session != null) {
+        sendBacklog(session);
+      }
+    }
+  }
+
+  /**
+   * {@code backlog{queued}} to a session that may take work now — greeted at the pin, not draining,
+   * open, its runner in service — and nothing to any other: a quarantined runner is answered {@code
+   * nothing} whatever it reserves, so a backlog would only make it ask. Nothing is sent when the
+   * count could not be read.
+   */
+  void sendBacklog(Session session) {
+    if (!session.greeted || session.draining || !session.isOpen()) {
+      return;
+    }
+    long queued;
+    try {
+      if (runners.get(session.runnerId).quarantined()) {
+        return;
+      }
+      queued = work.backlog(session);
+    } catch (RuntimeException e) {
+      LOG.debugf("Could not count runner %s's backlog: %s", session.runnerName, e.getMessage());
+      return;
+    }
+    send(session, new Backlog((int) Math.min(Integer.MAX_VALUE, queued)));
   }
 
   /** A quarantine or slot change that landed between the hello's row read and its greeting. */

@@ -53,6 +53,13 @@ import org.jboss.logging.Logger;
  * count. A desk is sticky: only {@link #remove} (the DELETE door, the project's deletion) unplaces
  * it, and a runner owning desks cannot be deleted.
  *
+ * <p><b>A runner reserves only while it is told there is a backlog</b> (qits-1110): the runner
+ * toolkit's slot ledger sends {@code reserve} when a slot is free <em>and</em> the host's last
+ * {@code backlog} was above zero, and a {@code nothing} parks it until the next one. So every
+ * committed change that adds a desk to the queue or takes one off it ({@link #placeable}) — desired
+ * flipping, a late token, a DELETE, a {@code removed} — tells {@link
+ * DeskRunnerRegistry#backlogChanged}; a {@code take} is told by the registry itself.
+ *
  * <p><b>The token is minted before the desk can be QUEUED</b>, outside any claim transaction, and
  * stored on the row ({@link #mintIfMissing}); a mint that fails leaves the desk FAILED with {@link
  * #TOKEN_UNAVAILABLE} and the sweep retries it. Stop never revokes it; {@link #remove} does.
@@ -222,6 +229,9 @@ public class FrontDesks {
     if (gone == null) {
       return;
     }
+    if (placeable(gone)) {
+      registry.backlogChanged();
+    }
     if (gone.runnerId != null) {
       boolean told = registry.send(gone.runnerId, new Remove(projectId));
       LOG.infof(
@@ -320,6 +330,10 @@ public class FrontDesks {
     }
     subjects.put(projectId, minted.subject());
     clearFailure(projectId, TOKEN_UNAVAILABLE);
+    if (find(projectId).filter(FrontDesks::placeable).isPresent()) {
+      // A wanted unplaced desk whose token came late has only now joined the queue.
+      registry.backlogChanged();
+    }
   }
 
   /** Record why a desk is not usable. */
@@ -359,14 +373,26 @@ public class FrontDesks {
    * tell when a placed desk's desired state moved, else null.
    */
   public UUID reconcile(String projectId, Instant now) {
+    Reconciled reconciled = reconcileRow(projectId, now);
+    if (reconciled.queueMoved()) {
+      registry.backlogChanged();
+    }
+    return reconciled.runner();
+  }
+
+  /** What one reconcile committed: the runner to tell, and whether the desk joined or left the queue. */
+  private record Reconciled(UUID runner, boolean queueMoved) {}
+
+  private Reconciled reconcileRow(String projectId, Instant now) {
     return QuarkusTransaction.requiringNew()
         .call(
             () -> {
               FrontDesk row = desks.findById(projectId);
               Project project = row == null ? null : projectRows.findById(projectId);
               if (row == null || project == null) {
-                return null;
+                return new Reconciled(null, false);
               }
+              boolean wasPlaceable = placeable(row);
               FrontDeskDesired next = demand.desired(project, row, now);
               boolean moved = row.desired != next;
               row.desired = next;
@@ -382,8 +408,26 @@ public class FrontDesks {
               if (moved) {
                 LOG.infof("The front desk of project %s is now desired %s", projectId, next);
               }
-              return moved ? row.runnerId : null;
+              return new Reconciled(moved ? row.runnerId : null, wasPlaceable != placeable(row));
             });
+  }
+
+  /**
+   * Whether a desk is waiting for a runner — wanted, unplaced and holding its token: the predicate
+   * of {@link FrontDeskRepository#queued}, which placement tries and the backlog counts.
+   */
+  static boolean placeable(FrontDesk row) {
+    return row.runnerId == null
+        && row.desired == FrontDeskDesired.RUNNING
+        && row.tokenValue != null;
+  }
+
+  /**
+   * How many desks are waiting for a runner: the {@code backlog} a greeted runner is told, without
+   * which its slot ledger never sends a {@code reserve}.
+   */
+  public long backlog() {
+    return QuarkusTransaction.requiringNew().call(() -> desks.countQueued());
   }
 
   /** {@link #reconcile}, then the runner's estate when a placed desk moved. */
@@ -604,6 +648,9 @@ public class FrontDesks {
       subjects.remove(projectId);
       if (leftover.tokenId != null) {
         tokens.revoke(leftover.tokenId);
+      }
+      if (placeable(leftover)) {
+        registry.backlogChanged();
       }
     }
   }

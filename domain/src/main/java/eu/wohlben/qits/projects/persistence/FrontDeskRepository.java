@@ -12,6 +12,12 @@ import java.util.UUID;
 @ApplicationScoped
 public class FrontDeskRepository implements PanacheRepositoryBase<FrontDesk, String> {
 
+  /**
+   * A placeable desk — wanted, unplaced and holding its token: what {@link #queued} lists, what
+   * {@link #countQueued} counts as a runner's backlog, and what placement tries to claim.
+   */
+  private static final String QUEUED = "runnerId is null and desired = ?1 and tokenValue is not null";
+
   /** Every desk placed on {@code runnerId}, by project. */
   public List<FrontDesk> onRunner(UUID runnerId) {
     return list("runnerId", Sort.by("projectId"), runnerId);
@@ -28,8 +34,13 @@ public class FrontDeskRepository implements PanacheRepositoryBase<FrontDesk, Str
    */
   public List<FrontDesk> queued() {
     return list(
-        "runnerId is null and desired = ?1 and tokenValue is not null",
+        QUEUED,
         Sort.by("queuedAt", Sort.NullPrecedence.NULLS_LAST).and("createdAt"),
         FrontDeskDesired.RUNNING);
+  }
+
+  /** How many desks are waiting for a runner: {@link #queued}'s size, the backlog a runner is told. */
+  public long countQueued() {
+    return count(QUEUED, FrontDeskDesired.RUNNING);
   }
 }

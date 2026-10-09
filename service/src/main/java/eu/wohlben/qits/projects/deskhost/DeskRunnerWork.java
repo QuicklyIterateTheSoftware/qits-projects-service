@@ -22,6 +22,12 @@ public interface DeskRunnerWork {
   RunnerMessage reserve(DeskRunnerRegistry.Session session);
 
   /**
+   * How many desks the runner of {@code session} could be given now: the {@code backlog} it is told,
+   * without which its slot ledger never sends a {@code reserve}.
+   */
+  long backlog(DeskRunnerRegistry.Session session);
+
+  /**
    * The desks of {@code held} (the project ids a {@code hello} carries as {@code heldDesks}) that
    * this host keeps on the runner, answered in its {@code ack} as {@code adoptedDesks}; null is
    * "nothing adopted" when it could not be decided.

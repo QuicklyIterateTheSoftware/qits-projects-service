@@ -144,6 +144,7 @@ class DeskRunnerSocketTest {
     runner.send(FakeDeskRunner.hello(PIN, List.of()));
     assertEquals(slots, runner.expect(Ack.class).slots());
     runner.expect(Estate.class);
+    runner.expectBacklog();
     UUID id =
         QuarkusTransaction.requiringNew()
             .call(() -> rows.findByClientId(clientId).orElseThrow().id);
@@ -236,6 +237,7 @@ class DeskRunnerSocketTest {
     assertNotNull(check.requestId());
     runner.send(new Reserve());
     runner.expect(Nothing.class);
+    assertNull(runner.pollBacklog(Duration.ofMillis(300)), "a quarantined runner is told no backlog");
     assertTrue(registry.isConnected(row.id));
     assertNotNull(registry.connectedSince(row.id));
     assertEquals(
@@ -247,6 +249,7 @@ class DeskRunnerSocketTest {
 
     runner.expect(Reinstated.class);
     assertEquals(3, runner.expect(Ack.class).slots());
+    runner.expectBacklog();
     DeskRunner now = row(row.id);
     assertFalse(now.quarantined());
     assertEquals(Boolean.TRUE, now.lastHealthCheckOk);
@@ -269,6 +272,7 @@ class DeskRunnerSocketTest {
     assertEquals(0, runner.expect(Ack.class).slots());
     assertTrue(row(row.id).quarantined());
     assertEquals(Boolean.FALSE, row(row.id).lastHealthCheckOk);
+    assertNull(runner.pollBacklog(Duration.ofMillis(300)), "no backlog follows a quarantine's ack");
   }
 
   /** The greenlight door lifts a quarantine by hand: {@code reinstated}, then the row's slots. */
@@ -292,6 +296,7 @@ class DeskRunnerSocketTest {
 
     assertEquals("someone", runner.expect(Reinstated.class).by());
     assertEquals(2, runner.expect(Ack.class).slots());
+    runner.expectBacklog();
     assertFalse(row(row.id).quarantined());
   }
 
