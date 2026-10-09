@@ -220,7 +220,7 @@
              reads pins regardless of scope). -->
         <qits.workspaces-pacts-qits-projects.version>2026.1002.170857</qits.workspaces-pacts-qits-projects.version>
         <qits.landing-app-pacts-qits-projects-service.version>2026.1008.91336</qits.landing-app-pacts-qits-projects-service.version>
-        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1007.190347</qits.projects-frontend-pacts-qits-projects-service.version>
+        <qits.projects-frontend-pacts-qits-projects-service.version>2026.1009.101109</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1007.194316</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1007.53748</qits.maintenance-service-pacts-qits-projects-service.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
