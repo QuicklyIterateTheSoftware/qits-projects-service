@@ -1071,7 +1071,7 @@ two different constants now, and mixing them up is the defect to watch for.
 ### One class per gate (2026-10-09)
 
 Each gate is a CDI bean implementing `control/gate/ReleaseGate`: a `kind` (`[a-z0-9-]+`), a
-`label`, a `position` (`qa-publish`, `publish-deploy`, `deploy-finalized`), an `order`, an
+`label`, a `position` (`pre-run-qa`, `qa-publish`, `publish-deploy`, `deploy-finalized`), an `order`, an
 `applicability` for a request and an `evaluate` that answers state, detail, named checks and a run
 id. `ReleaseGateEvaluator` finds them through `Instance<ReleaseGate>`, orders them and puts them on
 the wire. It is the shape of qits-maintenance's `ReleaseRequestAutomation` and of the `entities`
@@ -1079,8 +1079,8 @@ module's `TransitionGate`.
 
 | class | kind | position |
 | --- | --- | --- |
+| `AutomationsGate` | `automations` | `pre-run-qa` |
 | `CiBuildGate` | `ci` | `qa-publish` |
-| `AutomationsGate` | `automations` | `qa-publish` |
 | `ApprovalGate` | `approval` | `qa-publish` |
 | `PublishRunGate` | `publish` | `publish-deploy` |
 | `DeploymentRollbackGate` | `deployment-not-rolled-back` | `deploy-finalized` |
@@ -1100,11 +1100,59 @@ module's `TransitionGate`.
   unchanged and deprecated; they carry only the five kinds `ReleaseGates.Kind` names.
   `ReleaseGateEvaluatorTest` compares every combination of inputs against the pre-refactor report.
 - **The classes report; they do not move a request.** `ReleaseRequests.evaluate` and
-  `ReleaseFinalization` still decide the built-ins in their own fixed order, because their interplay — a red build beside
-  moving automations holds instead of rejecting — belongs to no single gate. A new gate class shows
+  `ReleaseFinalization` still decide the built-ins in their own fixed order, because their interplay — no QA is asked
+  for until the automations pass, so a CI verdict is read only after them — belongs to no single gate. A new gate class shows
   on the answer; making it hold a release is a change to that sweep.
 - **`ReleaseGateRegistryTest` checks every discovered gate**: unique well-formed kinds, labels,
-  positions, unique orders, and one class per legacy kind but `DEPLOYMENT`, in the old order.
+  positions, unique orders, and one class per legacy kind but `DEPLOYMENT`, in `ReleaseGates.Kind`'s
+  order — which puts `AUTOMATIONS` first since qits-1133 (the count of `gates[]` entries never
+  changed, only their order: the landing app's pact pins the length).
+
+### The pre-run before QA (qits-1133)
+
+**The release-request automations run before QA, and QA is asked for once per fold.** Before this,
+`remerge` announced the fold (which starts QA in qits-ci) one line before it asked the automations,
+so every automation commit re-folded the request and cancelled a running build — request fd25eb6e
+started four release builds for one change. Now:
+
+- **`remerge` refreshes the automations first**, then announces `ReleaseRequestChanged` with
+  `preRun: "PENDING"` if they still have work to do at the fold. qits-ci builds nothing for PENDING
+  (an absent field reads as DONE, for rollout). A fold whose pre-run is settled when it lands — no
+  automation applies, or the far side answered FRESH on the spot — is not announced there at all.
+- **`evaluate` asks the automations gate FIRST**, before the gate set and CI. Where it passes (every
+  applicable kind FRESH, or a waiver of this fold, or none applies) and `release_request.qa_announced_sha`
+  (V40) is behind `mergedSha`, the same row-locked transaction stamps it and the event goes out with
+  `preRun: "DONE"` after the commit — **at most once per sha**, across sweeps, verdicts, waivers and
+  restarts (the ledger is memory; the column is not). V40 backfilled the column with `merged_sha`,
+  because every fold before it was already announced once. **A publish that throws gives the stamp
+  back** by compare-and-set in a new transaction (`qa_announced_sha = :sha` → its previous value,
+  WARN logged), so the next 30s sweep announces it again. `QitsEventBus.publish` itself never throws
+  — an undelivered event goes to its durable outbox, and only an unserializable event or an outbox
+  write that failed is logged and dropped — so the remaining window is a crash between the stamp's
+  commit and the publish, or that silent drop: either loses one DONE (never duplicates it) until a
+  push or re-run re-folds.
+- **A failed automation holds** — PENDING, no DONE, no rejection — until a push re-folds, a re-run
+  comes back fresh (the sweep's re-read) or a person waives the fold. A CI verdict at a sha whose
+  pre-run is not done answers no QA this request asked for and is not read; the qits-760 "red beside
+  failed automations rejects" arm is gone with that.
+- **Moves:** a source moving during the pre-run re-folds and restarts it (PENDING at the new sha);
+  one moving during QA cancels QA (`cancel`) and restarts the pre-run rather than going straight to
+  QA.
+- **The trigger to qits-maintenance carries `"accepts": ["WAITING","NOT_APPLICABLE"]`**, so the far
+  side may answer a DERIVED kind `WAITING` for the SOURCE kinds (read as moving: PENDING) and a kind
+  that does not apply `NOT_APPLICABLE` with its reason (holds nothing). Any other unheard-of word is a
+  string the ledger reads as UNKNOWN — a hold, never a parse failure.
+- **On the wire** (additive): `ReleaseRequestDto.preRun = {state}` — `PENDING`, `RUNNING` (a kind
+  REQUESTED, RUNNING, or COMMITTED and not yet folded), `FAILED`, `PASSED`, `WAIVED`; the automations
+  list carries `WAITING` as it came; the pipeline's QA phase reads `WAITING_FOR_PRE_RUN` (no run) on a
+  PENDING request whose pre-run is neither PASSED nor WAIVED, which also draws the block; the
+  automations gate sits at `between = PRE_RUN_QA` / `position = pre-run-qa`, ahead of CI.
+- **qits-maintenance's doors need nothing new.** A main-only request is `POST
+  …/repositories/{repoId}/release-requests` with `{"branch":"main","summary":…,"priority":"LOWEST"}`
+  as `qits:system` — naming the default branch makes the request's only source `main`; its pre-run
+  writes the bump. Withdrawing one whose pre-run found nothing to bump is `POST
+  …/release-requests/{requestId}/withdraw` with `{"reason":…}`, also `qits:system` (the class role
+  list). `ReleaseRequestPreRunTest` drives both, and every behaviour above.
 
 ### The same release read as one pipeline of three phases
 
@@ -1115,6 +1163,7 @@ themselves. **A phase is a unit of work with a state and a rerun**, and exactly 
 one — a *step* inside a run is not, and neither is any other part a run is split into, which is
 part of that run and has no rerun of its own.
 
+      |  gate      AUTOMATIONS (the pre-run)                   between = PRE_RUN_QA
     P1 . QA        a qits-ci run at release/<id>@mergedSha
       |  gates     CI, APPROVAL                                between = QA_PUBLISH
     P2 . Publish   a qits-ci run at <version>@commitSha

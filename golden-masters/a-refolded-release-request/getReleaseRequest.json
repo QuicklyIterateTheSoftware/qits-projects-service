@@ -45,12 +45,12 @@
     "approvalNote": null,
     "gates": [
       {
-        "kind": "CI",
+        "kind": "AUTOMATIONS",
         "state": "PASSED",
         "detail": null
       },
       {
-        "kind": "AUTOMATIONS",
+        "kind": "CI",
         "state": "PASSED",
         "detail": null
       },
@@ -82,14 +82,14 @@
       ],
       "gates": [
         {
-          "between": "QA_PUBLISH",
-          "kind": "CI",
+          "between": "PRE_RUN_QA",
+          "kind": "AUTOMATIONS",
           "state": "PASSED",
           "detail": null
         },
         {
           "between": "QA_PUBLISH",
-          "kind": "AUTOMATIONS",
+          "kind": "CI",
           "state": "PASSED",
           "detail": null
         },
@@ -102,6 +102,16 @@
       ]
     },
     "qualityGates": [
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "pre-run-qa",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
       {
         "kind": "ci",
         "label": "CI build",
@@ -120,16 +130,6 @@
         "link": null
       },
       {
-        "kind": "automations",
-        "label": "Automations",
-        "position": "qa-publish",
-        "state": "PASSED",
-        "detail": null,
-        "checks": [],
-        "runId": null,
-        "link": null
-      },
-      {
         "kind": "deployment-not-rolled-back",
         "label": "Deployment not rolled back",
         "position": "deploy-finalized",
@@ -139,6 +139,9 @@
         "runId": null,
         "link": null
       }
-    ]
+    ],
+    "preRun": {
+      "state": "PASSED"
+    }
   }
 }

@@ -45,13 +45,13 @@
     "approvalNote": null,
     "gates": [
       {
-        "kind": "CI",
-        "state": "PASSED",
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
         "detail": null
       },
       {
-        "kind": "AUTOMATIONS",
-        "state": "PENDING",
+        "kind": "CI",
+        "state": "PASSED",
         "detail": null
       },
       {
@@ -82,15 +82,15 @@
       ],
       "gates": [
         {
-          "between": "QA_PUBLISH",
-          "kind": "CI",
-          "state": "PASSED",
+          "between": "PRE_RUN_QA",
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
           "detail": null
         },
         {
           "between": "QA_PUBLISH",
-          "kind": "AUTOMATIONS",
-          "state": "PENDING",
+          "kind": "CI",
+          "state": "PASSED",
           "detail": null
         },
         {
@@ -102,6 +102,16 @@
       ]
     },
     "qualityGates": [
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "pre-run-qa",
+        "state": "PENDING",
+        "detail": "Waiting for the automations to answer",
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
       {
         "kind": "ci",
         "label": "CI build",
@@ -120,16 +130,6 @@
         "link": null
       },
       {
-        "kind": "automations",
-        "label": "Automations",
-        "position": "qa-publish",
-        "state": "PENDING",
-        "detail": "Waiting for the automations to answer",
-        "checks": [],
-        "runId": null,
-        "link": null
-      },
-      {
         "kind": "deployment-not-rolled-back",
         "label": "Deployment not rolled back",
         "position": "deploy-finalized",
@@ -139,6 +139,9 @@
         "runId": null,
         "link": null
       }
-    ]
+    ],
+    "preRun": {
+      "state": "PENDING"
+    }
   }
 }

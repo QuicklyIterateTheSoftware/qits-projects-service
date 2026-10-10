@@ -14,6 +14,10 @@ import java.util.stream.Collectors;
  *
  * <p>The state is the one {@code ReleaseRequests} already read off the ledger and the waiver; this
  * class adds the per-automation checks and a sentence.
+ *
+ * <p><b>It is the first gate (qits-1133)</b>: the automations are the pre-run, QA is asked for only
+ * once they pass, so the gate stands between the pre-run and QA ({@link
+ * ReleaseGatePosition#PRE_RUN_QA}) and is ordered ahead of {@link CiBuildGate}.
  */
 @ApplicationScoped
 public class AutomationsGate implements ReleaseGate {
@@ -32,12 +36,12 @@ public class AutomationsGate implements ReleaseGate {
 
   @Override
   public ReleaseGatePosition position() {
-    return ReleaseGatePosition.QA_PUBLISH;
+    return ReleaseGatePosition.PRE_RUN_QA;
   }
 
   @Override
   public int order() {
-    return 200;
+    return 50;
   }
 
   @Override

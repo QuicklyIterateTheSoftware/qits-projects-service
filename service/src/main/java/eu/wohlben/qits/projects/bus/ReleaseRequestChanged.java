@@ -69,6 +69,17 @@ import java.util.UUID;
  * moves no ref. What carries a late escalation is {@code SCMRelease}, which reads the sources live
  * at release time.
  *
+ * <p><b>{@code preRun} says whether qits-ci may build this fold yet</b> (qits-1133): {@code PENDING}
+ * when the fold has just landed and its release-request automations — the pre-run: dependency bumps,
+ * estate pins, the entity diagram, screenshot baselines — are still being settled, so a commit of
+ * theirs may re-fold the request at any moment; {@code DONE} once every automation that applies is
+ * FRESH or waived at {@code mergedSha}, or none applies at all. qits-ci starts its QA run on
+ * {@code DONE} only. A fold therefore announces {@code PENDING} and then {@code DONE} — or a single
+ * {@code DONE} when the pre-run is already settled when it lands — and {@code DONE} is announced <b>at
+ * most once per sha</b>, recorded in {@code release_request.qa_announced_sha}. <b>Additive and
+ * nullable</b> like the two fields before it: an absent key is every announcement made before this
+ * field, and a consumer reads it as {@code DONE}, which is what lets qits-ci ship its filter first.
+ *
  * <p><b>{@code eventId} is a component, and that is safe.</b> It is generated when absent and final
  * once set, which gives the stability the idempotent {@code PUT} rests on, and the library keeps
  * everything {@link QitsEvent} declares out of the canonical payload — so identity travels in the
@@ -97,7 +108,8 @@ public record ReleaseRequestChanged(
     String mergedSha,
     Instant changedAt,
     String priority,
-    List<String> downstreamTechnicalComponents)
+    List<String> downstreamTechnicalComponents,
+    String preRun)
     implements QitsEvent {
 
   public ReleaseRequestChanged {
@@ -116,7 +128,8 @@ public record ReleaseRequestChanged(
       String mergedSha,
       Instant changedAt,
       String priority,
-      List<String> downstreamTechnicalComponents) {
+      List<String> downstreamTechnicalComponents,
+      String preRun) {
     this(
         null,
         projectId,
@@ -127,7 +140,32 @@ public record ReleaseRequestChanged(
         mergedSha,
         changedAt,
         priority,
-        downstreamTechnicalComponents);
+        downstreamTechnicalComponents,
+        preRun);
+  }
+
+  /** The shape before {@code preRun}: an absent key, which a consumer reads as {@code DONE}. */
+  public ReleaseRequestChanged(
+      String projectId,
+      String repoId,
+      String repoName,
+      String releaseRequestId,
+      String backingBranch,
+      String mergedSha,
+      Instant changedAt,
+      String priority,
+      List<String> downstreamTechnicalComponents) {
+    this(
+        projectId,
+        repoId,
+        repoName,
+        releaseRequestId,
+        backingBranch,
+        mergedSha,
+        changedAt,
+        priority,
+        downstreamTechnicalComponents,
+        null);
   }
 
   @Override

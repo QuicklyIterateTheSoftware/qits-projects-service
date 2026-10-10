@@ -35,7 +35,8 @@ import org.jboss.logging.Logger;
  * <pre>
  *   POST {maintenance-url}/maintenance/api/release-requests/&lt;requestId&gt;/automations
  *   {"repository":"qits-landing-app","foldSha":"&lt;sha&gt;","previousFoldSha":"&lt;sha&gt;"|null,
- *    "changedSincePrevious":["src/app/x.ts"]|null,"sourceBranches":["ticket/x"],"workItem":null}
+ *    "changedSincePrevious":["src/app/x.ts"]|null,"sourceBranches":["ticket/x"],"workItem":null,
+ *    "accepts":["WAITING","NOT_APPLICABLE"]}
  *   -&gt; 200 {"requestId":"…","foldSha":"&lt;sha&gt;",
  *           "automations":[{"kind":"screenshot-baselines","label":"Screenshot baselines",
  *                           "state":"RUNNING","detail":"…","bumpId":"…","runIds":["…"],
@@ -50,6 +51,15 @@ import org.jboss.logging.Logger;
  *   -&gt; 202 {"id":"&lt;uuid&gt;"}; 404 unknown kind or repository; 409 not open, no fold, one active,
  *      bumping off
  * </pre>
+ *
+ * <p><b>{@code accepts} names the state words this side can read</b> beyond the original seven
+ * (qits-1133): {@code WAITING}, a DERIVED kind (screenshot baselines, the entity diagram) waiting for
+ * the SOURCE kinds (dependency bumps, estate pins) to be fresh at the fold, and {@code
+ * NOT_APPLICABLE}, a kind that does not apply, with its reason as {@code detail}. qits-maintenance
+ * sends them only to a caller that says it reads them, so the two services roll out in either order.
+ * Here WAITING is moving (the request holds, PENDING) and NOT_APPLICABLE holds nothing; any other
+ * word this side has never heard of is still parsed as a plain string and reads as UNKNOWN — a hold,
+ * never a parse failure.
  *
  * <p><b>The repository travels by NAME</b>, because qits-maintenance's catalogue resolves it through
  * its name index — the caller reads one out of the alias table it already owns. The re-run sends it
@@ -86,6 +96,12 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
 
   /** The re-run. {@code %s} is the request id, then the kind. */
   static final String RUNS_PATH = "/maintenance/api/release-requests/%s/automations/%s/runs";
+
+  /**
+   * The state words the trigger tells qits-maintenance this side reads — see the class javadoc. A
+   * constant rather than configuration: it is a statement about this code, not about a deployment.
+   */
+  static final List<String> ACCEPTS = List.of("WAITING", AutomationLedger.NOT_APPLICABLE);
 
   /** How long a connect may take — qits-maintenance is a sibling service on the same network. */
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
@@ -143,6 +159,8 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
       ArrayNode branches = body.putArray("sourceBranches");
       (sourceBranches == null ? List.<String>of() : sourceBranches).forEach(branches::add);
       body.put("workItem", workItem);
+      ArrayNode accepts = body.putArray("accepts");
+      ACCEPTS.forEach(accepts::add);
       HttpResponse<String> response =
           send(
               base(requestId),

@@ -51,7 +51,8 @@ import org.jboss.logging.Logger;
  * AutomationLedger.State#FRESH}; any FAILED
  * is FAILED; any UNKNOWN, or a word this side has never heard of, is UNKNOWN; and anything still
  * moving — REQUESTED, RUNNING, COMMITTED (a commit that re-folds the request, so this fold never
- * ships), SUPERSEDED (the far side saw the fold move on first) — is PENDING. No answer at all is
+ * ships), SUPERSEDED (the far side saw the fold move on first), WAITING (a derived kind waiting for
+ * the source kinds, qits-1133) — is PENDING. No answer at all is
  * UNKNOWN. FAILED is read before UNKNOWN so that a red run is never reported as an outage.
  *
  * <h2>Idempotence, and what the sweep re-reads</h2>
@@ -279,7 +280,8 @@ public class AutomationRefresh {
       switch (entry.state()) {
         case "FRESH", AutomationLedger.NOT_APPLICABLE -> {}
         case "FAILED" -> failed = true;
-        case "REQUESTED", "RUNNING", "COMMITTED", "SUPERSEDED" -> pending = true;
+        // WAITING (qits-1133): a DERIVED kind waiting for the SOURCE kinds to be fresh — moving.
+        case "REQUESTED", "RUNNING", "COMMITTED", "SUPERSEDED", "WAITING" -> pending = true;
         default -> unknown = true;
       }
     }
