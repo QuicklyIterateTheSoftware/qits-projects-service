@@ -15,6 +15,8 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -62,7 +64,8 @@ class GoldenMasterRecordingTest {
    *     before freezing, so ids are numbered in a stable order. Null when the order is the
    *     provider's own.
    * @param requestBody the JSON a write sends, recorded into the index as the operation's {@code
-   *     body} so a consumer's pact sends the same; null for a read. A {@code {param}} in it — a
+   *     body} so a consumer's pact sends the same; null for a read and for a write whose operation
+   *     takes no body (the openapi says which — the recording fails on a mismatch). A {@code {param}} in it — a
    *     string value or a member name that is exactly a param's name in braces — is expanded from
    *     the state's params as a path's is, and recorded unexpanded
    */
@@ -506,21 +509,21 @@ class GoldenMasterRecordingTest {
             "rerunReleasePipelinePhase",
             "POST",
             request + "/pipeline/DEPLOY/rerun",
-            "{}"));
+            null));
     all.add(
         write(
             ProviderStates.A_RELEASE_REQUEST_WHOSE_PUBLISH_FAILED,
             "rerunReleasePipelinePhase",
             "POST",
             request + "/pipeline/PUBLISH/rerun",
-            "{}"));
+            null));
     all.add(
         write(
             ProviderStates.A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD,
             "rerunReleasePipelinePhase",
             "POST",
             request + "/pipeline/QA/rerun",
-            "{}"));
+            null));
     String held = ProviderStates.A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION;
     all.add(
         new Interaction(
@@ -531,7 +534,7 @@ class GoldenMasterRecordingTest {
             202,
             null,
             null,
-            "{}"));
+            null));
     all.add(
         write(
             held,
@@ -1030,7 +1033,15 @@ class GoldenMasterRecordingTest {
     Map<String, ObjectNode> indexStates = new TreeMap<>();
     Map<String, Map<String, ObjectNode>> indexOperations = new TreeMap<>();
 
+    Set<String> takesBody = operationsTakingABody();
     for (Interaction interaction : INTERACTIONS) {
+      if ((interaction.requestBody() != null) != takesBody.contains(interaction.operationId())) {
+        failures.add(
+            interaction.operationId()
+                + (interaction.requestBody() != null
+                    ? " takes no request body, but the recording sends one: record null."
+                    : " takes a request body, but the recording sends none."));
+      }
       Recorded recorded = record(interaction);
       String slug = ProviderStates.slug(interaction.state());
       String file = slug + "/" + interaction.operationId() + ".json";
@@ -1050,7 +1061,18 @@ class GoldenMasterRecordingTest {
       ObjectNode operation = JsonNodeFactory.instance.objectNode();
       operation.put("operationId", interaction.operationId());
       operation.put("method", interaction.method());
-      operation.put("path", interaction.path());
+      // The path is the route alone and the query its own object, as the consumers' pacts send it.
+      int at = interaction.path().indexOf('?');
+      operation.put("path", at < 0 ? interaction.path() : interaction.path().substring(0, at));
+      if (at >= 0) {
+        ObjectNode query = operation.putObject("query");
+        for (String pair : interaction.path().substring(at + 1).split("&")) {
+          int eq = pair.indexOf('=');
+          query.put(
+              URLDecoder.decode(eq < 0 ? pair : pair.substring(0, eq), StandardCharsets.UTF_8),
+              eq < 0 ? "" : URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8));
+        }
+      }
       if (interaction.requestBody() != null) {
         operation.set("body", JSON.readTree(interaction.requestBody()));
       }
@@ -1137,6 +1159,9 @@ class GoldenMasterRecordingTest {
             request
                 .contentType("application/json")
                 .body(expand(interaction.requestBody(), params, BODY_PARAM));
+      } else {
+        // As a browser sends a body-less call: RestAssured would otherwise add a form content type.
+        request = request.noContentType();
       }
       response = request.when().request(interaction.method(), expand(interaction.path(), params));
     } finally {
@@ -1250,6 +1275,30 @@ class GoldenMasterRecordingTest {
     }
     m.appendTail(out);
     return out.toString();
+  }
+
+  /** The operationIds whose operation declares a request body, read off the served openapi. */
+  private static Set<String> operationsTakingABody() throws IOException {
+    JsonNode paths =
+        JSON.readTree(
+                given()
+                    .when()
+                    .get("/projects/q/openapi?format=json")
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .asString())
+            .path("paths");
+    Set<String> ids = new TreeSet<>();
+    paths.forEach(
+        path ->
+            path.forEach(
+                operation -> {
+                  if (operation.has("operationId") && operation.has("requestBody")) {
+                    ids.add(operation.get("operationId").asText());
+                  }
+                }));
+    return ids;
   }
 
   private static ArrayNode strings(List<String> values) {

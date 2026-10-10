@@ -964,7 +964,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "README.md"
+          },
           "status": 200,
           "file": "a-declined-release-request/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -977,7 +980,11 @@
         {
           "operationId": "getReleaseRequestSubmoduleChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff",
+          "query": {
+            "path": "components/contract/contract-service",
+            "file": "src/export.txt"
+          },
           "status": 200,
           "file": "a-declined-release-request/getReleaseRequestSubmoduleChangeDiff.json",
           "frozen": {
@@ -990,7 +997,10 @@
         {
           "operationId": "getReleaseRequestSubmoduleChanges",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule",
+          "query": {
+            "path": "components/contract/contract-service"
+          },
           "status": 200,
           "file": "a-declined-release-request/getReleaseRequestSubmoduleChanges.json",
           "frozen": {
@@ -2104,7 +2114,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "src/invoice.txt"
+          },
           "status": 200,
           "file": "a-refolded-release-request/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -2229,7 +2242,10 @@
         {
           "operationId": "getCommitFileDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/commits/e447df8a0cabaeafedbf4c0235e013bb29697cd9/diff?path=README.md",
+          "path": "/projects/api/repositories/{repositoryId}/commits/e447df8a0cabaeafedbf4c0235e013bb29697cd9/diff",
+          "query": {
+            "path": "README.md"
+          },
           "status": 200,
           "file": "a-release-request-awaiting-approval/getCommitFileDiff.json",
           "frozen": {
@@ -2287,7 +2303,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "README.md"
+          },
           "status": 200,
           "file": "a-release-request-awaiting-approval/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -2300,7 +2319,11 @@
         {
           "operationId": "getReleaseRequestSubmoduleChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff",
+          "query": {
+            "path": "components/contract/contract-service",
+            "file": "src/export.txt"
+          },
           "status": 200,
           "file": "a-release-request-awaiting-approval/getReleaseRequestSubmoduleChangeDiff.json",
           "frozen": {
@@ -2313,7 +2336,10 @@
         {
           "operationId": "getReleaseRequestSubmoduleChanges",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule",
+          "query": {
+            "path": "components/contract/contract-service"
+          },
           "status": 200,
           "file": "a-release-request-awaiting-approval/getReleaseRequestSubmoduleChanges.json",
           "frozen": {
@@ -2588,7 +2614,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "README.md"
+          },
           "status": 200,
           "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -2601,7 +2630,11 @@
         {
           "operationId": "getReleaseRequestSubmoduleChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff",
+          "query": {
+            "path": "components/contract/contract-service",
+            "file": "src/export.txt"
+          },
           "status": 200,
           "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequestSubmoduleChangeDiff.json",
           "frozen": {
@@ -2614,7 +2647,10 @@
         {
           "operationId": "getReleaseRequestSubmoduleChanges",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule",
+          "query": {
+            "path": "components/contract/contract-service"
+          },
           "status": 200,
           "file": "a-release-request-awaiting-approval-while-its-build-runs/getReleaseRequestSubmoduleChanges.json",
           "frozen": {
@@ -2745,7 +2781,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "README.md"
+          },
           "status": 200,
           "file": "a-release-request-held-by-a-failed-automation/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -2758,7 +2797,11 @@
         {
           "operationId": "getReleaseRequestSubmoduleChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff",
+          "query": {
+            "path": "components/contract/contract-service",
+            "file": "src/export.txt"
+          },
           "status": 200,
           "file": "a-release-request-held-by-a-failed-automation/getReleaseRequestSubmoduleChangeDiff.json",
           "frozen": {
@@ -2771,7 +2814,10 @@
         {
           "operationId": "getReleaseRequestSubmoduleChanges",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule",
+          "query": {
+            "path": "components/contract/contract-service"
+          },
           "status": 200,
           "file": "a-release-request-held-by-a-failed-automation/getReleaseRequestSubmoduleChanges.json",
           "frozen": {
@@ -2851,7 +2897,6 @@
           "operationId": "rerunReleaseRequestAutomation",
           "method": "POST",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/automations/estate-pins/runs",
-          "body": {},
           "status": 202,
           "file": "a-release-request-held-by-a-failed-automation/rerunReleaseRequestAutomation.json",
           "frozen": {
@@ -2958,7 +3003,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "src/invoice.txt"
+          },
           "status": 200,
           "file": "a-release-request-rejected-by-its-build/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -3032,7 +3080,6 @@
           "operationId": "rerunReleasePipelinePhase",
           "method": "POST",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/pipeline/QA/rerun",
-          "body": {},
           "status": 200,
           "file": "a-release-request-rejected-by-its-build/rerunReleasePipelinePhase.json",
           "frozen": {
@@ -3117,7 +3164,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "src/invoice.txt"
+          },
           "status": 200,
           "file": "a-release-request-whose-publish-failed/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -3191,7 +3241,6 @@
           "operationId": "rerunReleasePipelinePhase",
           "method": "POST",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/pipeline/PUBLISH/rerun",
-          "body": {},
           "status": 200,
           "file": "a-release-request-whose-publish-failed/rerunReleasePipelinePhase.json",
           "frozen": {
@@ -3310,7 +3359,10 @@
         {
           "operationId": "getCommitFileDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/commits/019f0d272475dfef0ace655cc6d8672c8cd9c80c/diff?path=src/export.txt",
+          "path": "/projects/api/repositories/{repositoryId}/commits/019f0d272475dfef0ace655cc6d8672c8cd9c80c/diff",
+          "query": {
+            "path": "src/export.txt"
+          },
           "status": 200,
           "file": "a-released-release-request/getCommitFileDiff.json",
           "frozen": {
@@ -3365,7 +3417,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "src/invoice.txt"
+          },
           "status": 200,
           "file": "a-released-release-request/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -3452,7 +3507,6 @@
           "operationId": "rerunReleasePipelinePhase",
           "method": "POST",
           "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/pipeline/DEPLOY/rerun",
-          "body": {},
           "status": 200,
           "file": "a-released-release-request/rerunReleasePipelinePhase.json",
           "frozen": {
@@ -4352,7 +4406,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=src/invoice.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "src/invoice.txt"
+          },
           "status": 200,
           "file": "a-withdrawn-release-request/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -4484,7 +4541,10 @@
         {
           "operationId": "getReleaseRequestChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff?path=README.md",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/diff",
+          "query": {
+            "path": "README.md"
+          },
           "status": 200,
           "file": "an-approved-release-request/getReleaseRequestChangeDiff.json",
           "frozen": {
@@ -4497,7 +4557,11 @@
         {
           "operationId": "getReleaseRequestSubmoduleChangeDiff",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff?path=components/contract/contract-service&file=src/export.txt",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule/diff",
+          "query": {
+            "path": "components/contract/contract-service",
+            "file": "src/export.txt"
+          },
           "status": 200,
           "file": "an-approved-release-request/getReleaseRequestSubmoduleChangeDiff.json",
           "frozen": {
@@ -4510,7 +4574,10 @@
         {
           "operationId": "getReleaseRequestSubmoduleChanges",
           "method": "GET",
-          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule?path=components/contract/contract-service",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/changes/submodule",
+          "query": {
+            "path": "components/contract/contract-service"
+          },
           "status": 200,
           "file": "an-approved-release-request/getReleaseRequestSubmoduleChanges.json",
           "frozen": {
