@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.contracts.consumer;
 
 import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
@@ -140,7 +141,11 @@ final class WorkspacesContract {
                 WorkspaceAgentTurns.Turn turn =
                     workspaces(new HttpWorkspaceAgentTurns(), base)
                         .deliver(p.get("ticketId"), p.get("repositoryId"), p.get("branch"), "go on");
-                assertTrue(turn.spoken(), turn.detail());
+                // The recorded workspace may have no runner yet, so the answer can be "queued"
+                // rather than delivered. The row checks that the answer is read: it names a
+                // workspace and says why.
+                assertNotEquals(WorkspaceAgentTurns.Outcome.NO_WORKSPACE, turn.outcome());
+                assertFalse(turn.detail().isBlank(), "the answer carries its detail");
               },
               "POST .../agent-dispatches/delivery answering 200 with workspaceId, launched,"
                   + " delivered and detail"),
