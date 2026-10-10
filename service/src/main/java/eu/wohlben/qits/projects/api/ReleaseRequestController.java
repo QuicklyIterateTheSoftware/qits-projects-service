@@ -445,8 +445,21 @@ public class ReleaseRequestController {
     return new GetReleaseRequest.Response(releaseRequests.get(requestId));
   }
 
+  /**
+   * <b>{@code qits:ci-run} reaches this read too</b> (qits-1142): the CI step's run token, so a
+   * step can read back the commits its own release request's fold brought in. The class pair is
+   * replaced rather than widened, as every method-level {@code @RolesAllowed} here does, so the
+   * grant is this one read and nothing else on the class.
+   */
   @GET
   @Path("/{requestId}/commits")
+  @jakarta.annotation.security.RolesAllowed({
+    "qits:admin",
+    "qits:admin-agent",
+    "qits:system",
+    "qits:agent",
+    "qits:ci-run"
+  })
   @Operation(
       operationId = "listReleaseRequestCommits",
       summary = "The commits this request's fold brought in",
