@@ -47,7 +47,7 @@ smart-HTTP host that serves these bare origins over the wire is
 
     domain/   the aggregate, persistence, control, and the ports out (a library jar, no JAX-RS)
     entities/ the planning module, own datasource + own Flyway lineage, no dependency on domain
-    service/  the REST + MCP + websocket boundary over both — THE APPLICATION
+    service/  the REST + websocket boundary over both — THE APPLICATION
     golden-masters/ the provider golden masters (JSON only), written by service's recorder test
 
 `service/` carries `<packaging>quarkus</packaging>` and produces a process, as a JVM fast-jar or as
@@ -81,7 +81,6 @@ machine surface keeps the segment `/projects`:
 | `/projects/api/pins` | the images a container launch by this process would pull — `{generatedAt, pins:[{image, version, launches}]}`, one row per configured pair (`agent`, `refinement`), the image registry-relative and a blank version omitted. A pin source for qits-artifacts' registry GC, read by qits-platform-orchestrator; `qits:admin` \| `qits:system`. It answers the **effective** version — what this process resolved at boot — where qits-configuration answers the configured one, and the two differ until this service is deployed again; a launch pulls cold, so the lagging value is the one the GC must keep. Read from the container factories themselves, dialling nobody — the agent row's version is the pom pin `eu.wohlben.qits:qits-projects-daemon-protocol` carries into the process, the refinement row's is still a configuration key |
 | `POST /projects/api/gc/tags` | the GC's `tags.sweep`, called by qits-platform-orchestrator with `{dryRun, pins:{deployments, ciDaemon, dependencies, workspaceLaunches, projectLaunches}}` — each member the verbatim answer of that source's pins door, any other member ignored; `qits:admin` \| `qits:system`. Deletes old calver release tags on the git host and on every backup twin and answers `{dryRun, repositories, examined, deleted:[{repository, tag, host, twin}], kept:{newest, pinnedVersion, gitlink, inFlight, young}, errors}`. A missing or non-document pin member is a 400 that judges nothing. See "The backup twin" |
 | `/projects/api/repositories/{repoId}/remote-login` | the sign-in websocket — a literal `@WebSocket` path, which does **not** follow `quarkus.rest.path` |
-| `/projects/mcp` | the MCP server, still *named* `repository` |
 | `/projects/q/openapi`, `/projects/q/swagger-ui` | the API document and its UI (`quarkus.http.non-application-root-path`) |
 
 The edge path-routes `/projects/*` here from **every** vhost, verbatim and with no rewriting, so a
@@ -94,11 +93,13 @@ fallback answers anything that matched no route with `200 text/html`. That is ri
 wrong for a machine, which parses `index.html` as garbage data — so
 `quarkus.quinoa.ignored-path-prefixes=/projects` says what the fallback may not reach. **The values
 are absolute request paths** now that `ui-root-path` is `/`, and one prefix covers the lot:
-`/projects/api`, `/projects/q`, `/projects/mcp` and both daemon harnesses are all under it. Setting
-the key replaces Quinoa's derivation rather than extending it, and the derivation was incomplete
-here anyway — it reads `quarkus.rest.path` and `quarkus.http.non-application-root-path` and knows
-nothing of `/projects/mcp`, which is how `/projects/mcp/typo` once answered `200` HTML while
-`/projects/mcp` itself answered `405`.
+`/projects/api`, `/projects/q` and both daemon harnesses are all under it. Setting the key replaces
+Quinoa's derivation rather than extending it, and the derivation is incomplete here anyway — it
+reads `quarkus.rest.path` and `quarkus.http.non-application-root-path` and knows nothing of the
+daemon harnesses' raw routes.
+
+This service serves no MCP server (qits-1174). Agents reach it through the central `qits` MCP server
+(qits-platform-access-mcp-service), which calls the REST doors with the agent's own bearer.
 
 It was extracted as a library jar, on the reasoning that packaging it would need an auth variant, a
 webui and a main class. All three have lapsed: authentication terminates at `qits-gateway` and this

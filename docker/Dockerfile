@@ -78,7 +78,7 @@
 # With those seven set — both resource triples and the mirror root — the binary starts in ~65ms,
 # migrates both schemas, self-seeds the `qits` project — which forks `git init --bare`, writes a
 # tree and clones from a remote — and serves
-# /projects/mcp. That run is the check worth doing after a change here, because it is the only one
+# /projects/api. That run is the check worth doing after a change here, because it is the only one
 # that exercises the native image's resource and reflection registrations at all.
 #
 # --- stage `build`: native-compile ----------------------------------------------------------------
@@ -282,7 +282,7 @@ ENV QITS_REPOSITORIES_CREDENTIALS_FILE=/data/git-credentials
 EXPOSE 8080
 USER 1001
 
-# Everything this service serves hangs off /projects — /projects/api/*, /projects/mcp, /projects/q/*
+# Everything this service serves hangs off /projects — /projects/api/*, /projects/q/*
 # — because qits-gateway routes verbatim by prefix. The paths are in application.properties, not
 # here; see README.md.
 ENTRYPOINT ["/work/qits-projects", "-Dquarkus.http.host=0.0.0.0"]

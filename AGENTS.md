@@ -55,8 +55,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
 - `domain/` — `entity`, `persistence`, `dto`, `mapper`, `control`, `error`, `validation`.
   Framework-free in the sense that matters: no JAX-RS, no websockets. Entities are Panache
   active-record with public fields; mappers are MapStruct `@Mapper(componentModel = "jakarta")`.
-- `service/` — `api` (JAX-RS + the remote-login websocket), `mcp` (the `repository` MCP server),
-  `startup`, `wiring` (the git host's lifecycle client — `HttpGitHostRepositories`, a
+- `service/` — `api` (JAX-RS + the remote-login websocket), `startup`, `wiring` (the git host's lifecycle client — `HttpGitHostRepositories`, a
   `java.net.http.HttpClient` as an instance field). There is **no `notify` package any more**: its
   one class implemented `ProjectDomainRegistrar` against qits-platform-dns, that service is gone from
   the platform, and the port is an unimplemented hook now — so this repo implements no creation port
@@ -149,8 +148,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     person's press. `api/AgentEntitySignals` is its one caller, always sending all three values as
     the row holds them, from three triggers each wired once and each after the write: a flag change
     (`EntityBlocks.apply`), **every** transition (`bus/EntityTransitionAnnouncer`, the single
-    `TransitionAnnouncer` implementation — so the bulk `POST /work/transition` and
-    `transition_entities` are covered, and a move signals exactly once), and a retitle (the
+    `TransitionAnnouncer` implementation — so the bulk `POST /work/transition` is covered, and a move signals exactly once), and a retitle (the
     `entities` port `RetitleAnnouncer`, told by `WorkEntityService.update` only when the title
     changed). It also asks the entity's refinement through `refinementhost/RefinementAgentEntities`
     (`POST <proxy base> agents/entity` down the tunnel, falling back to `agents/blocked` on a 404).
@@ -189,7 +187,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   not code, and the module name and the datasource name having been the same word was a coincidence.
   So `entities/src/main/resources/db/epics/migration/` is the intended result. Likewise unmoved by
   the rename: the REST routes of the time (`/projects/api/epics/…`, since deleted outright by
-  qits-976 in favour of the archetype-free `/work` family), every DTO field, every MCP tool name, the SSE topics
+  qits-976 in favour of the archetype-free `/work` family), every DTO field, the SSE topics
   `epics`/`tickets` (see "The event bus"), and `AgentSurface`'s `project.work`, which is not
   merely shared with qits-projects-daemon but **validated against a closed list** — `AgentSurface`
   in the qits-coding-agents javalib, which both daemons refuse a surface outside of with a 400 — so
@@ -272,7 +270,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   The rules moved into shared beans both families called, and which the `/work` controllers alone
   call now — `CampaignDoors` (every campaign door; since qits-976 also the home of the
   `ConditionGroup`/`ConditionCriterion` records and `toGroupSpecs` that `CampaignController` used to
-  hold, which `CampaignMcpTools`' `set_campaign_member_condition` reads its argument through),
+  hold; qits-1174 removed them, since only the retired MCP tool used them),
   `DispatchDoors` (the press and its campaign branch, and `DispatchMode.parse`),
   `DossierAssetContent` (the sandbox headers), and `WorkEntityDoors.delete`/`children`/`createChild`/
   `audit` — or were already one service (`DossierService`, `RefinementService`). A campaign's
@@ -316,19 +314,19 @@ that are easy to get wrong:
 - **`@WebSocket` does not follow `quarkus.rest.path`.** The remote-login socket spells
   `/projects/api/...` out as a literal and has to be kept in step with the key by hand. Anything new
   registered straight onto the Vert.x router is the same.
-- **The MCP server's name is not its path.** It is mounted at `/projects/mcp` and is still *named*
-  `repository` (`@McpServer("repository")`), because qits-workspace-daemon addresses it by name.
-  Renaming it breaks the daemon; an *undeclared* name stops the process booting outright.
+- **This service serves no MCP server.** qits-1174 deleted the `repository` server and the
+  `quarkus-mcp-server` dependencies. Agents reach this service through the central `qits` server
+  (see "The agent harness"), which calls the REST doors.
 - **A machine surface outside `/projects` needs a line in
   `quarkus.quinoa.ignored-path-prefixes`.** Quinoa's SPA fallback is a catch-all at `/*` now, so a
   real route still wins — but a path matching *no* route is rerouted to `index.html` and answers
   `200 text/html`, which a machine client parses as data. The values are **absolute request paths**
   since `ui-root-path` became `/` (they used to be tails relative to it, which is why the old list
   read `/api,/q,/mcp,/daemon,/container`), so the whole list is one prefix: `/projects` covers
-  `/projects/api`, `/projects/q`, `/projects/mcp` and both daemon harnesses. This service owns no
+  `/projects/api`, `/projects/q` and both daemon harnesses. This service owns no
   route outside that segment; one that did — `/v2`, `/git` — would list it beside. Setting the key
-  **replaces** Quinoa's derivation rather than extending it, and the derivation never named the MCP
-  root-path or the harnesses' raw routes anyway.
+  **replaces** Quinoa's derivation rather than extending it, and the derivation never named the
+  harnesses' raw routes anyway.
 
 Path parameters naming a repository are `{repoId}` everywhere. Parameter names are visible in the
 generated client, so keep them uniform. Note the two reconciles under a project are deliberately
@@ -642,25 +640,24 @@ write** (user ruling, 2026-09-12):
   rather than on the change (an OOM-killed native-image step, a sibling service redeployed so
   buildkit cannot resolve its name), and whoever is watching a request should be able to re-ask the
   question. Approve and decline are the sign-off and stay `qits:admin` alone; that is the line.
-- **The entity write doors take it, and the MCP tool surface is the test.** A write route in
-  `entities/api` admits `qits:agent` exactly where the `repository` MCP server already exposes a
-  tool performing that same write — that server serves an agent with **no credential at all**, so
-  refusing at the REST door what is handed over one package away was an inconsistency rather than a
-  boundary. Bound by the token's `project` claim against the project of the row written, resolved
+- **The entity write doors take it, where an agent's work needs the write.** A write route in
+  `entities/api` admits `qits:agent` for the writes a dispatched agent makes. The central `qits`
+  MCP server reaches them with the agent's own bearer, so the door is the only check. Bound by the
+  token's `project` claim against the project of the row written, resolved
   **before** the write so an id naming nothing still answers 404; `api/EntitiesAgentAccess` is the
   one helper and `entities.error.ForbiddenException` the 403. The granted set is epic create,
   feature create/update/delete, task create/update/delete, ticket create, transition, block and
   comment create, comment update, the entity thread's comment create and PATCH (qits-551), the
   block of any lifecycle archetype (`POST /work/{qualifiedId}/blocked`, qits-592), both
-  dossiers' four writes each, `inline_figure`'s door, and
+  dossiers' four writes each, the dossier inline-figure door, an epic's status move (never to
+  SUPERSEDED), the refinement design writes (`POST`/`PUT /refinements/{rid}/designs`), and
   `POST /work/transition` (and its one-entry `PUT /work/{qualifiedId}`) — which binds **all or nothing** over every id and every parent in the
   batch, resolved in one `EntityCatalogService.byIds` read, with an unresolvable id falling through
   to the write's own 400 rather than becoming a 403. **Still `qits:admin` alone:** an epic's
-  status move and an epic's or a ticket's delete — refused inside `WorkController.setStatus` and
-  `WorkController.delete`, which admit the agent at the method for the kinds whose moves and deletes
-  are tools (freezing or resolving a plan from the board is a person's door; the agent's claim goes
-  through `transition_epic` on the MCP server, qits-394, and the REST grant was not widened with
-  it) — `WorkDispatchController.dispatch` and `WorkRefinementController.open` (standing a workspace
+  move to SUPERSEDED and an epic's or a ticket's delete — refused inside `WorkController.setStatus`
+  and `WorkController.delete`, which admit the agent at the method for the kinds whose moves and
+  deletes an agent makes (freezing or resolving a plan from the board is a person's door; an agent
+  claims its own phase with `POST /work/{id}/status`, bound to the epic's project) — `WorkDispatchController.dispatch` and `WorkRefinementController.open` (standing a workspace
   or a room up is a person's press; their GETs are reads and admit the agent), and
   `WorkCommentController.delete` (deleting is on neither surface: an agent that could delete what it
   disagrees with could erase the record of its own mistake).
@@ -736,7 +733,7 @@ answers **403**. `EntitiesAuditIdentityTest` pins both.
 **The suite goes through the mechanism, never around it.** `qits-auth-core` ships a `%test` dev user
 granted all four platform roles, so a plain `given()` already is an admin session and the ordinary
 test needs no fixture. A test about a *particular* caller sends what the edge sends — `X-Qits-User`
-plus `X-Qits-Roles`, as the MCP suites and the two role-pinning tests do — and a test under
+plus `X-Qits-Roles`, as the two role-pinning tests do — and a test under
 `NoDevUserProfile`, which blanks the dev user to reach the deployed posture, has no identity until it
 sends them.
 
@@ -1332,10 +1329,10 @@ served registry's `transitions`/`lifecycle` members and `PhasePrompts.phaseOf` (
 `phaseStartedBy`) all read; nothing else spells a move. New epics start `REPORTED`. `EpicStatus` and `EpicLifecycle` are
 deleted; epics V15 backfilled `REFINING→REPORTED`, `IMPLEMENTATION→REFINED`, `ABANDONED` and
 `SUPERSEDED→DROPPED`, and narrowed `ck_entity_status` to the six. Two doors move an epic's status:
-`POST /work/{qualifiedId}/status` (a person — `qits:admin` alone for an epic; it was `POST
-/epics/{id}/transition` until qits-976) and the `transition_epic` MCP tool (a dispatched agent's
-claim, qits-394), both through `refinementhost/EntityResolutions` and both followed by
-`api/PhaseAdvance`. **An epic can now be VERIFIED and DONE**, which is what the campaigns epic waits
+`POST /work/{qualifiedId}/status` (a person, or a dispatched agent's claim, qits-394 — an agent
+bound to the epic's project, never to SUPERSEDED; it was `POST /epics/{id}/transition` until
+qits-976) and the central server's `work_status`, which calls that route. Both go through
+`refinementhost/EntityResolutions` and are followed by `api/PhaseAdvance`. **An epic can now be VERIFIED and DONE**, which is what the campaigns epic waits
 on.
 
 **READY_FOR_DEV is a person's scheduling decision (qits-887, epics V25).** REFINED starts no phase any
@@ -1364,8 +1361,8 @@ row so every reader (DTOs, catalogue, audit snapshot, gates) has it, and written
 (`clear()` + `addAll`), never by assigning a new list. The item rules are `control/AcceptanceCriteria`'s
 alone — not blank, no `\n`/`\r`, at most one `.`, fewer than 20 whitespace characters — and the
 served schema carries them as the item `pattern`. Written by the create, `PATCH /work/{qualifiedId}` (null
-or `[]` clears), the PUT-shaped transition (absent clears, as every property there), `update_epic`,
-`update_ticket`, `propose_epic`. **They are not scope**: an epic's stay editable at REFINED, outside
+or `[]` clears), the PUT-shaped transition (absent clears, as every property there) and the central server's
+`work_update` and `work_create`. **They are not scope**: an epic's stay editable at REFINED, outside
 `requireReported`. **From READY_FOR_DEV on a CHANGED list is a 409** for both kinds
 (`WorkEntityService.requireCriteriaEditable`, on the edit and on the PUT door), and the same list
 restated — same items, same order — passes at every status, because the SPA's edit form restates the
@@ -1397,7 +1394,7 @@ since qits-976 deleted the per-archetype transitions and `CampaignController.tra
 `security/PersonCheck` alone (`verifiedAdmin(SecurityIdentity)`, the identity-taking twin of qits-891's check): a person
 under the proof's name — which is also the move's `changedBy` — and a machine otherwise. Asserted
 `X-Qits-*` headers, an agent's or a service client's bearer, and headers beside a machine bearer are
-machines. The MCP tools and every in-process caller (`PhaseAdvance`, `EntityDispatch`,
+machines. The central server (through the REST doors) and every in-process caller (`PhaseAdvance`, `EntityDispatch`,
 `TicketUnattendedGateTickets`, the campaign executor) pass `Mover.machine`, and
 `WorkEntityService.transition(…, String changedBy)` IS a machine, so a door that forgets to say who
 moves fails closed. Unscheduling is a BACK move and anybody's. In the suite a person is the
@@ -1412,10 +1409,11 @@ epic implement prompt makes the move conditional on every task already being mar
 **Features and tasks hold the same lifecycle of their own (qits-763, epics V24).** Same nine words,
 same `EntityStateMachine` graph and skips, same registry entry shape (STATUS permitted and minted
 `REPORTED` by the writer, so `requiredOnTransition` carries it), moved through the generic `POST
-/work/{qualifiedId}/status` and the `transition_task` MCP tool under a ticket's roles — and refused 409
+/work/{qualifiedId}/status` (`work_status` on the central server) under a ticket's roles — and refused 409
 while the owning epic is `REPORTED` (a draft is edited, not moved; `requireReported` stays on
-structural writes only). The markers are status moves: `mark_task_implementing` moves the task (and
-its feature, the first time) to IMPLEMENTING, `implementedAt` — `mark_task_implemented`,
+structural writes only). The markers are status moves: `implementingAt` — set with `work_update` on a task — moves the task
+(and its feature, the first time) to IMPLEMENTING, and moves an epic still READY_FOR_DEV to
+IMPLEMENTING; `implementedAt`,
 `PATCH /work/{qualifiedId}` (once also the deleted `PUT /tasks`, `PUT /features`) — moves the item to IMPLEMENTED, clearing it moves an
 IMPLEMENTED item back, so marker and status never disagree; the timestamps stay as history. **Five
 epic moves carry the descendants and no other does** (`WorkEntityService.carryDescendants`):
@@ -1448,7 +1446,7 @@ successor draft — a new `REPORTED` epic with the old title, description and fe
 ids, implemented markers reset, `dependsOn*` remapped. A `REPORTED` epic cannot be superseded (edit
 it or drop it). Features and tasks keep their slugs, because the new epic and its features are new
 scopes; the successor *epic's* slug cannot, so it mints the next free suffix like any other create.
-`transition_epic` refuses `SUPERSEDED`: an operation on a plan is a person's, from the board.
+The agent door refuses `SUPERSEDED`: an operation on a plan is a person's, from the board.
 
 ### One dispatch path, phase-shaped, with a continue-or-stop bit (qits-394)
 
@@ -1514,9 +1512,9 @@ and its thread comment names it; a refused or failed press writes nothing.
 **Blocking is for every archetype that runs a phase (qits-592)** — a ticket, an epic, a campaign —
 through one rule, `api/EntityBlocks` (reason required to block, 409 where `PhasePrompts.phaseOf`
 starts no phase or the kind is a feature or a task, the reason on the entity's own thread), behind `POST
-/work/{qualifiedId}/blocked` (UUID or qualified id), `block_entity`/`unblock_entity` (`CommentMcpTools`),
-and the ticket-only `block_ticket`/`unblock_ticket` tools, kept as delegates (the ticket-only `POST
-/tickets/{id}/blocked` and `/entities/{id}/blocked` went with qits-976).
+`/work/{qualifiedId}/blocked` (UUID or qualified id), which the central server's `work_block` and
+`work_unblock` call (the ticket-only `POST /tickets/{id}/blocked` and `/entities/{id}/blocked`
+went with qits-976).
 Every transition clears the flag. A blocked campaign's executor claims no new member (running ones
 are untouched) and its unblock runs the campaign's sweep straight after; `blocked` is on the merged shape for every lifecycle kind and on the campaign DTOs
 (`CampaignDtos`).
@@ -1538,7 +1536,7 @@ value**, computed at read time by `entities/control/EntityBlockState` (explicit 
 for `qits.projects.agent-waiting.debounce`, 60s), with three NON_NULL scalars beside it —
 `blockSource` (`EXPLICIT`/`AGENT_WAITING`/`BOTH`), `blockReason` (the stated reason, else a fixed
 sentence) and `blockedBy` — on `TransitionedEntity`, `EntitySummary`, `EntityBlock`,
-`EntityDispatchStateDto`, the campaign DTOs and the ticket/epic/campaign MCP records. An explicit
+`EntityDispatchStateDto`, and the campaign DTOs. An explicit
 unblock clears the derived wait too and counts as a change whenever the effective value was true.
 `AgentWaiting.sweep` (every `qits.projects.agent-waiting.sweep-interval`, NORMAL mode only — the
 suite calls it) announces each wait as it crosses the debounce: the archetype's hint and
@@ -1599,14 +1597,14 @@ Five things are rules rather than details:
   standing open — see "Tickets", which argues both, for an epic exactly as for a ticket.
 - **Prompts are per archetype, the phase is not.** `PhasePrompts.render(archetype, phase, entity)`:
   an epic's refine turn writes the description, the feature/task tree (with `dependsOn`) and the
-  dossier and ends with `transition_epic` to REFINED (the freeze); its implement turn works the tasks
-  in `dependsOn` order, marks each with `mark_task_implementing` as it starts and
-  `mark_task_implemented` as it lands, releases every touched
-  repository, does **not** integrate the workspace, and ends with `transition_epic` to IMPLEMENTED
+  dossier and ends with `work_status` to REFINED (the freeze); its implement turn works the tasks
+  in `dependsOn` order, marks each with `work_update` (`implementingAt`) as it starts and
+  (`implementedAt`) as it lands, releases every touched
+  repository, does **not** integrate the workspace, and ends with `work_status` to IMPLEMENTED
   only once every task is marked; its verify turn confirms live on the platform and ends at
-  VERIFIED. All three record on the epic's thread with `add_comment`, never "in your report" — a
+  VERIFIED. All three record on the epic's thread with `work_comment_create`, never "in your report" — a
   chat reply nobody reads again (qits-551). Every turn of both archetypes ends the same way
-  (qits-592): the forward transition as the claim, or `block_entity` with what is missing or what
+  (qits-592): the forward transition as the claim (`work_status`), or `work_block` with what is missing or what
   was found — no "leave the status alone" arm, and no backward move, a failed verification
   included. Each turn is at most 900 characters (`PhasePromptsTest` enforces it) and copies nothing
   from the tool descriptions or the flow brief. Every turn opens with
@@ -1624,25 +1622,21 @@ Five things are rules rather than details:
   pointed at the unified door, and the two no-workspaces classes are one,
   `EntityDispatchWithNoWorkspacesTest`.
 
-**`transition_epic` is on the MCP server since qits-394**, replacing the deliberate absence of an
-epic lifecycle tool: a phase whose claim cannot be made is a phase whose advance never fires. It is
-adjacent-only and reversible below DONE (which is final) like `transition_ticket`, goes through `EntityResolutions`, is followed by
-`PhaseAdvance`, and is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`. It is **not** in either
-daemon's pre-approval bucket — reachable today because every surface ships CLAUDE with
-`SKIP_PERMISSIONS`; a surface moved to kimi needs it (and the epic tree writes and dossier reads the
-epic prompts name) added there and in `AgentSurfaceDefaults` on the same day.
+**An agent claims an epic phase with `work_status`** (qits-394, qits-1174): a phase whose claim cannot
+be made is a phase whose advance never fires. The door is adjacent-only and reversible below DONE
+(which is final) like a ticket's, goes through `EntityResolutions`, and is followed by
+`PhaseAdvance`. A read-only surface (`epic.autonomous`, `ticket.dispatch`) gets no write tools from
+the central server, so an unattended run cannot move a status.
 
-**`mark_task_implemented` on `EpicMcpTools` is a dedicated tool and a deliberate interim.** It is not
-a widening of `update_task`, whose refusal ("the implemented marker is not editable here") is a
-stance about the *refining* agent and stays intact — one that is drafting a plan must not also be
-able to declare parts of it shipped. Two agents, two stances, two tools. It lands on
-`WorkEntityService.update`'s marker arm alone (an `EntityWrite` touching the marker and no scope), so `EntityLifecycle.requireBeingImplemented` is the guard that
-runs and its message is what a draft's task answers with, and it returns its own small result record
-rather than widening `TaskSummary` (which three tools return and none of which can ever carry a
-marker). It is in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`: an unattended run steered by an
-untrusted commit message must not declare somebody's task shipped. **It goes when merge-derived
-markers exist** — a consumer that reads a landed change back to the task it implements — and the
-marker's semantics are identical either way; only the writer moves from a prompt to an event.
+**The task markers are `PATCH /work/{id}` fields** (`implementingAt`, `implementedAt`), written with
+`work_update`. They land on `WorkEntityService.update`'s marker arm alone (an `EntityWrite` touching
+the marker and no scope), so `EntityLifecycle.requireBeingImplemented` is the guard that runs. The
+refining agent's refusal ("the implemented marker is not editable here") is a stance about a
+plan being drafted and stays intact: a drafting agent must not declare parts of it shipped. Marking
+a task implementing also stamps its feature, and moves an epic still READY_FOR_DEV to IMPLEMENTING.
+**The marker writes go when merge-derived markers exist** — a consumer that reads a landed change
+back to the task it implements — and the marker's semantics are identical either way; only the
+writer moves from a prompt to an event.
 
 ## The dossier
 
@@ -1679,10 +1673,8 @@ the `CausationStamp` listener.
     matches by absence: `/work/{qualifiedId}/dossier-assets` is a 404 for anything but an epic.
   - **The audit subtree key is the ticket's id**, with no schema change, because `auditentry.epic_id`
     is the subtree key rather than literally an epic (V4's stated reading).
-  - **The MCP surface takes an owner and the five tools stay five.** Every tool takes `epicId` and
-    `ticketId`, both optional, exactly one required; both or neither is refused with a sentence
-    saying which. A parallel set of five ticket tools would double the surface a model chooses from
-    and write one rule twice. `inline_figure` is the one tool that stays epic-only.
+  - **One door family serves both owners.** The central server's `work_dossier_*` tools take the
+    qualified id of the epic or the ticket. `work_dossier_inline` stays epic-only.
   - **Both owners' pages are one route family**, `entities/api/WorkDossierController` —
     `GET/POST /work/{qualifiedId}/dossier`, `GET/PUT/DELETE …/{page}`, `POST …/{page}/move` — whose
     `{qualifiedId}` names the epic or the ticket, same roles and the same 409-with-current-page for
@@ -1699,9 +1691,8 @@ the `CausationStamp` listener.
   person editing in the SPA while an agent writes from a prompt is the ordinary case: a stale write
   answers **409 carrying the current page**, body included, and never a merge. `StaleWriteException`
   (one per module: `entities.error` and `projects.error`) is what the two exception mappers put
-  `current` on the wire for. Both doors carry it — `WorkDossierController` and `DossierMcpTools`
-  (`list_dossier_pages`, `get_dossier_page`, `put_dossier_page`, `move_dossier_page`,
-  `remove_dossier_page`, `inline_figure`), all six write tools in `ReadOnlyRepositoryToolFilter`.
+  `current` on the wire for. `WorkDossierController` carries it, and the central server's
+  `work_dossier_put`, `work_dossier_move` and `work_dossier_delete` return it to the agent.
 - **A figure is COPIED into the epic when it is inlined, keeping its id.** Both sources — a
   `refinement_prompt_attachment` and a `refinement_design` — cascade away on a discard, so a link
   would break every dossier the day its refinement went. `DossierAssetService.copyFrom` writes the
@@ -1740,7 +1731,7 @@ dossier inlines figures.
 **The figure link is data, not a route (qits-976).** What a page body stores for an inlined figure is
 `/epics/{epicId}/dossier-assets/{assetId}/content`, and it stays that: `DossierAssetService.contentUrl`
 /`markdownFor` still write it, its `REFERENCE` pattern still parses it for the reference count
-(`syncReferences`), and `refinementhost/DossierFigures`, `inline_figure` and `listWorkDossierAssets`
+(`syncReferences`), and `refinementhost/DossierFigures`, the inline-figure door and `listWorkDossierAssets`
 still hand it back as `url`/`markdown`. Only the **route** of that shape is deleted — qits-976
 removed `DossierAssetController` with the rest of the per-archetype surface — because the string lives
 in stored page bodies and the reference count is read off it, so moving it is a migration of every
@@ -1792,7 +1783,7 @@ and each one is a decision rather than a simplification:
   platform (a person closes it), DONE means closed. **IMPLEMENTING and VERIFYING are the two statuses
   naming work in flight, and neither is the `IN_PROGRESS` this rule forbade** (qits-749, V22/V23):
   the platform sets them — the dispatch press, the FLOW hand-off that delivers the phase's turn, and
-  for IMPLEMENTING an agent's first `mark_task_implementing` — so nobody keeps them current by hand,
+  for IMPLEMENTING an agent's first `implementingAt` marker — so nobody keeps them current by hand,
   and "an implementation / a verification was started" does not go stale. No status a person must
   maintain is allowed, still. Both are skippable: READY_FOR_DEV → IMPLEMENTED and IMPLEMENTED →
   VERIFIED are legal `SKIP`s. `docs/unified-entity-model.md` § "IMPLEMENTING, and the rule it rewrote" and § "VERIFYING, the mirror one phase later" are the
@@ -1808,14 +1799,14 @@ and each one is a decision rather than a simplification:
   **`DROPPED` is the sixth word and it is not a sixth step.** It says a decision was taken not to do
   the work: nothing was implemented, nothing was verified, and nothing is expected to be. It exists
   because without it abandoned work has nowhere to go and sits where it was left — READY_FOR_DEV
-  being precisely the word `list_tickets` advertises as ready to be picked up — so the next agent asked to take on the
+  being precisely the word `work_list` advertises as ready to be picked up — so the next agent asked to take on the
   outstanding work picks up the one thing that was ruled out. It is reachable from **every status
   that is not already closed** (REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING, IMPLEMENTED,
   VERIFYING, VERIFIED) and it reopens to
   **REPORTED and nothing else**, because reviving abandoned work means asking again what it is for.
   **DONE is offered no drop**, nor any other move: it is final. The whole rule is declared once, in
   `EntityStateMachine`, and every other javadoc points at it rather than restating it. The one door
-  that skips adjacency, `POST /work/transition` / `transition_entities`, still keeps finality:
+  that skips adjacency, `POST /work/transition` (`work_transition --map`), still keeps finality:
   an entity that is DONE keeps status DONE and its archetype there, while its plain fields and its
   place in the tree stay writable. No migration came with this — existing DONE rows simply stay DONE.
 
@@ -1833,21 +1824,18 @@ and each one is a decision rather than a simplification:
 - **`created_by` and `author` are columns, and they are STAMPED.** Every other actor in this module
   lives only in the audit log. These two are duplicated onto the live rows because a ticket list
   wants a reporter and a thread wants a writer without a join per row — and they are read from the
-  request identity at the seam (`EntitiesPrincipal.changedBy`, or the MCP session's), never from a
+  request identity at the seam (`EntitiesPrincipal.changedBy`), never from a
   request body, so nobody can file as somebody else. An edit does not re-stamp either: who wrote it
   and who last changed it are different facts, and the second one is the log's.
-- **The MCP surface HAS the transition.** `transition_ticket` is on the server, because resolving a
-  ticket is a statement about work that is done — which the agent that did it is the one who knows —
-  and every move an agent makes is reversible (only DONE, a person's move, is final), so a wrong
-  answer costs a click. Since qits-394 `EpicMcpTools` has the epic's
-  twin, `transition_epic`, for the same reason: a dispatched epic's phases end with the agent's claim
-  (see "Epic lifecycle").
-  `update_ticket_comment` is there for the front desk's sake — an agent that came back knowing more
-  corrects its own earlier note rather than stacking a contradiction under it — and it obeys the
-  rule above rather than bending it: an edit moves `updatedAt` and never `author`. All five ticket
-  write tools are in `ReadOnlyRepositoryToolFilter.MUTATING_TOOLS`, which fails closed; deleting is
-  on neither surface, since an agent that could delete what it disagrees with could erase the record
-  of its own mistake.
+- **An agent can make the transition.** `work_status` reaches `POST /work/{id}/status`, because
+  resolving a ticket is a statement about work that is done — which the agent that did it is the one
+  who knows — and every move an agent makes is reversible (only DONE, a person's move, is final), so
+  a wrong answer costs a click. A dispatched epic's phases end with the agent's claim the same way
+  (see "Epic lifecycle"). `work_comment_update` is there for the front desk's sake — an agent that
+  came back knowing more corrects its own earlier note rather than stacking a contradiction under
+  it — and it obeys the rule above rather than bending it: an edit moves `updatedAt` and never
+  `author`. A read-only surface gets none of the write tools. Deleting is not an agent's door,
+  since an agent that could delete what it disagrees with could erase the record of its own mistake.
 
 **`AuditEntry.epic_id` is the subtree key, not a foreign key**, and tickets are what make that
 visible: a `TICKET` row and every `COMMENT` row under it carry the *ticket's* id there, so
@@ -1879,12 +1867,9 @@ snapshots already written keep their `ticketId`. What rides with it:
   check.
 - **The old REST doors are deleted (qits-976)** — `GET/POST /tickets/{id}/comments`, `PUT/DELETE
   /ticket-comments/{id}`, `GET/POST /entities/{id}/comments` and `PATCH/DELETE
-  /comments/{commentId}` all answer 404 (`RetiredEntityDoorsTest`). The MCP tools
-  `add_ticket_comment` and `update_ticket_comment` stay delegates with their ticket-era shapes, for
-  the tool names pre-approved elsewhere.
-- **MCP:** `add_comment`, `update_comment`, `list_comments` (`mcp/CommentMcpTools`); `get_epic` and
-  `get_campaign` carry their own thread. The two writes are in `MUTATING_TOOLS` and in
-  `AgentSurfaceDefaults`' `TICKET_THREAD_TOOLS` copy.
+  /comments/{commentId}` all answer 404 (`RetiredEntityDoorsTest`).
+- **Central server:** `work_comment_create` and `work_comment_update` write the thread;
+  `work_details` carries it.
 - **Audit key:** the entity's own id for a root, the epic's for a feature or a task
   (`WorkEntityService.auditRootOf`). A delete removes every comment in the subtree in-service,
   **before** any row goes — the audit write flushes, and a row already deleted would have cascaded
@@ -1914,7 +1899,7 @@ Three things travel with it:
   **id** (`WorkspaceAgentDispatch.Subject.ticket`) and no preamble. It used to render the whole row
   into the workspace goal — `# Ticket: <title>`, a type/status/assignee/reporter line, the
   description — and that copy served no reader well: the instruction sends the agent to read the
-  ticket *live* with `get_ticket`, so the prose was stale by construction, and on the workspace page
+  ticket *live* with `work_details`, so the prose was stale by construction, and on the workspace page
   it buried the one fact a person scanning the list wants. **With this and the refinement's own
   removal (V22), no stored render of a row is left on the platform.** qits-workspaces carries the id
   as a field (`workspace.ticket_id`, its `V5`) and resolves it with nothing; the workspaces SPA
@@ -1930,35 +1915,29 @@ Three things travel with it:
   never passed in: pressing "assign agent" on a half-finished ticket **resumes** it at the right
   phase instead of starting it over, and there is exactly one place mapping a status to words.
   Each template's own load-bearing sentences are argued in its javadoc; four rules span all three:
-  - **Refine writes into the ticket's `description` with `update_ticket`** — not a comment, not a
-    file in the tree — and uses `put_dossier_page` against the ticket where prose cannot hold it.
+  - **Refine writes into the ticket's `description` with `work_update`** — not a comment, not a
+    file in the tree — and uses `work_dossier_put` against the ticket where prose cannot hold it.
     Its hardest job is **refusing to implement**, stated as the phase's boundary with its reason,
     because an agent that has just found the bug wants to fix it.
-  - **Implement comments as the work goes with `add_ticket_comment`**, which deliberately replaces
+  - **Implement comments as the work goes with `work_comment_create`**, which deliberately replaces
     "keep one comment current" (the epic asks for a thread, not a scratchpad); **releasing is the
     goal** — released and deployed, not merged and not a green build; and **DO NOT INTEGRATE THE
     WORKSPACE**, in the imperative, because verification happens in that same workspace after the
     release and today's threads still carry the opposite sentence.
   - **Verify verifies ON THE PLATFORM**, and reads the relevant code changes only where the
     situation is conceptually unreproducible — the order of those two is the design, so the fallback
-    is never the easy path. A failure is `block_entity` with what still occurs — the ticket stays
+    is never the easy path. A failure is `work_block` with what still occurs — the ticket stays
     IMPLEMENTED, nothing moves back — and closing stays a person's move.
-  - **Each ends the same way** (qits-592): `transition_ticket to <next>` as the agent's claim, or
-    `block_entity` with what is missing or what was found. There is no comment-only arm — a
+  - **Each ends the same way** (qits-592): `work_status` to `<next>` as the agent's claim, or
+    `work_block` with what is missing or what was found. There is no comment-only arm — a
     comment is invisible to everything that hands out work — and `DROPPED` is **not** the answer
     either, because dropping asserts a decision nobody took. Each turn stays within 900
     characters and copies no rule from a tool description or the flow brief.
 
-  Two seams make all three instructions rather than dead letters, and both are stated in
-  `PhasePrompts`' javadoc (they **moved there** from the instruction it replaces):
-  qits-workspace-daemon lists `transition_ticket` in its own `TICKET_RESOLUTION_TOOLS` bucket (on the
-  kimi path `enabledTools` is the whole tool surface, so an unlisted tool does not exist), and a
-  dispatch keeps connecting **without** `agentReadOnly=true`, so `ReadOnlyRepositoryToolFilter` still
-  fences all five ticket writes off every unattended run. **`update_ticket`, `put_dossier_page` and
-  `block_entity` are in neither daemon's bucket** — reachable today because every surface ships
-  CLAUDE with `SKIP_PERMISSIONS`, and a surface moved to kimi needs them added there and in
-  `AgentSurfaceDefaults`' copy on the same day, or the phases have been told to write — and to
-  block — with tools they cannot call.
+  The phase prompts name only tools of the central `qits` server, which every shipped surface
+  attaches. A surface with `epic.autonomous` or `ticket.dispatch` is read-only: the harness appends
+  `agentReadOnly=true` to the `qits` URL, and the server then serves no write tool. A prompt that
+  ends with `work_status` or `work_block` therefore needs a surface that is not read-only.
 - **A dispatch that succeeded stamps the thread, naming the phase it started (and, for a PHASE-mode
   press, that the run stops after it); one that failed writes nothing.** The comment is
   stamped from the caller's identity like any other, and a re-dispatch that qits-workspaces answered
@@ -1972,8 +1951,8 @@ transition is the whole trigger.** `projects/api/PhaseAdvance` (application-scop
 `afterTransition(entity, statusBefore, changedBy)`; `TicketPhaseAdvance` until qits-394) is called by **every**
 lifecycle transition surface — `entities/api/WorkEntityDoors.move`, behind `POST
 /work/{qualifiedId}/status` for every archetype (it was `EntityRoutes.move`, behind the per-archetype
-transition routes, until qits-976), and `mcp/TicketMcpTools.transitionTicket` / `mcp/EpicMcpTools.transitionEpic` — *after* the move is recorded and outside its
-transaction, exactly where each already fires its hint. It delivers the next turn only when the
+transition routes, until qits-976) — *after* the move is recorded and outside its
+transaction, exactly where it fires its hint. It delivers the next turn only when the
 entity's `dispatch_continues` says the last press asked for the whole flow; a PHASE run stops there,
 silently, and waits for the next press. It reads `PhasePrompts.startedBy` and **adds no second table
 and no second switch**: the prompt for a status is the work that starts from it, so a
@@ -2008,8 +1987,7 @@ assignment, not a comment, not a release.
   sentences alike. The hand-off itself finds the agent by the work item's id, never by the branch. `require` carries the dispatch door's 409 unchanged; `find` answers
   empty for the caller that has nobody to refuse.
 - **What lands on the thread is what actually happened**, stamped from the caller like the dispatch
-  comment (the stamp is passed *in*, because the MCP surface's fallback identity is `mcp-agent` where
-  the REST one's is null): *"Started the implement phase: the agent working in the workspace on
+  comment (the stamp is passed *in*): *"Started the implement phase: the agent working in the workspace on
   `ticket/x` was told."*, or *"…no agent was running in the workspace on `ticket/x`, so one was
   launched to take it."*, or *"Could not start the verify phase: &lt;reason&gt;. The ticket is
   IMPLEMENTED and nothing is running on it."* — which claims nothing about an agent. **A ticket with no
@@ -2099,7 +2077,6 @@ belts).
 | `QITS_DOMAIN` | `<d>` |
 | `GIT_CONFIG_GLOBAL` | `/etc/qits-gitconfig` |
 | `QITS_GIT_AUTH_HOST` | `githost.qits.<d>` |
-| `QITS_REPOSITORY_MCP_URL` | `https://projects.qits.<d>/projects/mcp` |
 | `QITS_PLATFORM_MCP_URL` | `https://mcp.qits.<d>/mcp` |
 | `GIT_AUTHOR_NAME/EMAIL`, `GIT_COMMITTER_NAME/EMAIL` | `GitIdentity` |
 | `CLAUDE_CONFIG_DIR` / `KIMI_CODE_HOME` | `/claude-home/.claude` / `/claude-home/.kimi-code` |
@@ -2112,7 +2089,7 @@ One container per project — its **front desk** (see "Front desks" above for ho
 and composed) — holding a clone of that project's wrapper repository and running
 `qits-projects-daemon` over it, so an agent can read and build the project it is planning. What this
 section describes is the daemon's side of it: the control socket, the tunnel, the proxy, the pin, the
-MCP servers and the agent configuration. The host side is `service/…/agenthost/`; the container's process is its own repository
+central MCP server and the agent configuration. The host side is `service/…/agenthost/`; the container's process is its own repository
 (`qits-projects-daemon`), and that repo's `AGENTS.md` is the source of truth for every value below.
 The whole shape is qits-workspaces-service's daemon harness — registry, tunnels, proxy — adapted
 rather than reinvented, so read that repo before changing anything structural here.
@@ -2192,31 +2169,23 @@ credential helper against `githost.qits.<d>` (`GIT_CONFIG_GLOBAL`, `QITS_GIT_AUT
 reads and no writes: a desk token is commissioned `"gitRefs": []`. The direct path's commissioned
 client pair (`QITS_COMMISSIONED_*`, `*_AUTH_TOKEN_URL`) is gone with it.
 
-**The harness gets exactly one MCP server, and it is this one.** `QITS_REPOSITORY_MCP_URL` names
-this service's `repository` server at `/projects/mcp`, which carries `EpicMcpTools` beside
-`RepositoryMcpTools` — the epic surface is why the container exists. It is composed from
-`qits.projects.own-host`/`own-port` (`qits.projects.agent-mcp-url` overrides), so it is *stated*
-rather than left to the daemon's derivation — for a desk, `https://projects.qits.<d>/projects/mcp`. The name carries no
-`QITS_PROJECTS_DAEMON_` prefix because it is the daemon's existing `qits.repository-mcp.url` key.
-
-The exclusion is the other half of the decision: qits-workspace-daemon wires **three** servers into
-a workspace container (`actions`, `repository`, `observability`) and a project agent gets neither of
-the other two — its job is the project's plan, not workspace actions or another service's telemetry.
-Nothing can add them back at runtime: the daemon addresses `repository` alone and refuses any other
-name, and Claude is launched `--strict-mcp-config`, so the shared `/claude-home` volume's own MCP
-entries are ignored.
-
-**The central `qits` server is the one addition, and it is a different kind** (qits-630).
+**The harness gets exactly one MCP server: the central `qits` server** (qits-630, qits-1174).
 `QITS_PLATFORM_MCP_URL` names the qits CLI served over MCP — application
 `qits-platform-access-mcp-service`, at `http://<env>-qits-platform-access-mcp-service:8080/mcp`,
 composed from `QITS_ENVIRONMENT` (the source `qits.projects.own-host`'s default reads) unless
 `qits.projects.platform-mcp-url` overrides it. Both container factories inject it — the project
-agent's here and `RefinementContainerFactory`'s — from the one key. It is scoped by the caller's
-bearer, not by its url, so it carries no ids and takes no narrowing; the daemon renders it as the
-built-in `qits` server on every surface whose configuration has it on, and `AgentSurfaceDefaults`
-ships it on for every surface. V33 appended it to every stored surface that predated it, because an
-attachment row *is* a built-in's toggle — absent means off, as it does for `observability` — and
-that absence was ambiguous exactly once, before the store would accept the key.
+agent's here and `RefinementContainerFactory`'s — from the one key. This service serves no MCP
+server of its own any more, and sets no `QITS_REPOSITORY_MCP_URL` or `QITS_OBSERVABILITY_MCP_URL`.
+The server has one tool per leaf command, named by the command path joined with `_`
+(`work_details`, `work_update`, `work_status`, `work_block`, `work_create`, `work_list`,
+`work_transition`, `work_comment_create`, `work_dossier_*`, `work_members_*`, `work_progress`,
+`work_design_*`, `repositories_branches`, `repositories_commits`, `repositories_commit-subjects`,
+`observe_errors`, …). It calls this service's REST doors with the agent's own bearer (`qits:agent`),
+so those doors decide what an agent may write. It is scoped by that bearer, not by its url, so the
+url carries no ids; the one narrowing is `agentReadOnly=true`, which the harness appends for a
+read-only surface and which limits the server to read tools. The daemon renders it as the built-in
+`qits` server on every surface whose configuration has it on. Claude is launched
+`--strict-mcp-config`, so the shared `/claude-home` volume's own MCP entries are ignored.
 
 **The token is not a boundary.** `qits.projects.daemon-api-token` is peer authentication behind a
 loopback bind — it says "qits is calling", never "this user is calling" — so the proxy *sets* it,
@@ -2239,8 +2208,8 @@ in `AgentDaemonRegistry` and still reads `FAILED` with its `failureDetail`.
 where in the product a session was started from — `project.work`, `epic.chat`, `epic.agent`,
 `workspace.chat`, `workspace.agent`, `epic.autonomous`, `ticket.dispatch` — and one
 configuration per surface, **platform-wide**, holds the harness, model, effort, remote control,
-permission mode, activity tracking, the system prompt, the initial prompt, and which of the three
-built-in MCP servers attach with what narrowing. Schema in `V16`; entities, store and shipped
+permission mode, activity tracking, the system prompt, the initial prompt, and whether the one built-in
+MCP server, `qits`, attaches and is read-only. Schema in `V16`; entities, store and shipped
 defaults in `domain`; two controllers and the boot seed in `service`.
 
 - **`project.work` is the one desk; `project.epics` and `project.tickets` are retired
@@ -2262,8 +2231,8 @@ defaults in `domain`; two controllers and the boot seed in `service`.
 - **The seed is the safety.** `control/AgentSurfaceDefaults` carries the seven surfaces seeded from
   what the two daemons hardcode today, so turning the store on changes nothing: the tickets desk's
   text block byte for byte, an **empty** system prompt on the epics desk (a value, not an absence),
-  skip-permissions everywhere because every launch renders it unconditionally, and per surface
-  exactly the servers its host daemon's `serversFor` attaches at the scope it launches with.
+  skip-permissions everywhere because every launch renders it unconditionally, and on every
+  surface the `qits` server alone, marked read-only on `epic.autonomous` and `ticket.dispatch`.
   `AgentSurfaceDefaultsTest` asserts every one of those against the daemons' literals **copied in**
   — deliberately not derived, and it names the file and line each came from.
   <br>**The real test is not written yet and the class says so.** What this feature wants is each
@@ -2276,17 +2245,27 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   both daemons enable it over the SDK control channel in `claudeChatProtocol` and an interactive
   launch enables nothing. And the two composed surfaces carry **different** bootstrap sentences
   ("this project" vs "this workspace"), because their two daemons spell the constant differently.
+  Both read the work item with `work_details` and then implement it: "Read the work item for this
+  project with the qits MCP server's work_details tool, then implement what it describes." and
+  "Read the work item this workspace is for with the qits MCP server's work_details tool, then
+  implement what it describes."
 - **A read never 404s.** A surface with no row answers its shipped default; a surface outside the
   vocabulary answers a neutral one with **no** servers. That is what lets a daemon ship ahead of
   this store and a ninth surface be added one repository at a time — which is also why
   `surface_key` carries no check constraint and why the seed is a boot bean
   (`startup/AgentSurfaceSeed`, insert-if-absent) rather than an `insert` in V16. A DDL seed would
   have made the constants and the rows two copies free to disagree.
-- **The pre-approval tool lists are stored per attachment and are not operator-editable.** Storing
-  them is forced rather than chosen: the two daemons' lists for the *same* `repository` key differ
-  (the workspace one carries four write exceptions), so a constant keyed by server could not seed
-  both. The editor's write body has no field for them and `validated()` strips whatever a request
-  carried; a write keeps what the row held and falls back to the shipped constant.
+- **Built-in servers: `qits` only (qits-1174).** `AgentSurfaceDefaults.BUILT_IN_SERVERS` is
+  `[qits]`. `RETIRED_SERVERS` is `repository`, `observability` and `actions`; they are gone from
+  the store. `RESERVED_SERVER_KEYS` is those three plus `qits`, so the catalog refuses all four as
+  external entry keys (as `AgentConfigurationDocument.RESERVED_SERVER_KEYS` in qits-coding-agents
+  does). A surface write that names a retired server is a 400 "Unknown MCP server". `V42` gave every
+  stored surface a `qits` attachment where it had none, read-only marked `qits` where the surface
+  had read-only marked a retired server, deleted every attachment to a retired server and
+  renumbered the positions.
+- **The pre-approval tool lists are gone.** The constants (`PROJECTS_REPOSITORY_TOOLS` and the
+  rest, `shippedToolsFor`) were deleted. A new attachment stores an empty tool list; Claude
+  pre-approves `mcp__qits__*`. The editor's write body still has no field for the list.
 - **Two doors, and they are different subjects.** `api/AgentSurfaceConfigurationController`
   (`/agent-surfaces`, `qits:admin`) is the editor's — list, read, replace, plus the revision trail;
   it validates a known harness, a known permission mode, an MCP attachment naming a server that
@@ -2357,7 +2336,7 @@ and this service caches the report — `V17`, `entity/AgentHarnessCapability`,
   would have been five always-null columns and a discriminator deciding which half of the schema
   applies.
 - **Three refusals on write, each closing a silent failure.** A reserved key (`repository`,
-  `observability`, `actions`) would displace a platform server in the rendered `key → config` object
+  `observability`, `actions`, `qits`) would displace a platform server in the rendered `key → config` object
   and the session would look normal while talking to somebody else's server. A non-http(s) URL cannot
   be carried: Kimi's ACP shape is `(key, url, tools)` with no place for a stdio command. And a
   credential reference qits-configuration does not hold is a 400 naming it — but **"could not ask" is
@@ -2378,8 +2357,8 @@ and this service caches the report — `V17`, `entity/AgentHarnessCapability`,
 - **A delete is refused while any surface attaches the entry**, naming them — which is why
   `agent_surface_external_mcp_attachment.catalog_key` carries no foreign key. An FK would make that
   message unreachable and a 500 inevitable.
-- **`allowedTools` IS operator-editable here**, unlike the built-ins' shipped lists: the platform
-  ships no pre-approval constant for a server it has never heard of. Under
+- **`allowedTools` IS operator-editable here**: the platform ships no pre-approval list for a
+  server it has never heard of. Under
   `--dangerously-skip-permissions` it is the only lever until the permission-mode knob is used.
 
 #### The credential key namespace: `env.<VAR>` under the reserved application `qits-agent-mcp`
@@ -2592,7 +2571,7 @@ Where it differs from the agent harness, each difference is the domain line:
   an epic or a ticket; the column was `epic_id` until domain **V29** renamed it `entity_id` (ids are
   one space across archetypes, so no value moved, and `refinement_epic_id_key` became
   `refinement_entity_id_key`). No archetype is copied onto the row: the open reads the entity live,
-  and a copy would go stale the day `transition_entities` re-archetypes a row. The row holds
+  and a copy would go stale the day a transition re-archetypes a row. The row holds
   the branch (`refining/<slug>` — the entity's slug, and a root entity's slug is unique per project
   across archetypes, so an epic and a ticket never cut the same branch), the parent (the wrapper's default branch — a refinement always
   forks it, which is why there is no parent/child tree and no integrate door), and the commissioned
@@ -2608,7 +2587,7 @@ Where it differs from the agent harness, each difference is the domain line:
   `[preamble]` binding keeps its name down to the prompt panel because `POST /prompt-refinements` is
   where the word comes from — renaming it here while the wire kept the old one would be two names for
   one thing.
-- **A refinement runs no code.** `BOOTSTRAP_AUTORUN=false` and no actions MCP server — the tab set
+- **A refinement runs no code.** `BOOTSTRAP_AUTORUN=false` and no workspace actions — the tab set
   this backs has no Actions tab, and its web view frames the deployed environment, not a dev server.
 - **There is a removal verb.** Discard tears down container → volume → credential → branch → row,
   in that order; a front desk's removal is its DELETE door, on its runner. `RefinementCommissions`
@@ -2619,11 +2598,11 @@ Where it differs from the agent harness, each difference is the domain line:
   thing a door may use to move an epic's or a ticket's status: it previews the move
   (`WorkEntityService.planTransition`, which throws every refusal the transition would), discards the refinement when the target **resolves** the entity —
   `IMPLEMENTED`, `VERIFIED`, `DONE`, `DROPPED` (supersede included), never the `REPORTED→REFINED`
-  freeze — and only then transitions. Three lifecycle doors use it: `POST
+  freeze — and only then transitions. The lifecycle door uses it: `POST
   /work/{qualifiedId}/status` (`WorkEntityDoors.move`, every archetype; it took over from the
-  per-archetype `POST /epics/{id}/transition` and `POST /tickets/{id}/transition` qits-976 deleted),
-  `transition_epic` and `transition_ticket`. `POST /work/transition` and its one-entry `PUT
-  /work/{qualifiedId}` / `transition_entities` write statuses through `EntityTransitions` and do
+  per-archetype `POST /epics/{id}/transition` and `POST /tickets/{id}/transition` qits-976 deleted;
+  `work_status` calls it). `POST /work/transition` and its one-entry `PUT
+  /work/{qualifiedId}` (`work_transition`) write statuses through `EntityTransitions` and do
   **not** come through it — a gap for an epic before qits-395 and for a ticket now, stated rather than
   fixed here; so is deleting an entity, which leaves its room for a discard.
   The order is the point: a resolved epic must never own a workspace nothing can reach, so a failed
@@ -2726,22 +2705,22 @@ renders them in a sandboxed iframe with scripts off. Do not add a `text/html` ro
 
 **A design is a document, not a proposal, and there is no lifecycle at all** (V20, 2026-09-10).
 `status`, `based_on_design_id` and `note` are dropped columns; a `version` column stands where the
-review flow did. A REST `POST` creates and a `PUT` rewrites in place; the three MCP tools on the
-`repository` server are `list_designs`, `get_design` and `put_design` (create-or-update). What
+review flow did. A REST `POST` creates and a `PUT` rewrites in place; the central server's tools are
+`work_design_list`, `work_design_get` and `work_design_put` (create-or-update). `POST` and `PUT
+/refinements/{rid}/designs` admit a `qits:agent` bound to the project. What
 replaced the person's decision is the **version check**: a write carrying a version somebody has
 already moved past is a **409 carrying the current row**, document included, and never a merge —
 `error/StaleWriteException` is the type and `ProjectsExceptionMapper` is what puts `current` in the
 body. The gate on the draft is the epic's own `REPORTED → REFINED` transition, which freezes the
 whole plan at once — a person's press on the board, or the claim a dispatched refine phase makes with
-`transition_epic` (qits-394).
+`work_status` (qits-394).
 
 Three things ride with the removal. **The column drop lost no document**: a row that stood at
 PROPOSED simply became a design in the list. **`propose_design` was renamed rather than kept as an
-alias** — a live tool other sessions call, so an in-flight agent's call failed once, which is better
-than a tool whose name states a lifecycle that is gone. And `put_design` is still in
-`ReadOnlyRepositoryToolFilter`'s mutating set, on a *stronger* reading than before: a write is live
-in the tab the moment it lands, so an unattended run holding it could overwrite a document somebody
-is working from.
+alias**, which is better than a tool whose name states a lifecycle that is gone. And `work_design_put`
+is a write tool a read-only surface does not get, on a *stronger* reading than before: a write is
+live in the tab the moment it lands, so an unattended run holding it could overwrite a document
+somebody is working from.
 
 ### The refine action, for any archetype (qits-395)
 
@@ -2793,9 +2772,8 @@ Concurrency, decided:
 
 What a ticket's room is told: **nothing on this side composes the refining prompt** — the SPA's prompt
 draft does, and a ticket's room must be told to refine the ticket (its description and dossier) there.
-The server half is the tool surface: `list_designs` / `get_design` / `put_design` take **`entityId`**
-(the epic's or ticket's id) and still accept `epicId`, exactly one of the two, so a session already
-using `epicId` keeps working until the prompts name `entityId`. `inline_figure` and the REST inline
+The server half is the REST door: `/refinements/{rid}/designs` is keyed by the room, so a ticket's
+room and an epic's use the same tools. `work_dossier_inline` and the REST inline
 door stay **epic-only** — dossier assets are epic-owned by epics V8's decision — so a ticket's room has
 sketches and designs but no inline door. **No surface key moved**: a ticket's room reuses `epic.chat`
 / `epic.agent`, whose rename is the separate four-repository sequence `AgentSurfaceDefaults` describes.
@@ -2922,8 +2900,8 @@ commit and a real rollback the same way). Only the first is retried. Three rules
 **`entities` routes every write through one bean, `control/WritePatience`** (`qits.entities.write-deadline`,
 15S) — `WorkEntityService`'s create/update/transition/blocked/delete for every archetype, and
 `EntityCommentService`'s three. Every one is rows and nothing else, and no caller is transactional:
-`EpicMcpTools` is deliberately transaction-free (two persistence units, non-XA) and the controllers
-are too, with their change hints fired *after* the service returns. `AuditService.record` keeps its
+The callers are deliberately transaction-free (two persistence units, non-XA): the controllers
+are so, with their change hints fired *after* the service returns. `AuditService.record` keeps its
 `@Transactional` and joins, exactly as it joined the annotation's.
 
 **`domain` wraps the two writes that are only rows, and leaves the rest alone on purpose.**
@@ -2964,10 +2942,10 @@ insert-only. Where the decisions land, and why:
 
 | entity | | |
 | --- | --- | --- |
-| `Project` | `CausedRow` | Created on the request thread (`ProjectService.create`, from REST or MCP); the boot-time self-seed is rootless, which is the honest answer. |
+| `Project` | `CausedRow` | Created on the request thread (`ProjectService.create`, from REST); the boot-time self-seed is rootless, which is the honest answer. |
 | `Repository` | `CausedRow` | The one worth tracing. All four mint paths run on the request thread, and `WrapperReconcileService` is the machine-driven one — a reconcile records, per adopted or cloned member, what asked for it. |
 | `RepositoryName` | `@Uncaused` | The only opt-out. An alias is derived, idempotent state; the repository it FKs to is a `CausedRow` one join away and is the row that was actually caused. Decisively, `RepositoryNameResolver` mints the self-name in its own transaction off any request context — the provision worker, or container creation — where no scope stands, so a stamp would record null forever. No event id is ever in reach to set as data. |
-| `Epic`, `Feature`, `Task` | `CausedRow` | `EpicMcpTools` reaches the same services the SPA does, on the same thread: an agent minting a task is exactly the flow worth tracing. |
+| `Epic`, `Feature`, `Task` | `CausedRow` | The central server reaches the same services the SPA does, through the REST doors: an agent minting a task is exactly the flow worth tracing. |
 | `AgentCredential` | — | Dropped with the direct agent path (V38, qits-767). `FrontDesk` (V37) is `@Uncaused`: machine state written by sweeps and socket frames, where no scope stands. |
 | `AuditEntry` | `CausedRow` | Covers what the live rows cannot. The stamp is insert-only, so an epic row records the cause of its own creation and never of an update; and a deleted row is gone while its DELETE entry stays (audit rows are deliberately not FK'd back). |
 
@@ -2989,7 +2967,7 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
 
 - App-level config lives in `service/src/main/resources/application.properties` and **the tests
   inherit it** — Quarkus reads main's copy during a test run and merges the test resources over it,
-  so `quarkus.rest.path`, the MCP root-path and the rest are already in effect. Never re-declare
+  so `quarkus.rest.path` and the rest are already in effect. Never re-declare
   them in `src/test/resources/application.properties`: a test copy is free to drift from the shipped
   one, and then a green suite proves nothing about what actually starts. That file is for genuine
   test-only overrides (the persistence-unit wiring, `clean-at-start`, the test port, `target/`
