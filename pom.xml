@@ -244,8 +244,8 @@
         <qits.maven.repository.url>https://registry.qits.wohlben.eu/artifacts/maven/maven</qits.maven.repository.url>
 
         <!-- The container ITs need docker and a built qits/workspace image, which a fresh clone has
-             not got — and the ones that survived the cut here are the MCP/task-prompt delivery ITs
-             that drive a real container. `mvn verify` must be green without them. -->
+             not got — and the ones here drive a real container. `mvn verify` must be green
+             without them. -->
         <skipITs>true</skipITs>
         <!-- Surefire's @{argLine} has no value unless something (jacoco/quarkus) sets it. -->
         <argLine/>

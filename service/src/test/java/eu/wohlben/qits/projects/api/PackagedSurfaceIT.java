@@ -140,7 +140,7 @@ public class PackagedSurfaceIT {
     given().when().get("/projects/api/nope").then().statusCode(404);
     given().when().get("/projects/").then().statusCode(404);
     // A wire path mistyped is the same story one route over.
-    given().when().get("/projects/mcp-typo").then().statusCode(404);
+    given().when().get("/projects/daemon-typo").then().statusCode(404);
   }
 
   /**
@@ -182,26 +182,16 @@ public class PackagedSurfaceIT {
         .body("status", org.hamcrest.Matchers.equalTo("UP"));
   }
 
+  /** qits-1174: this service serves no MCP server; agents use the central qits server. */
   @Test
-  public void theMcpServerIsMountedUnderTheSegmentAndAnswersStatelessDiscovery() {
-    // Reaching the SERVER, not the router's 404 page: quarkus-mcp-server-http refuses to start at
-    // all without its root-path, so a wrong root-path would show up here as a 404 with an HTML body
-    // rather than a JSON-RPC result.
+  public void theRetiredMcpPathAnswersNotFound() {
     given()
         .contentType("application/json")
-        .accept("application/json, text/event-stream")
-        .header("MCP-Protocol-Version", "2026-07-28")
-        .header("Mcp-Method", "server/discover")
-        .body(
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\",\"params\":{"
-                + "\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\","
-                + "\"io.modelcontextprotocol/clientInfo\":{\"name\":\"packaged-surface-it\","
-                + "\"version\":\"1\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}")
+        .body("{}")
         .when()
         .post("/projects/mcp")
         .then()
-        .statusCode(200)
-        .body("result.supportedVersions", org.hamcrest.Matchers.hasItem("2026-07-28"));
+        .statusCode(404);
   }
 
   @Test

@@ -47,8 +47,8 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * {@code {qualifiedId}} — onto {@code GET /work/{epicId}/dossier-assets/{assetId}/content}.
  *
  * <p>The roles are the epic route's: {@code qits:agent} on all three, the inline bound to the
- * entity's project ({@link EntitiesAgentAccess}) — {@code inline_figure} performs it over MCP
- * already.
+ * entity's project ({@link EntitiesAgentAccess}); the {@code qits} MCP server's {@code
+ * work_dossier_inline} performs it.
  */
 @Path("/work/{qualifiedId}/dossier-assets")
 @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})

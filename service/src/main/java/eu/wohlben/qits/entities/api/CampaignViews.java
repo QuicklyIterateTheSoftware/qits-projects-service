@@ -30,8 +30,8 @@ import java.util.Set;
  * rendered from ONE slug lookup: a campaign and every member it gathers are in one project (the add
  * refuses anything else), so a whole campaign costs one {@link ProjectService#slugsByIds} call.
  *
- * <p>Public and a bean of its own, rather than private methods on the controllers, because the
- * {@code repository} MCP server's campaign tools answer the same shapes.
+ * <p>Public and a bean of its own, rather than private methods on the controllers, so every
+ * campaign door answers the same shapes.
  */
 @ApplicationScoped
 public class CampaignViews {

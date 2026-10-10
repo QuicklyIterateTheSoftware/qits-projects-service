@@ -32,7 +32,7 @@ import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
  * POST /work}'s create of the child kind with the parent the path names ({@link
  * WorkEntityDoors#createChild}), so a dependency takes a qualified id and every refusal is the
  * create's. The roles are the two edges': both admit {@code qits:agent}, the add bound to the
- * parent's project — {@code add_feature} and {@code add_task} perform it over MCP.
+ * parent's project.
  */
 @Path("/work/{qualifiedId}/children")
 @Produces(MediaType.APPLICATION_JSON)

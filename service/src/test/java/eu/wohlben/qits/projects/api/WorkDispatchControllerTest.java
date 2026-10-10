@@ -391,8 +391,10 @@ public class WorkDispatchControllerTest {
     assertFalse(ticketRun.subject().blocked());
     assertFalse(epicRun.subject().blocked());
     assertNotEquals(ticketRun.instruction(), epicRun.instruction(), "the words are per archetype");
-    assertTrue(ticketRun.instruction().contains("update_ticket"), ticketRun.instruction());
-    assertTrue(epicRun.instruction().contains("add_feature"), epicRun.instruction());
+    assertTrue(
+        ticketRun.instruction().contains("ticket's description with work_update"),
+        ticketRun.instruction());
+    assertTrue(epicRun.instruction().contains("(work_create)"), epicRun.instruction());
     // The first turn names the entity by the same qualified id the workspace is named by (qits-301),
     // so the commit subjects it asks for and the session label cannot disagree.
     assertTrue(

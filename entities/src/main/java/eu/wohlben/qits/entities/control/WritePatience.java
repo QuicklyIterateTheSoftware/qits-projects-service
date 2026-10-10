@@ -23,9 +23,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  *
  * <p><b>THE ONE RULE the bodies obey: they are database-only.</b> The retry re-runs the whole body,
  * so anything in it that is not a row — an SSE hint, an HTTP call, a git push — would happen twice.
- * That is why the wrap sits here in {@code entities} and not around the callers: {@code WorkEntityDoors}
- * and {@code EpicMcpTools} both fire an SSE change hint <em>after</em> the service call returns, and
- * neither notification is inside the retry.
+ * That is why the wrap sits here in {@code entities} and not around the callers: {@code
+ * WorkEntityDoors} fires an SSE change hint <em>after</em> the service call returns, so the
+ * notification is not inside the retry.
  *
  * <p><b>The flush is not optional.</b> Hibernate flushes at commit by default, which would put every
  * INSERT on the far side of the line {@code inNewTx} can classify — the whole write would land in

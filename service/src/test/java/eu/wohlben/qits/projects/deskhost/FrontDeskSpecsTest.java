@@ -109,7 +109,6 @@ class FrontDeskSpecsTest {
     expected.put("QITS_DOMAIN", "example.test");
     expected.put("GIT_CONFIG_GLOBAL", "/etc/qits-gitconfig");
     expected.put("QITS_GIT_AUTH_HOST", "githost.qits.example.test");
-    expected.put("QITS_REPOSITORY_MCP_URL", "https://projects.qits.example.test/projects/mcp");
     expected.put("QITS_PLATFORM_MCP_URL", "https://mcp.qits.example.test/mcp");
     expected.putAll(identity());
     expected.put("CLAUDE_CONFIG_DIR", "/claude-home/.claude");

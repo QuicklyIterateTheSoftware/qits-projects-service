@@ -48,10 +48,8 @@ public class AcceptanceCriteriaGate implements TransitionGate {
     if (row.acceptanceCriteria != null && !row.acceptanceCriteria.isEmpty()) {
       return Optional.empty();
     }
-    String tool = row.archetype == Archetype.EPIC ? "update_epic" : "update_ticket";
     return Optional.of(
-        "it has no acceptance criteria — write them first (acceptanceCriteria: "
-            + tool
-            + ", PATCH /work/{qualifiedId} or qits work update)");
+        "it has no acceptance criteria — write them first (acceptanceCriteria: the qits MCP"
+            + " server's work_update, qits work update or PATCH /work/{qualifiedId})");
   }
 }

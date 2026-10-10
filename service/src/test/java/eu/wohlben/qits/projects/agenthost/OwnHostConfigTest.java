@@ -11,9 +11,8 @@ import org.junit.jupiter.api.Test;
 /**
  * A drift guard over the one address this service HANDS OUT rather than dials.
  *
- * <p>{@code qits.projects.own-host} is composed into {@code QITS_PROJECTS_DAEMON_URL} and {@code
- * QITS_REPOSITORY_MCP_URL} at container creation, and a container's environment is frozen at
- * creation. So every agent and every refinement container carries whatever this value was at the
+ * <p>{@code qits.projects.own-host} is composed into {@code QITS_PROJECTS_DAEMON_URL} at container
+ * creation, and a container's environment is frozen at creation. So every agent and every refinement container carries whatever this value was at the
  * moment it was created, for its whole life, and the daemon inside it dials that verbatim.
  *
  * <p><b>Why a test and not a code review.</b> This value read {@code qits-projects} — a bare wire

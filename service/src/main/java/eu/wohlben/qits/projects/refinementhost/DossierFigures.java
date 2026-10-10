@@ -31,7 +31,7 @@ import java.nio.charset.StandardCharsets;
  * from somebody else's refinement is a 404, not a copy — that boundary is what keeps
  * copy-on-reference from quietly becoming a cross-epic reference.
  *
- * <p>Both doors — REST for the SPA and {@code inline_figure} for an agent — return the asset
+ * <p>The door — REST, for the SPA and for an agent's {@code work_dossier_inline} — returns the asset
  * <em>plus the markdown line to paste</em>. That is the point of having a door at all: a caller that
  * hand-writes an asset URL will eventually write one that does not exist, or one belonging to
  * another epic, and a call that answers with the exact line makes both impossible.

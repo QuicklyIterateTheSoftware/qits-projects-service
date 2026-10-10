@@ -4,8 +4,7 @@ import java.util.List;
 
 /**
  * The commit-subject compliance of a branch's newest commits — {@link CommitSubjectCompliance}'s
- * answer, served by {@code GET /repositories/{repoId}/commit-subjects} and the {@code
- * measureCommitSubjects} MCP tool.
+ * answer, served by {@code GET /repositories/{repoId}/commit-subjects}.
  *
  * @param repositoryId the repository read
  * @param branch the branch read — the repository's main branch when none was asked for

@@ -12,7 +12,7 @@
     </parent>
 
     <!-- The projects SERVICE layer: the technical half. JAX-RS route definitions for projects,
-         repositories, submodules and epics, the MCP tool surface over them, the remote-login
+         repositories, submodules and epics, the remote-login
          terminal websocket, and the exception mapper that turns this context's DomainException into
          its HTTP status. Everything that needs a web stack and therefore cannot live in `domain`.
 
@@ -24,7 +24,7 @@
          Quinoa builds into this artifact.
 
          src/main/resources/application.properties now exists and is THIS APP's config, not a
-         consuming one's. quarkus.rest.path and the MCP root-path used to live only in the test
+         consuming one's. quarkus.rest.path used to live only in the test
          resources, which is why the suite could be green about paths the packaged app would not
          have served.
 
@@ -212,24 +212,10 @@
             <artifactId>vertx-http-proxy</artifactId>
         </dependency>
         <dependency>
-            <!-- The repository/submodule MCP tool surface. Not in the Quarkus BOM, so the version
-                 is pinned explicitly. 2.0 speaks the stateless MCP 2026-07-28 protocol and CR2 is
-                 built against Quarkus 3.33.x (~ 3.34.6). -->
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-http</artifactId>
-            <version>2.0.0.CR2</version>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
-            <artifactId>quarkus-mcp-server-test</artifactId>
-            <version>2.0.0.CR2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <!-- The Angular SPA in src/main/webui (a submodule on qits-spa-projects' main): Quinoa
                  runs its npm build during augmentation and registers the output as static
                  resources, so the binary serves the UI and the API from one process. Not in the
-                 Quarkus BOM, so the version is pinned as the MCP one above is; 2.8.2 is what the
+                 Quarkus BOM, so the version is pinned explicitly; 2.8.2 is what the
                  Quarkus extension registry resolves for core 3.34.6 (2.8.3 is built against
                  3.36.2). Its build needs an npm and a node on PATH — see the note in
                  application.properties. -->
