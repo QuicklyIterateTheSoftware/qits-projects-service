@@ -16,6 +16,7 @@ import eu.wohlben.qits.projects.dto.ReleaseAutomationFailureDto;
 import eu.wohlben.qits.projects.dto.ReleaseGateDto;
 import eu.wohlben.qits.projects.dto.ReleaseQualityGateDto;
 import eu.wohlben.qits.projects.dto.ReleasePipelineDto;
+import eu.wohlben.qits.projects.dto.ReleasePreRunDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestApprovalDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestChangesDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestCommitsDto;
@@ -144,9 +145,9 @@ import org.jboss.logging.Logger;
  *
  * <ol>
  *   <li><b>No verdict is red.</b> One red verdict is a REJECTED request, immediately — nothing to
- *       wait for — except while the fold's automations are still moving (or unreadable): a commit
- *       from one may yet supersede the fold, so it holds. Automations that have already failed are
- *       not moving, and a red verdict beside them rejects.
+ *       wait for. It is only ever read once the fold's <b>pre-run</b> is done (see "The pre-run"
+ *       below): before that no QA run was asked for, so a verdict at that sha answers nothing this
+ *       request started and the automations gate holds in front of it.
  *   <li><b>A verdict is green.</b> <b>No verdict is not a pass</b>: the request stays PENDING and
  *       the sweep asks again, for as long as it takes. A repository that <em>declares</em> a
  *       pipeline and whose pipeline never materializes therefore cannot release, and that is what a
@@ -176,6 +177,20 @@ import org.jboss.logging.Logger;
  * the runs, which in turn is what lets the run cancellation a re-fold asks for be best effort: it
  * frees a build agent, it does not decide anything. See {@link #evaluate(String, String)} and {@link
  * QaRunCancellations}.
+ *
+ * <h2>The pre-run (qits-1133)</h2>
+ *
+ * <p><b>The release-request automations run BEFORE QA, and QA is asked for once per fold.</b> Every
+ * fold first asks qits-maintenance where its automations stand ({@link #refreshAutomations}); a fold
+ * whose automations still have work to do is announced {@code preRun=PENDING}, which qits-ci builds
+ * nothing for, because an automation's commit will re-fold the request and cancel that build. Once
+ * every applicable automation is FRESH or waived at the fold — or none applies — {@link #evaluate}
+ * announces {@code preRun=DONE}, at most once per sha ({@code qa_announced_sha}, V40), and that is
+ * the announcement qits-ci starts QA on. So in {@link #evaluate} the automations gate is asked
+ * FIRST, ahead of the CI gate. A failed automation holds the request PENDING — it is not rejected —
+ * until a push re-folds it, a re-run comes back fresh, or a person waives the fold. A source moving
+ * during the pre-run re-folds and restarts it; one moving during QA cancels QA ({@link #cancel}) and
+ * restarts the pre-run rather than going straight back to QA.
  *
  * <h2>The approval gate</h2>
  *
@@ -2655,8 +2670,18 @@ public class ReleaseRequests {
             folded.releaseRequestId(),
             "was superseded by a re-fold onto " + shortSha(folded.mergedSha()));
       }
-      announce(folded);
+      // THE PRE-RUN COMES FIRST (qits-1133). The automations are asked BEFORE anything is announced,
+      // because the announcement is what starts QA in qits-ci and an automation that still has a
+      // commit to make re-folds the request and cancels that build — fd25eb6e started four release
+      // builds for one change that way. So a fold whose pre-run is still moving is announced
+      // preRun=PENDING (qits-ci builds nothing for it) and evaluate() announces preRun=DONE, once
+      // per sha, the moment every applicable automation is fresh or waived. A fold whose pre-run is
+      // already settled — none applies, or the far side answered FRESH on the spot — is not
+      // announced here at all: evaluate(), called just below, makes its one DONE announcement.
       refreshAutomations(folded.releaseRequestId(), folded.supersededSha());
+      if (preRunPending(folded)) {
+        announce(folded, ReleaseRequestAnnouncer.PRE_RUN_PENDING);
+      }
     }
     if (outcome.folded()) {
       evaluate(id);
@@ -2854,7 +2879,9 @@ public class ReleaseRequests {
                     // A run has already answered for this exact sha, so evaluate() — which
                     // remerge calls the moment this returns — reads it, and announcing would ask
                     // for a second build of content already built. Same-datasource read, so it
-                    // costs this transaction nothing.
+                    // costs this transaction nothing. The QA stamp says the same thing to the
+                    // pre-run's DONE announcement, which would otherwise ask for that second build.
+                    row.qaAnnouncedSha = row.mergedSha;
                     return null;
                   }
                   // Nothing has EVER built this sha and nothing will: a request that went
@@ -2925,8 +2952,35 @@ public class ReleaseRequests {
     open.updatedAt = open.armedAt;
   }
 
+  /**
+   * Whether a fold that just landed still has a pre-run to wait for: the automations gate holds
+   * this repository and has not passed at exactly this sha. Its own short transaction (the wrapper
+   * reading is a row lookup), after the refresh has had its say. A request that moved on, or settled,
+   * in between is not pending here — whatever happens to it next is announced by that path.
+   */
+  private boolean preRunPending(Folded folded) {
+    try {
+      return QuarkusTransaction.requiringNew()
+          .call(
+              () -> {
+                ReleaseRequest row = requests.findByIdOptional(folded.releaseRequestId()).orElse(null);
+                return row != null
+                    && row.state == ReleaseRequest.State.PENDING
+                    && folded.mergedSha().equals(row.mergedSha)
+                    && automationsApply(row.repoId)
+                    && !automationsPassed(row);
+              });
+    } catch (RuntimeException e) {
+      // Could not tell: say PENDING. The worst it costs is that qits-ci waits for the DONE the
+      // evaluation is about to make, whereas a wrong DONE here would start a build of a fold an
+      // automation may yet rewrite.
+      LOG.warnf(e, "Could not read the pre-run of release request %s", folded.releaseRequestId());
+      return true;
+    }
+  }
+
   /** Fire and forget, outside every transaction and never able to fail a fold. */
-  private void announce(Folded folded) {
+  private void announce(Folded folded, String preRun) {
     if (!announcers.isResolvable()) {
       return;
     }
@@ -2942,7 +2996,8 @@ public class ReleaseRequests {
               folded.mergedSha(),
               folded.changedAt(),
               folded.priority(),
-              downstreamOf(folded));
+              downstreamOf(folded),
+              preRun);
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the change to release request %s", folded.releaseRequestId());
     }
@@ -3030,6 +3085,9 @@ public class ReleaseRequests {
     // automations gate that held this?" is decided inside, and what it triggers is an HTTP round trip
     // into qits-maintenance that belongs nowhere near the transaction that decided a gate.
     AtomicReference<Boolean> automationsHeld = new AtomicReference<>(false);
+    // The fold whose pre-run this evaluation found done for the first time, carried out to be
+    // announced preRun=DONE after the commit that stamped qa_announced_sha; null on nearly every pass.
+    AtomicReference<Folded> qaAnnouncement = new AtomicReference<>();
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -3055,10 +3113,51 @@ public class ReleaseRequests {
                         id, shortSha(verdictSha), shortSha(row.mergedSha));
                     return false;
                   }
-                  // THE GATE SET, and it is the first thing asked because everything below is a
-                  // member of it. Read from the repository's main through the git host — one call,
-                  // throttled per repository, and in this transaction for ActiveBuilds' own reason
-                  // one arm down: it is a read that decides the gate and has nothing to write.
+                  // THE PRE-RUN, AND IT IS ASKED FIRST (qits-1133). Every release-request automation
+                  // that applies to this repository (dependency bumps, estate pins, the entity
+                  // diagram, screenshot baselines, …) has to be fresh for THIS fold; the ledger holds
+                  // a POSITIVE record that it is, and no record is a hold. A person's waiver of this
+                  // exact fold is the one other way through. It comes before the build gate because
+                  // QA is not even asked for until it passes: a fold an automation is about to
+                  // rewrite is not worth building, so qits-ci is told preRun=PENDING and builds
+                  // nothing, and a verdict at a sha whose pre-run is not done answers a run that, as
+                  // far as this request is concerned, does not exist. It comes before the approval
+                  // gate for the reason it always did — a person approves a specific fold, and asking
+                  // them to sign off content an automation is about to rewrite would invalidate their
+                  // answer the moment the commit lands. A FAILED automation holds too, and is not a
+                  // rejection: a push, a re-run that comes back fresh or a waiver moves it on.
+                  if (automationsApply(row.repoId) && !automationsPassed(row)) {
+                    waiting(row, automationDetail(row));
+                    automationsHeld.set(true);
+                    return false;
+                  }
+                  // THE PRE-RUN IS DONE AT THIS FOLD, so its QA may start — announced preRun=DONE AT
+                  // MOST ONCE PER SHA. The stamp is written here, under the row lock and in the
+                  // transaction that decided it, and the event is published after the commit: a sweep,
+                  // a verdict and a waiver racing each other serialise on the lock and only the first
+                  // finds the column behind mergedSha. A restart forgets the ledger and not this
+                  // column, so it neither double-announces nor forgets to announce. (The one window
+                  // left is a process dying between this commit and the publish, which loses that
+                  // announcement rather than duplicating it — the direction the at-most-once rule
+                  // chooses; a push or a re-run re-folds and announces again.)
+                  if (!row.mergedSha.equals(row.qaAnnouncedSha)) {
+                    row.qaAnnouncedSha = row.mergedSha;
+                    qaAnnouncement.set(
+                        new Folded(
+                            row.id,
+                            row.projectId,
+                            row.repoId,
+                            row.repoName,
+                            row.backingBranch(),
+                            row.mergedSha,
+                            null,
+                            row.armedAt,
+                            effectivePriorityOf(row.id).name()));
+                  }
+                  // THE GATE SET, and everything below is a member of it. Read from the repository's
+                  // main through the git host — one call, throttled per repository, and in this
+                  // transaction for ActiveBuilds' own reason one arm down: it is a read that decides
+                  // the gate and has nothing to write.
                   ReleaseGates.GateSet gateSet = gates.resolve(row.repoId);
                   if (!gateSet.known()) {
                     // NOT releasable and NOT rejected: nothing refused this request, this service
@@ -3076,35 +3175,6 @@ public class ReleaseRequests {
                           .filter(v -> !"SUCCESS".equals(v.status()))
                           .findFirst()
                           .orElse(null);
-                  // Asked once, here, because both the red arm and the gate below read it.
-                  boolean automationsGated = automationsApply(row.repoId);
-                  // The labels of this fold's failed automations when nothing else about them is
-                  // still moving; null everywhere else, which is nearly always.
-                  String settledAutomationFailures = null;
-                  if (red != null && automationsGated && !automationsPassed(row)) {
-                    settledAutomationFailures = settledAutomationFailures(row);
-                    if (settledAutomationFailures == null) {
-                      // A RED VERDICT ON A FOLD WHOSE AUTOMATIONS ARE STILL MOVING HOLDS INSTEAD OF
-                      // REJECTING — the one ordering change the automations gate made. That fold is
-                      // about to be superseded by an automation's commit, and a stale screenshot
-                      // reference failing QA is exactly the red this must not turn into a rejection
-                      // and an unattended-gate ticket. No rejectingRunId, no ticket: once the
-                      // automations settle at this same fold, the verdict is read again on the next
-                      // pass. An automation state that could not be read holds here too: an outage
-                      // is a fact about the moment, never grounds to reject.
-                      waiting(row, automationDetail(row));
-                      automationsHeld.set(true);
-                      return false;
-                    }
-                    // BUT A RED VERDICT BESIDE AUTOMATIONS THAT HAVE ALREADY FAILED REJECTS
-                    // (qits-760). Nothing is in flight, so no commit is coming to supersede this
-                    // fold, and holding it would hide a real red build behind "push, re-run, or
-                    // waive" for ever — measured on qits-landing-app d69c96e5, PENDING on a genuine
-                    // test failure with its screenshot baselines red. It falls through to the red
-                    // arm and rejects exactly as an ungated fold would, naming both. A push (an
-                    // automation re-run's own commit included) re-arms it; a retry of the rejecting
-                    // run reconsiders it.
-                  }
                   if (red != null) {
                     row.state = ReleaseRequest.State.REJECTED;
                     // The run is recorded as a KEY beside the sentence, not only inside it: a retry
@@ -3119,10 +3189,7 @@ public class ReleaseRequests {
                             + " finished "
                             + red.status()
                             + " for "
-                            + row.mergedSha
-                            + (settledAutomationFailures == null
-                                ? ""
-                                : "; the automations failed too: " + settledAutomationFailures);
+                            + row.mergedSha;
                     row.updatedAt = Instant.now();
                     if (isUnattended(row) && row.projectId != null) {
                       unattended.set(
@@ -3192,20 +3259,6 @@ public class ReleaseRequests {
                       return false;
                     }
                   }
-                  // THE AUTOMATIONS GATE, and its position is an argument rather than a
-                  // convenience. Every release-request automation that applies to this repository
-                  // (estate pins for the wrapper, screenshot baselines, …) has to be fresh for THIS
-                  // fold; the ledger holds a POSITIVE record that it is, and no record is a hold. A
-                  // person's waiver of this exact fold is the one other way through. It sits after
-                  // the build gate and immediately before the approval gate because a person
-                  // approves a specific fold: asking somebody to sign off content an automation is
-                  // about to rewrite would invalidate their answer the moment the commit lands, so
-                  // this gate has to be the one that holds first.
-                  if (automationsGated && !automationsPassed(row)) {
-                    waiting(row, automationDetail(row));
-                    automationsHeld.set(true);
-                    return false;
-                  }
                   // THE APPROVAL GATE, asked last and STANDING ALONE. Last is a convenience and not
                   // an order: a red verdict has already rejected, so nobody is asked to sign off a
                   // fold CI has failed. What it no longer sits BEHIND is a build — a repository
@@ -3250,6 +3303,9 @@ public class ReleaseRequests {
                   row.updatedAt = Instant.now();
                   return true;
                 });
+    if (qaAnnouncement.get() != null) {
+      announce(qaAnnouncement.get(), ReleaseRequestAnnouncer.PRE_RUN_DONE);
+    }
     if (unattended.get() != null) {
       fileUnattendedGateTicket(unattended.get());
     }
@@ -3312,7 +3368,7 @@ public class ReleaseRequests {
         return failed + " failed at " + sha + "; push, re-run, or waive this fold";
       }
       case FRESH -> {
-        // Fresh and still held: the red arm above asked before this note was written. Next pass.
+        // Fresh and still held: the evaluation read the gate before this note was written. Next pass.
         return "Waiting for automations at " + sha;
       }
       default -> {
@@ -3323,40 +3379,6 @@ public class ReleaseRequests {
     }
   }
 
-  /**
-   * The labels of the automations that failed at this request's current fold, <b>only when nothing
-   * about that fold's automations is still moving</b> — every kind FRESH, NOT_APPLICABLE or
-   * FAILED, at least one FAILED. Null otherwise: no note, a note about another fold, one still
-   * REQUESTED, RUNNING, COMMITTED or SUPERSEDED (a commit may yet re-fold the request), and one
-   * whose states could not be read. Null is the hold, so an outage never turns a red verdict into
-   * a rejection.
-   *
-   * <p>A FAILED note can still carry a kind in flight — FAILED outranks PENDING in {@link
-   * AutomationRefresh#stateOf} — which is why every entry is asked and not only the note's state.
-   */
-  private String settledAutomationFailures(ReleaseRequest row) {
-    AutomationLedger.Note note =
-        automationLedger
-            .noteFor(row.id)
-            .filter(held -> row.mergedSha.equals(held.foldSha()))
-            .orElse(null);
-    if (note == null
-        || note.state() != AutomationLedger.State.FAILED
-        || !note.automations().stream()
-            .allMatch(
-                entry ->
-                    AutomationLedger.holdsNothing(entry.state())
-                        || "FAILED".equals(entry.state()))) {
-      return null;
-    }
-    String failed =
-        note.automations().stream()
-            .filter(entry -> "FAILED".equals(entry.state()))
-            .map(AutomationLedger.Automation::label)
-            .collect(Collectors.joining(", "));
-    return failed.isEmpty() ? null : failed;
-  }
-
   /** One kind's state as the hold sentence says it. */
   private static String doing(String state) {
     return switch (state) {
@@ -3364,6 +3386,7 @@ public class ReleaseRequests {
       case "RUNNING" -> "running";
       case "COMMITTED" -> "committed; the commit re-folds this request";
       case "SUPERSEDED" -> "superseded by a newer fold";
+      case "WAITING" -> "waiting for the source automations";
       default -> state.toLowerCase(java.util.Locale.ROOT);
     };
   }
@@ -4171,8 +4194,14 @@ public class ReleaseRequests {
             gateDetails(set, released, approval),
             released,
             row.mergedSha,
-            reach),
-        evaluated.stream().map(ReleaseGateEvaluator::toDto).toList());
+            reach,
+            // QA waits for the pre-run (qits-1133): only a request still before its tag, on a
+            // fold, whose automations are not fresh or waived there.
+            row.state == ReleaseRequest.State.PENDING
+                && row.mergedSha != null
+                && !automations.preRunDone()),
+        evaluated.stream().map(ReleaseGateEvaluator::toDto).toList(),
+        automations.preRun());
   }
 
   /**
@@ -4222,7 +4251,21 @@ public class ReleaseRequests {
    * @param rows the ledger's rows as the DTO carries them, or null where nothing is on record
    */
   private record AutomationView(
-      boolean applies, ReleaseGates.State gate, List<ReleaseAutomationDto> rows) {}
+      boolean applies, ReleaseGates.State gate, List<ReleaseAutomationDto> rows, String preRun) {
+
+    /** Whether the pre-run is done at the current fold — PASSED or WAIVED. */
+    boolean preRunDone() {
+      return PRE_RUN_PASSED.equals(preRun) || PRE_RUN_WAIVED.equals(preRun);
+    }
+  }
+
+  /** {@link ReleasePreRunDto}'s words. */
+  static final String PRE_RUN_PENDING = "PENDING";
+
+  static final String PRE_RUN_RUNNING = "RUNNING";
+  static final String PRE_RUN_FAILED = "FAILED";
+  static final String PRE_RUN_PASSED = "PASSED";
+  static final String PRE_RUN_WAIVED = "WAIVED";
 
   /** The ledger's failure as the DTO carries it; null stays null. A WAIVED row keeps it too. */
   private static ReleaseAutomationFailureDto failureOf(AutomationLedger.Failure failure) {
@@ -4263,8 +4306,9 @@ public class ReleaseRequests {
                             entry.updatedAt(),
                             failureOf(entry.failure())))
                 .toList();
+    String preRun = preRunOf(row, applies, waived, current ? note : null);
     if (!applies) {
-      return new AutomationView(false, null, rows);
+      return new AutomationView(false, null, rows, preRun);
     }
     ReleaseGates.State gate;
     if (waived || (current && note.state() == AutomationLedger.State.FRESH)) {
@@ -4284,7 +4328,55 @@ public class ReleaseRequests {
     } else {
       gate = ReleaseGates.State.PENDING;
     }
-    return new AutomationView(true, gate, rows);
+    return new AutomationView(true, gate, rows, preRun);
+  }
+
+  /**
+   * The pre-run's state for {@link ReleasePreRunDto} — read, never decided: the same ledger note
+   * and waiver the gate reads, plus {@code qa_announced_sha} where the ledger has nothing to say.
+   *
+   * @param note the ledger's note about the request's CURRENT fold, or null where there is none
+   */
+  private static String preRunOf(
+      ReleaseRequest row, boolean applies, boolean waived, AutomationLedger.Note note) {
+    if (row.mergedSha == null) {
+      return PRE_RUN_PENDING;
+    }
+    if (!applies) {
+      // No automation gates this repository: there is no pre-run to wait for.
+      return PRE_RUN_PASSED;
+    }
+    if (note != null && note.state() == AutomationLedger.State.FRESH) {
+      return PRE_RUN_PASSED;
+    }
+    if (waived) {
+      return PRE_RUN_WAIVED;
+    }
+    if (note != null) {
+      return switch (note.state()) {
+        case FAILED -> PRE_RUN_FAILED;
+        case PENDING ->
+            note.automations().stream()
+                    .anyMatch(
+                        entry ->
+                            "REQUESTED".equals(entry.state())
+                                || "RUNNING".equals(entry.state())
+                                || "COMMITTED".equals(entry.state()))
+                ? PRE_RUN_RUNNING
+                : PRE_RUN_PENDING;
+        default -> PRE_RUN_PENDING;
+      };
+    }
+    // No note about this fold. The column says whether its pre-run was already found done (the
+    // ledger is memory and a restart empties it); a request past its gates got there through it.
+    if (row.mergedSha.equals(row.qaAnnouncedSha)
+        || row.state == ReleaseRequest.State.READY
+        || row.state == ReleaseRequest.State.RELEASED
+        || row.state == ReleaseRequest.State.FINALIZED
+        || row.state == ReleaseRequest.State.FAILED) {
+      return PRE_RUN_PASSED;
+    }
+    return PRE_RUN_PENDING;
   }
 
   /**
@@ -4334,7 +4426,8 @@ public class ReleaseRequests {
       List<ReleaseGateDto> gates,
       List<ReleaseAutomationDto> automations,
       ReleasePipelineDto pipeline,
-      List<ReleaseQualityGateDto> qualityGates) {}
+      List<ReleaseQualityGateDto> qualityGates,
+      String preRun) {}
 
   /**
    * The approval gate as a <b>read</b> answers it: whether a person had to be asked, what the newest
@@ -4490,7 +4583,8 @@ public class ReleaseRequests {
         row.createdAt,
         row.updatedAt,
         gates.pipeline(),
-        gates.qualityGates());
+        gates.qualityGates(),
+        new ReleasePreRunDto(gates.preRun()));
   }
 
   // ---------------------------------------------------------------------------------------------

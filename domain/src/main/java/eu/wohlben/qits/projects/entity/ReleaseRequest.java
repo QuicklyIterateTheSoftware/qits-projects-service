@@ -185,6 +185,22 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
   public String mergedSha;
 
   /**
+   * The fold whose QA has been asked for — the {@code mergedSha} a {@code ReleaseRequestChanged}
+   * with {@code preRun = DONE} was announced for (qits-1133, V40). It is the <b>at-most-once</b>
+   * record of that announcement and nothing else: written under the row lock in the evaluation that
+   * decides to announce, compared against {@link #mergedSha}, and never cleared — a re-fold moves
+   * {@code mergedSha} away from it, which is the whole of how a new fold becomes announceable.
+   *
+   * <p>It is a column, unlike every gate's answer, because it records something this service
+   * <em>did</em> (published an event) rather than something it can re-derive. The automations'
+   * freshness is still read off the in-memory {@code AutomationLedger} and the waiver table; what a
+   * restart must not forget is that the DONE announcement for this sha has already been made, and
+   * what it must not lose is one that has not.
+   */
+  @Column(name = "qa_announced_sha")
+  public String qaAnnouncedSha;
+
+  /**
    * Why a CONFLICTED request is conflicted: qits-githost's own 409 body, stored as the JSON document
    * it arrived as, so the API and the UI can put the conflicting paths and the head that introduced
    * each in front of a person. Null in every other state — cleared by the fold that succeeds.

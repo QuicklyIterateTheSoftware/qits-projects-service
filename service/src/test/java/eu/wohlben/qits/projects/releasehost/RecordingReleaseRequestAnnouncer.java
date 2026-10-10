@@ -25,7 +25,8 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
       String mergedSha,
       Instant changedAt,
       String priority,
-      List<String> downstreamTechnicalComponents) {}
+      List<String> downstreamTechnicalComponents,
+      String preRun) {}
 
   private final List<Announced> announced = Collections.synchronizedList(new ArrayList<>());
 
@@ -37,6 +38,13 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
   public List<Announced> announcedFor(String releaseRequestId) {
     return announced().stream()
         .filter(event -> event.releaseRequestId().equals(releaseRequestId))
+        .toList();
+  }
+
+  /** Only the announcements that ask qits-ci for a QA run: preRun DONE (or absent). */
+  public List<Announced> qaAnnouncedFor(String releaseRequestId) {
+    return announcedFor(releaseRequestId).stream()
+        .filter(event -> !ReleaseRequestAnnouncer.PRE_RUN_PENDING.equals(event.preRun()))
         .toList();
   }
 
@@ -54,7 +62,8 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
       String mergedSha,
       Instant changedAt,
       String priority,
-      List<String> downstreamTechnicalComponents) {
+      List<String> downstreamTechnicalComponents,
+      String preRun) {
     announced.add(
         new Announced(
             projectId,
@@ -65,6 +74,7 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
             mergedSha,
             changedAt,
             priority,
-            downstreamTechnicalComponents));
+            downstreamTechnicalComponents,
+            preRun));
   }
 }

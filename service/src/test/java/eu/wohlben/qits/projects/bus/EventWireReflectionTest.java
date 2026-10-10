@@ -402,6 +402,62 @@ public class EventWireReflectionTest {
   }
 
   /**
+   * qits-1133's field, pinned the same way: {@code preRun} travels as the word it was given ({@code
+   * PENDING}, {@code DONE}) and an absent one is an absent KEY — what every announcement before the
+   * field looked like, and what qits-ci's filter reads as DONE. Every other field is byte-identical.
+   */
+  @Test
+  public void aChangeWithoutAPreRunIsTheOlderPayloadExactly() throws Exception {
+    var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    var pending =
+        mapper.readTree(
+            eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                new ReleaseRequestChanged(
+                    "p-1",
+                    "r-1",
+                    "qits-projects-service",
+                    "9f2c1a7e",
+                    "release/9f2c1a7e",
+                    "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                    java.time.Instant.parse("2026-10-10T06:02:15Z"),
+                    "LOWEST",
+                    java.util.List.of(),
+                    "PENDING")));
+    var without =
+        mapper.readTree(
+            eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                new ReleaseRequestChanged(
+                    "p-1",
+                    "r-1",
+                    "qits-projects-service",
+                    "9f2c1a7e",
+                    "release/9f2c1a7e",
+                    "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                    java.time.Instant.parse("2026-10-10T06:02:15Z"),
+                    "LOWEST",
+                    java.util.List.of())));
+
+    assertEquals("PENDING", pending.get("preRun").asText());
+    assertTrue(!without.has("preRun"), "NON_NULL: no preRun is an absent KEY, read as DONE");
+    for (String field :
+        java.util.List.of(
+            "projectId",
+            "repoId",
+            "repoName",
+            "releaseRequestId",
+            "backingBranch",
+            "mergedSha",
+            "changedAt",
+            "priority",
+            "downstreamTechnicalComponents")) {
+      assertEquals(
+          pending.get(field),
+          without.get(field),
+          field + " moved with preRun, so the addition is not additive after all");
+    }
+  }
+
+  /**
    * The announcer is a BEAN, which is the whole of how {@code RepositoryService} finds it — an
    * {@code Instance<RepositoryAnnouncer>} that is unsatisfied announces nothing and says nothing
    * about it, which is correct as a configuration and wrong as an accident.
