@@ -880,6 +880,39 @@ class EntityAgentBoundsTest {
         .contentType(ContentType.JSON);
   }
 
+  private static RequestSpecification asForwardedCiRun() {
+    return given()
+        .header("X-Qits-User", "qits-ci")
+        .header("X-Qits-Roles", "qits:ci-run")
+        .contentType(ContentType.JSON);
+  }
+
+  /**
+   * {@code qits:ci-run} reaches {@code GET /work/{qualifiedId}} too (qits-1142): the CI step's run
+   * token may read the work item it is building for, and nothing else on this surface — a write is
+   * refused at the door, which a method-level {@code @RolesAllowed} replacing the class's is what
+   * makes true of this one route alone.
+   */
+  @Test
+  void aForwardedCiRunTokenReadsTheWorkItemAndCannotCreate() {
+    asForwardedCiRun()
+        .get("/projects/api/work/" + rows.ticketId())
+        .then()
+        .statusCode(200)
+        .body("id", org.hamcrest.Matchers.equalTo(rows.ticketId()));
+    asForwardedCiRun()
+        .body(
+            Map.of(
+                "archetype", "TICKET",
+                "project", OWN_PROJECT,
+                "ticketType", "BUG",
+                "title", "ci-run may not create",
+                "impetus", "it occurs"))
+        .post("/projects/api/work")
+        .then()
+        .statusCode(403);
+  }
+
   /**
    * The admin-only writes are refused at the door, before any body runs. The id names nothing on
    * purpose: the refusal must come from the role list rather than from anything the method could

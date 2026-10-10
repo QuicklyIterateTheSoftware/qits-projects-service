@@ -82,6 +82,10 @@ import org.jboss.logging.Logger;
  * it mounts — so an unread repository may be the only thing keeping a release somewhere else. A twin
  * that cannot be listed or pushed to is different: it is an error line and never stops the next
  * repository, because a twin holds no gitlink the keep set reads.
+ *
+ * <p>A collected release tag leaves its changelog ({@code @changelog/<repository>} at that version
+ * in qits-artifacts, qits-893) in place: changelogs are kept forever for now (owner, 2026-10-04) and
+ * should probably be deleted here, together with the release they belong to.
  */
 @ApplicationScoped
 public class TagCollector {
