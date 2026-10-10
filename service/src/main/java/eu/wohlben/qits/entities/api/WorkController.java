@@ -432,7 +432,8 @@ public class WorkController {
           "Moves an epic, ticket, campaign, feature or task to the target status, by the same path"
               + " as the archetype's own transition and under its roles: an agent may move a ticket,"
               + " a campaign, a feature or a task of its own project, a platform service"
-              + " (qits:system) one of any project, and an epic is qits:admin alone. A feature or a"
+              + " (qits:system) one of any project, and an epic is qits:admin's, or an agent's of"
+              + " its own project, which may not supersede it. A feature or a"
               + " task moves only once its epic is past REPORTED, and its scheduling (to"
               + " READY_FOR_DEV, or back) is the epic's. Answers the entity in the merged shape, with"
               + " statusBefore.")
@@ -447,12 +448,14 @@ public class WorkController {
   @APIResponse(
       responseCode = "403",
       description =
-          "An agent moving an epic, or an entity outside its own project; nothing is written")
+          "A platform service moving an epic, or an agent moving an entity outside its own"
+              + " project; nothing is written")
   @APIResponse(responseCode = "404", description = "No entity with this id")
   @APIResponse(
       responseCode = "409",
       description =
-          "A move the lifecycle does not allow, a target naming no status, a feature or a task"
+          "A move the lifecycle does not allow, a target naming no status, an agent superseding"
+              + " an epic, a feature or a task"
               + " whose epic is still REPORTED, or a quality gate refusing a forward move —"
               + " ACCEPTANCE_CRITERIA, or PERSON_APPROVAL for REFINED to READY_FOR_DEV by a caller"
               + " this service did not verify as a person")

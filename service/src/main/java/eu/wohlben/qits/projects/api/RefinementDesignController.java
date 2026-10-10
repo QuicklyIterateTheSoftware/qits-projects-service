@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.api;
 
+import eu.wohlben.qits.entities.api.EntitiesAgentAccess;
 import eu.wohlben.qits.projects.entity.RefinementDesign;
 import eu.wohlben.qits.projects.refinementhost.RefinementDesigns;
 import eu.wohlben.qits.projects.refinementhost.RefinementService;
@@ -37,6 +38,11 @@ import java.util.Set;
  * served same-origin would be an XSS door, so the SPA renders each design in a sandboxed iframe
  * with scripts off. A <em>copy</em> of a design inlined into a dossier is served from one hardened
  * route in the entities half of this service; these bytes are not.
+ *
+ * <p><b>An agent writes designs here</b> (qits-1174), as it did through the retired {@code
+ * put_design} MCP tool: {@code POST} and {@code PUT} admit {@code qits:agent}, bound to the project
+ * of the refinement's entity ({@link EntitiesAgentAccess}). The delete stays a person's: no tool
+ * ever deleted a design.
  */
 @Path("/refinements/{id}/designs")
 @Produces(MediaType.APPLICATION_JSON)
@@ -98,8 +104,9 @@ public class RefinementDesignController {
 
   /** 201 with the row sans html — the caller just sent it. */
   @POST
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public Response add(@PathParam("id") long id, NewDesign request) {
-    refinements.get(id);
+    EntitiesAgentAccess.requireProject(identity, refinements.get(id).projectId);
     RefinementDesign row =
         designs.put(
             id,
@@ -129,9 +136,10 @@ public class RefinementDesignController {
    */
   @PUT
   @Path("/{designId}")
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   public DesignDto update(
       @PathParam("id") long id, @PathParam("designId") String designId, UpdateDesign request) {
-    refinements.get(id);
+    EntitiesAgentAccess.requireProject(identity, refinements.get(id).projectId);
     RefinementDesign row =
         designs.put(
             id,

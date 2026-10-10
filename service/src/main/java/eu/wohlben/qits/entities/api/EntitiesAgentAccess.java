@@ -12,8 +12,11 @@ import io.quarkus.security.identity.SecurityIdentity;
  * package admits {@code qits:agent} exactly where the {@code repository} MCP server already exposes
  * a tool performing that same write, because that server serves an agent with no credential at all:
  * refusing at the REST door what is handed over unauthenticated one package away was an
- * inconsistency, not a boundary. Every write no tool serves — the two lifecycle transitions of an
- * epic, and the four deletes — stays {@code qits:admin}.
+ * inconsistency, not a boundary. Every write no tool serves — an epic's supersede, and the four
+ * deletes — stays {@code qits:admin}. Since qits-1174 an agent's epic move ({@code
+ * transition_epic}'s claim) and its refinement design writes ({@code put_design}'s, in {@code
+ * RefinementDesignController}) are admitted too, because the MCP server that served them is
+ * retiring.
  *
  * <p><b>One shared helper rather than a copy per controller.</b> Fourteen routes across nine classes
  * bind the same claim to the same question, and the binding is three lines of which the middle one
@@ -36,7 +39,7 @@ import io.quarkus.security.identity.SecurityIdentity;
  * project} claim at all. Such a caller matches no project, so it is <em>refused</em> every write
  * here rather than waved through — the same stance {@code AgentAccess} itself argues for.
  */
-final class EntitiesAgentAccess {
+public final class EntitiesAgentAccess {
 
   /**
    * A caller holding one of these is judged as before, even if it also holds the agent role.
@@ -56,7 +59,7 @@ final class EntitiesAgentAccess {
    * write names — so an id naming nothing answers 404 from that resolution, exactly as it does for
    * an admin, and never a 403 that would report on rows the caller cannot see.
    */
-  static void requireProject(SecurityIdentity identity, String projectId) {
+  public static void requireProject(SecurityIdentity identity, String projectId) {
     if (AgentAccess.isBoundAgent(identity, WIDER)
         && !AgentAccess.coversProject(identity, projectId)) {
       throw new ForbiddenException("An agent may write only the entities of its own project.");

@@ -258,8 +258,11 @@ class ScheduleNeedsAPersonDoorTest {
     status(bearer(agent(projectId)), campaignId, "READY_FOR_DEV")
         .statusCode(409)
         .body("message", containsString(REFUSAL));
-    // An epic's status door is qits:admin alone, before any gate.
-    status(bearer(agent(projectId)), refined(projectId, "EPIC"), "READY_FOR_DEV").statusCode(403);
+    // An agent reaches an epic's status door of its own project since qits-1174, and meets the
+    // same gate there.
+    status(bearer(agent(projectId)), refined(projectId, "EPIC"), "READY_FOR_DEV")
+        .statusCode(409)
+        .body("message", containsString(REFUSAL));
     stillRefined(id);
 
     // Unscheduling is a correction, and nobody's gate.

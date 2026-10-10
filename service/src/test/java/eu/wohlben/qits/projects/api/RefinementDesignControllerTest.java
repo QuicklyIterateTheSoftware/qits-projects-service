@@ -4,6 +4,8 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.api.WorkRequests;
@@ -27,6 +29,12 @@ import org.junit.jupiter.api.Test;
 public class RefinementDesignControllerTest {
 
   @Inject RefinementDesignRepository store;
+
+  @Inject eu.wohlben.qits.projects.refinementhost.RefinementService refinementService;
+
+  @Inject eu.wohlben.qits.projects.refinementhost.RefinementDesigns refinementDesigns;
+
+  @Inject eu.wohlben.qits.entities.control.DossierAssetService dossierAssets;
 
   private static final String DOC =
       "<!doctype html><html><body style=\"margin:0\">Checkout</body></html>";
@@ -257,5 +265,104 @@ public class RefinementDesignControllerTest {
     assertTrue(
         QuarkusTransaction.requiringNew().call(() -> store.findByIdOptional(designId)).isEmpty(),
         "the design must go with the refinement it hangs off");
+  }
+
+  // --- An agent's writes (qits-1174) ----------------------------------------
+
+  /**
+   * The design door driven directly as {@code caller}: a {@code @QuarkusTest} cannot put a token
+   * with a {@code project} claim in front of this service (see {@code EntityAgentBoundsTest}).
+   */
+  private RefinementDesignController designsAs(io.quarkus.security.identity.SecurityIdentity caller) {
+    RefinementDesignController door = new RefinementDesignController();
+    door.refinements = refinementService;
+    door.designs = refinementDesigns;
+    door.assets = dossierAssets;
+    door.identity = caller;
+    return door;
+  }
+
+  private static io.quarkus.security.identity.SecurityIdentity agentOf(String projectId) {
+    return eu.wohlben.qits.projects.security.AgentTokens.token(
+        Map.of("project", projectId), "qits:agent");
+  }
+
+  /** A refinement and the project its entity is in. */
+  private record Room(long id, String projectId) {}
+
+  private Room openRoom(String name) {
+    String projectId = createProject(name);
+    String epicId = createEpic(projectId, name + " Epic");
+    Number id =
+        given()
+            .contentType(ContentType.JSON)
+            .body(Map.of())
+            .when()
+            .post("/projects/api/work/" + epicId + "/refinement")
+            .then()
+            .statusCode(200)
+            .extract()
+            .path("refinement.id");
+    return new Room(id.longValue(), projectId);
+  }
+
+  /** An agent of the room's project adds and rewrites a design, as put_design did. */
+  @Test
+  public void anAgentWritesTheDesignsOfItsOwnProjectsRoom() {
+    Room room = openRoom("Design Agent Own");
+    var agent = designsAs(agentOf(room.projectId()));
+
+    var created =
+        agent.add(room.id(), new RefinementDesignController.NewDesign("Checkout", DOC, null, false));
+    assertEquals(201, created.getStatus());
+    String designId = ((RefinementDesignController.DesignDto) created.getEntity()).id();
+
+    var rewritten =
+        agent.update(
+            room.id(),
+            designId,
+            new RefinementDesignController.UpdateDesign("Checkout", REVISED, 0L, false));
+    assertEquals(1L, rewritten.version());
+    assertEquals(REVISED, htmlOf(room.id(), designId));
+  }
+
+  /** An agent of another project is refused both writes, and nothing is written. */
+  @Test
+  public void anAgentOfAnotherProjectIsRefusedTheDesignWrites() {
+    Room room = openRoom("Design Agent Foreign");
+    String designId = capture(room.id(), "Checkout", DOC);
+    var foreign = designsAs(agentOf(createProject("Design Agent Elsewhere")));
+
+    var add =
+        assertThrows(
+            eu.wohlben.qits.entities.error.ForbiddenException.class,
+            () ->
+                foreign.add(
+                    room.id(), new RefinementDesignController.NewDesign("Mine", DOC, null, false)));
+    assertEquals(403, add.statusCode());
+    var update =
+        assertThrows(
+            eu.wohlben.qits.entities.error.ForbiddenException.class,
+            () ->
+                foreign.update(
+                    room.id(),
+                    designId,
+                    new RefinementDesignController.UpdateDesign("Mine", REVISED, 0L, false)));
+    assertEquals(403, update.statusCode());
+
+    assertEquals(1, refinementDesigns.list(room.id()).size());
+    assertEquals(DOC, htmlOf(room.id(), designId));
+  }
+
+  /** A person writes a design of any project's room, exactly as before: no claim is asked for. */
+  @Test
+  public void anAdminWritesAnyRoomsDesignsAsBefore() {
+    Room room = openRoom("Design Admin");
+    var admin =
+        designsAs(eu.wohlben.qits.projects.security.AgentTokens.token(Map.of(), "qits:admin"));
+
+    var created =
+        admin.add(room.id(), new RefinementDesignController.NewDesign("Checkout", DOC, null, false));
+    assertEquals(201, created.getStatus());
   }
 }

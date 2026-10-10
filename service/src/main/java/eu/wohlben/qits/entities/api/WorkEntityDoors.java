@@ -411,15 +411,24 @@ public class WorkEntityDoors {
   public TransitionedEntity move(SecurityIdentity identity, WorkEntity row, String target) {
     Archetype archetype = row.archetype;
     // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
-    // stay human-only.
-    if (archetype == Archetype.EPIC
-        && !identity.hasRole(AgentAccess.ADMIN_ROLE)
-        && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE)) {
+    // stay human-only. A bound agent is admitted too (qits-1174): it makes the claim the retired
+    // transition_epic MCP tool made, with that tool's limits — its own project only (the binding
+    // below), never SUPERSEDED, and recorded as a machine (EntityMovers never makes it a person).
+    // A platform service (qits:system) is still refused an epic.
+    boolean epicByAgent =
+        archetype == Archetype.EPIC
+            && !identity.hasRole(AgentAccess.ADMIN_ROLE)
+            && !identity.hasRole(AgentAccess.ADMIN_AGENT_ROLE);
+    if (epicByAgent && !EntitiesAgentAccess.bound(identity)) {
       throw new ForbiddenException(
-          "Moving an epic's status is qits:admin alone; an agent's claim goes through the"
-              + " transition_epic MCP tool.");
+          "Moving an epic's status is qits:admin's, or an agent's in its own project.");
     }
     EntitiesAgentAccess.requireProject(identity, row.projectId);
+    if (epicByAgent && WorkEntityService.SUPERSEDE.equals(target)) {
+      throw new ConflictException(
+          "SUPERSEDED is an operation on a plan, not a status an agent claims — a person"
+              + " supersedes an epic from the board.");
+    }
 
     TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
     // The mover's name is the audit's: a verified person's own, never a header (qits-887).
