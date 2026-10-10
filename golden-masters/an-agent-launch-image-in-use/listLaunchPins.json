@@ -3,12 +3,12 @@
   "pins": [
     {
       "image": "qits/project-agent",
-      "version": "000000000000001",
+      "version": "0000000000000001",
       "launches": "agent"
     },
     {
       "image": "qits/workspace",
-      "version": "000000000000002",
+      "version": "0000000000000002",
       "launches": "refinement"
     }
   ]
