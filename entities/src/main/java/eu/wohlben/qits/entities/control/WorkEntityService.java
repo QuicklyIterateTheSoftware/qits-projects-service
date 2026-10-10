@@ -751,6 +751,16 @@ public class WorkEntityService {
    * and the feature's moves are announced together, after the hold, and before the epic's own.
    */
   public Nested markImplementing(String taskId, String changedBy) {
+    return markImplementing(taskId, Instant.now(), changedBy);
+  }
+
+  /**
+   * {@link #markImplementing(String, String)} with the start time stated rather than read off the
+   * clock (qits-1174): {@code PATCH /work/{id}} with a task's {@code implementingAt} comes here
+   * after its own write, so its feature is stamped with the time the caller gave. A marker already
+   * set keeps its time, as before.
+   */
+  public Nested markImplementing(String taskId, Instant at, String changedBy) {
     Kind kind = kind(Archetype.TASK);
     WorkEntity[] epic = {null};
     List<TransitionedEntity> moved = new ArrayList<>(2);
@@ -765,7 +775,7 @@ public class WorkEntityService {
               EntityLifecycle.requireBeingImplemented(owner);
               epic[0] = owner;
               // Truncated to what the column holds, so the answer handed back equals the row read.
-              Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+              Instant now = at.truncatedTo(java.time.temporal.ChronoUnit.MICROS);
               String taskBefore = row.status;
               boolean taskMoved = advanceTo(row, EntityStatus.IMPLEMENTING);
               if (row.implementingAt == null || taskMoved) {

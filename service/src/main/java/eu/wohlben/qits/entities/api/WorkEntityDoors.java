@@ -275,8 +275,14 @@ public class WorkEntityDoors {
     // A dependency may be named by its qualified id as well as its UUID.
     EntityWrite write = readPatch(current, body, this::entityId);
     requireRepositoryIn(write.repositoryId(), current.projectId());
-    Nested updated =
-        entities.update(current.archetype(), id, write, EntitiesPrincipal.changedBy(identity));
+    String changedBy = EntitiesPrincipal.changedBy(identity);
+    Nested updated = entities.update(current.archetype(), id, write, changedBy);
+    if (current.archetype() == Archetype.TASK && write.implementingAt() != null) {
+      // The rest of what mark_task_implementing does (qits-1174): the feature stamped the first
+      // time, and an epic still READY_FOR_DEV moved to IMPLEMENTING. The task itself is already
+      // stamped and moved by the write above, so this leaves it as it is.
+      entities.markImplementing(id, write.implementingAt(), changedBy);
+    }
 
     // After the write and outside it, as the transition door fires them: its body is retried.
     epicHints.fire(current.projectId());

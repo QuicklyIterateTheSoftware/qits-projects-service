@@ -161,7 +161,9 @@ public class WorkController {
                   "A feature's or task's implementing marker (ISO-8601 instant): when its"
                       + " implementation was started. Cannot be cleared. Moves only while the"
                       + " owning epic is READY_FOR_DEV or IMPLEMENTING, and moves the item's status to"
-                      + " IMPLEMENTING when it is not already there or further.")
+                      + " IMPLEMENTING when it is not already there or further. On a task it also"
+                      + " stamps the task's feature the first time, and moves an epic still"
+                      + " READY_FOR_DEV to IMPLEMENTING.")
           Instant implementingAt,
       @Schema(
               nullable = true,
