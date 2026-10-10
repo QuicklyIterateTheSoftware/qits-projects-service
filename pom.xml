@@ -222,7 +222,7 @@
         <qits.landing-app-pacts-qits-projects-service.version>2026.1010.104235</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1009.101109</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1010.92756</qits.platform-access-cli-pacts-qits-projects-service.version>
-        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1010.124627</qits.maintenance-service-pacts-qits-projects-service.version>
+        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1010.172542</qits.maintenance-service-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance and qits-events record
              for their provider states. Test scope, read off the classpath by
