@@ -1,0 +1,834 @@
+{
+  "consumer": {
+    "name": "qits-projects-service"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-workspaces-service",
+            "operationId": "resolveReleasedBranch"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "ReleaseRequests.resolveWorkspacesOnReleasedBranches"
+          }
+        }
+      },
+      "description": "ReleaseRequests.resolveWorkspacesOnReleasedBranches: resolveReleasedBranch",
+      "key": "a42c710e",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a workspace standing on a released branch",
+          "params": {
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "repositoryId": "00000000-0000-4000-8000-000000000015",
+            "sha": "0123456789abcdef0123456789abcdef01234567",
+            "version": "2026.101.120000"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "commit": "0123456789abcdef0123456789abcdef01234567",
+            "result": "released as 2026.101.120000",
+            "target": "2026.101.120000"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.branch": {
+              "dataType": "STRING",
+              "expression": "${branch}",
+              "type": "ProviderState"
+            },
+            "$.commit": {
+              "dataType": "STRING",
+              "expression": "${sha}",
+              "type": "ProviderState"
+            },
+            "$.result": {
+              "dataType": "STRING",
+              "expression": "released as ${version}",
+              "type": "ProviderState"
+            },
+            "$.target": {
+              "dataType": "STRING",
+              "expression": "${version}",
+              "type": "ProviderState"
+            }
+          },
+          "query": {
+            "repositoryId": {
+              "dataType": "RAW",
+              "expression": "${repositoryId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.branch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.commit": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.result": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.target": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/workspaces/api/branches/resolution",
+        "query": {
+          "repositoryId": [
+            "00000000-0000-4000-8000-000000000015"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "resolved": true,
+            "workspaceId": 1
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.resolved": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workspaceId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-workspaces-service",
+            "operationId": "dispatchAgent"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "dispatchWork"
+          }
+        }
+      },
+      "description": "dispatchWork: dispatchAgent",
+      "key": "ca5a5940",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a repository with a branch for a ticket",
+          "params": {
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "repositoryId": "00000000-0000-4000-8000-000000000014",
+            "ticketId": "00000000-0000-4000-8000-000000000001",
+            "ticketQualifiedId": "contract-00000001-10"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "branchTree": false,
+            "entityBlocked": false,
+            "instruction": "implement",
+            "repositoryId": "00000000-0000-4000-8000-000000000014",
+            "ticketId": "00000000-0000-4000-8000-000000000001",
+            "workId": "00000000-0000-4000-8000-000000000001"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.branch": {
+              "dataType": "STRING",
+              "expression": "${branch}",
+              "type": "ProviderState"
+            },
+            "$.repositoryId": {
+              "dataType": "STRING",
+              "expression": "${repositoryId}",
+              "type": "ProviderState"
+            },
+            "$.ticketId": {
+              "dataType": "STRING",
+              "expression": "${ticketId}",
+              "type": "ProviderState"
+            },
+            "$.workId": {
+              "dataType": "STRING",
+              "expression": "${ticketId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.branch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repositoryId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.ticketId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/workspaces/api/agent-dispatches"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "agentIdentity": "contract-workspace-token-subject",
+            "agentLaunch": "SCHEDULED",
+            "fresh": true,
+            "workspace": {
+              "id": 1
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.agentIdentity": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.agentLaunch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.fresh": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workspace.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-workspaces-service",
+            "operationId": "listAgentDispatchReferences"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "getWorkDispatch"
+          }
+        }
+      },
+      "description": "getWorkDispatch: listAgentDispatchReferences",
+      "key": "90ffa44d",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a project with workspaces bound to work items",
+          "params": {
+            "bugTicketId": "00000000-0000-4000-8000-000000000001",
+            "bugTicketQualifiedId": "contract-00000001-10",
+            "epicId": "00000000-0000-4000-8000-000000000006",
+            "featureId": "00000000-0000-4000-8000-000000000007",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+            "improvementTicketQualifiedId": "contract-00000001-11",
+            "projectId": "00000000-0000-4000-8000-00000000000f",
+            "repositoryId": "00000000-0000-4000-8000-000000000013",
+            "taskId": "00000000-0000-4000-8000-000000000011"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "query": {
+            "ticketId": {
+              "dataType": "RAW",
+              "expression": "${bugTicketId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "method": "GET",
+        "path": "/workspaces/api/agent-dispatches/references",
+        "query": {
+          "ticketId": [
+            "00000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "entries": [
+              {
+                "workspace": {
+                  "branch": "ticket/invoice-totals-are-off-by-one-cent",
+                  "epicId": null,
+                  "repositoryId": "00000000-0000-4000-8000-000000000013",
+                  "resolvedAt": "2026-01-01T00:00:00Z",
+                  "status": "ABANDONED",
+                  "ticketId": "00000000-0000-4000-8000-000000000001",
+                  "workspaceId": "ticket-invoice-totals-are-off-by-one-cent",
+                  "workspaceRowId": 1
+                }
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.entries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.entries[*].workspace.branch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].workspace.repositoryId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.entries[*].workspace.resolvedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.entries[*].workspace.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].workspace.ticketId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.entries[*].workspace.workspaceId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].workspace.workspaceRowId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-workspaces-service",
+            "operationId": "markAgentDispatchEntity"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "setWorkStatus"
+          }
+        }
+      },
+      "description": "setWorkStatus: markAgentDispatchEntity",
+      "key": "e68e8a9b",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a workspace standing on a ticket's branch",
+          "params": {
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "repositoryId": "00000000-0000-4000-8000-000000000013",
+            "ticketId": "00000000-0000-4000-8000-000000000001",
+            "ticketQualifiedId": "contract-00000001-10"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "blocked": false,
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "repositoryId": "00000000-0000-4000-8000-000000000013",
+            "status": "IMPLEMENTING",
+            "title": "Fix it",
+            "workId": "00000000-0000-4000-8000-000000000001"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.branch": {
+              "dataType": "STRING",
+              "expression": "${branch}",
+              "type": "ProviderState"
+            },
+            "$.repositoryId": {
+              "dataType": "STRING",
+              "expression": "${repositoryId}",
+              "type": "ProviderState"
+            },
+            "$.workId": {
+              "dataType": "STRING",
+              "expression": "${ticketId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.branch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repositoryId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/workspaces/api/agent-dispatches/entity"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "applied": false,
+            "workspaceId": 1
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.applied": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workspaceId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-workspaces-service",
+            "operationId": "deliverAgentTurn"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "operation",
+            "operationId": "transitionWork"
+          }
+        }
+      },
+      "description": "transitionWork: deliverAgentTurn",
+      "key": "60c27810",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a workspace standing on a ticket's branch",
+          "params": {
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "repositoryId": "00000000-0000-4000-8000-000000000013",
+            "ticketId": "00000000-0000-4000-8000-000000000001",
+            "ticketQualifiedId": "contract-00000001-10"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "branch": "ticket/invoice-totals-are-off-by-one-cent",
+            "compactFirst": false,
+            "repositoryId": "00000000-0000-4000-8000-000000000013",
+            "text": "go on",
+            "workId": "00000000-0000-4000-8000-000000000001"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.branch": {
+              "dataType": "STRING",
+              "expression": "${branch}",
+              "type": "ProviderState"
+            },
+            "$.repositoryId": {
+              "dataType": "STRING",
+              "expression": "${repositoryId}",
+              "type": "ProviderState"
+            },
+            "$.workId": {
+              "dataType": "STRING",
+              "expression": "${ticketId}",
+              "type": "ProviderState"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.branch": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.repositoryId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/workspaces/api/agent-dispatches/delivery"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "delivered": false,
+            "detail": "this workspace is queued for a workspace runner; the text will be delivered, or launched with, once a runner takes it and its daemon answers",
+            "launched": false,
+            "workspaceId": 1
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.delivered": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.detail": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.launched": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.workspaceId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": []
+  },
+  "provider": {
+    "name": "qits-workspaces-service"
+  }
+}
