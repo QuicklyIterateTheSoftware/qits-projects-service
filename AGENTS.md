@@ -960,6 +960,32 @@ The idp commissions of this service's own containers state refs too (contract C2
 
 Roles do not change: a commission still carries its owner's roles until phase 4 of the plan.
 
+## Release request ids (qits-1158)
+
+A release request has two ids. `id` is the uuid: the primary key, and the key every consumer and
+every outbound call (qits-ci, qits-maintenance) keeps using. `qualifiedId` is the id people read:
+`<repository name>-rr-<n>`, e.g. `qits-ci-service-rr-12`.
+
+- **Stored, frozen at creation** (V41). `number` comes from `control/ReleaseRequestNumbers`, a
+  counter row per repository id in `release_request_number_sequence`, bumped in its own transaction
+  (the `EntityNumbers` pattern: no collisions, gaps allowed). The name is the one the request was
+  made under; a rename does not rewrite old ids, and new requests continue the same counter under
+  the new name. A repository with no name gets its uuid as its qualified id.
+- **Unique per repository, not across the estate.** Two projects may have repositories with one
+  name. The doors look a qualified id up within the repository in the path.
+- **The backing branch is stored** (`backing_branch`): `release/<qualifiedId>` for a new request,
+  `release/<uuid>` for every request made before V41. Nothing may derive it from the id any more;
+  `ReleasePipelineRuns` matches a QA run's branch against the stored column.
+- **Every door taking `{requestId}` accepts either id**, the qualified one in any case.
+  `ReleaseRequests.resolveId` is the one place it is read; each route calls it first.
+- **DTO and events.** `ReleaseRequestDto` carries `qualifiedId` and `supersededByQualifiedId`.
+  `ReleaseRequestChanged`, `ReleaseRequestStateChanged` and `SCMRelease` carry
+  `releaseRequestQualifiedId` beside `releaseRequestId`; `ReleaseRequestStateChanged` also carries
+  `backingBranch`. The automations trigger to qits-maintenance sends `backingBranch` and
+  `qualifiedId` in its body; the uuid stays in the path.
+- **Texts use the qualified id**: the fold commit subject (`Release request <qualifiedId>: …`), the
+  tag fallback, supersession, refusal sentences, ticket threads and the MAINTENANCE ticket body.
+
 ## Release request gates
 
 A release request releases only once every gate its repository configures has passed.
@@ -999,7 +1025,7 @@ honours that ahead of any archetype — `CiReleaseComposer.choose` takes the rep
 outright when it is present, archetype or not. So such a repository is composed a QA run and had no
 gate for it: measured three times on `qits-landing-app` (the one repository of 49 on the estate with
 slots and no archetype), each request went `READY` within a second of creation, the tag was cut and
-the backing `release/<id>` branch deleted, and the composed run then died with `CLONE_FAILED` on the
+the backing `release/…` branch deleted, and the composed run then died with `CLONE_FAILED` on the
 branch the release had just removed — its QA steps never ran once.
 `ReleaseArchetypeParser.declaresQaPipeline` is the predicate now: an `archetype:` **or** a non-empty
 `release-request:`. It is still **presence only** — a `release-request:` that is blank, `[]` or `{}`
@@ -1009,13 +1035,13 @@ slot schema.
 **Every fold is rebuilt from the sources, never made onto the previous fold** (user decision
 2026-10-09). `ReleaseRequests.fold` asks qits-githost's merge door with `rebuild: true`: the
 backing branch's old tip is no head, the fold is built from the request's sources alone and
-`release/<id>` is moved onto it with a lease (a concurrent move is `ref-moved`, which the sweep
+the stored backing branch is moved onto it with a lease (a concurrent move is `ref-moved`, which the sweep
 folds again). Before, each moved source added one two-parent merge onto the previous fold —
 request dd113f4c (qits-workspaces-service) carried 23 of them and 51 commits on
-`main..release/<id>` — and a force-pushed source kept its old commits in the fold. The guarantees
+`main..<backing branch>` — and a force-pushed source kept its old commits in the fold. The guarantees
 a consumer may rely on:
 
-- `main..release/<id>` is the sources' own commits plus at most one merge commit.
+- `main..<backing branch>` is the sources' own commits plus at most one merge commit.
 - **That merge's parents are the effective sources in source order**: `main`, the named branches in
   the order they were added (`addedAt`, then name), then the released tags still pending, oldest
   first. A source another source contains is left out (the git host's `skipped`); with one source
@@ -1174,7 +1200,7 @@ one — a *step* inside a run is not, and neither is any other part a run is spl
 part of that run and has no rerun of its own.
 
       |  gate      AUTOMATIONS (the pre-run)                   between = PRE_RUN_QA
-    P1 . QA        a qits-ci run at release/<id>@mergedSha
+    P1 . QA        a qits-ci run at <backing branch>@mergedSha
       |  gates     CI, APPROVAL                                between = QA_PUBLISH
     P2 . Publish   a qits-ci run at <version>@commitSha
       |  gate      PUBLISH                                     between = PUBLISH_DEPLOY
