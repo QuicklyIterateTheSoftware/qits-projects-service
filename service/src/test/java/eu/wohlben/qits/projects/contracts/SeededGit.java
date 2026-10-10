@@ -32,10 +32,14 @@ final class SeededGit {
     this.work = work;
   }
 
+  /** Every working tree made so far and not yet deleted; see {@link #deleteAll()}. */
+  private static final java.util.List<Path> WORK_TREES =
+      java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
   /** An empty repository on {@code main} whose {@code origin} is {@code remote}. */
   static SeededGit init(GitExecutor git, String remote) throws Exception {
     Path work = Files.createTempDirectory("contract-git");
-    work.toFile().deleteOnExit();
+    WORK_TREES.add(work);
     SeededGit seeded = new SeededGit(git, work);
     seeded.run(0, "git", "init", "-q", "-b", "main");
     seeded.run(0, "git", "remote", "add", "origin", remote);
@@ -104,6 +108,28 @@ final class SeededGit {
       command[5 + i] = "+" + branches[i];
     }
     run(0, command);
+  }
+
+  /**
+   * Deletes every working tree made so far. A state needs its tree only until it has pushed, and
+   * {@code deleteOnExit} never removes a directory that is not empty, so without this each tree
+   * stayed in the temp directory after the run.
+   */
+  static void deleteAll() {
+    java.util.List<Path> trees;
+    synchronized (WORK_TREES) {
+      trees = java.util.List.copyOf(WORK_TREES);
+      WORK_TREES.clear();
+    }
+    for (Path tree : trees) {
+      try (var paths = Files.walk(tree)) {
+        for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+          Files.deleteIfExists(path);
+        }
+      } catch (java.io.IOException e) {
+        // A tree left behind is litter in the temp directory, never a failed state.
+      }
+    }
   }
 
   private String head() throws Exception {
