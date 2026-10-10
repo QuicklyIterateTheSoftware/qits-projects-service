@@ -223,6 +223,17 @@
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1009.101109</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1007.194316</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1007.53748</qits.maintenance-service-pacts-qits-projects-service.version>
+        <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
+             qits-1149): what qits-githost, qits-workspaces, qits-maintenance and qits-events record
+             for their provider states. Test scope, read off the classpath by
+             service/src/test/.../contracts/consumer/ConsumerGoldenMasters. A row of a consumer
+             contract whose state is not recorded yet is skipped with the state it needs, and turns
+             live when a bump of one of these pins brings that state in. Moved by qits-maintenance
+             like every other pin; do not hand-edit them to chase a release. -->
+        <qits.githost-golden-masters.version>2026.1002.190746</qits.githost-golden-masters.version>
+        <qits.workspaces-golden-masters.version>2026.1003.183318</qits.workspaces-golden-masters.version>
+        <qits.maintenance-golden-masters.version>2026.1008.191446</qits.maintenance-golden-masters.version>
+        <qits.events-golden-masters.version>2026.1002.210125</qits.events-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
@@ -424,6 +435,38 @@
                 <groupId>au.com.dius.pact.provider</groupId>
                 <artifactId>junit5</artifactId>
                 <version>${pact.version}</version>
+            </dependency>
+            <dependency>
+                <!-- The consumer half, for this repository's own pacts against the services it
+                     calls (contracts/consumer/). The same pact-jvm version as the provider half.
+                     Test scope at every declaration site. -->
+                <groupId>au.com.dius.pact.consumer</groupId>
+                <artifactId>junit5</artifactId>
+                <version>${pact.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-githost-golden-masters</artifactId>
+                <version>${qits.githost-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-workspaces-golden-masters</artifactId>
+                <version>${qits.workspaces-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-maintenance-golden-masters</artifactId>
+                <version>${qits.maintenance-golden-masters.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test scope at every declaration site: recordings a test reads, never code. -->
+                <groupId>${project.groupId}</groupId>
+                <artifactId>qits-events-golden-masters</artifactId>
+                <version>${qits.events-golden-masters.version}</version>
             </dependency>
             <!-- The reactor's own modules, so children depend on them version-less. -->
             <dependency>

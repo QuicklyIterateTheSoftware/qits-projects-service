@@ -318,6 +318,38 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- This repository's own consumer pacts (contracts/consumer/): each row runs the real
+                 client against a pact-jvm mock server, and the committed
+                 pacts/qits-projects-service_<provider>.json files are written from them. -->
+            <groupId>au.com.dius.pact.consumer</groupId>
+            <artifactId>junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-githost's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-githost-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-workspaces's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-workspaces-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-maintenance's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-maintenance-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-events's recorded answers, for the consumer rows against it. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-events-golden-masters</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <!-- The user-story framework: TokenValidationBootstrapIT is written as a @UserStory,
                  so the packaged-boot proof doubles as documentation — steps, interactions and a
                  sequence diagram emitted under target/userstories/. The story is browserless
