@@ -157,7 +157,7 @@
              PINNED AT A RELEASED CALVER, never a snapshot, for the reason spelled out above the
              vocabulary jar: a snapshot that resolves only from a warm docker layer and a
              developer's ~/.m2 is a red release waiting for whoever next edits a file. -->
-        <qits.containers-client.version>2026.1009.103217</qits.containers-client.version>
+        <qits.containers-client.version>2026.1010.173216</qits.containers-client.version>
 
         <!-- THE REFINEMENT IMAGE PIN, AS A DEPENDENCY. This is not an ordinary library version: the
              artifact is qits-workspace-daemon's wire contract, and its version IS the tag of the
@@ -219,7 +219,7 @@
              qits-maintenance bumps it when the consumer releases a changed pact (its PomParser
              reads pins regardless of scope). -->
         <qits.workspaces-pacts-qits-projects.version>2026.1002.170857</qits.workspaces-pacts-qits-projects.version>
-        <qits.landing-app-pacts-qits-projects-service.version>2026.1010.104235</qits.landing-app-pacts-qits-projects-service.version>
+        <qits.landing-app-pacts-qits-projects-service.version>2026.1010.174213</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1009.101109</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1010.92756</qits.platform-access-cli-pacts-qits-projects-service.version>
         <qits.maintenance-service-pacts-qits-projects-service.version>2026.1010.172542</qits.maintenance-service-pacts-qits-projects-service.version>
