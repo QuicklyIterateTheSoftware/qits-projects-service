@@ -75,7 +75,19 @@ public class RecordingFoldChanges implements FoldChanges {
     mirrored.add(repoId);
   }
 
+  /**
+   * Make {@link #pathsBetween} look the repository row up in the {@code projects} datasource first,
+   * the way the shipped mirror read does ({@code CommitService.requireMirror}) — so a caller that
+   * runs it inside a transaction holding another datasource (the bus claim) fails as it does live.
+   */
+  public void readsTheRepositoryRow(String repoId) {
+    rowReaders.add(repoId);
+  }
+
+  private final Set<String> rowReaders = ConcurrentHashMap.newKeySet();
+
   public void reset() {
+    rowReaders.clear();
     scripted.clear();
     betweenScripted.clear();
     unreadable.clear();
@@ -108,6 +120,10 @@ public class RecordingFoldChanges implements FoldChanges {
 
   @Override
   public List<String> pathsBetween(String repoId, String foldSha, String previousFoldSha) {
+    if (rowReaders.contains(repoId)
+        && eu.wohlben.qits.projects.entity.Repository.findByIdOptional(repoId).isEmpty()) {
+      throw new IllegalStateException("no repository " + repoId);
+    }
     if (mirrored.contains(repoId)) {
       return mirror.pathsBetween(repoId, foldSha, previousFoldSha);
     }

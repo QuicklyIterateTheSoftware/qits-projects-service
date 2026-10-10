@@ -235,12 +235,25 @@ public class AutomationRefresh {
   /**
    * The paths the fold changed since the one before it, or null when they could not be read — and
    * null is the safe answer, because it never carries an outcome over and costs at most a run.
+   *
+   * <p><b>In a transaction of its own</b> (qits-1133), because the mirror read behind it looks the
+   * repository row up in the {@code projects} datasource, and one of this method's callers is the
+   * bus: {@code ReleaseRequestHeadListener} re-folds inside {@code DurableFunnel}'s claim
+   * transaction, which has already enlisted the {@code eventstream} datasource. Joining that
+   * transaction made the read its second local resource, Narayana refused it ({@code ARJUNA016045}),
+   * the claim was marked rollback-only, the refresh went out with {@code changed=null} (carry-over
+   * lost, an extra automation run) and the frame came back every 30 seconds until it collided with
+   * the sweep — the double {@code preRun=DONE} of 2026-10-10. {@link QuarkusTransaction#requiringNew}
+   * suspends the claim for the read, which is the rule {@code CampaignCriteriaListener} states
+   * (qits-416): the claim never spans a second datasource. A failure is a WARN, not a DEBUG: it
+   * costs a run and loses a carry-over, and that is worth seeing.
    */
   private List<String> changedSince(Facts facts, String previous) {
     try {
-      return foldChanges.pathsBetween(facts.repoId(), facts.foldSha(), previous);
+      return QuarkusTransaction.requiringNew()
+          .call(() -> foldChanges.pathsBetween(facts.repoId(), facts.foldSha(), previous));
     } catch (RuntimeException e) {
-      LOG.debugf(
+      LOG.warnf(
           e,
           "Release request %s: what changed between %s and %s could not be read; asking without it",
           facts.requestId(),

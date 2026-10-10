@@ -1000,7 +1000,7 @@ public class ReleaseRequests {
             () -> {
               ReleaseRequest row =
                   requests
-                      .findByIdOptional(id)
+                      .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
                       .orElseThrow(
                           () -> new NotFoundException("Release request not found: " + id));
               requireDecidable(row, decision);
@@ -1143,7 +1143,7 @@ public class ReleaseRequests {
             () -> {
               ReleaseRequest row =
                   requests
-                      .findByIdOptional(id)
+                      .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
                       .filter(candidate -> candidate.repoId.equals(repoId))
                       .orElseThrow(
                           () -> new NotFoundException("Release request not found: " + id));
@@ -2436,7 +2436,8 @@ public class ReleaseRequests {
         QuarkusTransaction.requiringNew()
             .call(
                 () -> {
-                  ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
+                  ReleaseRequest row =
+                      requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
                   if (row == null
                       || row.state != ReleaseRequest.State.REJECTED
                       || row.rejectingRunId == null) {
@@ -2840,7 +2841,13 @@ public class ReleaseRequests {
     return QuarkusTransaction.requiringNew()
         .call(
             () -> {
-              ReleaseRequest row = requests.findByIdOptional(id).orElse(null);
+              // UNDER THE ROW LOCK evaluate() takes (qits-1133). This transaction always writes the
+              // row, and an unlocked read let it write back what it had read over a stamp evaluate()
+              // committed in between: qa_announced_sha went back behind the fold and the next
+              // evaluation announced preRun=DONE a second time for one sha (request b4dc3310,
+              // 2026-10-10). One row, one short transaction, no HTTP inside: no lock order to keep.
+              ReleaseRequest row =
+                  requests.findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE).orElse(null);
               if (row == null || !ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
                 return null;
               }
@@ -3926,7 +3933,7 @@ public class ReleaseRequests {
         .run(
             () ->
                 requests
-                    .findByIdOptional(id)
+                    .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
                     .ifPresent(
                         row -> {
                           row.state = state;
@@ -3945,7 +3952,7 @@ public class ReleaseRequests {
         .run(
             () ->
                 requests
-                    .findByIdOptional(id)
+                    .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
                     .filter(row -> ReleaseRequestRepository.UNRELEASED.contains(row.state))
                     .ifPresent(
                         row -> {
@@ -4723,9 +4730,10 @@ public class ReleaseRequests {
    * adding a source to it or re-pricing one would edit a release that has happened.
    */
   private ReleaseRequest requireOpenForChange(String id) {
+    // Locked: every caller writes the row (a withdrawal, a source, a re-pricing) — see apply().
     ReleaseRequest row =
         requests
-            .findByIdOptional(id)
+            .findByIdOptional(id, LockModeType.PESSIMISTIC_WRITE)
             .orElseThrow(() -> new NotFoundException("Release request not found: " + id));
     if (!ReleaseRequestRepository.UNRELEASED.contains(row.state)) {
       throw new DomainException(409, "Release request " + id + " is already " + row.state);
