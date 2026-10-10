@@ -28,5 +28,5 @@
   "acceptanceCriteria": [
     "It does what it says."
   ],
-  "waitingOn": "release-request 42"
+  "waitingOn": "release-request 42; ci-run 7"
 }

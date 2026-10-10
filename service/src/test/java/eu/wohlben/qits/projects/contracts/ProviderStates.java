@@ -1161,8 +1161,8 @@ public class ProviderStates {
     agentWaiting.report(
         work.get(Archetype.TICKET, ticket),
         true,
-        "wait",
-        "release-request 42",
+        "Wait",
+        "release-request 42; ci-run 7",
         "contract-session",
         java.time.Instant.now().minusSeconds(120));
     return new Setup(

@@ -4481,10 +4481,10 @@
           "path": "/projects/api/work/{ticketId}/agent-waiting",
           "body": {
             "waiting": true,
-            "cause": "wait",
+            "cause": "Wait",
             "sessionId": "contract-session",
             "at": 1234,
-            "waitingOn": "release-request 42"
+            "waitingOn": "release-request 42; ci-run 7"
           },
           "status": 204,
           "file": "a-ticket-with-a-dispatched-agent/reportWorkAgentWaiting.json",

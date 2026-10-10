@@ -126,7 +126,7 @@ public class AgentWaitingService {
           Instant since =
               !waiting ? null : row.agentWaitingSince != null ? row.agentWaitingSince : stamped;
           String said = waiting && cause != null && !cause.isBlank() ? cause.trim() : null;
-          String on = waiting && waitingOn != null && !waitingOn.isBlank() ? waitingOn.trim() : null;
+          String on = !waiting ? null : declaredWait(cause, waitingOn);
           // Typed binds: a null bound untyped reaches postgres as bytea, which no timestamptz takes.
           em.createNativeQuery(
                   "update entity set agent_activity_at = ?1, agent_waiting_since = ?2,"
@@ -145,6 +145,28 @@ public class AgentWaitingService {
           return new Frame(
               row, true, was, EntityBlockState.agentWaitingEffective(row, now, debounce), wasOn);
         });
+  }
+
+  /**
+   * The cause qits-workspaces sends while the agent waits on declared waits (qits-1153), with their
+   * labels joined by {@code "; "} in {@code waitingOn}. The other wait causes ({@code WaitMatched},
+   * {@code WaitTimedOut}, {@code WaitCancelled}) are ordinary reports.
+   */
+  public static final String DECLARED_WAIT_CAUSE = "Wait";
+
+  /** Said when a {@value #DECLARED_WAIT_CAUSE} frame names no label. */
+  public static final String UNNAMED_DECLARED_WAIT = "a declared wait";
+
+  /**
+   * The declared wait a waiting frame names, or null for a wait for a person: its {@code waitingOn},
+   * else {@link #UNNAMED_DECLARED_WAIT} for a {@value #DECLARED_WAIT_CAUSE} frame without one — that
+   * cause never derives a block.
+   */
+  static String declaredWait(String cause, String waitingOn) {
+    if (waitingOn != null && !waitingOn.isBlank()) {
+      return waitingOn.trim();
+    }
+    return cause != null && DECLARED_WAIT_CAUSE.equals(cause.trim()) ? UNNAMED_DECLARED_WAIT : null;
   }
 
   /**

@@ -965,8 +965,8 @@ class GoldenMasterRecordingTest {
             204,
             null,
             null,
-            "{\"waiting\":true,\"cause\":\"wait\",\"sessionId\":\"contract-session\","
-                + "\"at\":1234,\"waitingOn\":\"release-request 42\"}"));
+            "{\"waiting\":true,\"cause\":\"Wait\",\"sessionId\":\"contract-session\","
+                + "\"at\":1234,\"waitingOn\":\"release-request 42; ci-run 7\"}"));
     // A real run, as the orchestrator's schedule makes it; the six pin sources pin nothing.
     all.add(
         write(

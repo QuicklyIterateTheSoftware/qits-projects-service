@@ -255,7 +255,7 @@ class AgentWaitingApiTest {
 
   /** The relay's frame for a session that waits on a declared wait. */
   private static void waitOn(String id, String label) {
-    report(id, map("waiting", true, "cause", "wait", "sessionId", "s-1", "waitingOn", label))
+    report(id, map("waiting", true, "cause", "Wait", "sessionId", "s-1", "waitingOn", label))
         .statusCode(204);
   }
 
@@ -289,12 +289,32 @@ class AgentWaitingApiTest {
         .statusCode(200)
         .body("state.blocked", equalTo(false))
         .body("state.waitingOn", equalTo("release-request 42"));
-    assertEquals("wait", row(ticket).agentWaitingCause, "an unknown cause is taken as said");
+    assertEquals("Wait", row(ticket).agentWaitingCause);
     assertEquals(1, toldBlocked(ticket, false).size(), "the wait is said at once: " + agents.calls());
 
     waiting.forgetLastSweep();
     waiting.sweep(Instant.now());
     assertEquals(List.of(), toldBlocked(ticket, true), "a declared wait is never a block");
+  }
+
+  /** A Wait frame never blocks, even with no label; the wake's causes are ordinary reports. */
+  @Test
+  void aWaitFrameWithoutALabelStillNeverBlocks() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting Unnamed");
+    String ticket = EntityFixtures.ticket(project.id());
+    report(ticket, map("waiting", true, "cause", "Wait", "sessionId", "s-1")).statusCode(204);
+    backdate(ticket, 300);
+    read(ticket).body("blocked", equalTo(false)).body("waitingOn", equalTo("a declared wait"));
+
+    report(ticket, map("waiting", false, "cause", "WaitMatched", "sessionId", "s-1"))
+        .statusCode(204);
+    read(ticket).body("blocked", equalTo(false)).body("$", not(hasKey("waitingOn")));
+    assertNull(row(ticket).agentWaitingSince);
+
+    report(ticket, map("waiting", true, "cause", "WaitCancelled", "sessionId", "s-1"))
+        .statusCode(204);
+    backdate(ticket, 70);
+    read(ticket).body("blocked", equalTo(true)).body("blockSource", equalTo("AGENT_WAITING"));
   }
 
   /** A derived block that stood ends when the session says it waits on a declared wait. */

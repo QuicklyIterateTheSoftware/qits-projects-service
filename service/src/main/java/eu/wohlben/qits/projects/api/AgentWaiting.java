@@ -43,8 +43,10 @@ import org.jboss.logging.Logger;
  * qits-workspaces holds the wait and wakes the agent when it happens. While the session's latest
  * frame names such a wait ({@code waitingOn}, its label), the session is not waiting for a person:
  * no block is derived, and the entity reads "waiting on <label>" ({@link
- * EntityBlockState#waitingOn}) at once, with no debounce. A frame without {@code waitingOn} is the
- * old behaviour. The frame's {@code cause} is free text and any word is taken ("wait" included).
+ * EntityBlockState#waitingOn}) at once, with no debounce. qits-workspaces sends it with cause
+ * {@code Wait}, the open waits' labels joined by {@code "; "}; a {@code Wait} frame without a label
+ * still derives no block. {@code WaitMatched}, {@code WaitTimedOut} and {@code WaitCancelled} are
+ * ordinary reports, and so is any other frame without {@code waitingOn}.
  *
  * <h2>When it is said</h2>
  *

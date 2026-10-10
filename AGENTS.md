@@ -1520,8 +1520,10 @@ suite calls it) announces each wait as it crosses the debounce: the archetype's 
 `_BLOCKED` env stay the explicit flag.
 
 **A declared wait is not a block (qits-1153, epics V29).** A frame may name `waitingOn`, the label of
-a wait the agent declared in qits-workspaces (`{waiting, cause, sessionId, at, waitingOn?}`; any
-`cause` word is taken, `wait` included). It is stored in `agent_waiting_on` beside the wait and
+a wait the agent declared in qits-workspaces (`{waiting, cause, sessionId, at, waitingOn?}`).
+qits-workspaces sends it with cause `Wait`, the open waits' labels joined by `; `; a `Wait` frame
+without a label reads `a declared wait`. `WaitMatched`/`WaitTimedOut`/`WaitCancelled` are ordinary
+reports. It is stored in `agent_waiting_on` beside the wait and
 cleared with it — a frame without it, `waiting=false`, an unblock and every status move. While it is
 set the session waits on the platform, not on a person: `EntityBlockState` derives no block from the
 wait (the sweep skips the row too), and `waitingOn` (NON_NULL, no debounce) is on
