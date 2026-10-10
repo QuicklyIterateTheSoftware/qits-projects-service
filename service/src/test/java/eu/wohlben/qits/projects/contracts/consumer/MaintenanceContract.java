@@ -83,7 +83,7 @@ final class MaintenanceContract {
               json(
                   "{\"repository\":\"{repoName}\",\"foldSha\":\"{foldSha}\",\"previousFoldSha\":null,"
                       + "\"changedSincePrevious\":null,\"sourceBranches\":[\"{branch}\"],"
-                      + "\"workItem\":null}"),
+                      + "\"workItem\":null,\"accepts\":[\"WAITING\",\"NOT_APPLICABLE\"]}"),
               AUTOMATIONS,
               200,
               Trigger.schedule("AutomationRefresh.attempt"),
