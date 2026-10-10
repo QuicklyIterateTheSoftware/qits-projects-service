@@ -156,6 +156,28 @@ class RefinementAgentEntitiesTest {
         received.get(1).body());
   }
 
+  /**
+   * With a block source (qits-895), it rides beside the flag; a null source — not blocked, or a
+   * caller that does not know it, exactly what the 4-arg {@code changed} above still sends — is
+   * OMITTED rather than sent as a JSON null.
+   */
+  @Test
+  void aBlockSourceIsAddedToTheBodyAndOmittedWhenNull() throws Exception {
+    RefinementAgentEntities blocks = blocks(refinement(7), true);
+
+    onAWorker(() -> blocks.changed("epic-1", "Onboarding", "REFINED", true, "AGENT_WAITING"));
+    onAWorker(() -> blocks.changed("epic-1", "Onboarding", "REPORTED", false, null));
+
+    assertEquals(2, received.size());
+    assertEquals(
+        "{\"title\":\"Onboarding\",\"status\":\"REFINED\",\"blocked\":true,"
+            + "\"blockSource\":\"AGENT_WAITING\"}",
+        received.get(0).body());
+    assertEquals(
+        "{\"title\":\"Onboarding\",\"status\":\"REPORTED\",\"blocked\":false}",
+        received.get(1).body());
+  }
+
   /** A daemon older than {@code agents/entity} is told the flag on the route it does have. */
   @Test
   void anOlderDaemonIsToldTheFlagOnTheBlockedRoute() throws Exception {
