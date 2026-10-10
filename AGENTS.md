@@ -1449,7 +1449,7 @@ says a block could stand. A frame older than `agent_activity_at` less
 status-changing `EntityTransitionService` write — a reshape that keeps the status keeps both blocks)
 clears both sources and stamps `agent_activity_at`. **Every answer's `blocked` is the effective
 value**, computed at read time by `entities/control/EntityBlockState` (explicit OR a wait standing
-for `qits.projects.agent-waiting.debounce`, 30s), with three NON_NULL scalars beside it —
+for `qits.projects.agent-waiting.debounce`, 60s), with three NON_NULL scalars beside it —
 `blockSource` (`EXPLICIT`/`AGENT_WAITING`/`BOTH`), `blockReason` (the stated reason, else a fixed
 sentence) and `blockedBy` — on `TransitionedEntity`, `EntitySummary`, `EntityBlock`,
 `EntityDispatchStateDto`, the campaign DTOs and the ticket/epic/campaign MCP records. An explicit
