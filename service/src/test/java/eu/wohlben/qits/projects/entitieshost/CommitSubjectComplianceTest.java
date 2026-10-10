@@ -9,6 +9,7 @@ import eu.wohlben.qits.projects.control.CommitService.SubjectLine;
 import eu.wohlben.qits.projects.entitieshost.CommitSubjectCompliance.Classification;
 import eu.wohlben.qits.projects.entitieshost.CommitSubjectCompliance.ExemptReason;
 import eu.wohlben.qits.projects.entitieshost.CommitSubjectCompliance.Verdict;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -53,7 +54,8 @@ class CommitSubjectComplianceTest {
         CommitSubjectCompliance.classify(commit(1, "p@example.com", "feat(qits-1): x"), MACHINE);
     assertEquals(Classification.COMPLYING, yes.classification());
     assertNull(yes.reason());
-    assertEquals("qits-1", yes.id().rendered());
+    assertEquals(1, yes.ids().size());
+    assertEquals("qits-1", yes.ids().get(0).rendered());
     for (String subject :
         new String[] {"Fix the thing", "fix: tidy (qits-7): aside", "", "feat(qits): x"}) {
       assertEquals(
@@ -67,6 +69,19 @@ class CommitSubjectComplianceTest {
         CommitSubjectCompliance.classify(commit(0, "p@example.com", "Initial commit"), MACHINE)
             .classification(),
         "a root commit is an ordinary commit");
+  }
+
+  @Test
+  void aScopeNamingSeveralIdsIsOneComplyingVerdictCarryingAllOfThem() {
+    Verdict verdict =
+        CommitSubjectCompliance.classify(
+            commit(1, "p@example.com", "chore(qits-1, qits-2): x"), MACHINE);
+    assertEquals(Classification.COMPLYING, verdict.classification());
+    assertEquals(
+        List.of(
+            new CommitSubjectEntities.QualifiedId("qits", 1L),
+            new CommitSubjectEntities.QualifiedId("qits", 2L)),
+        verdict.ids());
   }
 
   @Test
