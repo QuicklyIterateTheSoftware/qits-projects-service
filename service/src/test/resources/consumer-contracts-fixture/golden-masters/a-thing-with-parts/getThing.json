@@ -1,0 +1,12 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "Widget",
+  "createdAt": "2026-01-01T00:00:00Z",
+  "internal": "not read by anyone",
+  "parts": [
+    { "id": "00000000-0000-4000-8000-000000000002", "label": "a", "note": null },
+    { "id": "00000000-0000-4000-8000-000000000003", "label": "b", "note": "x", "weight": 1 }
+  ],
+  "owner": { "name": "Ada", "email": "ada@example.invalid" },
+  "tags": []
+}

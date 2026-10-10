@@ -1,0 +1,48 @@
+{
+  "formatVersion": 1,
+  "provider": "qits-fixture",
+  "states": [
+    {
+      "name": "a thing with parts",
+      "slug": "a-thing-with-parts",
+      "params": {
+        "thingId": "00000000-0000-4000-8000-000000000001"
+      },
+      "operations": [
+        {
+          "operationId": "getThing",
+          "method": "GET",
+          "path": "/fixture/api/things/{thingId}",
+          "status": 200,
+          "file": "a-thing-with-parts/getThing.json",
+          "frozen": {
+            "ids": ["$.id", "$.parts[*].id"],
+            "instants": ["$.createdAt"],
+            "strings": []
+          }
+        },
+        {
+          "operationId": "listThings",
+          "method": "GET",
+          "path": "/fixture/api/things",
+          "query": { "limit": "20" },
+          "status": 200,
+          "file": "a-thing-with-parts/listThings.json",
+          "frozen": {
+            "ids": ["$[*].id"],
+            "instants": [],
+            "strings": []
+          }
+        },
+        {
+          "operationId": "renameThing",
+          "method": "POST",
+          "path": "/fixture/api/things/{thingId}/name",
+          "status": 204,
+          "file": "a-thing-with-parts/renameThing.json",
+          "frozen": { "ids": [], "instants": [], "strings": [] }
+        }
+      ]
+    }
+  ]
+}
