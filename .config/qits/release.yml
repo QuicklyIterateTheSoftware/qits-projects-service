@@ -10,4 +10,12 @@ artifacts:
 contracts:
   application: qits-projects
   golden-masters: { from: golden-masters/, packages: [maven, npm] }
+  # THIS SERVICE'S OWN CONSUMER PACTS (ticket qits-1149): what it asks the services it calls,
+  # written by service/src/test/.../contracts/consumer/ConsumerPactFilesTest from each provider's
+  # golden masters and committed at pacts/qits-projects-service_<provider>.json. The platform packs
+  # each as `eu.wohlben.qits:qits-projects-service-pacts-<provider>`, only when it changed, for the
+  # provider to pin and verify. A provider appears here once at least one row against it is
+  # recorded; ConsumerPactFilesTest holds this list equal to the committed files.
+  pacts:
+    qits-events-service: { packages: [maven] }
 userflows: qits-projects

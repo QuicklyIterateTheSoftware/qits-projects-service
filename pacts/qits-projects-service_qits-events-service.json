@@ -1,0 +1,307 @@
+{
+  "consumer": {
+    "name": "qits-projects-service"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-events-service",
+            "operationId": "listEvents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "CatchupSweeper.catchUp"
+          }
+        }
+      },
+      "description": "CatchupSweeper.catchUp: listEvents",
+      "key": "d0ca4a54",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a few recent events",
+          "params": {
+            "deploymentEventId": "00000000-0000-4000-8000-000000000001",
+            "requestEventId": "00000000-0000-4000-8000-000000000002",
+            "ticketEventId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/events/api/events",
+        "query": {
+          "limit": [
+            "200"
+          ],
+          "name": [
+            "DeploymentActive"
+          ],
+          "order": [
+            "asc"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "events": [
+              {
+                "description": "qits-projects is deployed",
+                "environment": null,
+                "id": "00000000-0000-4000-8000-000000000001",
+                "name": "DeploymentActive",
+                "occurredAt": "2026-01-01T00:00:00Z",
+                "parentId": "00000000-0000-4000-8000-000000000003",
+                "payload": "{\"application\":\"qits-projects\"}"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.events": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.events[*].description": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.events[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.events[*].parentId": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.events[*].payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-events-service",
+            "operationId": "listEvents"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "CatchupSweeper.initialize"
+          }
+        }
+      },
+      "description": "CatchupSweeper.initialize: listEvents",
+      "key": "cdb23f04",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a few recent events",
+          "params": {
+            "deploymentEventId": "00000000-0000-4000-8000-000000000001",
+            "requestEventId": "00000000-0000-4000-8000-000000000002",
+            "ticketEventId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/events/api/events",
+        "query": {
+          "limit": [
+            "1"
+          ],
+          "name": [
+            "DeploymentActive"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "events": [
+              {
+                "description": "qits-projects is deployed",
+                "environment": null,
+                "id": "00000000-0000-4000-8000-000000000001",
+                "name": "DeploymentActive",
+                "occurredAt": "2026-01-01T00:00:00Z",
+                "parentId": "00000000-0000-4000-8000-000000000003",
+                "payload": "{\"application\":\"qits-projects\"}"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.events": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.events[*].description": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.events[*].name": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.events[*].parentId": {
+              "combine": "OR",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                {
+                  "match": "null"
+                }
+              ]
+            },
+            "$.events[*].payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": []
+  },
+  "provider": {
+    "name": "qits-events-service"
+  }
+}
