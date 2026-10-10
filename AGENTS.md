@@ -87,7 +87,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   **Since qits-1152 an agent is keyed by its work item.** A workspace is only a slot that hosts
   agents; each agent works on one ticket or epic, in its own worktree, on the wrapper branch
   `<prefix>/<qualified id>` (`ticket/qits-1002`), and names its submodule branches
-  `<wrapper branch>_<its choice>`. Every call below except the release names the work item
+  `<wrapper branch>-<its choice>`. Every call below except the release names the work item
   (`workId`, the row id), never a branch to find an agent by. See the superproject's
   `agent-workspace-decoupling-plan.md`.
   - `control/WorkspaceAgentDispatch` → `HttpWorkspaceAgentDispatch`: the POST the one dispatch
@@ -895,10 +895,11 @@ Since qits-1152 a ticket's or an epic's agent works on the wrapper branch named 
     ticket/<qualified id>     e.g. ticket/qits-1002
     epic/<qualified id>       e.g. epic/qits-1001
 
-In each submodule it changes, the agent names its own branch `<wrapper branch>_<its choice>`
-(`ticket/qits-1002_fix-totals`). So every branch says which work item it came from. The separator
-is `_` because a qualified id never holds one: with `-`, project `a`'s ticket 1 (`ticket/a-1-*`)
-would cover project `a-1`'s ticket 5 (`ticket/a-1-5`). There are no
+In each submodule it changes, the agent names its own branch `<wrapper branch>-<its choice>`
+(`ticket/qits-1002-fix-totals`). So every branch says which work item it came from. Across projects
+`ticket/a-1-*` would cover `ticket/a-1-5` (project `a-1`'s ticket 5); that is accepted (D28),
+because an agent's token is bound to its own project's repositories and a repository belongs to one
+project. There are no
 `feature/*` or `task/*` branches any more: the epic's agent works on its features and tasks. The
 qualified id is rendered by the caller (`api/EntityWorkspaces`), because the project's slug is not
 on the row.
@@ -924,7 +925,7 @@ other. Renaming the capture prefix is a qits-workspaces-service workstream; do n
 ## Git refs an agent may push
 
 qits-workspaces derives an agent's refs from the wrapper branch the dispatch names (qits-1152):
-`refs/heads/<wrapper branch>` and `refs/heads/<wrapper branch>_*` (`WorkBranches.agentRefs`). This service sends no `gitRefs`
+`refs/heads/<wrapper branch>` and `refs/heads/<wrapper branch>-*` (`WorkBranches.agentRefs`). This service sends no `gitRefs`
 any more. `security/AgentAccess.coversBranch`, which binds an agent's release request to its own
 branches, reads the glob: a trailing `*` means "starts with what precedes it, and is longer",
 wherever it follows; `/*` is the case it always was; any other `*` makes the entry cover nothing.

@@ -135,7 +135,7 @@ container is a real one.
 **What a dispatched agent may push.** A ticket or epic dispatch names the agent's wrapper branch,
 `ticket/<qualified id>` or `epic/<qualified id>` (`entities/control/WorkBranches`, qits-1152), and
 qits-workspaces derives the agent's refs from it: `refs/heads/<branch>` and
-`refs/heads/<branch>_*`, the second for the branches the agent names in submodules. This service's
+`refs/heads/<branch>-*`, the second for the branches the agent names in submodules. This service's
 own idp commissions state refs too: an
 front desk's token states `gitRefs: []` (it pushes nothing), and a refinement container states
 `gitRefs: ["refs/heads/refining/<epicSlug>"]`, the one branch it pushes. If the idp refuses a stated

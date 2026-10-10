@@ -1026,7 +1026,7 @@ public class PhaseAdvanceTest {
 
   /**
    * <b>Each pushed branch is asked for in its own repository</b> (qits-1152): the agent named its
-   * submodule branch {@code <wrapper branch>_<its choice>}, and the wrapper's branch goes last.
+   * submodule branch {@code <wrapper branch>-<its choice>}, and the wrapper's branch goes last.
    */
   @Test
   public void aMoveIntoVerifiedAsksForEveryBranchTheAgentPushedInItsOwnRepository() {
@@ -1044,7 +1044,7 @@ public class PhaseAdvanceTest {
             ticketId,
             branch,
             new WorkspaceAgentDispatch.Branch(wrapperId, branch),
-            new WorkspaceAgentDispatch.Branch(componentId, branch + "_totals")));
+            new WorkspaceAgentDispatch.Branch(componentId, branch + "-totals")));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1054,7 +1054,7 @@ public class PhaseAdvanceTest {
     List<Map<String, Object>> wrapper = releaseRequestsOf(wrapperId);
     assertEquals(1, component.size(), "one request in the component");
     assertEquals(1, wrapper.size(), "and one in the wrapper");
-    assertTrue(sourceNamesOf(component.get(0)).contains(branch + "_totals"));
+    assertTrue(sourceNamesOf(component.get(0)).contains(branch + "-totals"));
     assertTrue(sourceNamesOf(wrapper.get(0)).contains(branch));
     String said = thread(ticketId).get(thread(ticketId).size() - 1);
     assertTrue(
@@ -1065,8 +1065,9 @@ public class PhaseAdvanceTest {
 
   /**
    * <b>The agent's list is its word, and only what lies in its scope is released</b> (qits-1152).
-   * Another work item's branch, a name that does not start with the wrapper branch and a branch in
-   * another project's repository are each left off, and the thread says which.
+   * Another work item's branch, {@code main}, a name that only looks like the wrapper branch and the
+   * agent's own branch name in another project's repository are each left off (D28: the repository
+   * check is what keeps another project out), and the thread says which.
    */
   @Test
   void aBranchOutsideTheAgentsScopeIsNeverReleased() {
@@ -1086,9 +1087,9 @@ public class PhaseAdvanceTest {
             branch,
             new WorkspaceAgentDispatch.Branch(wrapperId, branchOf(otherTicket)),
             new WorkspaceAgentDispatch.Branch(wrapperId, "main"),
-            new WorkspaceAgentDispatch.Branch(wrapperId, branch + "-lookalike"),
-            new WorkspaceAgentDispatch.Branch(foreignWrapper, branch),
-            new WorkspaceAgentDispatch.Branch(wrapperId, branch + "_fine")));
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch + "0-lookalike"),
+            new WorkspaceAgentDispatch.Branch(foreignWrapper, branch + "-elsewhere"),
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch + "-fine")));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1098,12 +1099,13 @@ public class PhaseAdvanceTest {
     List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
     assertEquals(1, requests.size(), requests.toString());
     List<String> sources = sourceNamesOf(requests.get(0));
-    assertTrue(sources.contains(branch + "_fine"), sources.toString());
+    assertTrue(sources.contains(branch + "-fine"), sources.toString());
     assertFalse(sources.contains(branchOf(otherTicket)), sources.toString());
-    assertFalse(sources.contains(branch + "-lookalike"), sources.toString());
+    assertFalse(sources.contains(branch + "0-lookalike"), sources.toString());
     String said = thread(ticketId).get(thread(ticketId).size() - 1);
     assertTrue(said.contains("outside the agent's scope"), said);
     assertTrue(said.contains(branchOf(otherTicket)), said);
+    assertTrue(said.contains(branch + "-elsewhere"), said);
   }
 
   /** An agent whose every branch lies outside its scope asks for nothing at all. */

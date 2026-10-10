@@ -15,14 +15,13 @@ import java.util.List;
  * <p>The prefix is the archetype's, as before; the rest is the row's qualified id ({@code
  * <project-slug>-<number>}), no longer its slug. So every branch says which work item its changes
  * came from. In each submodule it changes, the agent names its own branch {@code
- * <wrapper branch>_<its choice>} ({@link #AGENT_SEPARATOR}); qits-workspaces derives the agent's
+ * <wrapper branch>-<its choice>} ({@link #AGENT_SEPARATOR}); qits-workspaces derives the agent's
  * push scope from the wrapper branch, {@link #agentRefs}.
  *
- * <p><b>The separator is {@code _} and not {@code -}, on purpose.</b> A qualified id is {@code
- * <project slug>-<number>} and a project slug may hold dashes and digits, so {@code ticket/a-1-*}
- * (project {@code a}, ticket 1) would also cover {@code ticket/a-1-5}, the wrapper branch of project
- * {@code a-1}'s ticket 5. Neither a slug nor a number can hold {@code _}, so {@code
- * ticket/a-1_*} covers that agent's branches and nobody else's.
+ * <p><b>Across projects {@code ticket/a-1-*} would cover {@code ticket/a-1-5}</b> (project {@code
+ * a-1}'s ticket 5), and that is accepted (D28): an agent's token is bound to its own project's
+ * repositories, and a repository belongs to one project. Inside one project every qualified id is
+ * {@code <slug>-<number>}, so {@code <id>-…} names one work item's branches only.
  *
  * <p>Only a ticket and an epic have a branch. A feature or a task is worked on by its epic's agent,
  * and a campaign orders work rather than being worked on (qits-411).
@@ -36,7 +35,7 @@ public final class WorkBranches {
   public static final String HEADS = "refs/heads/";
 
   /** Between the wrapper branch and the name an agent picks in a submodule. */
-  public static final String AGENT_SEPARATOR = "_";
+  public static final String AGENT_SEPARATOR = "-";
 
   private WorkBranches() {}
 
@@ -71,7 +70,7 @@ public final class WorkBranches {
 
   /**
    * The refs an agent on {@code wrapperBranch} may push: the branch itself and every {@code
-   * <wrapperBranch>_<name>}. qits-workspaces states the same pair; it is spelled here so this side
+   * <wrapperBranch>-<name>}. qits-workspaces states the same pair; it is spelled here so this side
    * can check a branch against it ({@link #isAgentBranch}).
    */
   public static List<String> agentRefs(String wrapperBranch) {
@@ -80,7 +79,8 @@ public final class WorkBranches {
 
   /**
    * Whether {@code branch} lies in the scope of the agent on {@code wrapperBranch}: the wrapper
-   * branch itself, or {@code <wrapperBranch>_<at least one character>}.
+   * branch itself, or {@code <wrapperBranch>-<at least one character>}. It reads names only; whether
+   * the branch's repository belongs to the work item's project is the caller's check.
    */
   public static boolean isAgentBranch(String wrapperBranch, String branch) {
     if (wrapperBranch == null || wrapperBranch.isBlank() || branch == null) {

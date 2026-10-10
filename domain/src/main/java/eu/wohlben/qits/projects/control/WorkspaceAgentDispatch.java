@@ -181,7 +181,7 @@ public interface WorkspaceAgentDispatch {
    *     row id, which is what qits-workspaces keys its {@code repository_id} by
    * @param wrapperBranch the branch the agent's wrapper worktree stands on, {@code
    *     <prefix>/<qualified id>} from {@code WorkBranches}. The agent names its submodule branches
-   *     {@code <wrapperBranch>_<its choice>}; qits-workspaces derives the refs it may push from this
+   *     {@code <wrapperBranch>-<its choice>}; qits-workspaces derives the refs it may push from this
    * @param subject what the agent is for — see {@link Subject}. Its {@link Subject#workId()} keys
    *     the agent
    * @param instruction the agent's first turn
