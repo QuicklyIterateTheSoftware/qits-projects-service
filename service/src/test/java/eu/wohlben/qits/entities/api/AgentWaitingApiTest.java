@@ -251,6 +251,84 @@ class AgentWaitingApiTest {
     assertEquals(1, toldBlocked(ticket, false).size(), "the end of the block is said: " + agents.calls());
   }
 
+  // --- a declared wait (qits-1153) ----------------------------------------------------------------
+
+  /** The relay's frame for a session that waits on a declared wait. */
+  private static void waitOn(String id, String label) {
+    report(id, map("waiting", true, "cause", "wait", "sessionId", "s-1", "waitingOn", label))
+        .statusCode(204);
+  }
+
+  /**
+   * A session waiting on a declared wait is not waiting for a person: past the debounce it still
+   * reads unblocked, every read says what it waits on, the sweep tells nobody it is blocked, and
+   * the agents are told at once that the entity now waits.
+   */
+  @Test
+  void aDeclaredWaitReadsAsWaitingOnAndNeverBlocks() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting On A Release");
+    String ticket = EntityFixtures.ticket(project.id());
+    agents.reset();
+
+    waitOn(ticket, "release-request 42");
+    backdate(ticket, 300);
+
+    read(ticket)
+        .body("blocked", equalTo(false))
+        .body("waitingOn", equalTo("release-request 42"))
+        .body("$", not(hasKey("blockSource")));
+    given()
+        .get("/projects/api/projects/" + project.id() + "/work")
+        .then()
+        .statusCode(200)
+        .body(inListing(ticket) + ".blocked", equalTo(false))
+        .body(inListing(ticket) + ".waitingOn", equalTo("release-request 42"));
+    given()
+        .get("/projects/api/work/" + ticket + "/dispatch")
+        .then()
+        .statusCode(200)
+        .body("state.blocked", equalTo(false))
+        .body("state.waitingOn", equalTo("release-request 42"));
+    assertEquals("wait", row(ticket).agentWaitingCause, "an unknown cause is taken as said");
+    assertEquals(1, toldBlocked(ticket, false).size(), "the wait is said at once: " + agents.calls());
+
+    waiting.forgetLastSweep();
+    waiting.sweep(Instant.now());
+    assertEquals(List.of(), toldBlocked(ticket, true), "a declared wait is never a block");
+  }
+
+  /** A derived block that stood ends when the session says it waits on a declared wait. */
+  @Test
+  void aDeclaredWaitEndsAStandingDerivedBlock() {
+    EntityFixtures.Project project = EntityFixtures.project("Waiting Then Declared");
+    String ticket = EntityFixtures.ticket(project.id());
+    stop(ticket);
+    backdate(ticket, 70);
+    read(ticket).body("blocked", equalTo(true));
+    agents.reset();
+
+    waitOn(ticket, "ci-run 7");
+
+    read(ticket).body("blocked", equalTo(false)).body("waitingOn", equalTo("ci-run 7"));
+    assertEquals(1, toldBlocked(ticket, false).size(), "the end of the block is said: " + agents.calls());
+  }
+
+  /** A frame without waitingOn is the old behaviour: the label goes and the wait is for a person. */
+  @Test
+  void aFrameWithoutTheLabelIsAWaitForAPersonAgain() {
+    EntityFixtures.Project project = EntityFixtures.project("Declared Then Person");
+    String ticket = EntityFixtures.ticket(project.id());
+    waitOn(ticket, "release-request 42");
+
+    stop(ticket);
+    read(ticket).body("$", not(hasKey("waitingOn")));
+    backdate(ticket, 70);
+    read(ticket).body("blocked", equalTo(true)).body("blockSource", equalTo("AGENT_WAITING"));
+
+    resume(ticket);
+    assertNull(row(ticket).agentWaitingOn, "working again clears it");
+  }
+
   // --- the two sources ---------------------------------------------------------------------------
 
   /**

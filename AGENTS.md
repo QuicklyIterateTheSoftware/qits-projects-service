@@ -1519,6 +1519,15 @@ suite calls it) announces each wait as it crosses the debounce: the archetype's 
 `AgentEntitySignals`, which sends the effective flag. A dispatch's seed and a refinement container's
 `_BLOCKED` env stay the explicit flag.
 
+**A declared wait is not a block (qits-1153, epics V29).** A frame may name `waitingOn`, the label of
+a wait the agent declared in qits-workspaces (`{waiting, cause, sessionId, at, waitingOn?}`; any
+`cause` word is taken, `wait` included). It is stored in `agent_waiting_on` beside the wait and
+cleared with it — a frame without it, `waiting=false`, an unblock and every status move. While it is
+set the session waits on the platform, not on a person: `EntityBlockState` derives no block from the
+wait (the sweep skips the row too), and `waitingOn` (NON_NULL, no debounce) is on
+`TransitionedEntity`, `EntitySummary` and `EntityDispatchStateDto`. A frame that starts, changes or
+ends it is announced at once. The campaign DTOs and the MCP records do not carry it yet.
+
 Every one of those refusals is `EntityDispatch.precheck` (qits-417): decided with no write and no
 call out, thrown as `api/DispatchRefused`, and run first inside `dispatch`, so anything thrown after
 it means "outcome unknown". **On a CAMPAIGN the press is its start** — the branch is in

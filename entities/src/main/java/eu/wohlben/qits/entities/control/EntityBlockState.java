@@ -34,8 +34,13 @@ import org.eclipse.microprofile.config.ConfigProvider;
  *     null} when not blocked
  * @param blockedBy who set the explicit block, or {@code null} — always null for a derived block
  *     alone, which nobody set
+ * @param waitingOn the label of the declared wait the session is waiting on (qits-1153), or {@code
+ *     null}. While it is set the session is not waiting for a person, so it derives no block: the
+ *     entity reads "waiting on" this label instead. It stands at once, with no debounce — the agent
+ *     said what it waits on — and beside an explicit block, which it does not clear
  */
-public record EntityBlockState(boolean blocked, String source, String reason, String blockedBy) {
+public record EntityBlockState(
+    boolean blocked, String source, String reason, String blockedBy, String waitingOn) {
 
   public static final String EXPLICIT = "EXPLICIT";
 
@@ -53,7 +58,6 @@ public record EntityBlockState(boolean blocked, String source, String reason, St
   /** {@link #DEBOUNCE_KEY}'s value when nothing sets it. */
   public static final Duration DEFAULT_DEBOUNCE = Duration.ofSeconds(60);
 
-  private static final EntityBlockState UNBLOCKED = new EntityBlockState(false, null, null, null);
 
   /** The row's block as it stands now, under the configured debounce. */
   public static EntityBlockState of(WorkEntity row) {
@@ -64,25 +68,35 @@ public record EntityBlockState(boolean blocked, String source, String reason, St
   public static EntityBlockState of(WorkEntity row, Instant now, Duration debounce) {
     boolean explicit = row.blocked;
     boolean derived = agentWaitingEffective(row, now, debounce);
+    String waitingOn = waitingOn(row);
     if (explicit && derived) {
-      return new EntityBlockState(true, BOTH, row.blockedReason, row.blockedBy);
+      return new EntityBlockState(true, BOTH, row.blockedReason, row.blockedBy, waitingOn);
     }
     if (explicit) {
-      return new EntityBlockState(true, EXPLICIT, row.blockedReason, row.blockedBy);
+      return new EntityBlockState(true, EXPLICIT, row.blockedReason, row.blockedBy, waitingOn);
     }
     if (derived) {
-      return new EntityBlockState(true, AGENT_WAITING, AGENT_WAITING_REASON, null);
+      return new EntityBlockState(true, AGENT_WAITING, AGENT_WAITING_REASON, null, waitingOn);
     }
-    return UNBLOCKED;
+    return new EntityBlockState(false, null, null, null, waitingOn);
+  }
+
+  /**
+   * The label of the declared wait the session is waiting on, or null: set only while the session
+   * waits (qits-1153).
+   */
+  public static String waitingOn(WorkEntity row) {
+    return row.agentWaitingSince == null ? null : row.agentWaitingOn;
   }
 
   /**
    * Whether the derived block stands at {@code now}: a session waiting, for at least {@code
-   * debounce}. A wait stamped in the future (a skewed clock) is not effective until it is reached.
+   * debounce}, and not on a declared wait (qits-1153). A wait stamped in the future (a skewed clock)
+   * is not effective until it is reached.
    */
   public static boolean agentWaitingEffective(WorkEntity row, Instant now, Duration debounce) {
     Instant since = row.agentWaitingSince;
-    return since != null && !now.isBefore(since.plus(debounce));
+    return since != null && waitingOn(row) == null && !now.isBefore(since.plus(debounce));
   }
 
   /**

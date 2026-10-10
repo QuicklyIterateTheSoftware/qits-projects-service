@@ -329,7 +329,8 @@ public class EntityDispatch {
         entity.preApprovedBy,
         block.source(),
         block.reason(),
-        block.blockedBy());
+        block.blockedBy(),
+        block.waitingOn());
   }
 
   /**
@@ -358,7 +359,8 @@ public class EntityDispatch {
         null,
         block.source(),
         block.reason(),
-        block.blockedBy());
+        block.blockedBy(),
+        block.waitingOn());
   }
 
   // ---- the pieces --------------------------------------------------------------------------

@@ -1187,6 +1187,7 @@ public class WorkEntityService {
     row.blockedReason = null;
     row.agentWaitingSince = null;
     row.agentWaitingCause = null;
+    row.agentWaitingOn = null;
     row.agentActivityAt = now;
   }
 
@@ -1231,6 +1232,7 @@ public class WorkEntityService {
             row.blockedReason = null;
             row.agentWaitingSince = null;
             row.agentWaitingCause = null;
+            row.agentWaitingOn = null;
           }
           requireArchetypeValid(row, Demand.ON_UPDATE);
           WorkEntity written = settled(row);

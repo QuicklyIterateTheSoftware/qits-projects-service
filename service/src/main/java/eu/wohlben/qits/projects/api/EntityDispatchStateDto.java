@@ -33,6 +33,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param blockReason the explicit block's stated reason, else the agent-waiting sentence; absent
  *     while not blocked
  * @param blockedBy who set the explicit block; absent otherwise
+ * @param waitingOn the label of the declared wait the agent session is waiting on (qits-1153); it
+ *     derives no block. Absent otherwise
  */
 public record EntityDispatchStateDto(
     String entityId,
@@ -45,4 +47,5 @@ public record EntityDispatchStateDto(
     String preApprovedBy,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
     @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
-    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy) {}
+    @JsonInclude(JsonInclude.Include.NON_NULL) String blockedBy,
+    @JsonInclude(JsonInclude.Include.NON_NULL) String waitingOn) {}
