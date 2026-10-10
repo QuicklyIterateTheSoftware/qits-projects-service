@@ -2085,6 +2085,8 @@ components:
       properties:
         id:
           type: string
+        qualifiedId:
+          type: string
         repoId:
           type: string
         repoName:
@@ -2135,6 +2137,8 @@ components:
         version:
           type: string
         supersededBy:
+          type: string
+        supersededByQualifiedId:
           type: string
         releasedSha:
           type: string

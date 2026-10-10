@@ -1,9 +1,10 @@
 {
   "request": {
     "id": "00000000-0000-4000-8000-000000000003",
+    "qualifiedId": "contract-service-rr-1",
     "repoId": "00000000-0000-4000-8000-000000000002",
     "repoName": "contract-service",
-    "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+    "backingBranch": "release/contract-service-rr-1",
     "sources": [
       {
         "kind": "BRANCH",
@@ -77,6 +78,7 @@
     "conflict": null,
     "version": "2026.101.100500",
     "supersededBy": null,
+    "supersededByQualifiedId": null,
     "releasedSha": "cb9776855921387be1951de5bbbf0914aa54b1bf",
     "mergedToMainAt": null,
     "retryable": false,
@@ -157,7 +159,7 @@
           {
             "name": "Run 00000000-0000-4000-8000-000000000006",
             "state": "PASSED",
-            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+            "detail": "SUCCESS on release/contract-service-rr-1",
             "runId": "00000000-0000-4000-8000-000000000006"
           }
         ],

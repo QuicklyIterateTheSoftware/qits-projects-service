@@ -2,9 +2,10 @@
   "requests": [
     {
       "id": "00000000-0000-4000-8000-000000000003",
+      "qualifiedId": "contract-suite-app-rr-1",
       "repoId": "00000000-0000-4000-8000-000000000002",
       "repoName": "contract-suite-app",
-      "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+      "backingBranch": "release/contract-suite-app-rr-1",
       "sources": [
         {
           "kind": "BRANCH",
@@ -88,6 +89,7 @@
       "conflict": null,
       "version": null,
       "supersededBy": null,
+      "supersededByQualifiedId": null,
       "releasedSha": null,
       "mergedToMainAt": null,
       "retryable": false,
@@ -159,7 +161,7 @@
             {
               "name": "Run 00000000-0000-4000-8000-000000000007",
               "state": "PASSED",
-              "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+              "detail": "SUCCESS on release/contract-suite-app-rr-1",
               "runId": "00000000-0000-4000-8000-000000000007"
             }
           ],
