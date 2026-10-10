@@ -81,11 +81,16 @@ import java.util.UUID;
  * therefore keeps its exact shape, and a consumer that finds nothing falls back to what it did
  * before rather than refusing.
  *
+ * <p><b>{@code releaseRequestQualifiedId} is the ninth</b> (qits-1158): the same request's logical
+ * id, {@code <repositoryName>-rr-<n>}, for anything a person reads. Additive and nullable on the same
+ * terms; {@code releaseRequestId} stays the key.
+ *
  * <p><b>{@code eventId} and {@code occurredAt} are components and stay out of the payload.</b> The
  * library's canonical serializer excludes everything {@link QitsEvent} declares, and these two
  * accessors are those declarations — so identity and time travel in the envelope and the payload is
  * exactly the fields {@code branch}, {@code commitSha}, {@code priority}, {@code projectId}, {@code
- * releaseRequestId}, {@code repository}, {@code repositoryName}, {@code version}. Reading a payload
+ * releaseRequestId}, {@code releaseRequestQualifiedId}, {@code repository}, {@code repositoryName},
+ * {@code version}. Reading a payload
  * back therefore yields a fresh id and a null time, which is correct: a received event's identity
  * and clock are the envelope's.
  *
@@ -126,7 +131,8 @@ public record SCMRelease(
     String commitSha,
     String releaseRequestId,
     Instant occurredAt,
-    String priority)
+    String priority,
+    String releaseRequestQualifiedId)
     implements QitsEvent {
 
   public SCMRelease {
@@ -145,7 +151,8 @@ public record SCMRelease(
       String commitSha,
       String releaseRequestId,
       Instant occurredAt,
-      String priority) {
+      String priority,
+      String releaseRequestQualifiedId) {
     this(
         null,
         projectId,
@@ -156,6 +163,31 @@ public record SCMRelease(
         commitSha,
         releaseRequestId,
         occurredAt,
-        priority);
+        priority,
+        releaseRequestQualifiedId);
+  }
+
+  /** The shape before {@code releaseRequestQualifiedId}: an absent key. */
+  public SCMRelease(
+      String projectId,
+      String repository,
+      String repositoryName,
+      String branch,
+      String version,
+      String commitSha,
+      String releaseRequestId,
+      Instant occurredAt,
+      String priority) {
+    this(
+        projectId,
+        repository,
+        repositoryName,
+        branch,
+        version,
+        commitSha,
+        releaseRequestId,
+        occurredAt,
+        priority,
+        null);
   }
 }

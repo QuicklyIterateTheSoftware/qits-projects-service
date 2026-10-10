@@ -52,8 +52,9 @@ public interface ReleaseRequestAnnouncer {
    * @param projectId the project the repository belongs to, or null where it has none
    * @param repoId the repository's storage id — the git host's key, and qits-ci's
    * @param repoName the repository's public name at the time of the change, or null
-   * @param releaseRequestId the request's id, which is also the tail of its backing branch
-   * @param backingBranch {@code release/<id>} — the branch the fold landed on
+   * @param releaseRequestId the request's id — the internal key
+   * @param releaseRequestQualifiedId the request's logical id, {@code <repo>-rr-<n>} (qits-1158)
+   * @param backingBranch the request's stored backing branch — the branch the fold landed on
    * @param mergedSha the tip of the fold: what to build, gate and release
    * @param changedAt when the merge landed — the event's {@code occurredAt}, not the moment the
    *     announcement is made
@@ -78,6 +79,7 @@ public interface ReleaseRequestAnnouncer {
       String repoId,
       String repoName,
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       String backingBranch,
       String mergedSha,
       Instant changedAt,

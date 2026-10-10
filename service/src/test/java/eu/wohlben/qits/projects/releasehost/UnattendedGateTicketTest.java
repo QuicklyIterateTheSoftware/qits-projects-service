@@ -164,7 +164,8 @@ public class UnattendedGateTicketTest {
     assertTrue(body.contains(REPO_NAME), body);
     assertTrue(body.contains("maintenance/dependencies"), body);
     assertTrue(body.contains(merged), "the ticket names the fold that was gated");
-    assertTrue(body.contains(id), "and the request that stopped");
+    assertTrue(
+        body.contains(BackingBranches.qualifiedIdOf(id)), "and the request that stopped");
     assertTrue(body.contains("FAILED"), body);
     assertEquals(0, executor.calls().size(), "a rejected request must never reach the door");
   }
@@ -363,7 +364,8 @@ public class UnattendedGateTicketTest {
 
     awaitStatus(ticketId, "DROPPED");
     String said = awaitComment(ticketId, "WITHDRAWN");
-    assertTrue(said.contains(id), "the comment names the request: " + said);
+    assertTrue(
+        said.contains(BackingBranches.qualifiedIdOf(id)), "the comment names the request: " + said);
     assertTrue(said.contains("the bump is not wanted after all"), "and why: " + said);
     assertTrue(awaitClosedAt(id) != null, "and the request records that its ticket is dealt with");
   }
@@ -472,7 +474,9 @@ public class UnattendedGateTicketTest {
     awaitState(released.requestId(), "OBSOLETE");
     awaitStatus(released.ticketId(), "DROPPED");
     String said = awaitComment(released.ticketId(), "OBSOLETE");
-    assertTrue(said.contains(successor), "the comment names the successor: " + said);
+    assertTrue(
+        said.contains(BackingBranches.qualifiedIdOf(successor)),
+        "the comment names the successor: " + said);
     assertTrue(awaitClosedAt(released.requestId()) != null);
   }
 

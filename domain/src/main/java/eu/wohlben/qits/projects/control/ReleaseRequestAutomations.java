@@ -173,6 +173,32 @@ public interface ReleaseRequestAutomations {
       String workItem);
 
   /**
+   * The same trigger, also telling the far side the request's stored backing branch and its
+   * qualified id (qits-1158), so it need not read them back. Both are optional on the wire; an
+   * implementation that does not send them falls back to {@link #request(String, String, String,
+   * String, List, List, String)}.
+   */
+  default Optional<Answer> request(
+      String repositoryName,
+      String requestId,
+      String qualifiedId,
+      String backingBranch,
+      String foldSha,
+      String previousFoldSha,
+      List<String> changedSincePrevious,
+      List<String> sourceBranches,
+      String workItem) {
+    return request(
+        repositoryName,
+        requestId,
+        foldSha,
+        previousFoldSha,
+        changedSincePrevious,
+        sourceBranches,
+        workItem);
+  }
+
+  /**
    * The read a held request sweeps: where the kinds that have rows at {@code foldSha} stand. A kind
    * with no row there is simply not listed. Empty when the read could not be made.
    */

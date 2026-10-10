@@ -977,7 +977,7 @@ public class PhaseAdvanceTest {
         "the ticket's own branch is what was put on the request: " + sourceNamesOf(request));
     assertEquals("Ticket release-me: Release me", request.get("summary"));
     assertTrue(
-        thread(ticketId).get(thread(ticketId).size() - 1).contains((String) request.get("id")),
+        thread(ticketId).get(thread(ticketId).size() - 1).contains((String) request.get("qualifiedId")),
         "the thread names the request the ticket waits on: " + thread(ticketId));
   }
 
@@ -1058,8 +1058,8 @@ public class PhaseAdvanceTest {
     assertTrue(sourceNamesOf(wrapper.get(0)).contains(branch));
     String said = thread(ticketId).get(thread(ticketId).size() - 1);
     assertTrue(
-        said.indexOf((String) component.get(0).get("id"))
-            < said.indexOf((String) wrapper.get(0).get("id")),
+        said.indexOf((String) component.get(0).get("qualifiedId"))
+            < said.indexOf((String) wrapper.get(0).get("qualifiedId")),
         "the wrapper is asked for last: " + said);
   }
 
@@ -1166,7 +1166,7 @@ public class PhaseAdvanceTest {
         sourceNamesOf(requests.get(0)).contains(branchOf(ticketId)),
         "the ticket's own branch is on it: " + sourceNamesOf(requests.get(0)));
     assertTrue(
-        thread(ticketId).get(thread(ticketId).size() - 1).contains((String) requests.get(0).get("id")),
+        thread(ticketId).get(thread(ticketId).size() - 1).contains((String) requests.get(0).get("qualifiedId")),
         "the thread names the request the ticket waits on: " + thread(ticketId));
   }
 
@@ -1278,7 +1278,9 @@ public class PhaseAdvanceTest {
         sourceNamesOf(requests.get(0)).stream().filter(branchOf(ticketId)::equals).count(),
         "and the branch is on it once: " + sourceNamesOf(requests.get(0)));
     assertTrue(
-        thread(ticketId).get(thread(ticketId).size() - 1).contains(first),
+        thread(ticketId)
+            .get(thread(ticketId).size() - 1)
+            .contains((String) requests.get(0).get("qualifiedId")),
         "the thread says which request it joined: " + thread(ticketId));
   }
 
@@ -1299,7 +1301,7 @@ public class PhaseAdvanceTest {
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
-    String requestId = (String) releaseRequestsOf(wrapperId).get(0).get("id");
+    String requestId = (String) releaseRequestsOf(wrapperId).get(0).get("qualifiedId");
     transition(ticketId, "VERIFYING"); // VERIFIED's BACK move since qits-749
 
     String last = thread(ticketId).get(thread(ticketId).size() - 1);

@@ -69,6 +69,32 @@ public class ReleaseRequestRepository implements PanacheRepositoryBase<ReleaseRe
           ReleaseRequest.State.OBSOLETE);
 
   /**
+   * The request a door names, by its uuid or by its qualified id in any case (qits-1158). The uuid
+   * is tried first; a qualified id is looked up within {@code repoId} when one is given, otherwise
+   * across the estate, where it must name exactly one request.
+   */
+  public Optional<ReleaseRequest> findByReference(String repoId, String reference) {
+    if (reference == null || reference.isBlank()) {
+      return Optional.empty();
+    }
+    Optional<ReleaseRequest> byId = findByIdOptional(reference);
+    if (byId.isPresent()) {
+      return byId;
+    }
+    String lowered = reference.trim().toLowerCase(java.util.Locale.ROOT);
+    List<ReleaseRequest> found =
+        repoId == null
+            ? list("lower(qualifiedId) = ?1", lowered)
+            : list("repoId = ?1 and lower(qualifiedId) = ?2", repoId, lowered);
+    return found.size() == 1 ? Optional.of(found.get(0)) : Optional.empty();
+  }
+
+  /** The request whose stored backing branch is {@code branch} in this repository, if any. */
+  public Optional<ReleaseRequest> findByBackingBranch(String repoId, String branch) {
+    return find("repoId = ?1 and backingBranch = ?2", repoId, branch).firstResultOptional();
+  }
+
+  /**
    * The unreleased request of this repository that already names {@code branch} as a source, if any
    * — what the converge-on-create rule converges on, and what a push to that branch re-merges.
    *

@@ -199,7 +199,7 @@ public class EventWireReflectionTest {
    * one and runs it through the same {@code CanonicalJson}; nothing in either build can see the
    * other, so this assertion and that transcription are the two ends of the contract. A change here
    * is a change there, in the same campaign — which {@code commitSha} was, which {@code priority}
-   * is, and which {@code releaseRequestId} is.
+   * is, which {@code releaseRequestId} is, and which {@code releaseRequestQualifiedId} is (qits-1158).
    */
   @Test
   public void theReplicatedReleaseEventKeepsTheWireNameAndTheFiveFieldsItAlwaysHad() {
@@ -215,13 +215,15 @@ public class EventWireReflectionTest {
             "commitSha",
             "releaseRequestId",
             "occurredAt",
-            "priority"),
+            "priority",
+            "releaseRequestQualifiedId"),
         java.util.Arrays.stream(SCMRelease.class.getRecordComponents())
             .map(java.lang.reflect.RecordComponent::getName)
             .toList(),
         "the five qits-workspaces' record carried, in their order, plus commitSha,"
-            + " releaseRequestId and priority — eventId and occurredAt are components the canonical"
-            + " mix-in keeps out of the payload, leaving the eight a consumer selects on");
+            + " releaseRequestId, priority and releaseRequestQualifiedId — eventId and occurredAt"
+            + " are components the canonical mix-in keeps out of the payload, leaving the nine a"
+            + " consumer selects on");
   }
 
   /**
@@ -412,6 +414,68 @@ public class EventWireReflectionTest {
           without.get(field),
           field + " moved with the closure, so the addition is not additive after all");
     }
+  }
+
+  /**
+   * qits-1158: both events qits-ci reads carry the request's qualified id beside its uuid, under
+   * {@code releaseRequestQualifiedId}; the older constructors leave the key out.
+   */
+  @Test
+  public void bothReleaseEventsCarryTheQualifiedId() throws Exception {
+    var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    var changed =
+        mapper.readTree(
+            eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                new ReleaseRequestChanged(
+                    "p-1",
+                    "r-1",
+                    "qits-projects-service",
+                    "9f2c1a7e",
+                    "qits-projects-service-rr-12",
+                    "release/qits-projects-service-rr-12",
+                    "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                    java.time.Instant.parse("2026-10-10T06:02:15Z"),
+                    "LOWEST",
+                    java.util.List.of(),
+                    "DONE")));
+    var released =
+        mapper.readTree(
+            eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                new SCMRelease(
+                    "p-1",
+                    "r-1",
+                    "qits-projects-service",
+                    "release/qits-projects-service-rr-12",
+                    "2026.1010.60215",
+                    "71663ccdceb65ce46f4cf44c8cb3a016de5ff6af",
+                    "9f2c1a7e",
+                    java.time.Instant.parse("2026-10-10T06:02:15Z"),
+                    "HIGH",
+                    "qits-projects-service-rr-12")));
+
+    assertEquals("9f2c1a7e", changed.get("releaseRequestId").asText());
+    assertEquals(
+        "qits-projects-service-rr-12", changed.get("releaseRequestQualifiedId").asText());
+    assertEquals("release/qits-projects-service-rr-12", changed.get("backingBranch").asText());
+    assertEquals("9f2c1a7e", released.get("releaseRequestId").asText());
+    assertEquals(
+        "qits-projects-service-rr-12", released.get("releaseRequestQualifiedId").asText());
+    assertTrue(
+        !mapper
+            .readTree(
+                eu.wohlben.qits.eventstream.control.CanonicalJson.payload(
+                    new SCMRelease(
+                        "p-1",
+                        "r-1",
+                        "qits-projects-service",
+                        "release/9f2c1a7e",
+                        "2026.1010.60215",
+                        null,
+                        "9f2c1a7e",
+                        java.time.Instant.parse("2026-10-10T06:02:15Z"),
+                        null)))
+            .has("releaseRequestQualifiedId"),
+        "NON_NULL: the older shape has no key");
   }
 
   /**

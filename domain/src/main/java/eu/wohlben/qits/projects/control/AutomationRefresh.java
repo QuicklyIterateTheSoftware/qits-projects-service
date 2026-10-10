@@ -114,6 +114,8 @@ public class AutomationRefresh {
    */
   private record Facts(
       String requestId,
+      String qualifiedId,
+      String backingBranch,
       String repoId,
       String repoName,
       boolean wrapper,
@@ -207,6 +209,8 @@ public class AutomationRefresh {
         port.request(
             facts.repoName(),
             facts.requestId(),
+            facts.qualifiedId(),
+            facts.backingBranch(),
             facts.foldSha(),
             previous,
             changed,
@@ -353,6 +357,8 @@ public class AutomationRefresh {
             .toList();
     return new Facts(
         row.id,
+        row.qualifiedId,
+        row.backingBranch(),
         row.repoId,
         repoName,
         approvalPolicy.isEstateWrapper(row.repoId),

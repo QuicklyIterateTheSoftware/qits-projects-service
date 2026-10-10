@@ -31,6 +31,8 @@ import java.util.UUID;
  * <ul>
  *   <li>{@code releaseRequestId}, {@code repoId} — always set. {@code projectId} and {@code
  *       repoName} may be null, as on {@link ReleaseRequestChanged}.
+ *   <li>{@code releaseRequestQualifiedId} — the id people read, {@code <repoName>-rr-<n>}
+ *       (qits-1158); {@code backingBranch} — the request's stored backing branch. Both always set.
  *   <li>{@code state} — the state now. {@code previousState} — the state before; <b>absent</b> on
  *       the event for a request that was just created (it moves from nothing to {@code PENDING}).
  *   <li>{@code changedAt} — when the state was written, and the envelope's {@code occurredAt}. It
@@ -56,9 +58,11 @@ import java.util.UUID;
 public record ReleaseRequestStateChanged(
     UUID eventId,
     String releaseRequestId,
+    String releaseRequestQualifiedId,
     String projectId,
     String repoId,
     String repoName,
+    String backingBranch,
     String state,
     String previousState,
     Instant changedAt,
@@ -78,9 +82,11 @@ public record ReleaseRequestStateChanged(
   /** The constructor a publisher uses: the facts, with the identity taken care of. */
   public ReleaseRequestStateChanged(
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       String projectId,
       String repoId,
       String repoName,
+      String backingBranch,
       String state,
       String previousState,
       Instant changedAt,
@@ -91,9 +97,11 @@ public record ReleaseRequestStateChanged(
     this(
         null,
         releaseRequestId,
+        releaseRequestQualifiedId,
         projectId,
         repoId,
         repoName,
+        backingBranch,
         state,
         previousState,
         changedAt,

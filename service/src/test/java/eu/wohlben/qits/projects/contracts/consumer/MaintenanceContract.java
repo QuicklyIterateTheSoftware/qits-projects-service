@@ -83,7 +83,8 @@ final class MaintenanceContract {
               json(
                   "{\"repository\":\"{repoName}\",\"foldSha\":\"{foldSha}\",\"previousFoldSha\":null,"
                       + "\"changedSincePrevious\":null,\"sourceBranches\":[\"{branch}\"],"
-                      + "\"workItem\":null}"),
+                      + "\"workItem\":null,\"backingBranch\":\"{backingBranch}\","
+                      + "\"qualifiedId\":\"{qualifiedId}\"}"),
               AUTOMATIONS,
               200,
               Trigger.schedule("AutomationRefresh.attempt"),
@@ -93,6 +94,8 @@ final class MaintenanceContract {
                         .request(
                             p.get("repoName"),
                             p.get("requestId"),
+                            p.get("qualifiedId"),
+                            p.get("backingBranch"),
                             p.get("foldSha"),
                             null,
                             null,
@@ -102,7 +105,8 @@ final class MaintenanceContract {
                 assertFalse(answer.automations().isEmpty());
               },
               "POST .../release-requests/{requestId}/automations answering 200 with requestId,"
-                  + " foldSha and automations[] (one with a failure object)"),
+                  + " foldSha and automations[] (one with a failure object); state params"
+                  + " backingBranch and qualifiedId (qits-1158)"),
           new ConsumerRow(
               PROVIDER,
               APP,

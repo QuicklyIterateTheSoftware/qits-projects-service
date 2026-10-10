@@ -30,9 +30,11 @@ public class ReleaseRequestStateChangedAnnouncer implements ReleaseRequestStateA
   static ReleaseRequestStateChanged event(StateChange change) {
     return new ReleaseRequestStateChanged(
         change.releaseRequestId(),
+        change.releaseRequestQualifiedId(),
         change.projectId(),
         change.repoId(),
         change.repoName(),
+        change.backingBranch(),
         change.state(),
         change.previousState(),
         change.changedAt(),

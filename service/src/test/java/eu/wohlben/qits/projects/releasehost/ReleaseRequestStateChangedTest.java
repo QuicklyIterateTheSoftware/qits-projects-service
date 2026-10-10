@@ -185,7 +185,7 @@ public class ReleaseRequestStateChangedTest {
     String id = create("work");
     merger.answer(
         BackingBranchMerger.Outcome.conflict(
-            "refs/heads/release/" + id,
+            BackingBranches.ref(id),
             List.of(
                 new BackingBranchMerger.Conflict(
                     "pom.xml", "refs/heads/work", "abc1234", "content"))));

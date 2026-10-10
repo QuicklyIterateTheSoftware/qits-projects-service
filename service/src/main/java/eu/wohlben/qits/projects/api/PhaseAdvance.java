@@ -666,7 +666,7 @@ public class PhaseAdvance {
         LOG.infof(
             "%s %s is VERIFIED: release request %s now carries %s",
             entity.archetype, entity.id, request.id(), branch.branch());
-        asked.add("`" + branch.branch() + "` (release request " + request.id() + ")");
+        asked.add("`" + branch.branch() + "` (release request " + request.qualifiedId() + ")");
       } catch (RuntimeException e) {
         // The refusal arm's rule: name what did not happen, carry the far side's own reason, and
         // claim nothing that did.
@@ -814,7 +814,7 @@ public class PhaseAdvance {
       say(
           ticket,
           "Release request "
-              + open.id()
+              + open.qualifiedId()
               + " still names `"
               + branch.branch()
               + "` as a source: the release was not withdrawn, and withdrawing or declining it is a"

@@ -453,7 +453,7 @@ public class ReleaseRequestPreRunTest {
             .path("request.id");
     requestIds.add(id);
     assertEquals(
-        List.of("refs/heads/main"), merger.foldsOf("refs/heads/release/" + id).get(0).sources());
+        List.of("refs/heads/main"), merger.foldsOf(BackingBranches.ref(id)).get(0).sources());
     assertEquals(
         List.of(),
         automations.askedAbout(id).get(0).sourceBranches(),

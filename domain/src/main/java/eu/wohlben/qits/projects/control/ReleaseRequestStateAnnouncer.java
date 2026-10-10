@@ -25,9 +25,11 @@ public interface ReleaseRequestStateAnnouncer {
    * One request's state change, as it stood when the transaction committed.
    *
    * @param releaseRequestId the request
+   * @param releaseRequestQualifiedId the request's logical id, {@code <repo>-rr-<n>} (qits-1158)
    * @param projectId the project the repository belongs to, or null
    * @param repoId the repository's storage id
    * @param repoName the repository's public name, or null
+   * @param backingBranch the request's stored backing branch
    * @param state the state now
    * @param previousState the state before the transaction, or null for a request it created
    * @param changedAt when the state was written
@@ -39,9 +41,11 @@ public interface ReleaseRequestStateAnnouncer {
    */
   record StateChange(
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       String projectId,
       String repoId,
       String repoName,
+      String backingBranch,
       String state,
       String previousState,
       Instant changedAt,

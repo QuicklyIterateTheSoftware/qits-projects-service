@@ -31,9 +31,11 @@ public class ReleaseRequestStateChangedContractTest {
     return ReleaseRequestStateChangedAnnouncer.event(
         new ReleaseRequestStateAnnouncer.StateChange(
             "rr-1",
+            "qits-ci-service-rr-7",
             "p-1",
             "r-1",
             "qits-ci-service",
+            "release/qits-ci-service-rr-7",
             "RELEASED",
             "READY",
             AT,
@@ -56,12 +58,14 @@ public class ReleaseRequestStateChangedContractTest {
 
     assertEquals(
         List.of(
+            "backingBranch",
             "branches",
             "changedAt",
             "mergedSha",
             "previousState",
             "projectId",
             "releaseRequestId",
+            "releaseRequestQualifiedId",
             "repoId",
             "repoName",
             "state",
@@ -69,6 +73,8 @@ public class ReleaseRequestStateChangedContractTest {
         sortedFieldNames(payload),
         "detail is null here, so it is an absent key");
     assertEquals("rr-1", payload.get("releaseRequestId").asText());
+    assertEquals("qits-ci-service-rr-7", payload.get("releaseRequestQualifiedId").asText());
+    assertEquals("release/qits-ci-service-rr-7", payload.get("backingBranch").asText());
     assertEquals("RELEASED", payload.get("state").asText());
     assertEquals("READY", payload.get("previousState").asText());
     assertEquals("2026.1010.101530", payload.get("version").asText());
@@ -83,10 +89,29 @@ public class ReleaseRequestStateChangedContractTest {
     JsonNode payload =
         payload(
             new ReleaseRequestStateChanged(
-                "rr-2", null, "r-1", null, "PENDING", null, AT, null, null, null, List.of("main")));
+                "rr-2",
+                "x-rr-2",
+                null,
+                "r-1",
+                null,
+                "release/x-rr-2",
+                "PENDING",
+                null,
+                AT,
+                null,
+                null,
+                null,
+                List.of("main")));
 
     assertEquals(
-        List.of("branches", "changedAt", "releaseRequestId", "repoId", "state"),
+        List.of(
+            "backingBranch",
+            "branches",
+            "changedAt",
+            "releaseRequestId",
+            "releaseRequestQualifiedId",
+            "repoId",
+            "state"),
         sortedFieldNames(payload));
   }
 
@@ -100,9 +125,11 @@ public class ReleaseRequestStateChangedContractTest {
         List.of(
             "eventId",
             "releaseRequestId",
+            "releaseRequestQualifiedId",
             "projectId",
             "repoId",
             "repoName",
+            "backingBranch",
             "state",
             "previousState",
             "changedAt",

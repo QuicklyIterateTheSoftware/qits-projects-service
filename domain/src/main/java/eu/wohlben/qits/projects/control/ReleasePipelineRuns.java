@@ -3,6 +3,7 @@ package eu.wohlben.qits.projects.control;
 import eu.wohlben.qits.projects.entity.ReleasePipelineRun;
 import eu.wohlben.qits.projects.entity.ReleaseRequest;
 import eu.wohlben.qits.projects.persistence.ReleasePipelineRunRepository;
+import eu.wohlben.qits.projects.persistence.ReleaseRequestRepository;
 import eu.wohlben.qits.projects.persistence.ReleasedTagPendingMergeRepository;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -41,10 +42,9 @@ import org.jboss.logging.Logger;
  * itself chose:
  *
  * <ul>
- *   <li><b>QA</b> runs build the request's <em>backing branch</em>, {@code release/<id>}, which is
- *       derived from the request's id and stored nowhere ({@link ReleaseRequest#backingBranchOf}).
- *       The id is therefore literally in the branch name the event carries, and reading it back is
- *       an exact inverse rather than a lookup that can be wrong.
+ *   <li><b>QA</b> runs build the request's <em>backing branch</em>, which is stored on the row
+ *       ({@link ReleaseRequest#backingBranch}: {@code release/<qualified id>} since qits-1158, {@code
+ *       release/<id>} before), so the branch the event carries is looked up per repository.
  *   <li><b>Publish</b> runs build the released <em>tag</em>, whose name is the version, and {@code
  *       released_tag_pending_merge} is the row that already joins {@code (repoId, tagName)} to the
  *       request that released it. That is the identical correlation {@code
@@ -98,6 +98,8 @@ public class ReleasePipelineRuns {
   @Inject ReleasePipelineRunRepository runs;
 
   @Inject ReleasedTagPendingMergeRepository pendingTags;
+
+  @Inject ReleaseRequestRepository requests;
 
   /**
    * One transition of one run, as the listener hands it over — plain values, no wire types.
@@ -186,13 +188,15 @@ public class ReleasePipelineRuns {
       return null;
     }
     if (PHASE_RELEASE_REQUEST.equals(transition.phase())) {
-      // The exact inverse of ReleaseRequest.backingBranchOf. A branch that does not carry the
-      // prefix is not a fold of ours, whatever phase word rode with it.
+      // The stored backing branch (qits-1158). A branch that does not carry the prefix is not a
+      // fold of ours, whatever phase word rode with it.
       if (!branch.startsWith(ReleaseRequest.BACKING_BRANCH_PREFIX)) {
         return null;
       }
-      String id = branch.substring(ReleaseRequest.BACKING_BRANCH_PREFIX.length());
-      return id.isBlank() ? null : id;
+      return requests
+          .findByBackingBranch(transition.repoId(), branch)
+          .map(row -> row.id)
+          .orElse(null);
     }
     if (PHASE_RELEASE.equals(transition.phase())) {
       // The publish gate's own correlation, reused: a release run's branch IS the version, which is

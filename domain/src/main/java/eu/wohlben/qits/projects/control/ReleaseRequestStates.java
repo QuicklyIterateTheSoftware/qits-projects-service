@@ -160,9 +160,11 @@ public class ReleaseRequestStates {
           .onStateChanged(
               new ReleaseRequestStateAnnouncer.StateChange(
                   row.id,
+                  row.qualifiedId,
                   row.projectId,
                   row.repoId,
                   row.repoName,
+                  row.backingBranch(),
                   row.state.name(),
                   moved.before == null ? null : moved.before.name(),
                   row.updatedAt == null ? Instant.now() : row.updatedAt,

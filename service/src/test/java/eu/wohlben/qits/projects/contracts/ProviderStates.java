@@ -49,6 +49,8 @@ import java.util.function.Supplier;
 @ApplicationScoped
 public class ProviderStates {
 
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequestNumbers releaseRequestNumbers;
+
   public static final String A_PROJECT_EXISTS = "a project exists";
   public static final String TWO_PROJECTS_EXIST = "two projects exist";
   public static final String NO_PROJECTS_EXIST = "no projects exist";
@@ -2474,6 +2476,7 @@ public class ProviderStates {
                   row.armedAt = when;
                   row.updatedAt = when;
                   more.accept(row);
+                  row.name(releaseRequestNumbers.next(row.repoId));
                   row.persist();
                   return row.id;
                 });
@@ -2536,7 +2539,10 @@ public class ProviderStates {
               verdict.repoId = repoId;
               verdict.projectId = project.id;
               verdict.repoName = repoName;
-              verdict.branch = ReleaseRequest.backingBranchOf(requestId);
+              verdict.branch =
+                  ReleaseRequest.<ReleaseRequest>findByIdOptional(requestId)
+                      .map(ReleaseRequest::backingBranch)
+                      .orElse(ReleaseRequest.BACKING_BRANCH_PREFIX + requestId);
               verdict.commitSha = sha;
               verdict.status = status;
               verdict.finishedAt = SEEDED_AT.plusSeconds(60L * minute);
@@ -2735,6 +2741,7 @@ public class ProviderStates {
                   row.createdAt = when;
                   row.armedAt = when;
                   row.updatedAt = when;
+                  row.name(releaseRequestNumbers.next(row.repoId));
                   row.persist();
                   if (ciVerdict != null) {
                     CommitBuildStatus verdict = new CommitBuildStatus();

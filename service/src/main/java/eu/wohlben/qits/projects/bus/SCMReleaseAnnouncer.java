@@ -44,6 +44,7 @@ public class SCMReleaseAnnouncer implements ReleaseAnnouncer {
       String version,
       String commitSha,
       String releaseRequestId,
+      String releaseRequestQualifiedId,
       Instant occurredAt,
       String priority) {
     bus.publish(
@@ -56,6 +57,7 @@ public class SCMReleaseAnnouncer implements ReleaseAnnouncer {
             commitSha,
             releaseRequestId,
             occurredAt,
-            priority));
+            priority,
+            releaseRequestQualifiedId));
   }
 }
