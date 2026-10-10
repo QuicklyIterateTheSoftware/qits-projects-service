@@ -566,6 +566,16 @@ merely its only occupant. Six things about it are rules:
     It is dark when `qits.eventstream.enabled` is false (`%dev`, `%test`), because a stamp written
     against an event that never left is exactly the unrecoverable half; the suite drives
     `backfill()` directly.
+- **`ReleaseRequestStateChanged` says how a release request stands (qits-1153).** Payload
+  `{releaseRequestId, projectId?, repoId, repoName?, state, previousState?, changedAt, mergedSha?,
+  version?, detail?, branches?}`; `changedAt` is the envelope's `occurredAt`. It is what wakes an
+  agent waiting on a request (`qits wait release-request <id>`). `control/ReleaseRequestStates.move`
+  is the **only** writer of `ReleaseRequest.state` — `ReleaseRequestStatesRuleTest` (ArchUnit) fails
+  the build on any other assignment — and it announces once per request per transaction, **after
+  the commit**, through an interposed transaction synchronization: a write to the state the row
+  already has, two moves that end where they began, and a rolled-back transaction announce nothing.
+  The port is `control/ReleaseRequestStateAnnouncer`, the adapter `bus/ReleaseRequestStateChangedAnnouncer`
+  (`@DefaultBean`); the suite records through `RecordingReleaseRequestStateAnnouncer`.
 - **`bus/EventWireReflection` is the native-image registration**, and `EventWireReflectionTest`
   guards its completeness against the registered listener beans. Read that class's javadoc before
   adding a wire type; the failure it prevents is invisible to every JVM test by construction.

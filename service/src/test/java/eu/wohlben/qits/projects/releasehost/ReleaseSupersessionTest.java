@@ -61,6 +61,8 @@ public class ReleaseSupersessionTest {
 
   @Inject RecordingQaRunCancellations cancellations;
 
+  @Inject RecordingReleaseRequestStateAnnouncer states;
+
   private String repoId;
   private String projectId;
 
@@ -112,6 +114,9 @@ public class ReleaseSupersessionTest {
     String successor = create("work-b");
 
     assertEquals("OBSOLETE", stateOf(earlier));
+    assertTrue(
+        states.movesOf(earlier).contains("RELEASED>OBSOLETE"),
+        "the supersession is announced as a state change (qits-1153): " + states.movesOf(earlier));
     assertEquals(
         successor,
         given().get(base() + "/" + earlier).then().extract().path("request.supersededBy"),

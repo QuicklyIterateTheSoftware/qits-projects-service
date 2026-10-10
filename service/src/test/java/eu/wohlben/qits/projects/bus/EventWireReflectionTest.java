@@ -54,6 +54,9 @@ public class EventWireReflectionTest {
   /** The same, for the second publisher — by its own type, past its {@code @DefaultBean}. */
   @Inject Instance<ReleaseRequestChangedAnnouncer> shippedReleaseAnnouncer;
 
+  /** And the one that says how a release request stands (qits-1153). */
+  @Inject Instance<ReleaseRequestStateChangedAnnouncer> shippedStateAnnouncer;
+
   /** And the third, which is the release itself. */
   @Inject Instance<SCMReleaseAnnouncer> shippedScmReleaseAnnouncer;
 
@@ -76,6 +79,7 @@ public class EventWireReflectionTest {
             SCMDeleteTag.class,
             RepositoryRenamed.class,
             ReleaseRequestChanged.class,
+            ReleaseRequestStateChanged.class,
             SCMRelease.class,
             ProjectCreated.class,
             ProjectChanged.class,
@@ -89,8 +93,8 @@ public class EventWireReflectionTest {
             EventFrame.class),
         Set.of(registration.targets()),
         "the four SCM records and the three bound consumption payloads in, RepositoryRenamed,"
-            + " ReleaseRequestChanged, SCMRelease, the three project lifecycle events and the"
-            + " transition's payload PAIR out, the PUT body, the frame — an eighteenth wire type"
+            + " ReleaseRequestChanged, ReleaseRequestStateChanged, SCMRelease, the three project lifecycle events and the"
+            + " transition's payload PAIR out, the PUT body, the frame — a nineteenth wire type"
             + " means a line here, and a nested payload record means two");
   }
 
@@ -112,6 +116,10 @@ public class EventWireReflectionTest {
         targets.contains(ReleaseRequestChanged.class),
         "ReleaseRequestChangedAnnouncer publishes this, and it is the only thing that tells qits-ci"
             + " a release request's fold exists to build");
+    assertTrue(
+        targets.contains(ReleaseRequestStateChanged.class),
+        "ReleaseRequestStateChangedAnnouncer publishes this; it is what wakes an agent waiting on a"
+            + " release request");
     assertTrue(
         targets.contains(SCMRelease.class),
         "SCMReleaseAnnouncer publishes this — the event qits-workspaces used to publish and this"
@@ -158,6 +166,11 @@ public class EventWireReflectionTest {
   @Test
   public void theProjectLifecycleAnnouncerShipsAsABean() {
     assertTrue(!shippedProjectAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
+  }
+
+  @Test
+  public void theReleaseRequestStateAnnouncerShipsAsABean() {
+    assertTrue(!shippedStateAnnouncer.isUnsatisfied(), "an unsatisfied port is a silent one");
   }
 
   @Test

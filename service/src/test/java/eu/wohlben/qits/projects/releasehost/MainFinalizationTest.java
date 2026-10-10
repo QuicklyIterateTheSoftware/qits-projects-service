@@ -54,6 +54,8 @@ public class MainFinalizationTest {
 
   @Inject RecordingQaRunCancellations cancellations;
 
+  @Inject RecordingReleaseRequestStateAnnouncer states;
+
   private String repoId;
   private String projectId;
 
@@ -317,6 +319,11 @@ public class MainFinalizationTest {
         .get(base() + "/" + requestId)
         .then()
         .body("request.state", org.hamcrest.Matchers.equalTo("FINALIZED"));
+    List<String> moves = states.movesOf(requestId);
+    assertEquals(
+        "RELEASED>FINALIZED",
+        moves.get(moves.size() - 1),
+        "the finalization is announced as a state change (qits-1153): " + moves);
     assertTrue(
         cancellations.cancelledRequests().contains(requestId),
         "the runs of a finished request have nothing left to report to: "

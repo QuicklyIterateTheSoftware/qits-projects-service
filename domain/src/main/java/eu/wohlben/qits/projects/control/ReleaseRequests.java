@@ -382,6 +382,9 @@ public class ReleaseRequests {
 
   @Inject Instance<ReleaseRequestAnnouncer> announcers;
 
+  /** Every state write goes through it, so every real change is announced (qits-1153). */
+  @Inject ReleaseRequestStates states;
+
   @Inject Instance<QaRunCancellations> cancellations;
 
   @Inject Instance<ReleasedBranchWorkspaces> releasedBranchWorkspaces;
@@ -607,7 +610,7 @@ public class ReleaseRequests {
                   fresh.repoName = repoName;
                   fresh.summary = summary.trim();
                   fresh.requester = requester;
-                  fresh.state = ReleaseRequest.State.PENDING;
+                  states.move(fresh, ReleaseRequest.State.PENDING);
                   fresh.createdAt = Instant.now();
                   fresh.armedAt = fresh.createdAt;
                   fresh.updatedAt = fresh.createdAt;
@@ -682,7 +685,7 @@ public class ReleaseRequests {
       if (earlier.id.equals(successor.id)) {
         continue;
       }
-      earlier.state = ReleaseRequest.State.OBSOLETE;
+      states.move(earlier, ReleaseRequest.State.OBSOLETE);
       earlier.supersededBy = successor.id;
       earlier.detail =
           "Superseded by release request "
@@ -873,7 +876,7 @@ public class ReleaseRequests {
             .call(
                 () -> {
                   ReleaseRequest row = requireOpenForChange(id);
-                  row.state = ReleaseRequest.State.WITHDRAWN;
+                  states.move(row, ReleaseRequest.State.WITHDRAWN);
                   row.detail =
                       (reason == null || reason.isBlank())
                           ? "Withdrawn by " + (actor == null ? "an operator" : actor)
@@ -2120,7 +2123,7 @@ public class ReleaseRequests {
                         left.isEmpty()
                             || left.stream().allMatch(s -> s.name.equals(mainOf(repoId)));
                     if (empty) {
-                      open.state = ReleaseRequest.State.WITHDRAWN;
+                      states.move(open, ReleaseRequest.State.WITHDRAWN);
                       open.detail = "Withdrawn: the branch was deleted";
                       open.retryable = false;
                       open.updatedAt = Instant.now();
@@ -2312,7 +2315,7 @@ public class ReleaseRequests {
                     .filter(request -> request.state == ReleaseRequest.State.RELEASED)
                     .ifPresent(
                         request -> {
-                          request.state = ReleaseRequest.State.FINALIZED;
+                          states.move(request, ReleaseRequest.State.FINALIZED);
                           request.detail = null;
                           request.retryable = false;
                           request.updatedAt = now;
@@ -2445,7 +2448,7 @@ public class ReleaseRequests {
                   LOG.infof(
                       "Release request %s is reconsidered at %s: %s (run %s)",
                       id, shortSha(row.mergedSha), why, row.rejectingRunId);
-                  row.state = ReleaseRequest.State.PENDING;
+                  states.move(row, ReleaseRequest.State.PENDING);
                   row.rejectingRunId = null;
                   row.detail = null;
                   row.updatedAt = Instant.now();
@@ -2848,7 +2851,7 @@ public class ReleaseRequests {
               row.updatedAt = now;
               switch (outcome.result()) {
                 case CONFLICT -> {
-                  row.state = ReleaseRequest.State.CONFLICTED;
+                  states.move(row, ReleaseRequest.State.CONFLICTED);
                   row.detail =
                       "The sources could not be folded ("
                           + why
@@ -2876,7 +2879,7 @@ public class ReleaseRequests {
                   }
                   // The fold is possible again and the tip is the answer, but it is the SAME tip —
                   // nothing new to build. Back to PENDING against what is already there.
-                  row.state = ReleaseRequest.State.PENDING;
+                  states.move(row, ReleaseRequest.State.PENDING);
                   row.detail = "The conflict is resolved; the fold is unchanged";
                   row.mergedSha = outcome.sha();
                   if (!ledger.verdictsOf(row.repoId, row.mergedSha).isEmpty()) {
@@ -2943,8 +2946,8 @@ public class ReleaseRequests {
   }
 
   /** The one place a request changes sha: gates invalidated, PENDING again, the window restarted. */
-  private static void rearm(ReleaseRequest open, String why) {
-    open.state = ReleaseRequest.State.PENDING;
+  private void rearm(ReleaseRequest open, String why) {
+    states.move(open, ReleaseRequest.State.PENDING);
     open.detail = "Re-armed onto " + shortSha(open.mergedSha) + " (" + why + ")";
     open.version = null;
     open.retryable = false;
@@ -3229,7 +3232,7 @@ public class ReleaseRequests {
                           .findFirst()
                           .orElse(null);
                   if (red != null) {
-                    row.state = ReleaseRequest.State.REJECTED;
+                    states.move(row, ReleaseRequest.State.REJECTED);
                     // The run is recorded as a KEY beside the sentence, not only inside it: a retry
                     // of exactly this run is what may take the rejection back, and reading an id
                     // back out of prose is a parser standing in for a column. See
@@ -3331,7 +3334,7 @@ public class ReleaseRequests {
                       return false;
                     }
                     if (decision.decision == ReleaseRequestApproval.Decision.DECLINED) {
-                      row.state = ReleaseRequest.State.REJECTED;
+                      states.move(row, ReleaseRequest.State.REJECTED);
                       // NO rejecting run, and the null is load-bearing rather than incidental: it
                       // is what stops a CI verdict from ever undoing a person's no. A decline is
                       // answered by a push or by the same person changing their mind, and no run
@@ -3347,7 +3350,7 @@ public class ReleaseRequests {
                     }
                     // APPROVED: fall through, exactly as a green verdict does.
                   }
-                  row.state = ReleaseRequest.State.READY;
+                  states.move(row, ReleaseRequest.State.READY);
                   row.detail = null;
                   // Every gate passed, so whatever run once rejected this fold is history: the
                   // column is cleared wherever the request leaves REJECTED, and this is one of the
@@ -3929,7 +3932,7 @@ public class ReleaseRequests {
                     .findByIdOptional(id)
                     .ifPresent(
                         row -> {
-                          row.state = state;
+                          states.move(row, state);
                           row.detail = detail;
                           row.retryable = retryable;
                           if (version != null) {

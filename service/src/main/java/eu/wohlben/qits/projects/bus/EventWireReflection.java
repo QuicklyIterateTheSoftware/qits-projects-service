@@ -89,6 +89,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  * registration at all — inside {@code CanonicalJson}, on the first publish, with the JVM suite
  * green.
  *
+ * <p>{@link ReleaseRequestStateChanged} (qits-1153) is the seventh published one, one line: its
+ * only nested value is a list of strings.
+ *
  * <p><b>And why a mix-in by name.</b> {@code CanonicalJson$QitsEventMixin} keeps {@code QitsEvent}'s
  * declared methods — {@code eventId} above all — out of a payload, and Jackson finds its {@code
  * @JsonIgnore}s by calling {@code getDeclaredMethods()} on it, which is reflection like any other.
@@ -108,6 +111,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
       SCMDeleteTag.class,
       RepositoryRenamed.class,
       ReleaseRequestChanged.class,
+      ReleaseRequestStateChanged.class,
       SCMRelease.class,
       ProjectCreated.class,
       ProjectChanged.class,
