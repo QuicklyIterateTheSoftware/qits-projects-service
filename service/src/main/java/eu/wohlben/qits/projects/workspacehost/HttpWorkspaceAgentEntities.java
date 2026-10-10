@@ -28,7 +28,7 @@ import org.jboss.logging.Logger;
  *   Content-Type: application/json
  *
  *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;",
- *    "title": "…", "status": "REFINED", "blocked": true}
+ *    "title": "…", "status": "REFINED", "blocked": true, "blockSource": "AGENT_WAITING"}
  *
  *   -&gt; 200 {"workspaceId": 41,   "applied": true}
  *   -&gt; 200 {"workspaceId": null, "applied": false}
@@ -37,6 +37,14 @@ import org.jboss.logging.Logger;
  * <p><b>{@code workspaceId: null} is the ordinary answer</b>, for {@link HttpWorkspaceAgentTurns}'
  * reason one door over: no workspace stands on that branch, so there is no session to rename, and
  * the door never creates one. It is a DEBUG line.
+ *
+ * <p><b>{@code blockSource} (qits-895) is the effective block's source</b> —
+ * {@code entities.control.EntityBlockState}'s {@code "EXPLICIT"}, {@code "AGENT_WAITING"} or
+ * {@code "BOTH"} — carried so the far side can name a session "waiting" rather than "blocked"
+ * where that is all that stands. It is omitted whenever {@code blocked} is false, and whenever the
+ * caller passed none (the two narrower overloads this class also implements, which an older caller
+ * of this port still compiles against): an older qits-workspaces that does not read the key is
+ * unaffected either way.
  *
  * <h2>A 404 OR A 405 on {@code /entity} is retried once, on {@code /blocked}</h2>
  *
@@ -112,7 +120,7 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
   @Override
   public void changed(
       String repositoryId, String branch, String title, String status, boolean blocked) {
-    changed(null, repositoryId, branch, title, status, blocked);
+    changed(null, repositoryId, branch, title, status, blocked, null);
   }
 
   @Override
@@ -123,6 +131,18 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
       String title,
       String status,
       boolean blocked) {
+    changed(workId, repositoryId, branch, title, status, blocked, null);
+  }
+
+  @Override
+  public void changed(
+      String workId,
+      String repositoryId,
+      String branch,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource) {
     String what = describe(title, status, blocked);
     Optional<String> base = address();
     if (base.isEmpty()) {
@@ -145,6 +165,11 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
       // Omitted when unknown; an older qits-workspaces ignores it.
       if (workId != null) {
         body.put("workId", workId);
+      }
+      // The effective block's source (qits-895): EXPLICIT, AGENT_WAITING or BOTH. Omitted while not
+      // blocked, or when the caller does not know it; an older qits-workspaces ignores it.
+      if (blockSource != null) {
+        body.put("blockSource", blockSource);
       }
       HttpResponse<String> response = post(base.get() + ENTITY_PATH, authorization.get(), body);
       if (response.statusCode() == 404 || response.statusCode() == 405) {

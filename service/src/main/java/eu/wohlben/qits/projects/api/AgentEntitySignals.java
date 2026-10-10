@@ -100,7 +100,10 @@ public class AgentEntitySignals implements RetitleAnnouncer {
    * A no-op for anything but a ticket or an epic. <b>Never throws.</b> The flag is the EFFECTIVE
    * block (qits-895, {@code EntityBlockState}) — the explicit one, or the session itself standing
    * idle past the debounce — so the name pales while either holds; {@link AgentWaiting} calls this
-   * when a derived block starts or ends.
+   * when a derived block starts or ends. <b>The block's source rides beside the flag</b> —
+   * {@code EXPLICIT}, {@code AGENT_WAITING} or {@code BOTH}, {@code null} while unblocked — so a far
+   * side that wants to tell "waiting for a person" apart from "blocked" can, without either target
+   * re-deriving the debounce itself.
    *
    * @param entity the row <b>after</b> the write — its title, status and flag are what is sent, and
    *     its archetype, id, project and slug address the targets
@@ -110,10 +113,12 @@ public class AgentEntitySignals implements RetitleAnnouncer {
         || (entity.archetype != Archetype.TICKET && entity.archetype != Archetype.EPIC)) {
       return;
     }
-    boolean blocked = EntityBlockState.of(entity).blocked();
-    tellTheWorkspace(entity, blocked);
+    EntityBlockState block = EntityBlockState.of(entity);
+    boolean blocked = block.blocked();
+    String blockSource = block.source();
+    tellTheWorkspace(entity, blocked, blockSource);
     try {
-      refinementEntities.changed(entity.id, entity.title, entity.status, blocked);
+      refinementEntities.changed(entity.id, entity.title, entity.status, blocked, blockSource);
     } catch (RuntimeException e) {
       LOG.warnf(
           e, "Could not tell the refinement of %s %s its entity changed", entity.archetype,
@@ -159,7 +164,7 @@ public class AgentEntitySignals implements RetitleAnnouncer {
     changed(entity);
   }
 
-  private void tellTheWorkspace(WorkEntity entity, boolean blocked) {
+  private void tellTheWorkspace(WorkEntity entity, boolean blocked, String blockSource) {
     if (workspaceEntities.isUnsatisfied()) {
       return;
     }
@@ -179,7 +184,8 @@ public class AgentEntitySignals implements RetitleAnnouncer {
               target.get().branch(),
               entity.title,
               entity.status,
-              blocked);
+              blocked,
+              blockSource);
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug (or a catalog read that failed), and
       // neither may touch a write that is already recorded.
