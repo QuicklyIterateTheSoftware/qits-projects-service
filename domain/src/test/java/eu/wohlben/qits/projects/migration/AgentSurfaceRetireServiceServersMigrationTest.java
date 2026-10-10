@@ -19,9 +19,9 @@ import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 
 /**
- * What V42 does to stored surfaces (qits-1174): every attachment to a retired server goes, every
- * surface keeps or gets {@code qits}, {@code qits} takes over the read-only mark of a retired
- * server, and positions close up. Plain JUnit on a database of its own, like {@link
+ * What V42 does to stored surfaces (qits-1174): every attachment to a retired server goes, {@code
+ * qits} takes over the read-only mark of a retired server, positions close up, and a surface where
+ * {@code qits} was switched off (no row) keeps it off. Plain JUnit on a database of its own, like {@link
  * AgentSurfaceQitsServerMigrationTest}.
  */
 class AgentSurfaceRetireServiceServersMigrationTest {
@@ -32,7 +32,7 @@ class AgentSurfaceRetireServiceServersMigrationTest {
       "/db/projects/migration/V42__agent_surface_retire_service_servers.sql";
 
   @Test
-  void retiredServersGoAndEverySurfaceKeepsQits() throws Exception {
+  void retiredServersGoAndASwitchedOffQitsStaysOff() throws Exception {
     String url = EmbeddedPg.url("qp_projects_v42_agent_surface_retire_service_servers");
     migrateTo(url, "40");
     try (Connection db = connect(url)) {
@@ -45,7 +45,7 @@ class AgentSurfaceRetireServiceServersMigrationTest {
       surface(db, "ticket.dispatch");
       attachment(db, "ticket.dispatch", "repository", 0, true, "a");
       attachment(db, "ticket.dispatch", "qits", 1, false, "");
-      // Somebody turned qits off and kept repository: qits comes back, the only platform server.
+      // Somebody switched qits off and kept repository: qits stays off.
       surface(db, "project.work");
       attachment(db, "project.work", "repository", 0, false, "a");
       attachment(db, "project.work", "actions", 1, false, "d");
@@ -61,13 +61,13 @@ class AgentSurfaceRetireServiceServersMigrationTest {
           List.of("qits|0|t|t|f|t|"),
           attachments(db, "ticket.dispatch"),
           "qits takes over the read-only mark of the retired server");
-      assertEquals(List.of("qits|0|f|f|f|f|"), attachments(db, "project.work"));
-      assertEquals(List.of("qits|0|f|f|f|f|"), attachments(db, "epic.agent"));
+      assertEquals(List.of(), attachments(db, "project.work"), "a switched-off qits stays off");
+      assertEquals(List.of(), attachments(db, "epic.agent"), "nothing is added");
 
       // Idempotent: the body again changes nothing.
       runV42(db);
       assertEquals(List.of("qits|0|t|t|f|t|"), attachments(db, "ticket.dispatch"));
-      assertEquals(List.of("qits|0|f|f|f|f|"), attachments(db, "epic.agent"));
+      assertEquals(List.of(), attachments(db, "project.work"));
     }
   }
 

@@ -6,35 +6,21 @@
 --
 -- What it does, in this order:
 --
--- 1. Every surface gets the `qits` attachment if it has none, appended after what it holds. A
---    surface that relied on `repository` for its platform tools would otherwise be left with none.
--- 2. `qits` is read-only marked on every surface that read-only marked a retired server
+-- 1. `qits` is read-only marked on every surface that read-only marked a retired server
 --    (`epic.autonomous` and `ticket.dispatch` as shipped). The central server honours the mark and
 --    serves only its read tools, so the unattended fence stays where it was.
--- 3. Every attachment to `repository`, `observability` or `actions` is deleted. Their narrowing and
+-- 2. Every attachment to `repository`, `observability` or `actions` is deleted. Their narrowing and
 --    tool lists are columns of the same row and go with it.
--- 4. Positions are renumbered from 0 per surface, so the render order has no gaps.
+-- 3. Positions are renumbered from 0 per surface, so the render order has no gaps.
 --
--- IDEMPOTENT: a second run finds no retired rows, adds no `qits` row a surface already holds, and
--- renumbers to the same positions. No revision is written, as V30 and V33 wrote none: the trail
--- records edits a person made. Older revision snapshots keep naming the retired servers; they are
--- history, and nothing renders from them.
-insert into agent_surface_mcp_attachment
-    (id, surface_key, server_key, position, narrow_project, narrow_repository, narrow_workspace,
-     read_only, allowed_tools, causation_id)
-select gen_random_uuid()::text,
-       c.surface_key,
-       'qits',
-       coalesce((select max(a.position) + 1
-                 from agent_surface_mcp_attachment a
-                 where a.surface_key = c.surface_key), 0),
-       false, false, false, false, '', null
-from agent_surface_configuration c
-where not exists (select 1
-                  from agent_surface_mcp_attachment q
-                  where q.surface_key = c.surface_key
-                    and q.server_key = 'qits');
-
+-- NO `qits` ROW IS ADDED. For a built-in server the row is the toggle: present is on, absent is off.
+-- V33 gave every stored surface a `qits` row, so a stored surface without one now is a surface an
+-- operator switched `qits` off on, and that choice stands. A surface that held only retired servers
+-- is left with no platform server until somebody turns `qits` on in the editor.
+--
+-- IDEMPOTENT: a second run finds no retired rows and renumbers to the same positions. No revision is
+-- written, as V30 and V33 wrote none: the trail records edits a person made. Older revision
+-- snapshots keep naming the retired servers; they are history, and nothing renders from them.
 update agent_surface_mcp_attachment q
 set read_only = true
 where q.server_key = 'qits'

@@ -2259,10 +2259,9 @@ defaults in `domain`; two controllers and the boot seed in `service`.
   `[qits]`. `RETIRED_SERVERS` is `repository`, `observability` and `actions`; they are gone from
   the store. `RESERVED_SERVER_KEYS` is those three plus `qits`, so the catalog refuses all four as
   external entry keys (as `AgentConfigurationDocument.RESERVED_SERVER_KEYS` in qits-coding-agents
-  does). A surface write that names a retired server is a 400 "Unknown MCP server". `V42` gave every
-  stored surface a `qits` attachment where it had none, read-only marked `qits` where the surface
-  had read-only marked a retired server, deleted every attachment to a retired server and
-  renumbered the positions.
+  does). A surface write that names a retired server is a 400 "Unknown MCP server". `V42` read-only marked `qits` where the surface had read-only marked a retired server, deleted
+  every attachment to a retired server and renumbered the positions. It adds no `qits` row: a
+  stored surface without one had `qits` switched off, and stays so.
 - **The pre-approval tool lists are gone.** The constants (`PROJECTS_REPOSITORY_TOOLS` and the
   rest, `shippedToolsFor`) were deleted. A new attachment stores an empty tool list; Claude
   pre-approves `mcp__qits__*`. The editor's write body still has no field for the list.
