@@ -16,8 +16,8 @@ import java.util.UUID;
  * One external MCP server, defined once for the whole platform and attached by any number of
  * surfaces.
  *
- * <p>Beside the three servers this platform owns ({@code repository}, {@code observability}, {@code
- * actions}) an operator may define servers it does not: a key, a display name, a URL, an optional
+ * <p>Beside the server this platform owns ({@code qits}) an operator may define servers it does
+ * not: a key, a display name, a URL, an optional
  * header name with the qits-configuration key holding its value, and the tools pre-approved for it.
  * Defined once and attached many times, so a server is not re-entered — with its token — for each of
  * eight surfaces.
@@ -27,9 +27,9 @@ import java.util.UUID;
  * stdio command, and a stdio server would need its binary inside the workspace image anyway. There
  * is no command field here and there must not be one.
  *
- * <p><b>The three built-in keys are reserved.</b> An external entry claiming {@code repository},
- * {@code observability} or {@code actions} would silently displace a platform server in the rendered
- * {@code mcpServers} object — the session would look entirely normal and be talking to somebody
+ * <p><b>The platform's keys are reserved</b>: {@code qits}, and the retired {@code repository},
+ * {@code observability} and {@code actions}. An external entry claiming one would silently displace
+ * a platform server in the rendered {@code mcpServers} object — the session would look entirely normal and be talking to somebody
  * else's server. It is refused on write, and refused again at render in the library, because a
  * document can reach a container from an older service.
  *

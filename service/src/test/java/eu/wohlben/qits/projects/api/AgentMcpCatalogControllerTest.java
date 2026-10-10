@@ -255,7 +255,7 @@ public class AgentMcpCatalogControllerTest {
     assertThat(answer.getString("externalMcpServers[0].url"), is("https://mcp.example.com/sse"));
     assertThat(answer.getString("externalMcpServers[0].credentialKey"), is(KEY));
     // The built-ins are untouched by an external attachment.
-    assertThat(answer.getList("mcpServers.server", String.class), is(List.of("repository")));
+    assertThat(answer.getList("mcpServers.server", String.class), is(List.of("qits")));
   }
 
   @Test
@@ -413,8 +413,8 @@ public class AgentMcpCatalogControllerTest {
             "mcpServers",
             List.of(
                 Map.of(
-                    "server", "repository",
-                    "narrowProject", true,
+                    "server", "qits",
+                    "narrowProject", false,
                     "narrowRepository", false,
                     "narrowWorkspace", false,
                     "readOnly", false))),

@@ -47,11 +47,10 @@ import java.util.UUID;
  * is an explicit delete, flush, insert, so it cannot race the unique {@code (surface_key,
  * server_key)} constraint.
  *
- * <p><b>The pre-approval tool lists are not taken from an editor.</b> They are shipped constants,
- * and {@link #validated} strips whatever a request carried. What a write then stores is the list the
- * row already held for that server, or the shipped one for a server the row did not hold — which is
- * what preserves the workspace daemon's longer {@code repository} list through an edit that only
- * changed a prompt.
+ * <p><b>The pre-approval tool lists are not taken from an editor</b>, and {@link #validated} strips
+ * whatever a request carried. What a write then stores is the list the row already held for that
+ * server, or none for a server the row did not hold: {@code qits}, the one built-in server, ships
+ * none, and an empty list defers to the daemon's own.
  */
 @ApplicationScoped
 public class AgentSurfaceConfigurationService {
@@ -235,10 +234,7 @@ public class AgentSurfaceConfigurationService {
       entity.allowedTools =
           supplied != null && !supplied.isEmpty()
               ? AgentSurfaceMcpAttachment.encodeTools(supplied)
-              : keptTools.getOrDefault(
-                  attachment.server(),
-                  AgentSurfaceMcpAttachment.encodeTools(
-                      AgentSurfaceDefaults.shippedToolsFor(attachment.server())));
+              : keptTools.getOrDefault(attachment.server(), "");
       attachments.persist(entity);
       written.add(entity);
     }

@@ -12,35 +12,23 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * One of the platform's own MCP servers, attached to one surface with the narrowing its url carries.
+ * The platform's own MCP server, attached to one surface with the narrowing its url carries.
  *
- * <p>Three servers exist and nothing outside them can be attached here: {@code repository}
- * (qits-projects), {@code observability} (qits-observability) and {@code actions}. External servers
- * arrive with the catalog, as their own attachment kind; the reserved keys are why an external entry
- * may not claim one of these three names.
+ * <p>Since qits-1174 one server can be attached here: {@code qits}, the central server. The
+ * per-service servers ({@code repository}, {@code observability}, {@code actions}) are retired, and
+ * V42 deleted their rows. External servers arrive with the catalog, as their own attachment kind.
  *
- * <p><b>The narrowing is three booleans in a fixed order, and that is faithful rather than lazy.</b>
- * Every url the two daemons build today appends its query parameters in one canonical order —
- * {@code projectId}, then {@code repositoryId}, then {@code workspaceId} — and the rendered command
- * line is asserted as a literal for both harnesses, so the order is part of the contract. These
- * three flags reproduce all five shapes in use ({@code ?projectId}, {@code
- * ?projectId&repositoryId}, {@code ?projectId&repositoryId&workspaceId}, {@code
- * ?repositoryId&workspaceId}, {@code ?repositoryId}) and cannot express an order nothing has ever
- * rendered.
+ * <p>The three narrowing flags are part of the configuration document's wire shape. {@code qits} is
+ * scoped by the caller's bearer and carries all three off.
  *
- * <p>{@link #readOnly} is the {@code agentReadOnly=true} marker an autonomous run appends, which
- * puts qits-projects' own tool filter in front of every mutating tool. It belongs to the surface —
- * {@code epic.autonomous} and {@code ticket.dispatch} carry it and nothing else does — which is why
- * it sits here and not on some notion of the server.
+ * <p>{@link #readOnly} is the {@code agentReadOnly=true} marker an unattended run appends, which
+ * makes the central server serve only its read tools. It belongs to the surface — {@code
+ * epic.autonomous} and {@code ticket.dispatch} carry it and nothing else does — which is why it sits
+ * here and not on some notion of the server.
  *
- * <p><b>{@link #allowedTools} is stored but is not operator-editable</b>, and the two facts are not
- * in tension. The pre-approval lists stay shipped constants and the editor's write door never reads
- * them off a request; they are persisted because the two daemons' lists for the <em>same</em> server
- * key genuinely differ — the workspace daemon's {@code repository} list carries four write
- * exceptions ({@code add_ticket_comment}, {@code update_ticket_comment}, {@code transition_ticket},
- * {@code mark_task_implemented}) the projects daemon's does not — so a single constant keyed by
- * server could not seed both faithfully. Newline-delimited in one column: an ordered list of opaque
- * ids that nothing joins on.
+ * <p><b>{@link #allowedTools} is stored but is not operator-editable.</b> The editor's write door
+ * never reads it off a request. Newline-delimited in one column: an ordered list of opaque ids that
+ * nothing joins on.
  *
  * <p>A {@link CausedRow} like its parent, and written in the same transaction.
  */
@@ -66,7 +54,7 @@ public class AgentSurfaceMcpAttachment extends PanacheEntityBase implements Caus
   @Column(name = "surface_key", nullable = false)
   public String surfaceKey;
 
-  /** {@code repository}, {@code observability} or {@code actions}. */
+  /** {@code qits}. */
   @Column(name = "server_key", nullable = false)
   public String serverKey;
 
@@ -83,7 +71,7 @@ public class AgentSurfaceMcpAttachment extends PanacheEntityBase implements Caus
   @Column(name = "narrow_workspace", nullable = false)
   public boolean narrowWorkspace;
 
-  /** Append {@code agentReadOnly=true} — the autonomous fence. */
+  /** Append {@code agentReadOnly=true} — the unattended fence. */
   @Column(name = "read_only", nullable = false)
   public boolean readOnly;
 

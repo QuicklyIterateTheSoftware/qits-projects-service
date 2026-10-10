@@ -51,7 +51,7 @@ public class AgentSurfaceConfigurationControllerTest {
     assertThat(answer.getList("surfaces.surface", String.class), is(AgentSurfaceDefaults.SURFACES));
     assertThat(
         answer.getList("builtInServers", String.class),
-        is(List.of("repository", "observability", "actions", "qits")));
+        is(List.of("qits")));
   }
 
   /**
@@ -129,11 +129,11 @@ public class AgentSurfaceConfigurationControllerTest {
             "mcpServers",
                 List.of(
                     Map.of(
-                        "server", "repository",
-                        "narrowProject", true,
-                        "narrowRepository", true,
+                        "server", "qits",
+                        "narrowProject", false,
+                        "narrowRepository", false,
                         "narrowWorkspace", false,
-                        "readOnly", false)));
+                        "readOnly", true)));
 
     JsonPath saved =
         given()
@@ -151,12 +151,11 @@ public class AgentSurfaceConfigurationControllerTest {
     assertThat(saved.getString("permissionMode"), is("PROMPT"));
     assertThat(saved.getString("systemPrompt"), is("Steer like this."));
     assertThat(saved.getBoolean("shipped"), is(false));
-    assertThat(saved.getList("mcpServers.server", String.class), is(List.of("repository")));
-    // The pre-approval list is not something the editor sent, and it survived the edit: the
-    // workspace daemon's longer repository list is what this surface was seeded with.
-    assertThat(
-        saved.getList("mcpServers[0].allowedTools", String.class),
-        hasItem("mcp__repository__mark_task_implemented"));
+    assertThat(saved.getList("mcpServers.server", String.class), is(List.of("qits")));
+    assertThat(saved.getBoolean("mcpServers[0].readOnly"), is(true));
+    // The pre-approval list is not something the editor sent: qits ships none, so the daemon's own
+    // applies.
+    assertThat(saved.getList("mcpServers[0].allowedTools", String.class), is(List.of()));
 
     JsonPath history =
         given()
@@ -220,7 +219,32 @@ public class AgentSurfaceConfigurationControllerTest {
         .put("/projects/api/agent-surfaces/project.work")
         .then()
         .statusCode(400)
-        .body("message", containsString("repository, observability, actions"));
+        .body("message", containsString("(known: qits)"));
+  }
+
+  /** qits-1174: the retired per-service servers are unknown servers now. */
+  @Test
+  public void anMcpAttachmentNamingARetiredServerIsRefused() {
+    for (String retired : List.of("repository", "observability", "actions")) {
+      given()
+          .contentType(ContentType.JSON)
+          .body(
+              update(
+                  "CLAUDE",
+                  "SKIP_PERMISSIONS",
+                  List.of(
+                      Map.of(
+                          "server", retired,
+                          "narrowProject", true,
+                          "narrowRepository", false,
+                          "narrowWorkspace", false,
+                          "readOnly", false))))
+          .when()
+          .put("/projects/api/agent-surfaces/project.work")
+          .then()
+          .statusCode(400)
+          .body("message", containsString("Unknown MCP server: " + retired));
+    }
   }
 
   /** Both harnesses render one {@code key → config} object, so a repeat silently displaces. */
@@ -228,8 +252,8 @@ public class AgentSurfaceConfigurationControllerTest {
   public void theSameServerAttachedTwiceIsRefused() {
     Map<String, Object> attachment =
         Map.of(
-            "server", "repository",
-            "narrowProject", true,
+            "server", "qits",
+            "narrowProject", false,
             "narrowRepository", false,
             "narrowWorkspace", false,
             "readOnly", false);
@@ -278,7 +302,7 @@ public class AgentSurfaceConfigurationControllerTest {
         document.getList(
             "surfaces.find { it.configuration.surface == 'project.work' }.configuration.mcpServers.server",
             String.class),
-        is(List.of("repository")));
+        is(List.of("qits")));
   }
 
   private static Map<String, Object> update(
