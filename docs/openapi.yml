@@ -1276,6 +1276,8 @@ components:
           type: string
         mode:
           $ref: "#/components/schemas/DispatchMode"
+        agentId:
+          type: string
         workspaceRowId:
           type: integer
           format: int64
@@ -3303,6 +3305,8 @@ components:
     WorkspaceReferenceDto:
       type: object
       properties:
+        agentId:
+          type: string
         workspaceRowId:
           type: integer
           format: int64
@@ -8326,4 +8330,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1007.35430
+  version: 2026.1010.101501

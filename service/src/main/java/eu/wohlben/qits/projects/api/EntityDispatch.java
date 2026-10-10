@@ -67,7 +67,7 @@ import org.jboss.logging.Logger;
  *       and the archetype's own turn. A failure surfaces as the port's 502/503 and nothing is written
  *       on the entity after it.
  *   <li><b>The assignee</b> (qits-887): the agent the far side names ({@link
- *       WorkspaceAgentDispatch.Dispatch#agentIdentity}), or {@code workspace <rowId>} when it named
+ *       WorkspaceAgentDispatch.Dispatch#agentIdentity}), or {@code agent <agentId>} when it named
  *       none, written through {@code EntityDispatchService.setAssignee} with an audit row. Every
  *       successful press writes it, whatever the phase and whoever pressed — a person or the
  *       campaign executor — because it records who is on the work, which is the agent. A refused or
@@ -177,6 +177,7 @@ public class EntityDispatch {
           entity.archetype.name(),
           phase,
           mode,
+          made.agentId(),
           made.workspaceRowId(),
           repositoryId,
           branch,
@@ -281,13 +282,7 @@ public class EntityDispatch {
     WorkspaceAgentDispatch.Dispatch made =
         dispatch
             .get()
-            .dispatchAgent(
-                target.repositoryId(),
-                branch,
-                target.scope().gitRefs(),
-                true,
-                subject,
-                started.instruction());
+            .dispatchAgent(target.repositoryId(), branch, subject, started.instruction());
 
     // qits-887: who is on it now is the agent this press put there, whoever pressed — and the
     // answer carries the row as that write left it.
@@ -297,7 +292,8 @@ public class EntityDispatch {
         recorded.id, comment(noun(recorded), branch, made, started.phase(), mode), changedBy);
     publisher.fire(recorded.projectId, ProjectChangeHint.Topic.of(recorded.archetype));
     LOG.infof(
-        "Dispatched an agent onto %s %s (%s) for the %s phase (%s) in workspace %s on %s",
+        "Dispatched agent %s onto %s %s (%s) for the %s phase (%s) in workspace %s on %s",
+        made.agentId(),
         noun(recorded),
         recorded.id,
         recorded.slug,
@@ -629,7 +625,7 @@ public class EntityDispatch {
     if ("SKIPPED_RUNNING".equals(made.agentLaunch())) {
       return "An agent is already working on this "
           + noun
-          + " in workspace `"
+          + " on `"
           + branch
           + "`; left it to carry on. Assignee: `"
           + made.assignee()
@@ -639,7 +635,7 @@ public class EntityDispatch {
                   + " again."
               : "");
     }
-    return "Dispatched a coding agent to workspace `"
+    return "Dispatched a coding agent onto `"
         + branch
         + "` for the "
         + phase

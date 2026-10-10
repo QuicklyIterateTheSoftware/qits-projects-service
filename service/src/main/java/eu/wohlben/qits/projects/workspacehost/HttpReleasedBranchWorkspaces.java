@@ -31,8 +31,8 @@ import org.jboss.logging.Logger;
  *   {"branch": "…", "target": "&lt;version&gt;", "commit": "&lt;released sha&gt;",
  *    "result": "released as &lt;version&gt;"}
  *
- *   -&gt; 200 {"resolved": true, "workspaceId": 41}   the workspace on that branch was torn down
- *   -&gt; 200 {"resolved": false}                     nothing stood on it — the ordinary answer
+ *   -&gt; 200 {"resolved": true, "agentIds": ["…"]}  every agent owning that branch is OBSOLETE
+ *   -&gt; 200 {"resolved": false, "agentIds": []}    no agent owned it — the ordinary answer
  * </pre>
  *
  * <p><b>It is a workspace-lifecycle call and never a release verb.</b> qits-workspaces' release door
@@ -54,7 +54,8 @@ import org.jboss.logging.Logger;
  * <p>No address, no bearer, a timeout, an unreachable or refusing qits-workspaces, an answer that
  * will not parse: one WARN naming the repository and the branch and the reason, and a normal return.
  * The port's contract is that it never throws — the release has already happened and a workspace that
- * was not reaped is a reap to be made by hand, not a release to be undone. The WARN is at {@code
+ * was not marked obsolete is never cleaned up, which is a reap to be made by hand, not a release to
+ * be undone (qits-1152: the far side marks agents OBSOLETE and cleans them up later). The WARN is at {@code
  * warn} rather than {@code debug} deliberately: unlike the QA-run cancellation beside it, a call lost
  * here leaves a container, a volume and a commissioned credential standing until somebody acts.
  *
@@ -148,10 +149,10 @@ public class HttpReleasedBranchWorkspaces implements ReleasedBranchWorkspaces {
       Map<?, ?> answer = MAPPER.readValue(body, Map.class);
       if (Boolean.TRUE.equals(answer.get("resolved"))) {
         LOG.infof(
-            "qits-workspaces resolved workspace %s on the released branch %s of %s",
-            answer.get("workspaceId"), branch, repoId);
+            "qits-workspaces marked agents %s obsolete for the released branch %s of %s",
+            answer.get("agentIds"), branch, repoId);
       } else {
-        LOG.debugf("No workspace stood on the released branch %s of %s", branch, repoId);
+        LOG.debugf("No agent owned the released branch %s of %s", branch, repoId);
       }
     } catch (Exception e) {
       warn(repoId, branch, "could not read the answer: " + e);

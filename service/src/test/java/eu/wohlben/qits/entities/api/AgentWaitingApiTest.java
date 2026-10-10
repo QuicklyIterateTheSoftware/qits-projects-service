@@ -132,13 +132,12 @@ class AgentWaitingApiTest {
   }
 
   /**
-   * What the agents of {@code project}'s entities were told with this flag — filtered by the
-   * project's wrapper, because a sweep announces every wait in its window, other suites' included.
+   * What the agent of {@code workId} was told with this flag — filtered by the work item, because a
+   * sweep announces every wait in its window, other suites' included.
    */
-  private List<Told> toldBlocked(EntityFixtures.Project project, boolean blocked) {
-    String wrapper = projects.findWrapper(project.id()).orElseThrow().id;
+  private List<Told> toldBlocked(String workId, boolean blocked) {
     return agents.calls().stream()
-        .filter(told -> told.repositoryId().equals(wrapper) && told.blocked() == blocked)
+        .filter(told -> told.workId().equals(workId) && told.blocked() == blocked)
         .toList();
   }
 
@@ -209,8 +208,8 @@ class AgentWaitingApiTest {
 
     waiting.forgetLastSweep();
     waiting.sweep(Instant.now());
-    assertEquals(1, toldBlocked(project, true).size(), "the sweep told the agents: " + agents.calls());
-    assertEquals("REPORTED", toldBlocked(project, true).get(0).status());
+    assertEquals(1, toldBlocked(ticket, true).size(), "the sweep told the agents: " + agents.calls());
+    assertEquals("REPORTED", toldBlocked(ticket, true).get(0).status());
 
     assertEquals(comments, commentsOn(ticket), "a derived block writes no comment");
     assertEquals(audit, auditOf(ticket), "and no audit row");
@@ -231,7 +230,7 @@ class AgentWaitingApiTest {
     assertNull(row(ticket).agentWaitingSince);
     waiting.forgetLastSweep();
     waiting.sweep(Instant.now());
-    assertEquals(List.of(), toldBlocked(project, true));
+    assertEquals(List.of(), toldBlocked(ticket, true));
   }
 
   /** The session working again clears a derived block that stood, and the agents are told at once. */
@@ -249,7 +248,7 @@ class AgentWaitingApiTest {
     read(ticket).body("blocked", equalTo(false)).body("$", not(hasKey("blockSource")));
     assertNull(row(ticket).agentWaitingSince);
     assertNull(row(ticket).agentWaitingCause);
-    assertEquals(1, toldBlocked(project, false).size(), "the end of the block is said: " + agents.calls());
+    assertEquals(1, toldBlocked(ticket, false).size(), "the end of the block is said: " + agents.calls());
   }
 
   // --- the two sources ---------------------------------------------------------------------------
@@ -310,7 +309,7 @@ class AgentWaitingApiTest {
     read(ticket).body("blocked", equalTo(false));
     assertNull(row(ticket).agentWaitingSince, "the unblock cleared the derived wait");
     assertEquals(comments + 1, commentsOn(ticket), "the unblock is said on the thread");
-    assertEquals(1, toldBlocked(project, false).size(), "and the agents are told: " + agents.calls());
+    assertEquals(1, toldBlocked(ticket, false).size(), "and the agents are told: " + agents.calls());
 
     // Both at once, cleared by one unblock.
     setBlocked(ticket, true, "waiting on a release").statusCode(200);

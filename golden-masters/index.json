@@ -1931,7 +1931,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -1987,7 +1989,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -2043,7 +2047,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -2099,7 +2105,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -3701,7 +3709,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },
@@ -5480,7 +5490,9 @@
               "$.dispatch.repositoryId"
             ],
             "instants": [],
-            "strings": [],
+            "strings": [
+              "$.dispatch.branch"
+            ],
             "listFilteredTo": null
           }
         },

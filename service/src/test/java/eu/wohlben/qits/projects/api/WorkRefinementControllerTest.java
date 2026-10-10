@@ -227,17 +227,16 @@ public class WorkRefinementControllerTest {
   public void openingWhileADispatchedWorkspaceIsActiveOnTheEntityIsRefused() {
     String projectId = createProject("Refine Busy");
     String ticketId = createTicket(projectId, "Agent on it");
-    workspaces.willReference(
-        RecordingWorkspaceAgentDispatch.live(
-            7L, "repo-1", "ticket-agent-on-it", "ticket/agent-on-it", ticketId, null));
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-7", 7L, "repo-1", ticketId, "ticket/qits-7"));
 
     open(ticketId)
         .then()
         .statusCode(409)
         .body("message", containsString("has a dispatched agent working it"))
-        .body("message", containsString("ticket/agent-on-it"));
+        .body("message", containsString("ticket/qits-7"));
     assertEquals(
-        java.util.List.of(ticketId), workspaces.lookups().get(0).ticketIds(), "asked as a ticket");
+        java.util.List.of(ticketId), workspaces.lookups().get(0).workIds(), "asked by its work id");
     asAdmin()
         .when()
         .get("/projects/api/projects/" + projectId + "/refinements")
@@ -246,25 +245,24 @@ public class WorkRefinementControllerTest {
   }
 
   @Test
-  public void aResolvedWorkspaceOrOneAboutAnotherEntityDoesNotBlockTheOpen() {
+  public void aRemovedAgentOrOneAboutAnotherEntityDoesNotBlockTheOpen() {
     String projectId = createProject("Refine Tidy");
     String epicId = createEpic(projectId, "Worked before");
-    workspaces.willReference(
-        RecordingWorkspaceAgentDispatch.resolved(
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.inState(
+            "agent-8",
             8L,
             "repo-1",
-            "epic-worked-before",
-            "epic/worked-before",
-            null,
             epicId,
-            "INTEGRATED",
+            "epic/qits-8",
+            "REMOVED",
             java.time.Instant.parse("2026-09-01T00:00:00Z")),
-        RecordingWorkspaceAgentDispatch.live(
-            9L, "repo-1", "epic-other", "epic/other", null, "some-other-epic"));
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-9", 9L, "repo-1", "some-other-epic", "epic/qits-9"));
 
     open(epicId).then().statusCode(200).body("refinement.entityId", equalTo(epicId));
     assertTrue(
-        workspaces.lookups().get(0).epicIds().contains(epicId), "an epic is asked as an epic");
+        workspaces.lookups().get(0).workIds().contains(epicId), "an epic is asked by its work id");
   }
 
   // ---- what the SPA still reads of the legacy shape -------------------------------------------

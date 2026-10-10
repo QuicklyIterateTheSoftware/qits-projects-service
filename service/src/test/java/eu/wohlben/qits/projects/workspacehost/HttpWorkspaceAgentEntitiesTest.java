@@ -47,7 +47,7 @@ class HttpWorkspaceAgentEntitiesTest {
    */
   private final List<String> methodNotAllowed = new CopyOnWriteArrayList<>();
   private final AtomicReference<String> responseBody =
-      new AtomicReference<>("{\"workspaceId\":41,\"applied\":true}");
+      new AtomicReference<>("{\"agentId\":\"a-41\",\"applied\":true}");
 
   @AfterEach
   void stopServer() {
@@ -99,11 +99,11 @@ class HttpWorkspaceAgentEntitiesTest {
   }
 
   @Test
-  void titleStatusAndFlagArePostedToTheEntityDoorWithTheBranchOnTheBody() throws Exception {
+  void titleStatusAndFlagArePostedToTheEntityDoorWithTheWorkIdOnTheBody() throws Exception {
     String base = startServer();
 
-    against(base).changed("repo-1", "ticket/puce-button", "Puce button", "REFINED", true);
-    against(base).changed("repo-1", "epic/onboarding", "Onboarding", "REPORTED", false);
+    against(base).changed("t-1", "Puce button", "REFINED", true, "EXPLICIT");
+    against(base).changed("e-1", "Onboarding", "REPORTED", false, null);
 
     assertEquals(2, received.size(), "one request each, and no fallback on a 200");
     Received request = received.get(0);
@@ -113,32 +113,27 @@ class HttpWorkspaceAgentEntitiesTest {
     assertEquals("Bearer machine-token", request.auth());
     assertEquals(
         Map.of(
-            "repositoryId", "repo-1",
-            "branch", "ticket/puce-button",
+            "workId", "t-1",
             "title", "Puce button",
             "status", "REFINED",
-            "blocked", true),
+            "blocked", true,
+            "blockSource", "EXPLICIT"),
         MAPPER.readValue(request.body(), Map.class));
     assertEquals(
-        Map.of(
-            "repositoryId", "repo-1",
-            "branch", "epic/onboarding",
-            "title", "Onboarding",
-            "status", "REPORTED",
-            "blocked", false),
+        Map.of("workId", "e-1", "title", "Onboarding", "status", "REPORTED", "blocked", false),
         MAPPER.readValue(received.get(1).body(), Map.class));
   }
 
   /**
    * A qits-workspaces older than {@code /entity} answers it 404 and still serves {@code /blocked}:
-   * the flag goes there, alone, in the qits-614 shape.
+   * the same body goes there (qits-1152: both doors take one shape).
    */
   @Test
-  void aFarSideWithoutTheEntityDoorIsToldTheFlagOnTheBlockedDoor() throws Exception {
+  void aFarSideWithoutTheEntityDoorIsToldOnTheBlockedDoor() throws Exception {
     String base = startServer();
     unserved.add("/workspaces/api/agent-dispatches/entity");
 
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", true, null));
 
     assertEquals(2, received.size(), "the entity door, then the blocked door: " + received);
     assertEquals("/workspaces/api/agent-dispatches/entity", received.get(0).path());
@@ -146,28 +141,28 @@ class HttpWorkspaceAgentEntitiesTest {
     assertEquals("/workspaces/api/agent-dispatches/blocked", fallback.path());
     assertEquals("Bearer machine-token", fallback.auth());
     assertEquals(
-        Map.of("repositoryId", "repo-1", "branch", "ticket/x", "blocked", true),
+        Map.of("workId", "w-1", "title", "X", "status", "REFINED", "blocked", true),
         MAPPER.readValue(fallback.body(), Map.class));
   }
 
   /**
    * The 405 sibling: a far side whose {@code /agents/*} router rejects the method for
-   * {@code /entity} answers 405 rather than 404, and still gets the flag on {@code /blocked}
+   * {@code /entity} answers 405 rather than 404, and still gets the body on {@code /blocked}
    * (qits-617; measured live against a workspace-daemon on 2026.1001.72420).
    */
   @Test
-  void aFarSideThatAnswers405OnEntityIsToldTheFlagOnTheBlockedDoor() throws Exception {
+  void aFarSideThatAnswers405OnEntityIsToldOnTheBlockedDoor() throws Exception {
     String base = startServer();
     methodNotAllowed.add("/workspaces/api/agent-dispatches/entity");
 
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", true, null));
 
     assertEquals(2, received.size(), "the entity door, then the blocked door: " + received);
     assertEquals("/workspaces/api/agent-dispatches/entity", received.get(0).path());
     Received fallback = received.get(1);
     assertEquals("/workspaces/api/agent-dispatches/blocked", fallback.path());
     assertEquals(
-        Map.of("repositoryId", "repo-1", "branch", "ticket/x", "blocked", true),
+        Map.of("workId", "w-1", "title", "X", "status", "REFINED", "blocked", true),
         MAPPER.readValue(fallback.body(), Map.class));
   }
 
@@ -177,18 +172,18 @@ class HttpWorkspaceAgentEntitiesTest {
     String base = startServer();
     status.set(500);
 
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", true, null));
 
     assertEquals(1, received.size(), "no fallback: " + received);
   }
 
   /** The ordinary answer for an entity nobody dispatched an agent onto. */
   @Test
-  void noWorkspaceOnTheBranchIsAnOrdinaryAnswer() throws Exception {
+  void noAgentIsAnOrdinaryAnswer() throws Exception {
     String base = startServer();
-    responseBody.set("{\"workspaceId\":null,\"applied\":false}");
+    responseBody.set("{\"agentId\":null,\"applied\":false}");
 
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", true, null));
     assertEquals(1, received.size(), "and it was asked exactly once");
   }
 
@@ -202,7 +197,7 @@ class HttpWorkspaceAgentEntitiesTest {
     status.set(404);
     responseBody.set("{\"message\":\"not found\"}");
 
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", true, null));
     assertEquals(2, received.size(), "the entity door, then the blocked door, and no third ask");
   }
 
@@ -213,7 +208,7 @@ class HttpWorkspaceAgentEntitiesTest {
     status.set(405);
     responseBody.set("{\"message\":\"method not allowed\"}");
 
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", true, null));
     assertEquals(2, received.size(), "the entity door, then the blocked door, and no third ask");
   }
 
@@ -221,10 +216,10 @@ class HttpWorkspaceAgentEntitiesTest {
   void aRefusingOrUnreadableFarSideIsNeverAThrow() throws Exception {
     String base = startServer();
     status.set(500);
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", true));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", true, null));
     status.set(200);
     responseBody.set("not json at all");
-    assertDoesNotThrow(() -> against(base).changed("repo-1", "ticket/x", "X", "REFINED", false));
+    assertDoesNotThrow(() -> against(base).changed("w-1", "X", "REFINED", false, null));
     assertEquals(2, received.size());
   }
 
@@ -234,7 +229,7 @@ class HttpWorkspaceAgentEntitiesTest {
     assertDoesNotThrow(
         () ->
             against("http://127.0.0.1:1", null, Optional.of("Bearer t"))
-                .changed("repo-1", "ticket/x", "X", "REFINED", true));
+                .changed("w-1", "X", "REFINED", true, null));
   }
 
   /** An unconfigured hop, or one with no machine credential, makes no request at all. */
@@ -242,9 +237,9 @@ class HttpWorkspaceAgentEntitiesTest {
   void noAddressOrNoBearerSendsNothing() throws Exception {
     String base = startServer();
 
-    against(null, null, Optional.of("Bearer t")).changed("repo-1", "ticket/x", "X", "REFINED", true);
-    against("  ", "", Optional.of("Bearer t")).changed("repo-1", "ticket/x", "X", "REFINED", true);
-    against(base, null, Optional.empty()).changed("repo-1", "ticket/x", "X", "REFINED", true);
+    against(null, null, Optional.of("Bearer t")).changed("w-1", "X", "REFINED", true, null);
+    against("  ", "", Optional.of("Bearer t")).changed("w-1", "X", "REFINED", true, null);
+    against(base, null, Optional.empty()).changed("w-1", "X", "REFINED", true, null);
 
     assertTrue(received.isEmpty(), "a switched-off or uncredentialed hop dials nothing: " + received);
   }
@@ -254,61 +249,20 @@ class HttpWorkspaceAgentEntitiesTest {
   void theReleaseKeyIsTheFallbackAddress() throws Exception {
     String base = startServer();
 
-    against(null, base, Optional.of("Bearer machine-token")).changed("repo-1", "ticket/x", "X", "REFINED", true);
+    against(null, base, Optional.of("Bearer machine-token")).changed("w-1", "X", "REFINED", true, null);
 
     assertEquals(1, received.size(), "an unset own key falls back to the release path's address");
   }
 
-  /** With a work id, the body carries it, so qits-workspaces finds the workspace by it (qits-112). */
-  @Test
-  void aChangeNamingItsWorkItemCarriesTheWorkId() throws Exception {
-    String base = startServer();
-
-    against(base).changed("w-1", "repo-1", "ticket/puce-button", "Puce button", "REFINED", false);
-
-    assertEquals("w-1", MAPPER.readValue(received.get(0).body(), Map.class).get("workId"));
-  }
-
-  /**
-   * With a block source (qits-895), the body carries it beside the effective flag — the derived
-   * block's and the explicit's name, exactly as {@code EntityBlockState} answers.
-   */
-  @Test
-  void aChangeCarryingABlockSourceAddsItToTheBody() throws Exception {
-    String base = startServer();
-
-    against(base)
-        .changed("w-1", "repo-1", "ticket/puce-button", "Puce button", "REFINED", true, "BOTH");
-
-    assertEquals(
-        Map.of(
-            "repositoryId", "repo-1",
-            "branch", "ticket/puce-button",
-            "title", "Puce button",
-            "status", "REFINED",
-            "blocked", true,
-            "workId", "w-1",
-            "blockSource", "BOTH"),
-        MAPPER.readValue(received.get(0).body(), Map.class));
-  }
-
-  /**
-   * A null block source — not blocked, or a caller that does not know it — is OMITTED, never sent
-   * as a JSON null: the narrower overloads this class also implements delegate to the widest one
-   * with {@code null}, and the key must not appear for them either.
-   */
+  /** A null block source — not blocked, or a caller that does not know it — is OMITTED. */
   @Test
   void aNullBlockSourceIsOmittedFromTheBody() throws Exception {
     String base = startServer();
 
-    against(base)
-        .changed("w-1", "repo-1", "ticket/puce-button", "Puce button", "REFINED", false, null);
-    against(base).changed("repo-1", "epic/onboarding", "Onboarding", "REPORTED", false);
+    against(base).changed("w-1", "Puce button", "REFINED", false, null);
 
-    for (Received request : received) {
-      assertTrue(
-          !MAPPER.readValue(request.body(), Map.class).containsKey("blockSource"),
-          "no blockSource key on " + request.body());
-    }
+    assertTrue(
+        !MAPPER.readValue(received.get(0).body(), Map.class).containsKey("blockSource"),
+        "no blockSource key on " + received.get(0).body());
   }
 }

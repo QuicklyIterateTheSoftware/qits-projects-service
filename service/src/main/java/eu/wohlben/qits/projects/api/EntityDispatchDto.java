@@ -15,15 +15,19 @@ package eu.wohlben.qits.projects.api;
  * @param archetype {@code TICKET} or {@code EPIC}
  * @param phase {@code refine}, {@code implement} or {@code verify}
  * @param mode {@code FLOW} or {@code PHASE}, as recorded on the entity
+ * @param agentId the dispatched agent's id at qits-workspaces (qits-1152)
+ * @param workspaceRowId the workspace the agent was placed in, or {@code null} while it is QUEUED
+ * @param branch the agent's wrapper branch, {@code <prefix>/<qualified id>}
  * @param assignee the entity's assignee as the press left it (qits-887): the dispatched agent's
- *     identity, or {@code workspace <workspaceRowId>} when qits-workspaces named none
+ *     identity, or {@code agent <agentId>} when qits-workspaces named none
  */
 public record EntityDispatchDto(
     String entityId,
     String archetype,
     String phase,
     DispatchMode mode,
-    long workspaceRowId,
+    String agentId,
+    Long workspaceRowId,
     String repositoryId,
     String branch,
     boolean fresh,

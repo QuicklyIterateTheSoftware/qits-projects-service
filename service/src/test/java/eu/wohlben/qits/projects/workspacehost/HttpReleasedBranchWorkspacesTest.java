@@ -36,7 +36,7 @@ class HttpReleasedBranchWorkspacesTest {
   private HttpServer server;
   private final List<Received> received = new CopyOnWriteArrayList<>();
   private final AtomicInteger status = new AtomicInteger(200);
-  private final AtomicReference<String> responseBody = new AtomicReference<>("{\"resolved\":false}");
+  private final AtomicReference<String> responseBody = new AtomicReference<>("{\"resolved\":false,\"agentIds\":[]}");
 
   @AfterEach
   void stopServer() {
@@ -84,7 +84,7 @@ class HttpReleasedBranchWorkspacesTest {
   @Test
   void aReleasedBranchIsPostedToTheResolutionDoorWithTheReleaseOnTheBody() throws Exception {
     String base = startServer();
-    responseBody.set("{\"resolved\":true,\"workspaceId\":41}");
+    responseBody.set("{\"resolved\":true,\"agentIds\":[\"a-41\"]}");
 
     against(base).branchReleased("repo-1", "task/thing", "2026.905.73500", "abc123");
 
@@ -106,7 +106,7 @@ class HttpReleasedBranchWorkspacesTest {
   @Test
   void noWorkspaceOnTheBranchIsAnOrdinaryAnswerAndNotAFailure() throws Exception {
     String base = startServer();
-    responseBody.set("{\"resolved\":false}");
+    responseBody.set("{\"resolved\":false,\"agentIds\":[]}");
 
     assertDoesNotThrow(() -> against(base).branchReleased("repo-1", "work", "v", "sha"));
     assertEquals(1, received.size(), "and it was asked exactly once");

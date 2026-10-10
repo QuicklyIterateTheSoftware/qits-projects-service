@@ -152,7 +152,7 @@ class CampaignExecutorTest {
     assertNotNull(edge.claimedAt);
     assertNotNull(edge.dispatchedAt);
     assertEquals("41", edge.dispatchWorkspaceId);
-    assertEquals(port.lastCall().branch(), edge.dispatchBranch);
+    assertEquals(port.lastCall().wrapperBranch(), edge.dispatchBranch);
     assertEquals("SCHEDULED", edge.dispatchAgentLaunch);
     assertNull(edge.dispatchError);
   }

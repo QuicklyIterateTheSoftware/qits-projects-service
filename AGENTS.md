@@ -80,20 +80,31 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   workspace-lifecycle facts and asks. **Three seams, one per class, and the split is the failure
   contract rather than the address:**
   - `control/ReleasedBranchWorkspaces` → `HttpReleasedBranchWorkspaces`: the POST a release makes,
-    after it has already landed, to say that a branch it deleted is gone. Fire-and-forget, **never
-    throws**.
+    after it has already landed, to say that a branch it deleted is gone. The far side marks every
+    agent that owns the branch OBSOLETE and answers `{resolved, agentIds}` (qits-1152).
+    Fire-and-forget, **never throws**.
+
+  **Since qits-1152 an agent is keyed by its work item.** A workspace is only a slot that hosts
+  agents; each agent works on one ticket or epic, in its own worktree, on the wrapper branch
+  `<prefix>/<qualified id>` (`ticket/qits-1002`), and names its submodule branches
+  `<wrapper branch>-<its choice>`. Every call below except the release names the work item
+  (`workId`, the row id), never a branch to find an agent by. See the superproject's
+  `agent-workspace-decoupling-plan.md`.
   - `control/WorkspaceAgentDispatch` → `HttpWorkspaceAgentDispatch`: the POST the one dispatch
-    path (`api/EntityDispatch`) makes to `/workspaces/api/agent-dispatches`, which stands an
-    aggregate workspace on `ticket/<slug>` or `epic/<slug>` and launches an agent in it. A **request somebody is waiting on**, so it throws
+    path (`api/EntityDispatch`) makes to `/workspaces/api/agent-dispatches` with
+    `{repositoryId, wrapperBranch, workId, entityId, entityTitle, entityStatus, entityBlocked,
+    ticketId|epicId, instruction}`, answering `{agent, fresh, agentLaunch, agentIdentity}`. It makes
+    (or adopts) the work item's one ACTIVE agent and places it; the far side derives the agent's push
+    scope from the wrapper branch. A **request somebody is waiting on**, so it throws
     a `DomainException` — 502 for the exchange, 503 for a hop with no address or no credential.
-    <br>Its second verb, `workspacesReferencing`, is the **read back** of the reference that dispatch
-    writes — `GET /workspaces/api/agent-dispatches/references?ticketId=…&epicId=…`, both repeating,
-    one call per listing — and it carries the **opposite** failure contract, deliberately and inside the
+    <br>Its second verb, `agentsFor`, is the **read back** of the reference that dispatch
+    writes — `GET /workspaces/api/agent-dispatches/references?workId=…`, repeating,
+    one call per listing, answering `entries[].agent` with the agent's pushed `branches` — and it carries the **opposite** failure contract, deliberately and inside the
     same class, because the split above is about what a failure means rather than about the address:
     this one decorates a read, so a missing address, a missing credential, a non-200, an unreachable
     far side and an unparseable answer are all one WARN and an empty list. Empty is also the honest
     degraded answer — it is exactly what these screens showed before the field existed. The liveness
-    rule is the far side's and is stated there once (an ACTIVE workspace row, whatever its container
+    rule is the far side's and is stated there once (an ACTIVE agent row, whatever its harness
     is doing); nothing here re-decides it, and `api/DispatchedWorkspaces.referencing(WorkEntity)` is the one
     place what it answers reaches the wire — `GET /work/{qualifiedId}/workspaces`
     (`WorkWorkspacesController`). Until qits-976 it also decorated the per-archetype epic and ticket
@@ -110,29 +121,30 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
     calling such a feature done.
 
   - `control/WorkspaceAgentTurns` → `HttpWorkspaceAgentTurns`: the POST that says something **to the
-    agent already standing on a branch** — `POST /workspaces/api/agent-dispatches/delivery` with
-    `{repositoryId, branch, text, compactFirst:false}`, answering
-    `{workspaceId, delivered, launched, detail}`. It exists because a ticket's phases share one
+    work item's agent** — `POST /workspaces/api/agent-dispatches/delivery` with
+    `{workId, text, compactFirst:false}`, answering
+    `{agentId, delivered, launched, resumed, detail}` (`resumed`: a yielded agent was restarted with
+    its session). It exists because a ticket's phases share one
     workspace and are separated by a context reset rather than by a container, so the end of a phase
     is a moment this service knows something the workspace does not. **Its contract is
     `ReleasedBranchWorkspaces`', not the dispatch's**, and that is the whole reason it is a third
     class: it is told *after* a transition that has already been recorded, so **nobody is waiting on
     it and it must never throw** — absent implementation, no address, no bearer, an unreachable far
-    side and an unreadable answer are ONE behaviour, one WARN naming the branch and the reason. It
-    **returns** what happened (delivered / launched / no workspace / could not) because the caller
+    side and an unreadable answer are ONE behaviour, one WARN naming the work item and the reason. It
+    **returns** what happened (delivered / launched / resumed / no agent / could not) because the caller
     has a thread to say it on, and **that return is advisory**: nothing retries on it and nothing
-    fails on it. A well-formed request is always a 200; `workspaceId: null` is the ordinary answer
-    and means no workspace stands on that branch — **the door never creates one**, which is the
+    fails on it. A well-formed request is always a 200; `agentId: null` is the ordinary answer
+    and means the work item has no ACTIVE agent — **the door never creates one**, which is the
     dispatch door's job one path over. The path sits under `agent-dispatches` for the 403 reason
     above; do not tidy it.
 
   - `control/WorkspaceAgentEntities` → `HttpWorkspaceAgentEntities` (qits-614, widened by
-    qits-617): the POST that tells the workspace on a branch its ticket's or epic's title, status
+    qits-617): the POST that tells the work item's agent its ticket's or epic's title, status
     and block flag — `POST /workspaces/api/agent-dispatches/entity` with
-    `{repositoryId, branch, title, status, blocked}`, answering `{workspaceId, applied}` — so the
+    `{workId, title, status, blocked, blockSource?}`, answering `{agentId, applied}` — so the
     far side names its sessions `<status square> <id> <title>`, the square pale while blocked. A
-    404 there is retried once on the qits-614 door, `/blocked` with `{repositoryId, branch,
-    blocked}`, for a far side older than `/entity`. `WorkspaceAgentTurns`' failure contract (never
+    404 or 405 there is retried once on `/blocked` with the same body, for a far side older than
+    `/entity`. `WorkspaceAgentTurns`' failure contract (never
     throws, one WARN) with no return value, and a 5s bound per exchange because the caller is a
     person's press. `api/AgentEntitySignals` is its one caller, always sending all three values as
     the row holds them, from three triggers each wired once and each after the write: a flag change
@@ -877,15 +889,19 @@ wrapper addressable under a name the project no longer derives. A duplicate is a
 
 ## Branch naming
 
-Work on an epic, feature or task happens on a branch named after the planning row:
+Since qits-1152 a ticket's or an epic's agent works on the wrapper branch named after the work item's
+**qualified id** (`entities/control/WorkBranches`):
 
-    epic/<epic>
-    feature/<epic>/<feature>
-    task/<epic>/<feature>/<task>
+    ticket/<qualified id>     e.g. ticket/qits-1002
+    epic/<qualified id>       e.g. epic/qits-1001
 
-Every level carries its **own** prefix so no branch is ever a path prefix of another. Git stores
-refs as files, so `epic/planning` and `epic/planning/slugs` cannot both exist; the per-level
-prefixes are what make the three depths coexist.
+In each submodule it changes, the agent names its own branch `<wrapper branch>-<its choice>`
+(`ticket/qits-1002-fix-totals`). So every branch says which work item it came from. There are no
+`feature/*` or `task/*` branches any more: the epic's agent works on its features and tasks. The
+qualified id is rendered by the caller (`api/EntityWorkspaces`), because the project's slug is not
+on the row.
+
+Slugs still exist and still never change, but no branch is named after one now:
 
 The segments are the `slug` columns on `Epic`, `Feature` and `Task` (V2). A slug is minted from the
 title at **create** and never changes — `@Column(updatable = false)`, and no `update` path touches
@@ -905,30 +921,11 @@ other. Renaming the capture prefix is a qits-workspaces-service workstream; do n
 
 ## Git refs an agent may push
 
-Each dispatch tells qits-workspaces which Git refs its agent may push: the `gitRefs` member of the
-dispatch request (contract C4 in the superproject's `principal-bound-git-refs-plan.md`).
-`entities/control/WorkBranches` computes the branch and its refs in one place, so the two cannot drift
-apart. The refs are exact refs (`refs/heads/<branch>`) and never `/*` patterns: qits-workspaces
-removes one ref from an epic's list when a sub-workspace takes that branch, and it cannot do that to
-a pattern.
-
-| work | branch | may push |
-| --- | --- | --- |
-| ticket | `ticket/<slug>` (`ticket/ticket-<id8>` for a title with no letters or digits) | its own branch |
-| task | `task/<epic>/<feature>/<task>` | its own branch |
-| epic | `epic/<slug>` | the epic branch, every feature branch and every task branch of the epic |
-
-- **There is no task dispatch door yet.** `WorkBranches.task` holds the rule for when there is one.
-- **The epic list is read when the dispatch is pressed** (`api/EntityWorkspaces`). From REFINED on no
-  feature or task can be added, so a press at REFINED or later sends the complete list. A press at
-  REPORTED (the refine phase) sends the tree as it stands then; a feature or task branch refinement
-  mints afterwards is not in the workspace's refs until the next press, while `epic/<slug>` — the
-  branch the agent works on — always is. A slug never changes, so no ref on it goes stale.
-- **Absent is safe both ways.** Without `gitRefs`, qits-workspaces allows the workspace's own branch;
-  a qits-workspaces older than the member ignores it.
-- **Size.** The idp takes at most 500 refs of at most 255 characters each (contract C2). A slug is at
-  most 55 characters (`Slugs.MAX_LENGTH`), so a task ref is at most 183. The count is not checked here: an epic with more
-  than 499 features and tasks together would exceed it.
+qits-workspaces derives an agent's refs from the wrapper branch the dispatch names (qits-1152):
+`refs/heads/<wrapper branch>` and `refs/heads/<wrapper branch>-*`. This service sends no `gitRefs`
+any more. `security/AgentAccess.coversBranch`, which binds an agent's release request to its own
+branches, reads the glob: a trailing `*` means "starts with what precedes it, and is longer",
+wherever it follows; `/*` is the case it always was; any other `*` makes the entry cover nothing.
 
 The idp commissions of this service's own containers state refs too (contract C2):
 
@@ -1424,8 +1421,9 @@ press on a READY_FOR_DEV entity also moves it to IMPLEMENTING, qits-749), IMPLEM
 verify (a
 press on an IMPLEMENTED entity moves it to VERIFYING);
 VERIFIED, DONE and DROPPED start nothing and answer **409** naming the status, and REFINED answers a
-409 of its own: it waits for a person to schedule it (READY_FOR_DEV, qits-887) — in one workspace on
-the project's **wrapper** with `branchTree`, on `ticket/<slug>` or `epic/<slug>`. The body names a
+409 of its own: it waits for a person to schedule it (READY_FOR_DEV, qits-887) — by the work item's
+one agent, on the project's **wrapper**, on `ticket/<qualified id>` or `epic/<qualified id>`
+(qits-1152). The body names a
 mode, and the mode is the only difference between the two actions the UI offers:
 
     POST /projects/api/work/{qualifiedId}/dispatch   {"mode":"FLOW"}    Dispatch — run the whole flow
@@ -1851,10 +1849,10 @@ would redraw a board because somebody commented on a bug.
 **A ticket can be handed to an agent, through the one dispatch path every lifecycle archetype
 shares** — `POST /projects/api/work/{qualifiedId}/dispatch` (`projects/api/EntityDispatch`, qits-394; see
 "Epic lifecycle" for the route, the FLOW/PHASE bit and the read). The old ticket door,
-`POST /projects/api/tickets/{id}/dispatch-agent`, was removed in qits-399. It stands an aggregate workspace on `ticket/<slug>`
-at the project's **wrapper** — a ticket names no repository, so the whole estate is the answer and
-`branchTree` is true — and launches a coding agent in it over the `control/WorkspaceAgentDispatch`
-port. It lives in `projects.api` because it needs `domain` (the project, the wrapper, the port) and
+`POST /projects/api/tickets/{id}/dispatch-agent`, was removed in qits-399. It asks for the ticket's
+agent on `ticket/<qualified id>` at the project's **wrapper** — a ticket names no repository, so the
+whole estate is the answer — over the `control/WorkspaceAgentDispatch` port (qits-1152: the agent
+is keyed by the work item and placed in a workspace slot). It lives in `projects.api` because it needs `domain` (the project, the wrapper, the port) and
 the **entities jar depends on `domain` nowhere and must keep not depending on it**; the service layer
 may cross, which is the crossing the `projects.api` `/work` controllers (`WorkDispatchController`,
 `WorkWorkspacesController`) already make. `EntitiesPrincipal` is
@@ -1941,14 +1939,20 @@ IMPLEMENTING or VERIFYING itself, through `WorkEntityService.transitionFrom`, ne
 a route — as the dispatch press does (`EntityDispatch`). It hangs off the transition and off nothing else — not
 assignment, not a comment, not a release.
 
+- **VERIFIED asks for the release of the agent's branches** (qits-1152). The work item's ACTIVE
+  agent lists every (repository, branch) it pushed; each is asked for in its own repository through
+  `ReleaseRequests.request`, which converges per repository, so this opens or joins one request per
+  repository, the wrapper last. No ACTIVE agent, or one that pushed nothing, asks for nothing and
+  says so on the thread: an ask naming a branch that is not there would be a PENDING request the
+  sweep retries for ever. A move back to VERIFYING or IMPLEMENTED names each open request that
+  still carries one of those branches.
 - **It is not on `WorkEntityService`** because the entities module has no idea what a workspace is and must
   keep not having one, and because recording a fact and calling out to a sibling service must not
   share a transaction. Both call sites wrap the call in the belt `ReleaseRequests` carries: the port
   must not throw, and a throw is a port bug that may not touch a transition that already happened.
-- **`projects/api/EntityWorkspaces` is where the wrapper and the branch are resolved** (either
-  shape, `ticket/<slug>` or `epic/<slug>` with the epic's feature and task refs), for the dispatch
-  path and the hand-off alike — one address, derived rather than stored, so a copy could
-  drift with nothing failing. `require` carries the dispatch door's 409 unchanged; `find` answers
+- **`projects/api/EntityWorkspaces` is where the wrapper and the branch are resolved**
+  (`ticket/<qualified id>` or `epic/<qualified id>`), for the dispatch path and the hand-off's
+  sentences alike. The hand-off itself finds the agent by the work item's id, never by the branch. `require` carries the dispatch door's 409 unchanged; `find` answers
   empty for the caller that has nobody to refuse.
 - **What lands on the thread is what actually happened**, stamped from the caller like the dispatch
   comment (the stamp is passed *in*, because the MCP surface's fallback identity is `mcp-agent` where
@@ -2698,7 +2702,7 @@ deliberately not part of it (`projects/api/WorkRefinementController` → `Refine
       → {"refinement": RefinementDto | null}             find only; 404 only for an id naming no entity
 
 It shares an address with `/work/{qualifiedId}/dispatch` and nothing else. A dispatch is a qits-workspaces
-workspace on `ticket/<slug>` or `epic/<slug>`; a refinement is a `domain` row and a `refinementhost/`
+agent on `ticket/<qualified id>` or `epic/<qualified id>`; a refinement is a `domain` row and a `refinementhost/`
 container (workload `refinement`, its own registry, commissions, proxy and control socket) on
 `refining/<slug>`. The SPA's refining page being a copy of the workspace page does not make them one
 path. `RefinementDto` gains `entityId`; **`epicId` stays, holding the same value** for every
@@ -2725,9 +2729,9 @@ Concurrency, decided:
   and designs are reached from. Discard, or a resolving transition, is how a room ends.
 - **No new room while a dispatch runs on the entity: 409.** At REPORTED a dispatched agent *is*
   refining — writing the same description, tree and dossier a person in the room would write — and two
-  authors on one draft unaware of each other overwrite each other. "Running" is an **ACTIVE** workspace
-  naming the entity, read through `WorkspaceAgentDispatch.workspacesReferencing` and matched back to
-  the entity's id (integrated and abandoned ones collide with nothing). That read **never throws and
+  authors on one draft unaware of each other overwrite each other. "Running" is an **ACTIVE** agent
+  of the entity, read through `WorkspaceAgentDispatch.agentsFor` and matched back to
+  the entity's id (OBSOLETE and REMOVED ones collide with nothing). That read **never throws and
   answers empty on failure**, so the check **fails open**: with qits-workspaces unreachable, or no
   workspaces context assembled, it sees nobody and the room opens. That is the port's degraded answer
   everywhere, and refusing every open whenever a sibling restarts would cost more than the rare

@@ -120,26 +120,23 @@ import org.jboss.logging.Logger;
  *
  * <h2>VERIFIED asks for a release, and nothing else does</h2>
  *
- * <p>The verify phase ran in the workspace standing on {@code ticket/<slug>} and found the change
- * good. What that branch then needs is to be released, and until now nobody asked: the agent's own
- * instruction says releasing is the goal, but the press that ends verification is a transition and
- * not a release. So a move into VERIFIED opens (or joins) the release request naming that branch on
- * the project's wrapper, and the thread is told which request the ticket now waits on.
+ * <p>The verify phase found the change good. What the agent's branches then need is to be
+ * released. So a move into VERIFIED opens (or joins) a release request for each branch the agent
+ * pushed — one per repository, since a request converges per repository — and the thread is told
+ * which requests the entity now waits on (qits-1152: the agent names its own submodule branches,
+ * {@code <prefix>/<qualified id>-<its choice>}, so they are read from the agent and never derived).
  *
- * <p><b>The workspace is looked up first, and the lookup is the point rather than decoration.</b>
+ * <p><b>The agent is looked up first, and the lookup is the point rather than decoration.</b>
  * {@link ReleaseRequests#request} validates a branch name syntactically and nothing else, so an ask
  * naming a branch the git host no longer has lands a PENDING row whose fold answers UNREACHABLE and
- * which the 30-second sweep then retries for ever, with no path that ever settles it. An <b>ACTIVE</b>
- * reference on exactly {@code ticket/<slug>} is the cheapest available evidence that the branch is
- * there, so <b>no such reference means no ask</b> — one plain sentence on the thread and nothing else.
+ * which the 30-second sweep then retries for ever. The <b>ACTIVE</b> agent's list of pushed
+ * branches is the evidence that each branch is there, so <b>no such agent, or one that pushed
+ * nothing, means no ask</b> — one plain sentence on the thread and nothing else.
  *
- * <p><b>ACTIVE is doing real work in that sentence.</b> {@link
- * WorkspaceAgentDispatch#workspacesReferencing} answers every workspace that names the ticket now,
- * integrated and abandoned ones included, so that a ticket keeps a link to where its work happened
- * after somebody tidied up. This class is the one reader here that <em>acts</em> on the answer, and
- * a workspace that has been resolved is precisely the one whose branch is most likely to have been
- * merged away — so the filter is explicit, in one helper ({@code theLiveOneOn}), with its reason
- * beside it.
+ * <p><b>ACTIVE is doing real work in that sentence.</b> {@link WorkspaceAgentDispatch#agentsFor}
+ * answers every agent of the entity, OBSOLETE and REMOVED ones included. An OBSOLETE agent's branches
+ * were released and deleted — so the filter is explicit, in one helper ({@code theLiveOne}), with
+ * its reason beside it.
  *
  * <p><b>The call is made in process rather than through {@code ReleaseRequestController}, and
  * bypassing that door is the intent.</b> {@link ReleaseRequests} is role-blind; every check on the
@@ -206,9 +203,9 @@ import org.jboss.logging.Logger;
  * and where nothing was delivered it says so with the reason and <b>claims nothing about an
  * agent</b>: a thread saying work resumed when it did not is worse than a thread saying nothing.
  *
- * <p><b>A ticket with no workspace gets no comment at all.</b> {@link
- * WorkspaceAgentTurns.Outcome#NO_WORKSPACE} is not a failure — the delivery door never creates a
- * workspace, so it is the ordinary answer for a ticket nobody has dispatched an agent onto — and a
+ * <p><b>A ticket with no agent gets no comment at all.</b> {@link
+ * WorkspaceAgentTurns.Outcome#NO_AGENT} is not a failure — the delivery door never creates an
+ * agent, so it is the ordinary answer for a ticket nobody has dispatched an agent onto — and a
  * person walking a ticket through the statuses by hand would otherwise have their thread filled with
  * "there was nobody to tell", once per move. The same silence covers a project with no wrapper
  * repository ({@link EntityWorkspaces#find}) and an assembly with no {@link WorkspaceAgentTurns}
@@ -314,7 +311,7 @@ public class PhaseAdvance {
     if (EntityStatus.VERIFIED.name().equals(entity.status)) {
       // The one move that starts no phase and is still not nothing: the work is good, so the branch
       // it was done on is asked to be released. See the class javadoc.
-      releaseWorkspace(entity, changedBy);
+      releaseAgentBranches(entity, changedBy);
       return;
     }
     if (entity.blocked) {
@@ -388,7 +385,7 @@ public class PhaseAdvance {
         || EntityStatus.VERIFYING.name().equals(entity.status)) {
       // Back from VERIFIED, a request may stand open — at VERIFYING since qits-749 (its BACK move),
       // still at IMPLEMENTED for the skip. Read, never inferred from the direction of the move.
-      noteTheReleaseThatStandsOpen(entity, target.get(), changedBy);
+      noteTheReleaseThatStandsOpen(entity, changedBy);
     }
   }
 
@@ -525,29 +522,15 @@ public class PhaseAdvance {
   /**
    * The sentence a FLOW run ends on when its refine phase lands REFINED (qits-887): REFINED starts
    * no phase, so the hand-off a flow used to make here is a person's scheduling now. Said only when
-   * a workspace stands on the entity's branch — the agent that just refined it — for the reason the
-   * no-workspace case says nothing anywhere else: a person walking an entity by hand must not
+   * the entity has an ACTIVE agent — the one that just refined it — for the reason the no-agent case
+   * says nothing anywhere else: a person walking an entity by hand must not
    * collect a sentence per move. Never throws.
    */
   private void noteTheFlowWaitsForAPerson(WorkEntity entity, String changedBy) {
     if (dispatchedWorkspaces.isUnsatisfied()) {
       return;
     }
-    String branch = EntityWorkspaces.branchOf(entity);
-    boolean isTicket = entity.archetype == Archetype.TICKET;
-    List<WorkspaceAgentDispatch.Reference> found;
-    try {
-      found =
-          dispatchedWorkspaces
-              .get()
-              .workspacesReferencing(
-                  isTicket ? List.of(entity.id) : List.of(),
-                  isTicket ? List.of() : List.of(entity.id));
-    } catch (RuntimeException e) {
-      LOG.warnf(e, "Could not look up the workspaces of %s %s: the port threw", noun(entity), entity.id);
-      return;
-    }
-    if (theLiveOneOn(branch, found) == null) {
+    if (theLiveOne(agentsOf(entity)) == null) {
       return;
     }
     LOG.infof(
@@ -560,129 +543,149 @@ public class PhaseAdvance {
       "Refined; waiting for a person to schedule it (READY_FOR_DEV).";
 
   /**
-   * The ask that a move into VERIFIED makes, and the sentence that follows it.
+   * The ask that a move into VERIFIED makes, and the sentence that follows it (qits-1152).
    *
-   * <p>Ordered so that the <b>lookup decides whether anything is asked at all</b>: a reference on
-   * exactly this ticket's branch is the evidence that the branch is still there, and without it an
-   * ask would be a PENDING request the sweep retries for ever. The class javadoc argues that, and
-   * why the request is made here rather than through the release door.
+   * <p>Ordered so that the <b>lookup decides whether anything is asked at all</b>: the entity's
+   * ACTIVE agent lists the (repository, branch) pairs it pushed, which is the evidence each branch is
+   * there. No agent, or an agent that pushed nothing, asks for nothing: an ask naming a branch the
+   * git host does not have would be a PENDING request the sweep retries for ever.
+   *
+   * <p>Each pushed branch is asked for in its own repository; {@link ReleaseRequests#request}
+   * converges per repository, so this opens or joins one request per repository. The wrapper goes
+   * last, after the submodules it points at.
    */
-  private void releaseWorkspace(WorkEntity ticket, String changedBy) {
+  private void releaseAgentBranches(WorkEntity entity, String changedBy) {
     if (dispatchedWorkspaces.isUnsatisfied()) {
-      // No implementation of the port: there is nothing standing anywhere, so there is nothing to
-      // release and nothing to say. The same silence an absent turn port gets.
+      // No implementation of the port: there is no agent anywhere, so there is nothing to release
+      // and nothing to say. The same silence an absent turn port gets.
       LOG.debugf(
-          "Ticket %s is VERIFIED, and no workspace lookup is configured, so no release was asked"
-              + " for",
-          ticket.id);
+          "%s %s is VERIFIED, and no agent lookup is configured, so no release was asked for",
+          entity.archetype, entity.id);
       return;
     }
-    String branch = EntityWorkspaces.branchOf(ticket);
-    boolean isTicket = ticket.archetype == Archetype.TICKET;
-    List<WorkspaceAgentDispatch.Reference> found;
-    try {
-      found =
-          dispatchedWorkspaces
-              .get()
-              .workspacesReferencing(
-                  isTicket ? List.of(ticket.id) : List.of(),
-                  isTicket ? List.of() : List.of(ticket.id));
-    } catch (RuntimeException e) {
-      // The port says it must not throw; a throw is a port bug and must not touch a transition that
-      // has already been recorded. Nothing is known about the branch, which is the "no workspace"
-      // answer — and asking anyway is the one thing that cannot be undone.
-      LOG.warnf(e, "Could not look up the workspaces of ticket %s: the port threw", ticket.id);
-      found = List.of();
-    }
-    WorkspaceAgentDispatch.Reference standing = theLiveOneOn(branch, found);
-    if (standing == null) {
-      // A workspace on some other branch is somebody else's work; a resolved one on this very
-      // branch is work that is over and a branch that may well be gone (see theLiveOneOn); and no
-      // workspace at all is the ordinary state of a ticket walked through by hand. All three are
-      // the same answer, and the sentence below is true of every one of them.
-      LOG.debugf("No workspace stands on %s, so ticket %s asks for no release", branch, ticket.id);
+    WorkspaceAgentDispatch.Agent agent = theLiveOne(agentsOf(entity));
+    if (agent == null) {
+      // A removed or obsolete agent is work that is over and branches that may well be gone (see
+      // theLiveOne); no agent at all is the ordinary state of an entity walked through by hand.
+      LOG.debugf("%s %s has no ACTIVE agent, so it asks for no release", entity.archetype, entity.id);
       say(
-          ticket,
-          "No workspace is standing on `" + branch + "`, so no release was asked for.",
+          entity,
+          "No agent is working on this " + noun(entity) + ", so no release was asked for.",
+          changedBy);
+      return;
+    }
+    List<WorkspaceAgentDispatch.Branch> branches =
+        agent.branches().stream()
+            .sorted(
+                java.util.Comparator.comparing(
+                    branch -> branch.repositoryId().equals(agent.repositoryId())))
+            .toList();
+    if (branches.isEmpty()) {
+      LOG.infof(
+          "%s %s is VERIFIED, but its agent %s pushed no branch, so no release was asked for",
+          entity.archetype, entity.id, agent.agentId());
+      say(
+          entity,
+          "The agent pushed no branches, so no release was asked for. The "
+              + noun(entity)
+              + " is VERIFIED and nothing is running on it.",
           changedBy);
       return;
     }
 
     String requester = changedBy == null || changedBy.isBlank() ? PLATFORM_REQUESTER : changedBy;
+    String summary =
+        (entity.archetype == Archetype.TICKET ? "Ticket " : "Epic ")
+            + entity.slug
+            + ": "
+            + entity.title;
+    List<String> asked = new java.util.ArrayList<>();
+    List<String> refused = new java.util.ArrayList<>();
+    for (WorkspaceAgentDispatch.Branch branch : branches) {
+      try {
+        ReleaseRequestDto request =
+            releaseRequests.request(
+                branch.repositoryId(),
+                branch.branch(),
+                summary,
+                requester,
+                // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
+                // nothing to state — the entity carries no urgency a release could read.
+                null);
+        LOG.infof(
+            "%s %s is VERIFIED: release request %s now carries %s",
+            entity.archetype, entity.id, request.id(), branch.branch());
+        asked.add("`" + branch.branch() + "` (release request " + request.id() + ")");
+      } catch (RuntimeException e) {
+        // The refusal arm's rule: name what did not happen, carry the far side's own reason, and
+        // claim nothing that did.
+        LOG.warnf(
+            e,
+            "Could not ask for the release of %s in %s for %s %s",
+            branch.branch(),
+            branch.repositoryId(),
+            entity.archetype,
+            entity.id);
+        String detail = e.getMessage() == null ? "" : e.getMessage().trim();
+        refused.add("`" + branch.branch() + "`" + (detail.isBlank() ? "" : ": " + detail));
+      }
+    }
+    StringBuilder sentence = new StringBuilder();
+    if (!asked.isEmpty()) {
+      sentence
+          .append("Asked for the release of ")
+          .append(String.join(", ", asked))
+          .append(": the ")
+          .append(noun(entity))
+          .append(" now waits on ")
+          .append(asked.size() == 1 ? "that request." : "those requests.");
+    }
+    if (!refused.isEmpty()) {
+      if (sentence.length() > 0) {
+        sentence.append(' ');
+      }
+      sentence
+          .append("Could not ask for the release of ")
+          .append(String.join("; ", refused))
+          .append(".");
+      if (asked.isEmpty()) {
+        sentence.append(" The ").append(noun(entity)).append(" is VERIFIED and nothing is running on it.");
+      }
+    }
+    say(entity, sentence.toString(), changedBy);
+  }
+
+  /**
+   * Every agent of {@code entity}, or none when the port is absent or threw. The port says it must
+   * not throw; a throw is a port bug and must not touch a transition already recorded.
+   */
+  private List<WorkspaceAgentDispatch.Agent> agentsOf(WorkEntity entity) {
+    if (dispatchedWorkspaces.isUnsatisfied()) {
+      return List.of();
+    }
     try {
-      ReleaseRequestDto request =
-          releaseRequests.request(
-              standing.repositoryId(),
-              branch,
-              (isTicket ? "Ticket " : "Epic ") + ticket.slug + ": " + ticket.title,
-              requester,
-              // No priority: MEDIUM is what a caller who states nothing gets, and this caller has
-              // nothing to state — the ticket carries no urgency a release could read.
-              null);
-      LOG.infof(
-          "Ticket %s (%s) is VERIFIED: release request %s now carries %s",
-          ticket.id, ticket.slug, request.id(), branch);
-      say(
-          ticket,
-          "Asked for the release of `"
-              + branch
-              + "`: the "
-              + noun(ticket)
-              + " now waits on release request "
-              + request.id()
-              + ".",
-          changedBy);
+      // Matched back to this entity: an agent of another work item is never this one's.
+      return dispatchedWorkspaces.get().agentsFor(List.of(entity.id)).stream()
+          .filter(agent -> entity.id.equals(agent.workId()))
+          .toList();
     } catch (RuntimeException e) {
-      // The refusal arm's rule, one door over: name what did not happen, carry the far side's own
-      // reason, and claim nothing that did.
-      LOG.warnf(
-          e,
-          "Could not ask for the release of %s for ticket %s (%s)",
-          branch,
-          ticket.id,
-          ticket.slug);
-      String detail = e.getMessage() == null ? "" : e.getMessage().trim();
-      say(
-          ticket,
-          "Could not ask for the release of `"
-              + branch
-              + "`"
-              + (detail.isBlank() ? "" : ": " + detail)
-              + ". The "
-              + noun(ticket)
-              + " is VERIFIED and nothing is running on it.",
-          changedBy);
+      LOG.warnf(e, "Could not look up the agents of %s %s: the port threw", noun(entity), entity.id);
+      return List.of();
     }
   }
 
   /**
-   * The one workspace that is <b>standing</b> on this ticket's branch: the right branch <em>and</em>
-   * {@link WorkspaceAgentDispatch.Reference#ACTIVE}, or nothing.
+   * The entity's one <b>ACTIVE</b> agent, or nothing.
    *
-   * <p><b>The status filter is the load-bearing half and it is not belt.</b> {@link
-   * WorkspaceAgentDispatch#workspacesReferencing} answers every workspace that ever named this
-   * ticket now, integrated and abandoned ones included — it stopped filtering deliberately, so that
-   * a ticket keeps a link to where its work happened. This is the one caller in this service that
-   * <em>acts</em> on the answer rather than drawing it: a reference here is taken as evidence that
-   * the branch is still there and is turned straight into a release request. A resolved workspace is
-   * exactly the case where that evidence is wrong — its branch has very often been merged away or
-   * deleted by the integration that resolved it — and {@link ReleaseRequests#request} validates a
-   * branch name syntactically and nothing else, so the ask would land a PENDING row whose fold
-   * answers UNREACHABLE and which the 30-second sweep then retries for ever, with no path that ever
-   * settles it. That is the failure this method exists to prevent, and it is why the filter is
-   * spelled out here rather than assumed of the port.
-   *
-   * <p>Branch <b>and</b> status, never one of the two: a live workspace on somebody else's branch is
-   * not this ticket's work, and a resolved workspace on this ticket's own branch is not work that is
-   * still happening.
+   * <p><b>The state filter is load-bearing.</b> {@link WorkspaceAgentDispatch#agentsFor} answers
+   * every agent that ever worked on the entity, so that it keeps a link to where its work happened.
+   * This class <em>acts</em> on the answer: an agent here is taken as evidence that its branches are
+   * still there and is turned straight into release requests. An OBSOLETE or REMOVED agent is
+   * exactly the case where that is wrong — its branches were released and deleted.
    */
-  private static WorkspaceAgentDispatch.Reference theLiveOneOn(
-      String branch, List<WorkspaceAgentDispatch.Reference> found) {
-    return found.stream()
-        .filter(reference -> branch.equals(reference.branch()))
-        .filter(reference -> WorkspaceAgentDispatch.Reference.ACTIVE.equals(reference.status()))
-        .findFirst()
-        .orElse(null);
+  private static WorkspaceAgentDispatch.Agent theLiveOne(
+      List<WorkspaceAgentDispatch.Agent> found) {
+    return found.stream().filter(WorkspaceAgentDispatch.Agent::active).findFirst().orElse(null);
   }
 
   /**
@@ -699,45 +702,49 @@ public class PhaseAdvance {
    * FINALIZED requests as a tail. A finalized request is a release that landed and is nobody's to
    * withdraw, so the tail is dropped again on the way past.
    */
-  private void noteTheReleaseThatStandsOpen(
-      WorkEntity ticket, EntityWorkspaces.Target target, String changedBy) {
-    String branch = target.branch();
-    ReleaseRequestDto open;
-    try {
-      open =
-          releaseRequests.listByRepo(target.repositoryId(), null).stream()
-              .filter(request -> !FINALIZED.equals(request.state()))
-              .filter(
-                  request ->
-                      request.sources().stream()
-                          .map(ReleaseRequestSourceDto::name)
-                          .anyMatch(branch::equals))
-              .findFirst()
-              .orElse(null);
-    } catch (RuntimeException e) {
-      LOG.warnf(
-          e,
-          "Could not read the release requests of %s, so ticket %s was told nothing about the"
-              + " release its branch is on",
-          target.repositoryId(),
-          ticket.id);
+  private void noteTheReleaseThatStandsOpen(WorkEntity ticket, String changedBy) {
+    WorkspaceAgentDispatch.Agent agent = theLiveOne(agentsOf(ticket));
+    if (agent == null) {
       return;
     }
-    if (open == null) {
-      return;
+    for (WorkspaceAgentDispatch.Branch branch : agent.branches()) {
+      ReleaseRequestDto open;
+      try {
+        open =
+            releaseRequests.listByRepo(branch.repositoryId(), null).stream()
+                .filter(request -> !FINALIZED.equals(request.state()))
+                .filter(
+                    request ->
+                        request.sources().stream()
+                            .map(ReleaseRequestSourceDto::name)
+                            .anyMatch(branch.branch()::equals))
+                .findFirst()
+                .orElse(null);
+      } catch (RuntimeException e) {
+        LOG.warnf(
+            e,
+            "Could not read the release requests of %s, so ticket %s was told nothing about the"
+                + " release its branch is on",
+            branch.repositoryId(),
+            ticket.id);
+        return;
+      }
+      if (open == null) {
+        continue;
+      }
+      LOG.infof(
+          "Ticket %s moved back to %s while release request %s still carries %s",
+          ticket.id, ticket.status, open.id(), branch.branch());
+      say(
+          ticket,
+          "Release request "
+              + open.id()
+              + " still names `"
+              + branch.branch()
+              + "` as a source: the release was not withdrawn, and withdrawing or declining it is a"
+              + " person's decision.",
+          changedBy);
     }
-    LOG.infof(
-        "Ticket %s moved back to %s while release request %s still carries %s",
-        ticket.id, ticket.status, open.id(), branch);
-    say(
-        ticket,
-        "Release request "
-            + open.id()
-            + " still names `"
-            + branch
-            + "` as a source: the release was not withdrawn, and withdrawing or declining it is a"
-            + " person's decision.",
-        changedBy);
   }
 
   /**
@@ -808,7 +815,7 @@ public class PhaseAdvance {
     String branch = target.branch();
     WorkspaceAgentTurns.Turn turn;
     try {
-      turn = turns.get().deliver(ticket.id, target.repositoryId(), branch, started.instruction());
+      turn = turns.get().deliver(ticket.id, started.instruction());
     } catch (RuntimeException e) {
       // The port says it must not throw; a throw is a port bug and must not touch a transition that
       // has already been recorded. The thread still gets the honest sentence, because a reader
@@ -824,12 +831,12 @@ public class PhaseAdvance {
               WorkspaceAgentTurns.Outcome.COULD_NOT, "the delivery failed unexpectedly");
     }
 
-    if (turn.outcome() == WorkspaceAgentTurns.Outcome.NO_WORKSPACE) {
+    if (turn.outcome() == WorkspaceAgentTurns.Outcome.NO_AGENT) {
       // The ordinary answer for a ticket nobody dispatched an agent onto. Said in the log for
       // somebody debugging a hand-off, and nowhere else — see the class javadoc.
       LOG.debugf(
-          "No workspace stands on %s, so ticket %s starts its %s phase when somebody dispatches one",
-          branch, ticket.id, started.phase());
+          "Ticket %s has no agent, so it starts its %s phase on %s when somebody dispatches one",
+          ticket.id, started.phase(), branch);
       return false;
     }
 
@@ -875,6 +882,12 @@ public class PhaseAdvance {
               + " phase: no agent was running in the workspace on `"
               + branch
               + "`, so one was launched to take it.";
+      case RESUMED ->
+          "Started the "
+              + phase
+              + " phase: the agent on `"
+              + branch
+              + "` had yielded its workspace, so it was resumed to take it.";
       default ->
           "Could not start the "
               + phase

@@ -26,19 +26,20 @@ import org.jboss.logging.Logger;
  *   Authorization: Bearer &lt;machine token, audience qits-workspaces&gt;
  *   Content-Type: application/json
  *
- *   {"repositoryId": "…", "branch": "ticket/&lt;slug&gt;", "text": "…", "compactFirst": false}
+ *   {"workId": "…", "text": "…", "compactFirst": false}
  *
- *   -&gt; 200 {"workspaceId": 41, "delivered": true,  "launched": false, "detail": "…"}
- *   -&gt; 200 {"workspaceId": 41, "delivered": true,  "launched": true,  "detail": "…"}
- *   -&gt; 200 {"workspaceId": null, "delivered": false, "launched": false, "detail": "…"}
+ *   -&gt; 200 {"agentId": "…", "delivered": true,  "launched": false, "resumed": false, "detail": "…"}
+ *   -&gt; 200 {"agentId": "…", "delivered": true,  "launched": true,  "resumed": false, "detail": "…"}
+ *   -&gt; 200 {"agentId": "…", "delivered": true,  "launched": false, "resumed": true,  "detail": "…"}
+ *   -&gt; 200 {"agentId": null, "delivered": false, "launched": false, "resumed": false, "detail": "…"}
  * </pre>
  *
- * <p><b>A well-formed request is always a 200, and {@code workspaceId: null} is the ordinary
- * answer.</b> It means no workspace stands on that branch — nothing was delivered and nothing was
- * created, because <b>the door never creates a workspace</b>. That is {@link
- * WorkspaceAgentTurns.Outcome#NO_WORKSPACE} here and it is not a failure: standing a workspace up is
- * {@link HttpWorkspaceAgentDispatch}' door, one path over, and a ticket nobody has dispatched an
- * agent onto has nothing to be told.
+ * <p><b>A well-formed request is always a 200, and {@code agentId: null} is the ordinary
+ * answer.</b> It means the work item has no ACTIVE agent (qits-1152: agents are keyed by work item)
+ * — nothing was delivered and nothing was created, because <b>the door never creates an agent</b>.
+ * That is {@link WorkspaceAgentTurns.Outcome#NO_AGENT} here and it is not a failure: making an
+ * agent is {@link HttpWorkspaceAgentDispatch}' door, one path over. {@code resumed} is an agent that
+ * had yielded its slot and was restarted with its session to take the turn.
  *
  * <p><b>The path sits under {@code agent-dispatches} deliberately.</b> That is where the roles are,
  * and it cost a release to learn: the reference read beside it shipped against
@@ -60,7 +61,7 @@ import org.jboss.logging.Logger;
  * <h2>Every failure is one behaviour</h2>
  *
  * <p>No address, no bearer, a timeout, an unreachable or refusing qits-workspaces, an answer that
- * will not parse: <b>one WARN naming the branch and the reason</b>, and a {@link
+ * will not parse: <b>one WARN naming the work item and the reason</b>, and a {@link
  * WorkspaceAgentTurns.Outcome#COULD_NOT}. The port's contract is that it never throws — the
  * transition it follows has already been recorded, and a workspace that could not be spoken to must
  * not turn it into a 500. The WARN is at {@code warn} rather than {@code debug} because the visible
@@ -115,30 +116,19 @@ public class HttpWorkspaceAgentTurns implements WorkspaceAgentTurns {
   @Inject WorkspacesBearer bearer;
 
   @Override
-  public Turn deliver(String repositoryId, String branch, String text) {
-    return deliver(null, repositoryId, branch, text);
-  }
-
-  @Override
-  public Turn deliver(String workId, String repositoryId, String branch, String text) {
+  public Turn deliver(String workId, String text) {
     Optional<String> base = address();
     if (base.isEmpty()) {
-      return couldNot(branch, "no address for qits-workspaces is configured");
+      return couldNot(workId, "no address for qits-workspaces is configured");
     }
     Optional<String> authorization = bearer.authorization();
     if (authorization.isEmpty()) {
-      return couldNot(branch, "no machine bearer for qits-workspaces is available");
+      return couldNot(workId, "no machine bearer for qits-workspaces is available");
     }
     try {
       Map<String, Object> body = new LinkedHashMap<>();
-      body.put("repositoryId", repositoryId);
-      body.put("branch", branch);
+      body.put("workId", workId);
       body.put("text", text);
-      // The work item, which qits-workspaces finds the workspace by before the branch (qits-112).
-      // Omitted when unknown; an older qits-workspaces ignores it.
-      if (workId != null) {
-        body.put("workId", workId);
-      }
       // Whether the far side compacts the session before speaking. False from here: a phase hand-off
       // is told to an agent whose context was just reset anyway, and compaction is the far side's
       // lever, not a decision this port wants an opinion about.
@@ -153,46 +143,48 @@ public class HttpWorkspaceAgentTurns implements WorkspaceAgentTurns {
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() / 100 != 2) {
         return couldNot(
-            branch, "qits-workspaces answered " + response.statusCode() + ": " + response.body());
+            workId, "qits-workspaces answered " + response.statusCode() + ": " + response.body());
       }
-      return read(branch, response.body());
+      return read(workId, response.body());
     } catch (InterruptedException e) {
       // Never swallow the interrupt: this may run on a worker a shutdown interrupts.
       Thread.currentThread().interrupt();
-      return couldNot(branch, "interrupted");
+      return couldNot(workId, "interrupted");
     } catch (Exception e) {
-      return couldNot(branch, e.toString());
+      return couldNot(workId, e.toString());
     }
   }
 
   /**
-   * The answer, read as a {@code Map}. {@code workspaceId: null} is the whole of "no workspace
-   * stands on that branch" — the far side always 200s a well-formed request, so the absence of an id
-   * is information and never a hole. An answer that will not parse, or one carrying an id but
-   * claiming neither delivery nor launch, is {@link Outcome#COULD_NOT}: this side cannot say the
-   * agent was told, and a hopeful yes on a thread is worse than a warn.
+   * The answer, read as a {@code Map}. {@code agentId: null} is the whole of "the work item has no
+   * agent" — the far side always 200s a well-formed request, so the absence of an id is information
+   * and never a hole. An answer that will not parse, or one carrying an id but claiming neither
+   * delivery, launch nor resume, is {@link Outcome#COULD_NOT}: this side cannot say the agent was
+   * told, and a hopeful yes on a thread is worse than a warn.
    */
-  private Turn read(String branch, String responseBody) {
+  private Turn read(String workId, String responseBody) {
     Map<?, ?> answer;
     try {
       answer = MAPPER.readValue(responseBody, Map.class);
     } catch (Exception e) {
-      return couldNot(branch, "qits-workspaces answered something unreadable: " + e);
+      return couldNot(workId, "qits-workspaces answered something unreadable: " + e);
     }
     String detail = answer.get("detail") instanceof String sentence ? sentence : "";
-    if (!(answer.get("workspaceId") instanceof Number workspaceId)) {
-      LOG.debugf("No workspace stands on %s, so the turn was not delivered: %s", branch, detail);
-      return new Turn(Outcome.NO_WORKSPACE, detail);
+    if (!(answer.get("agentId") instanceof String agentId) || agentId.isBlank()) {
+      LOG.debugf("Work item %s has no agent, so the turn was not delivered: %s", workId, detail);
+      return new Turn(Outcome.NO_AGENT, detail);
     }
     boolean launched = Boolean.TRUE.equals(answer.get("launched"));
+    boolean resumed = Boolean.TRUE.equals(answer.get("resumed"));
     boolean delivered = Boolean.TRUE.equals(answer.get("delivered"));
-    if (!launched && !delivered) {
-      return couldNot(branch, "qits-workspaces neither delivered nor launched: " + responseBody);
+    if (!launched && !resumed && !delivered) {
+      return couldNot(
+          workId, "qits-workspaces neither delivered, launched nor resumed: " + responseBody);
     }
-    LOG.infof(
-        "qits-workspaces %s the turn on %s in workspace %s: %s",
-        launched ? "launched an agent for" : "delivered", branch, workspaceId.longValue(), detail);
-    return new Turn(launched ? Outcome.LAUNCHED : Outcome.DELIVERED, detail);
+    Outcome outcome = resumed ? Outcome.RESUMED : launched ? Outcome.LAUNCHED : Outcome.DELIVERED;
+    LOG.infof("qits-workspaces took the turn for %s to agent %s (%s): %s", workId, agentId, outcome,
+        detail);
+    return new Turn(outcome, detail);
   }
 
   /**
@@ -207,11 +199,11 @@ public class HttpWorkspaceAgentTurns implements WorkspaceAgentTurns {
   }
 
   /** The one WARN, and the one failure value. Every way this can go wrong comes through here. */
-  private static Turn couldNot(String branch, String reason) {
+  private static Turn couldNot(String workId, String reason) {
     LOG.warnf(
-        "Could not tell the agent on %s what happened: %s. The transition stands; the next phase"
-            + " starts when somebody presses assign agent.",
-        branch, reason);
+        "Could not tell the agent of %s what happened: %s. The transition stands; the next phase"
+            + " starts when somebody presses dispatch.",
+        workId, reason);
     return new Turn(Outcome.COULD_NOT, reason);
   }
 }

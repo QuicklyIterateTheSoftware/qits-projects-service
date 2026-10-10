@@ -56,6 +56,11 @@ public class PhaseAdvanceTest {
 
   @Inject eu.wohlben.qits.projects.control.ProjectService projects;
 
+  /** Where the wrapper branch is derived, so a sentence's branch can be asserted. */
+  @Inject EntityWorkspaces addresses;
+
+  @Inject eu.wohlben.qits.entities.control.WorkEntityService entities;
+
   /**
    * The bean itself, for the one case that cannot be reached through the transition door — see
    * {@link #aTicketThatWasDroppedDeliversNoTurnAndAsksAboutNoBranch}.
@@ -157,28 +162,44 @@ public class PhaseAdvanceTest {
         .path("entries.comment.body");
   }
 
-  /** A live workspace over at qits-workspaces, standing on a branch and naming this ticket. */
-  private WorkspaceAgentDispatch.Reference standingOn(
+  /**
+   * The ticket's wrapper branch, {@code ticket/<qualified id>} (qits-1152), read as the dispatch and
+   * this flow derive it.
+   */
+  private String branchOf(String ticketId) {
+    return "ticket/" + addresses.qualifiedIdOf(entities.find(ticketId));
+  }
+
+  /** The ticket's ACTIVE agent over at qits-workspaces, having pushed {@code branch} there. */
+  private WorkspaceAgentDispatch.Agent standingOn(
       String repositoryId, String branch, String ticketId) {
-    return RecordingWorkspaceAgentDispatch.live(
-        7L, repositoryId, "ws-" + branch, branch, ticketId, null);
+    return RecordingWorkspaceAgentDispatch.active(
+        "agent-7",
+        7L,
+        repositoryId,
+        ticketId,
+        branch,
+        new WorkspaceAgentDispatch.Branch(repositoryId, branch));
   }
 
   /**
-   * A workspace that <b>was</b> on this branch and has since been integrated or abandoned. The port
-   * answers these now — that is the point of it, so a ticket keeps a link to where its work
-   * happened — and this class is what proves nothing here acts on one.
+   * An agent that <b>was</b> on this ticket and is OBSOLETE or REMOVED now. The port answers these —
+   * so a ticket keeps a link to where its work happened — and this class is what proves nothing
+   * here acts on one.
    */
-  private WorkspaceAgentDispatch.Reference resolvedOn(
-      String repositoryId, String branch, String ticketId, String status) {
-    return RecordingWorkspaceAgentDispatch.resolved(
+  private WorkspaceAgentDispatch.Agent resolvedOn(
+      String repositoryId, String branch, String ticketId, String state) {
+    return new WorkspaceAgentDispatch.Agent(
+        "agent-9",
         9L,
         repositoryId,
-        "ws-" + branch,
-        branch,
         ticketId,
         null,
-        status,
+        branch,
+        List.of(new WorkspaceAgentDispatch.Branch(repositoryId, branch)),
+        state,
+        null,
+        null,
         java.time.Instant.parse("2026-09-20T09:30:00Z"));
   }
 
@@ -227,11 +248,7 @@ public class PhaseAdvanceTest {
     transition(ticketId, "IMPLEMENTED");
     assertEquals(1, turns.calls().size(), "one transition, one turn");
     RecordingWorkspaceAgentTurns.Spoken verify = turns.lastCall();
-    assertEquals(
-        wrapperIdOf(projectId),
-        verify.repositoryId(),
-        "a ticket names no repository, so the turn goes to the project's wrapper");
-    assertEquals("ticket/walk-me-through", verify.branch());
+    assertEquals(ticketId, verify.workId(), "the turn finds the agent by the work item");
     assertTrue(
         verify.text().contains("Verify ticket \""),
         "IMPLEMENTED starts verification: " + verify.text());
@@ -493,8 +510,8 @@ public class PhaseAdvanceTest {
   public void aFlowRefineThatLandsRefinedDeliversNoTurnAndSaysItWaitsForAPerson() {
     String projectId = createProject("Advance Into Refined");
     String ticketId = createTicket(projectId, "Waits for a person");
-    workspaces.willReference(
-        standingOn(wrapperIdOf(projectId), "ticket/waits-for-a-person", ticketId));
+    workspaces.willFind(
+        standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
     transition(ticketId, "REFINED");
@@ -521,15 +538,15 @@ public class PhaseAdvanceTest {
     String projectId = createProject("Advance Pre-approved");
     String ticketId = createTicket(projectId, "Goes all the way");
     dispatchEntities.setPreApprovedBy(ticketId, "mallory", "mallory");
-    workspaces.willReference(
-        standingOn(wrapperIdOf(projectId), "ticket/goes-all-the-way", ticketId));
+    workspaces.willFind(
+        standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
 
     transition(ticketId, "REFINED"); // the refine agent's claim, made here by dana
 
     assertEquals(1, turns.calls().size(), "one implement turn");
     RecordingWorkspaceAgentTurns.Spoken implement = turns.lastCall();
-    assertEquals("ticket/goes-all-the-way", implement.branch());
+    assertEquals(ticketId, implement.workId());
     assertTrue(implement.text().contains("Implement ticket \""), implement.text());
     assertEquals("IMPLEMENTING", statusOf(ticketId));
     assertEquals(null, dispatchEntities.fresh(ticketId).preApprovedBy, "spent");
@@ -560,7 +577,7 @@ public class PhaseAdvanceTest {
     assertEquals(
         List.of(
             "Started the implement phase: the agent working in the workspace on"
-                + " `ticket/goes-all-the-way` was told."),
+                + " `" + branchOf(ticketId) + "` was told."),
         thread(ticketId));
   }
 
@@ -620,7 +637,7 @@ public class PhaseAdvanceTest {
     String projectId = createProject("Advance Into Refined Quietly");
     String ticketId = createTicket(projectId, "Stops quietly");
     dispatchEntities.setDispatchContinues(ticketId, false, "dana");
-    workspaces.willReference(standingOn(wrapperIdOf(projectId), "ticket/stops-quietly", ticketId));
+    workspaces.willFind(standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
 
     transition(ticketId, "REFINED");
 
@@ -637,8 +654,8 @@ public class PhaseAdvanceTest {
   public void schedulingDeliversNoTurnEvenWithAFlowWorkspaceStanding() {
     String projectId = createProject("Advance Scheduled");
     String ticketId = createTicket(projectId, "Scheduled by a person");
-    workspaces.willReference(
-        standingOn(wrapperIdOf(projectId), "ticket/scheduled-by-a-person", ticketId));
+    workspaces.willFind(
+        standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
     turns.willAnswer(WorkspaceAgentTurns.Outcome.DELIVERED, "told it");
     transition(ticketId, "REFINED");
     transitions.reset();
@@ -741,7 +758,7 @@ public class PhaseAdvanceTest {
             "entries[0].comment.body",
             equalTo(
                 "Started the verify phase: the agent working in the workspace on"
-                    + " `ticket/tell-the-agent` was told."));
+                    + " `" + branchOf(ticketId) + "` was told."));
   }
 
   /** A launched agent is a different fact from a told one, and the thread carries which. */
@@ -757,7 +774,9 @@ public class PhaseAdvanceTest {
     assertEquals(
         java.util.List.of(
             "Started the verify phase: no agent was running in the workspace on"
-                + " `ticket/nobody-was-home`, so one was launched to take it."),
+                + " `"
+                + branchOf(ticketId)
+                + "`, so one was launched to take it."),
         thread(ticketId));
   }
 
@@ -770,7 +789,7 @@ public class PhaseAdvanceTest {
   public void aTicketWithNoWorkspaceIsAskedAndThenLeftAlone() {
     String projectId = createProject("Advance Nowhere");
     String ticketId = createTicket(projectId, "Nobody is on this");
-    turns.willAnswer(WorkspaceAgentTurns.Outcome.NO_WORKSPACE, "no workspace stands on that branch");
+    turns.willAnswer(WorkspaceAgentTurns.Outcome.NO_AGENT, "the work item has no agent");
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -889,12 +908,11 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * The dispatch door and this flow have to arrive at the <b>same</b> address, or the hand-off talks
-   * to a branch nobody made. Both resolve through {@code EntityWorkspaces}; this asserts the answer
-   * rather than the sharing, because the answer is what the far side sees.
+   * The dispatch door and this flow have to arrive at the <b>same</b> agent (qits-1152: the work
+   * item's id keys it), or the hand-off talks to nobody. This asserts the answer the far side sees.
    */
   @Test
-  public void theTurnGoesToTheSameWrapperAndBranchTheDispatchDoorStandsUp() {
+  public void theTurnGoesToTheSameWorkItemTheDispatchDoorStandsUp() {
     String projectId = createProject("Advance Same Address");
     String ticketId = createTicket(projectId, "One address");
     scheduled(ticketId);
@@ -902,8 +920,7 @@ public class PhaseAdvanceTest {
 
     transition(ticketId, "IMPLEMENTED");
 
-    assertEquals(wrapperIdOf(projectId), turns.lastCall().repositoryId());
-    assertEquals("ticket/one-address", turns.lastCall().branch());
+    assertEquals(ticketId, turns.lastCall().workId());
     assertTrue(
         turns.lastCall().text().contains(ticketId),
         "and the turn tells the agent where to read the ticket itself");
@@ -941,11 +958,11 @@ public class PhaseAdvanceTest {
    * thread names the request the ticket now waits on.
    */
   @Test
-  public void aMoveIntoVerifiedAsksForTheReleaseOfTheBranchAWorkspaceStandsOn() {
+  public void aMoveIntoVerifiedAsksForTheReleaseOfTheBranchTheAgentPushed() {
     String projectId = createProject("Advance Release");
     String ticketId = createTicket(projectId, "Release me");
     String wrapperId = wrapperIdOf(projectId);
-    workspaces.willReference(standingOn(wrapperId, "ticket/release-me", ticketId));
+    workspaces.willFind(standingOn(wrapperId, branchOf(ticketId), ticketId));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -955,7 +972,7 @@ public class PhaseAdvanceTest {
     assertEquals(1, requests.size(), "one ask, one request");
     Map<String, Object> request = requests.get(0);
     assertTrue(
-        sourceNamesOf(request).contains("ticket/release-me"),
+        sourceNamesOf(request).contains(branchOf(ticketId)),
         "the ticket's own branch is what was put on the request: " + sourceNamesOf(request));
     assertEquals("Ticket release-me: Release me", request.get("summary"));
     assertTrue(
@@ -968,8 +985,8 @@ public class PhaseAdvanceTest {
   public void aMoveIntoVerifiedDeliversNoAgentTurn() {
     String projectId = createProject("Advance Release No Turn");
     String ticketId = createTicket(projectId, "Nothing to say");
-    workspaces.willReference(
-        standingOn(wrapperIdOf(projectId), "ticket/nothing-to-say", ticketId));
+    workspaces.willFind(
+        standingOn(wrapperIdOf(projectId), branchOf(ticketId), ticketId));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -983,53 +1000,90 @@ public class PhaseAdvanceTest {
   }
 
   /**
-   * <b>A workspace on somebody else's branch is not this ticket's, and nothing is asked for.</b>
-   * The negative is the point: {@code ReleaseRequests.request} checks a branch name's syntax and
-   * nothing else, so an ask naming a branch that is not there would be a PENDING request the sweep
-   * retries for ever.
+   * <b>An agent that pushed nothing asks for nothing</b> (qits-1152). {@code
+   * ReleaseRequests.request} checks a branch name's syntax and nothing else, so an ask naming a
+   * branch that is not there would be a PENDING request the sweep retries for ever.
    */
   @Test
-  public void aWorkspaceOnAnotherBranchAsksForNothing() {
-    String projectId = createProject("Advance Release Elsewhere");
-    String ticketId = createTicket(projectId, "Somewhere else");
+  public void anAgentThatPushedNothingAsksForNothing() {
+    String projectId = createProject("Advance Release Nothing Pushed");
+    String ticketId = createTicket(projectId, "Nothing pushed");
     String wrapperId = wrapperIdOf(projectId);
-    workspaces.willReference(standingOn(wrapperId, "epic/something-bigger", ticketId));
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-7", 7L, wrapperId, ticketId, "ticket/x"));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
     transition(ticketId, "VERIFIED");
 
-    assertTrue(
-        releaseRequestsOf(wrapperId).isEmpty(), "no branch was there, so nothing was asked for");
+    assertTrue(releaseRequestsOf(wrapperId).isEmpty(), "nothing was pushed, so nothing was asked for");
     assertEquals(
-        "No workspace is standing on `ticket/somewhere-else`, so no release was asked for.",
+        "The agent pushed no branches, so no release was asked for. The ticket is VERIFIED and"
+            + " nothing is running on it.",
         thread(ticketId).get(thread(ticketId).size() - 1));
   }
 
-  // --- and a resolved workspace is not one to act on ------------------------------------------
-
   /**
-   * <b>The regression this pair exists to prevent.</b> {@code workspacesReferencing} answers every
-   * workspace that names the ticket now — integrated and abandoned ones included, so that the ticket
-   * keeps a link to where its work happened — and this flow is the one reader in this service that
-   * <em>acts</em> on the answer. A resolved workspace's branch has very often been merged away by the
-   * integration that resolved it, and {@code ReleaseRequests.request} checks a branch name's syntax
-   * and nothing else, so asking for its release would land a PENDING row the sweep retries for ever.
-   *
-   * <p>Here both a resolved and a live workspace name this ticket's own branch, and the resolved one
-   * comes first in the answer. The ask has to go to the <b>live</b> one — which is measurable because
-   * the release is asked for at the reference's own repository, so passing over the live one would
-   * ask at the resolved one's repository and leave the wrapper with nothing.
+   * <b>Each pushed branch is asked for in its own repository</b> (qits-1152): the agent named its
+   * submodule branch {@code <wrapper branch>-<its choice>}, and the wrapper's branch goes last.
    */
   @Test
-  public void aResolvedWorkspaceIsPassedOverForTheLiveOneOnTheSameBranch() {
+  public void aMoveIntoVerifiedAsksForEveryBranchTheAgentPushedInItsOwnRepository() {
+    String projectId = createProject("Advance Release Two Repositories");
+    String ticketId = createTicket(projectId, "Two repositories");
+    String wrapperId = wrapperIdOf(projectId);
+    String componentId =
+        projects.createRepository(projectId, null, "advance-component-service", null).repository().id;
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch),
+            new WorkspaceAgentDispatch.Branch(componentId, branch + "-totals")));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    List<Map<String, Object>> component = releaseRequestsOf(componentId);
+    List<Map<String, Object>> wrapper = releaseRequestsOf(wrapperId);
+    assertEquals(1, component.size(), "one request in the component");
+    assertEquals(1, wrapper.size(), "and one in the wrapper");
+    assertTrue(sourceNamesOf(component.get(0)).contains(branch + "-totals"));
+    assertTrue(sourceNamesOf(wrapper.get(0)).contains(branch));
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(
+        said.indexOf((String) component.get(0).get("id"))
+            < said.indexOf((String) wrapper.get(0).get("id")),
+        "the wrapper is asked for last: " + said);
+  }
+
+  // --- and an obsolete agent is not one to act on ---------------------------------------------
+
+  /**
+   * <b>The regression this pair exists to prevent.</b> {@code agentsFor} answers every agent of the
+   * ticket — OBSOLETE and REMOVED ones included, so that the ticket keeps a link to where its work
+   * happened — and this flow <em>acts</em> on the answer. An obsolete agent's branches were released
+   * and deleted, and {@code ReleaseRequests.request} checks a branch name's syntax and nothing else,
+   * so asking for their release would land a PENDING row the sweep retries for ever.
+   *
+   * <p>Here an obsolete and an ACTIVE agent both name this ticket's branch, and the obsolete one
+   * comes first. The ask has to go to the <b>active</b> one — measurable because the release is asked
+   * for at the branch's own repository.
+   */
+  @Test
+  public void anObsoleteAgentIsPassedOverForTheActiveOne() {
     String projectId = createProject("Advance Release Resolved And Live");
     String ticketId = createTicket(projectId, "Twice around");
     String wrapperId = wrapperIdOf(projectId);
-    workspaces.willReference(
-        resolvedOn("a-repository-that-is-not-the-wrapper", "ticket/twice-around", ticketId,
-            "INTEGRATED"),
-        standingOn(wrapperId, "ticket/twice-around", ticketId));
+    workspaces.willFind(
+        resolvedOn("a-repository-that-is-not-the-wrapper", branchOf(ticketId), ticketId,
+            "OBSOLETE"),
+        standingOn(wrapperId, branchOf(ticketId), ticketId));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1038,7 +1092,7 @@ public class PhaseAdvanceTest {
     java.util.List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
     assertEquals(1, requests.size(), "the live workspace's repository is where the ask went");
     assertTrue(
-        sourceNamesOf(requests.get(0)).contains("ticket/twice-around"),
+        sourceNamesOf(requests.get(0)).contains(branchOf(ticketId)),
         "the ticket's own branch is on it: " + sourceNamesOf(requests.get(0)));
     assertTrue(
         thread(ticketId).get(thread(ticketId).size() - 1).contains((String) requests.get(0).get("id")),
@@ -1051,12 +1105,12 @@ public class PhaseAdvanceTest {
    * workspace at all: one plain sentence, no request, and the transition itself untouched.
    */
   @Test
-  public void aTicketWhoseOnlyWorkspaceIsResolvedAsksForNothingAndDoesNotError() {
+  public void aTicketWhoseOnlyAgentIsRemovedAsksForNothingAndDoesNotError() {
     String projectId = createProject("Advance Release Resolved Only");
     String ticketId = createTicket(projectId, "Tidied away");
     String wrapperId = wrapperIdOf(projectId);
-    workspaces.willReference(
-        resolvedOn(wrapperId, "ticket/tidied-away", ticketId, "ABANDONED"));
+    workspaces.willFind(
+        resolvedOn(wrapperId, branchOf(ticketId), ticketId, "REMOVED"));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1071,7 +1125,7 @@ public class PhaseAdvanceTest {
         releaseRequestsOf(wrapperId).isEmpty(),
         "an abandoned workspace's branch is not one to ask for the release of");
     assertEquals(
-        "No workspace is standing on `ticket/tidied-away`, so no release was asked for.",
+        "No agent is working on this ticket, so no release was asked for.",
         thread(ticketId).get(thread(ticketId).size() - 1));
     asAdmin("dana")
         .when()
@@ -1095,7 +1149,7 @@ public class PhaseAdvanceTest {
         releaseRequestsOf(wrapperIdOf(projectId)).isEmpty(),
         "there is no branch to release, so nothing was asked for");
     assertEquals(
-        "No workspace is standing on `ticket/walked-by-hand`, so no release was asked for.",
+        "No agent is working on this ticket, so no release was asked for.",
         thread(ticketId).get(thread(ticketId).size() - 1));
   }
 
@@ -1109,7 +1163,7 @@ public class PhaseAdvanceTest {
   public void aLookupThatAnswersEmptyIsTreatedAsNoWorkspace() {
     String projectId = createProject("Advance Release Unreachable");
     String ticketId = createTicket(projectId, "Far side is down");
-    workspaces.willReference(); // exactly what a failed lookup answers
+    workspaces.willFind(); // exactly what a failed lookup answers
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1122,7 +1176,7 @@ public class PhaseAdvanceTest {
         "the far side was asked, which is the only way to know");
     assertTrue(releaseRequestsOf(wrapperIdOf(projectId)).isEmpty());
     assertEquals(
-        "No workspace is standing on `ticket/far-side-is-down`, so no release was asked for.",
+        "No agent is working on this ticket, so no release was asked for.",
         thread(ticketId).get(thread(ticketId).size() - 1));
   }
 
@@ -1136,7 +1190,7 @@ public class PhaseAdvanceTest {
     String projectId = createProject("Advance Release Twice");
     String ticketId = createTicket(projectId, "Verified again");
     String wrapperId = wrapperIdOf(projectId);
-    workspaces.willReference(standingOn(wrapperId, "ticket/verified-again", ticketId));
+    workspaces.willFind(standingOn(wrapperId, branchOf(ticketId), ticketId));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1150,7 +1204,7 @@ public class PhaseAdvanceTest {
     assertEquals(first, requests.get(0).get("id"));
     assertEquals(
         1,
-        sourceNamesOf(requests.get(0)).stream().filter("ticket/verified-again"::equals).count(),
+        sourceNamesOf(requests.get(0)).stream().filter(branchOf(ticketId)::equals).count(),
         "and the branch is on it once: " + sourceNamesOf(requests.get(0)));
     assertTrue(
         thread(ticketId).get(thread(ticketId).size() - 1).contains(first),
@@ -1169,7 +1223,7 @@ public class PhaseAdvanceTest {
     String projectId = createProject("Advance Release Back");
     String ticketId = createTicket(projectId, "Not fixed after all");
     String wrapperId = wrapperIdOf(projectId);
-    workspaces.willReference(standingOn(wrapperId, "ticket/not-fixed-after-all", ticketId));
+    workspaces.willFind(standingOn(wrapperId, branchOf(ticketId), ticketId));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1181,7 +1235,9 @@ public class PhaseAdvanceTest {
     assertEquals(
         "Release request "
             + requestId
-            + " still names `ticket/not-fixed-after-all` as a source: the release was not"
+            + " still names `"
+            + branchOf(ticketId)
+            + "` as a source: the release was not"
             + " withdrawn, and withdrawing or declining it is a person's decision.",
         last);
   }
@@ -1203,7 +1259,7 @@ public class PhaseAdvanceTest {
     assertEquals(
         java.util.List.of(
             "Started the verify phase: the agent working in the workspace on"
-                + " `ticket/first-time-through` was told."),
+                + " `" + branchOf(ticketId) + "` was told."),
         thread(ticketId),
         "nothing was asked for, so nothing is named");
   }
@@ -1214,7 +1270,7 @@ public class PhaseAdvanceTest {
     String projectId = createProject("Advance Release Refused");
     String ticketId = createTicket(projectId, "Two steps at once");
     String wrapperId = wrapperIdOf(projectId);
-    workspaces.willReference(standingOn(wrapperId, "ticket/two-steps-at-once", ticketId));
+    workspaces.willFind(standingOn(wrapperId, branchOf(ticketId), ticketId));
 
     asAdmin("dana")
         .body(new Transition("VERIFIED")) // REPORTED → VERIFIED is three steps

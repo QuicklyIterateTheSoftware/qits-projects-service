@@ -599,13 +599,17 @@ public class CampaignExecutor {
     em.createNativeQuery(
             """
             update entity_membership
-               set dispatched_at = :now, dispatch_workspace_id = :workspace,
+               set dispatched_at = :now, dispatch_workspace_id = cast(:workspace as varchar),
                    dispatch_branch = :branch, dispatch_agent_launch = :launch,
                    dispatch_error = null, updated_at = :now
              where id = :id
             """)
         .setParameter("now", now)
-        .setParameter("workspace", String.valueOf(outcome.made().workspaceRowId()))
+        .setParameter(
+            "workspace",
+            outcome.made().workspaceRowId() == null
+                ? null
+                : String.valueOf(outcome.made().workspaceRowId()))
         .setParameter("branch", outcome.branch())
         .setParameter("launch", outcome.made().agentLaunch())
         .setParameter("id", membershipId)

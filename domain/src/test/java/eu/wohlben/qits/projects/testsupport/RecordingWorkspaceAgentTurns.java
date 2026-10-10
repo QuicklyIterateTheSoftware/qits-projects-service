@@ -29,7 +29,7 @@ import java.util.List;
 public class RecordingWorkspaceAgentTurns implements WorkspaceAgentTurns {
 
   /** One turn, exactly as the caller asked for it. */
-  public record Spoken(String repositoryId, String branch, String text) {}
+  public record Spoken(String workId, String text) {}
 
   private final List<Spoken> calls = new ArrayList<>();
 
@@ -41,13 +41,13 @@ public class RecordingWorkspaceAgentTurns implements WorkspaceAgentTurns {
    * thread in this repository's ticket suites and make each of them assert a workspace that does
    * not exist. A test about delivery scripts it with {@link #willAnswer}.
    */
-  private Turn scripted = new Turn(Outcome.NO_WORKSPACE, "");
+  private Turn scripted = new Turn(Outcome.NO_AGENT, "");
 
   private RuntimeException failure;
 
   @Override
-  public synchronized Turn deliver(String repositoryId, String branch, String text) {
-    calls.add(new Spoken(repositoryId, branch, text));
+  public synchronized Turn deliver(String workId, String text) {
+    calls.add(new Spoken(workId, text));
     if (failure != null) {
       throw failure;
     }
@@ -82,7 +82,7 @@ public class RecordingWorkspaceAgentTurns implements WorkspaceAgentTurns {
    */
   public synchronized void reset() {
     calls.clear();
-    scripted = new Turn(Outcome.NO_WORKSPACE, "");
+    scripted = new Turn(Outcome.NO_AGENT, "");
     failure = null;
   }
 }

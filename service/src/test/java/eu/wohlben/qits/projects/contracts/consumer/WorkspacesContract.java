@@ -2,7 +2,7 @@ package eu.wohlben.qits.projects.contracts.consumer;
 
 import static eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.json;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import eu.wohlben.qits.projects.contracts.consumer.ConsumerRow.Trigger;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
@@ -17,18 +17,31 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * <b>What qits-projects asks qits-workspaces</b> (ticket qits-1149): dispatching an agent onto a
- * branch, the workspaces that reference work items, the entity and blocked signals, a delivered
- * turn, and resolving the workspace on a released branch.
+ * <b>What qits-projects asks qits-workspaces</b> (ticket qits-1149, reshaped by qits-1152):
+ * dispatching an agent for a work item, the agents that work on work items, the entity signal, a
+ * delivered turn, and marking the agents of a released branch obsolete. Every call but the release
+ * names the work item; none names a branch to find an agent by.
  *
  * <p>{@code POST /agent-dispatches/blocked} is the fallback {@link HttpWorkspaceAgentEntities} uses
- * when the entity door answers 404 or 405 (a qits-workspaces older than it). It is listed in the
- * inventory and has no row: a pact against a current provider cannot reach it.
+ * when the entity door answers 404 or 405 (a qits-workspaces older than it). It takes the same body
+ * and has no row: a pact against a current provider cannot reach it.
  */
 final class WorkspacesContract {
 
   static final String PROVIDER = "qits-workspaces-service";
   static final String APP = "qits-workspaces";
+
+  /** A wrapper repository and a ticket with no agent yet. */
+  static final String A_TICKET_TO_DISPATCH = "a wrapper repository and a ticket to dispatch";
+
+  /** Agents in every state, each bound to a work item of one project. */
+  static final String AGENTS_BOUND_TO_WORK_ITEMS = "a project with agents bound to work items";
+
+  /** One ACTIVE agent working on a ticket. */
+  static final String AN_AGENT_ON_A_TICKET = "an agent working on a ticket";
+
+  /** An ACTIVE agent that pushed the branch a release just deleted. */
+  static final String AN_AGENT_ON_A_RELEASED_BRANCH = "an agent owning a released branch";
 
   private static final WorkspacesBearer BEARER = () -> Optional.of("Bearer machine-token");
 
@@ -46,15 +59,23 @@ final class WorkspacesContract {
               PROVIDER,
               APP,
               "dispatchAgent",
-              "a repository with a branch for a ticket",
+              A_TICKET_TO_DISPATCH,
               "POST",
               "/workspaces/api/agent-dispatches",
               Map.of(),
               json(
-                  "{\"repositoryId\":\"{repositoryId}\",\"branch\":\"{branch}\",\"branchTree\":false,"
-                      + "\"ticketId\":\"{ticketId}\",\"workId\":\"{ticketId}\","
-                      + "\"entityBlocked\":false,\"instruction\":\"implement\"}"),
-              List.of("$.workspace.id", "$.fresh", "$.agentLaunch", "$.agentIdentity"),
+                  "{\"repositoryId\":\"{repositoryId}\",\"wrapperBranch\":\"{wrapperBranch}\","
+                      + "\"workId\":\"{ticketId}\",\"entityId\":\"{ticketQualifiedId}\","
+                      + "\"entityTitle\":\"Fix it\",\"entityStatus\":\"REFINED\","
+                      + "\"entityBlocked\":false,\"ticketId\":\"{ticketId}\","
+                      + "\"instruction\":\"implement\"}"),
+              List.of(
+                  "$.agent.agentId",
+                  "$.agent.workspaceRowId",
+                  "$.agent.repositoryId",
+                  "$.fresh",
+                  "$.agentLaunch",
+                  "$.agentIdentity"),
               200,
               Trigger.operation("dispatchWork"),
               (base, p) -> {
@@ -62,100 +83,99 @@ final class WorkspacesContract {
                     workspaces(new HttpWorkspaceAgentDispatch(), base)
                         .dispatchAgent(
                             p.get("repositoryId"),
-                            p.get("branch"),
-                            null,
-                            false,
-                            WorkspaceAgentDispatch.Subject.ticket(p.get("ticketId")),
+                            p.get("wrapperBranch"),
+                            WorkspaceAgentDispatch.Subject.ticket(p.get("ticketId"))
+                                .withQualifiedId(p.get("ticketQualifiedId"))
+                                .withEntityState("Fix it", "REFINED", false),
                             "implement");
-                assertTrue(dispatch.workspaceRowId() > 0);
+                assertFalse(dispatch.agentId().isBlank());
               },
-              "POST /workspaces/api/agent-dispatches answering 200 with workspace.id, fresh,"
+              "params repositoryId (the wrapper), ticketId, ticketQualifiedId and wrapperBranch"
+                  + " (ticket/<ticketQualifiedId>); POST /workspaces/api/agent-dispatches answering"
+                  + " 200 with agent.agentId, agent.workspaceRowId, agent.repositoryId, fresh,"
                   + " agentLaunch and agentIdentity"),
           new ConsumerRow(
               PROVIDER,
               APP,
               "listAgentDispatchReferences",
-              "a project with workspaces bound to work items",
+              AGENTS_BOUND_TO_WORK_ITEMS,
               "GET",
               "/workspaces/api/agent-dispatches/references",
-              Map.of("ticketId", "{bugTicketId}"),
+              Map.of("workId", "{bugTicketId}"),
               null,
               List.of(
-                  "$.entries[*].workspace.workspaceRowId",
-                  "$.entries[*].workspace.repositoryId",
-                  "$.entries[*].workspace.workspaceId",
-                  "$.entries[*].workspace.branch",
-                  "$.entries[*].workspace.ticketId",
-                  "$.entries[*].workspace.epicId",
-                  "$.entries[*].workspace.status",
-                  "$.entries[*].workspace.resolvedAt"),
+                  "$.entries[*].agent.agentId",
+                  "$.entries[*].agent.workspaceRowId",
+                  "$.entries[*].agent.repositoryId",
+                  "$.entries[*].agent.workId",
+                  "$.entries[*].agent.entityId",
+                  "$.entries[*].agent.wrapperBranch",
+                  "$.entries[*].agent.branches[*].repositoryId",
+                  "$.entries[*].agent.branches[*].branch",
+                  "$.entries[*].agent.state",
+                  "$.entries[*].agent.runState",
+                  "$.entries[*].agent.createdAt",
+                  "$.entries[*].agent.removedAt"),
               200,
               Trigger.operation("getWorkDispatch"),
               (base, p) ->
                   assertFalse(
                       workspaces(new HttpWorkspaceAgentDispatch(), base)
-                          .workspacesReferencing(List.of(p.get("bugTicketId")), List.of())
+                          .agentsFor(List.of(p.get("bugTicketId")))
                           .isEmpty()),
-              "GET .../agent-dispatches/references?ticketId answering 200 with entries[].workspace"
-                  + " rows"),
+              "param bugTicketId; GET .../agent-dispatches/references?workId answering 200 with"
+                  + " entries[].agent rows (ACTIVE, OBSOLETE and REMOVED, at least one with a"
+                  + " pushed branch)"),
           new ConsumerRow(
               PROVIDER,
               APP,
               "markAgentDispatchEntity",
-              "a workspace standing on a ticket's branch",
+              AN_AGENT_ON_A_TICKET,
               "POST",
               "/workspaces/api/agent-dispatches/entity",
               Map.of(),
               json(
-                  "{\"repositoryId\":\"{repositoryId}\",\"branch\":\"{branch}\",\"title\":\"Fix it\","
-                      + "\"status\":\"IMPLEMENTING\",\"blocked\":false,\"workId\":\"{ticketId}\"}"),
-              List.of("$.workspaceId", "$.applied"),
+                  "{\"workId\":\"{ticketId}\",\"title\":\"Fix it\",\"status\":\"IMPLEMENTING\","
+                      + "\"blocked\":false}"),
+              List.of("$.agentId", "$.applied"),
               200,
               Trigger.operation("setWorkStatus"),
               (base, p) ->
                   workspaces(new HttpWorkspaceAgentEntities(), base)
-                      .changed(
-                          p.get("ticketId"),
-                          p.get("repositoryId"),
-                          p.get("branch"),
-                          "Fix it",
-                          "IMPLEMENTING",
-                          false),
-              "POST .../agent-dispatches/entity answering 200 with workspaceId and applied"),
+                      .changed(p.get("ticketId"), "Fix it", "IMPLEMENTING", false, null),
+              "param ticketId; POST .../agent-dispatches/entity answering 200 with agentId and"
+                  + " applied"),
           new ConsumerRow(
               PROVIDER,
               APP,
               "deliverAgentTurn",
-              "a workspace standing on a ticket's branch",
+              AN_AGENT_ON_A_TICKET,
               "POST",
               "/workspaces/api/agent-dispatches/delivery",
               Map.of(),
-              json(
-                  "{\"repositoryId\":\"{repositoryId}\",\"branch\":\"{branch}\",\"text\":\"go on\","
-                      + "\"workId\":\"{ticketId}\",\"compactFirst\":false}"),
-              List.of("$.workspaceId", "$.launched", "$.delivered", "$.detail"),
+              json("{\"workId\":\"{ticketId}\",\"text\":\"go on\",\"compactFirst\":false}"),
+              List.of("$.agentId", "$.delivered", "$.launched", "$.resumed", "$.detail"),
               200,
               Trigger.operation("transitionWork"),
               (base, p) -> {
                 WorkspaceAgentTurns.Turn turn =
-                    workspaces(new HttpWorkspaceAgentTurns(), base)
-                        .deliver(p.get("ticketId"), p.get("repositoryId"), p.get("branch"), "go on");
-                assertTrue(turn.spoken(), turn.detail());
+                    workspaces(new HttpWorkspaceAgentTurns(), base).deliver(p.get("ticketId"), "go on");
+                assertNotEquals(WorkspaceAgentTurns.Outcome.NO_AGENT, turn.outcome(), turn.detail());
               },
-              "POST .../agent-dispatches/delivery answering 200 with workspaceId, launched,"
-                  + " delivered and detail"),
+              "param ticketId; POST .../agent-dispatches/delivery answering 200 with agentId,"
+                  + " delivered, launched, resumed and detail"),
           new ConsumerRow(
               PROVIDER,
               APP,
               "resolveReleasedBranch",
-              "a workspace standing on a released branch",
+              AN_AGENT_ON_A_RELEASED_BRANCH,
               "POST",
               "/workspaces/api/branches/resolution",
               Map.of("repositoryId", "{repositoryId}"),
               json(
                   "{\"branch\":\"{branch}\",\"target\":\"{version}\",\"commit\":\"{sha}\","
                       + "\"result\":\"released as {version}\"}"),
-              List.of("$.resolved", "$.workspaceId"),
+              List.of("$.resolved", "$.agentIds"),
               200,
               Trigger.schedule("ReleaseRequests.resolveWorkspacesOnReleasedBranches"),
               (base, p) ->
@@ -165,6 +185,7 @@ final class WorkspacesContract {
                           "bearer", BEARER)
                       .branchReleased(
                           p.get("repositoryId"), p.get("branch"), p.get("version"), p.get("sha")),
-              "POST /workspaces/api/branches/resolution?repositoryId answering 200 with resolved and"
-                  + " workspaceId"));
+              "params repositoryId, branch, version, sha; POST"
+                  + " /workspaces/api/branches/resolution?repositoryId answering 200 with resolved"
+                  + " and agentIds"));
 }

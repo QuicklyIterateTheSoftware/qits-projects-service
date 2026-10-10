@@ -72,21 +72,20 @@ public class DispatchedWorkspacesReadTest {
     return asAdmin().when().get("/projects/api/work/" + id + "/workspaces").then().statusCode(200);
   }
 
-  private static WorkspaceAgentDispatch.Reference onTicket(long rowId, String ticketId) {
-    return RecordingWorkspaceAgentDispatch.live(
-        rowId, "repo-1", "ticket-work", "ticket/work", ticketId, null);
+  private static WorkspaceAgentDispatch.Agent onTicket(long rowId, String ticketId) {
+    return RecordingWorkspaceAgentDispatch.active(
+        "agent-" + rowId, rowId, "repo-1", ticketId, "ticket/contract-1");
   }
 
-  /** The same workspace after somebody integrated it: still named, and no longer standing. */
-  private static WorkspaceAgentDispatch.Reference resolvedOnTicket(long rowId, String ticketId) {
-    return RecordingWorkspaceAgentDispatch.resolved(
+  /** The same agent after its branches were released: still named, and no longer working. */
+  private static WorkspaceAgentDispatch.Agent obsoleteOnTicket(long rowId, String ticketId) {
+    return RecordingWorkspaceAgentDispatch.inState(
+        "agent-" + rowId,
         rowId,
         "repo-1",
-        "ticket-work-done",
-        "ticket/work-done",
         ticketId,
-        null,
-        "INTEGRATED",
+        "ticket/contract-2",
+        "OBSOLETE",
         Instant.parse("2026-09-20T11:00:00Z"));
   }
 
@@ -95,23 +94,22 @@ public class DispatchedWorkspacesReadTest {
     String projectId = createProject("Referenced ticket detail");
     String ticketId = createTicket(projectId, "Read me");
     createTicket(projectId, "Nobody is on this");
-    dispatch.willReference(onTicket(41L, ticketId), onTicket(42L, ticketId));
+    dispatch.willFind(onTicket(41L, ticketId), onTicket(42L, ticketId));
 
     workspacesOf(ticketId)
         // Two workspaces on one ticket is a real answer and the SPA draws two links for it.
         .body("workspaces", hasSize(2))
+        .body("workspaces[0].agentId", equalTo("agent-41"))
         .body("workspaces[0].workspaceRowId", equalTo(41))
         .body("workspaces[0].repositoryId", equalTo("repo-1"))
-        .body("workspaces[0].branch", equalTo("ticket/work"))
+        .body("workspaces[0].branch", equalTo("ticket/contract-1"))
         // The status travels with every row, live ones included — the browser draws the difference,
         // so "this one is still running" has to be a word on the wire and not an absence.
         .body("workspaces[0].status", equalTo("ACTIVE"));
 
-    // One lookup, about this ticket alone — and no epic half asked.
+    // One lookup, about this ticket alone, by its work id.
     assertEquals(1, dispatch.lookups().size());
-    RecordingWorkspaceAgentDispatch.Looked asked = dispatch.lookups().get(0);
-    assertEquals(List.of(ticketId), asked.ticketIds());
-    assertTrue(asked.epicIds().isEmpty(), "a ticket's read asked about epics");
+    assertEquals(List.of(ticketId), dispatch.lookups().get(0).workIds());
 
     // An edit answers the row it changed and asks nobody who is working on it.
     int lookups = dispatch.lookups().size();
@@ -128,14 +126,13 @@ public class DispatchedWorkspacesReadTest {
   public void anEpicsWorkspacesAreReadToo() {
     String projectId = createProject("Referenced epics");
     String epicId = createEpic(projectId, "Somebody is implementing this");
-    dispatch.willReference(
-        RecordingWorkspaceAgentDispatch.live(77L, "repo-1", "epic-work", "epic/work", null, epicId));
+    dispatch.willFind(
+        RecordingWorkspaceAgentDispatch.active("agent-77", 77L, "repo-1", epicId, "epic/contract-3"));
 
     workspacesOf(epicId).body("workspaces", hasSize(1)).body("workspaces[0].workspaceRowId", equalTo(77));
 
     assertEquals(1, dispatch.lookups().size());
-    assertEquals(List.of(epicId), dispatch.lookups().get(0).epicIds());
-    assertTrue(dispatch.lookups().get(0).ticketIds().isEmpty(), "an epic's read asked about tickets");
+    assertEquals(List.of(epicId), dispatch.lookups().get(0).workIds());
   }
 
   /** Only a ticket and an epic are dispatched onto a branch: a feature answers empty, asking nobody. */
@@ -150,17 +147,16 @@ public class DispatchedWorkspacesReadTest {
   }
 
   /**
-   * <b>A resolved workspace reaches the ticket, carrying the word that says so.</b> This is the
-   * whole point of the change: the workspace is where the work happened — the transcripts, the diff,
-   * the session — and dropping the reference the moment somebody integrated or abandoned it took the
-   * only way back to them with it. So it stays on the list and says what it is, and every reader
-   * decides for itself what that means. Nothing in this service filters it out on the read.
+   * <b>An obsolete agent reaches the ticket, carrying the word that says so.</b> The agent is where
+   * the work happened — the transcripts, the diff, the session — so it stays on the list and says
+   * what it is, and every reader decides for itself what that means. Nothing in this service filters
+   * it out on the read.
    */
   @Test
-  public void aResolvedWorkspaceStillReachesTheTicketAndSaysThatItIsResolved() {
+  public void anObsoleteAgentStillReachesTheTicketAndSaysSo() {
     String projectId = createProject("Referenced after the fact");
     String ticketId = createTicket(projectId, "The work is done");
-    dispatch.willReference(resolvedOnTicket(58L, ticketId), onTicket(59L, ticketId));
+    dispatch.willFind(obsoleteOnTicket(58L, ticketId), onTicket(59L, ticketId));
 
     asAdmin()
         .when()
@@ -170,19 +166,17 @@ public class DispatchedWorkspacesReadTest {
         // Both of them: one that is over and one that is still running.
         .body("workspaces", hasSize(2))
         .body(
-            "workspaces.find { it.workspaceRowId == 58 }.status", equalTo("INTEGRATED"))
+            "workspaces.find { it.workspaceRowId == 58 }.status", equalTo("OBSOLETE"))
         .body(
             "workspaces.find { it.workspaceRowId == 58 }.branch",
-            equalTo("ticket/work-done"))
+            equalTo("ticket/contract-2"))
         .body("workspaces.find { it.workspaceRowId == 59 }.status", equalTo("ACTIVE"))
-        // resolvedAt is deliberately NOT on the wire: nothing the browser draws needs it, and the
-        // DTO the frontend reads stays the minimum it can be. The port carries it for a reader
-        // that one day does.
-        .body("workspaces.find { it.workspaceRowId == 58 }.resolvedAt", equalTo(null));
+        // removedAt is deliberately NOT on the wire: nothing the browser draws needs it.
+        .body("workspaces.find { it.workspaceRowId == 58 }.removedAt", equalTo(null));
   }
 
   /**
-   * A reference naming somebody else's row is dropped rather than drawn on this one. The far side
+   * An agent of somebody else's row is dropped rather than drawn on this one. The far side
    * answers only what it was asked about, so this is belt rather than braces — but the alternative
    * is a link on a ticket that opens work on a different one.
    */
@@ -190,7 +184,7 @@ public class DispatchedWorkspacesReadTest {
   public void aReferenceForAnotherRowIsNotDrawnOnThisOne() {
     String projectId = createProject("Referenced elsewhere");
     String ticketId = createTicket(projectId, "Mine");
-    dispatch.willReference(onTicket(41L, "somebody-elses-ticket"));
+    dispatch.willFind(onTicket(41L, "somebody-elses-ticket"));
 
     asAdmin()
         .when()
