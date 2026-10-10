@@ -21,7 +21,7 @@ import org.eclipse.microprofile.config.ConfigProvider;
  * read {@link WorkEntity#blocked} alone: a derived block is something to show a person, never a
  * reason to stop work. That split is the whole point of keeping two sources rather than one flag.
  *
- * <p>The debounce is configuration ({@value #DEBOUNCE_KEY}, default 30s) read off the ambient
+ * <p>The debounce is configuration ({@value #DEBOUNCE_KEY}, default 60s) read off the ambient
  * MicroProfile config rather than injected, because the answer shapes that carry it ({@link
  * TransitionedEntity#of}, the service's DTOs) are built by static factories called from everywhere;
  * an injected value would have to be threaded through every one of them.
@@ -51,7 +51,7 @@ public record EntityBlockState(boolean blocked, String source, String reason, St
   public static final String DEBOUNCE_KEY = "qits.projects.agent-waiting.debounce";
 
   /** {@link #DEBOUNCE_KEY}'s value when nothing sets it. */
-  public static final Duration DEFAULT_DEBOUNCE = Duration.ofSeconds(30);
+  public static final Duration DEFAULT_DEBOUNCE = Duration.ofSeconds(60);
 
   private static final EntityBlockState UNBLOCKED = new EntityBlockState(false, null, null, null);
 

@@ -1122,8 +1122,8 @@ public class ProviderStates {
    * ticket's {@code qualifiedId}.
    */
   /**
-   * {@link #A_TICKET_ITS_AGENT_IS_WAITING_ON}: the session's Stop is reported as stamped a minute
-   * ago, past the 30s debounce, so the derived block stands the moment the state is set up.
+   * {@link #A_TICKET_ITS_AGENT_IS_WAITING_ON}: the session's Stop is reported as stamped two
+   * minutes ago, past the 60s debounce, so the derived block stands the moment the state is set up.
    */
   private Setup aTicketItsAgentIsWaitingOn() {
     String token = token();
@@ -1134,7 +1134,7 @@ public class ProviderStates {
         true,
         "Stop",
         "contract-session",
-        java.time.Instant.now().minusSeconds(60));
+        java.time.Instant.now().minusSeconds(120));
     return new Setup(
         params("projectId", project.id, "qualifiedId", qualified(project, ticket), "ticketId", ticket),
         List.of(token));

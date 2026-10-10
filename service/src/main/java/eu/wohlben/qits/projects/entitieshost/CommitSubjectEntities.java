@@ -3,6 +3,8 @@ package eu.wohlben.qits.projects.entitieshost;
 import eu.wohlben.qits.entities.entity.Archetype;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -63,6 +65,14 @@ import java.util.regex.Pattern;
  *   <li>An optional breaking-change {@code !} may sit between {@code )} and {@code :}.
  *   <li>Inside the parens, {@code <slug>-<digits>}, split on the <b>LAST</b> hyphen-then-digits — so
  *       a project slug that itself ends in digits ({@code other-2}) still reads correctly.
+ *   <li><b>The scope may hold several comma-separated ids</b> — {@code
+ *       chore(qits-1, qits-2): x} — one project's or several's, in any order, duplicates allowed.
+ *       {@link #references} is the reading of all of them; {@link #reference} stays the first.
+ *       <b>This reader is deliberately more lenient than the githost receive guard's writing
+ *       grammar</b>: it strips each comma-separated part on both sides before matching, so {@code
+ *       chore(qits-1 , qits-2): x} — padding around the comma — still reads both ids, which the
+ *       guard's own grammar never writes but must remain a strict subset of what this class
+ *       accepts.
  *   <li>A {@code :} must follow the scope. The message after it is not this class's business.
  * </ul>
  */
@@ -95,20 +105,51 @@ public class CommitSubjectEntities {
    * makes it the single statement of the format.
    *
    * @param subject a commit message; only its first line is read
-   * @return the id the subject names, or empty. <b>Empty is normal</b> — see the class javadoc.
+   * @return the <b>first</b> id the subject names, or empty. <b>Empty is normal</b> — see the
+   *     class javadoc. A scope naming several ids (see {@link #references}) answers its first.
    */
   public static Optional<QualifiedId> reference(String subject) {
+    List<QualifiedId> all = references(subject);
+    return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
+  }
+
+  /**
+   * <b>Every id the subject's scope names</b>, deduplicated and in first-seen order. The scope is
+   * split on {@code ,}, each part is {@link String#strip() stripped} on both sides and read as a
+   * {@link #parse(String) parse}; <b>if any part is empty or does not match, the whole scope names
+   * nothing and this answers {@link List#of() List.of()}</b> — a malformed id beside a well-formed
+   * one is not read as "one id was found", because a receive guard checking the same subject would
+   * refuse the commit outright rather than pick the id it could parse.
+   *
+   * <p>Pure like {@link #reference}, which is simply this method's first element.
+   *
+   * @param subject a commit message; only its first line is read
+   * @return every distinct id the scope names, first-seen order; empty when the subject names no
+   *     scope, an empty scope, or a scope any part of which does not match the grammar
+   */
+  public static List<QualifiedId> references(String subject) {
     if (subject == null || subject.isBlank()) {
-      return Optional.empty();
+      return List.of();
     }
     int newline = subject.indexOf('\n');
     String firstLine = (newline < 0 ? subject : subject.substring(0, newline)).trim();
 
     Matcher head = HEAD.matcher(firstLine);
     if (!head.find()) {
-      return Optional.empty();
+      return List.of();
     }
-    return parse(head.group(2));
+    LinkedHashSet<QualifiedId> ids = new LinkedHashSet<>();
+    // limit -1: a trailing comma must leave a trailing EMPTY part rather than being silently
+    // dropped, which is what Java's split(regex) does with the default limit of 0 — and a
+    // trailing empty part is exactly what must refuse "chore(qits-1,): x" below.
+    for (String part : head.group(2).split(",", -1)) {
+      Optional<QualifiedId> id = parse(part);
+      if (id.isEmpty()) {
+        return List.of();
+      }
+      ids.add(id.get());
+    }
+    return List.copyOf(ids);
   }
 
   /**

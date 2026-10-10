@@ -94,9 +94,9 @@ public class ReleaseGateReportingTest {
   public void aCiRepositoryWaitsOnItsBuildAndSaysSo() {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
-    assertEquals(List.of("CI", "AUTOMATIONS"), kinds(id));
+    assertEquals(List.of("AUTOMATIONS", "CI"), kinds(id));
     assertEquals(
-        List.of("PENDING", "PASSED"), states(id), "configured, and nothing has answered yet");
+        List.of("PASSED", "PENDING"), states(id), "configured, and nothing has answered yet");
 
     verdict("BuildSuccessful", mergedShaOf(id), "");
     awaitState(id, "RELEASED");
@@ -109,8 +109,8 @@ public class ReleaseGateReportingTest {
     String id = create("work");
     verdict("BuildFailed", mergedShaOf(id), ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
-    assertEquals(List.of("CI", "AUTOMATIONS"), kinds(id));
-    assertEquals(List.of("FAILED", "PASSED"), states(id));
+    assertEquals(List.of("AUTOMATIONS", "CI"), kinds(id));
+    assertEquals(List.of("PASSED", "FAILED"), states(id));
   }
 
   /**
@@ -131,13 +131,13 @@ public class ReleaseGateReportingTest {
     String green = "run-green-" + UUID.randomUUID();
     verdict("BuildFailed", merged, red, null, ",\"outcome\":\"FAILED\"");
     awaitState(id, "REJECTED");
-    assertEquals(List.of("FAILED", "PASSED"), states(id));
+    assertEquals(List.of("PASSED", "FAILED"), states(id));
 
     verdict("BuildSuccessful", merged, green, red, "");
     awaitState(id, "RELEASED");
 
     assertEquals(
-        List.of("CI", "AUTOMATIONS"), kinds(id), "the same gate set, read from the same main");
+        List.of("AUTOMATIONS", "CI"), kinds(id), "the same gate set, read from the same main");
     assertEquals(
         List.of("PASSED", "PASSED"), states(id), "a superseded red is not a verdict about this fold");
   }
@@ -172,7 +172,7 @@ public class ReleaseGateReportingTest {
             RecordingReleaseGitHost.RELEASE_CONFIG, RecordingReleaseGitHost.GATING_RELEASE_CONFIG,
             ".config/qits/deployments.yml", "resources: []\n"));
     String id = create("work");
-    assertEquals(List.of("CI", "AUTOMATIONS", "DEPLOYMENT"), kinds(id));
+    assertEquals(List.of("AUTOMATIONS", "CI", "DEPLOYMENT"), kinds(id));
 
     verdict("BuildSuccessful", mergedShaOf(id), "");
     awaitState(id, "RELEASED");
@@ -199,7 +199,7 @@ public class ReleaseGateReportingTest {
     gitHost.tree("refs/heads/main", RecordingReleaseGitHost.GATED_MAIN);
     String id = create("work");
     assertEquals(
-        List.of("CI", "AUTOMATIONS"),
+        List.of("AUTOMATIONS", "CI"),
         kinds(id),
         "before the tag, nothing has declared a publish gate");
 
@@ -219,7 +219,7 @@ public class ReleaseGateReportingTest {
     finalization.sweep();
 
     assertEquals(
-        List.of("CI", "AUTOMATIONS", "PUBLISH"),
+        List.of("AUTOMATIONS", "CI", "PUBLISH"),
         kinds(id),
         "the release declared one, so it is reported");
     assertEquals(
@@ -249,12 +249,12 @@ public class ReleaseGateReportingTest {
     gitHost.mainUnreadable();
     String id = create("work");
     assertEquals(
-        List.of("CI", "AUTOMATIONS", "APPROVAL", "PUBLISH", "DEPLOYMENT"),
+        List.of("AUTOMATIONS", "CI", "APPROVAL", "PUBLISH", "DEPLOYMENT"),
         kinds(id),
         "never an empty list");
     // Every kind main configures is UNKNOWN; the automations gate is not read from main, so it
     // reports its own answer — here, that nothing applied.
-    assertEquals(List.of("UNKNOWN", "PASSED", "UNKNOWN", "UNKNOWN", "UNKNOWN"), states(id));
+    assertEquals(List.of("PASSED", "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN"), states(id));
     assertEquals("PENDING", stateOf(id), "held, and not rejected either: nothing refused it");
     assertEquals(0, executor.calls().size());
   }

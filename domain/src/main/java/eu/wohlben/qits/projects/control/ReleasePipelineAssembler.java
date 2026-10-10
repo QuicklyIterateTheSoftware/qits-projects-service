@@ -26,8 +26,9 @@ import org.jboss.logging.Logger;
  * behaviour, which is the property to preserve.
  *
  * <pre>
+ *       |  gate      AUTOMATIONS -- the pre-run                    between = PRE_RUN_QA
  *     P1 . QA        a qits-ci run at release/&lt;id&gt;@mergedSha
- *       |  gates     CI, AUTOMATIONS, and APPROVAL where asked     between = QA_PUBLISH
+ *       |  gates     CI, and APPROVAL where asked                  between = QA_PUBLISH
  *     P2 . Publish   a qits-ci run at &lt;version&gt;@commitSha
  *       |  gate      PUBLISH -- that run green                     between = PUBLISH_DEPLOY
  *     P3 . Deploy    a qits-deployments deployment request
@@ -51,6 +52,15 @@ import org.jboss.logging.Logger;
  * rendering exactly as it did for those requests — an empty block would claim the pipeline is known
  * and has no phases, which is the one thing it must not be mistaken for. This is {@code
  * ReleaseGates.GateSet}'s "unknown is not an empty set" rule, applied to the whole block.
+ *
+ * <h2>QA waits for the pre-run (qits-1133)</h2>
+ *
+ * <p><b>No QA run is asked for until the release-request automations are fresh or waived at the
+ * fold</b> — see {@code ReleaseRequests}' "The pre-run". So while they are not, the QA phase is drawn
+ * in the state {@link #WAITING_FOR_PRE_RUN}, with no run, whatever the mirror holds (a run at this
+ * sha from an earlier visit of the same content is not this request's QA). That is also a reason to
+ * draw the block at all: a request in its pre-run has something to show — what it is waiting on —
+ * even before any run was recorded for it.
  *
  * <h2>The deploy phase</h2>
  *
@@ -127,11 +137,24 @@ public class ReleasePipelineAssembler {
   /** The QA phase as a reader names it — qits-ci's {@code RELEASE_REQUEST}. */
   public static final String PHASE_QA = "QA";
 
+  /**
+   * The QA phase's state while the pre-run is not done at the current fold (qits-1133): no QA run has
+   * been asked for, because the automations are not yet fresh or waived.
+   */
+  public static final String WAITING_FOR_PRE_RUN = "WAITING_FOR_PRE_RUN";
+
   /** The publish phase as a reader names it — qits-ci's {@code RELEASE}. */
   public static final String PHASE_PUBLISH = "PUBLISH";
 
   /** The deploy phase. No qits-ci run is one; see {@link #deployPhase}. */
   public static final String PHASE_DEPLOY = "DEPLOY";
+
+  /**
+   * Between the pre-run and the QA run (qits-1133): the release-request automations, which must be
+   * fresh before QA is asked for. The pre-run is not a phase of this block — it has no run row here;
+   * the request's {@code preRun} is its state.
+   */
+  public static final String BETWEEN_PRE_RUN_QA = "PRE_RUN_QA";
 
   /** Between the QA run and the publish run: everything asked of the fold, before anything is tagged. */
   public static final String BETWEEN_QA_PUBLISH = "QA_PUBLISH";
@@ -150,7 +173,7 @@ public class ReleasePipelineAssembler {
   private static final Map<ReleaseGates.Kind, String> PLACEMENT =
       Map.of(
           ReleaseGates.Kind.CI, BETWEEN_QA_PUBLISH,
-          ReleaseGates.Kind.AUTOMATIONS, BETWEEN_QA_PUBLISH,
+          ReleaseGates.Kind.AUTOMATIONS, BETWEEN_PRE_RUN_QA,
           ReleaseGates.Kind.APPROVAL, BETWEEN_QA_PUBLISH,
           ReleaseGates.Kind.PUBLISH, BETWEEN_PUBLISH_DEPLOY,
           ReleaseGates.Kind.DEPLOYMENT, BETWEEN_DEPLOY_FINALIZED);
@@ -178,14 +201,41 @@ public class ReleasePipelineAssembler {
       ReleasedTagPendingMerge released,
       String foldSha,
       DeployReach reach) {
+    return assemble(runs, gates, details, released, foldSha, reach, false);
+  }
+
+  /**
+   * The same, for a request whose pre-run may not be done yet.
+   *
+   * @param waitingForPreRun true while the release-request automations are not fresh or waived at
+   *     {@code foldSha} on a request still before its tag: the QA phase is then drawn as {@link
+   *     #WAITING_FOR_PRE_RUN} with no run, and the block is drawn even with nothing mirrored
+   */
+  public ReleasePipelineDto assemble(
+      List<ReleasePipelineRun> runs,
+      List<ReleaseGates.Gate> gates,
+      Map<ReleaseGates.Kind, String> details,
+      ReleasedTagPendingMerge released,
+      String foldSha,
+      DeployReach reach,
+      boolean waitingForPreRun) {
     ReleasePhaseDto deploy = deployPhase(released, gates, reach);
-    if (!hasSomethingToShow(runs, deploy)) {
+    if (!waitingForPreRun && !hasSomethingToShow(runs, deploy)) {
       return null;
     }
     List<ReleasePhaseDto> phases = new ArrayList<>();
     Map<String, ReleasePipelineRun> newest = newestPerPhase(runs, foldSha);
     ReleasePipelineRun qa = newest.get(PHASE_QA);
-    if (qa != null) {
+    if (waitingForPreRun) {
+      phases.add(
+          new ReleasePhaseDto(
+              PHASE_QA,
+              WAITING_FOR_PRE_RUN,
+              null,
+              null,
+              null,
+              "QA starts once every automation is fresh or waived at this fold"));
+    } else if (qa != null) {
       phases.add(phaseOf(PHASE_QA, qa));
     }
     ReleasePipelineRun publish = newest.get(PHASE_PUBLISH);

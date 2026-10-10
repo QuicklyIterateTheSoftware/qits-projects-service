@@ -46,7 +46,8 @@ public class ReleaseRequestChangedAnnouncer implements ReleaseRequestAnnouncer {
       String mergedSha,
       Instant changedAt,
       String priority,
-      List<String> downstreamTechnicalComponents) {
+      List<String> downstreamTechnicalComponents,
+      String preRun) {
     bus.publish(
         new ReleaseRequestChanged(
             projectId,
@@ -57,6 +58,7 @@ public class ReleaseRequestChangedAnnouncer implements ReleaseRequestAnnouncer {
             mergedSha,
             changedAt,
             priority,
-            downstreamTechnicalComponents));
+            downstreamTechnicalComponents,
+            preRun));
   }
 }
