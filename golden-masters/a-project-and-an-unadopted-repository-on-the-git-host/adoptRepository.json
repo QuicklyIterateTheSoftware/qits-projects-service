@@ -1,0 +1,14 @@
+{
+  "repository": {
+    "id": "contract-00000001-events-service",
+    "name": "contract-events-service",
+    "backupUrl": null,
+    "mainBranch": "main",
+    "archetype": "SERVICE",
+    "component": null,
+    "projectId": "00000000-0000-4000-8000-000000000001",
+    "lastBackup": null,
+    "cloneUrl": "https://githost.example.test/git/contract-00000001/contract-events-service"
+  },
+  "projectId": "00000000-0000-4000-8000-000000000001"
+}

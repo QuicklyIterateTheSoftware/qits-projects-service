@@ -525,4 +525,59 @@ class ConsumerPactVerificationTest {
   Map<String, String> noRepositoryWithTheGivenId() {
     return states.params(ProviderStates.NO_REPOSITORY_WITH_THE_GIVEN_ID);
   }
+
+  @State(ProviderStates.AN_AGENT_LAUNCH_IMAGE_IN_USE)
+  Map<String, String> anAgentLaunchImageInUse() {
+    return states.params(ProviderStates.AN_AGENT_LAUNCH_IMAGE_IN_USE);
+  }
+
+  @State(ProviderStates.A_PROJECT_AND_AN_UNADOPTED_REPOSITORY_ON_THE_GIT_HOST)
+  Map<String, String> aProjectAndAnUnadoptedRepositoryOnTheGitHost() {
+    return states.params(ProviderStates.A_PROJECT_AND_AN_UNADOPTED_REPOSITORY_ON_THE_GIT_HOST);
+  }
+
+  @State(ProviderStates.A_PROJECT_TO_CREATE_A_REPOSITORY_IN)
+  Map<String, String> aProjectToCreateARepositoryIn() {
+    return states.params(ProviderStates.A_PROJECT_TO_CREATE_A_REPOSITORY_IN);
+  }
+
+  @State(ProviderStates.A_REPOSITORY_WITH_A_BRANCH_TO_RELEASE)
+  Map<String, String> aRepositoryWithABranchToRelease() {
+    return states.params(ProviderStates.A_REPOSITORY_WITH_A_BRANCH_TO_RELEASE);
+  }
+
+  @State(ProviderStates.A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH)
+  Map<String, String> aReleaseRequestOpenToAnotherBranch() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH);
+  }
+
+  @State(ProviderStates.A_REPOSITORY_WITH_RELEASED_RELEASE_REQUESTS)
+  Map<String, String> aRepositoryWithReleasedReleaseRequests() {
+    return states.params(ProviderStates.A_REPOSITORY_WITH_RELEASED_RELEASE_REQUESTS);
+  }
+
+  @State(ProviderStates.A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN)
+  Map<String, String> aRepositoryWithAReleaseNotMergedToMain() {
+    return states.params(ProviderStates.A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN);
+  }
+
+  @State(ProviderStates.THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA)
+  Map<String, String> theArchetypeRegistrysUpdateSchema() {
+    return states.params(ProviderStates.THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA);
+  }
+
+  @State(ProviderStates.THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA)
+  Map<String, String> theArchetypeRegistrysTransitionSchema() {
+    return states.params(ProviderStates.THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA);
+  }
+
+  @State(ProviderStates.A_TICKET_WITH_A_DISPATCHED_AGENT)
+  Map<String, String> aTicketWithADispatchedAgent() {
+    return states.params(ProviderStates.A_TICKET_WITH_A_DISPATCHED_AGENT);
+  }
+
+  @State(ProviderStates.REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS)
+  Map<String, String> repositoriesWithDecommissionableTags() {
+    return states.params(ProviderStates.REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS);
+  }
 }

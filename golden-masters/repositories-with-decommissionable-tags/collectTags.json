@@ -1,0 +1,21 @@
+{
+  "dryRun": false,
+  "repositories": 2,
+  "examined": 6,
+  "deleted": [
+    {
+      "repository": "contract-service",
+      "tag": "2026.101.110000",
+      "host": true,
+      "twin": false
+    }
+  ],
+  "kept": {
+    "newest": 5,
+    "pinnedVersion": 0,
+    "gitlink": 0,
+    "inFlight": 0,
+    "young": 0
+  },
+  "errors": []
+}

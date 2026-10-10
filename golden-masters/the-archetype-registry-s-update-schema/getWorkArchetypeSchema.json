@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TICKET update",
+  "description": "A JSON merge patch (RFC 7396) of one TICKET, sent to PATCH /projects/api/work/{qualifiedId}: an absent property is left unchanged, null clears it. The status is moved through POST /projects/api/work/{qualifiedId}/status.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The label.",
+      "pattern": "\\S"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The long-form Markdown body."
+    },
+    "ticketType": {
+      "type": "string",
+      "description": "A ticket's kind.",
+      "enum": [
+        "BUG",
+        "IMPROVEMENT",
+        "MAINTENANCE"
+      ]
+    },
+    "impetus": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Why a ticket came about, in the reporter's words; usually one sentence.",
+      "pattern": "\\S"
+    },
+    "assignee": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Who is looking at it; free text."
+    },
+    "acceptanceCriteria": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+      "items": {
+        "type": "string",
+        "description": "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+        "pattern": "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
+      }
+    }
+  },
+  "required": [],
+  "minProperties": 1,
+  "additionalProperties": false
+}

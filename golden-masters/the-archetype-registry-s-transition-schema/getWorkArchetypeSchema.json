@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TICKET transition",
+  "description": "The full post-state of one row turned into a TICKET, one entry of POST /projects/api/work/transition (keyed by the row's id, with \"archetype\": \"TICKET\" beside these). An absent property is CLEARED, and an absent membership means a root.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The label.",
+      "pattern": "\\S"
+    },
+    "description": {
+      "type": "string",
+      "description": "The long-form Markdown body."
+    },
+    "status": {
+      "type": "string",
+      "description": "The lifecycle status.",
+      "enum": [
+        "REPORTED",
+        "REFINED",
+        "READY_FOR_DEV",
+        "IMPLEMENTING",
+        "IMPLEMENTED",
+        "VERIFYING",
+        "VERIFIED",
+        "DONE",
+        "DROPPED"
+      ]
+    },
+    "ticketType": {
+      "type": "string",
+      "description": "A ticket's kind.",
+      "enum": [
+        "BUG",
+        "IMPROVEMENT",
+        "MAINTENANCE"
+      ]
+    },
+    "impetus": {
+      "type": "string",
+      "description": "Why a ticket came about, in the reporter's words; usually one sentence.",
+      "pattern": "\\S"
+    },
+    "assignee": {
+      "type": "string",
+      "description": "Who is looking at it; free text."
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "description": "What the work is accepted against, in order: short Markdown statements. The whole list is written at once; an empty list (or null on a patch) clears it. Frozen from READY_FOR_DEV on: restating the same list passes, a changed one is a 409.",
+      "items": {
+        "type": "string",
+        "description": "Each item is one line of Markdown: not blank, no line break, at most one '.', and fewer than 20 whitespace characters.",
+        "pattern": "^(?=.*\\S)(?![^.]*\\.[^.]*\\.)(?!(?:\\S*\\s){20})[^\\n\\r]*$"
+      }
+    },
+    "membership": {
+      "type": "object",
+      "description": "Where the row hangs. A TICKET is a root, so this may be left out.",
+      "properties": {
+        "parent": {
+          "type": "null",
+          "description": "A TICKET is a root: it has no parent."
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based place among the parent's children; absent appends it last."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "title",
+    "status",
+    "ticketType"
+  ],
+  "additionalProperties": false
+}

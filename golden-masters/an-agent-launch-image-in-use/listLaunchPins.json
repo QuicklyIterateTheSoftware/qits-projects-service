@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "pins": [
+    {
+      "image": "qits/project-agent",
+      "version": "0000000000000001",
+      "launches": "agent"
+    },
+    {
+      "image": "qits/workspace",
+      "version": "0000000000000002",
+      "launches": "refinement"
+    }
+  ]
+}

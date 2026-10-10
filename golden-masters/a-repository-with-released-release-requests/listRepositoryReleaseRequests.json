@@ -1,0 +1,92 @@
+{
+  "requests": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "repoId": "00000000-0000-4000-8000-000000000002",
+      "repoName": "contract-service",
+      "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+      "sources": [
+        {
+          "kind": "RELEASED_TAG",
+          "name": "2026.101.100400",
+          "ref": "refs/tags/2026.101.100400",
+          "implicit": true,
+          "priority": null,
+          "addedBy": null
+        }
+      ],
+      "priority": "MEDIUM",
+      "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0002",
+      "state": "RELEASED",
+      "summary": "Release the rounding fix",
+      "requester": "contract-seeder",
+      "unattended": false,
+      "gateTicketId": null,
+      "detail": null,
+      "approvalRequired": false,
+      "approvalState": "NOT_REQUIRED",
+      "approvedBy": null,
+      "approvedAt": null,
+      "approvalNote": null,
+      "gates": [
+        {
+          "kind": "CI",
+          "state": "PENDING",
+          "detail": null
+        },
+        {
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
+          "detail": null
+        },
+        {
+          "kind": "PUBLISH",
+          "state": "PASSED",
+          "detail": null
+        }
+      ],
+      "automations": null,
+      "conflict": null,
+      "version": "2026.101.100400",
+      "supersededBy": null,
+      "releasedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0104",
+      "mergedToMainAt": null,
+      "retryable": false,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "pipeline": null,
+      "qualityGates": [
+        {
+          "kind": "ci",
+          "label": "CI build",
+          "position": "qa-publish",
+          "state": "PENDING",
+          "detail": "Waiting for a CI verdict for 5eed5eed5e",
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "automations",
+          "label": "Automations",
+          "position": "qa-publish",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        },
+        {
+          "kind": "publish",
+          "label": "Publish run",
+          "position": "publish-deploy",
+          "state": "PASSED",
+          "detail": null,
+          "checks": [],
+          "runId": null,
+          "link": null
+        }
+      ]
+    }
+  ]
+}

@@ -114,6 +114,7 @@ class GoldenMasterRecordingTest {
           + "\"acceptanceCriteria\":[\"It does what it says.\"]}";
 
   static final List<Interaction> INTERACTIONS =
+      withServiceCallers(
       withReleaseRequests(
       withWorkFamily(
           withWorkActions(
@@ -422,7 +423,7 @@ class GoldenMasterRecordingTest {
               "/projects/api/repositories/{repositoryId}",
               404,
               null,
-              null)))));
+              null))))));
 
   /**
    * The landing app's release-request pages (epic qits-112): every read the detail page makes, in
@@ -860,6 +861,112 @@ class GoldenMasterRecordingTest {
     return List.copyOf(all);
   }
 
+  /**
+   * What other services, the bootstrap and the CLI call (round 2 of qits-1149): the catalogue, the
+   * launch pins, the name lookup and the adoption, the repository create, the release-request
+   * create, join and filtered lists, the archetype registry's other schemas, the agent-waiting
+   * frame and the tag collection.
+   */
+  private static List<Interaction> withServiceCallers(List<Interaction> base) {
+    List<Interaction> all = new ArrayList<>(base);
+    // Every repository in the database: filtered to the state's own, sorted by name since the
+    // wrapper's random token would otherwise decide its place.
+    all.add(
+        new Interaction(
+            ProviderStates.A_PROJECT_WITH_3_REPOSITORIES,
+            "listRepositories",
+            "GET",
+            "/projects/api/repositories",
+            200,
+            "$.repositories",
+            "$.repositories:name"));
+    all.add(read(ProviderStates.AN_AGENT_LAUNCH_IMAGE_IN_USE, "listLaunchPins", "/projects/api/pins"));
+    String byName = "/projects/api/projects/{projectId}/repositories/by-name/{repoName}";
+    all.add(read(ProviderStates.A_REPOSITORY_EXISTS, "resolveRepositoryName", byName));
+    all.add(
+        new Interaction(
+            ProviderStates.NO_PROJECT_WITH_THE_GIVEN_ID,
+            "resolveRepositoryName",
+            "GET",
+            byName,
+            404,
+            null,
+            null));
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_AND_AN_UNADOPTED_REPOSITORY_ON_THE_GIT_HOST,
+            "adoptRepository",
+            "POST",
+            "/projects/api/projects/{projectId}/repositories/adopt",
+            "{\"repositoryId\":\"{repositoryId}\",\"name\":\"{repoName}\","
+                + "\"archetype\":\"SERVICE\"}"));
+    all.add(
+        write(
+            ProviderStates.A_PROJECT_TO_CREATE_A_REPOSITORY_IN,
+            "createProjectRepository",
+            "POST",
+            "/projects/api/projects/{projectId}/repositories",
+            "{\"name\":\"contract-service\",\"component\":\"contract\"}"));
+    String requests = "/projects/api/repositories/{repositoryId}/release-requests";
+    all.add(
+        write(
+            ProviderStates.A_REPOSITORY_WITH_A_BRANCH_TO_RELEASE,
+            "createReleaseRequest",
+            "POST",
+            requests,
+            "{\"branch\":\"feature/export\",\"summary\":\"Release the CSV export\","
+                + "\"priority\":\"LOWEST\"}"));
+    all.add(
+        write(
+            ProviderStates.A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH,
+            "addReleaseRequestSource",
+            "POST",
+            requests + "/{requestId}/sources",
+            "{\"branch\":\"fix/rounding\",\"priority\":\"LOWEST\"}"));
+    all.add(
+        read(
+            ProviderStates.A_REPOSITORY_WITH_RELEASED_RELEASE_REQUESTS,
+            "listRepositoryReleaseRequests",
+            requests + "?state=RELEASED"));
+    all.add(
+        read(
+            ProviderStates.A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN,
+            "listRepositoryReleaseRequests",
+            requests + "?state=all"));
+    all.add(
+        read(
+            ProviderStates.THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA,
+            "getWorkArchetypeSchema",
+            "/projects/api/work/archetypes/TICKET/schemas/update"));
+    all.add(
+        read(
+            ProviderStates.THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA,
+            "getWorkArchetypeSchema",
+            "/projects/api/work/archetypes/TICKET/schemas/transition"));
+    // Keyed by the entity id, as qits-workspaces sends it; 204 and no body.
+    all.add(
+        new Interaction(
+            ProviderStates.A_TICKET_WITH_A_DISPATCHED_AGENT,
+            "reportWorkAgentWaiting",
+            "POST",
+            "/projects/api/work/{ticketId}/agent-waiting",
+            204,
+            null,
+            null,
+            "{\"waiting\":true,\"cause\":\"Stop\",\"sessionId\":\"contract-session\"}"));
+    // A real run, as the orchestrator's schedule makes it; the six pin sources pin nothing.
+    all.add(
+        write(
+            ProviderStates.REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS,
+            "collectTags",
+            "POST",
+            "/projects/api/gc/tags",
+            "{\"dryRun\":false,\"pins\":{\"deployments\":{\"pins\":[]},\"ciDaemon\":{},"
+                + "\"dependencies\":{\"pins\":[]},\"configuredImages\":{\"pins\":[]},"
+                + "\"workspaceLaunches\":{\"pins\":[]},\"projectLaunches\":{\"pins\":[]}}}"));
+    return List.copyOf(all);
+  }
+
   private static Interaction write(
       String state, String operationId, String method, String path, String body) {
     return new Interaction(state, operationId, method, path, 200, null, null, body);
@@ -1182,7 +1289,8 @@ class GoldenMasterRecordingTest {
               + ": "
               + raw);
     }
-    JsonNode body = JSON.readTree(raw);
+    // An answer with no body (204) is recorded as JSON null: the status is the whole contract.
+    JsonNode body = raw.isEmpty() ? JsonNodeFactory.instance.nullNode() : JSON.readTree(raw);
     body = recordable(body, interaction, params.values(), setup.uniqueTokens());
 
     Freezer freezer = new Freezer().seed(params.values()).uniqueTokens(setup.uniqueTokens());

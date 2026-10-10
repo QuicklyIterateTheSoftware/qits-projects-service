@@ -189,6 +189,33 @@ public class ProviderStates {
   public static final String NO_PROJECT_WITH_THE_GIVEN_ID = "no project with the given id";
   public static final String NO_REPOSITORY_WITH_THE_GIVEN_ID = "no repository with the given id";
 
+  // Round 2 of qits-1149: the states other services' and the CLI's pacts asked for.
+  public static final String AN_AGENT_LAUNCH_IMAGE_IN_USE = "an agent launch image in use";
+  public static final String A_PROJECT_AND_AN_UNADOPTED_REPOSITORY_ON_THE_GIT_HOST =
+      "a project and an unadopted repository on the git host";
+  public static final String A_PROJECT_TO_CREATE_A_REPOSITORY_IN =
+      "a project to create a repository in";
+  public static final String A_REPOSITORY_WITH_A_BRANCH_TO_RELEASE =
+      "a repository with a branch to release";
+  public static final String A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH =
+      "a release request open to another branch";
+  public static final String A_REPOSITORY_WITH_RELEASED_RELEASE_REQUESTS =
+      "a repository with released release requests";
+  public static final String A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN =
+      "a repository with a release not merged to main";
+  public static final String THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA =
+      "the archetype registry's update schema";
+  public static final String THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA =
+      "the archetype registry's transition schema";
+  public static final String A_TICKET_WITH_A_DISPATCHED_AGENT = "a ticket with a dispatched agent";
+  public static final String REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS =
+      "repositories with decommissionable tags";
+
+  /** The fold the release-request states script the merger to answer, first and after a change. */
+  static final String SCRIPTED_FOLD = "5eed5eed5eed5eed5eed5eed5eed5eed5eed0001";
+
+  static final String SCRIPTED_REFOLD = "5eed5eed5eed5eed5eed5eed5eed5eed5eed0002";
+
   /** The three component repositories {@link #A_PROJECT_WITH_3_REPOSITORIES} creates. */
   static final List<String> THREE_REPOSITORIES =
       List.of("contract-service", "contract-frontend", "contract-daemon");
@@ -273,6 +300,28 @@ public class ProviderStates {
   @Inject
   jakarta.enterprise.inject.Instance<eu.wohlben.qits.projects.deploymenthost.FakeDeploymentRequests>
       deploymentRequests;
+
+  @Inject
+  jakarta.enterprise.inject.Instance<
+          eu.wohlben.qits.projects.releasehost.RecordingBackingBranchMerger>
+      merger;
+
+  /** Opens release requests the way the door does, for the state that adds a source to one. */
+  @Inject eu.wohlben.qits.projects.control.ReleaseRequests releaseRequests;
+
+  /** The fake git host's lifecycle port: a bare the bootstrap made, waiting to be adopted. */
+  @Inject eu.wohlben.qits.projects.control.GitHostRepositories gitHostRepositories;
+
+  /** What a launch would pull: the pins route reads these two and nothing else. */
+  @Inject eu.wohlben.qits.projects.deskhost.FrontDeskSpecs agentContainers;
+
+  @Inject eu.wohlben.qits.projects.refinementhost.RefinementContainerFactory refinementContainers;
+
+  /** Whether a state scripted the merger, which cleanUp sets back to fresh merges. */
+  private boolean mergerTouched;
+
+  /** Repositories whose requests a DOOR opened (ids unknown to the state), removed by cleanUp. */
+  private final List<String> requestRepos = new ArrayList<>();
 
   /** The repository's release-request settings, where {@code manual-review} is declared. */
   private static final String SETTINGS_FILE = ".config/qits/release-requests.yml";
@@ -365,6 +414,24 @@ public class ProviderStates {
     IN_DETAIL.forEach((name, focus) -> states.put(name, () -> workInDetail(name, focus)));
     states.put(NO_PROJECT_WITH_THE_GIVEN_ID, this::noProjectWithTheGivenId);
     states.put(NO_REPOSITORY_WITH_THE_GIVEN_ID, this::noRepositoryWithTheGivenId);
+    states.put(AN_AGENT_LAUNCH_IMAGE_IN_USE, this::anAgentLaunchImageInUse);
+    states.put(
+        A_PROJECT_AND_AN_UNADOPTED_REPOSITORY_ON_THE_GIT_HOST,
+        this::aProjectAndAnUnadoptedRepositoryOnTheGitHost);
+    states.put(A_PROJECT_TO_CREATE_A_REPOSITORY_IN, this::aProjectToCreateARepositoryIn);
+    states.put(A_REPOSITORY_WITH_A_BRANCH_TO_RELEASE, this::aRepositoryWithABranchToRelease);
+    states.put(A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH, this::aReleaseRequestOpenToAnotherBranch);
+    states.put(
+        A_REPOSITORY_WITH_RELEASED_RELEASE_REQUESTS,
+        () -> aRepositoryWithReleases(A_REPOSITORY_WITH_RELEASED_RELEASE_REQUESTS));
+    states.put(
+        A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN,
+        () -> aRepositoryWithReleases(A_REPOSITORY_WITH_A_RELEASE_NOT_MERGED_TO_MAIN));
+    states.put(THE_ARCHETYPE_REGISTRYS_UPDATE_SCHEMA, ProviderStates::theArchetypeRegistry);
+    states.put(THE_ARCHETYPE_REGISTRYS_TRANSITION_SCHEMA, ProviderStates::theArchetypeRegistry);
+    states.put(A_TICKET_WITH_A_DISPATCHED_AGENT, this::aTicketWithADispatchedAgent);
+    states.put(
+        REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS, this::repositoriesWithDecommissionableTags);
   }
 
   /** Every state name this provider answers for. */
@@ -389,10 +456,27 @@ public class ProviderStates {
    * verification.
    */
   public void cleanUp() {
+    SeededGit.deleteAll();
     if (fakesTouched) {
       fakesTouched = false;
       releaseDecisions.get().reset();
       deploymentRequests.get().reset();
+    }
+    if (mergerTouched) {
+      mergerTouched = false;
+      merger.get().reset();
+    }
+    if (!requestRepos.isEmpty()) {
+      List<String> repos = List.copyOf(requestRepos);
+      requestRepos.clear();
+      seededRequests.addAll(
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      ReleaseRequest.<ReleaseRequest>list("repoId in ?1", repos).stream()
+                          .map(row -> row.id)
+                          .filter(id -> !seededRequests.contains(id))
+                          .toList()));
     }
     if (seededRequests.isEmpty() && seededVerdicts.isEmpty() && seededRepos.isEmpty()) {
       return;
@@ -507,7 +591,11 @@ public class ProviderStates {
     Project project = project(token, A_REPOSITORY_EXISTS);
     var created = projectService.createRepository(project.id, null, "contract-service", null);
     return new Setup(
-        params("projectId", project.id, "repositoryId", created.repository().id), List.of(token));
+        params(
+            "projectId", project.id,
+            "repositoryId", created.repository().id,
+            "repoName", "contract-service"),
+        List.of(token));
   }
 
   /**
@@ -2647,12 +2735,195 @@ public class ProviderStates {
     return work.create(archetype, project.id, write, SEEDER).entity().id;
   }
 
+  /** {@code repoName} for the name lookup, which answers the same 404 for either half missing. */
   private Setup noProjectWithTheGivenId() {
-    return new Setup(params("projectId", UUID.randomUUID().toString()), List.of());
+    return new Setup(
+        params("projectId", UUID.randomUUID().toString(), "repoName", "contract-service"),
+        List.of());
   }
 
   private Setup noRepositoryWithTheGivenId() {
     return new Setup(params("repositoryId", UUID.randomUUID().toString()), List.of());
+  }
+
+  // --- round 2 of qits-1149: the states other services' and the CLI's pacts asked for ----------
+
+  /**
+   * The pins answer the process's own boot config, so nothing is seeded. The versions are the
+   * pinned agent and refinement images, which move with every dependency bump: they are reported
+   * as unique tokens, so the recording freezes them and does not churn on a bump.
+   */
+  private Setup anAgentLaunchImageInUse() {
+    List<String> versions =
+        java.util.stream.Stream.of(
+                agentContainers.imageVersion(), refinementContainers.imageVersion())
+            .filter(version -> version != null && !version.isBlank())
+            .distinct()
+            .toList();
+    return new Setup(params(), versions);
+  }
+
+  /**
+   * A project, and a bare the git host serves under a storage id this service has never seen —
+   * what the bootstrap leaves before it adopts. {@code repositoryId} is that storage id (it carries
+   * the unique token), {@code repoName} the name to register it under.
+   */
+  private Setup aProjectAndAnUnadoptedRepositoryOnTheGitHost() {
+    String token = token();
+    Project project = project(token, A_PROJECT_AND_AN_UNADOPTED_REPOSITORY_ON_THE_GIT_HOST);
+    String storageId = "contract-" + token + "-events-service";
+    gitHostRepositories.ensure(storageId, "main");
+    return new Setup(
+        params(
+            "projectId", project.id,
+            "repositoryId", storageId,
+            "repoName", "contract-events-service"),
+        List.of(token));
+  }
+
+  /** A project and its wrapper, and nothing else: the create door adds the first component. */
+  private Setup aProjectToCreateARepositoryIn() {
+    String token = token();
+    Project project = project(token, A_PROJECT_TO_CREATE_A_REPOSITORY_IN);
+    return new Setup(params("projectId", project.id), List.of(token));
+  }
+
+  /**
+   * contract-service with no open release request. The fold is the merger fake's, scripted to a
+   * fixed sha, and a CI run is reported in flight so the gate holds the new request PENDING rather
+   * than releasing it inside the call.
+   */
+  private Setup aRepositoryWithABranchToRelease() {
+    String token = token();
+    Project project = project(token, A_REPOSITORY_WITH_A_BRANCH_TO_RELEASE);
+    String repoId = releasableRepository(project);
+    return new Setup(params("projectId", project.id, "repositoryId", repoId), List.of(token));
+  }
+
+  /**
+   * contract-service's open request for {@code feature/export}, opened through the domain as the
+   * create door opens one. Adding {@code fix/rounding} re-folds to a second scripted sha.
+   */
+  private Setup aReleaseRequestOpenToAnotherBranch() {
+    String token = token();
+    Project project = project(token, A_RELEASE_REQUEST_OPEN_TO_ANOTHER_BRANCH);
+    String repoId = releasableRepository(project);
+    String requestId =
+        releaseRequests.request(repoId, "feature/export", "Release the CSV export", SEEDER, null).id();
+    merger
+        .get()
+        .answer(
+            eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.merged(
+                SCRIPTED_REFOLD, List.of(SCRIPTED_FOLD)));
+    return new Setup(
+        params("projectId", project.id, "repositoryId", repoId, "requestId", requestId),
+        List.of(token));
+  }
+
+  /** contract-service, the merger scripted and a CI run in flight; see the two states above. */
+  private String releasableRepository(Project project) {
+    String repoId =
+        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+    requestRepos.add(repoId);
+    mergerTouched = true;
+    merger
+        .get()
+        .answer(
+            eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.merged(
+                SCRIPTED_FOLD, List.of()));
+    activeBuilds.get().answer(java.util.Optional.of(1));
+    return repoId;
+  }
+
+  /**
+   * Three requests of contract-service, rows written straight to the table at fixed minutes: one
+   * released and merged to main since (FINALIZED, its tag's {@code mergedAt} set), one RELEASED
+   * whose tag has not reached main yet, and a WITHDRAWN one. {@code ?state=RELEASED} narrows to the
+   * released one; {@code ?state=all} answers all three, newest first. Both states seed this.
+   */
+  private Setup aRepositoryWithReleases(String state) {
+    String token = token();
+    Project project = project(token, state);
+    String repoId =
+        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+    seededRepos.add(repoId);
+    String merged =
+        releaseRow(
+            project, repoId, "contract-service", "Release the CSV export", State.FINALIZED, 1,
+            SCRIPTED_FOLD, row -> row.version = "2026.101.100100");
+    mergedTag(repoId, merged, "2026.101.100100", "5eed5eed5eed5eed5eed5eed5eed5eed5eed0101", 2, 3);
+    String released =
+        releaseRow(
+            project, repoId, "contract-service", "Release the rounding fix", State.RELEASED, 4,
+            SCRIPTED_REFOLD, row -> row.version = "2026.101.100400");
+    liveTag(repoId, released, "2026.101.100400", "5eed5eed5eed5eed5eed5eed5eed5eed5eed0104", null, 5);
+    releaseRow(
+        project, repoId, "contract-service", "Release the README", State.WITHDRAWN, 6, null,
+        row -> row.detail = "Withdrawn: the README moves to the next release.");
+    return new Setup(params("projectId", project.id, "repositoryId", repoId), List.of(token));
+  }
+
+  /** A released tag that reached main at the given minute. */
+  private void mergedTag(
+      String repoId, String requestId, String version, String releasedSha, int minute, int mergedMinute) {
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              var tag = new eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge();
+              tag.id = UUID.randomUUID().toString();
+              tag.repoId = repoId;
+              tag.tagName = version;
+              tag.releasedSha = releasedSha;
+              tag.releaseRequestId = requestId;
+              tag.releasedAt = SEEDED_AT.plusSeconds(60L * minute);
+              tag.publishState =
+                  eu.wohlben.qits.projects.entity.ReleasedTagPendingMerge.PublishState.PASSED;
+              tag.mergedAt = SEEDED_AT.plusSeconds(60L * mergedMinute);
+              tag.persist();
+            });
+  }
+
+  /**
+   * A REPORTED ticket an agent works on: the agent-waiting frame is keyed by {@code ticketId}, the
+   * entity id the workspace holds, and {@code qualifiedId} names the same ticket.
+   */
+  private Setup aTicketWithADispatchedAgent() {
+    String token = token();
+    Project project = project(token, A_TICKET_WITH_A_DISPATCHED_AGENT);
+    String ticket = ticket(project, "Export waits on a question nobody answered");
+    return new Setup(
+        params("projectId", project.id, "qualifiedId", qualified(project, ticket), "ticketId", ticket),
+        List.of(token));
+  }
+
+  /**
+   * One project whose contract-service carries six release tags on six commits of 2026-01-01:
+   * {@code 2026.101.110000} is older than the five newest, pinned by nothing and in no gitlink (the
+   * wrapper pins the template commit the seeded history replaced), so a run takes it.
+   *
+   * <p><b>This state empties the projects tables first</b>, as {@code PlatformStateReset} does
+   * before every test method: the collection judges every repository in the database, and its
+   * answer counts them, so only an otherwise empty database makes it the same on every run.
+   */
+  private Setup repositoriesWithDecommissionableTags() {
+    new eu.wohlben.qits.projects.testsupport.PlatformStateReset().beforeEach(null);
+    String token = token();
+    Project project = project(token, REPOSITORIES_WITH_DECOMMISSIONABLE_TAGS);
+    String repoId =
+        projectService.createRepository(project.id, null, "contract-service", null).repository().id;
+    try {
+      SeededGit repo = SeededGit.init(gitWork, gitHost.fetchUrl(repoId));
+      for (int i = 1; i <= 6; i++) {
+        repo.write(Map.of("CHANGELOG.md", "Release " + i + ".\n"));
+        repo.commit(i, "Release " + i);
+        repo.tag("2026.101.1" + i + "0000");
+      }
+      repo.push("main");
+      goCold(repoId);
+    } catch (Exception e) {
+      throw new IllegalStateException("Could not seed the tagged repository", e);
+    }
+    return new Setup(params("projectId", project.id, "repositoryId", repoId), List.of(token));
   }
 
   // --- seeding ---------------------------------------------------------------------------------

@@ -1428,6 +1428,42 @@
       ]
     },
     {
+      "name": "a project and an unadopted repository on the git host",
+      "slug": "a-project-and-an-unadopted-repository-on-the-git-host",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repoName": "contract-events-service",
+        "repositoryId": "contract-00000001-events-service"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "adoptRepository",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/repositories/adopt",
+          "body": {
+            "repositoryId": "{repositoryId}",
+            "name": "{repoName}",
+            "archetype": "SERVICE"
+          },
+          "status": 200,
+          "file": "a-project-and-an-unadopted-repository-on-the-git-host/adoptRepository.json",
+          "frozen": {
+            "ids": [
+              "$.repository.projectId",
+              "$.projectId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.repository.id",
+              "$.repository.cloneUrl"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project exists",
       "slug": "a-project-exists",
       "params": {
@@ -1472,6 +1508,39 @@
       ]
     },
     {
+      "name": "a project to create a repository in",
+      "slug": "a-project-to-create-a-repository-in",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "createProjectRepository",
+          "method": "POST",
+          "path": "/projects/api/projects/{projectId}/repositories",
+          "body": {
+            "name": "contract-service",
+            "component": "contract"
+          },
+          "status": 200,
+          "file": "a-project-to-create-a-repository-in/createProjectRepository.json",
+          "frozen": {
+            "ids": [
+              "$.repository.id",
+              "$.repository.projectId",
+              "$.projectId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.repository.cloneUrl"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a project with 3 repositories",
       "slug": "a-project-with-3-repositories",
       "params": {
@@ -1498,6 +1567,24 @@
               "$.entries[*].repository.cloneUrl"
             ],
             "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listRepositories",
+          "method": "GET",
+          "path": "/projects/api/repositories",
+          "status": 200,
+          "file": "a-project-with-3-repositories/listRepositories.json",
+          "frozen": {
+            "ids": [
+              "$.repositories[*].id",
+              "$.repositories[*].projectId"
+            ],
+            "instants": [],
+            "strings": [
+              "$.repositories[*].name"
+            ],
+            "listFilteredTo": "$.repositories"
           }
         }
       ]
@@ -2947,6 +3034,43 @@
       ]
     },
     {
+      "name": "a release request open to another branch",
+      "slug": "a-release-request-open-to-another-branch",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "addReleaseRequestSource",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/sources",
+          "body": {
+            "branch": "fix/rounding",
+            "priority": "LOWEST"
+          },
+          "status": 200,
+          "file": "a-release-request-open-to-another-branch/addReleaseRequestSource.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a release request rejected by its build",
       "slug": "a-release-request-rejected-by-its-build",
       "params": {
@@ -3849,6 +3973,7 @@
       "slug": "a-repository-exists",
       "params": {
         "projectId": "00000000-0000-4000-8000-000000000001",
+        "repoName": "contract-service",
         "repositoryId": "00000000-0000-4000-8000-000000000002"
       },
       "dependsOn": [],
@@ -3867,6 +3992,129 @@
             "instants": [],
             "strings": [
               "$.repository.cloneUrl"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "resolveRepositoryName",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/repositories/by-name/{repoName}",
+          "status": 200,
+          "file": "a-repository-exists/resolveRepositoryName.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository with a branch to release",
+      "slug": "a-repository-with-a-branch-to-release",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "createReleaseRequest",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "body": {
+            "branch": "feature/export",
+            "summary": "Release the CSV export",
+            "priority": "LOWEST"
+          },
+          "status": 200,
+          "file": "a-repository-with-a-branch-to-release/createReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId"
+            ],
+            "instants": [
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository with a release not merged to main",
+      "slug": "a-repository-with-a-release-not-merged-to-main",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "query": {
+            "state": "all"
+          },
+          "status": 200,
+          "file": "a-repository-with-a-release-not-merged-to-main/listRepositoryReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId"
+            ],
+            "instants": [
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt",
+              "$.requests[*].mergedToMainAt"
+            ],
+            "strings": [
+              "$.requests[*].backingBranch"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a repository with released release requests",
+      "slug": "a-repository-with-released-release-requests",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryReleaseRequests",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests",
+          "query": {
+            "state": "RELEASED"
+          },
+          "status": 200,
+          "file": "a-repository-with-released-release-requests/listRepositoryReleaseRequests.json",
+          "frozen": {
+            "ids": [
+              "$.requests[*].id",
+              "$.requests[*].repoId"
+            ],
+            "instants": [
+              "$.requests[*].createdAt",
+              "$.requests[*].updatedAt"
+            ],
+            "strings": [
+              "$.requests[*].backingBranch"
             ],
             "listFilteredTo": null
           }
@@ -4161,6 +4409,36 @@
               "$.entries[*].comment.createdAt",
               "$.entries[*].comment.updatedAt"
             ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ticket with a dispatched agent",
+      "slug": "a-ticket-with-a-dispatched-agent",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "qualifiedId": "contract-00000001-1",
+        "ticketId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "reportWorkAgentWaiting",
+          "method": "POST",
+          "path": "/projects/api/work/{ticketId}/agent-waiting",
+          "body": {
+            "waiting": true,
+            "cause": "Stop",
+            "sessionId": "contract-session"
+          },
+          "status": 204,
+          "file": "a-ticket-with-a-dispatched-agent/reportWorkAgentWaiting.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
             "strings": [],
             "listFilteredTo": null
           }
@@ -4476,6 +4754,31 @@
               "$.commits[*].date"
             ],
             "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "an agent launch image in use",
+      "slug": "an-agent-launch-image-in-use",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listLaunchPins",
+          "method": "GET",
+          "path": "/projects/api/pins",
+          "status": 200,
+          "file": "an-agent-launch-image-in-use/listLaunchPins.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.generatedAt"
+            ],
+            "strings": [
+              "$.pins[*].version"
+            ],
             "listFilteredTo": null
           }
         }
@@ -5526,7 +5829,8 @@
       "name": "no project with the given id",
       "slug": "no-project-with-the-given-id",
       "params": {
-        "projectId": "00000000-0000-4000-8000-000000000001"
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repoName": "contract-service"
       },
       "dependsOn": [],
       "operations": [
@@ -5536,6 +5840,21 @@
           "path": "/projects/api/projects/{projectId}",
           "status": 404,
           "file": "no-project-with-the-given-id/getProject.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [
+              "$.message"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "resolveRepositoryName",
+          "method": "GET",
+          "path": "/projects/api/projects/{projectId}/repositories/by-name/{repoName}",
+          "status": 404,
+          "file": "no-project-with-the-given-id/resolveRepositoryName.json",
           "frozen": {
             "ids": [],
             "instants": [],
@@ -5594,6 +5913,51 @@
       ]
     },
     {
+      "name": "repositories with decommissionable tags",
+      "slug": "repositories-with-decommissionable-tags",
+      "params": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "collectTags",
+          "method": "POST",
+          "path": "/projects/api/gc/tags",
+          "body": {
+            "dryRun": false,
+            "pins": {
+              "deployments": {
+                "pins": []
+              },
+              "ciDaemon": {},
+              "dependencies": {
+                "pins": []
+              },
+              "configuredImages": {
+                "pins": []
+              },
+              "workspaceLaunches": {
+                "pins": []
+              },
+              "projectLaunches": {
+                "pins": []
+              }
+            }
+          },
+          "status": 200,
+          "file": "repositories-with-decommissionable-tags/collectTags.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "the archetype registry",
       "slug": "the-archetype-registry",
       "params": {},
@@ -5618,6 +5982,48 @@
           "path": "/projects/api/work/archetypes",
           "status": 200,
           "file": "the-archetype-registry/listWorkArchetypes.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "the archetype registry's transition schema",
+      "slug": "the-archetype-registry-s-transition-schema",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getWorkArchetypeSchema",
+          "method": "GET",
+          "path": "/projects/api/work/archetypes/TICKET/schemas/transition",
+          "status": 200,
+          "file": "the-archetype-registry-s-transition-schema/getWorkArchetypeSchema.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "the archetype registry's update schema",
+      "slug": "the-archetype-registry-s-update-schema",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getWorkArchetypeSchema",
+          "method": "GET",
+          "path": "/projects/api/work/archetypes/TICKET/schemas/update",
+          "status": 200,
+          "file": "the-archetype-registry-s-update-schema/getWorkArchetypeSchema.json",
           "frozen": {
             "ids": [],
             "instants": [],

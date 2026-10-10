@@ -1,0 +1,91 @@
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "repoId": "00000000-0000-4000-8000-000000000002",
+    "repoName": "contract-service",
+    "backingBranch": "release/00000000-0000-4000-8000-000000000003",
+    "sources": [
+      {
+        "kind": "BRANCH",
+        "name": "main",
+        "ref": "refs/heads/main",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": null
+      },
+      {
+        "kind": "BRANCH",
+        "name": "feature/export",
+        "ref": "refs/heads/feature/export",
+        "implicit": false,
+        "priority": "MEDIUM",
+        "addedBy": "contract-seeder"
+      },
+      {
+        "kind": "BRANCH",
+        "name": "fix/rounding",
+        "ref": "refs/heads/fix/rounding",
+        "implicit": false,
+        "priority": "LOWEST",
+        "addedBy": "dev"
+      }
+    ],
+    "priority": "MEDIUM",
+    "mergedSha": "5eed5eed5eed5eed5eed5eed5eed5eed5eed0002",
+    "state": "PENDING",
+    "summary": "Release the CSV export",
+    "requester": "contract-seeder",
+    "unattended": false,
+    "gateTicketId": null,
+    "detail": "Waiting for a CI verdict for 5eed5eed5e",
+    "approvalRequired": false,
+    "approvalState": "NOT_REQUIRED",
+    "approvedBy": null,
+    "approvedAt": null,
+    "approvalNote": null,
+    "gates": [
+      {
+        "kind": "CI",
+        "state": "PENDING",
+        "detail": null
+      },
+      {
+        "kind": "AUTOMATIONS",
+        "state": "PASSED",
+        "detail": null
+      }
+    ],
+    "automations": [],
+    "conflict": null,
+    "version": null,
+    "supersededBy": null,
+    "releasedSha": null,
+    "mergedToMainAt": null,
+    "retryable": false,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "pipeline": null,
+    "qualityGates": [
+      {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PENDING",
+        "detail": "Waiting for a CI verdict for 5eed5eed5e",
+        "checks": [],
+        "runId": null,
+        "link": null
+      },
+      {
+        "kind": "automations",
+        "label": "Automations",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": null,
+        "checks": [],
+        "runId": null,
+        "link": null
+      }
+    ]
+  }
+}
