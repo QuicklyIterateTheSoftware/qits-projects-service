@@ -94,6 +94,7 @@ public class RepositoryController {
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system", "qits:agent"})
   @Operation(
+      operationId = "listRepositories",
       summary = "Every repository with its public coordinates",
       description =
           "The machine-readable catalogue: row id, project, addressable name, main branch and"

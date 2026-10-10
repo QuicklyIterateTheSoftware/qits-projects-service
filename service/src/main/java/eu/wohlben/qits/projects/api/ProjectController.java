@@ -366,6 +366,7 @@ public class ProjectController {
   @Path("/{projectId}/repositories/by-name/{repoName}")
   @jakarta.annotation.security.RolesAllowed({"qits:system", "qits:agent"})
   @Operation(
+      operationId = "resolveRepositoryName",
       summary = "Resolve a project-scoped repository name to its id",
       description =
           "The name is the segment a committed relative submodule url (../<name>.git) resolves to,"
@@ -451,6 +452,7 @@ public class ProjectController {
   @POST
   @Path("/{projectId}/repositories")
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @Operation(operationId = "createProjectRepository")
   @APIResponse(responseCode = "200", description = "The repository exists and the wrapper names it")
   @APIResponse(
       responseCode = "400",
@@ -504,6 +506,7 @@ public class ProjectController {
   @POST
   @Path("/{projectId}/repositories/adopt")
   @jakarta.annotation.security.RolesAllowed("qits:system")
+  @Operation(operationId = "adoptRepository")
   @APIResponse(
       responseCode = "200",
       description = "The repository is registered under this project, with that name as its alias")

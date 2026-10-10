@@ -69,7 +69,9 @@ public class PinsController {
   public record LaunchPins(Instant generatedAt, List<LaunchPin> pins) {}
 
   @GET
-  @Operation(summary = "The container images a launch by this service would pull right now")
+  @Operation(
+      operationId = "listLaunchPins",
+      summary = "The container images a launch by this service would pull right now")
   @APIResponse(responseCode = "200", description = "The effective launch pins, image order")
   public LaunchPins pins() {
     return new LaunchPins(

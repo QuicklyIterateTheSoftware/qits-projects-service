@@ -3612,6 +3612,7 @@ paths:
   /projects/api/gc/tags:
     post:
       summary: "Decommission release tags no pin, gitlink or release in flight keeps"
+      operationId: collectTags
       requestBody:
         content:
           application/json:
@@ -3641,6 +3642,7 @@ paths:
   /projects/api/pins:
     get:
       summary: The container images a launch by this service would pull right now
+      operationId: listLaunchPins
       responses:
         "200":
           description: "The effective launch pins, image order"
@@ -4060,6 +4062,7 @@ paths:
         - qits:system
         - qits:agent
     post:
+      operationId: createProjectRepository
       parameters:
       - name: projectId
         in: path
@@ -4098,6 +4101,7 @@ paths:
         - qits:agent
   /projects/api/projects/{projectId}/repositories/adopt:
     post:
+      operationId: adoptRepository
       parameters:
       - name: projectId
         in: path
@@ -4175,6 +4179,7 @@ paths:
         \ of a clone url (/git/qits/qits-ci) and the id is matched first, so both\
         \ always resolve. The id answered is the opaque storage key this service and\
         \ qits-githost share, not a name."
+      operationId: resolveRepositoryName
       parameters:
       - name: projectId
         in: path
@@ -4897,6 +4902,7 @@ paths:
         \ main branch and archetype, sorted by project then name. A repository that\
         \ owns no name is listed with a null name; one whose name declares no role\
         \ suffix carries a null archetype."
+      operationId: listRepositories
       responses:
         "200":
           description: OK
