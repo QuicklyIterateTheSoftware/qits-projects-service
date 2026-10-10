@@ -118,6 +118,35 @@ public class CommitSubjectsControllerTest {
     assertEquals("side", side.getString("branch"));
   }
 
+  /**
+   * A scope naming several ids ({@code CommitSubjectEntities#references}, qits-1140) is one
+   * COMPLYING commit, and both ids land in the distinct {@code qualifiedIds} list.
+   */
+  @Test
+  public void aCommitNamingSeveralIdsIsOneComplyingCommitListingBothIds() throws Exception {
+    Repository repo = cloned("Commit Subjects Multi Id");
+    Path work = checkout(repo);
+    String main = repo.mainBranch;
+    int fixture =
+        Integer.parseInt(git.exec(work.toFile(), "git", "rev-list", "--count", "HEAD").trim());
+
+    commit(
+        work,
+        "multi.txt",
+        "chore(qits-1, qits-2): bump(dependencies): 2 dependencies",
+        "A Person",
+        "person@example.com");
+    git.exec(work.toFile(), "git", "push", "-q", "origin", main);
+    goCold(repo);
+
+    JsonPath answer = read(repo.id, Map.of(), "qits:agent");
+
+    assertEquals(fixture + 1, answer.getInt("counts.total"));
+    assertEquals(1, answer.getInt("counts.complying"), "one commit, naming two ids");
+    assertEquals(fixture, answer.getInt("counts.nonComplying"), "the fixture's free-text history");
+    assertEquals(List.of("qits-1", "qits-2"), answer.getList("qualifiedIds"));
+  }
+
   @Test
   public void aLimitOutsideOneToAThousandAndAnUnknownBranchAreRefused() throws Exception {
     Repository repo = cloned("Commit Subjects Refusals");

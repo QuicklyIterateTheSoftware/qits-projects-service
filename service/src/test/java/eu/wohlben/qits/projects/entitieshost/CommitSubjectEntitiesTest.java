@@ -104,6 +104,77 @@ class CommitSubjectEntitiesTest {
         CommitSubjectEntities.reference("fix(qits-1): the real one\n\nfix(qits-9): not this"));
   }
 
+  // --- references(): a scope naming several ids -------------------------------------------------
+
+  @Test
+  void aScopeMayHoldSeveralCommaSeparatedIds() {
+    assertEquals(
+        List.of(
+            new CommitSubjectEntities.QualifiedId("qits", 731L),
+            new CommitSubjectEntities.QualifiedId("qits", 882L)),
+        CommitSubjectEntities.references(
+            "chore(qits-731, qits-882): bump(dependencies): 2 dependencies"));
+    assertEquals(
+        List.of(
+            new CommitSubjectEntities.QualifiedId("qits", 1L),
+            new CommitSubjectEntities.QualifiedId("qits", 2L)),
+        CommitSubjectEntities.references("chore(qits-1,qits-2): x"));
+  }
+
+  @Test
+  void aScopeMayMixSeveralProjects() {
+    assertEquals(
+        List.of(
+            new CommitSubjectEntities.QualifiedId("qits", 1L),
+            new CommitSubjectEntities.QualifiedId("other-project", 12L),
+            new CommitSubjectEntities.QualifiedId("qits", 3L)),
+        CommitSubjectEntities.references("chore(qits-1, other-project-12, qits-3): x"));
+  }
+
+  @Test
+  void duplicateIdsAreDedupedKeepingFirstSeenOrder() {
+    assertEquals(
+        List.of(
+            new CommitSubjectEntities.QualifiedId("qits", 1L),
+            new CommitSubjectEntities.QualifiedId("qits", 2L)),
+        CommitSubjectEntities.references("chore(qits-1, qits-2, qits-1): x"));
+  }
+
+  /**
+   * <b>The reader is deliberately more lenient than the githost receive guard's writing grammar,
+   * which must remain a strict subset of what this reader accepts.</b> Padding around the comma —
+   * never written by the guard — still reads both ids, because each part is {@code strip()}ped on
+   * both sides before it is matched.
+   */
+  @Test
+  void theReaderAcceptsWhitespacePaddedPartsTheGuardNeverWrites() {
+    assertEquals(
+        List.of(
+            new CommitSubjectEntities.QualifiedId("qits", 1L),
+            new CommitSubjectEntities.QualifiedId("qits", 2L)),
+        CommitSubjectEntities.references("chore(qits-1 , qits-2): x"));
+  }
+
+  @Test
+  void aMalformedOrEmptyPartRefusesTheWholeScope() {
+    for (String subject :
+        List.of(
+            "chore(qits-1,): x",
+            "chore(, qits-1): x",
+            "chore(): x",
+            "chore(qits-1; qits-2): x")) {
+      assertEquals(List.of(), CommitSubjectEntities.references(subject), subject);
+    }
+  }
+
+  /** {@link CommitSubjectEntities#reference} stays the first of several. */
+  @Test
+  void referenceIsTheFirstOfSeveral() {
+    assertEquals(
+        Optional.of(new CommitSubjectEntities.QualifiedId("qits", 731L)),
+        CommitSubjectEntities.reference("chore(qits-731, qits-882): x"));
+  }
+
   /** The reading and the writing halves produce the identical string. */
   @Test
   void theRenderedFormIsTheOneTheWriterProduces() {

@@ -13,8 +13,8 @@ package eu.wohlben.qits.projects.control.gate;
  *
  * <p><b>This is the gate as the answer reports it.</b> What moves a request ({@code
  * ReleaseRequests.evaluate} before the tag, {@code ReleaseFinalization} after it) still decides the
- * built-in gates in its own fixed order, because their interplay (a red build beside moving
- * automations holds instead of rejecting) is not a property of any one gate. A gate here never
+ * built-in gates in its own fixed order, because their interplay (no QA is asked for until the
+ * automations pass, so the CI verdict is read only after them) is not a property of any one gate. A gate here never
  * moves a request.
  */
 public interface ReleaseGate {

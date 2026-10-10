@@ -5,6 +5,11 @@ package eu.wohlben.qits.projects.control.gate;
  * member here.
  */
 public enum ReleaseGatePosition {
+  /**
+   * After the pre-run, before QA (qits-1133): the release-request automations, which have to be
+   * fresh before QA is even asked for.
+   */
+  PRE_RUN_QA("pre-run-qa"),
   /** After QA, before publish. */
   QA_PUBLISH("qa-publish"),
   /** After publish, before deploy. */

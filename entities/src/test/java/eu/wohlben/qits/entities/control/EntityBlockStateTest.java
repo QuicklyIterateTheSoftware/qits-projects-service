@@ -89,7 +89,7 @@ class EntityBlockStateTest {
   }
 
   @Test
-  void theShippedDebounceIsThirtySeconds() {
-    assertEquals(Duration.ofSeconds(30), EntityBlockState.debounce());
+  void theShippedDebounceIsSixtySeconds() {
+    assertEquals(Duration.ofSeconds(60), EntityBlockState.debounce());
   }
 }

@@ -133,10 +133,10 @@ public class ReleasePipelineReportingTest {
 
     assertNull(pipeline(id), "absent, and deliberately not an empty block");
     assertEquals(
-        List.of("CI", "AUTOMATIONS"),
+        List.of("AUTOMATIONS", "CI"),
         strings(id, "request.gates.kind"),
         "the flat list is untouched");
-    assertEquals(List.of("PENDING", "PASSED"), strings(id, "request.gates.state"));
+    assertEquals(List.of("PASSED", "PENDING"), strings(id, "request.gates.state"));
   }
 
   /**
@@ -207,7 +207,7 @@ public class ReleasePipelineReportingTest {
     awaitState(id, "REJECTED");
     assertEquals(List.of("FAILED"), strings(id, "request.pipeline.phases.state"));
     assertEquals(
-        List.of("FAILED", "PASSED"),
+        List.of("PASSED", "FAILED"),
         strings(id, "request.gates.state"),
         "and they agree while red");
 
@@ -334,10 +334,10 @@ public class ReleasePipelineReportingTest {
         Instant.parse("2026-09-16T10:00:00Z"));
 
     assertEquals(
-        List.of("CI", "AUTOMATIONS", "APPROVAL", "DEPLOYMENT"),
+        List.of("AUTOMATIONS", "CI", "APPROVAL", "DEPLOYMENT"),
         strings(id, "request.pipeline.gates.kind"));
     assertEquals(
-        List.of("QA_PUBLISH", "QA_PUBLISH", "QA_PUBLISH", "DEPLOY_FINALIZED"),
+        List.of("PRE_RUN_QA", "QA_PUBLISH", "QA_PUBLISH", "DEPLOY_FINALIZED"),
         strings(id, "request.pipeline.gates.between"));
     assertEquals(
         strings(id, "request.gates.kind"),
@@ -384,9 +384,9 @@ public class ReleasePipelineReportingTest {
     finalization.sweep();
 
     assertEquals(
-        List.of("CI", "AUTOMATIONS", "PUBLISH"), strings(id, "request.pipeline.gates.kind"));
+        List.of("AUTOMATIONS", "CI", "PUBLISH"), strings(id, "request.pipeline.gates.kind"));
     assertEquals(
-        List.of("QA_PUBLISH", "QA_PUBLISH", "PUBLISH_DEPLOY"),
+        List.of("PRE_RUN_QA", "QA_PUBLISH", "PUBLISH_DEPLOY"),
         strings(id, "request.pipeline.gates.between"));
 
     QuarkusTransaction.requiringNew()

@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.api;
 
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import eu.wohlben.qits.projects.control.PipelinePhaseReruns;
@@ -273,5 +274,45 @@ public class ReleaseRequestAgentBoundsTest {
         .post(base(OWN_REPO) + "/" + own + "/pipeline/QA/rerun")
         .then()
         .statusCode(200);
+  }
+
+  private static io.restassured.specification.RequestSpecification asForwardedCiRun() {
+    return given()
+        .header("X-Qits-User", "qits-ci")
+        .header("X-Qits-Roles", "qits:ci-run")
+        .contentType(ContentType.JSON);
+  }
+
+  /**
+   * {@code qits:ci-run} reaches {@code GET .../commits} too (qits-1142): the CI step's run token
+   * may read back the commits its own release request's fold brought in, and nothing else here — a
+   * write is refused at the door. The method-level {@code @RolesAllowed} this grant needed is new
+   * (the route had none before and relied on the class pair), which this read-but-not-write pair is
+   * what proves.
+   *
+   * <p>This fixture's repository rows are plain {@code domain} rows with no real git-host backing
+   * (see the class javadoc on why the bounds are driven directly), so the fold {@code
+   * requestBySomebodyElse} triggers answers a domain-level 404 — "repository not found on the git
+   * host" — once the read reaches {@code CommitService}, rather than the 200 a real mirror would
+   * answer. What this asserts is that the role is admitted at all: a 403 would mean the door itself
+   * refused the caller before any of that ran, which is the one outcome this test rules out.
+   */
+  @Test
+  void aCiRunTokenReadsTheCommitsAndCannotCreate() {
+    String own = requestBySomebodyElse(OWN_REPO, "ticket/own-ci-run");
+
+    int readStatus =
+        asForwardedCiRun()
+            .get(base(OWN_REPO) + "/" + own + "/commits")
+            .then()
+            .extract()
+            .statusCode();
+    assertNotEquals(403, readStatus, "qits:ci-run must be admitted at this door");
+
+    asForwardedCiRun()
+        .body("{\"branch\":\"ticket/own\",\"summary\":\"ci-run may not create\"}")
+        .post(base(OWN_REPO))
+        .then()
+        .statusCode(403);
   }
 }

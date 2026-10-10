@@ -45,12 +45,12 @@
     "approvalNote": "Read the diff: the pin moves to the export release.",
     "gates": [
       {
-        "kind": "CI",
+        "kind": "AUTOMATIONS",
         "state": "PASSED",
         "detail": null
       },
       {
-        "kind": "AUTOMATIONS",
+        "kind": "CI",
         "state": "PASSED",
         "detail": null
       },
@@ -105,14 +105,14 @@
       ],
       "gates": [
         {
-          "between": "QA_PUBLISH",
-          "kind": "CI",
+          "between": "PRE_RUN_QA",
+          "kind": "AUTOMATIONS",
           "state": "PASSED",
           "detail": null
         },
         {
           "between": "QA_PUBLISH",
-          "kind": "AUTOMATIONS",
+          "kind": "CI",
           "state": "PASSED",
           "detail": null
         },
@@ -126,26 +126,9 @@
     },
     "qualityGates": [
       {
-        "kind": "ci",
-        "label": "CI build",
-        "position": "qa-publish",
-        "state": "PASSED",
-        "detail": "Run 00000000-0000-4000-8000-000000000007 passed for bd6360a2c6",
-        "checks": [
-          {
-            "name": "Run 00000000-0000-4000-8000-000000000007",
-            "state": "PASSED",
-            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
-            "runId": "00000000-0000-4000-8000-000000000007"
-          }
-        ],
-        "runId": "00000000-0000-4000-8000-000000000007",
-        "link": null
-      },
-      {
         "kind": "automations",
         "label": "Automations",
-        "position": "qa-publish",
+        "position": "pre-run-qa",
         "state": "PASSED",
         "detail": null,
         "checks": [
@@ -166,6 +149,23 @@
         "link": null
       },
       {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": "Run 00000000-0000-4000-8000-000000000007 passed for bd6360a2c6",
+        "checks": [
+          {
+            "name": "Run 00000000-0000-4000-8000-000000000007",
+            "state": "PASSED",
+            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+            "runId": "00000000-0000-4000-8000-000000000007"
+          }
+        ],
+        "runId": "00000000-0000-4000-8000-000000000007",
+        "link": null
+      },
+      {
         "kind": "approval",
         "label": "Approval",
         "position": "qa-publish",
@@ -175,6 +175,9 @@
         "runId": null,
         "link": null
       }
-    ]
+    ],
+    "preRun": {
+      "state": "PASSED"
+    }
   }
 }

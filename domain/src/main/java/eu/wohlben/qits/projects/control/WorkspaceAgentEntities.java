@@ -96,4 +96,25 @@ public interface WorkspaceAgentEntities {
       boolean blocked) {
     changed(repositoryId, branch, title, status, blocked);
   }
+
+  /**
+   * {@link #changed(String, String, String, String, String, boolean)}, carrying the effective
+   * block's SOURCE too (qits-895): {@code "EXPLICIT"}, {@code "AGENT_WAITING"} or {@code "BOTH"}
+   * ({@code entities.control.EntityBlockState}), and {@code null} while {@code blocked} is false. A
+   * port that knows no source ignores it, which is why the default delegates down rather than up —
+   * an implementation written before this overload existed keeps compiling and keeps sending the
+   * four it already sent.
+   *
+   * @param blockSource the effective block's source, or {@code null} when not blocked
+   */
+  default void changed(
+      String workId,
+      String repositoryId,
+      String branch,
+      String title,
+      String status,
+      boolean blocked,
+      String blockSource) {
+    changed(workId, repositoryId, branch, title, status, blocked);
+  }
 }

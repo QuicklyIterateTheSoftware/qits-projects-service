@@ -133,6 +133,11 @@ import java.util.List;
  * run, so a page renders every gate with no code per kind. It is the same evaluation as {@code
  * gates} and {@code pipeline.gates}, which stay for the readers that draw them and are deprecated.
  * Unlike {@code pipeline} it is never null: it does not need a phase run to be drawn.
+ *
+ * <p><b>{@code preRun} is where the pre-run stands at the current fold</b> (qits-1133) — the
+ * release-request automations that run before QA is asked for; see {@link ReleasePreRunDto}. Never
+ * null. While it is neither {@code PASSED} nor {@code WAIVED} on a PENDING request, the pipeline's QA
+ * phase reads {@code WAITING_FOR_PRE_RUN}.
  */
 public record ReleaseRequestDto(
     String id,
@@ -164,4 +169,5 @@ public record ReleaseRequestDto(
     Instant createdAt,
     Instant updatedAt,
     ReleasePipelineDto pipeline,
-    List<ReleaseQualityGateDto> qualityGates) {}
+    List<ReleaseQualityGateDto> qualityGates,
+    ReleasePreRunDto preRun) {}

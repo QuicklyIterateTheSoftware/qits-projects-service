@@ -338,9 +338,8 @@ public class AutomationGateTest {
   }
 
   /**
-   * A red automation run on a GREEN fold holds: a person's turn (push, re-run or waive), never a
-   * rejection. (Beside a red verdict it rejects — see {@link
-   * #aRedVerdictBesideFailedAutomationsRejectsAndIsRevivedByRetryAndPush}.)
+   * A red automation run holds: a person's turn (push, re-run or waive), never a rejection — beside
+   * a red verdict too, see {@link #aRedVerdictBesideFailedAutomationsHoldsUntilAPush}.
    */
   @Test
   public void aFailedAutomationHoldsAndIsNotRejected() {
@@ -432,71 +431,48 @@ public class AutomationGateTest {
   }
 
   /**
-   * <b>qits-760.</b> A red verdict beside automations that have already FAILED — nothing in flight,
-   * so no commit is coming to supersede the fold — rejects exactly as an ungated red does, naming
-   * the run and the failed automation, instead of holding for ever on a real red build. Then the
-   * revivals: a retry of the rejecting run reconsiders it at the same fold; a re-run of the
-   * automation that ends with nothing to commit does not (the red build still stands); and a push —
-   * an automation's own branch joining after a re-run included — re-arms it.
+   * <b>qits-760, superseded by qits-1133.</b> A red verdict beside automations that have already
+   * FAILED used to reject, because nothing was in flight. Now QA is not even asked for until the
+   * pre-run passes, so a verdict at a fold whose automations failed answers no run this request
+   * started: the request HOLDS, never rejected, saying the automation failed — and a push (an
+   * automation re-run's own branch joining included) re-folds it, which is one of the three ways on.
    */
   @Test
-  public void aRedVerdictBesideFailedAutomationsRejectsAndIsRevivedByRetryAndPush() {
+  public void aRedVerdictBesideFailedAutomationsHoldsUntilAPush() {
     automations.answer(plainName, SCREENSHOTS, "FAILED");
     String id = create(plainRepoId, "work");
     String merged = mergedShaOf(plainRepoId, id);
 
     String redRun = "run-" + UUID.randomUUID();
     frame(plainRepoId, "BuildFailed", merged, redRun, null, ",\"outcome\":\"FAILED\"");
+    releaseRequests.sweep();
 
-    JsonPath rejected = request(plainRepoId, id);
-    assertEquals("REJECTED", rejected.getString("state"), "a real red build, nothing coming");
-    assertEquals(redRun, rejectingRunIdOf(id));
-    assertEquals(
-        "Run "
-            + redRun
-            + " finished FAILED for "
-            + merged
-            + "; the automations failed too: Screenshot baselines",
-        rejected.getString("detail"));
-    assertEquals(0, executor.calls().size());
-
-    // A retry of the rejecting run reconsiders it at the same fold: green now, and the automations
-    // gate — still failed — holds it, as it would any green fold.
-    String retry = "run-" + UUID.randomUUID();
-    frame(plainRepoId, "BuildSuccessful", merged, retry, redRun, "");
-    awaitState(plainRepoId, id, "PENDING");
-    assertEquals(merged, mergedShaOf(plainRepoId, id), "reconsidered, not re-folded");
+    JsonPath held = request(plainRepoId, id);
+    assertEquals("PENDING", held.getString("state"), "the pre-run holds; the verdict is not read");
+    assertNull(rejectingRunIdOf(id));
     assertEquals(
         "Screenshot baselines failed at " + merged.substring(0, 10) + "; push, re-run, or waive this fold",
-        request(plainRepoId, id).getString("detail"));
+        held.getString("detail"));
+    assertEquals(0, executor.calls().size());
 
-    // The retry is red too: rejected again, at the same fold, by the retry.
-    String secondRetry = "run-" + UUID.randomUUID();
-    frame(plainRepoId, "BuildFailed", merged, secondRetry, retry, ",\"outcome\":\"FAILED\"");
-    awaitState(plainRepoId, id, "REJECTED");
-    assertEquals(secondRetry, rejectingRunIdOf(id));
-
-    // The automation is re-run and ends with nothing to commit. No push, no retry: nothing revives
-    // the request, which is right — the red build that rejected it still stands.
-    automations.answer(plainName, SCREENSHOTS, "FRESH");
-    releaseRequests.sweep();
-    assertEquals("REJECTED", stateOf(plainRepoId, id));
-
-    // The automation's re-run commits instead: its branch joins the request, which re-folds it.
+    // The automation's re-run commits: its branch joins the request, which re-folds it.
+    automations.answer(plainName, SCREENSHOTS, "RUNNING");
     releaseRequests.addSource(id, "maintenance/automations/screenshot-baselines/x", "maint", null);
     awaitFoldToMove(plainRepoId, id, merged);
     awaitState(plainRepoId, id, "PENDING");
-    assertNull(rejectingRunIdOf(id), "the re-arm cleared the rejection");
+    assertTrue(
+        request(plainRepoId, id).getString("detail").startsWith("Waiting for automations at "),
+        "the pre-run restarted on the new fold");
   }
 
-  /** A push to a source branch re-arms a request rejected beside failed automations. */
+  /** A push to a source branch re-folds a request held by a failed automation. */
   @Test
-  public void aPushRevivesARequestRejectedBesideFailedAutomations() {
+  public void aPushMovesARequestHeldByAFailedAutomation() {
     automations.answer(plainName, SCREENSHOTS, "FAILED");
     String id = create(plainRepoId, "work");
     String merged = mergedShaOf(plainRepoId, id);
     redVerdict(plainRepoId, merged);
-    assertEquals("REJECTED", stateOf(plainRepoId, id));
+    assertEquals("PENDING", stateOf(plainRepoId, id), "held, not rejected");
 
     headMoved(plainRepoId, "work");
     awaitFoldToMove(plainRepoId, id, merged);

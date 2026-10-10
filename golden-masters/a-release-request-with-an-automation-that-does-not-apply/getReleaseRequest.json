@@ -45,13 +45,13 @@
     "approvalNote": null,
     "gates": [
       {
-        "kind": "CI",
-        "state": "PASSED",
+        "kind": "AUTOMATIONS",
+        "state": "PENDING",
         "detail": null
       },
       {
-        "kind": "AUTOMATIONS",
-        "state": "PENDING",
+        "kind": "CI",
+        "state": "PASSED",
         "detail": null
       },
       {
@@ -96,24 +96,24 @@
       "phases": [
         {
           "phase": "QA",
-          "state": "SUCCESS",
-          "runId": "00000000-0000-4000-8000-000000000005",
-          "startedAt": "2026-01-01T00:00:00Z",
-          "finishedAt": "2026-01-01T00:00:00Z",
-          "detail": null
+          "state": "WAITING_FOR_PRE_RUN",
+          "runId": null,
+          "startedAt": null,
+          "finishedAt": null,
+          "detail": "QA starts once every automation is fresh or waived at this fold"
         }
       ],
       "gates": [
         {
-          "between": "QA_PUBLISH",
-          "kind": "CI",
-          "state": "PASSED",
+          "between": "PRE_RUN_QA",
+          "kind": "AUTOMATIONS",
+          "state": "PENDING",
           "detail": null
         },
         {
           "between": "QA_PUBLISH",
-          "kind": "AUTOMATIONS",
-          "state": "PENDING",
+          "kind": "CI",
+          "state": "PASSED",
           "detail": null
         },
         {
@@ -126,26 +126,9 @@
     },
     "qualityGates": [
       {
-        "kind": "ci",
-        "label": "CI build",
-        "position": "qa-publish",
-        "state": "PASSED",
-        "detail": "Run 00000000-0000-4000-8000-000000000006 passed for bd6360a2c6",
-        "checks": [
-          {
-            "name": "Run 00000000-0000-4000-8000-000000000006",
-            "state": "PASSED",
-            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
-            "runId": "00000000-0000-4000-8000-000000000006"
-          }
-        ],
-        "runId": "00000000-0000-4000-8000-000000000006",
-        "link": null
-      },
-      {
         "kind": "automations",
         "label": "Automations",
-        "position": "qa-publish",
+        "position": "pre-run-qa",
         "state": "PENDING",
         "detail": "Waiting for: Estate pins",
         "checks": [
@@ -160,6 +143,23 @@
         "link": null
       },
       {
+        "kind": "ci",
+        "label": "CI build",
+        "position": "qa-publish",
+        "state": "PASSED",
+        "detail": "Run 00000000-0000-4000-8000-000000000005 passed for bd6360a2c6",
+        "checks": [
+          {
+            "name": "Run 00000000-0000-4000-8000-000000000005",
+            "state": "PASSED",
+            "detail": "SUCCESS on release/00000000-0000-4000-8000-000000000003",
+            "runId": "00000000-0000-4000-8000-000000000005"
+          }
+        ],
+        "runId": "00000000-0000-4000-8000-000000000005",
+        "link": null
+      },
+      {
         "kind": "approval",
         "label": "Approval",
         "position": "qa-publish",
@@ -169,6 +169,9 @@
         "runId": null,
         "link": null
       }
-    ]
+    ],
+    "preRun": {
+      "state": "RUNNING"
+    }
   }
 }

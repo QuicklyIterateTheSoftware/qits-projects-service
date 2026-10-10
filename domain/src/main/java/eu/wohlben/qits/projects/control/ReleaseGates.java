@@ -209,16 +209,18 @@ public class ReleaseGates {
 
   /** The five gates. A sixth is a new member here and nowhere else. */
   public enum Kind {
-    /** Before the tag: a {@code BuildSuccessful} for the fold. */
-    CI,
     /**
-     * Before the tag, after the build and before a person: every release-request automation that
-     * applies (estate pins, screenshot baselines, …) is fresh for the fold, or a person waived that
-     * fold. Not configured from {@code main} like the others — it is on wherever {@link
-     * AutomationRefresh#configured() qits-maintenance is configured}, and for the estate wrapper
-     * always; {@code ReleaseRequests} is what puts it in a reported set. See {@link AutomationLedger}.
+     * Before the tag, and FIRST — the pre-run (qits-1133): every release-request automation that
+     * applies (dependency bumps, estate pins, the entity diagram, screenshot baselines, …) is fresh
+     * for the fold, or a person waived that fold. QA is not asked for until it passes, which is why
+     * it is ahead of {@link #CI} here and in every list made in this order. Not configured from
+     * {@code main} like the others — it is on wherever {@link AutomationRefresh#configured()
+     * qits-maintenance is configured}, and for the estate wrapper always; {@code ReleaseRequests} is
+     * what puts it in a reported set. See {@link AutomationLedger}.
      */
     AUTOMATIONS,
+    /** Before the tag, once the pre-run is done: a {@code BuildSuccessful} for the fold. */
+    CI,
     /** Before the tag, and standing alone: a person's yes. */
     APPROVAL,
     /**

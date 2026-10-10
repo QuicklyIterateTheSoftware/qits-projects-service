@@ -200,9 +200,14 @@ public class WorkController {
 
   // --- the routes ------------------------------------------------------------------------------
 
+  /**
+   * <b>{@code qits:ci-run} reaches this read too</b> (qits-1142): the CI step's run token, so a
+   * step can read back the work item it is building for. A method-level {@code @RolesAllowed}
+   * replaces the class's rather than adding to it, so the grant is this one read alone.
+   */
   @GET
   @Path("/{qualifiedId}")
-  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent", "qits:system", "qits:ci-run"})
   @Operation(
       operationId = "getWork",
       summary = "Read one work entity of any archetype",

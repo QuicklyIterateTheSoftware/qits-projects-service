@@ -31,6 +31,22 @@ import java.util.List;
 public interface ReleaseRequestAnnouncer {
 
   /**
+   * The fold landed and its <b>pre-run</b> — the release-request automations (dependency bumps,
+   * estate pins, the entity diagram, screenshot baselines) — is still being settled. qits-ci starts
+   * no QA run for it: an automation is about to commit onto the request, which re-folds it, and a
+   * build of this sha would be cancelled by that commit (qits-1133).
+   */
+  String PRE_RUN_PENDING = "PENDING";
+
+  /**
+   * Every automation that applies is FRESH or waived at this fold — or none applies at all — so the
+   * fold is final as far as the platform's own writes go, and qits-ci builds it. Announced <b>at most
+   * once per sha</b> ({@code release_request.qa_announced_sha}). An absent {@code preRun} reads as
+   * this too, which is what every announcement before qits-1133 was.
+   */
+  String PRE_RUN_DONE = "DONE";
+
+  /**
    * A release request's backing branch has a new tip.
    *
    * @param projectId the project the repository belongs to, or null where it has none
@@ -53,6 +69,9 @@ public interface ReleaseRequestAnnouncer {
    *     could not be asked and an empty list means it was asked and this repository is a leaf — two
    *     different facts, and a consumer must be able to tell them apart. It is advisory throughout;
    *     its one reader orders a build queue with it and never refuses a build over it.
+   * @param preRun {@link #PRE_RUN_PENDING} or {@link #PRE_RUN_DONE} — whether this fold's pre-run is
+   *     still being settled or the fold may be built. Never null from {@code ReleaseRequests}; an
+   *     implementation publishes it as it is.
    */
   void onReleaseRequestChanged(
       String projectId,
@@ -63,5 +82,6 @@ public interface ReleaseRequestAnnouncer {
       String mergedSha,
       Instant changedAt,
       String priority,
-      List<String> downstreamTechnicalComponents);
+      List<String> downstreamTechnicalComponents,
+      String preRun);
 }

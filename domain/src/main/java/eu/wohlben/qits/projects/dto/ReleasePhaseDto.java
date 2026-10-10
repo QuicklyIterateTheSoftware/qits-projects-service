@@ -28,7 +28,9 @@ import java.time.Instant;
  * are one {@code FAILED} here, because what the pipeline is waiting on does not differ between them
  * and the run's own page is where the distinction belongs. {@code CANCELLED} stays its own word: a
  * run somebody stopped is not a run that failed, and a reader offered a rerun needs to know which.
- * {@code UNKNOWN} is a status word this service cannot place, never a gap.
+ * {@code UNKNOWN} is a status word this service cannot place, never a gap. {@code QA} has one more
+ * (qits-1133): {@code WAITING_FOR_PRE_RUN}, with no run, while the release-request automations are
+ * not fresh or waived at the current fold — no QA run has been asked for yet, by design.
  *
  * <p><b>{@code runId} is null before the phase exists</b>, which is the ordinary state of the
  * publish phase of a release whose tag has not been cut — and such a phase is not in the list at

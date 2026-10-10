@@ -94,7 +94,7 @@ class ReleaseGateEvaluatorTest {
                 List.of(),
                 null));
     assertEquals(
-        List.of("ci", "automations", "approval", "publish", "deployment-not-rolled-back"),
+        List.of("automations", "ci", "approval", "publish", "deployment-not-rolled-back"),
         answers.stream().map(answer -> answer.gate().kind()).toList());
     for (ReleaseGateEvaluator.Evaluated answer : answers) {
       if (answer.gate().kind().equals("automations")) {

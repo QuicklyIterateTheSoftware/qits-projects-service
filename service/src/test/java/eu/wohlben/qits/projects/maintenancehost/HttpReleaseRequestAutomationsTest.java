@@ -143,6 +143,53 @@ class HttpReleaseRequestAutomationsTest {
     assertNull(entry.failure(), "an older qits-maintenance sends no failure, and that is no failure");
   }
 
+  /**
+   * qits-1133: the trigger says which state words this side reads beyond the original seven, so
+   * qits-maintenance may answer WAITING and NOT_APPLICABLE to it and to nobody older.
+   */
+  @Test
+  void theTriggerSaysItAcceptsWaitingAndNotApplicable() throws Exception {
+    String base = startServer();
+
+    trigger(against(base), null);
+
+    JsonNode accepts = MAPPER.readTree(received.get(0).body()).get("accepts");
+    assertTrue(accepts.isArray(), "a list of words, not a flag");
+    assertEquals(
+        List.of("WAITING", "NOT_APPLICABLE"),
+        List.of(accepts.get(0).asText(), accepts.get(1).asText()));
+    assertEquals(2, accepts.size());
+  }
+
+  /**
+   * WAITING, NOT_APPLICABLE with its reason, and a word this side has never heard of are all read
+   * back as they were sent — the vocabulary is the far side's, and an unknown word is a hold the
+   * ledger decides, never a parse failure here.
+   */
+  @Test
+  void waitingNotApplicableAndAnUnknownWordAreReadAsTheyCame() throws Exception {
+    String base = startServer();
+    responseBody.set(
+        """
+        {"requestId":"rr-1","foldSha":"%s","automations":[
+          {"kind":"dependency-bump","label":"Dependency bump","state":"FRESH","runIds":[]},
+          {"kind":"entity-diagram","label":"Entity diagram","state":"WAITING","runIds":[]},
+          {"kind":"screenshot-baselines","label":"Screenshot baselines","state":"NOT_APPLICABLE",
+           "detail":"the fold carries no package.json"},
+          {"kind":"openapi","label":"OpenAPI","state":"PONDERING","runIds":[]}]}
+        """
+            .formatted(FOLD));
+
+    List<ReleaseRequestAutomations.Automation> entries =
+        trigger(against(base), null).orElseThrow().automations();
+
+    assertEquals(4, entries.size());
+    assertEquals("WAITING", entries.get(1).state());
+    assertEquals("NOT_APPLICABLE", entries.get(2).state());
+    assertEquals("the fold carries no package.json", entries.get(2).detail());
+    assertEquals("PONDERING", entries.get(3).state(), "carried as a string, decided by the ledger");
+  }
+
   /** Null never carries an outcome over at the far side, empty says nothing changed: two answers. */
   @Test
   void anUnknownDiffTravelsAsNullAndAnEmptyOneAsEmpty() throws Exception {

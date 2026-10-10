@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -76,8 +75,12 @@ public class CommitSubjectCompliance {
     MACHINE
   }
 
-  /** One commit's class, and the reason when it is EXEMPT (null otherwise). */
-  public record Verdict(Classification classification, ExemptReason reason, QualifiedId id) {}
+  /**
+   * One commit's class, and the reason when it is EXEMPT (null otherwise). {@code ids} is every
+   * id the subject's scope named (empty for EXEMPT and for NON_COMPLYING; one or more for
+   * COMPLYING — a scope naming several ids is one COMPLYING commit with several).
+   */
+  public record Verdict(Classification classification, ExemptReason reason, List<QualifiedId> ids) {}
 
   /**
    * The rule, as a pure function of one commit — merge, then machine, then the grammar. Static so a
@@ -85,16 +88,16 @@ public class CommitSubjectCompliance {
    */
   public static Verdict classify(SubjectLine commit, Set<String> machineAuthors) {
     if (commit.parents() > 1) {
-      return new Verdict(Classification.EXEMPT, ExemptReason.MERGE, null);
+      return new Verdict(Classification.EXEMPT, ExemptReason.MERGE, List.of());
     }
     String email = commit.authorEmail() == null ? "" : commit.authorEmail().trim();
     if (machineAuthors.contains(email.toLowerCase(Locale.ROOT))) {
-      return new Verdict(Classification.EXEMPT, ExemptReason.MACHINE, null);
+      return new Verdict(Classification.EXEMPT, ExemptReason.MACHINE, List.of());
     }
-    Optional<QualifiedId> id = CommitSubjectEntities.reference(commit.subject());
-    return id.isPresent()
-        ? new Verdict(Classification.COMPLYING, null, id.get())
-        : new Verdict(Classification.NON_COMPLYING, null, null);
+    List<QualifiedId> ids = CommitSubjectEntities.references(commit.subject());
+    return !ids.isEmpty()
+        ? new Verdict(Classification.COMPLYING, null, ids)
+        : new Verdict(Classification.NON_COMPLYING, null, List.of());
   }
 
   /**
@@ -129,7 +132,9 @@ public class CommitSubjectCompliance {
         }
         case COMPLYING -> {
           complying++;
-          ids.add(verdict.id().rendered());
+          for (QualifiedId id : verdict.ids()) {
+            ids.add(id.rendered());
+          }
         }
         case NON_COMPLYING ->
             nonComplying.add(

@@ -36,8 +36,14 @@ import org.jboss.logging.Logger;
  *   Authorization: Bearer &lt;qits.projects.refinement-daemon-api-token&gt;
  *   Host: localhost:&lt;qits.projects.refinement-daemon-api-port&gt;
  *
- *   {"title": "…", "status": "REFINED", "blocked": true}
+ *   {"title": "…", "status": "REFINED", "blocked": true, "blockSource": "AGENT_WAITING"}
  * </pre>
+ *
+ * <p><b>{@code blockSource} (qits-895)</b> is the effective block's source —
+ * {@code entities.control.EntityBlockState}'s {@code "EXPLICIT"}, {@code "AGENT_WAITING"} or
+ * {@code "BOTH"} — omitted whenever {@code blocked} is false. A daemon old enough to answer 404 or
+ * 405 on {@code agents/entity} never sees it; the fallback below still carries only the flag, as it
+ * always has.
  *
  * <p><b>A 404 OR A 405 there is retried once on {@code agents/blocked} with {@code {"blocked":
  * …}}</b>: both are what a daemon older than the entity route answers — a refinement container is
@@ -112,6 +118,16 @@ public class RefinementAgentEntities {
    * @param status the status as stored — the {@code EntityStatus} name, never a rendered label
    */
   public void changed(String entityId, String title, String status, boolean blocked) {
+    changed(entityId, title, status, blocked, null);
+  }
+
+  /**
+   * {@link #changed(String, String, String, boolean)}, carrying the effective block's SOURCE too
+   * (qits-895): {@code entities.control.EntityBlockState}'s {@code "EXPLICIT"}, {@code
+   * "AGENT_WAITING"} or {@code "BOTH"}, {@code null} while {@code blocked} is false.
+   */
+  public void changed(
+      String entityId, String title, String status, boolean blocked, String blockSource) {
     try {
       Optional<Refinement> refinement = refinements.findByEntity(entityId);
       if (refinement.isEmpty()) {
@@ -127,7 +143,7 @@ public class RefinementAgentEntities {
             refinementId, entityId);
         return;
       }
-      send(refinementId, origin.get(), title, status, blocked);
+      send(refinementId, origin.get(), title, status, blocked, blockSource);
     } catch (RuntimeException e) {
       couldNot("of entity " + entityId, blocked, e.toString());
     }
@@ -139,11 +155,17 @@ public class RefinementAgentEntities {
       RefinementTunnels.TunnelOrigin origin,
       String title,
       String status,
-      boolean blocked) {
+      boolean blocked,
+      String blockSource) {
     Map<String, Object> entity = new LinkedHashMap<>();
     entity.put("title", title);
     entity.put("status", status);
     entity.put("blocked", blocked);
+    // The effective block's source (qits-895); omitted while not blocked or unknown, exactly as
+    // the workspace door's twin omits it.
+    if (blockSource != null) {
+      entity.put("blockSource", blockSource);
+    }
     int answer;
     try {
       answer = post(refinementId, origin, ENTITY_PATH, MAPPER.writeValueAsString(entity));

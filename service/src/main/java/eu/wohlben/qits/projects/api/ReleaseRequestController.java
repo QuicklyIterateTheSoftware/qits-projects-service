@@ -145,6 +145,18 @@ public class ReleaseRequestController {
    * source restates them), and a red gate or a decline on the shared request holds every
    * participant at once. {@code ReleaseRequests.request} is where the rule lives and argues for
    * itself.
+   *
+   * <p><b>A main-only request is qits-maintenance's door for a dependency bump</b> (qits-1133):
+   * {@code POST /projects/api/repositories/{repoId}/release-requests} with {@code {"branch":"main",
+   * "summary":"bump(…): N dependencies","priority":"LOWEST"}}, as {@code qits:system} (the role its
+   * {@code PeerClient} presents; {@code qits:admin} works too). It names the repository's default
+   * branch, so the request's only source is {@code main} and its first fold is main's head; no
+   * person's branch is involved. Its pre-run then writes the bump — the {@code dependency-bump}
+   * automation's commit joins on {@code maintenance/automations/dependency-bump/<id>} and re-folds
+   * the request — and QA is asked for only once that is fresh. When the repository already has an
+   * unreleased request, the ask converges onto it like any other (main is a source of every
+   * request), and the answer's id says so. A pre-run that finds nothing to bump is answered by
+   * withdrawing the request — see {@link #withdraw}.
    */
   @POST
   @Operation(
@@ -168,7 +180,13 @@ public class ReleaseRequestController {
               + " request's; otherwise the words of the ask that opened it stand, and yours are"
               + " recorded on your own source row. Poll"
               + " until RELEASED, REJECTED, CONFLICTED or FAILED; detail says why, and conflict"
-              + " says what to resolve.")
+              + " says what to resolve. A branch of main makes a main-only request: its only"
+              + " source is main, which is how qits-maintenance (qits:system) opens a dependency"
+              + " bump whose pre-run writes the bump itself. A fold is announced on the bus as"
+              + " ReleaseRequestChanged with preRun=PENDING while its release-request automations"
+              + " (the pre-run) settle, and with preRun=DONE once per fold when they are fresh or"
+              + " waived; QA builds on DONE only, and preRun.state on the answer says where the"
+              + " pre-run stands.")
   public CreateReleaseRequest.Response create(
       @PathParam("repoId") String repoId, CreateReleaseRequest body) {
     requireAgentProject(repoId);
@@ -261,6 +279,15 @@ public class ReleaseRequestController {
     public record Response(ReleaseRequestDto request) {}
   }
 
+  /**
+   * <b>Withdraw an open request — a person's, an agent's for its own work, or a machine's.</b> The
+   * class role list applies, so {@code qits:admin}, {@code qits:admin-agent}, {@code qits:system}
+   * and a bound {@code qits:agent} all reach it. qits-maintenance uses it as {@code qits:system}
+   * (qits-1133) to close a main-only dependency-bump request whose pre-run found nothing to bump:
+   * {@code POST /projects/api/repositories/{repoId}/release-requests/{requestId}/withdraw} with
+   * {@code {"reason":"…"}}; the reason becomes the request's {@code detail}. Withdrawn is terminal,
+   * the request's queued or running runs are asked to stop, and the next ask mints a fresh request.
+   */
   @POST
   @Path("/{requestId}/withdraw")
   @Operation(
@@ -270,7 +297,9 @@ public class ReleaseRequestController {
           "The ask is moot — nothing should land this branch. WITHDRAWN is terminal and frees the"
               + " branch: the next release ask mints a fresh request. A request already RELEASED or"
               + " WITHDRAWN answers 409. A deleted branch withdraws its open request"
-              + " automatically; this route is the operator's spelling for every other reason.")
+              + " automatically; this route is the operator's spelling for every other reason —"
+              + " and qits-maintenance's (qits:system), for a main-only bump request whose"
+              + " pre-run found nothing to bump.")
   public WithdrawReleaseRequest.Response withdraw(
       @PathParam("repoId") String repoId,
       @PathParam("requestId") String requestId,
@@ -445,8 +474,21 @@ public class ReleaseRequestController {
     return new GetReleaseRequest.Response(releaseRequests.get(requestId));
   }
 
+  /**
+   * <b>{@code qits:ci-run} reaches this read too</b> (qits-1142): the CI step's run token, so a
+   * step can read back the commits its own release request's fold brought in. The class pair is
+   * replaced rather than widened, as every method-level {@code @RolesAllowed} here does, so the
+   * grant is this one read and nothing else on the class.
+   */
   @GET
   @Path("/{requestId}/commits")
+  @jakarta.annotation.security.RolesAllowed({
+    "qits:admin",
+    "qits:admin-agent",
+    "qits:system",
+    "qits:agent",
+    "qits:ci-run"
+  })
   @Operation(
       operationId = "listReleaseRequestCommits",
       summary = "The commits this request's fold brought in",

@@ -268,4 +268,47 @@ class HttpWorkspaceAgentEntitiesTest {
 
     assertEquals("w-1", MAPPER.readValue(received.get(0).body(), Map.class).get("workId"));
   }
+
+  /**
+   * With a block source (qits-895), the body carries it beside the effective flag — the derived
+   * block's and the explicit's name, exactly as {@code EntityBlockState} answers.
+   */
+  @Test
+  void aChangeCarryingABlockSourceAddsItToTheBody() throws Exception {
+    String base = startServer();
+
+    against(base)
+        .changed("w-1", "repo-1", "ticket/puce-button", "Puce button", "REFINED", true, "BOTH");
+
+    assertEquals(
+        Map.of(
+            "repositoryId", "repo-1",
+            "branch", "ticket/puce-button",
+            "title", "Puce button",
+            "status", "REFINED",
+            "blocked", true,
+            "workId", "w-1",
+            "blockSource", "BOTH"),
+        MAPPER.readValue(received.get(0).body(), Map.class));
+  }
+
+  /**
+   * A null block source — not blocked, or a caller that does not know it — is OMITTED, never sent
+   * as a JSON null: the narrower overloads this class also implements delegate to the widest one
+   * with {@code null}, and the key must not appear for them either.
+   */
+  @Test
+  void aNullBlockSourceIsOmittedFromTheBody() throws Exception {
+    String base = startServer();
+
+    against(base)
+        .changed("w-1", "repo-1", "ticket/puce-button", "Puce button", "REFINED", false, null);
+    against(base).changed("repo-1", "epic/onboarding", "Onboarding", "REPORTED", false);
+
+    for (Received request : received) {
+      assertTrue(
+          !MAPPER.readValue(request.body(), Map.class).containsKey("blockSource"),
+          "no blockSource key on " + request.body());
+    }
+  }
 }

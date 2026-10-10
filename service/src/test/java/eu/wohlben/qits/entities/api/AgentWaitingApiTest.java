@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
  * agent session waiting for a person reads as BLOCKED once the wait has stood for the debounce,
  * beside — never instead of — the explicit block, and it never stops a dispatch.
  *
- * <p>The debounce is the shipped 30s; a test does not wait it out but moves the recorded wait back
+ * <p>The debounce is the shipped 60s; a test does not wait it out but moves the recorded wait back
  * in time ({@link #backdate}), which is the one write here that does not go through a door.
  */
 @QuarkusTest
@@ -192,7 +192,7 @@ class AgentWaitingApiTest {
     assertFalse(row(ticket).blocked, "and the explicit flag is never touched");
     assertEquals(List.of(), agents.calls(), "a wait inside the debounce tells nobody");
 
-    backdate(ticket, 40);
+    backdate(ticket, 70);
     read(ticket)
         .body("blocked", equalTo(true))
         .body("blockSource", equalTo("AGENT_WAITING"))
@@ -225,7 +225,7 @@ class AgentWaitingApiTest {
 
     stop(ticket);
     resume(ticket);
-    backdate(ticket, 40); // nothing to move: the wait is gone
+    backdate(ticket, 70); // nothing to move: the wait is gone
 
     read(ticket).body("blocked", equalTo(false)).body("$", not(hasKey("blockSource")));
     assertNull(row(ticket).agentWaitingSince);
@@ -240,7 +240,7 @@ class AgentWaitingApiTest {
     EntityFixtures.Project project = EntityFixtures.project("Waiting Cleared");
     String ticket = EntityFixtures.ticket(project.id());
     stop(ticket);
-    backdate(ticket, 40);
+    backdate(ticket, 70);
     read(ticket).body("blocked", equalTo(true));
     agents.reset();
 
@@ -269,7 +269,7 @@ class AgentWaitingApiTest {
         .body("block.blockedBy", equalTo("dana"));
 
     stop(ticket);
-    backdate(ticket, 40);
+    backdate(ticket, 70);
     read(ticket)
         .body("blocked", equalTo(true))
         .body("blockSource", equalTo("BOTH"))
@@ -297,7 +297,7 @@ class AgentWaitingApiTest {
     EntityFixtures.Project project = EntityFixtures.project("Waiting Unblocked");
     String ticket = EntityFixtures.ticket(project.id());
     stop(ticket);
-    backdate(ticket, 40);
+    backdate(ticket, 70);
     read(ticket).body("blocked", equalTo(true)).body("blockSource", equalTo("AGENT_WAITING"));
     int comments = commentsOn(ticket);
     agents.reset();
@@ -315,7 +315,7 @@ class AgentWaitingApiTest {
     // Both at once, cleared by one unblock.
     setBlocked(ticket, true, "waiting on a release").statusCode(200);
     stop(ticket);
-    backdate(ticket, 40);
+    backdate(ticket, 70);
     read(ticket).body("blockSource", equalTo("BOTH"));
     setBlocked(ticket, false, null).statusCode(200);
     read(ticket).body("blocked", equalTo(false)).body("$", not(hasKey("blockSource")));
@@ -335,7 +335,7 @@ class AgentWaitingApiTest {
     String ticket = EntityFixtures.ticket(project.id());
     setBlocked(ticket, true, "the owner has to choose").statusCode(200);
     stop(ticket);
-    backdate(ticket, 40);
+    backdate(ticket, 70);
     read(ticket).body("blockSource", equalTo("BOTH"));
 
     walk(ticket, "REFINED");
@@ -360,7 +360,7 @@ class AgentWaitingApiTest {
     String ticket = EntityFixtures.ticket(project.id());
     setBlocked(ticket, true, "the owner has to choose").statusCode(200);
     stop(ticket);
-    backdate(ticket, 40);
+    backdate(ticket, 70);
     read(ticket).body("blockSource", equalTo("BOTH"));
 
     given()
@@ -446,7 +446,7 @@ class AgentWaitingApiTest {
     EntityFixtures.Project project = EntityFixtures.project("Waiting Dispatch");
     String ticket = EntityFixtures.ticket(project.id());
     stop(ticket);
-    backdate(ticket, 40);
+    backdate(ticket, 70);
 
     given()
         .get("/projects/api/work/" + ticket + "/dispatch")

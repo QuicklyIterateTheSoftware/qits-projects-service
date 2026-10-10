@@ -237,6 +237,7 @@ erDiagram
     string gate_ticket_id
     string merged_sha
     string project_id
+    string qa_announced_sha
     string rejecting_run_id
     string repo_id "not null"
     string repo_name
