@@ -116,7 +116,7 @@
 
              Do not hand-edit it to chase a release you just made. The train owns it, the release
              request is where it is reviewed, and a hand-written pin asserts a pair nobody gated. -->
-        <qits.projects-daemon-protocol.version>2026.1010.105539</qits.projects-daemon-protocol.version>
+        <qits.projects-daemon-protocol.version>2026.1010.142808</qits.projects-daemon-protocol.version>
 
         <!-- The platform event bus: the outbox, the idempotent PUT, the durable listener and
              CausationScope. Published by libs/qits-eventstream into the platform Maven repository,
@@ -145,7 +145,7 @@
         <!-- qits-runner-javalib (qits-771): the lifecycle frames and their codec
              (qits-runner-protocol), and the install script template plus RunnerIdentity
              (qits-runner-toolkit). One release carries both, so one property pins both. -->
-        <qits.runner.version>2026.1009.184810</qits.runner.version>
+        <qits.runner.version>2026.1010.153003</qits.runner.version>
         <qits.eventstream.version>2026.1003.44717</qits.eventstream.version>
         <qits.githost-events.version>2026.1010.104051</qits.githost-events.version>
 
@@ -176,7 +176,7 @@
              qits-platform-maintenance moves it on `maintenance/dependencies` like any other internal
              pin, and it is gated here. Do not hand-edit it to chase a release you just cut — the
              next bump overwrites the edit, and in between it asserts a pairing nobody proved. -->
-        <qits.workspace-daemon-protocol.version>2026.1010.110036</qits.workspace-daemon-protocol.version>
+        <qits.workspace-daemon-protocol.version>2026.1010.141711</qits.workspace-daemon-protocol.version>
 
         <!-- qits-integrations-quarkus ships two jars this repo consumes, released together, so they
              carry ONE version property rather than drifting apart:
@@ -222,7 +222,7 @@
         <qits.landing-app-pacts-qits-projects-service.version>2026.1010.104235</qits.landing-app-pacts-qits-projects-service.version>
         <qits.projects-frontend-pacts-qits-projects-service.version>2026.1009.101109</qits.projects-frontend-pacts-qits-projects-service.version>
         <qits.platform-access-cli-pacts-qits-projects-service.version>2026.1010.92756</qits.platform-access-cli-pacts-qits-projects-service.version>
-        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1007.53748</qits.maintenance-service-pacts-qits-projects-service.version>
+        <qits.maintenance-service-pacts-qits-projects-service.version>2026.1010.124627</qits.maintenance-service-pacts-qits-projects-service.version>
         <!-- THE PROVIDERS' GOLDEN MASTERS this repository's OWN consumer pacts read (ticket
              qits-1149): what qits-githost, qits-workspaces, qits-maintenance and qits-events record
              for their provider states. Test scope, read off the classpath by
@@ -230,10 +230,10 @@
              contract whose state is not recorded yet is skipped with the state it needs, and turns
              live when a bump of one of these pins brings that state in. Moved by qits-maintenance
              like every other pin; do not hand-edit them to chase a release. -->
-        <qits.githost-golden-masters.version>2026.1002.190746</qits.githost-golden-masters.version>
+        <qits.githost-golden-masters.version>2026.1010.133955</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1003.183318</qits.workspaces-golden-masters.version>
-        <qits.maintenance-golden-masters.version>2026.1008.191446</qits.maintenance-golden-masters.version>
-        <qits.events-golden-masters.version>2026.1002.210125</qits.events-golden-masters.version>
+        <qits.maintenance-golden-masters.version>2026.1010.124627</qits.maintenance-golden-masters.version>
+        <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
              model that reads a pact is the one that wrote it. Plain pact-jvm with an HttpTestTarget
