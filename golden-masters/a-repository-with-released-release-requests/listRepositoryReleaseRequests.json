@@ -30,13 +30,13 @@
       "approvalNote": null,
       "gates": [
         {
-          "kind": "CI",
-          "state": "PENDING",
+          "kind": "AUTOMATIONS",
+          "state": "PASSED",
           "detail": null
         },
         {
-          "kind": "AUTOMATIONS",
-          "state": "PASSED",
+          "kind": "CI",
+          "state": "PENDING",
           "detail": null
         },
         {
@@ -57,21 +57,21 @@
       "pipeline": null,
       "qualityGates": [
         {
-          "kind": "ci",
-          "label": "CI build",
-          "position": "qa-publish",
-          "state": "PENDING",
-          "detail": "Waiting for a CI verdict for 5eed5eed5e",
+          "kind": "automations",
+          "label": "Automations",
+          "position": "pre-run-qa",
+          "state": "PASSED",
+          "detail": null,
           "checks": [],
           "runId": null,
           "link": null
         },
         {
-          "kind": "automations",
-          "label": "Automations",
+          "kind": "ci",
+          "label": "CI build",
           "position": "qa-publish",
-          "state": "PASSED",
-          "detail": null,
+          "state": "PENDING",
+          "detail": "Waiting for a CI verdict for 5eed5eed5e",
           "checks": [],
           "runId": null,
           "link": null
@@ -86,7 +86,10 @@
           "runId": null,
           "link": null
         }
-      ]
+      ],
+      "preRun": {
+        "state": "PASSED"
+      }
     }
   ]
 }
