@@ -186,8 +186,12 @@ import org.jboss.logging.Logger;
  * nothing for, because an automation's commit will re-fold the request and cancel that build. Once
  * every applicable automation is FRESH or waived at the fold — or none applies — {@link #evaluate}
  * announces {@code preRun=DONE}, at most once per sha ({@code qa_announced_sha}, V40), and that is
- * the announcement qits-ci starts QA on. So in {@link #evaluate} the automations gate is asked
- * FIRST, ahead of the CI gate. A failed automation holds the request PENDING — it is not rejected —
+ * the announcement qits-ci starts QA on. The stamp is written before the publish and given back by
+ * compare-and-set when the publish throws, so a refused announcement is made again on the next
+ * sweep; what remains unrecoverable is a process dying between the stamp's commit and the publish,
+ * or {@code QitsEventBus} swallowing an event it could neither deliver nor put in its outbox (it
+ * logs and never throws, so this side cannot see it) — those lose one DONE until the next re-fold.
+ * So in {@link #evaluate} the automations gate is asked FIRST, ahead of the CI gate. A failed automation holds the request PENDING — it is not rejected —
  * until a push re-folds it, a re-run comes back fresh, or a person waives the fold. A source moving
  * during the pre-run re-folds and restarts it; one moving during QA cancels QA ({@link #cancel}) and
  * restarts the pre-run rather than going straight back to QA.
@@ -2979,10 +2983,16 @@ public class ReleaseRequests {
     }
   }
 
-  /** Fire and forget, outside every transaction and never able to fail a fold. */
-  private void announce(Folded folded, String preRun) {
+  /**
+   * Fire and forget, outside every transaction and never able to fail a fold.
+   *
+   * @return false only when the announcer THREW — the one failure this side can see. No
+   *     implementation at all is true: there is nothing to announce to and nothing a retry would
+   *     change, so a caller must not take it as a reason to try again.
+   */
+  private boolean announce(Folded folded, String preRun) {
     if (!announcers.isResolvable()) {
-      return;
+      return true;
     }
     try {
       announcers
@@ -2998,8 +3008,44 @@ public class ReleaseRequests {
               folded.priority(),
               downstreamOf(folded),
               preRun);
+      return true;
     } catch (RuntimeException e) {
       LOG.warnf(e, "Could not announce the change to release request %s", folded.releaseRequestId());
+      return false;
+    }
+  }
+
+  /**
+   * A preRun=DONE announcement that threw: give the stamp back, so the next evaluation — the
+   * 30-second sweep at the latest — announces it again. A COMPARE-AND-SET in its own transaction:
+   * the stamp is reset to what it was before only while it still names this sha, so a newer fold's
+   * stamp, or a concurrent evaluation that already re-announced and re-stamped, is never undone.
+   */
+  private void unstampQaAnnouncement(String requestId, String sha, String previous) {
+    try {
+      int reset =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      requests.update(
+                          "qaAnnouncedSha = ?1 where id = ?2 and qaAnnouncedSha = ?3",
+                          previous,
+                          requestId,
+                          sha));
+      LOG.warnf(
+          "Release request %s: the preRun=DONE announcement for %s failed; %s",
+          requestId,
+          shortSha(sha),
+          reset == 1
+              ? "the stamp is cleared and the next sweep announces it again"
+              : "the stamp had already moved on, so nothing was cleared");
+    } catch (RuntimeException e) {
+      LOG.errorf(
+          e,
+          "Release request %s: the preRun=DONE announcement for %s failed and its stamp could not be"
+              + " cleared; QA for that fold is not asked for until it re-folds",
+          requestId,
+          shortSha(sha));
     }
   }
 
@@ -3088,6 +3134,8 @@ public class ReleaseRequests {
     // The fold whose pre-run this evaluation found done for the first time, carried out to be
     // announced preRun=DONE after the commit that stamped qa_announced_sha; null on nearly every pass.
     AtomicReference<Folded> qaAnnouncement = new AtomicReference<>();
+    // What the stamp held before this evaluation moved it, so a failed publish can give it back.
+    AtomicReference<String> previousQaStamp = new AtomicReference<>();
     boolean ready =
         QuarkusTransaction.requiringNew()
             .call(
@@ -3136,11 +3184,16 @@ public class ReleaseRequests {
                   // transaction that decided it, and the event is published after the commit: a sweep,
                   // a verdict and a waiver racing each other serialise on the lock and only the first
                   // finds the column behind mergedSha. A restart forgets the ledger and not this
-                  // column, so it neither double-announces nor forgets to announce. (The one window
-                  // left is a process dying between this commit and the publish, which loses that
-                  // announcement rather than duplicating it — the direction the at-most-once rule
-                  // chooses; a push or a re-run re-folds and announces again.)
+                  // column, so it neither double-announces nor forgets to announce. (The window
+                  // left is a process dying between this commit and the publish — or the bus
+                  // swallowing a publish it could neither deliver nor write to its outbox, which
+                  // QitsEventBus logs and does not throw — and it loses that announcement rather
+                  // than duplicating it, the direction the at-most-once rule chooses; a push or a
+                  // re-run re-folds and announces again.) A publish that
+                  // THROWS is not that window: the stamp is given back by compare-and-set after it,
+                  // and the next sweep announces again — see unstampQaAnnouncement.
                   if (!row.mergedSha.equals(row.qaAnnouncedSha)) {
+                    previousQaStamp.set(row.qaAnnouncedSha);
                     row.qaAnnouncedSha = row.mergedSha;
                     qaAnnouncement.set(
                         new Folded(
@@ -3303,8 +3356,9 @@ public class ReleaseRequests {
                   row.updatedAt = Instant.now();
                   return true;
                 });
-    if (qaAnnouncement.get() != null) {
-      announce(qaAnnouncement.get(), ReleaseRequestAnnouncer.PRE_RUN_DONE);
+    Folded done = qaAnnouncement.get();
+    if (done != null && !announce(done, ReleaseRequestAnnouncer.PRE_RUN_DONE)) {
+      unstampQaAnnouncement(done.releaseRequestId(), done.mergedSha(), previousQaStamp.get());
     }
     if (unattended.get() != null) {
       fileUnattendedGateTicket(unattended.get());

@@ -1124,8 +1124,13 @@ started four release builds for one change. Now:
   (V40) is behind `mergedSha`, the same row-locked transaction stamps it and the event goes out with
   `preRun: "DONE"` after the commit — **at most once per sha**, across sweeps, verdicts, waivers and
   restarts (the ledger is memory; the column is not). V40 backfilled the column with `merged_sha`,
-  because every fold before it was already announced once. A crash between the commit and the publish
-  loses that one announcement rather than duplicating it; a push or a re-run announces again.
+  because every fold before it was already announced once. **A publish that throws gives the stamp
+  back** by compare-and-set in a new transaction (`qa_announced_sha = :sha` → its previous value,
+  WARN logged), so the next 30s sweep announces it again. `QitsEventBus.publish` itself never throws
+  — an undelivered event goes to its durable outbox, and only an unserializable event or an outbox
+  write that failed is logged and dropped — so the remaining window is a crash between the stamp's
+  commit and the publish, or that silent drop: either loses one DONE (never duplicates it) until a
+  push or re-run re-folds.
 - **A failed automation holds** — PENDING, no DONE, no rejection — until a push re-folds, a re-run
   comes back fresh (the sweep's re-read) or a person waives the fold. A CI verdict at a sha whose
   pre-run is not done answers no QA this request asked for and is not read; the qits-760 "red beside

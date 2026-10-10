@@ -30,6 +30,14 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
 
   private final List<Announced> announced = Collections.synchronizedList(new ArrayList<>());
 
+  private final java.util.concurrent.atomic.AtomicInteger failures =
+      new java.util.concurrent.atomic.AtomicInteger();
+
+  /** The next {@code times} announcements throw and record nothing — a bus that refused them. */
+  public void failNext(int times) {
+    failures.set(times);
+  }
+
   public List<Announced> announced() {
     return List.copyOf(announced);
   }
@@ -50,6 +58,7 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
 
   public void reset() {
     announced.clear();
+    failures.set(0);
   }
 
   @Override
@@ -64,6 +73,9 @@ public class RecordingReleaseRequestAnnouncer implements ReleaseRequestAnnouncer
       String priority,
       List<String> downstreamTechnicalComponents,
       String preRun) {
+    if (failures.getAndUpdate(left -> Math.max(0, left - 1)) > 0) {
+      throw new IllegalStateException("the bus refused the announcement (test)");
+    }
     announced.add(
         new Announced(
             projectId,

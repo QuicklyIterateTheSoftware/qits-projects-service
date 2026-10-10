@@ -196,6 +196,11 @@ public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
    * freshness is still read off the in-memory {@code AutomationLedger} and the waiver table; what a
    * restart must not forget is that the DONE announcement for this sha has already been made, and
    * what it must not lose is one that has not.
+   *
+   * <p>Stamped before the publish; a publish that throws gives it back by compare-and-set (only
+   * while it still names that sha), so the next sweep announces again. The window that remains is a
+   * crash between the stamp's commit and the publish, and an event the bus swallows without throwing
+   * (no delivery and no outbox row) — each loses that one announcement until the next re-fold.
    */
   @Column(name = "qa_announced_sha")
   public String qaAnnouncedSha;

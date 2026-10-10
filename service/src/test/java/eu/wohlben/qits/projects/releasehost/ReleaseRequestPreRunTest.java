@@ -257,6 +257,30 @@ public class ReleaseRequestPreRunTest {
     assertEquals(merged, qaAnnouncedShaOf(id));
   }
 
+  /**
+   * A DONE publish that throws gives its stamp back (compare-and-set), so the next evaluation
+   * announces it — exactly once — instead of the request waiting for a push that may never come.
+   */
+  @Test
+  public void aDonePublishThatThrowsIsAnnouncedAgainOnTheNextEvaluationExactlyOnce() {
+    automations.answer(repoName, BUMP, "FRESH");
+    announcer.failNext(1);
+
+    String id = create("work");
+    String merged = mergedShaOf(id);
+
+    assertEquals(List.of(), preRuns(id), "the one announcement threw");
+    assertNull(qaAnnouncedShaOf(id), "and the stamp was given back");
+
+    releaseRequests.sweep();
+    releaseRequests.sweep();
+    releaseRequests.sweep();
+
+    assertEquals(List.of("DONE"), preRuns(id), "announced again, once");
+    assertEquals(merged, announcer.announcedFor(id).get(0).mergedSha());
+    assertEquals(merged, qaAnnouncedShaOf(id));
+  }
+
   // -----------------------------------------------------------------------------------------
   // A failed automation holds
   // -----------------------------------------------------------------------------------------
