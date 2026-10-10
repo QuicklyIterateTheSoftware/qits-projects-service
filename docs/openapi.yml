@@ -6024,6 +6024,7 @@ paths:
         - qits:admin-agent
         - qits:system
         - qits:agent
+        - qits:ci-run
   /projects/api/repositories/{repoId}/release-requests/{requestId}/decline:
     post:
       summary: "Refuse this request's current fold, answerably"
@@ -7030,6 +7031,7 @@ paths:
         - qits:admin-agent
         - qits:agent
         - qits:system
+        - qits:ci-run
     delete:
       summary: Delete a work entity and its subtree
       description: "Removes the entity, its descendants and their threads, each audited;\
