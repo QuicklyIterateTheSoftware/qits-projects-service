@@ -18,4 +18,5 @@ contracts:
   # recorded; ConsumerPactFilesTest holds this list equal to the committed files.
   pacts:
     qits-events-service: { packages: [maven] }
+    qits-workspaces-service: { packages: [maven] }
 userflows: qits-projects
