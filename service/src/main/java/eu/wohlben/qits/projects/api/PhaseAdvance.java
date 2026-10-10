@@ -6,16 +6,19 @@ import eu.wohlben.qits.entities.control.EntityDispatchService;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityStateMachine.Phase;
 import eu.wohlben.qits.entities.control.Mover;
+import eu.wohlben.qits.entities.control.WorkBranches;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.projects.control.ReleaseRequests;
+import eu.wohlben.qits.projects.control.RepositoryService;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.control.WorkspaceAgentTurns;
 import eu.wohlben.qits.projects.dto.ReleaseRequestDto;
 import eu.wohlben.qits.projects.dto.ReleaseRequestSourceDto;
+import eu.wohlben.qits.projects.entity.Repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -257,6 +260,9 @@ public class PhaseAdvance {
    * module, in this JVM, and an assembly without it is an assembly that does not start.
    */
   @Inject ReleaseRequests releaseRequests;
+
+  /** Where a reported branch's repository is checked against the work item's project. */
+  @Inject RepositoryService repositories;
 
   /**
    * Who asks for the release when the transition carried no name. The platform is the requester on
@@ -574,21 +580,66 @@ public class PhaseAdvance {
           changedBy);
       return;
     }
+    // The far side reports what the agent pushed, so the list is the agent's word. Only branches in
+    // the scope this side derives for the work item, in a repository of the work item's project,
+    // may become release sources: the release door's own checks are bypassed here on purpose (see
+    // the class javadoc), so this is where they are made instead.
+    Optional<EntityWorkspaces.Target> address = workspaces.find(entity);
+    if (address.isEmpty()) {
+      LOG.warnf(
+          "%s %s is VERIFIED, but its branch cannot be named, so no release was asked for",
+          entity.archetype, entity.id);
+      say(
+          entity,
+          "The " + noun(entity) + "'s branch cannot be named, so no release was asked for.",
+          changedBy);
+      return;
+    }
+    String wrapperBranch = address.get().branch();
+    List<String> outOfScope = new java.util.ArrayList<>();
     List<WorkspaceAgentDispatch.Branch> branches =
         agent.branches().stream()
+            .filter(
+                branch -> {
+                  boolean ok = inScope(entity, wrapperBranch, branch);
+                  if (!ok) {
+                    LOG.warnf(
+                        "%s %s: agent %s reported %s in %s, outside its scope; not released",
+                        entity.archetype,
+                        entity.id,
+                        agent.agentId(),
+                        branch.branch(),
+                        branch.repositoryId());
+                    outOfScope.add("`" + branch.branch() + "`");
+                  }
+                  return ok;
+                })
             .sorted(
                 java.util.Comparator.comparing(
                     branch -> branch.repositoryId().equals(agent.repositoryId())))
             .toList();
+    String refusedScope =
+        outOfScope.isEmpty()
+            ? ""
+            : " Not released, because they lie outside the agent's scope ("
+                + wrapperBranch
+                + " and "
+                + wrapperBranch
+                + WorkBranches.AGENT_SEPARATOR
+                + "*): "
+                + String.join(", ", outOfScope)
+                + ".";
     if (branches.isEmpty()) {
       LOG.infof(
-          "%s %s is VERIFIED, but its agent %s pushed no branch, so no release was asked for",
+          "%s %s is VERIFIED, but its agent %s pushed no branch in its scope, so no release was"
+              + " asked for",
           entity.archetype, entity.id, agent.agentId());
       say(
           entity,
           "The agent pushed no branches, so no release was asked for. The "
               + noun(entity)
-              + " is VERIFIED and nothing is running on it.",
+              + " is VERIFIED and nothing is running on it."
+              + refusedScope,
           changedBy);
       return;
     }
@@ -652,7 +703,25 @@ public class PhaseAdvance {
         sentence.append(" The ").append(noun(entity)).append(" is VERIFIED and nothing is running on it.");
       }
     }
-    say(entity, sentence.toString(), changedBy);
+    say(entity, sentence.toString() + refusedScope, changedBy);
+  }
+
+  /**
+   * Whether a branch the agent reported may be released for {@code entity}: it lies in the scope
+   * derived here from the work item ({@link WorkBranches#isAgentBranch}), and its repository is one
+   * of the work item's project. A repository that cannot be read is not in scope.
+   */
+  private boolean inScope(
+      WorkEntity entity, String wrapperBranch, WorkspaceAgentDispatch.Branch branch) {
+    if (!WorkBranches.isAgentBranch(wrapperBranch, branch.branch())) {
+      return false;
+    }
+    try {
+      Repository repository = repositories.get(branch.repositoryId());
+      return repository.project != null && entity.projectId.equals(repository.project.id);
+    } catch (RuntimeException e) {
+      return false;
+    }
   }
 
   /**
@@ -707,7 +776,14 @@ public class PhaseAdvance {
     if (agent == null) {
       return;
     }
+    Optional<EntityWorkspaces.Target> address = workspaces.find(ticket);
+    if (address.isEmpty()) {
+      return;
+    }
     for (WorkspaceAgentDispatch.Branch branch : agent.branches()) {
+      if (!inScope(ticket, address.get().branch(), branch)) {
+        continue;
+      }
       ReleaseRequestDto open;
       try {
         open =

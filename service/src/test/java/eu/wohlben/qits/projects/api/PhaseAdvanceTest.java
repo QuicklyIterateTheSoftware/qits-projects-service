@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.projects.security.PersonCheck;
@@ -1025,7 +1026,7 @@ public class PhaseAdvanceTest {
 
   /**
    * <b>Each pushed branch is asked for in its own repository</b> (qits-1152): the agent named its
-   * submodule branch {@code <wrapper branch>-<its choice>}, and the wrapper's branch goes last.
+   * submodule branch {@code <wrapper branch>_<its choice>}, and the wrapper's branch goes last.
    */
   @Test
   public void aMoveIntoVerifiedAsksForEveryBranchTheAgentPushedInItsOwnRepository() {
@@ -1043,7 +1044,7 @@ public class PhaseAdvanceTest {
             ticketId,
             branch,
             new WorkspaceAgentDispatch.Branch(wrapperId, branch),
-            new WorkspaceAgentDispatch.Branch(componentId, branch + "-totals")));
+            new WorkspaceAgentDispatch.Branch(componentId, branch + "_totals")));
 
     scheduled(ticketId);
     transition(ticketId, "IMPLEMENTED");
@@ -1053,13 +1054,81 @@ public class PhaseAdvanceTest {
     List<Map<String, Object>> wrapper = releaseRequestsOf(wrapperId);
     assertEquals(1, component.size(), "one request in the component");
     assertEquals(1, wrapper.size(), "and one in the wrapper");
-    assertTrue(sourceNamesOf(component.get(0)).contains(branch + "-totals"));
+    assertTrue(sourceNamesOf(component.get(0)).contains(branch + "_totals"));
     assertTrue(sourceNamesOf(wrapper.get(0)).contains(branch));
     String said = thread(ticketId).get(thread(ticketId).size() - 1);
     assertTrue(
         said.indexOf((String) component.get(0).get("id"))
             < said.indexOf((String) wrapper.get(0).get("id")),
         "the wrapper is asked for last: " + said);
+  }
+
+  /**
+   * <b>The agent's list is its word, and only what lies in its scope is released</b> (qits-1152).
+   * Another work item's branch, a name that does not start with the wrapper branch and a branch in
+   * another project's repository are each left off, and the thread says which.
+   */
+  @Test
+  void aBranchOutsideTheAgentsScopeIsNeverReleased() {
+    String projectId = createProject("Advance Release Scope");
+    String ticketId = createTicket(projectId, "Stay in scope");
+    String otherTicket = createTicket(projectId, "Somebody else's");
+    String wrapperId = wrapperIdOf(projectId);
+    String foreignProject = createProject("Advance Release Scope Elsewhere");
+    String foreignWrapper = wrapperIdOf(foreignProject);
+    String branch = branchOf(ticketId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branch,
+            new WorkspaceAgentDispatch.Branch(wrapperId, branchOf(otherTicket)),
+            new WorkspaceAgentDispatch.Branch(wrapperId, "main"),
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch + "-lookalike"),
+            new WorkspaceAgentDispatch.Branch(foreignWrapper, branch),
+            new WorkspaceAgentDispatch.Branch(wrapperId, branch + "_fine")));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    assertTrue(releaseRequestsOf(foreignWrapper).isEmpty(), "nothing in another project");
+    List<Map<String, Object>> requests = releaseRequestsOf(wrapperId);
+    assertEquals(1, requests.size(), requests.toString());
+    List<String> sources = sourceNamesOf(requests.get(0));
+    assertTrue(sources.contains(branch + "_fine"), sources.toString());
+    assertFalse(sources.contains(branchOf(otherTicket)), sources.toString());
+    assertFalse(sources.contains(branch + "-lookalike"), sources.toString());
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(said.contains("outside the agent's scope"), said);
+    assertTrue(said.contains(branchOf(otherTicket)), said);
+  }
+
+  /** An agent whose every branch lies outside its scope asks for nothing at all. */
+  @Test
+  void anAgentWithOnlyForeignBranchesAsksForNothing() {
+    String projectId = createProject("Advance Release Foreign Only");
+    String ticketId = createTicket(projectId, "Only foreign");
+    String wrapperId = wrapperIdOf(projectId);
+    workspaces.willFind(
+        RecordingWorkspaceAgentDispatch.active(
+            "agent-7",
+            7L,
+            wrapperId,
+            ticketId,
+            branchOf(ticketId),
+            new WorkspaceAgentDispatch.Branch(wrapperId, "release/hijack")));
+
+    scheduled(ticketId);
+    transition(ticketId, "IMPLEMENTED");
+    transition(ticketId, "VERIFIED");
+
+    assertTrue(releaseRequestsOf(wrapperId).isEmpty());
+    String said = thread(ticketId).get(thread(ticketId).size() - 1);
+    assertTrue(said.startsWith("The agent pushed no branches, so no release was asked for."), said);
+    assertTrue(said.contains("`release/hijack`"), said);
   }
 
   // --- and an obsolete agent is not one to act on ---------------------------------------------

@@ -67,14 +67,15 @@ class AgentAccessTest {
         AgentTokens.token(
             Map.of(
                 "git_refs",
-                List.of("refs/heads/ticket/qits-1002", "refs/heads/ticket/qits-1002-*")),
+                List.of("refs/heads/ticket/qits-1002", "refs/heads/ticket/qits-1002_*")),
             AGENT);
 
     assertTrue(AgentAccess.coversBranch(agent, "ticket/qits-1002"));
-    assertTrue(AgentAccess.coversBranch(agent, "ticket/qits-1002-fix-totals"));
-    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-1002-"), "the star matches something");
+    assertTrue(AgentAccess.coversBranch(agent, "ticket/qits-1002_fix-totals"));
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-1002_"), "the star matches something");
     assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-10020"));
-    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-1003-fix"));
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-1002-5"), "another work item's branch");
+    assertFalse(AgentAccess.coversBranch(agent, "ticket/qits-1003_fix"));
   }
 
   @Test

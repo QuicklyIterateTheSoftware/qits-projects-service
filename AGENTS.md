@@ -87,7 +87,7 @@ no split package, plus `eu.wohlben.qits.entities.*` in `entities/`:
   **Since qits-1152 an agent is keyed by its work item.** A workspace is only a slot that hosts
   agents; each agent works on one ticket or epic, in its own worktree, on the wrapper branch
   `<prefix>/<qualified id>` (`ticket/qits-1002`), and names its submodule branches
-  `<wrapper branch>-<its choice>`. Every call below except the release names the work item
+  `<wrapper branch>_<its choice>`. Every call below except the release names the work item
   (`workId`, the row id), never a branch to find an agent by. See the superproject's
   `agent-workspace-decoupling-plan.md`.
   - `control/WorkspaceAgentDispatch` → `HttpWorkspaceAgentDispatch`: the POST the one dispatch
@@ -895,8 +895,10 @@ Since qits-1152 a ticket's or an epic's agent works on the wrapper branch named 
     ticket/<qualified id>     e.g. ticket/qits-1002
     epic/<qualified id>       e.g. epic/qits-1001
 
-In each submodule it changes, the agent names its own branch `<wrapper branch>-<its choice>`
-(`ticket/qits-1002-fix-totals`). So every branch says which work item it came from. There are no
+In each submodule it changes, the agent names its own branch `<wrapper branch>_<its choice>`
+(`ticket/qits-1002_fix-totals`). So every branch says which work item it came from. The separator
+is `_` because a qualified id never holds one: with `-`, project `a`'s ticket 1 (`ticket/a-1-*`)
+would cover project `a-1`'s ticket 5 (`ticket/a-1-5`). There are no
 `feature/*` or `task/*` branches any more: the epic's agent works on its features and tasks. The
 qualified id is rendered by the caller (`api/EntityWorkspaces`), because the project's slug is not
 on the row.
@@ -922,7 +924,7 @@ other. Renaming the capture prefix is a qits-workspaces-service workstream; do n
 ## Git refs an agent may push
 
 qits-workspaces derives an agent's refs from the wrapper branch the dispatch names (qits-1152):
-`refs/heads/<wrapper branch>` and `refs/heads/<wrapper branch>-*`. This service sends no `gitRefs`
+`refs/heads/<wrapper branch>` and `refs/heads/<wrapper branch>_*` (`WorkBranches.agentRefs`). This service sends no `gitRefs`
 any more. `security/AgentAccess.coversBranch`, which binds an agent's release request to its own
 branches, reads the glob: a trailing `*` means "starts with what precedes it, and is longer",
 wherever it follows; `/*` is the case it always was; any other `*` makes the entry cover nothing.
@@ -1942,7 +1944,10 @@ assignment, not a comment, not a release.
 - **VERIFIED asks for the release of the agent's branches** (qits-1152). The work item's ACTIVE
   agent lists every (repository, branch) it pushed; each is asked for in its own repository through
   `ReleaseRequests.request`, which converges per repository, so this opens or joins one request per
-  repository, the wrapper last. No ACTIVE agent, or one that pushed nothing, asks for nothing and
+  repository, the wrapper last. The list is the agent's word, so only a branch in the scope this side
+  derives (`WorkBranches.isAgentBranch` over the work item's own wrapper branch) and in a repository
+  of the work item's project is named; any other is left off and the thread says so. No ACTIVE
+  agent, or one that pushed nothing in scope, asks for nothing and
   says so on the thread: an ask naming a branch that is not there would be a PENDING request the
   sweep retries for ever. A move back to VERIFYING or IMPLEMENTED names each open request that
   still carries one of those branches.

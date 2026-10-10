@@ -1,6 +1,8 @@
 package eu.wohlben.qits.entities.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -56,6 +58,33 @@ class WorkBranchesTest {
         IllegalArgumentException.class, () -> WorkBranches.of(row("t-1", Archetype.TICKET), null));
     assertThrows(
         IllegalArgumentException.class, () -> WorkBranches.of(row("t-1", Archetype.TICKET), " "));
+  }
+
+  @Test
+  void anAgentMayPushItsWrapperBranchAndTheBranchesItNamesAfterIt() {
+    assertEquals(
+        java.util.List.of("refs/heads/ticket/qits-1002", "refs/heads/ticket/qits-1002_*"),
+        WorkBranches.agentRefs("ticket/qits-1002"));
+    assertTrue(WorkBranches.isAgentBranch("ticket/qits-1002", "ticket/qits-1002"));
+    assertTrue(WorkBranches.isAgentBranch("ticket/qits-1002", "ticket/qits-1002_fix-totals"));
+    assertFalse(WorkBranches.isAgentBranch("ticket/qits-1002", "ticket/qits-1002_"));
+    assertFalse(WorkBranches.isAgentBranch("ticket/qits-1002", "main"));
+    assertFalse(WorkBranches.isAgentBranch("ticket/qits-1002", "ticket/qits-1003_x"));
+  }
+
+  /**
+   * A project slug may end in {@code -<digits>}: project {@code a}'s ticket 1 is {@code a-1} and
+   * project {@code a-1}'s ticket 5 is {@code a-1-5}. The first agent's scope must not reach the
+   * second's wrapper branch, which a {@code -} separator would.
+   */
+  @Test
+  void oneAgentsScopeNeverCoversAnotherWorkItemsBranch() {
+    String first = WorkBranches.of(row("t-1", Archetype.TICKET), "a-1");
+    String second = WorkBranches.of(row("t-2", Archetype.TICKET), "a-1-5");
+
+    assertFalse(WorkBranches.isAgentBranch(first, second));
+    assertFalse(WorkBranches.isAgentBranch(first, second + "_fix"));
+    assertFalse(WorkBranches.isAgentBranch(second, first));
   }
 
   @Test
