@@ -83,7 +83,8 @@ final class MaintenanceContract {
               json(
                   "{\"repository\":\"{repoName}\",\"foldSha\":\"{foldSha}\",\"previousFoldSha\":null,"
                       + "\"changedSincePrevious\":null,\"sourceBranches\":[\"{branch}\"],"
-                      + "\"workItem\":null,\"accepts\":[\"WAITING\",\"NOT_APPLICABLE\",\"DEFERRED\"]}"),
+                      + "\"workItem\":null,\"accepts\":[\"WAITING\",\"NOT_APPLICABLE\",\"DEFERRED\"],"
+                      + "\"backingBranch\":\"{backingBranch}\",\"qualifiedId\":\"{qualifiedId}\"}"),
               AUTOMATIONS,
               200,
               Trigger.schedule("AutomationRefresh.attempt"),
@@ -93,6 +94,8 @@ final class MaintenanceContract {
                         .request(
                             p.get("repoName"),
                             p.get("requestId"),
+                            p.get("qualifiedId"),
+                            p.get("backingBranch"),
                             p.get("foldSha"),
                             null,
                             null,
