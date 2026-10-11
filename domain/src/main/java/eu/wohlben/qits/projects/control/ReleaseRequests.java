@@ -4412,7 +4412,9 @@ public class ReleaseRequests {
                             note.foldSha(),
                             entry.newestRunId(),
                             entry.branch(),
-                            entry.detail(),
+                            AutomationLedger.DEFERRED.equals(entry.state()) && entry.detail() == null
+                                ? AutomationLedger.DEFERRED_SENTENCE
+                                : entry.detail(),
                             entry.updatedAt(),
                             failureOf(entry.failure())))
                 .toList();

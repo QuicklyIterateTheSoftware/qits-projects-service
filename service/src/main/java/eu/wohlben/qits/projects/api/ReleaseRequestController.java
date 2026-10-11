@@ -714,8 +714,9 @@ public class ReleaseRequestController {
    * <p>Open to the class's three roles and unbound, on {@link #rerunPhase}'s reasoning: it decides
    * nothing. The run's outcome is read back the way every automation outcome is, and whether the
    * kind can run again at all is qits-maintenance's call — so a run already active, a request that is
-   * not open, bumping turned off and an unknown kind come back as that service's own status and
-   * sentence.
+   * settled, bumping turned off and an unknown kind come back as that service's own status and
+   * sentence. A REJECTED request is not settled (qits-1178): a rerun is how a stale output that
+   * failed QA is regenerated, and its commit re-folds the request and makes it PENDING again.
    */
   @POST
   @Path("/{requestId}/automations/{kind}/runs")
@@ -728,9 +729,13 @@ public class ReleaseRequestController {
               + " ask is forwarded to qits-maintenance, which runs it on the request's current fold"
               + " now, skipping carry-over and applicability (so a repository's first screenshot"
               + " references come from here). 202 with the run's id; its outcome shows on the"
-              + " request's automations as every outcome does. qits-maintenance's refusals pass"
-              + " through with their status and sentence: 409 when one is already active for this"
-              + " request and kind, the request is not open or has no fold, or bumping is off; 404"
+              + " request's automations as every outcome does. A REJECTED request takes it too:"
+              + " this is how a stale output that failed QA is regenerated — the run commits to"
+              + " maintenance/automations/<kind>/<request>, that branch joins or moves, and the"
+              + " request re-folds and is PENDING again. qits-maintenance's refusals pass through"
+              + " with their status and sentence: 409 when one is already active for this request"
+              + " and kind, the request is RELEASED, FINALIZED, OBSOLETE or WITHDRAWN, the request"
+              + " has no fold, or bumping is off; 404"
               + " for an unknown kind. 404 also for an unknown request or one that is not this"
               + " repository's, and 503 where qits-maintenance is not configured or cannot be"
               + " reached.")

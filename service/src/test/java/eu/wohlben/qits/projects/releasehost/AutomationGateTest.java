@@ -312,6 +312,74 @@ public class AutomationGateTest {
   }
 
   /**
+   * qits-1178: a kind QA checks (DEFERRED) is listed on the request with its sentence, holds nothing
+   * back and is no check of the gate — exactly like a kind that does not apply.
+   */
+  @Test
+  public void aDeferredKindIsListedWithItsSentenceAndHoldsNothing() {
+    automations.answer(plainName, "entity-diagram", "FRESH");
+    automations.answer(plainName, SCREENSHOTS, FakeReleaseRequestAutomations.DEFERRED);
+
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    JsonPath before = request(plainRepoId, id);
+    assertEquals(List.of("FRESH", "DEFERRED"), before.getList("automations.state"));
+    assertEquals("checked by QA", before.getString("automations[1].detail"));
+    assertEquals("PASSED", gateState(before, "AUTOMATIONS"));
+    assertEquals(
+        List.of("Entity diagram"),
+        before.getList("qualityGates.find { it.kind == 'automations' }.checks.name"),
+        "a kind QA checks is no check of the gate");
+
+    verdict(plainRepoId, merged);
+    awaitState(plainRepoId, id, "RELEASED");
+  }
+
+  /**
+   * qits-1178: a stale output fails QA, so the request is REJECTED. The rerun door still takes the
+   * automation, and its branch joining re-folds the request and reopens it.
+   */
+  @Test
+  public void aRejectedRequestTakesTheRerunAndItsCommitReopensIt() {
+    automations.answer(plainName, SCREENSHOTS, FakeReleaseRequestAutomations.DEFERRED);
+    String id = create(plainRepoId, "work");
+    String merged = mergedShaOf(plainRepoId, id);
+    redVerdict(plainRepoId, merged);
+    awaitState(plainRepoId, id, "REJECTED");
+
+    String runId =
+        given()
+            .contentType(ContentType.JSON)
+            .header("X-Qits-User", "an-agent")
+            .header("X-Qits-Roles", "qits:agent")
+            .body("{}")
+            .post(base(plainRepoId) + "/" + id + "/automations/" + SCREENSHOTS + "/runs")
+            .then()
+            .statusCode(202)
+            .extract()
+            .path("id");
+    assertTrue(runId.startsWith("bump-"), runId);
+    assertEquals(
+        List.of(new FakeReleaseRequestAutomations.Rerun(plainName, id, SCREENSHOTS)),
+        automations.reruns());
+
+    // The run commits: its branch joins the request through the door qits-maintenance calls.
+    automations.answer(plainName, SCREENSHOTS, "FRESH");
+    given()
+        .contentType(ContentType.JSON)
+        .body(
+            "{\"branch\":\"maintenance/automations/screenshot-baselines/"
+                + id
+                + "\",\"priority\":\"LOWEST\"}")
+        .post(base(plainRepoId) + "/" + id + "/sources")
+        .then()
+        .statusCode(200);
+    awaitFoldToMove(plainRepoId, id, merged);
+    awaitState(plainRepoId, id, "PENDING");
+    assertNull(rejectingRunIdOf(id), "the rejection belonged to the old fold");
+  }
+
+  /**
    * Beside a kind that does not apply, the request waits for the running kind alone, and a waiver
    * leaves the kind that does not apply as it is.
    */

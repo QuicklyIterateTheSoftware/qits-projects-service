@@ -60,6 +60,12 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
   /** The far side's word for a kind that does not apply; scripted like any other state. */
   public static final String NOT_APPLICABLE = AutomationLedger.NOT_APPLICABLE;
 
+  /**
+   * The far side's word for a kind QA checks instead (qits-1178); scripted like any other state. Its
+   * entry carries no run and no sentence, so the request shows its own.
+   */
+  public static final String DEFERRED = AutomationLedger.DEFERRED;
+
   /** The reason a NOT_APPLICABLE entry carries as its detail. */
   public static final String NOT_APPLICABLE_REASON = "the fold carries no package.json";
 
@@ -173,12 +179,12 @@ public class FakeReleaseRequestAutomations implements ReleaseRequestAutomations 
         .forEach(
             (kind, state) ->
                 entries.add(
-                    NOT_APPLICABLE.equals(state)
+                    AutomationLedger.notInPreRun(state)
                         ? new Automation(
                             kind,
                             label(kind),
                             state,
-                            NOT_APPLICABLE_REASON,
+                            NOT_APPLICABLE.equals(state) ? NOT_APPLICABLE_REASON : null,
                             null,
                             List.of(),
                             null,

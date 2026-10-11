@@ -57,8 +57,9 @@ public interface ReleaseRequestAutomations {
    *
    * @param kind the wire name, {@code screenshot-baselines}
    * @param label what a page prints, {@code Screenshot baselines}
-   * @param state FRESH, REQUESTED, RUNNING, COMMITTED, FAILED, UNKNOWN, SUPERSEDED or NOT_APPLICABLE
-   *     (the kind does not apply to this fold; {@code detail} is the reason) — a plain
+   * @param state FRESH, REQUESTED, RUNNING, COMMITTED, FAILED, UNKNOWN, SUPERSEDED, WAITING,
+   *     NOT_APPLICABLE (the kind does not apply to this fold; {@code detail} is the reason) or
+   *     DEFERRED (QA checks the kind instead, qits-1178) — a plain
    *     string, because the far side owns the vocabulary and a word this side has never heard of is a
    *     hold rather than a parse failure
    * @param detail the far side's sentence, or null

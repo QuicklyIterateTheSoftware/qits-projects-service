@@ -474,6 +474,12 @@ class GoldenMasterRecordingTest {
     all.add(read(notApplicable, "getReleaseRequest", request));
     all.add(
         read(notApplicable, "listRepositoryReleaseRequests", repository + "/release-requests"));
+    // A kind QA checks (DEFERRED, qits-1178) is listed with its sentence and holds nothing.
+    all.add(
+        read(
+            ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA,
+            "getReleaseRequest",
+            request));
     all.add(
         write(
             awaiting,
@@ -524,6 +530,18 @@ class GoldenMasterRecordingTest {
             "rerunReleasePipelinePhase",
             "POST",
             request + "/pipeline/QA/rerun",
+            null));
+    // A REJECTED request takes an automation's rerun too (qits-1178): that is how a stale output
+    // that failed QA is regenerated.
+    all.add(
+        new Interaction(
+            ProviderStates.A_RELEASE_REQUEST_REJECTED_BY_ITS_BUILD,
+            "rerunReleaseRequestAutomation",
+            "POST",
+            request + "/automations/screenshot-baselines/runs",
+            202,
+            null,
+            null,
             null));
     String held = ProviderStates.A_RELEASE_REQUEST_HELD_BY_A_FAILED_AUTOMATION;
     all.add(

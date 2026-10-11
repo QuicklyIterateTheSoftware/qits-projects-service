@@ -3186,6 +3186,21 @@
             ],
             "listFilteredTo": null
           }
+        },
+        {
+          "operationId": "rerunReleaseRequestAutomation",
+          "method": "POST",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}/automations/screenshot-baselines/runs",
+          "status": 202,
+          "file": "a-release-request-rejected-by-its-build/rerunReleaseRequestAutomation.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [
+              "$.id"
+            ],
+            "listFilteredTo": null
+          }
         }
       ]
     },
@@ -3335,6 +3350,46 @@
               "$.request.pipeline.phases[*].finishedAt"
             ],
             "strings": [
+              "$.request.qualityGates[*].detail",
+              "$.request.qualityGates[*].checks[*].name"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a release request with an automation checked by QA",
+      "slug": "a-release-request-with-an-automation-checked-by-qa",
+      "params": {
+        "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "repositoryId": "00000000-0000-4000-8000-000000000002",
+        "requestId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getReleaseRequest",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/release-requests/{requestId}",
+          "status": 200,
+          "file": "a-release-request-with-an-automation-checked-by-qa/getReleaseRequest.json",
+          "frozen": {
+            "ids": [
+              "$.request.id",
+              "$.request.repoId",
+              "$.request.qualityGates[*].checks[*].runId",
+              "$.request.qualityGates[*].runId"
+            ],
+            "instants": [
+              "$.request.automations[*].updatedAt",
+              "$.request.createdAt",
+              "$.request.updatedAt"
+            ],
+            "strings": [
+              "$.request.automations[*].runId",
+              "$.request.qualityGates[*].checks[*].runId",
               "$.request.qualityGates[*].detail",
               "$.request.qualityGates[*].checks[*].name"
             ],

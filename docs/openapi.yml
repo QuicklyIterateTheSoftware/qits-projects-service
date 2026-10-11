@@ -5782,12 +5782,15 @@ paths:
         \ … — and the ask is forwarded to qits-maintenance, which runs it on the request's\
         \ current fold now, skipping carry-over and applicability (so a repository's\
         \ first screenshot references come from here). 202 with the run's id; its\
-        \ outcome shows on the request's automations as every outcome does. qits-maintenance's\
+        \ outcome shows on the request's automations as every outcome does. A REJECTED\
+        \ request takes it too: this is how a stale output that failed QA is regenerated\
+        \ — the run commits to maintenance/automations/<kind>/<request>, that branch\
+        \ joins or moves, and the request re-folds and is PENDING again. qits-maintenance's\
         \ refusals pass through with their status and sentence: 409 when one is already\
-        \ active for this request and kind, the request is not open or has no fold,\
-        \ or bumping is off; 404 for an unknown kind. 404 also for an unknown request\
-        \ or one that is not this repository's, and 503 where qits-maintenance is\
-        \ not configured or cannot be reached."
+        \ active for this request and kind, the request is RELEASED, FINALIZED, OBSOLETE\
+        \ or WITHDRAWN, the request has no fold, or bumping is off; 404 for an unknown\
+        \ kind. 404 also for an unknown request or one that is not this repository's,\
+        \ and 503 where qits-maintenance is not configured or cannot be reached."
       operationId: rerunReleaseRequestAutomation
       parameters:
       - name: kind

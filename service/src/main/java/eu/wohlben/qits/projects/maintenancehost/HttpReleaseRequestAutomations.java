@@ -36,7 +36,7 @@ import org.jboss.logging.Logger;
  *   POST {maintenance-url}/maintenance/api/release-requests/&lt;requestId&gt;/automations
  *   {"repository":"qits-landing-app","foldSha":"&lt;sha&gt;","previousFoldSha":"&lt;sha&gt;"|null,
  *    "changedSincePrevious":["src/app/x.ts"]|null,"sourceBranches":["ticket/x"],"workItem":null,
- *    "accepts":["WAITING","NOT_APPLICABLE"],
+ *    "accepts":["WAITING","NOT_APPLICABLE","DEFERRED"],
  *    "backingBranch":"release/qits-landing-app-rr-7","qualifiedId":"qits-landing-app-rr-7"}
  *   -&gt; 200 {"requestId":"…","foldSha":"&lt;sha&gt;",
  *           "automations":[{"kind":"screenshot-baselines","label":"Screenshot baselines",
@@ -56,9 +56,10 @@ import org.jboss.logging.Logger;
  * <p><b>{@code accepts} names the state words this side can read</b> beyond the original seven
  * (qits-1133): {@code WAITING}, a DERIVED kind (screenshot baselines, the entity diagram) waiting for
  * the SOURCE kinds (dependency bumps, estate pins) to be fresh at the fold, and {@code
- * NOT_APPLICABLE}, a kind that does not apply, with its reason as {@code detail}. qits-maintenance
- * sends them only to a caller that says it reads them, so the two services roll out in either order.
- * Here WAITING is moving (the request holds, PENDING) and NOT_APPLICABLE holds nothing; any other
+ * NOT_APPLICABLE}, a kind that does not apply, with its reason as {@code detail}, and {@code
+ * DEFERRED} (qits-1178), a kind QA checks instead of the pre-run. qits-maintenance sends them only to
+ * a caller that says it reads them, so the two services roll out in either order. Here WAITING is
+ * moving (the request holds, PENDING), and NOT_APPLICABLE and DEFERRED hold nothing; any other
  * word this side has never heard of is still parsed as a plain string and reads as UNKNOWN — a hold,
  * never a parse failure.
  *
@@ -102,7 +103,8 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
    * The state words the trigger tells qits-maintenance this side reads — see the class javadoc. A
    * constant rather than configuration: it is a statement about this code, not about a deployment.
    */
-  static final List<String> ACCEPTS = List.of("WAITING", AutomationLedger.NOT_APPLICABLE);
+  static final List<String> ACCEPTS =
+      List.of("WAITING", AutomationLedger.NOT_APPLICABLE, AutomationLedger.DEFERRED);
 
   /** How long a connect may take — qits-maintenance is a sibling service on the same network. */
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);

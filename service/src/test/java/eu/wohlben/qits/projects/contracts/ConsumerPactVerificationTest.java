@@ -386,6 +386,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_THAT_DOES_NOT_APPLY);
   }
 
+  @State(ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA)
+  Map<String, String> aReleaseRequestWithAnAutomationCheckedByQa() {
+    return states.params(ProviderStates.A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA);
+  }
+
   @State(ProviderStates.A_WITHDRAWN_RELEASE_REQUEST)
   Map<String, String> aWithdrawnReleaseRequest() {
     return states.params(ProviderStates.A_WITHDRAWN_RELEASE_REQUEST);

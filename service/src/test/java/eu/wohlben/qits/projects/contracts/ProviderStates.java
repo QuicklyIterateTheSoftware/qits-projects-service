@@ -82,6 +82,8 @@ public class ProviderStates {
       "a release request held by a failed automation";
   public static final String A_RELEASE_REQUEST_WITH_AN_AUTOMATION_THAT_DOES_NOT_APPLY =
       "a release request with an automation that does not apply";
+  public static final String A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA =
+      "a release request with an automation checked by QA";
   public static final String A_WITHDRAWN_RELEASE_REQUEST = "a withdrawn release request";
   public static final String A_CONFLICTED_RELEASE_REQUEST = "a conflicted release request";
   public static final String A_REFOLDED_RELEASE_REQUEST = "a refolded release request";
@@ -367,6 +369,10 @@ public class ProviderStates {
     states.put(
         A_RELEASE_REQUEST_WITH_AN_AUTOMATION_THAT_DOES_NOT_APPLY,
         () -> releaseRequestInDetail(A_RELEASE_REQUEST_WITH_AN_AUTOMATION_THAT_DOES_NOT_APPLY));
+    // The same, for a kind QA checks instead of the pre-run (qits-1178).
+    states.put(
+        A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA,
+        () -> releaseRequestInDetail(A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA));
     states.put(
         A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE, this::aProjectWithReleaseRequestsInEveryState);
     states.put(
@@ -2255,6 +2261,40 @@ public class ProviderStates {
                         "Screenshot baselines",
                         eu.wohlben.qits.projects.control.AutomationLedger.NOT_APPLICABLE,
                         "the fold carries no package.json",
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null)),
+                null,
+                null));
+      }
+      case A_RELEASE_REQUEST_WITH_AN_AUTOMATION_CHECKED_BY_QA -> {
+        // One kind runs before QA; QA checks the other (DEFERRED), which holds nothing. The far
+        // side sends no sentence for it, so the request shows its own: "checked by QA".
+        repoId = estate;
+        fold = estateFold;
+        id =
+            releaseRow(
+                project, estate, "contract-suite-app", estateSummary, State.PENDING, 10, fold,
+                row ->
+                    row.detail =
+                        "Waiting for automations at " + shortSha(fold) + ": Estate pins running");
+        estateSources(id);
+        verdict(project, estate, "contract-suite-app", id, fold, "SUCCESS", 12);
+        phaseRun(id, estate, "RELEASE_REQUEST", "SUCCESS", 11, 12);
+        automationLedger.record(
+            id,
+            new eu.wohlben.qits.projects.control.AutomationLedger.Note(
+                fold,
+                eu.wohlben.qits.projects.control.AutomationLedger.State.PENDING,
+                List.of(
+                    automation("estate-pins", "Estate pins", "RUNNING", fold, null, null),
+                    new eu.wohlben.qits.projects.control.AutomationLedger.Automation(
+                        "screenshot-baselines",
+                        "Screenshot baselines",
+                        eu.wohlben.qits.projects.control.AutomationLedger.DEFERRED,
+                        null,
                         List.of(),
                         null,
                         null,

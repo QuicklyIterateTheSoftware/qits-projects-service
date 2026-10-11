@@ -144,10 +144,6 @@ class HttpReleaseRequestAutomationsTest {
   }
 
   /**
-   * qits-1133: the trigger says which state words this side reads beyond the original seven, so
-   * qits-maintenance may answer WAITING and NOT_APPLICABLE to it and to nobody older.
-   */
-  /**
    * qits-1158: the trigger tells the far side the stored backing branch and the qualified id; the
    * uuid stays in the path. The older form leaves both keys out, and qits-maintenance reads them
    * back instead.
@@ -177,18 +173,22 @@ class HttpReleaseRequestAutomationsTest {
     assertTrue(!older.has("backingBranch") && !older.has("qualifiedId"), older.toString());
   }
 
+  /**
+   * qits-1133: the trigger says which state words this side reads beyond the original seven, so
+   * qits-maintenance may answer WAITING and NOT_APPLICABLE to it and to nobody older. qits-1178
+   * adds DEFERRED, a kind QA checks instead of the pre-run.
+   */
   @Test
-  void theTriggerSaysItAcceptsWaitingAndNotApplicable() throws Exception {
+  void theTriggerSaysItAcceptsWaitingNotApplicableAndDeferred() throws Exception {
     String base = startServer();
 
     trigger(against(base), null);
 
     JsonNode accepts = MAPPER.readTree(received.get(0).body()).get("accepts");
     assertTrue(accepts.isArray(), "a list of words, not a flag");
-    assertEquals(
-        List.of("WAITING", "NOT_APPLICABLE"),
-        List.of(accepts.get(0).asText(), accepts.get(1).asText()));
-    assertEquals(2, accepts.size());
+    List<String> words = new java.util.ArrayList<>();
+    accepts.forEach(word -> words.add(word.asText()));
+    assertEquals(List.of("WAITING", "NOT_APPLICABLE", "DEFERRED"), words);
   }
 
   /**
@@ -206,14 +206,18 @@ class HttpReleaseRequestAutomationsTest {
           {"kind":"entity-diagram","label":"Entity diagram","state":"WAITING","runIds":[]},
           {"kind":"screenshot-baselines","label":"Screenshot baselines","state":"NOT_APPLICABLE",
            "detail":"the fold carries no package.json"},
-          {"kind":"openapi","label":"OpenAPI","state":"PONDERING","runIds":[]}]}
+          {"kind":"openapi","label":"OpenAPI","state":"PONDERING","runIds":[]},
+          {"kind":"estate-pins","label":"Estate pins","state":"DEFERRED","detail":"checked by QA",
+           "runIds":[]}]}
         """
             .formatted(FOLD));
 
     List<ReleaseRequestAutomations.Automation> entries =
         trigger(against(base), null).orElseThrow().automations();
 
-    assertEquals(4, entries.size());
+    assertEquals(5, entries.size());
+    assertEquals("DEFERRED", entries.get(4).state());
+    assertEquals("checked by QA", entries.get(4).detail());
     assertEquals("WAITING", entries.get(1).state());
     assertEquals("NOT_APPLICABLE", entries.get(2).state());
     assertEquals("the fold carries no package.json", entries.get(2).detail());

@@ -289,7 +289,8 @@
           "content": {
             "accepts": [
               "WAITING",
-              "NOT_APPLICABLE"
+              "NOT_APPLICABLE",
+              "DEFERRED"
             ],
             "changedSincePrevious": null,
             "foldSha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
