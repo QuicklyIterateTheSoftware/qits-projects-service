@@ -702,8 +702,13 @@ public class ReleaseRequestController {
         releaseRequests.rerunPhase(repoId, requestId, phase));
   }
 
-  /** What the automation re-run door answers: the far side's id for the run it accepted. */
+  /**
+   * What the automation re-run door answers: the far side's id for the run it accepted. Registered
+   * for reflection because the door returns a plain {@code Response}, so the native image cannot see
+   * this type and every accepted re-run answered 500.
+   */
   public static record RerunReleaseRequestAutomation() {
+    @io.quarkus.runtime.annotations.RegisterForReflection
     public record Response(String id) {}
   }
 
