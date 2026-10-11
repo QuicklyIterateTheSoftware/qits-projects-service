@@ -453,11 +453,24 @@ public class ReleaseRequestController {
   }
 
   /**
+   * <b>{@code qits:ci-run} reaches this read too</b> (qits-1193): the changelog step, {@code qits
+   * artifacts publish changelog}, reads a repository's earlier cuts with {@code state=all} to carry
+   * the commits of releases that preceded it and never published a changelog of their own. The
+   * class pair is replaced rather than widened, as every method-level {@code @RolesAllowed} here
+   * does, so the grant is this one read.
+   *
    * @param state which requests to answer, in the vocabulary the project-wide route uses: omitted
    *     means the open ones plus the last ten released, {@code all} means every state, and a state's
    *     own name narrows to it. A word naming no state is a 400.
    */
   @GET
+  @jakarta.annotation.security.RolesAllowed({
+    "qits:admin",
+    "qits:admin-agent",
+    "qits:system",
+    "qits:agent",
+    "qits:ci-run"
+  })
   @Operation(
       operationId = "listRepositoryReleaseRequests",
       summary = "This repository's release requests",

@@ -315,4 +315,20 @@ public class ReleaseRequestAgentBoundsTest {
         .then()
         .statusCode(403);
   }
+
+  /**
+   * {@code qits:ci-run} reaches {@code GET .../release-requests?state=all} too (qits-1193): the
+   * changelog step ({@code qits artifacts publish changelog}) reads a repository's earlier cuts
+   * with {@code state=all} to carry the commits of releases that preceded it and never published a
+   * changelog of their own. The method-level {@code @RolesAllowed} this grant needed is new (the
+   * route had none before and relied on the class pair), and {@link
+   * #aCiRunTokenReadsTheCommitsAndCannotCreate} already pins that the same caller may not write on
+   * this door, so this test asserts only the read half.
+   */
+  @Test
+  void aCiRunTokenReadsTheRepositorysReleaseRequests() {
+    requestBySomebodyElse(OWN_REPO, "ticket/own-ci-run-list");
+
+    asForwardedCiRun().get(base(OWN_REPO) + "?state=all").then().statusCode(200);
+  }
 }

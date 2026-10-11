@@ -5552,6 +5552,7 @@ paths:
         - qits:admin-agent
         - qits:system
         - qits:agent
+        - qits:ci-run
     post:
       summary: Ask for a branch to be released once its builds are green
       description: "Creates (or converges on) the repository's one open release request.\
@@ -8417,4 +8418,4 @@ paths:
         - qits:agent
 info:
   title: qits-projects API
-  version: 2026.1010.113250
+  version: 2026.1011.174755
