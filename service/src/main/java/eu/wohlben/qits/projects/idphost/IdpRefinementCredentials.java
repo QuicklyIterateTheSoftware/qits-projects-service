@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.refinementhost.RefinementCredentials;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -37,9 +38,14 @@ public class IdpRefinementCredentials implements RefinementCredentials {
 
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @Inject ObjectMapper objectMapper;
+
+  @Inject
+  public IdpRefinementCredentials(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean tokensEnabled;

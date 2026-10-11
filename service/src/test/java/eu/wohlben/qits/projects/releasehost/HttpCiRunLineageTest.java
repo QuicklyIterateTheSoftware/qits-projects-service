@@ -1,8 +1,8 @@
 package eu.wohlben.qits.projects.releasehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * {@link HttpCiRunLineage} against a local server standing in for qits-ci — plain JUnit over a
@@ -55,7 +56,7 @@ class HttpCiRunLineageTest {
   }
 
   private HttpCiRunLineage against(String base) {
-    HttpCiRunLineage lineage = new HttpCiRunLineage();
+    HttpCiRunLineage lineage = new HttpCiRunLineage(QitsHttpClients.of(OpenTelemetry.noop(), null));
     lineage.ciUrl = Optional.ofNullable(base);
     lineage.bearer = new IdpCiBearer();
     return lineage;

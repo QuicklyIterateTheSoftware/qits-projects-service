@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.deploymenthost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.DeploymentRedeploys;
 import eu.wohlben.qits.projects.error.DomainException;
 import io.quarkus.arc.DefaultBean;
@@ -61,13 +62,17 @@ public class HttpDeploymentRedeploys implements DeploymentRedeploys {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  private final HttpClient client =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.deployments-url")
   Optional<String> deploymentsUrl;
 
   @Inject IdpDeploymentsBearer bearer;
+
+  @Inject
+  public HttpDeploymentRedeploys(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build());
+  }
 
   @Override
   public void deployAgain(Redeploy ask) {

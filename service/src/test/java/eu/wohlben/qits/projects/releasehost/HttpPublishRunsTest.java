@@ -1,9 +1,8 @@
 package eu.wohlben.qits.projects.releasehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -15,6 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpPublishRuns} against a local server standing in for qits-ci — plain JUnit over a
@@ -66,7 +67,7 @@ class HttpPublishRunsTest {
 
   /** With the named client off — the shipped default — the read presents the forwarded pair. */
   private HttpPublishRuns against(String base) {
-    HttpPublishRuns runs = new HttpPublishRuns();
+    HttpPublishRuns runs = new HttpPublishRuns(QitsHttpClients.of(OpenTelemetry.noop(), null));
     runs.ciUrl = Optional.ofNullable(base);
     runs.bearer = new IdpCiBearer();
     return runs;

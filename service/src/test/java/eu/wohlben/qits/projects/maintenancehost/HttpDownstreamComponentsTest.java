@@ -1,11 +1,8 @@
 package eu.wohlben.qits.projects.maintenancehost;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -17,6 +14,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpDownstreamComponents} against a local server standing in for qits-maintenance — plain
@@ -72,7 +73,7 @@ class HttpDownstreamComponentsTest {
   }
 
   private HttpDownstreamComponents against(String base, Optional<String> authorization) {
-    HttpDownstreamComponents components = new HttpDownstreamComponents();
+    HttpDownstreamComponents components = new HttpDownstreamComponents(QitsHttpClients.of(OpenTelemetry.noop(), null));
     components.maintenanceUrl = Optional.ofNullable(base);
     components.bearer = () -> authorization;
     return components;

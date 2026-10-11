@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.wiring;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.GitHostAddress;
 import eu.wohlben.qits.projects.control.GitHostBearer;
 import eu.wohlben.qits.projects.control.GitHostException;
@@ -37,7 +38,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  * qits-artifacts' {@code CiPostReceiveNotifier} carries: a static client is built at image-build
  * time and native-image refuses the {@code
  * HttpClientFacade} that lands in the heap. {@code @ApplicationScoped} keeps it one client per
- * process.
+ * process. It is wrapped with {@link QitsHttpClients}, which opens a CLIENT span and stamps
+ * {@code X-Qits-Caller}.
  *
  * <p><b>{@code @DefaultBean}</b>, the same posture {@link GitHostAddress}'s shipped implementation
  * takes: {@code GitHostRepositories} being mandatory (a plain {@code @Inject}, not an
@@ -55,7 +57,7 @@ public class HttpGitHostRepositories implements GitHostRepositories {
   /** How long a connect may take — the receiver is a sibling service on the same network. */
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @Inject GitHostAddress gitHost;
   @Inject GitHostBearer gitHostBearer;
@@ -64,6 +66,11 @@ public class HttpGitHostRepositories implements GitHostRepositories {
   /** The bound on the whole exchange — every wire call this service makes carries it (§3.2). */
   @ConfigProperty(name = "qits.projects.git.network-timeout-ms", defaultValue = "120000")
   long networkTimeoutMs;
+
+  @Inject
+  public HttpGitHostRepositories(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @Override
   public boolean ensure(String repoId, String defaultBranch) {

@@ -1,18 +1,19 @@
 package eu.wohlben.qits.projects.idphost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.refinementhost.RefinementCredentials;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * What goes on the wire when a refinement container is commissioned: which Git refs it states,
@@ -33,7 +34,7 @@ class IdpRefinementCredentialsTest {
           + "\"createdAt\":\"2026-09-12T10:00:00Z\"}";
 
   private static IdpRefinementCredentials credentials(String authServerUrl) {
-    IdpRefinementCredentials credentials = new IdpRefinementCredentials();
+    IdpRefinementCredentials credentials = new IdpRefinementCredentials(QitsHttpClients.of(OpenTelemetry.noop(), null));
     credentials.objectMapper = new ObjectMapper();
     credentials.tokensEnabled = true;
     credentials.authServerUrl = authServerUrl;

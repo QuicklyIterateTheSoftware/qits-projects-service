@@ -234,6 +234,14 @@
             <artifactId>qits-auth-core</artifactId>
         </dependency>
         <dependency>
+            <!-- QitsHttpClients.wrap, injected into every host adapter that still builds a raw
+                 java.net.http.HttpClient, and CallerServerFilter/CallerClientFilter, which this
+                 module's jandex index is what makes discoverable — this is the one module that
+                 serves the application's JAX-RS resources. Compile scope: it ships. -->
+            <groupId>${project.groupId}</groupId>
+            <artifactId>qits-http-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-openapi</artifactId>
         </dependency>

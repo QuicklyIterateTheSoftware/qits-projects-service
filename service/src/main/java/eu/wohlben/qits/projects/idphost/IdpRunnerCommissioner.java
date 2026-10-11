@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -82,11 +83,16 @@ public class IdpRunnerCommissioner {
   /** One live client of this service's, as the reconcile reads it. Never a secret. */
   public record LiveClient(String clientId, String contextKind, String contextId) {}
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @Inject ObjectMapper objectMapper;
 
   @Inject IdpTokens tokens;
+
+  @Inject
+  public IdpRunnerCommissioner(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean tokensEnabled;

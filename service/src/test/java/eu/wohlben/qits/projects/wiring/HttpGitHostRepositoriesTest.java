@@ -1,15 +1,12 @@
 package eu.wohlben.qits.projects.wiring;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.GitHostAddress;
 import eu.wohlben.qits.projects.control.GitHostException;
 import eu.wohlben.qits.projects.control.GitHostRepositories;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -22,6 +19,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpGitHostRepositories} against a local server standing in for qits-githost — plain
@@ -85,7 +86,7 @@ class HttpGitHostRepositoriesTest {
   }
 
   private HttpGitHostRepositories repositoriesAgainst(String base) {
-    HttpGitHostRepositories repositories = new HttpGitHostRepositories();
+    HttpGitHostRepositories repositories = new HttpGitHostRepositories(QitsHttpClients.of(OpenTelemetry.noop(), null));
     repositories.gitHost = addressOf(base);
     repositories.gitHostBearer = () -> Optional.of("machine-token");
     repositories.objectMapper = new ObjectMapper();

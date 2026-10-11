@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.releasehost;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.ActiveBuilds;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -40,13 +41,17 @@ public class HttpActiveBuilds implements ActiveBuilds {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  private final HttpClient client =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.ci-url")
   Optional<String> ciUrl;
 
   @jakarta.inject.Inject IdpCiBearer bearer;
+
+  @jakarta.inject.Inject
+  public HttpActiveBuilds(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build());
+  }
 
   @Override
   public boolean configured() {

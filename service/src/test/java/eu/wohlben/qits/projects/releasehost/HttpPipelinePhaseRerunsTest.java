@@ -1,12 +1,10 @@
 package eu.wohlben.qits.projects.releasehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.PipelinePhaseReruns;
 import eu.wohlben.qits.projects.error.DomainException;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -18,6 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpPipelinePhaseReruns} against a local server standing in for qits-ci — plain JUnit over
@@ -72,7 +73,7 @@ class HttpPipelinePhaseRerunsTest {
 
   /** With the named client off — the shipped default — the hop presents the forwarded pair. */
   private HttpPipelinePhaseReruns against(String base) {
-    HttpPipelinePhaseReruns reruns = new HttpPipelinePhaseReruns();
+    HttpPipelinePhaseReruns reruns = new HttpPipelinePhaseReruns(QitsHttpClients.of(OpenTelemetry.noop(), null));
     reruns.ciUrl = Optional.ofNullable(base);
     reruns.bearer = new IdpCiBearer();
     return reruns;

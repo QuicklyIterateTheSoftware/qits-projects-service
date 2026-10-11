@@ -1,15 +1,11 @@
 package eu.wohlben.qits.projects.workspacehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.WorkspaceAgentDispatch;
 import eu.wohlben.qits.projects.error.DomainException;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -23,6 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpWorkspaceAgentDispatch} against a local server standing in for qits-workspaces — plain
@@ -85,7 +86,7 @@ class HttpWorkspaceAgentDispatchTest {
 
   private HttpWorkspaceAgentDispatch against(
       String base, String fallback, Optional<String> authorization) {
-    HttpWorkspaceAgentDispatch adapter = new HttpWorkspaceAgentDispatch();
+    HttpWorkspaceAgentDispatch adapter = new HttpWorkspaceAgentDispatch(QitsHttpClients.of(OpenTelemetry.noop(), null));
     adapter.workspacesUrl = Optional.ofNullable(base);
     adapter.releaseWorkspacesUrl = Optional.ofNullable(fallback);
     adapter.bearer = () -> authorization;

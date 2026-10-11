@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
 import io.quarkus.arc.DefaultBean;
@@ -83,7 +84,9 @@ import org.jboss.logging.Logger;
  * <p>Nothing here throws, and an {@link InterruptedException} re-interrupts the thread rather than
  * being swallowed. {@code readTree}, never a bound record, so this class adds zero native-image
  * registrations; the {@link HttpClient} is an <b>instance</b> field, because a static one is built at
- * image-build time and native-image refuses the {@code HttpClientFacade} that lands in the heap.
+ * image-build time and native-image refuses the {@code HttpClientFacade} that lands in the heap. It
+ * is wrapped with {@link QitsHttpClients}, which opens a CLIENT span and stamps {@code
+ * X-Qits-Caller}.
  */
 @ApplicationScoped
 @DefaultBean
@@ -118,12 +121,17 @@ public class HttpReleaseRequestAutomations implements ReleaseRequestAutomations 
   /** The bound on a read, which touches nothing but the far side's own rows. */
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.maintenance-url")
   Optional<String> maintenanceUrl;
 
   @Inject MaintenanceBearer bearer;
+
+  @Inject
+  public HttpReleaseRequestAutomations(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @Override
   public boolean configured() {

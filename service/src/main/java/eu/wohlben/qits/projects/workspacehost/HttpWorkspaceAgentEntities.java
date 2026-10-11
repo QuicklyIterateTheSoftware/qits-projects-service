@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.workspacehost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.WorkspaceAgentEntities;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -66,7 +67,8 @@ import org.jboss.logging.Logger;
  * <p>The same two address keys in the same order, the same {@link WorkspacesBearer} and no
  * forwarded-header fallback, {@code Map} rather than a DTO on both directions (zero native-image
  * registrations), the {@link HttpClient} an instance field ({@code NativeImageContractTest} pins
- * that), and every failure folded into one WARN and a normal return. Each of those is argued in that
+ * that), wrapped with {@link QitsHttpClients} like every hop in this module, and every failure
+ * folded into one WARN and a normal return. Each of those is argued in that
  * class's javadoc and none of them has a different answer for a label than for a turn. What differs
  * is the timeout: the far side launches nothing here, so the bound is a read's — see {@link
  * #REQUEST_TIMEOUT}.
@@ -98,9 +100,14 @@ public class HttpWorkspaceAgentEntities implements WorkspaceAgentEntities {
   @ConfigProperty(name = "qits.projects.release-requests.workspaces-url")
   Optional<String> releaseWorkspacesUrl;
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @Inject WorkspacesBearer bearer;
+
+  @Inject
+  public HttpWorkspaceAgentEntities(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   /** The door this adapter speaks to, relative to the address. */
   static final String ENTITY_PATH = "/workspaces/api/agent-dispatches/entity";

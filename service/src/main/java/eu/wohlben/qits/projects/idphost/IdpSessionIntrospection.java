@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.security.SessionIntrospection;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -51,9 +52,14 @@ public class IdpSessionIntrospection implements SessionIntrospection {
   /** A person is waiting on the press, and idp is a sibling on the same network. */
   static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
 
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+  private final HttpClient client;
 
   @Inject ObjectMapper objectMapper;
+
+  @Inject
+  public IdpSessionIntrospection(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
+  }
 
   @ConfigProperty(name = "quarkus.oidc-client.qits.client-enabled")
   boolean tokensEnabled;

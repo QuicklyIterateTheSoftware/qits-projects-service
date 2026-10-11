@@ -1,6 +1,8 @@
 package eu.wohlben.qits.projects.idphost;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Duration;
 import java.util.Optional;
 
@@ -19,14 +21,15 @@ public final class IdpRunnerCommissionerFixture {
   /** Wired, with a patience of {@code patience}. */
   public static IdpRunnerCommissioner pointedAt(String authServerUrl, Duration patience) {
     ObjectMapper json = new ObjectMapper();
-    IdpTokens tokens = new IdpTokens();
+    QitsHttpClients clients = QitsHttpClients.of(OpenTelemetry.noop(), null);
+    IdpTokens tokens = new IdpTokens(clients);
     tokens.objectMapper = json;
     tokens.tokensEnabled = true;
     tokens.authServerUrl = authServerUrl;
     tokens.clientId = OWN_CLIENT;
     tokens.clientSecret = Optional.of(OWN_SECRET);
     tokens.requestTimeout = Duration.ofSeconds(2);
-    IdpRunnerCommissioner commissioner = new IdpRunnerCommissioner();
+    IdpRunnerCommissioner commissioner = new IdpRunnerCommissioner(clients);
     commissioner.objectMapper = json;
     commissioner.tokens = tokens;
     commissioner.tokensEnabled = true;

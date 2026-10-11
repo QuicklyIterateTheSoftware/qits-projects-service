@@ -1,16 +1,12 @@
 package eu.wohlben.qits.projects.maintenancehost;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.AutomationLedger;
 import eu.wohlben.qits.projects.control.ReleaseRequestAutomations;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -23,6 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpReleaseRequestAutomations} against a local server standing in for qits-maintenance —
@@ -95,7 +96,7 @@ class HttpReleaseRequestAutomationsTest {
   }
 
   private HttpReleaseRequestAutomations against(String base, Optional<String> authorization) {
-    HttpReleaseRequestAutomations port = new HttpReleaseRequestAutomations();
+    HttpReleaseRequestAutomations port = new HttpReleaseRequestAutomations(QitsHttpClients.of(OpenTelemetry.noop(), null));
     port.maintenanceUrl = Optional.ofNullable(base);
     port.bearer = () -> authorization;
     return port;

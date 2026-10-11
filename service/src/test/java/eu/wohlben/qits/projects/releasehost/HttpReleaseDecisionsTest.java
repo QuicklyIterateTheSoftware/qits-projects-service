@@ -1,11 +1,9 @@
 package eu.wohlben.qits.projects.releasehost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.sun.net.httpserver.HttpServer;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.ReleaseDecisions;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -17,6 +15,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link HttpReleaseDecisions} against a local server standing in for qits-ci — {@link
@@ -72,7 +73,7 @@ class HttpReleaseDecisionsTest {
   }
 
   private HttpReleaseDecisions against(String base) {
-    HttpReleaseDecisions decisions = new HttpReleaseDecisions();
+    HttpReleaseDecisions decisions = new HttpReleaseDecisions(QitsHttpClients.of(OpenTelemetry.noop(), null));
     decisions.ciUrl = Optional.ofNullable(base);
     decisions.bearer = new IdpCiBearer();
     return decisions;

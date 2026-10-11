@@ -1,17 +1,18 @@
 package eu.wohlben.qits.projects.idphost;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.security.SessionIntrospection.Session;
+import io.opentelemetry.api.OpenTelemetry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * What goes on the wire to qits-idp's session introspection, and how each answer is read (qits-891).
@@ -27,7 +28,7 @@ class IdpSessionIntrospectionTest {
           + "\"expiresAt\":\"2026-10-06T10:00:00Z\"}";
 
   private static IdpSessionIntrospection introspection(String authServerUrl) {
-    IdpSessionIntrospection introspection = new IdpSessionIntrospection();
+    IdpSessionIntrospection introspection = new IdpSessionIntrospection(QitsHttpClients.of(OpenTelemetry.noop(), null));
     introspection.objectMapper = new ObjectMapper();
     introspection.tokensEnabled = true;
     introspection.authServerUrl = authServerUrl;

@@ -2,6 +2,7 @@ package eu.wohlben.qits.projects.releasehost;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.wohlben.qits.http.QitsHttpClients;
 import eu.wohlben.qits.projects.control.BackingBranchMerger;
 import eu.wohlben.qits.projects.control.GitHostBearer;
 import io.quarkus.arc.DefaultBean;
@@ -49,7 +50,8 @@ import org.jboss.logging.Logger;
  * and the answer to that is to fold again, not to stop.
  *
  * <p>The {@link HttpClient} is an <b>instance</b> field, not static — the native-image rule {@code
- * HttpGitHostRepositories} carries.
+ * HttpGitHostRepositories} carries. It is wrapped with {@link QitsHttpClients}, which opens a
+ * CLIENT span and stamps {@code X-Qits-Caller}.
  */
 @ApplicationScoped
 @DefaultBean
@@ -62,13 +64,17 @@ public class HttpBackingBranchMerger implements BackingBranchMerger {
   /** A fold is JGit in-core over a bare — bounded, but a large repository is not instant. */
   private static final Duration CALL_TIMEOUT = Duration.ofSeconds(60);
 
-  private final HttpClient client =
-      HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+  private final HttpClient client;
 
   @ConfigProperty(name = "qits.projects.release-requests.githost-url")
   Optional<String> githostUrl;
 
   @Inject GitHostBearer bearer;
+
+  @Inject
+  public HttpBackingBranchMerger(QitsHttpClients clients) {
+    this.client = clients.wrap(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
+  }
 
   @Override
   public Outcome merge(
