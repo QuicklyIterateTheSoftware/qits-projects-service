@@ -31,9 +31,32 @@ public class FakeActiveBuilds implements ActiveBuilds {
     configured.set(value);
   }
 
+  /**
+   * A latch pair for the NEXT call alone (qits-1133's interleaving test): the call says it has been
+   * entered and then waits to be let go. {@code evaluate()} asks this inside its gate transaction,
+   * under its row lock and after it has stamped {@code qa_announced_sha}, so a held call is an
+   * evaluation caught between its stamp and its commit.
+   */
+  public record Hold(
+      java.util.concurrent.CountDownLatch entered, java.util.concurrent.CountDownLatch release) {}
+
+  private final AtomicReference<Hold> hold = new AtomicReference<>();
+
+  public Hold holdNext() {
+    Hold next =
+        new Hold(
+            new java.util.concurrent.CountDownLatch(1), new java.util.concurrent.CountDownLatch(1));
+    hold.set(next);
+    return next;
+  }
+
   public void reset() {
     answer.set(Optional.of(0));
     configured.set(true);
+    Hold left = hold.getAndSet(null);
+    if (left != null) {
+      left.release().countDown();
+    }
   }
 
   @Override
@@ -43,6 +66,15 @@ public class FakeActiveBuilds implements ActiveBuilds {
 
   @Override
   public Optional<Integer> activeFor(String repoId, String commitSha) {
+    Hold held = hold.getAndSet(null);
+    if (held != null) {
+      held.entered().countDown();
+      try {
+        held.release().await(30, java.util.concurrent.TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
     return answer.get();
   }
 }

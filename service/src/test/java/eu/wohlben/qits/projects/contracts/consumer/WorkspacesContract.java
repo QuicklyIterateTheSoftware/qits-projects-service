@@ -161,6 +161,7 @@ final class WorkspacesContract {
                 WorkspaceAgentTurns.Turn turn =
                     workspaces(new HttpWorkspaceAgentTurns(), base).deliver(p.get("ticketId"), "go on");
                 assertNotEquals(WorkspaceAgentTurns.Outcome.NO_AGENT, turn.outcome(), turn.detail());
+                assertFalse(turn.detail().isBlank(), "the answer carries its detail");
               },
               "param ticketId; POST .../agent-dispatches/delivery answering 200 with agentId,"
                   + " delivered, launched, resumed and detail"),

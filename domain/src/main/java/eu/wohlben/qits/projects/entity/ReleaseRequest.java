@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * One ask to release, settled by quality gates before anything ships — the asynchronous replacement
@@ -91,10 +92,19 @@ import java.util.UUID;
  * <p>A {@link CausedRow}: created on the request thread, so the stamp records what asked. Updates
  * (the re-merge, gate resolution, execution) are machine-driven and the stamp is insert-only — the
  * verdicts that resolved a request are their own caused rows in {@code commit_build_status}.
+ *
+ * <p><b>{@link DynamicUpdate}: an UPDATE names only the columns this transaction changed</b>
+ * (qits-1133). Several paths write this row, and not all of them under the row lock {@code
+ * ReleaseRequests.evaluate} takes; with Hibernate's default full-row UPDATE, a writer that read the
+ * row before another committed wrote every column it had read back over the newer values. That
+ * reverted {@link #qaAnnouncedSha} under the fold write on 2026-10-10 (request b4dc3310) and the next
+ * evaluation announced {@code preRun=DONE} a second time for one sha, so qits-ci ran QA twice. The
+ * write half of a fold now takes the lock too; this is the backstop for every writer that does not.
  */
 @Entity
 @Table(name = "release_request")
 @EntityListeners(CausationStamp.class)
+@DynamicUpdate
 public class ReleaseRequest extends PanacheEntityBase implements CausedRow {
 
   /** How a request stands. Grows without a migration; see the class javadoc for the moves. */

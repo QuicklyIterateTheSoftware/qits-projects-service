@@ -77,6 +77,8 @@ public class ReleaseRequestPreRunTest {
 
   @Inject ReleaseRequests releaseRequests;
 
+  @Inject eu.wohlben.qits.eventstream.control.DurableFunnel funnel;
+
   private String projectId;
   private String repoId;
   private String repoName;
@@ -473,6 +475,116 @@ public class ReleaseRequestPreRunTest {
   }
 
   // -----------------------------------------------------------------------------------------
+  // One DONE per fold (qits-1133, request b4dc3310 on 2026-10-10)
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * The live duplicate, replayed: an evaluation stamps {@code qa_announced_sha} under its row lock
+   * and is caught before it commits; a re-fold of the SAME content (a redelivered head frame) runs
+   * its write half meanwhile. That write used to read the row unlocked and write every column back
+   * after the evaluation committed — the stamp went back behind the fold, the state and detail with
+   * it, and the re-fold's own evaluation announced DONE a second time. Now the write waits for the
+   * lock and reads the stamp, and the fold is announced DONE exactly once.
+   */
+  @Test
+  public void aFoldWriteRacingTheStampingEvaluationDoesNotAnnounceDoneTwice() throws Exception {
+    automations.answer(repoName, BUMP, "FRESH");
+    String id = create("work");
+    String merged = mergedShaOf(id);
+    // The stamp behind the fold, as it was at 12:39:13: the next evaluation owes the one DONE.
+    QuarkusTransaction.requiringNew()
+        .run(() -> ReleaseRequest.<ReleaseRequest>findById(id).qaAnnouncedSha = "an-older-fold");
+    announcer.reset();
+    // Vouched but still in flight: the evaluation stops PENDING without releasing anything, and the
+    // probe it asks — after the stamp, under the lock — is where it is held.
+    activeBuilds.answer(Optional.of(1));
+    FakeActiveBuilds.Hold hold = activeBuilds.holdNext();
+    // The re-fold rebuilds the same content: same sha, so the write half moves nothing.
+    merger.answer(
+        eu.wohlben.qits.projects.control.BackingBranchMerger.Outcome.merged(
+            merged, List.of("refs/heads/main", "refs/heads/work")));
+
+    java.util.concurrent.ExecutorService threads =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      java.util.concurrent.Future<?> evaluation = threads.submit(() -> verdict(merged));
+      assertTrue(
+          hold.entered().await(10, java.util.concurrent.TimeUnit.SECONDS),
+          "the evaluation reached the probe, stamped and uncommitted");
+      assertEquals(
+          "an-older-fold", qaAnnouncedShaOf(id), "its stamp is not committed while it is held");
+
+      java.util.concurrent.Future<?> refold = threads.submit(() -> headMoved("work"));
+      awaitALockWait(refold);
+      hold.release().countDown();
+      evaluation.get(20, java.util.concurrent.TimeUnit.SECONDS);
+      refold.get(20, java.util.concurrent.TimeUnit.SECONDS);
+    } finally {
+      hold.release().countDown();
+      threads.shutdownNow();
+      merger.answerFreshMerges();
+    }
+
+    assertEquals(merged, mergedShaOf(id), "the re-fold moved nothing");
+    assertEquals(List.of("DONE"), preRuns(id), "one DONE for one fold, so one QA run");
+    assertEquals(merged, qaAnnouncedShaOf(id), "the stamp survived the fold write");
+    JsonPath after = request(id);
+    assertEquals("PENDING", after.getString("state"));
+    assertEquals(
+        "1 CI run(s) are still in flight for " + merged.substring(0, 10),
+        after.getString("detail"),
+        "and what the evaluation said was not written over either");
+  }
+
+  /**
+   * The bus path that lined the race up: a head frame through the eventstream library's REAL claim
+   * ({@link eu.wohlben.qits.eventstream.control.DurableFunnel#offer}), whose re-fold refreshes the
+   * automations and so reads what the fold changed — a read that looks the repository row up in the
+   * {@code projects} datasource. Inside the claim's transaction that was a second local resource:
+   * Narayana refused it (ARJUNA016045), the paths went out null and the claim rolled back, to be
+   * redelivered every 30 seconds. In a transaction of its own the paths reach qits-maintenance and
+   * the claim commits.
+   */
+  @Test
+  public void aRefoldFromTheBusClaimStillReadsWhatTheFoldChanged() throws Exception {
+    automations.answer(repoName, SCREENSHOTS, "RUNNING");
+    String id = create("work");
+    String first = mergedShaOf(id);
+    foldChanges.between(repoId, List.of("README.md"));
+    foldChanges.readsTheRepositoryRow(repoId);
+
+    eu.wohlben.qits.eventstream.control.DurableFunnel real =
+        io.quarkus.arc.ClientProxy.unwrap(funnel);
+    java.lang.reflect.Field enabled =
+        eu.wohlben.qits.eventstream.control.DurableFunnel.class.getDeclaredField("enabled");
+    enabled.setAccessible(true);
+    enabled.setBoolean(real, true);
+    eu.wohlben.qits.eventstream.control.DurableFunnel.Result result;
+    try {
+      result = funnel.offer(headListener, headFrame("work"));
+    } finally {
+      enabled.setBoolean(real, false);
+    }
+
+    assertEquals(
+        eu.wohlben.qits.eventstream.control.DurableFunnel.Result.HANDLED,
+        result,
+        "the claim committed — FAILED here is the 30-second redelivery (see the log for"
+            + " ARJUNA016045)");
+    String second = mergedShaOf(id);
+    assertNotEquals(first, second);
+    FakeReleaseRequestAutomations.Asked asked =
+        automations.askedAbout(id).stream()
+            .filter(ask -> second.equals(ask.foldSha()))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(
+        List.of("README.md"),
+        asked.changedSincePrevious(),
+        "the paths were read, so an outcome can be carried over the re-fold");
+  }
+
+  // -----------------------------------------------------------------------------------------
   // Driving it
   // -----------------------------------------------------------------------------------------
 
@@ -581,8 +693,11 @@ public class ReleaseRequestPreRunTest {
   }
 
   private void headMoved(String branch) {
-    headListener.onFrame(
-        new EventFrame(
+    headListener.onFrame(headFrame(branch));
+  }
+
+  private EventFrame headFrame(String branch) {
+    return new EventFrame(
             UUID.randomUUID().toString(),
             "SCMPublishCommit",
             Instant.now(),
@@ -595,7 +710,38 @@ public class ReleaseRequestPreRunTest {
                 + "\"}",
             null,
             null,
-            null));
+            null);
+  }
+
+  /**
+   * Wait until some session of this database is waiting on a lock — the re-fold's write half,
+   * queued behind the held evaluation's row lock. Before the fix it queued at its UPDATE, after the
+   * read it had already made; now it queues at the read. Either way it waits, so this is the moment
+   * the evaluation may commit and the order of the race is the live one.
+   */
+  private void awaitALockWait(java.util.concurrent.Future<?> refold) {
+    long deadline = System.currentTimeMillis() + 10_000;
+    while (System.currentTimeMillis() < deadline) {
+      if (refold.isDone()) {
+        fail("the re-fold finished while the evaluation held the row; it never waited for it");
+      }
+      Number waiting =
+          QuarkusTransaction.requiringNew()
+              .call(
+                  () ->
+                      (Number)
+                          ReleaseRequest.getEntityManager()
+                              .createNativeQuery(
+                                  "select count(*) from pg_stat_activity"
+                                      + " where datname = current_database()"
+                                      + " and wait_event_type = 'Lock'")
+                              .getSingleResult());
+      if (waiting.longValue() > 0) {
+        return;
+      }
+      sleep();
+    }
+    fail("the re-fold never queued behind the evaluation's row lock");
   }
 
   private void awaitFoldToMove(String id, String previousFold) {

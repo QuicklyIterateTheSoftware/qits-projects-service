@@ -293,6 +293,64 @@
         "status": 200
       },
       "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-events-service",
+            "operationId": "publishEvent"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-service",
+            "kind": "schedule",
+            "schedule": "OutboxSweeper.sweep"
+          }
+        }
+      },
+      "description": "OutboxSweeper.sweep: publishEvent",
+      "key": "70596ed7",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "no event with the given id",
+          "params": {
+            "eventId": "00000000-0000-4000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "description": "A release request is waiting for its checks",
+            "environment": null,
+            "name": "ReleaseRequestChanged",
+            "occurredAt": "2026-01-01T00:00:00Z",
+            "parentId": null,
+            "payload": "{\"state\":\"PENDING\"}"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "dataType": "RAW",
+            "expression": "/events/api/events/${eventId}",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "PUT",
+        "path": "/events/api/events/00000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "status": 201
+      },
+      "type": "Synchronous/HTTP"
     }
   ],
   "metadata": {
