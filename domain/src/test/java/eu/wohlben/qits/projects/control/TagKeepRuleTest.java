@@ -166,7 +166,6 @@ class TagKeepRuleTest {
         {"deployments": {"pins": [{"applicationName": "qits-ci", "shas": ["2026.930.10", "2026.929.1"]}]},
          "ciDaemon": {"daemonName": "qits-ci-daemon", "daemonVersion": "2026.928.5", "previousDaemonVersion": ""},
          "dependencies": {"pins": [{"ecosystem": "maven", "version": " 2026.927.7 ", "repository": "x"}]},
-         "configuredImages": {"pins": []},
          "workspaceLaunches": {"pins": [{"image": "qits/workspace", "version": "2026.926.3"}]},
          "projectLaunches": {"generatedAt": "2026-10-01T12:00:00Z", "pins": [{"version": "1.2.3"}]}}
         """;
