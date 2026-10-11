@@ -232,7 +232,7 @@
              like every other pin; do not hand-edit them to chase a release. -->
         <qits.githost-golden-masters.version>2026.1010.133955</qits.githost-golden-masters.version>
         <qits.workspaces-golden-masters.version>2026.1011.50559</qits.workspaces-golden-masters.version>
-        <qits.maintenance-golden-masters.version>2026.1010.124627</qits.maintenance-golden-masters.version>
+        <qits.maintenance-golden-masters.version>2026.1011.122834</qits.maintenance-golden-masters.version>
         <qits.events-golden-masters.version>2026.1010.121628</qits.events-golden-masters.version>
         <!-- pact-jvm's JUnit 5 provider, the estate's first pact provider dependency. The SAME
              pact-jvm version the consumers write their pacts with (qits-workspaces: 4.6.21), so the
