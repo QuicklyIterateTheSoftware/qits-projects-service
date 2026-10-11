@@ -1,0 +1,25 @@
+{
+  "repositoryId": "00000000-0000-4000-8000-000000000002",
+  "branch": "main",
+  "limit": 100,
+  "guardEnabled": false,
+  "counts": {
+    "total": 1,
+    "complying": 0,
+    "nonComplying": 1,
+    "exempt": 0,
+    "exemptMerge": 0,
+    "exemptMachine": 0
+  },
+  "nonComplying": [
+    {
+      "hash": "5eab9635f653a85136ce4d8babd44edfa83cf1da",
+      "shortHash": "5eab963",
+      "subject": "Declare the suite",
+      "authorName": "Contract Seeder",
+      "authorEmail": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "qualifiedIds": []
+}

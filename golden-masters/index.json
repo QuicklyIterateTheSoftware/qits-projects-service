@@ -217,6 +217,25 @@
             "strings": [],
             "listFilteredTo": null
           }
+        },
+        {
+          "operationId": "setWorkBlocked",
+          "method": "POST",
+          "path": "/projects/api/work/{qualifiedId}/blocked",
+          "body": {
+            "blocked": false,
+            "reason": "The database team confirmed the new limit."
+          },
+          "status": 200,
+          "file": "a-bug-ticket-in-detail/setWorkBlocked.json",
+          "frozen": {
+            "ids": [
+              "$.block.entityId"
+            ],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
         }
       ]
     },
@@ -2425,6 +2444,24 @@
           }
         },
         {
+          "operationId": "listBranchCommits",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commits",
+          "query": {
+            "branch": "docs/approval"
+          },
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listBranchCommits.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.commits[*].date"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listCommitBuilds",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}/commits/{mergedSha}/builds",
@@ -2498,6 +2535,19 @@
           }
         },
         {
+          "operationId": "listRepositoryBranches",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/branches",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/listRepositoryBranches.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
           "operationId": "listRepositoryReleaseRequests",
           "method": "GET",
           "path": "/projects/api/repositories/{repositoryId}/release-requests",
@@ -2524,6 +2574,23 @@
               "$.requests[*].qualityGates[*].detail",
               "$.requests[*].qualityGates[*].checks[*].name"
             ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "measureCommitSubjects",
+          "method": "GET",
+          "path": "/projects/api/repositories/{repositoryId}/commit-subjects",
+          "status": 200,
+          "file": "a-release-request-awaiting-approval/measureCommitSubjects.json",
+          "frozen": {
+            "ids": [
+              "$.repositoryId"
+            ],
+            "instants": [
+              "$.nonComplying[*].date"
+            ],
+            "strings": [],
             "listFilteredTo": null
           }
         },
@@ -4443,6 +4510,126 @@
             "instants": [
               "$.entries[*].comment.createdAt",
               "$.entries[*].comment.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a ticket with a design",
+      "slug": "a-ticket-with-a-design",
+      "params": {
+        "designId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002",
+        "qualifiedId": "contract-00000001-1",
+        "refinementId": "1",
+        "ticketId": "00000000-0000-4000-8000-000000000003"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "addRefinementDesign",
+          "method": "POST",
+          "path": "/projects/api/refinements/{refinementId}/designs",
+          "body": {
+            "title": "Export dialog",
+            "html": "<!doctype html><html><body><p>Export CSV</p></body></html>"
+          },
+          "status": 201,
+          "file": "a-ticket-with-a-design/addRefinementDesign.json",
+          "frozen": {
+            "ids": [
+              "$.id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getRefinementDesign",
+          "method": "GET",
+          "path": "/projects/api/refinements/{refinementId}/designs/{designId}",
+          "status": 200,
+          "file": "a-ticket-with-a-design/getRefinementDesign.json",
+          "frozen": {
+            "ids": [
+              "$.id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "getWorkRefinement",
+          "method": "GET",
+          "path": "/projects/api/work/{qualifiedId}/refinement",
+          "status": 200,
+          "file": "a-ticket-with-a-design/getWorkRefinement.json",
+          "frozen": {
+            "ids": [
+              "$.refinement.entityId",
+              "$.refinement.epicId",
+              "$.refinement.projectId",
+              "$.refinement.repositoryId"
+            ],
+            "instants": [
+              "$.refinement.createdAt"
+            ],
+            "strings": [
+              "$.refinement.pinnedDaemonVersion"
+            ],
+            "numbers": [
+              "$.refinement.id"
+            ],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listRefinementDesigns",
+          "method": "GET",
+          "path": "/projects/api/refinements/{refinementId}/designs",
+          "status": 200,
+          "file": "a-ticket-with-a-design/listRefinementDesigns.json",
+          "frozen": {
+            "ids": [
+              "$.designs[*].id"
+            ],
+            "instants": [
+              "$.designs[*].createdAt",
+              "$.designs[*].updatedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "updateRefinementDesign",
+          "method": "PUT",
+          "path": "/projects/api/refinements/{refinementId}/designs/{designId}",
+          "body": {
+            "title": "Export button, primary",
+            "html": "<!doctype html><html><body><button>Export CSV</button></body></html>",
+            "version": 0
+          },
+          "status": 200,
+          "file": "a-ticket-with-a-design/updateRefinementDesign.json",
+          "frozen": {
+            "ids": [
+              "$.id"
+            ],
+            "instants": [
+              "$.createdAt",
+              "$.updatedAt"
             ],
             "strings": [],
             "listFilteredTo": null

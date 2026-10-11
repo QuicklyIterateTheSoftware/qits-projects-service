@@ -3052,7 +3052,11 @@ reintroduce it: a rule that matches nothing anywhere else is still a typo worth 
   path's and recorded unexpanded. A member name holding a state's token — `transitionWork`'s answer,
   keyed by qualified id — is frozen like a value, and that operation's index entry gains
   `frozen.keys` (the objects whose keys were frozen; written only where there is one) with `.*`
-  standing for the key in every path beneath. **The `/work` operations are recorded** — `getWork`,
+  standing for the key in every path beneath. A param that is a database sequence number (a
+  refinement's id) is named in the state's `Setup.sequenceParams`: it freezes to 1, 2, … in that
+  order, and so does an equal JSON number in an `id` or `…Id` member, listed under `frozen.numbers`
+  (written only where there is one). `a ticket with a design` records the `qits work design` doors
+  this way (qits-1174). **The `/work` operations are recorded** — `getWork`,
   `listWorkComments`, `listProjectWork`, `listWorkArchetypes`, `setWorkStatus`, `listWorkMembers`
   (by a `campaignQualifiedId`-style param the campaign states gained), `listWorkDossier`,
   `listWorkDossierAssets`, `dispatchWork` and the rest of the family. Until qits-976 each was a twin

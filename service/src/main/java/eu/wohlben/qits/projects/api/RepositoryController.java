@@ -136,6 +136,7 @@ public class RepositoryController {
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/branches")
+  @Operation(operationId = "listRepositoryBranches", summary = "The repository's branches, each with its parent, how far it is ahead and behind, and whether it can be cleaned up")
   public ListBranchesRequest.Response branches(@PathParam("repoId") String repoId) {
     return new ListBranchesRequest.Response(repositoryService.listBranchesWithCleanup(repoId));
   }
@@ -143,6 +144,7 @@ public class RepositoryController {
   @GET
   @jakarta.annotation.security.RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{repoId}/commits")
+  @Operation(operationId = "listBranchCommits", summary = "The commits on a branch that are not on its parent, newest first")
   public CommitLogDto commits(
       @PathParam("repoId") String repoId, @QueryParam("branch") @NotBlank String branch) {
     return commitService.listCommits(repoId, branch);

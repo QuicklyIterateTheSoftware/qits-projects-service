@@ -162,6 +162,7 @@ public class ProviderStates {
       "a ticket its agent waits on a declared wait";
   public static final String A_CAMPAIGN_WITH_MEMBERS_TO_EDIT = "a campaign with members to edit";
   public static final String AN_EPIC_WITH_A_SKETCH_TO_INLINE = "an epic with a sketch to inline";
+  public static final String A_TICKET_WITH_A_DESIGN = "a ticket with a design";
   public static final String A_REPORTED_TICKET = "a reported ticket";
   public static final String A_REFINED_TICKET = "a refined ticket";
   public static final String A_READY_FOR_DEV_TICKET = "a ready for dev ticket";
@@ -248,8 +249,15 @@ public class ProviderStates {
    *
    * @param params the state's parameters, keys sorted — what a pact {@code @State} method returns
    * @param uniqueTokens random tokens the state had to put into names to keep them unique
+   * @param sequenceParams the params whose value is a database sequence number (a refinement's
+   *     id), which the recorder freezes to 1, 2, … in this order
    */
-  public record Setup(Map<String, String> params, List<String> uniqueTokens) {}
+  public record Setup(Map<String, String> params, List<String> uniqueTokens, List<String> sequenceParams) {
+
+    public Setup(Map<String, String> params, List<String> uniqueTokens) {
+      this(params, uniqueTokens, List.of());
+    }
+  }
 
   @Inject ProjectService projectService;
 
@@ -272,6 +280,9 @@ public class ProviderStates {
   @Inject eu.wohlben.qits.projects.refinementhost.RefinementService refinements;
 
   @Inject eu.wohlben.qits.projects.refinementhost.RefinementPromptAttachments attachments;
+
+  /** Writes a design into a room, for the state the `qits work design` commands read. */
+  @Inject eu.wohlben.qits.projects.refinementhost.RefinementDesigns designs;
 
   /**
    * The test suite's dispatch port: a dispatch press records here and starts no agent. An {@code
@@ -418,6 +429,7 @@ public class ProviderStates {
         A_TICKET_ITS_AGENT_WAITS_ON_A_DECLARED_WAIT, this::aTicketItsAgentWaitsOnADeclaredWait);
     states.put(A_CAMPAIGN_WITH_MEMBERS_TO_EDIT, this::aCampaignWithMembersToEdit);
     states.put(AN_EPIC_WITH_A_SKETCH_TO_INLINE, this::anEpicWithASketchToInline);
+    states.put(A_TICKET_WITH_A_DESIGN, this::aTicketWithADesign);
     TICKET_IN_STATUS.forEach(
         (name, status) -> {
           if (!name.equals(A_VERIFIED_TICKET)) {
@@ -1305,6 +1317,53 @@ public class ProviderStates {
             "qualifiedId", qualified(project, epic),
             "sketchId", sketch),
         List.of(token));
+  }
+
+  /**
+   * A REPORTED ticket whose refinement room holds one design, for {@code qits work design}
+   * (qits-1174): the room is the {@code refinementId} param — a database sequence number, so a
+   * sequence param — and the design the {@code designId} param, at version 0.
+   */
+  private Setup aTicketWithADesign() {
+    resetDispatchPorts();
+    String token = token();
+    Project project = project(token, A_TICKET_WITH_A_DESIGN);
+    String ticket =
+        create(
+            Archetype.TICKET,
+            project,
+            EntityWrite.ticket(
+                    "Export invoices as CSV",
+                    "The accountants copy every invoice by hand at the quarter's close.",
+                    "Add a CSV export to the invoice list.",
+                    "IMPROVEMENT",
+                    null)
+                .withAcceptanceCriteria(TestCriteria.CRITERIA));
+    long room = refinements.findOrCreate(ticket).id;
+    String design =
+        designs.put(
+                room,
+                null,
+                "Export button",
+                "<!doctype html><html><body><button style=\"padding:8px\">Export CSV</button>"
+                    + "</body></html>",
+                null,
+                null,
+                false,
+                SEEDER)
+            .id;
+    return new Setup(
+        params(
+            "designId", design,
+            "projectId", project.id,
+            "qualifiedId", qualified(project, ticket),
+            "refinementId", Long.toString(room),
+            "ticketId", ticket),
+        // The room answers the pinned refinement image, which moves with every dependency bump.
+        java.util.stream.Stream.of(token, refinementContainers.imageVersion())
+            .filter(value -> value != null && !value.isBlank())
+            .toList(),
+        List.of("refinementId"));
   }
 
   /** The qualified id of entity {@code id} in {@code project}: {@code <slug>-<number>}. */

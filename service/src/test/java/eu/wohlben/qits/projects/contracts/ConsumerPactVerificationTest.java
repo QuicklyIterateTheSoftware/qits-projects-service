@@ -211,6 +211,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.AN_EPIC_WITH_A_SKETCH_TO_INLINE);
   }
 
+  @State(ProviderStates.A_TICKET_WITH_A_DESIGN)
+  Map<String, String> aTicketWithADesign() {
+    return states.params(ProviderStates.A_TICKET_WITH_A_DESIGN);
+  }
+
   @State(ProviderStates.A_PROJECT_EXISTS)
   Map<String, String> aProjectExists() {
     return states.params(ProviderStates.A_PROJECT_EXISTS);

@@ -579,6 +579,11 @@ class GoldenMasterRecordingTest {
             "getCommitFileDiff",
             commits + ADD_THE_CSV_EXPORT + "/diff?path=src/export.txt"));
     all.add(read(awaiting, "listCommitChanges", commits + SAY_WHO_APPROVES + "/changes"));
+    // The git reads of `qits repositories` (qits-1174): the estate's branches, the commits
+    // docs/approval holds over its parent, and how main's commits name their subjects.
+    all.add(read(awaiting, "listRepositoryBranches", repository + "/branches"));
+    all.add(read(awaiting, "listBranchCommits", repository + "/commits?branch=docs/approval"));
+    all.add(read(awaiting, "measureCommitSubjects", repository + "/commit-subjects"));
     all.add(
         read(awaiting, "getCommitFileDiff", commits + SAY_WHO_APPROVES + "/diff?path=README.md"));
     String list = ProviderStates.A_PROJECT_WITH_RELEASE_REQUESTS_IN_EVERY_STATE;
@@ -867,6 +872,41 @@ class GoldenMasterRecordingTest {
             ProviderStates.A_REPORTED_TICKET,
             "getWorkRefinement",
             "/projects/api/work/{qualifiedId}/refinement"));
+    // `qits work design` (qits-1174): the room it finds, then its designs. The room's id is a
+    // sequence param, frozen to 1.
+    String design = ProviderStates.A_TICKET_WITH_A_DESIGN;
+    String designs = "/projects/api/refinements/{refinementId}/designs";
+    all.add(read(design, "getWorkRefinement", "/projects/api/work/{qualifiedId}/refinement"));
+    all.add(read(design, "listRefinementDesigns", designs));
+    all.add(read(design, "getRefinementDesign", designs + "/{designId}"));
+    all.add(
+        new Interaction(
+            design,
+            "addRefinementDesign",
+            "POST",
+            designs,
+            201,
+            null,
+            null,
+            "{\"title\":\"Export dialog\","
+                + "\"html\":\"<!doctype html><html><body><p>Export CSV</p></body></html>\"}"));
+    all.add(
+        write(
+            design,
+            "updateRefinementDesign",
+            "PUT",
+            designs + "/{designId}",
+            "{\"title\":\"Export button, primary\","
+                + "\"html\":\"<!doctype html><html><body><button>Export CSV</button></body></html>\","
+                + "\"version\":0}"));
+    // `qits work unblock` (qits-1174): the blocked bug, freed.
+    all.add(
+        write(
+            ProviderStates.A_BUG_TICKET_IN_DETAIL,
+            "setWorkBlocked",
+            "POST",
+            "/projects/api/work/{qualifiedId}/blocked",
+            "{\"blocked\":false,\"reason\":\"The database team confirmed the new limit.\"}"));
     // A room's row id is a database sequence no freezing reaches, so the open is recorded where it
     // is refused: a REFINED ticket's refine phase has run.
     all.add(
@@ -1220,6 +1260,10 @@ class GoldenMasterRecordingTest {
       frozen.set("ids", strings(recorded.freezer().idPaths()));
       frozen.set("instants", strings(recorded.freezer().instantPaths()));
       frozen.set("strings", strings(recorded.freezer().stringPaths()));
+      if (!recorded.freezer().numberPaths().isEmpty()) {
+        // Additive, and only where a sequence number was frozen, as keys below.
+        frozen.set("numbers", strings(recorded.freezer().numberPaths()));
+      }
       if (!recorded.freezer().keyPaths().isEmpty()) {
         // Additive, and only where a member name was frozen: every other entry stays as it was.
         frozen.set("keys", strings(recorded.freezer().keyPaths()));
@@ -1324,7 +1368,11 @@ class GoldenMasterRecordingTest {
     JsonNode body = raw.isEmpty() ? JsonNodeFactory.instance.nullNode() : JSON.readTree(raw);
     body = recordable(body, interaction, params.values(), setup.uniqueTokens());
 
-    Freezer freezer = new Freezer().seed(params.values()).uniqueTokens(setup.uniqueTokens());
+    Freezer freezer =
+        new Freezer()
+            .seed(params.values())
+            .uniqueTokens(setup.uniqueTokens())
+            .sequences(setup.sequenceParams().stream().map(params::get).toList());
     ObjectNode frozenParams = JsonNodeFactory.instance.objectNode();
     params.forEach((k, v) -> frozenParams.put(k, freezer.freezeParam(v)));
     return new Recorded(freezer.freeze(body), frozenParams, freezer);
