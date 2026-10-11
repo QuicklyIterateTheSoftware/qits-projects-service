@@ -297,7 +297,7 @@ public class UnattendedGateTicketTest {
     // report and rules the work out before any of it is refined.
     given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
-        .body("{\"target\":\"DROPPED\"}")
+        .body("{\"target\":\"DROPPED\",\"outcome\":\"WONT_DO\"}")
         .post("/projects/api/work/" + first + "/status")
         .then()
         .statusCode(200);
@@ -363,6 +363,9 @@ public class UnattendedGateTicketTest {
     withdraw(id, "the bump is not wanted after all");
 
     awaitStatus(ticketId, "DROPPED");
+    // Why it closed travels in the move itself (qits-248), not only in the comment after it.
+    assertEquals("OBSOLETE", given().get("/projects/api/work/" + ticketId).path("outcome"));
+    assertNull(given().get("/projects/api/work/" + ticketId).path("supersededBy"));
     String said = awaitComment(ticketId, "WITHDRAWN");
     assertTrue(
         said.contains(BackingBranches.qualifiedIdOf(id)), "the comment names the request: " + said);
@@ -388,6 +391,10 @@ public class UnattendedGateTicketTest {
 
     awaitState(released.requestId(), "FINALIZED");
     awaitStatus(released.ticketId(), "DROPPED");
+    assertEquals(
+        "OBSOLETE",
+        given().get("/projects/api/work/" + released.ticketId()).path("outcome"),
+        "the platform's drop says why in the move: the request went away by itself");
     String said = awaitComment(released.ticketId(), "FINALIZED");
     assertTrue(said.contains(version), "the comment names the version that reached main: " + said);
     assertTrue(awaitClosedAt(released.requestId()) != null);
@@ -447,6 +454,10 @@ public class UnattendedGateTicketTest {
 
     awaitState(released.requestId(), "FINALIZED");
     awaitStatus(released.ticketId(), "DROPPED");
+    assertEquals(
+        "OBSOLETE",
+        given().get("/projects/api/work/" + released.ticketId()).path("outcome"),
+        "the platform's drop says why in the move: the request went away by itself");
     String said = awaitComment(released.ticketId(), "FINALIZED");
     assertTrue(said.contains(version), said);
     assertTrue(awaitClosedAt(released.requestId()) != null);
@@ -518,7 +529,7 @@ public class UnattendedGateTicketTest {
       for (String target : walk) {
         given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
             .contentType(ContentType.JSON)
-            .body("{\"target\":\"" + target + "\"}")
+            .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))
             .post("/projects/api/work/" + ticketId + "/status")
             .then()
             .statusCode(200);

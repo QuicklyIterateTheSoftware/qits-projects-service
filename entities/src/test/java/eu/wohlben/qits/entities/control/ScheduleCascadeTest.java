@@ -70,7 +70,7 @@ class ScheduleCascadeTest extends EntitiesTestSupport {
   @Test
   void schedulingTheEpicSchedulesItsRefinedPiecesAndLeavesADroppedOne() {
     Plan plan = refinedPlan();
-    workEntities.transition(Archetype.TASK, plan.sibling(), "DROPPED", "t");
+    workEntities.transition(Archetype.TASK, plan.sibling(), "DROPPED", "t", TestDrops.WONT_DO);
     announcer.clear();
 
     workEntities.transition(Archetype.EPIC, plan.epic(), "READY_FOR_DEV", Mover.person("dana"));

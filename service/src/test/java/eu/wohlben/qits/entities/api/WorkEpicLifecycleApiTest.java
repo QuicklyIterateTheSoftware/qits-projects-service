@@ -94,12 +94,29 @@ class WorkEpicLifecycleApiTest {
         move(epic, "SUPERSEDED")
             .statusCode(200)
             .body("status", equalTo("DROPPED"))
+            // The supersede records the outcome it is (qits-248), with the pointer it always set.
+            .body("outcome", equalTo("SUPERSEDED"))
             .body("supersededBy", notNullValue())
             .body("supersededBy", not(equalTo(epic)))
             .extract()
             .path("supersededBy");
 
-    given().when().get(WORK + epic).then().statusCode(200).body("supersededBy", equalTo(successor));
+    given()
+        .when()
+        .get(WORK + epic)
+        .then()
+        .statusCode(200)
+        .body("outcome", equalTo("SUPERSEDED"))
+        .body("supersededBy", equalTo(successor));
+    // The reverse link names the old epic under its successor.
+    given()
+        .queryParam("supersededBy", successor)
+        .when()
+        .get("/projects/api/projects/" + projectId + "/work")
+        .then()
+        .statusCode(200)
+        .body("entities.id", org.hamcrest.Matchers.contains(epic))
+        .body("entities[0].outcome", equalTo("SUPERSEDED"));
     given()
         .when()
         .get(WORK + successor)
@@ -109,6 +126,7 @@ class WorkEpicLifecycleApiTest {
         .body("status", equalTo("REPORTED"))
         .body("projectId", equalTo(projectId))
         .body("title", equalTo("Planning domain"))
+        .body("outcome", nullValue())
         .body("supersededBy", nullValue());
 
     // The copied scope came with it, slugs kept.
@@ -119,6 +137,39 @@ class WorkEpicLifecycleApiTest {
         .statusCode(200)
         .body("children", hasSize(1))
         .body("children[0].slug", equalTo("feature-a"));
+  }
+
+  @Test
+  void anEpicIsDroppedAsADuplicateOfAnotherAndTheSupersedeStatesNothingElse() {
+    String projectId = project();
+    String kept = epic(projectId, "The plan we keep");
+    String epic = epic(projectId, "The same plan, twice");
+    move(epic, "REFINED").statusCode(200);
+
+    // The supersede records SUPERSEDED and its own successor: it states neither.
+    WorkRequests.status(
+            () -> given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev")),
+            epic,
+            map("target", "SUPERSEDED", "outcome", "OBSOLETE"))
+        .then()
+        .statusCode(400);
+    WorkRequests.status(
+            () -> given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev")),
+            epic,
+            map("target", "DROPPED"))
+        .then()
+        .statusCode(400)
+        .body("message", org.hamcrest.Matchers.containsString("requires an outcome"));
+
+    WorkRequests.status(
+            () -> given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev")),
+            epic,
+            map("target", "DROPPED", "outcome", "DUPLICATE", "supersededBy", kept))
+        .then()
+        .statusCode(200)
+        .body("status", equalTo("DROPPED"))
+        .body("outcome", equalTo("DUPLICATE"))
+        .body("supersededBy", equalTo(kept));
   }
 
   @Test

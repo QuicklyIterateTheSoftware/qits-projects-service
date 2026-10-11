@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.entitieshost;
 
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.EntityCommentService;
@@ -7,6 +8,7 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
@@ -250,8 +252,14 @@ public class TicketUnattendedGateTickets implements UnattendedGateTickets {
     // The move FIRST and the comment after it: a failed move then leaves nothing written, so the
     // retry cannot say the same sentence twice; a failed comment after a move that landed is one
     // WARN, and the ticket is closed all the same — a retry would find it DROPPED and do nothing.
+    // WHY it closed travels in the move itself (qits-248): OBSOLETE, the subject — a stuck release
+    // request — went away by itself. The comment is the narrative, and no longer the only record.
     resolutions.transition(
-        Archetype.TICKET, ticket.id, EntityStatus.DROPPED.name(), Mover.machine(REPORTER));
+        Archetype.TICKET,
+        ticket.id,
+        EntityStatus.DROPPED.name(),
+        Mover.machine(REPORTER),
+        DropOutcome.of(WorkOutcome.OBSOLETE, null));
     try {
       tickets.addComment(
           ticket.id,

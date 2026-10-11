@@ -64,7 +64,20 @@ public enum EntityProperty {
   /** {@code entity.created_by} — stamped from the request identity, never client-supplied. */
   CREATED_BY,
 
-  /** {@code entity.superseded_by_entity_id} — the successor draft a superseded epic spawned. */
+  /**
+   * {@code entity.superseded_by_entity_id} — the item a DROPPED row names as what answers for it: the
+   * duplicate it repeats, the item that resolved it, the successor that replaced it (an epic's
+   * supersede writes its successor draft here). An epic's at every status; since qits-248 every
+   * other kind with a lifecycle carries it on a DROPPED row ({@code Archetypes.isDropReference}),
+   * written by the move into DROPPED with the outcome that requires it.
+   *
+   * <p><b>The outcome itself ({@code entity.outcome}, epics V30) is deliberately not in this
+   * vocabulary</b>, for the reason {@code blocked} is not (V14): it is a statement a move makes about
+   * one status — legal on a DROPPED row alone — rather than a slot an archetype has, so it is judged by
+   * {@code DropOutcome} at the two doors that land DROPPED and by {@code ck_entity_outcome_dropped},
+   * never by the registry. Serving it as a permitted property would also change every archetype's
+   * {@code permitted} list, which consumers pin.
+   */
   SUPERSEDED_BY,
 
   /** {@code entity.repository_id} — the one concrete repository a task names. */

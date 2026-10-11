@@ -216,7 +216,7 @@ class EntitySchemaApiTest {
                         for (String target : List.of("REFINED", "READY_FOR_DEV")) {
                           given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
                               .contentType(ContentType.JSON)
-                              .body(map("target", target))
+                              .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))
                               .post("/projects/api/work/" + rows.epic + "/status")
                               .then()
                               .statusCode(200);
@@ -480,6 +480,15 @@ class EntitySchemaApiTest {
               "pattern" : "^(?=.*\\\\S)(?![^.]*\\\\.[^.]*\\\\.)(?!(?:\\\\S*\\\\s){20})[^\\\\n\\\\r]*$"
             }
           },
+          "supersededBy" : {
+            "type" : "string",
+            "description" : "The id of the item a DROPPED entity names as what answers for it: the duplicate it repeats, the item whose change resolved it, or the successor that replaced it. Required with outcome DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED, refused with the other three; an item of the same project, never the entity itself."
+          },
+          "outcome" : {
+            "type" : "string",
+            "description" : "Why a DROPPED entity was closed: DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED (naming the item in supersededBy), OBSOLETE, INVALID or WONT_DO (naming none). Stated with status DROPPED alone, which requires one — except on a row already DROPPED with none, from before outcomes were recorded.",
+            "enum" : [ "DUPLICATE", "RESOLVED_ELSEWHERE", "SUPERSEDED", "OBSOLETE", "INVALID", "WONT_DO" ]
+          },
           "membership" : {
             "type" : "object",
             "description" : "Where the row hangs. A TICKET is a root, so this may be left out.",
@@ -618,6 +627,15 @@ class EntitySchemaApiTest {
           "dependsOn" : {
             "type" : "string",
             "description" : "The id of the sibling this one waits for — ordering, never nesting."
+          },
+          "supersededBy" : {
+            "type" : "string",
+            "description" : "The id of the item a DROPPED entity names as what answers for it: the duplicate it repeats, the item whose change resolved it, or the successor that replaced it. Required with outcome DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED, refused with the other three; an item of the same project, never the entity itself."
+          },
+          "outcome" : {
+            "type" : "string",
+            "description" : "Why a DROPPED entity was closed: DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED (naming the item in supersededBy), OBSOLETE, INVALID or WONT_DO (naming none). Stated with status DROPPED alone, which requires one — except on a row already DROPPED with none, from before outcomes were recorded.",
+            "enum" : [ "DUPLICATE", "RESOLVED_ELSEWHERE", "SUPERSEDED", "OBSOLETE", "INVALID", "WONT_DO" ]
           },
           "membership" : {
             "type" : "object",

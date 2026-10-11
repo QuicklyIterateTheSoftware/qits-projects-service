@@ -150,7 +150,8 @@ public final class Archetypes {
     Map<Archetype, ArchetypeSpec> registry = new EnumMap<>(Archetype.class);
 
     // A plan. Root, depth 0. Its status is the one entity lifecycle, the ticket's words;
-    // supersededBy is the successor draft a supersede spawns and exists on no other kind.
+    // supersededBy is the successor draft a supersede spawns, and the one kind that may carry it at
+    // every status. Every other kind carries it on a DROPPED row alone (qits-248, see isDropReference).
     // Its acceptance criteria (qits-887) are permitted and never required: a gate asks for them.
     // Its assignee (qits-887) is the ticket's: a press puts an agent on an epic as on a ticket, and
     // the dispatch writes who. The column was always on every row, so this is the declaration alone.
@@ -264,8 +265,9 @@ public final class Archetypes {
     //
     // Its status is the one lifecycle and, as an epic's, is minted by the writer at REPORTED
     // (WorkEntityService.createCampaign): permitted, not required of a candidate. It carries no
-    // supersede, no ticket intake and no repository. It is the one kind that GATHERS: its children
-    // are campaign memberships, never structural edges.
+    // supersede operation, no ticket intake and no repository; a DROPPED one may name what answers
+    // for it, as every kind with a lifecycle may (isDropReference). It is the one kind that
+    // GATHERS: its children are campaign memberships, never structural edges.
     registry.put(
         Archetype.CAMPAIGN,
         new ArchetypeSpec(
@@ -409,7 +411,9 @@ public final class Archetypes {
                 property,
                 ArchetypeViolation.Reason.MISSING_REQUIRED,
                 null));
-      } else if (present && !spec.permits(property)) {
+      } else if (present
+          && !spec.permits(property)
+          && !isDropReference(spec, candidate.status(), property)) {
         violations.add(
             new ArchetypeViolation(
                 candidate.archetype(), property, ArchetypeViolation.Reason.NOT_PERMITTED, null));
@@ -431,6 +435,28 @@ public final class Archetypes {
     }
 
     return List.copyOf(violations);
+  }
+
+  /**
+   * <b>A DROPPED row's {@code supersededBy}, on any kind with a lifecycle</b> (qits-248). Three drop
+   * outcomes name the item that answers for the drop — the duplicate it repeats, the item that
+   * resolved it, the successor that replaced it — and a ticket, a feature, a task or a campaign is
+   * dropped that way as readily as an epic. So the slot every lifecycle kind has is <em>status
+   * conditioned</em>: it is legal on a DROPPED row, where the move into DROPPED wrote it, and
+   * nowhere else — the reopen clears it. The epic keeps the unconditional slot it always had
+   * (its supersede's successor, and the rows from before), so its declaration is unchanged.
+   *
+   * <p><b>Why this is a rule here and not a widened {@code permitted}.</b> The declarations are
+   * served ({@code GET /work/archetypes}), and consumers pin each kind's {@code permitted} list as it
+   * stands; widening it is a contract change of its own. This rule needs no new word in the document:
+   * a client sending a drop's reference sends it with the move, never through a form built from
+   * {@code permitted}.
+   */
+  public static boolean isDropReference(
+      ArchetypeSpec spec, String status, EntityProperty property) {
+    return property == EntityProperty.SUPERSEDED_BY
+        && EntityStatus.DROPPED.name().equals(status)
+        && !spec.legalStatuses().isEmpty();
   }
 
   /** The same check over a row that is already assembled — every service's write path. */

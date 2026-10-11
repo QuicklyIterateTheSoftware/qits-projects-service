@@ -10,6 +10,7 @@ import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.NotFoundException;
@@ -119,9 +120,11 @@ public class WorkEntityService {
    * this work will not be done, and here is what replaced it — and only the first is a status. The
    * second is the {@code superseded_by_entity_id} column. The operation behind the word, the deep
    * copy of the subtree into a successor draft, survives, so a transition asking for {@code
-   * SUPERSEDED} is accepted of any kind that may carry {@link EntityProperty#SUPERSEDED_BY} — an
-   * epic, today: it is judged as a move to DROPPED, lands the row DROPPED, and points it at the
-   * successor it spawned. Nothing ever stores the word; {@code ck_entity_status} would refuse it.
+   * SUPERSEDED} is accepted of an epic — the one kind with a plan to copy ({@link Kind#supersedable};
+   * every kind may carry the pointer since qits-248, but only an epic's is written by this
+   * operation): it is judged as a move to DROPPED, lands the row DROPPED with outcome {@link
+   * WorkOutcome#SUPERSEDED}, and points it at the successor it spawned. Nothing ever stores the word
+   * as a status; {@code ck_entity_status} would refuse it.
    *
    * <p>One refusal is the operation's own rather than the graph's: <b>a REPORTED row cannot be
    * superseded</b>. A draft has no frozen scope to discard — it is edited, or dropped — and a
@@ -219,8 +222,14 @@ public class WorkEntityService {
       return !Archetypes.legalStatuses(archetype).isEmpty();
     }
 
+    /**
+     * Whether the {@linkplain #SUPERSEDE supersede} operation applies: an epic alone, the one kind
+     * with a plan whose subtree is copied into a successor draft. Not read off the registry any more
+     * — every kind permits {@link EntityProperty#SUPERSEDED_BY} since qits-248, while the operation
+     * that spawns a successor is still an epic's.
+     */
     boolean supersedable() {
-      return Archetypes.spec(archetype).permits(EntityProperty.SUPERSEDED_BY);
+      return archetype == Archetype.EPIC;
     }
   }
 
@@ -360,6 +369,16 @@ public class WorkEntityService {
     return patience.hold(
         kind.label("list by status"),
         () -> entities.listByProjectArchetypeAndStatus(projectId, archetype, filter.name()));
+  }
+
+  /**
+   * <b>The items naming {@code id} as their {@code supersededBy}</b> (qits-248), of whatever
+   * archetype, oldest first — the reverse link: what it closed as a duplicate, resolved elsewhere or
+   * superseded. Held through a cutover like every list read here: an empty answer would read as
+   * "it closed nothing".
+   */
+  public List<WorkEntity> listSupersededBy(String id) {
+    return patience.hold("entities superseded by one", () -> entities.listBySupersededBy(id));
   }
 
   /**
@@ -840,11 +859,23 @@ public class WorkEntityService {
    */
   public PlannedTransition planTransition(
       Archetype archetype, String id, String target, Mover mover) {
+    return planTransition(archetype, id, target, mover, DropOutcome.NONE);
+  }
+
+  /**
+   * The preview of a move that states {@code drop} (qits-248): every refusal the move would make,
+   * the outcome's 400s included, so a door that acts on the preview never discards a refinement for
+   * a drop that is about to be refused for want of an outcome.
+   */
+  public PlannedTransition planTransition(
+      Archetype archetype, String id, String target, Mover mover, DropOutcome drop) {
     Kind kind = kind(archetype);
     Validations.requireText(target, "target");
     WorkEntity row = lookup(archetype, id);
     EntityStatus to = targetStatus(kind, row, target);
     requireSupersedable(kind, row, target);
+    requireDropShape(kind, target, drop);
+    requireReference(row, drop);
     TransitionGates.require(gates, kind.noun(), row, statusOf(row.status), to, mover);
     return new PlannedTransition(row, to, EntityLifecycle.resolves(to));
   }
@@ -890,10 +921,24 @@ public class WorkEntityService {
    * the move carried, each with the status it left. See {@link TransitionAnnouncer}.
    */
   public Transition transition(Archetype archetype, String id, String target, Mover mover) {
+    return transition(archetype, id, target, mover, DropOutcome.NONE);
+  }
+
+  /**
+   * {@link #transition(Archetype, String, String, Mover)} stating why a drop closes the work
+   * (qits-248) — see {@link DropOutcome} for the rules, each a 400. A move into DROPPED must state
+   * an outcome; any other move must state neither value. They are judged after the lifecycle's own
+   * refusals — a move that does not exist (out of DONE, say) is its 409 whatever it states — and
+   * before the quality gates and anything written.
+   */
+  public Transition transition(
+      Archetype archetype, String id, String target, Mover mover, DropOutcome drop) {
     Kind kind = kind(archetype);
     Validations.requireText(target, "target");
+    DropOutcome stated = drop == null ? DropOutcome.NONE : drop;
     Moved moved =
-        writes.hold(kind.label("transition"), () -> move(kind, archetype, id, null, target, mover));
+        writes.hold(
+            kind.label("transition"), () -> move(kind, archetype, id, null, target, mover, stated));
     announce(moved.batch());
     return moved.transition();
   }
@@ -905,6 +950,12 @@ public class WorkEntityService {
    */
   public Transition transition(Archetype archetype, String id, String target, String changedBy) {
     return transition(archetype, id, target, Mover.machine(changedBy));
+  }
+
+  /** {@link #transition(Archetype, String, String, Mover, DropOutcome)} by a machine. */
+  public Transition transition(
+      Archetype archetype, String id, String target, String changedBy, DropOutcome drop) {
+    return transition(archetype, id, target, Mover.machine(changedBy), drop);
   }
 
   /**
@@ -930,10 +981,12 @@ public class WorkEntityService {
   public Optional<Transition> transitionFrom(
       Archetype archetype, String id, EntityStatus from, EntityStatus target, Mover mover) {
     Kind kind = kind(archetype);
+    // The platform's own moves state no outcome, so none of them may be a drop (qits-248).
+    requireDropShape(kind, target.name(), DropOutcome.NONE);
     Moved moved =
         writes.hold(
             kind.label("transition"),
-            () -> move(kind, archetype, id, from, target.name(), mover));
+            () -> move(kind, archetype, id, from, target.name(), mover, DropOutcome.NONE));
     if (moved == null) {
       return Optional.empty();
     }
@@ -951,7 +1004,8 @@ public class WorkEntityService {
       String id,
       EntityStatus expected,
       String target,
-      Mover mover) {
+      Mover mover,
+      DropOutcome drop) {
     String changedBy = mover.name();
     WorkEntity row = lookup(archetype, id);
     if (expected != null && !expected.name().equals(row.status)) {
@@ -970,6 +1024,10 @@ public class WorkEntityService {
       requireOwnerPastDraft(kind, row);
       requirePieceScheduledWithItsEpic(kind, row, to);
     }
+    // Why a drop closes the work (qits-248): after every refusal of the move itself, so a move
+    // that does not exist is its 409 whatever it states, and before the gates and any write.
+    requireDropShape(kind, target, drop);
+    requireReference(row, drop);
     // The quality gates (qits-887), last of the refusals and before anything is written: a FORWARD
     // or SKIP move every applying gate passes, judged on the row as it stands. The cascade below is
     // judged once, here, on the row that moves — never per carried piece.
@@ -985,6 +1043,16 @@ public class WorkEntityService {
       // survive into whatever a reopen starts. Cleared here, where every lifecycle move lands, so
       // no door can drop an entity and leave a person's approval waiting on it.
       row.preApprovedBy = null;
+      // Why it closed (qits-248): the supersede records SUPERSEDED and the successor it spawned,
+      // every other drop what it stated — a pointer it did not state is cleared, so an outcome
+      // that names nothing never stands beside an older pointer.
+      row.outcome = successor != null ? WorkOutcome.SUPERSEDED : drop.outcome();
+      row.supersededByEntityId = successor != null ? successor.id : drop.supersededBy();
+    } else if (EntityStatus.DROPPED.name().equals(statusBefore)) {
+      // The reopen (qits-248): reviving the work asks again what it is for, so why it was closed
+      // and what it was closed in favour of go with the status that said so.
+      row.outcome = null;
+      row.supersededByEntityId = null;
     }
     if (archetype == Archetype.CAMPAIGN
         && EntityStateMachine.campaignRunsAt(statusBefore)
@@ -996,9 +1064,6 @@ public class WorkEntityService {
       // neither pauses nor starts: READY_FOR_DEV means ready for development, not "start it".
       // Resuming is a new start press at either — moving back is not enough.
       campaignStarts.pause(row.id);
-    }
-    if (successor != null) {
-      row.supersededByEntityId = successor.id;
     }
     requireArchetypeValid(row, Demand.ON_UPDATE);
     WorkEntity moved = settled(row);
@@ -1285,6 +1350,40 @@ public class WorkEntityService {
     }
     EntityLifecycle.requireTransition(kind.archetype(), EntityStatus.valueOf(row.status), to);
     return to;
+  }
+
+  /**
+   * The rules of a drop's statement that need no row (qits-248, {@link DropOutcome}), judged against
+   * the status {@code target} names. The {@linkplain #SUPERSEDE supersede} records its own outcome
+   * and pointer, so it states neither; a word naming no status is left to {@link #targetStatus}'s
+   * 409.
+   */
+  private static void requireDropShape(Kind kind, String target, DropOutcome drop) {
+    if (kind.supersedable() && SUPERSEDE.equals(target)) {
+      boolean ownOutcome = drop.outcome() == null || drop.outcome() == WorkOutcome.SUPERSEDED;
+      if (!ownOutcome || drop.supersededBy() != null) {
+        throw new BadRequestException(
+            "the supersede records outcome SUPERSEDED and the successor draft it spawns itself:"
+                + " state neither another outcome nor supersededBy");
+      }
+      return;
+    }
+    EntityLifecycle.parse(target).ifPresent(drop::require);
+  }
+
+  /**
+   * The rule of a drop's statement that needs the rows (qits-248): its {@code supersededBy} names an
+   * item of {@code row}'s project and not {@code row} itself — a 400 otherwise.
+   */
+  private void requireReference(WorkEntity row, DropOutcome drop) {
+    String named = drop.supersededBy();
+    if (named == null) {
+      return;
+    }
+    String refused = DropOutcome.referenceRefusal(row, named, entities.findById(named));
+    if (refused != null) {
+      throw new BadRequestException(refused);
+    }
   }
 
   /** The supersede operation's own refusal — see {@link #SUPERSEDE}. */

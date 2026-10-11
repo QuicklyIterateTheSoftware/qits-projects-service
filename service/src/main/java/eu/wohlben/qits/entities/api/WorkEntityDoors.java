@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import eu.wohlben.qits.entities.control.ArchetypeRegistryDocument;
 import eu.wohlben.qits.entities.control.ArchetypeViolation;
 import eu.wohlben.qits.entities.control.AuditService;
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.Archetypes;
 import eu.wohlben.qits.entities.control.EntityCatalogService;
 import eu.wohlben.qits.entities.control.EntityCommentService;
@@ -25,6 +26,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityComment;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import eu.wohlben.qits.entities.error.ForbiddenException;
@@ -92,8 +94,12 @@ public class WorkEntityDoors {
               "a reparent — state it through PUT /projects/api/work/{qualifiedId} or POST"
                   + " /projects/api/work/transition",
           "supersededBy",
-              "a supersede — state it through PUT /projects/api/work/{qualifiedId} or POST"
-                  + " /projects/api/work/transition",
+              "stated with a drop — POST /projects/api/work/{qualifiedId}/status with target"
+                  + " DROPPED, an outcome and supersededBy — or through PUT"
+                  + " /projects/api/work/{qualifiedId} or POST /projects/api/work/transition",
+          "outcome",
+              "stated with a drop — POST /projects/api/work/{qualifiedId}/status with target"
+                  + " DROPPED and an outcome",
           "blocked", "the block — set it through POST /projects/api/work/{qualifiedId}/blocked");
 
   /** What the server writes on an entity and a patch never does. */
@@ -409,6 +415,21 @@ public class WorkEntityDoors {
    * campaign.
    */
   public TransitionedEntity move(SecurityIdentity identity, WorkEntity row, String target) {
+    return move(identity, row, target, null, null);
+  }
+
+  /**
+   * {@link #move(SecurityIdentity, WorkEntity, String)} stating why a drop closes the work
+   * (qits-248): {@code supersededBy} may be a qualified id or a UUID, resolved here; one naming
+   * nothing is handed on unchanged, for the move's own 400 about it. The rules are {@link
+   * DropOutcome}'s, judged by the move.
+   */
+  public TransitionedEntity move(
+      SecurityIdentity identity,
+      WorkEntity row,
+      String target,
+      WorkOutcome outcome,
+      String supersededBy) {
     Archetype archetype = row.archetype;
     // qits:admin-agent is admitted too (qits-628 follow-up); remove it here if this door must
     // stay human-only. A bound agent is admitted too (qits-1174): it makes the claim the retired
@@ -433,7 +454,9 @@ public class WorkEntityDoors {
     TransitionedEntity before = catalog.byIds(List.of(row.id)).get(row.id);
     // The mover's name is the audit's: a verified person's own, never a header (qits-887).
     Mover mover = movers.of(identity);
-    WorkEntityService.Transition moved = resolutions.transition(archetype, row.id, target, mover);
+    DropOutcome drop = DropOutcome.of(outcome, entityId(blankToNull(supersededBy)));
+    WorkEntityService.Transition moved =
+        resolutions.transition(archetype, row.id, target, mover, drop);
     // A supersede spawns a second row in the same project, so one hint covers both.
     publisher.fire(moved.entity().projectId, ProjectChangeHint.Topic.of(archetype));
     try {
@@ -657,7 +680,8 @@ public class WorkEntityDoors {
         entry.repositoryId(),
         entry.implementedAt(),
         resolveOrKeep(entry.dependsOn(), resolved),
-        entry.acceptanceCriteria());
+        entry.acceptanceCriteria(),
+        entry.outcome());
   }
 
   private String resolveOrKeep(String named, Map<String, String> resolved) {
@@ -846,15 +870,35 @@ public class WorkEntityDoors {
    */
   public List<EntitySummary> list(
       String projectIdOrSlug, String archetype, String status, String parent) {
+    return list(projectIdOrSlug, archetype, status, parent, null, null);
+  }
+
+  /**
+   * {@link #list(String, String, String, String)}, also narrowed to one drop outcome (qits-248, a
+   * 400 for a word naming none) and to the items naming one entity as their {@code supersededBy} —
+   * the reverse link, what that entity closed. The entity is a qualified id or a UUID; one naming
+   * nothing is the resolver's 404, as the parent's is.
+   */
+  public List<EntitySummary> list(
+      String projectIdOrSlug,
+      String archetype,
+      String status,
+      String parent,
+      String outcome,
+      String supersededBy) {
     Archetype kind = blank(archetype) ? null : listArchetype(archetype);
     String word = blank(status) ? null : listStatus(status);
+    WorkOutcome closedAs = blank(outcome) ? null : listOutcome(outcome);
     String project = ids.resolveProject(projectIdOrSlug).id;
     String parentId = blank(parent) ? null : ids.resolve(parent).id;
+    String successorId = blank(supersededBy) ? null : ids.resolve(supersededBy).id;
     List<TransitionedEntity> found =
         catalog.listByProjectWithoutDescription(project).stream()
             .filter(entity -> kind == null || entity.archetype() == kind)
             .filter(entity -> word == null || word.equals(entity.status()))
             .filter(entity -> parentId == null || parentId.equals(entity.parent()))
+            .filter(entity -> closedAs == null || closedAs == entity.outcome())
+            .filter(entity -> successorId == null || successorId.equals(entity.supersededBy()))
             .toList();
     return qualifiedIds.qualifyEntities(found).stream().map(EntitySummary::of).toList();
   }
@@ -873,6 +917,21 @@ public class WorkEntityDoors {
     } catch (IllegalArgumentException e) {
       throw new BadRequestException("Unknown status: " + word);
     }
+  }
+
+  private static WorkOutcome listOutcome(String word) {
+    return WorkOutcome.parse(word)
+        .orElseThrow(
+            () ->
+                new BadRequestException(
+                    "Unknown outcome: "
+                        + word
+                        + " — one of "
+                        + String.join(", ", WorkOutcome.words())));
+  }
+
+  private static String blankToNull(String value) {
+    return blank(value) ? null : value.trim();
   }
 
   private static boolean blank(String value) {

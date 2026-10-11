@@ -503,7 +503,7 @@ class WorkCampaignApiTest {
 
   /** {@code POST /work/{qualifiedId}/status}, as a person: a campaign's moves are a person's. */
   private static io.restassured.response.ValidatableResponse move(String base, String target) {
-    return asPerson("dev").body(Map.of("target", target)).post(base + "/status").then();
+    return asPerson("dev").body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target)).post(base + "/status").then();
   }
 
   /** A browser session: the %test dev user's headers plus a session this service verifies. */

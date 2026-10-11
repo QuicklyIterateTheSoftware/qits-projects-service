@@ -1,10 +1,12 @@
 package eu.wohlben.qits.projects.contracts;
 
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.TestCriteria;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.projects.control.ProjectService;
@@ -666,8 +668,13 @@ public class ProviderStates {
           create(Archetype.EPIC, project, EntityWrite.epic(path.getKey() + " epic", "Seeded work.").withAcceptanceCriteria(TestCriteria.CRITERIA));
       String ticket = ticket(project, path.getKey() + " ticket");
       for (String status : path.getValue()) {
-        work.transition(Archetype.EPIC, epic, status, Mover.person(SEEDER));
-        work.transition(Archetype.TICKET, ticket, status, Mover.person(SEEDER));
+        // A drop says why (qits-248): the archive's items went away by themselves.
+        DropOutcome drop =
+            "DROPPED".equals(status)
+                ? DropOutcome.of(WorkOutcome.OBSOLETE, null)
+                : DropOutcome.NONE;
+        work.transition(Archetype.EPIC, epic, status, Mover.person(SEEDER), drop);
+        work.transition(Archetype.TICKET, ticket, status, Mover.person(SEEDER), drop);
       }
     }
     String repositoryId = repository(project, "contract-service");
@@ -752,7 +759,12 @@ public class ProviderStates {
       implemented(task);
       walk(Archetype.TASK, task, status);
     }
-    work.transition(Archetype.TASK, tasks.get(EntityStatus.DROPPED), "DROPPED", SEEDER);
+    work.transition(
+        Archetype.TASK,
+        tasks.get(EntityStatus.DROPPED),
+        "DROPPED",
+        SEEDER,
+        DropOutcome.of(WorkOutcome.WONT_DO, null));
     return new Setup(params("epicId", epic, "projectId", project.id), List.of(token));
   }
 
@@ -1106,7 +1118,13 @@ public class ProviderStates {
 
   private void moveTo(Archetype archetype, String id, EntityStatus status) {
     if (status == EntityStatus.DROPPED) {
-      work.transition(archetype, id, status.name(), Mover.person(SEEDER));
+      // Decided against (qits-248): the outcome the work page's Drop most often records.
+      work.transition(
+          archetype,
+          id,
+          status.name(),
+          Mover.person(SEEDER),
+          DropOutcome.of(WorkOutcome.WONT_DO, null));
     } else {
       walk(archetype, id, status);
     }

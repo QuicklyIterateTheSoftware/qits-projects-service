@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditEntry;
 import eu.wohlben.qits.entities.entity.AuditOperation;
@@ -1145,6 +1146,171 @@ class EntityTransitionServiceTest extends EntitiesTestSupport {
               memberships.persist(edge);
               return edge.id;
             });
+  }
+
+  // --- why a stated DROPPED was closed (qits-248) ----------------------------
+
+  private WorkEntity ticketIn(String projectId, String title) {
+    return workEntities
+        .create(
+            Archetype.TICKET,
+            projectId,
+            EntityWrite.ticket(title, "it came up", null, "BUG", null),
+            WHO)
+        .entity();
+  }
+
+  private static EntityTransition ticketStated(
+      String title, EntityStatus status, WorkOutcome outcome, String supersededBy) {
+    return new EntityTransition(
+        Archetype.TICKET,
+        null,
+        title,
+        null,
+        status.name(),
+        TicketType.BUG,
+        "it came up",
+        null,
+        supersededBy,
+        null,
+        null,
+        null,
+        null,
+        outcome);
+  }
+
+  private BadRequestException refusedPut(String id, EntityTransition state) {
+    return assertThrows(
+        BadRequestException.class, () -> transitions.transition(stated(id, state), WHO));
+  }
+
+  @Test
+  void aStatedDroppedWithoutAnOutcomeIsRefusedAndNothingIsWritten() {
+    WorkEntity ticket = ticketIn(PROJECT, "Not worth doing");
+    BadRequestException refused =
+        refusedPut(ticket.id, ticketStated("Not worth doing", EntityStatus.DROPPED, null, null));
+    assertTrue(refused.getMessage().contains("requires an outcome"), refused.getMessage());
+    inFreshTx(() -> assertEquals("REPORTED", entities.findById(ticket.id).status));
+  }
+
+  @Test
+  void aStatedDroppedCarriesItsOutcomeAndTheReferenceItRequires() {
+    WorkEntity original = ticketIn(PROJECT, "The original");
+    WorkEntity duplicate = ticketIn(PROJECT, "The duplicate");
+
+    BadRequestException missing =
+        refusedPut(
+            duplicate.id,
+            ticketStated("The duplicate", EntityStatus.DROPPED, WorkOutcome.DUPLICATE, null));
+    assertTrue(missing.getMessage().contains("DUPLICATE requires supersededBy"), missing.getMessage());
+    BadRequestException forbidden =
+        refusedPut(
+            duplicate.id,
+            ticketStated("The duplicate", EntityStatus.DROPPED, WorkOutcome.INVALID, original.id));
+    assertTrue(forbidden.getMessage().contains("INVALID refuses supersededBy"), forbidden.getMessage());
+
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(
+                duplicate.id,
+                ticketStated(
+                    "The duplicate", EntityStatus.DROPPED, WorkOutcome.DUPLICATE, original.id)),
+            WHO);
+    assertEquals(WorkOutcome.DUPLICATE, after.get(duplicate.id).outcome());
+    assertEquals(original.id, after.get(duplicate.id).supersededBy());
+    inFreshTx(
+        () -> {
+          WorkEntity row = entities.findById(duplicate.id);
+          assertEquals("DROPPED", row.status);
+          assertEquals(WorkOutcome.DUPLICATE, row.outcome);
+          assertEquals(original.id, row.supersededByEntityId);
+        });
+
+    // Restating it without its outcome is refused: only a row dropped before outcomes may omit one.
+    BadRequestException dropped =
+        refusedPut(
+            duplicate.id, ticketStated("Retitled", EntityStatus.DROPPED, null, original.id));
+    assertTrue(dropped.getMessage().contains("requires an outcome"), dropped.getMessage());
+  }
+
+  @Test
+  void aLegacyDroppedRowMayBeRestatedDroppedWithoutAnOutcome() {
+    WorkEntity original = ticketIn(PROJECT, "What it was closed for");
+    WorkEntity legacy = ticketIn(PROJECT, "Dropped before outcomes");
+    workEntities.transition(
+        Archetype.TICKET, legacy.id, "DROPPED", WHO, TestDrops.WONT_DO);
+    // What V30 left on the 103 rows dropped before it: DROPPED with no outcome, and one of them an
+    // epic-era pointer (qits-382's shape).
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                entities
+                    .getEntityManager()
+                    .createNativeQuery(
+                        "update entity set outcome = null, superseded_by_entity_id = :ref"
+                            + " where id = :id")
+                    .setParameter("ref", original.id)
+                    .setParameter("id", legacy.id)
+                    .executeUpdate());
+
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(
+                legacy.id,
+                ticketStated("Retitled, still dropped", EntityStatus.DROPPED, null, original.id)),
+            WHO);
+
+    assertEquals("Retitled, still dropped", after.get(legacy.id).title());
+    assertEquals("DROPPED", after.get(legacy.id).status());
+    assertNull(after.get(legacy.id).outcome(), "unrecorded stays unrecorded");
+    assertEquals(original.id, after.get(legacy.id).supersededBy());
+  }
+
+  @Test
+  void anOutcomeOnAnyOtherStatedStatusIsRefused() {
+    WorkEntity ticket = ticketIn(PROJECT, "Still open");
+    BadRequestException refused =
+        refusedPut(
+            ticket.id, ticketStated("Still open", EntityStatus.REPORTED, WorkOutcome.OBSOLETE, null));
+    assertTrue(refused.getMessage().contains("only on a DROPPED entity"), refused.getMessage());
+  }
+
+  @Test
+  void aStatedSupersededByNamingNothingAnotherProjectOrItselfIsRefused() {
+    WorkEntity ticket = ticketIn(PROJECT, "Closed in favour of something");
+    WorkEntity foreign = ticketIn("proj-elsewhere", "In another project");
+
+    assertTrue(
+        refusedPut(
+                ticket.id,
+                ticketStated("x", EntityStatus.DROPPED, WorkOutcome.DUPLICATE, "no-such-entity"))
+            .getMessage()
+            .contains("names no work item"));
+    assertTrue(
+        refusedPut(
+                ticket.id,
+                ticketStated("x", EntityStatus.DROPPED, WorkOutcome.DUPLICATE, foreign.id))
+            .getMessage()
+            .contains("another project"));
+    assertTrue(
+        refusedPut(
+                ticket.id,
+                ticketStated("x", EntityStatus.DROPPED, WorkOutcome.SUPERSEDED, ticket.id))
+            .getMessage()
+            .contains("the item itself"));
+  }
+
+  @Test
+  void restatingADroppedRowAsReportedClearsItsOutcome() {
+    WorkEntity ticket = ticketIn(PROJECT, "Reopened by a reshape");
+    workEntities.transition(Archetype.TICKET, ticket.id, "DROPPED", WHO, TestDrops.WONT_DO);
+
+    Map<String, TransitionedEntity> after =
+        transitions.transition(
+            stated(ticket.id, ticketStated("Reopened", EntityStatus.REPORTED, null, null)), WHO);
+
+    assertEquals("REPORTED", after.get(ticket.id).status());
+    assertNull(after.get(ticket.id).outcome());
   }
 
   // --- fixtures -------------------------------------------------------------

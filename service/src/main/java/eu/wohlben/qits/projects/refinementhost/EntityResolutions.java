@@ -1,5 +1,6 @@
 package eu.wohlben.qits.projects.refinementhost;
 
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
@@ -73,12 +74,23 @@ public class EntityResolutions {
    */
   public WorkEntityService.Transition transition(
       Archetype archetype, String id, String target, Mover mover) {
+    return transition(archetype, id, target, mover, DropOutcome.NONE);
+  }
+
+  /**
+   * {@link #transition(Archetype, String, String, Mover)} stating why a drop closes the work
+   * (qits-248). The preview judges the outcome's 400s too, so a drop refused for want of one has
+   * discarded nothing.
+   */
+  public WorkEntityService.Transition transition(
+      Archetype archetype, String id, String target, Mover mover, DropOutcome drop) {
+    DropOutcome stated = drop == null ? DropOutcome.NONE : drop;
     WorkEntityService.PlannedTransition planned =
-        entities.planTransition(archetype, id, target, mover);
+        entities.planTransition(archetype, id, target, mover, stated);
     if (planned.resolving()) {
       discardHeldBy(id, noun(archetype), planned.target().name());
     }
-    return entities.transition(archetype, id, target, mover);
+    return entities.transition(archetype, id, target, mover, stated);
   }
 
   /** "Epic" / "Ticket", for the log line. */

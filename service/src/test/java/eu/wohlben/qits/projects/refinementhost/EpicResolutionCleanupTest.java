@@ -80,7 +80,7 @@ public class EpicResolutionCleanupTest {
   private io.restassured.response.Response transition(String epicId, String target) {
     return given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
         .contentType(ContentType.JSON)
-        .body(Map.of("target", target))
+        .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))
         .when()
         .post("/projects/api/work/" + epicId + "/status");
   }

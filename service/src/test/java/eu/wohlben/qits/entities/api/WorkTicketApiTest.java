@@ -604,6 +604,239 @@ class WorkTicketApiTest {
         .body("status", equalTo("VERIFIED"));
   }
 
+  // --- why a drop closes the work (qits-248) ---------------------------------------------------
+
+  private static ValidatableResponse drop(String ticket, Map<String, Object> body) {
+    return WorkRequests.status(
+            () -> given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev")),
+            ticket,
+            body)
+        .then();
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void aDropWithoutAnOutcomeOrWithAnUnknownOneIsABadRequest() {
+    String ticket = ticket(project(), "Dropped for no stated reason", "BUG");
+
+    drop(ticket, map("target", "DROPPED"))
+        .statusCode(400)
+        .body("message", containsString("a move into DROPPED requires an outcome"))
+        .body("message", containsString("WONT_DO"));
+    drop(ticket, map("target", "DROPPED", "outcome", "DUPLICATED")).statusCode(400);
+    given().when().get(WORK + ticket).then().statusCode(200).body("status", equalTo("REPORTED"));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void anOutcomeOnAMoveNotIntoDroppedIsABadRequest() {
+    String ticket = ticket(project(), "Refined with an outcome", "BUG");
+    drop(ticket, map("target", "REFINED", "outcome", "OBSOLETE"))
+        .statusCode(400)
+        .body("message", containsString("an outcome is recorded only with a move into DROPPED"));
+    given().when().get(WORK + ticket).then().body("status", equalTo("REPORTED"));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void theNamingOutcomesRequireSupersededByAndTheOthersRefuseIt() {
+    String projectId = project();
+    String original = ticket(projectId, "The original", "BUG");
+    String ticket = ticket(projectId, "Closed one way or another", "BUG");
+
+    for (String outcome : List.of("DUPLICATE", "RESOLVED_ELSEWHERE", "SUPERSEDED")) {
+      drop(ticket, map("target", "DROPPED", "outcome", outcome))
+          .statusCode(400)
+          .body("message", containsString(outcome + " requires supersededBy"));
+    }
+    for (String outcome : List.of("OBSOLETE", "INVALID", "WONT_DO")) {
+      drop(ticket, map("target", "DROPPED", "outcome", outcome, "supersededBy", original))
+          .statusCode(400)
+          .body("message", containsString(outcome + " refuses supersededBy"));
+    }
+    given().when().get(WORK + ticket).then().body("status", equalTo("REPORTED"));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void aSupersededByNamingNothingAnotherProjectOrItselfIsABadRequest() {
+    String ticket = ticket(project(), "Closed in favour of what", "BUG");
+    String foreign = ticket(EntityFixtures.project("Somebody else's").id(), "Elsewhere", "BUG");
+
+    drop(ticket, map("target", "DROPPED", "outcome", "DUPLICATE", "supersededBy", "nobody-99999"))
+        .statusCode(400)
+        .body("message", containsString("names no work item"));
+    drop(ticket, map("target", "DROPPED", "outcome", "DUPLICATE", "supersededBy", foreign))
+        .statusCode(400)
+        .body("message", containsString("another project"));
+    drop(
+            ticket,
+            map(
+                "target", "DROPPED",
+                "outcome", "RESOLVED_ELSEWHERE",
+                "supersededBy", WorkRequests.qualifiedId(ticket)))
+        .statusCode(400)
+        .body("message", containsString("the item itself"));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void aDuplicateNamesItsOriginalByQualifiedIdAndTheLinkReadsBothWays() {
+    String projectId = project();
+    String original = ticket(projectId, "Export rounds the totals", "BUG");
+    String duplicate = ticket(projectId, "Totals are off by a cent", "BUG");
+    String obsolete = ticket(projectId, "Gone by itself", "BUG");
+    String open = ticket(projectId, "Still open", "BUG");
+    String originalQualified = WorkRequests.qualifiedId(original);
+
+    drop(
+            duplicate,
+            map("target", "DROPPED", "outcome", "DUPLICATE", "supersededBy", originalQualified))
+        .statusCode(200)
+        .body("status", equalTo("DROPPED"))
+        .body("outcome", equalTo("DUPLICATE"))
+        .body("supersededBy", equalTo(original));
+    drop(obsolete, map("target", "DROPPED", "outcome", "OBSOLETE"))
+        .statusCode(200)
+        .body("outcome", equalTo("OBSOLETE"))
+        .body("supersededBy", nullValue());
+
+    given()
+        .when()
+        .get(WORK + duplicate)
+        .then()
+        .statusCode(200)
+        .body("outcome", equalTo("DUPLICATE"))
+        .body("supersededBy", equalTo(original));
+    // Every answer carries both keys, null included, on every archetype.
+    given()
+        .when()
+        .get(WORK + open)
+        .then()
+        .body("$", org.hamcrest.Matchers.hasKey("outcome"))
+        .body("$", org.hamcrest.Matchers.hasKey("supersededBy"))
+        .body("outcome", nullValue());
+
+    String listing = "/projects/api/projects/" + projectId + "/work";
+    given()
+        .queryParam("outcome", "DUPLICATE")
+        .when()
+        .get(listing)
+        .then()
+        .statusCode(200)
+        .body("entities.id", contains(duplicate))
+        .body("entities[0].outcome", equalTo("DUPLICATE"))
+        .body("entities[0].supersededBy", equalTo(original));
+    given()
+        .queryParam("outcome", "obsolete")
+        .when()
+        .get(listing)
+        .then()
+        .statusCode(200)
+        .body("entities.id", contains(obsolete));
+    // The reverse link: what the original closed, by its qualified id or its UUID.
+    for (String named : List.of(originalQualified, original)) {
+      given()
+          .queryParam("supersededBy", named)
+          .when()
+          .get(listing)
+          .then()
+          .statusCode(200)
+          .body("entities.id", contains(duplicate));
+    }
+    given().queryParam("outcome", "NOPE").when().get(listing).then().statusCode(400);
+    given().queryParam("supersededBy", "nobody-99999").when().get(listing).then().statusCode(404);
+    given()
+        .when()
+        .get(listing)
+        .then()
+        .body("entities.find { it.id == '" + open + "' }", org.hamcrest.Matchers.hasKey("outcome"));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void reopeningClearsTheOutcomeAndTheSupersededBy() {
+    String projectId = project();
+    String original = ticket(projectId, "Fixed it", "BUG");
+    String ticket = ticket(projectId, "Was fixed elsewhere", "BUG");
+    drop(ticket, map("target", "DROPPED", "outcome", "RESOLVED_ELSEWHERE", "supersededBy", original))
+        .statusCode(200);
+
+    move(ticket, "REPORTED")
+        .statusCode(200)
+        .body("status", equalTo("REPORTED"))
+        .body("outcome", nullValue())
+        .body("supersededBy", nullValue());
+    given()
+        .queryParam("supersededBy", original)
+        .when()
+        .get("/projects/api/projects/" + projectId + "/work")
+        .then()
+        .body("entities", hasSize(0));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void neitherAPatchNorACreateWritesAnOutcomeOrASupersededBy() {
+    String projectId = project();
+    String original = ticket(projectId, "Original", "BUG");
+    String ticket = ticket(projectId, "Patched", "BUG");
+    given()
+        .contentType(ContentType.JSON)
+        .body(map("outcome", "WONT_DO"))
+        .when()
+        .patch(WORK + ticket)
+        .then()
+        .statusCode(400)
+        .body("message", containsString("outcome is not written by a patch"));
+    given()
+        .contentType(ContentType.JSON)
+        .body(map("supersededBy", original))
+        .when()
+        .patch(WORK + ticket)
+        .then()
+        .statusCode(400)
+        .body("message", containsString("supersededBy is not written by a patch"));
+    create(
+            map(
+                "archetype", "TICKET",
+                "project", projectId,
+                "title", "Born closed",
+                "impetus", "something occurs",
+                "ticketType", "BUG",
+                "outcome", "WONT_DO"))
+        .statusCode(400)
+        .body("message", containsString("outcome is not written at create"));
+  }
+
+  @Test
+  @TestSecurity(user = "dev", roles = "qits:admin")
+  void theWholeRowPutStatesADropWithItsOutcome() {
+    String projectId = project();
+    String original = ticket(projectId, "Original", "BUG");
+    String ticket = ticket(projectId, "Restated as a duplicate", "BUG");
+    Map<String, Object> row =
+        ticketRow("Restated as a duplicate", "something occurs in this project", null, "BUG", null);
+
+    row.put("status", "DROPPED");
+    restate(ticket, row)
+        .statusCode(400)
+        .body("message", containsString("requires an outcome"));
+
+    row.put("outcome", "DUPLICATE");
+    row.put("supersededBy", WorkRequests.qualifiedId(original));
+    restate(ticket, row)
+        .statusCode(200)
+        .body("status", equalTo("DROPPED"))
+        .body("outcome", equalTo("DUPLICATE"))
+        .body("supersededBy", equalTo(original));
+
+    row.put("status", "REPORTED");
+    restate(ticket, row)
+        .statusCode(400)
+        .body("message", containsString("an outcome is recorded only on a DROPPED entity"));
+  }
+
   /** One ticket's whole row as {@code PUT /work/{id}} takes it, at REPORTED. */
   private static Map<String, Object> ticketRow(
       String title, String impetus, String description, String type, String assignee) {

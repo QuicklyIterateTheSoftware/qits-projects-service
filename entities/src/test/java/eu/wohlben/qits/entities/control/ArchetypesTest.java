@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityStatus;
+import eu.wohlben.qits.entities.entity.TicketType;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -150,6 +153,50 @@ class ArchetypesTest {
             EntityProperty.DESCRIPTION,
             EntityProperty.STATUS),
         spec.permitted());
+  }
+
+  // ---- why a drop closed the work (qits-248) ---------------------------------------------------
+
+  @Test
+  void everyKindWithALifecycleCarriesASupersededByOnADroppedRow() {
+    for (Archetype archetype : Archetype.values()) {
+      EntityState dropped =
+          new EntityState(
+              archetype,
+              "DROPPED",
+              EnumSet.of(EntityProperty.TITLE, EntityProperty.SUPERSEDED_BY));
+      assertFalse(
+          Archetypes.validate(dropped, Demand.ON_UPDATE).stream()
+              .anyMatch(violation -> violation.property() == EntityProperty.SUPERSEDED_BY),
+          archetype + " carries the drop's reference");
+      for (Demand demand : Demand.values()) {
+        assertFalse(
+            Archetypes.spec(archetype).requiredFor(demand).contains(EntityProperty.SUPERSEDED_BY),
+            archetype + " requires no supersededBy at " + demand);
+      }
+    }
+    // On any other status it stays the epic's alone: the reopen clears a non-epic's pointer.
+    EntityState open =
+        new EntityState(
+            Archetype.TICKET,
+            "REPORTED",
+            EnumSet.of(
+                EntityProperty.TITLE, EntityProperty.TICKET_TYPE, EntityProperty.SUPERSEDED_BY));
+    assertTrue(
+        Archetypes.validate(open, Demand.ON_UPDATE).stream()
+            .anyMatch(violation -> violation.property() == EntityProperty.SUPERSEDED_BY));
+  }
+
+  @Test
+  void aTicketCarryingAnOutcomeAndASupersededByIsNoViolation() {
+    WorkEntity ticket = new WorkEntity();
+    ticket.archetype = Archetype.TICKET;
+    ticket.title = "A duplicate";
+    ticket.ticketType = TicketType.BUG;
+    ticket.status = "DROPPED";
+    ticket.outcome = WorkOutcome.DUPLICATE;
+    ticket.supersededByEntityId = "the-original";
+    assertEquals(List.of(), Archetypes.validate(ticket, Demand.ON_UPDATE));
   }
 
   @Test

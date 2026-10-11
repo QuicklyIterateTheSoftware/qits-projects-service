@@ -63,7 +63,7 @@ class EntityBlockApiTest {
     for (String target : targets) {
       given().cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("dev"))
           .contentType(ContentType.JSON)
-          .body(map("target", target))
+          .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))
           .when()
           .post("/projects/api/work/" + id + "/status")
           .then()

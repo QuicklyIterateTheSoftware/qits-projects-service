@@ -2,6 +2,7 @@ package eu.wohlben.qits.entities.control;
 
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.TicketType;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import java.time.Instant;
 import java.util.List;
 
@@ -54,13 +55,20 @@ import java.util.List;
  *     ticket's, and only a ticket's
  * @param impetus why a ticket came about, in the reporter's words
  * @param assignee who is looking at a ticket, as free text
- * @param supersededBy the successor draft a superseded epic spawned
+ * @param supersededBy the item a DROPPED entity names as what answers for it (qits-248, any
+ *     archetype) — required with outcome DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED, refused with
+ *     the other three. It must name an item of the entity's own project, never the entity itself
  * @param repositoryId the one concrete repository a task names
  * @param implementedAt the implemented marker
  * @param dependsOn the sibling ordering edge. <b>Never nesting</b> — {@link Membership} is nesting
  * @param acceptanceCriteria an epic's or a ticket's acceptance criteria (qits-887), the whole list;
  *     absent clears it as every other property. Restating the list the row already holds is no
  *     change and passes at every status; a changed one is refused from READY_FOR_DEV on
+ * @param outcome why a DROPPED entity was closed (qits-248). <b>A stated DROPPED must carry one</b>,
+ *     under {@code DropOutcome}'s rules — except on a row that is already DROPPED with none (a drop
+ *     from before the outcome existed), which may be restated DROPPED without one so its other
+ *     fields stay editable. Any other stated status with an outcome is refused. Absent clears it,
+ *     as every property here
  */
 public record EntityTransition(
     Archetype archetype,
@@ -75,7 +83,40 @@ public record EntityTransition(
     String repositoryId,
     Instant implementedAt,
     String dependsOn,
-    List<String> acceptanceCriteria) {
+    List<String> acceptanceCriteria,
+    WorkOutcome outcome) {
+
+  /** The entry with no outcome — every status but DROPPED, and a legacy DROPPED row's restatement. */
+  public EntityTransition(
+      Archetype archetype,
+      Membership membership,
+      String title,
+      String description,
+      String status,
+      TicketType ticketType,
+      String impetus,
+      String assignee,
+      String supersededBy,
+      String repositoryId,
+      Instant implementedAt,
+      String dependsOn,
+      List<String> acceptanceCriteria) {
+    this(
+        archetype,
+        membership,
+        title,
+        description,
+        status,
+        ticketType,
+        impetus,
+        assignee,
+        supersededBy,
+        repositoryId,
+        implementedAt,
+        dependsOn,
+        acceptanceCriteria,
+        null);
+  }
 
   /**
    * Where an entity hangs after the transition, and where among its siblings.

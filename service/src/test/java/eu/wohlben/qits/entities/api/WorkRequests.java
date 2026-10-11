@@ -120,11 +120,32 @@ public final class WorkRequests {
     return status(io.restassured.RestAssured::given, id, target);
   }
 
+  /**
+   * The move to {@code target}. A move into DROPPED states outcome WONT_DO (qits-248: every drop says
+   * why), so a suite about something else drops as a decision against; a test about the outcome
+   * itself states the body with {@link #status(Supplier, String, Map)}.
+   */
   public static Response status(Supplier<RequestSpecification> caller, String id, String target) {
+    return status(caller, id, statusBody(target));
+  }
+
+  /**
+   * The body of a move to {@code target}: a move into DROPPED states outcome WONT_DO (qits-248), so a
+   * suite about something else drops as a decision against.
+   */
+  public static Map<String, Object> statusBody(String target) {
+    return "DROPPED".equals(target)
+        ? map("target", target, "outcome", "WONT_DO")
+        : map("target", target);
+  }
+
+  /** {@code POST /projects/api/work/{id}/status} with the body as stated; unasserted. */
+  public static Response status(
+      Supplier<RequestSpecification> caller, String id, Map<String, Object> body) {
     return caller
         .get()
         .contentType(ContentType.JSON)
-        .body(Map.of("target", target))
+        .body(body)
         .when()
         .post("/projects/api/work/" + id + "/status");
   }

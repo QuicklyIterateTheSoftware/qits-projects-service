@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.control;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.TicketType;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import java.time.Instant;
 
 /**
@@ -12,7 +13,8 @@ import java.time.Instant;
  * /projects/api/work/{qualifiedId}}) and the MCP {@code get_entity} answer it. See {@link
  * TransitionedEntity} for each component — {@code blocked} is the effective block there and here,
  * with its {@code blockSource}, {@code blockReason} and {@code blockedBy} (qits-895), and {@code
- * waitingOn} beside it (qits-1153).
+ * waitingOn} beside it (qits-1153). {@code outcome} and {@code supersededBy} (qits-248) are on every
+ * archetype and always on the wire, null included.
  */
 public record EntitySummary(
     String id,
@@ -30,6 +32,7 @@ public record EntitySummary(
     String assignee,
     String createdBy,
     String supersededBy,
+    WorkOutcome outcome,
     String repositoryId,
     Instant implementedAt,
     Instant implementingAt,
@@ -62,6 +65,7 @@ public record EntitySummary(
         e.assignee(),
         e.createdBy(),
         e.supersededBy(),
+        e.outcome(),
         e.repositoryId(),
         e.implementedAt(),
         e.implementingAt(),

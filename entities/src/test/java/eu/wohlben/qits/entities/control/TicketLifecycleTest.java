@@ -11,6 +11,7 @@ import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import io.quarkus.test.junit.QuarkusTest;
@@ -332,7 +333,10 @@ class TicketLifecycleTest extends EntitiesTestSupport {
 
     assertEquals(
         EntityStatus.DROPPED.name(),
-        workEntities.transition(Archetype.TICKET, ticket.id, "DROPPED", "alice").entity().status);
+        workEntities
+            .transition(Archetype.TICKET, ticket.id, "DROPPED", "alice", TestDrops.WONT_DO)
+            .entity()
+            .status);
     // Read back rather than believed from the answer: what is under test is the row, so the
     // assertion has to be one the write actually reached the database to satisfy.
     inFreshTx(
@@ -346,6 +350,190 @@ class TicketLifecycleTest extends EntitiesTestSupport {
     assertEquals(
         EntityStatus.REPORTED.name(),
         workEntities.transition(Archetype.TICKET, ticket.id, "REPORTED", "alice").entity().status);
+  }
+
+  // --- why a drop closes the work (qits-248) ---------------------------------------------------
+
+  private WorkEntity reportedIn(String projectId, String title) {
+    return workEntities
+        .create(
+            Archetype.TICKET,
+            projectId,
+            EntityWrite.ticket(title, "it happens on the sign-in page", null, "BUG", null),
+            "t")
+        .entity();
+  }
+
+  private BadRequestException refusedDrop(WorkEntity ticket, DropOutcome drop) {
+    BadRequestException refused =
+        assertThrows(
+            BadRequestException.class,
+            () -> workEntities.transition(Archetype.TICKET, ticket.id, "DROPPED", "t", drop));
+    inFreshTx(
+        () ->
+            assertEquals(
+                ticket.status,
+                workEntities.get(Archetype.TICKET, ticket.id).status,
+                "a refused drop moves nothing"));
+    return refused;
+  }
+
+  @Test
+  void aDropWithoutAnOutcomeIsABadRequestNamingTheSix() {
+    WorkEntity ticket = reported();
+    BadRequestException refused = refusedDrop(ticket, DropOutcome.NONE);
+    assertTrue(refused.getMessage().contains("requires an outcome"), refused.getMessage());
+    for (WorkOutcome outcome : WorkOutcome.values()) {
+      assertTrue(refused.getMessage().contains(outcome.name()), refused.getMessage());
+    }
+    // The four-argument transition states nothing, so it cannot drop either.
+    assertThrows(
+        BadRequestException.class,
+        () -> workEntities.transition(Archetype.TICKET, ticket.id, "DROPPED", "t"));
+  }
+
+  @Test
+  void anOutcomeOrAReferenceOnAMoveNotIntoDroppedIsABadRequest() {
+    WorkEntity ticket = reported();
+    WorkEntity other = reported();
+    BadRequestException outcome =
+        assertThrows(
+            BadRequestException.class,
+            () ->
+                workEntities.transition(
+                    Archetype.TICKET,
+                    ticket.id,
+                    "REFINED",
+                    "t",
+                    DropOutcome.of(WorkOutcome.OBSOLETE, null)));
+    assertTrue(outcome.getMessage().contains("only with a move into DROPPED"), outcome.getMessage());
+    BadRequestException reference =
+        assertThrows(
+            BadRequestException.class,
+            () ->
+                workEntities.transition(
+                    Archetype.TICKET, ticket.id, "REFINED", "t", DropOutcome.of(null, other.id)));
+    assertTrue(reference.getMessage().contains("supersededBy"), reference.getMessage());
+    inFreshTx(
+        () -> assertEquals("REPORTED", workEntities.get(Archetype.TICKET, ticket.id).status));
+  }
+
+  @Test
+  void duplicateResolvedElsewhereAndSupersededRequireSupersededBy() {
+    for (WorkOutcome outcome :
+        List.of(WorkOutcome.DUPLICATE, WorkOutcome.RESOLVED_ELSEWHERE, WorkOutcome.SUPERSEDED)) {
+      BadRequestException refused = refusedDrop(reported(), DropOutcome.of(outcome, null));
+      assertTrue(
+          refused.getMessage().contains(outcome + " requires supersededBy"), refused.getMessage());
+    }
+  }
+
+  @Test
+  void obsoleteInvalidAndWontDoRefuseSupersededBy() {
+    WorkEntity original = reported();
+    for (WorkOutcome outcome :
+        List.of(WorkOutcome.OBSOLETE, WorkOutcome.INVALID, WorkOutcome.WONT_DO)) {
+      BadRequestException refused = refusedDrop(reported(), DropOutcome.of(outcome, original.id));
+      assertTrue(
+          refused.getMessage().contains(outcome + " refuses supersededBy"), refused.getMessage());
+    }
+  }
+
+  @Test
+  void aSupersededByNamingNothingAnotherProjectOrTheTicketItselfIsRefused() {
+    WorkEntity ticket = reported();
+    WorkEntity elsewhere = reportedIn("proj-2", "The same bug, filed in another project");
+
+    BadRequestException nothing =
+        refusedDrop(ticket, DropOutcome.of(WorkOutcome.DUPLICATE, "no-such-entity"));
+    assertTrue(nothing.getMessage().contains("names no work item"), nothing.getMessage());
+    BadRequestException foreign =
+        refusedDrop(ticket, DropOutcome.of(WorkOutcome.DUPLICATE, elsewhere.id));
+    assertTrue(foreign.getMessage().contains("another project"), foreign.getMessage());
+    BadRequestException itself =
+        refusedDrop(ticket, DropOutcome.of(WorkOutcome.RESOLVED_ELSEWHERE, ticket.id));
+    assertTrue(itself.getMessage().contains("the item itself"), itself.getMessage());
+  }
+
+  @Test
+  void aTicketDroppedAsADuplicateRecordsTheOutcomeAndNamesTheOriginal() {
+    WorkEntity original = reported();
+    WorkEntity duplicate = at(EntityStatus.REFINED);
+
+    WorkEntity dropped =
+        workEntities
+            .transition(
+                Archetype.TICKET,
+                duplicate.id,
+                "DROPPED",
+                "alice",
+                DropOutcome.of(WorkOutcome.DUPLICATE, original.id))
+            .entity();
+
+    assertEquals(WorkOutcome.DUPLICATE, dropped.outcome);
+    assertEquals(original.id, dropped.supersededByEntityId);
+    inFreshTx(
+        () -> {
+          WorkEntity stored = workEntities.get(Archetype.TICKET, duplicate.id);
+          assertEquals("DROPPED", stored.status);
+          assertEquals(WorkOutcome.DUPLICATE, stored.outcome);
+          assertEquals(original.id, stored.supersededByEntityId);
+        });
+    // The reverse link: the original lists what it closed.
+    assertEquals(
+        List.of(duplicate.id),
+        workEntities.listSupersededBy(original.id).stream().map(row -> row.id).toList());
+  }
+
+  @Test
+  void everyOutcomeThatNamesNothingIsRecordedWithNoPointer() {
+    for (WorkOutcome outcome :
+        List.of(WorkOutcome.OBSOLETE, WorkOutcome.INVALID, WorkOutcome.WONT_DO)) {
+      WorkEntity ticket = reported();
+      WorkEntity dropped =
+          workEntities
+              .transition(
+                  Archetype.TICKET, ticket.id, "DROPPED", "t", DropOutcome.of(outcome, null))
+              .entity();
+      assertEquals(outcome, dropped.outcome);
+      assertEquals(null, dropped.supersededByEntityId);
+    }
+  }
+
+  @Test
+  void reopeningClearsTheOutcomeAndTheSupersededBy() {
+    WorkEntity original = reported();
+    WorkEntity ticket = reported();
+    workEntities.transition(
+        Archetype.TICKET,
+        ticket.id,
+        "DROPPED",
+        "t",
+        DropOutcome.of(WorkOutcome.RESOLVED_ELSEWHERE, original.id));
+
+    WorkEntity reopened =
+        workEntities.transition(Archetype.TICKET, ticket.id, "REPORTED", "t").entity();
+
+    assertEquals("REPORTED", reopened.status);
+    assertEquals(null, reopened.outcome);
+    assertEquals(null, reopened.supersededByEntityId);
+    inFreshTx(
+        () -> {
+          WorkEntity stored = workEntities.get(Archetype.TICKET, ticket.id);
+          assertEquals(null, stored.outcome);
+          assertEquals(null, stored.supersededByEntityId);
+        });
+    assertTrue(workEntities.listSupersededBy(original.id).isEmpty(), "the reverse link went too");
+  }
+
+  @Test
+  void thePlatformsOwnMovesCannotDrop() {
+    WorkEntity ticket = reported();
+    assertThrows(
+        BadRequestException.class,
+        () ->
+            workEntities.transitionFrom(
+                Archetype.TICKET, ticket.id, EntityStatus.REPORTED, EntityStatus.DROPPED, "t"));
   }
 
   @Test

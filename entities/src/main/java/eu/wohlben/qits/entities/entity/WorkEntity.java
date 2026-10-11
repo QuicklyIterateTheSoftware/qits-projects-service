@@ -380,11 +380,22 @@ public class WorkEntity extends PanacheEntityBase implements CausedRow {
   public String createdBy;
 
   /**
-   * The successor draft a superseded epic spawned, pointing into this same table; null on every
-   * other row. Self-FK with {@code on delete set null}, V1's safety net unchanged.
+   * The item a DROPPED row names as what answers for it (qits-248, any archetype): the duplicate it
+   * repeats, the item whose change resolved it, or the successor that replaced it — an epic's
+   * supersede writes the successor draft it spawned. Written with the drop, cleared by the reopen.
+   * Self-FK with {@code on delete set null}, V1's safety net unchanged.
    */
   @Column(name = "superseded_by_entity_id")
   public String supersededByEntityId;
+
+  /**
+   * Why a DROPPED row was closed (qits-248, epics V30) — see {@link WorkOutcome}. Set only by a move
+   * into DROPPED, which must carry one, and cleared by the reopen; {@code ck_entity_outcome_dropped}
+   * refuses it on any other status. Null on a row dropped before V30: "unrecorded".
+   */
+  @Enumerated(EnumType.STRING)
+  @Column(name = "outcome")
+  public WorkOutcome outcome;
 
   /**
    * The concrete repository a task names — {@code domain}'s {@code Repository} by String id, no

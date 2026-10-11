@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.EntityMembership;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import java.time.Instant;
 import java.util.List;
 
@@ -58,7 +59,10 @@ import java.util.List;
  * @param impetus why a ticket came about, or null
  * @param assignee who is looking at it, or null
  * @param createdBy who filed it. Carried when the archetype permits it, cleared when it does not
- * @param supersededBy the successor draft, or null
+ * @param supersededBy the item a DROPPED row names as what answers for it — the duplicate, the item
+ *     that resolved it, the successor that replaced it — or null. On every archetype since qits-248
+ * @param outcome why a DROPPED row was closed (qits-248), or null — on every other status, and on a
+ *     row dropped before the outcome existed ("unrecorded"). Always on the wire, null included
  * @param repositoryId the task's repository, or null
  * @param implementedAt the implemented marker, or null
  * @param implementingAt the implementing marker of a feature or a task — when its implementation was
@@ -110,6 +114,7 @@ public record TransitionedEntity(
     String assignee,
     String createdBy,
     String supersededBy,
+    WorkOutcome outcome,
     String repositoryId,
     Instant implementedAt,
     Instant implementingAt,
@@ -148,6 +153,7 @@ public record TransitionedEntity(
         assignee,
         createdBy,
         supersededBy,
+        outcome,
         repositoryId,
         implementedAt,
         implementingAt,
@@ -208,6 +214,7 @@ public record TransitionedEntity(
         row.assignee,
         row.createdBy,
         row.supersededByEntityId,
+        row.outcome,
         row.repositoryId,
         row.implementedAt,
         row.implementingAt,
@@ -251,6 +258,7 @@ public record TransitionedEntity(
         read.assignee(),
         read.createdBy(),
         read.supersededBy(),
+        read.outcome(),
         read.repositoryId(),
         read.implementedAt(),
         read.implementingAt(),
@@ -293,6 +301,7 @@ public record TransitionedEntity(
         row.assignee,
         row.createdBy,
         row.supersededByEntityId,
+        row.outcome,
         row.repositoryId,
         row.implementedAt,
         row.implementingAt,
