@@ -10,6 +10,7 @@ import eu.wohlben.qits.entities.campaign.Observation.DeploymentWentActive;
 import eu.wohlben.qits.entities.campaign.Observation.EntityReached;
 import eu.wohlben.qits.entities.campaign.Observation.Observed;
 import eu.wohlben.qits.entities.campaign.Observation.Released;
+import eu.wohlben.qits.entities.control.TestDrops;
 import eu.wohlben.qits.entities.control.EntitiesTestSupport;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.WorkEntityService;
@@ -366,7 +367,10 @@ class CampaignEvaluatorTest extends EntitiesTestSupport {
   private WorkEntity walk(WorkEntity row, String... statuses) {
     WorkEntity moved = row;
     for (String status : statuses) {
-      moved = workEntities.transition(row.archetype, row.id, status, WHO).entity();
+      moved =
+          workEntities
+              .transition(row.archetype, row.id, status, WHO, TestDrops.of(status))
+              .entity();
     }
     return moved;
   }

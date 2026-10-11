@@ -3,6 +3,7 @@ package eu.wohlben.qits.entities.persistence;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.TicketType;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -58,7 +59,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
                 + " e.supersededByEntityId, e.repositoryId, e.implementedAt, e.implementingAt,"
                 + " e.dependsOnEntityId, e.createdAt, e.updatedAt,"
                 + " e.preApprovedBy, e.blockedBy, e.blockedReason, e.agentWaitingSince,"
-                + " e.agentWaitingCause, e.agentWaitingOn"
+                + " e.agentWaitingCause, e.agentWaitingOn, e.outcome"
                 + " from WorkEntity e where e.projectId = ?1 order by e.createdAt, e.id",
             Object[].class)
         .setParameter(1, projectId)
@@ -95,6 +96,7 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
     row.agentWaitingSince = (Instant) c[23];
     row.agentWaitingCause = (String) c[24];
     row.agentWaitingOn = (String) c[25];
+    row.outcome = (WorkOutcome) c[26];
     return row;
   }
 
@@ -138,6 +140,15 @@ public class WorkEntityRepository implements PanacheRepositoryBase<WorkEntity, S
       return List.of();
     }
     return find("id in ?1", OLDEST_FIRST, ids).list();
+  }
+
+  /**
+   * <b>The items naming {@code entityId} as their {@code supersededBy}</b> (qits-248) — the reverse
+   * link: what it closed as a duplicate, resolved elsewhere or superseded. Oldest first; at most the
+   * rows of one project, since a drop may only name an item of its own.
+   */
+  public List<WorkEntity> listBySupersededBy(String entityId) {
+    return find("supersededByEntityId", OLDEST_FIRST, entityId).list();
   }
 
   /**

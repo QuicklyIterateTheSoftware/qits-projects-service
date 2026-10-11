@@ -453,6 +453,7 @@ public class EntityTransitionService {
       Map<String, WorkEntity> statedParents) {
 
     List<String> violations = new ArrayList<>();
+    Map<String, WorkEntity> references = referencedRows(stated, rows);
 
     for (String id : stated.keySet()) {
       if (!rows.containsKey(id)) {
@@ -469,6 +470,7 @@ public class EntityTransitionService {
       }
       violations.addAll(finalityViolations(entry.getKey(), entry.getValue(), row));
       violations.addAll(propertyViolations(entry.getValue(), row));
+      violations.addAll(outcomeViolations(entry.getKey(), entry.getValue(), row, references));
       violations.addAll(projectViolations(entry.getKey(), entry.getValue(), rows, statedParents));
     }
 
@@ -527,6 +529,71 @@ public class EntityTransitionService {
               + EntityStateMachine.finality(current.get()));
     }
     return refused;
+  }
+
+  /**
+   * <b>Why a stated DROPPED was closed (qits-248)</b> — {@link DropOutcome}'s rules, on the door that
+   * states statuses rather than moving them: a stated DROPPED carries an outcome and the reference it
+   * requires (or refuses), any other stated status carries no outcome, and a stated {@code
+   * supersededBy} names an item of the entity's own project and not the entity itself.
+   *
+   * <p><b>One exception, and it is the legacy row's.</b> A row that is already DROPPED with no
+   * outcome — dropped before the outcome existed — may be restated DROPPED without one, so that the
+   * PUT a form sends with an edited title does not demand a reason nobody recorded. Its {@code
+   * supersededBy}, if it states one, is judged as any other reference.
+   */
+  private static List<String> outcomeViolations(
+      String id, EntityTransition target, WorkEntity row, Map<String, WorkEntity> references) {
+    List<String> refused = new ArrayList<>();
+    DropOutcome drop = DropOutcome.of(target.outcome(), target.supersededBy());
+    Optional<EntityStatus> status = EntityLifecycle.parse(blankToNull(target.status()));
+    boolean legacy =
+        status.isPresent()
+            && status.get() == EntityStatus.DROPPED
+            && EntityStatus.DROPPED.name().equals(row.status)
+            && row.outcome == null
+            && target.outcome() == null;
+    boolean dropped = status.isPresent() && status.get() == EntityStatus.DROPPED;
+    if (dropped && !legacy) {
+      for (String rule : drop.refusals(EntityStatus.DROPPED)) {
+        refused.add(id + ": " + rule);
+      }
+    } else if (!dropped && target.outcome() != null) {
+      // Only the outcome: a supersededBy on another status is left as this door has always left
+      // it, because a row reopened before the reopen cleared its pointer still carries one, and the
+      // form restating it must not start failing.
+      refused.add(
+          id
+              + ": an outcome is recorded only on a DROPPED entity, and this one is stated "
+              + target.status()
+              + ": leave outcome out");
+    }
+    String named = drop.supersededBy();
+    if (named != null) {
+      String rule = DropOutcome.referenceRefusal(row, named, references.get(named));
+      if (rule != null) {
+        refused.add(id + ": " + rule);
+      }
+    }
+    return refused;
+  }
+
+  /**
+   * The rows every stated {@code supersededBy} names, read in one query beside the rows the request
+   * already holds — so a reference to an entity that is itself an entry is not read twice.
+   */
+  private Map<String, WorkEntity> referencedRows(
+      Map<String, EntityTransition> stated, Map<String, WorkEntity> rows) {
+    Set<String> wanted = new LinkedHashSet<>();
+    for (EntityTransition target : stated.values()) {
+      String named = blankToNull(target.supersededBy());
+      if (named != null && !rows.containsKey(named)) {
+        wanted.add(named.trim());
+      }
+    }
+    Map<String, WorkEntity> found = new HashMap<>(rows);
+    found.putAll(index(entities.listByIds(wanted)));
+    return found;
   }
 
   /**
@@ -739,6 +806,9 @@ public class EntityTransitionService {
     row.impetus = blankToNull(target.impetus());
     row.assignee = blankToNull(target.assignee());
     row.supersededByEntityId = blankToNull(target.supersededBy());
+    // Absent clears it, as every property here; a legacy DROPPED row restated without one keeps
+    // the null it had (qits-248).
+    row.outcome = target.outcome();
     row.repositoryId = blankToNull(target.repositoryId());
     row.implementedAt = target.implementedAt();
     if (!Archetypes.spec(target.archetype()).permits(EntityProperty.IMPLEMENTING_AT)) {

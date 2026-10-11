@@ -101,7 +101,7 @@ class TransitionGateTest extends EntitiesTestSupport {
 
     // A correction passes an armed, refusing gate without asking it.
     workEntities.transition(Archetype.TICKET, id, "REFINED", "t"); // BACK
-    workEntities.transition(Archetype.TICKET, id, "DROPPED", "t"); // DROP
+    workEntities.transition(Archetype.TICKET, id, "DROPPED", "t", TestDrops.WONT_DO); // DROP
     workEntities.transition(Archetype.TICKET, id, "REPORTED", "t"); // REOPEN
     assertEquals("REPORTED", status(id));
     assertEquals(1, ArmableGates.First.state.judged().size());
@@ -121,7 +121,7 @@ class TransitionGateTest extends EntitiesTestSupport {
     assertEquals("REPORTED", status(id));
     assertEquals(List.of(), announcer.batches());
     // A correction is planned without asking.
-    workEntities.transition(Archetype.TICKET, id, "DROPPED", "t");
+    workEntities.transition(Archetype.TICKET, id, "DROPPED", "t", TestDrops.WONT_DO);
     assertEquals(1, ArmableGates.Second.state.judged().size());
   }
 }

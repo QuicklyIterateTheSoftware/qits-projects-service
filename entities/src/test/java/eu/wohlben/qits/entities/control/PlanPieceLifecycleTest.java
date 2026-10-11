@@ -73,7 +73,8 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
 
   private void moveEpic(Plan plan, String... targets) {
     for (String target : targets) {
-      workEntities.transition(Archetype.EPIC, plan.epic(), target, Mover.person("t"));
+      workEntities.transition(
+          Archetype.EPIC, plan.epic(), target, Mover.person("t"), TestDrops.of(target));
     }
   }
 
@@ -110,7 +111,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
     assertEquals("REFINED", status(Archetype.TASK, plan.sibling()));
 
     // A piece no longer REFINED is not dragged back by the reopen: only REFINED pieces return.
-    workEntities.transition(Archetype.TASK, plan.task(), "DROPPED", "agent");
+    workEntities.transition(Archetype.TASK, plan.task(), "DROPPED", "agent", TestDrops.WONT_DO);
     moveEpic(plan, "REPORTED");
 
     assertEquals("DROPPED", status(Archetype.TASK, plan.task()), "not REFINED, left alone");
@@ -139,7 +140,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   void aDroppedPieceIsNeitherCarriedNorStampedByTheMoveToImplemented() {
     Plan plan = plan();
     moveEpic(plan, "REFINED", "READY_FOR_DEV");
-    workEntities.transition(Archetype.TASK, plan.sibling(), "DROPPED", "t");
+    workEntities.transition(Archetype.TASK, plan.sibling(), "DROPPED", "t", TestDrops.WONT_DO);
 
     moveEpic(plan, "IMPLEMENTED");
 
@@ -345,7 +346,7 @@ class PlanPieceLifecycleTest extends EntitiesTestSupport {
   void aDroppedTaskTakesNoMarker() {
     Plan plan = plan();
     moveEpic(plan, "REFINED", "READY_FOR_DEV");
-    workEntities.transition(Archetype.TASK, plan.task(), "DROPPED", "t");
+    workEntities.transition(Archetype.TASK, plan.task(), "DROPPED", "t", TestDrops.WONT_DO);
 
     assertThrows(
         ConflictException.class, () -> workEntities.markImplementing(plan.task(), "agent"));

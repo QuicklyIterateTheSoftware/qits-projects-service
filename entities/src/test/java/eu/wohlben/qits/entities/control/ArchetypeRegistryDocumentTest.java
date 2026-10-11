@@ -66,6 +66,22 @@ class ArchetypeRegistryDocumentTest {
   }
 
   @Test
+  void aDropsOutcomeAndReferenceLeaveTheServedPermittedListsAsTheyWere() {
+    // qits-248: the outcome is no registry property, and a non-epic carries supersededBy on a
+    // DROPPED row alone (Archetypes.isDropReference) — so no kind's permitted list grew. Consumers
+    // pin those lists element for element.
+    assertFalse(
+        ArchetypeRegistryDocument.describe().properties().stream()
+            .anyMatch(property -> property.name().equals("OUTCOME")));
+    for (Archetype archetype : Archetype.values()) {
+      assertEquals(
+          archetype == Archetype.EPIC,
+          declared(archetype).permitted().contains(EntityProperty.SUPERSEDED_BY),
+          archetype + " supersededBy");
+    }
+  }
+
+  @Test
   void theCampaignIsServedAsAGatheringRootAboveTheEpic() {
     ArchetypeRegistryDocument.DeclaredArchetype campaign = declared(Archetype.CAMPAIGN);
     assertEquals(-1, campaign.depth());

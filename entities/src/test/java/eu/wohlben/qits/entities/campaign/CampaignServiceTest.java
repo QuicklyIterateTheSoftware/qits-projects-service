@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.entities.control.TestDrops;
 import eu.wohlben.qits.entities.control.EntitiesTestSupport;
 import eu.wohlben.qits.entities.control.EntityWrite;
 import eu.wohlben.qits.entities.control.Mover;
@@ -521,7 +522,11 @@ class CampaignServiceTest extends EntitiesTestSupport {
   private WorkEntity walk(WorkEntity row, String... statuses) {
     WorkEntity moved = row;
     for (String status : statuses) {
-      moved = workEntities.transition(row.archetype, row.id, status, Mover.person(WHO)).entity();
+      moved =
+          workEntities
+              .transition(
+                  row.archetype, row.id, status, Mover.person(WHO), TestDrops.of(status))
+              .entity();
     }
     return moved;
   }

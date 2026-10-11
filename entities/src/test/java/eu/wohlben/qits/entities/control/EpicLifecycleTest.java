@@ -13,6 +13,8 @@ import eu.wohlben.qits.entities.entity.AuditEntityType;
 import eu.wohlben.qits.entities.entity.AuditOperation;
 import eu.wohlben.qits.entities.entity.EntityStatus;
 import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.ConflictException;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
@@ -72,16 +74,113 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity epic = epic();
     assertEquals(
         EntityStatus.DROPPED.name(),
-        workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t").entity().status);
+        workEntities
+            .transition(Archetype.EPIC, epic.id, "DROPPED", "t", TestDrops.WONT_DO)
+            .entity()
+            .status);
   }
 
   @Test
   void aFrozenEpicCanBeDroppedAndADropCarriesNoSuccessor() {
     WorkEntity epic = frozen();
-    var result = workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t");
+    var result =
+        workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t", TestDrops.WONT_DO);
     assertEquals(EntityStatus.DROPPED.name(), result.entity().status);
+    assertEquals(WorkOutcome.WONT_DO, result.entity().outcome);
     assertNull(result.successor());
     assertNull(result.entity().supersededByEntityId, "an abandoned epic names no successor");
+  }
+
+  // --- why a drop closes the work (qits-248) ---------------------------------------------------
+
+  @Test
+  void anEpicDroppedWithoutAnOutcomeIsABadRequest() {
+    WorkEntity epic = frozen();
+    BadRequestException refused =
+        assertThrows(
+            BadRequestException.class,
+            () -> workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", Mover.person("t")));
+    assertTrue(refused.getMessage().contains("requires an outcome"), refused.getMessage());
+    // The preview refuses it too, so a door acting on the preview discards nothing.
+    assertThrows(
+        BadRequestException.class,
+        () -> workEntities.planTransition(Archetype.EPIC, epic.id, "DROPPED"));
+    inFreshTx(() -> assertEquals("REFINED", workEntities.get(Archetype.EPIC, epic.id).status));
+  }
+
+  @Test
+  void anEpicCanBeDroppedAsResolvedByAnotherAndReopeningClearsBoth() {
+    WorkEntity other = epic();
+    WorkEntity epic = frozen();
+    var dropped =
+        workEntities.transition(
+            Archetype.EPIC,
+            epic.id,
+            "DROPPED",
+            Mover.person("t"),
+            DropOutcome.of(WorkOutcome.RESOLVED_ELSEWHERE, other.id));
+    assertNull(dropped.successor(), "only the supersede operation spawns a successor");
+    assertEquals(WorkOutcome.RESOLVED_ELSEWHERE, dropped.entity().outcome);
+    assertEquals(other.id, dropped.entity().supersededByEntityId);
+
+    var reopened = workEntities.transition(Archetype.EPIC, epic.id, "REPORTED", "t");
+    assertNull(reopened.entity().outcome);
+    assertNull(reopened.entity().supersededByEntityId);
+  }
+
+  @Test
+  void theSupersedeStatesNeitherAnotherOutcomeNorAPointer() {
+    WorkEntity other = epic();
+    WorkEntity epic = frozen();
+    assertThrows(
+        BadRequestException.class,
+        () ->
+            workEntities.transition(
+                Archetype.EPIC,
+                epic.id,
+                WorkEntityService.SUPERSEDE,
+                "t",
+                DropOutcome.of(WorkOutcome.OBSOLETE, null)));
+    assertThrows(
+        BadRequestException.class,
+        () ->
+            workEntities.transition(
+                Archetype.EPIC,
+                epic.id,
+                WorkEntityService.SUPERSEDE,
+                "t",
+                DropOutcome.of(WorkOutcome.SUPERSEDED, other.id)));
+    // Stating the outcome it records anyway is no contradiction.
+    var superseded =
+        workEntities.transition(
+            Archetype.EPIC,
+            epic.id,
+            WorkEntityService.SUPERSEDE,
+            "t",
+            DropOutcome.of(WorkOutcome.SUPERSEDED, null));
+    assertEquals(WorkOutcome.SUPERSEDED, superseded.entity().outcome);
+    assertEquals(superseded.successor().id, superseded.entity().supersededByEntityId);
+  }
+
+  @Test
+  void theSupersedeOperationStaysAnEpicsAlone() {
+    // Every kind may carry supersededBy since qits-248; the operation that spawns a successor does
+    // not follow it: SUPERSEDED is not a status word for a ticket.
+    WorkEntity ticket =
+        workEntities
+            .create(
+                Archetype.TICKET,
+                "proj-1",
+                EntityWrite.ticket("A ticket", "it happens", null, "BUG", null)
+                    .withAcceptanceCriteria(EntitiesTestSupport.CRITERIA),
+                "t")
+            .entity();
+    workEntities.transition(Archetype.TICKET, ticket.id, "REFINED", "t");
+    assertThrows(
+        ConflictException.class,
+        () ->
+            workEntities.transition(
+                Archetype.TICKET, ticket.id, WorkEntityService.SUPERSEDE, "t"));
   }
 
   /** The point of qits-392: an epic can be VERIFIED and DONE, which it could not before. */
@@ -130,7 +229,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
   @Test
   void aDroppedEpicReopensToReportedAndNowhereElse() {
     WorkEntity epic = frozen();
-    workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t");
+    workEntities.transition(Archetype.EPIC, epic.id, "DROPPED", "t", TestDrops.WONT_DO);
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED", "VERIFIED", "DONE", "DROPPED")) {
       assertThrows(
           ConflictException.class,
@@ -315,7 +414,10 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     assertEquals(epic.id, freeze.entity().id);
     assertFalse(freeze.resolving(), "the scope freeze does not resolve the epic");
 
-    assertTrue(workEntities.planTransition(Archetype.EPIC, epic.id, "DROPPED").resolving());
+    assertTrue(workEntities
+            .planTransition(
+                Archetype.EPIC, epic.id, "DROPPED", Mover.machine(null), TestDrops.WONT_DO)
+            .resolving());
     assertThrows(
         ConflictException.class,
         () -> workEntities.planTransition(Archetype.EPIC, epic.id, "IMPLEMENTED"));
@@ -389,6 +491,15 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     // pointer is what says it was superseded rather than abandoned.
     assertEquals(EntityStatus.DROPPED.name(), result.entity().status);
     assertEquals(successor.id, result.entity().supersededByEntityId);
+    // ...and since qits-248 the outcome says it too, recorded by the operation itself.
+    assertEquals(WorkOutcome.SUPERSEDED, result.entity().outcome);
+    inFreshTx(
+        () -> {
+          WorkEntity stored = workEntities.get(Archetype.EPIC, old.id);
+          assertEquals(WorkOutcome.SUPERSEDED, stored.outcome);
+          assertEquals(successor.id, stored.supersededByEntityId);
+        });
+    assertNull(successor.outcome, "the successor draft is REPORTED and says nothing about a drop");
     assertEquals(EntityStatus.REPORTED.name(), successor.status);
     assertNotEquals(old.id, successor.id);
     assertEquals(old.projectId, successor.projectId);
@@ -855,7 +966,8 @@ class EpicLifecycleTest extends EntitiesTestSupport {
               "t");
       workEntities.transition(Archetype.EPIC, epic.id, "REFINED", "t");
       for (String target : walk) {
-        workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t"));
+        workEntities.transition(
+            Archetype.EPIC, epic.id, target, Mover.person("t"), TestDrops.of(target));
       }
 
       assertThrows(
@@ -908,7 +1020,8 @@ class EpicLifecycleTest extends EntitiesTestSupport {
       WorkEntity epic = epic();
       workEntities.create(
           Archetype.FEATURE, epic.id, EntityWrite.feature("Feature", null, null), "t");
-      workEntities.transition(Archetype.EPIC, epic.id, target, Mover.person("t"));
+      workEntities.transition(
+          Archetype.EPIC, epic.id, target, Mover.person("t"), TestDrops.of(target));
       // Deleting removes the row rather than editing a frozen scope; the audit log outlives it.
       workEntities.delete(Archetype.EPIC, epic.id, "t");
       inFreshTx(
@@ -923,7 +1036,7 @@ class EpicLifecycleTest extends EntitiesTestSupport {
     WorkEntity draft = epic();
     WorkEntity implementing = frozen();
     WorkEntity abandoned = epic();
-    workEntities.transition(Archetype.EPIC, abandoned.id, "DROPPED", "t");
+    workEntities.transition(Archetype.EPIC, abandoned.id, "DROPPED", "t", TestDrops.WONT_DO);
 
     assertEquals(3, workEntities.listByProject(Archetype.EPIC, "proj-1").size());
     assertEquals(
