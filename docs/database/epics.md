@@ -103,6 +103,7 @@ erDiagram
     instant implemented_at
     instant implementing_at
     long number "not null"
+    enum outcome
     string pre_approved_by
     string project_id "not null"
     string repository_id
