@@ -1,0 +1,32 @@
+{
+  "branches": [
+    {
+      "name": "bump/contract-service",
+      "canCleanup": false,
+      "parent": null,
+      "ahead": null,
+      "behind": null
+    },
+    {
+      "name": "docs/approval",
+      "canCleanup": false,
+      "parent": null,
+      "ahead": null,
+      "behind": null
+    },
+    {
+      "name": "main",
+      "canCleanup": false,
+      "parent": null,
+      "ahead": null,
+      "behind": null
+    },
+    {
+      "name": "release/fold",
+      "canCleanup": false,
+      "parent": null,
+      "ahead": null,
+      "behind": null
+    }
+  ]
+}

@@ -61,6 +61,17 @@ class GoldenMasterMachineryTest {
   }
 
   @Test
+  void aSequenceParamFreezesToItsOrdinalInTheParamAndInAnIdMemberOnly() throws Exception {
+    Freezer freezer = new Freezer().sequences(List.of("4711"));
+    JsonNode frozen =
+        freezer.freeze(json("{\"refinement\":{\"id\":4711,\"ahead\":4711,\"roomId\":4711}}"));
+    assertEquals("{\"refinement\":{\"id\":1,\"ahead\":4711,\"roomId\":1}}", frozen.toString());
+    assertEquals("1", freezer.freezeParam("4711"));
+    assertEquals("4712", freezer.freezeParam("4712"));
+    assertEquals(List.of("$.refinement.id", "$.refinement.roomId"), freezer.numberPaths());
+  }
+
+  @Test
   void onlyAWholeUuidIsAnIdPathAndAStringContainingOneIsAStringPath() throws Exception {
     String missing = UUID.randomUUID().toString();
     Freezer freezer = new Freezer().seed(List.of(missing));

@@ -1,0 +1,21 @@
+{
+  "branch": "docs/approval",
+  "parent": "main",
+  "commits": [
+    {
+      "hash": "e447df8a0cabaeafedbf4c0235e013bb29697cd9",
+      "shortHash": "e447df8",
+      "author": "Contract Seeder",
+      "email": "seeder@contract.example.test",
+      "date": "2026-01-01T00:00:00Z",
+      "message": "Say who approves a suite release",
+      "files": [
+        "README.md"
+      ],
+      "parents": [
+        "5eab9635f653a85136ce4d8babd44edfa83cf1da"
+      ],
+      "fold": false
+    }
+  ]
+}

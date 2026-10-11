@@ -41,6 +41,10 @@ import java.util.regex.Pattern;
  *       frozen.keys}, written only where there is one), and the paths beneath such a member name it
  *       {@code .*}, since no JSONPath can name "whatever this key is frozen to". A UUID in a key is
  *       still refused outright.
+ *   <li><b>Sequence numbers.</b> A database sequence number a state names as a param ({@link
+ *       #sequences}, a refinement's id) becomes 1, 2, … in the order given: the param's value, and
+ *       a JSON number equal to it in an {@code id} or {@code …Id} member. Its path goes in {@link
+ *       #numberPaths} (the index's {@code frozen.numbers}, written only where there is one).
  * </ul>
  *
  * <p>Every value it changes is recorded as a JSONPath, by what the WHOLE value was: a UUID goes in
@@ -71,6 +75,16 @@ public final class Freezer {
   private final Set<String> instantPaths = new LinkedHashSet<>();
   private final Set<String> stringPaths = new LinkedHashSet<>();
   private final Set<String> keyPaths = new LinkedHashSet<>();
+  private final Map<Long, Long> sequences = new LinkedHashMap<>();
+  private final Set<String> numberPaths = new LinkedHashSet<>();
+
+  /** Numbers each database sequence value in {@code values} 1, 2, … in order. */
+  public Freezer sequences(Collection<String> values) {
+    for (String value : values) {
+      sequences.putIfAbsent(Long.parseLong(value), (long) sequences.size() + 1);
+    }
+    return this;
+  }
 
   /** Numbers each UUID in {@code values}, in order, ahead of anything the answer holds. */
   public Freezer seed(Collection<String> values) {
@@ -99,6 +113,9 @@ public final class Freezer {
    * answer — a qualified id param ({@code contract-<token>-3}) carries the project slug's token.
    */
   public String freezeParam(String value) {
+    if (value != null && value.matches("\\d+") && sequences.containsKey(Long.parseLong(value))) {
+      return Long.toString(sequences.get(Long.parseLong(value)));
+    }
     return freezeTokens(freezeIds(value));
   }
 
@@ -118,6 +135,11 @@ public final class Freezer {
     return new ArrayList<>(stringPaths);
   }
 
+  /** The numbers frozen as sequence values, in order of first appearance. */
+  public List<String> numberPaths() {
+    return new ArrayList<>(numberPaths);
+  }
+
   /** The objects whose member names were frozen, in order of first appearance. */
   public List<String> keyPaths() {
     return new ArrayList<>(keyPaths);
@@ -134,6 +156,12 @@ public final class Freezer {
     }
     if (node.isTextual()) {
       return TextNode.valueOf(freezeText(node.asText(), path));
+    }
+    if (node.isIntegralNumber()
+        && (path.endsWith(".id") || path.endsWith("Id"))
+        && sequences.containsKey(node.asLong())) {
+      numberPaths.add(path);
+      return JsonNodeFactory.instance.numberNode(sequences.get(node.asLong()));
     }
     if (node.isArray()) {
       ArrayNode out = JsonNodeFactory.instance.arrayNode();

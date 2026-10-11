@@ -20,6 +20,7 @@ import jakarta.ws.rs.core.Response;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /**
  * The refinement's HTML designs — the Design tab's surface. A design is one self-contained document
@@ -91,6 +92,7 @@ public class RefinementDesignController {
    */
   @GET
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @Operation(operationId = "listRefinementDesigns", summary = "A refinement's designs, oldest first, without their documents")
   public ListResponse list(@PathParam("id") long id) {
     var refinement = refinements.get(id);
     List<RefinementDesign> rows = designs.list(id);
@@ -105,6 +107,7 @@ public class RefinementDesignController {
   /** 201 with the row sans html — the caller just sent it. */
   @POST
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @Operation(operationId = "addRefinementDesign", summary = "Add a design to a refinement")
   public Response add(@PathParam("id") long id, NewDesign request) {
     EntitiesAgentAccess.requireProject(identity, refinements.get(id).projectId);
     RefinementDesign row =
@@ -124,6 +127,7 @@ public class RefinementDesignController {
   @GET
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
   @Path("/{designId}")
+  @Operation(operationId = "getRefinementDesign", summary = "One design with its whole document")
   public DesignDto get(@PathParam("id") long id, @PathParam("designId") String designId) {
     refinements.get(id);
     return dto(designs.get(id, designId), true);
@@ -137,6 +141,7 @@ public class RefinementDesignController {
   @PUT
   @Path("/{designId}")
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:agent"})
+  @Operation(operationId = "updateRefinementDesign", summary = "Rewrite a design in place, from the version last read")
   public DesignDto update(
       @PathParam("id") long id, @PathParam("designId") String designId, UpdateDesign request) {
     EntitiesAgentAccess.requireProject(identity, refinements.get(id).projectId);
@@ -155,6 +160,7 @@ public class RefinementDesignController {
 
   @DELETE
   @Path("/{designId}")
+  @Operation(operationId = "deleteRefinementDesign", summary = "Delete a design")
   public void delete(@PathParam("id") long id, @PathParam("designId") String designId) {
     refinements.get(id);
     designs.delete(id, designId);
