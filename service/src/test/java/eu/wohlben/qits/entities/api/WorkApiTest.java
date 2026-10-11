@@ -208,6 +208,8 @@ class WorkApiTest {
             "The plan",
             "status",
             "DROPPED",
+            "outcome",
+            "SUPERSEDED",
             "supersededBy",
             EntityFixtures.qualifiedId(successor),
             "acceptanceCriteria",

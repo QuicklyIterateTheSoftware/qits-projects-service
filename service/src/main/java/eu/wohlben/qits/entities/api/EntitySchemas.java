@@ -38,7 +38,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li><b>create</b> — {@code POST /work}. The kind's permitted properties, less the
  *       server-owned pair, less what the writer mints or a later move states (the status, starting
- *       REPORTED; a supersede) and less the two task markers, implemented and implementing — which
+ *       REPORTED; a drop's outcome and supersededBy) and less the two task markers, implemented and implementing — which
  *       move only while the owning epic is READY_FOR_DEV or IMPLEMENTING, while a create under it needs
  *       the epic REPORTED, so no create could ever carry one. Plus the placement: {@code project} for a kind that may be a root, {@code parent}
  *       for one that sits below one, described as the id of the kind {@code WorkEntityService} looks
@@ -194,6 +194,16 @@ public final class EntitySchemas {
         required.add(slot.wire());
       }
     }
+    if (!spec.legalStatuses().isEmpty()) {
+      // A stated DROPPED says why and what answers for it (qits-248): the outcome is no registry
+      // property, and supersededBy is a slot every lifecycle kind has on a DROPPED row alone
+      // (Archetypes.isDropReference), so neither is read off the kind's permitted list.
+      if (!spec.permits(EntityProperty.SUPERSEDED_BY)) {
+        EntityWireProperties.of(EntityProperty.SUPERSEDED_BY)
+            .ifPresent(slot -> properties.put(slot.wire(), slot.schema()));
+      }
+      properties.put(EntityWireProperties.OUTCOME, EntityWireProperties.outcomeSchema());
+    }
     properties.put(MEMBERSHIP, membership(archetype));
     if (!spec.mayBeRoot()) {
       required.add(MEMBERSHIP);
@@ -326,6 +336,11 @@ public final class EntitySchemas {
         return name + " is server-owned and never written";
       }
     }
+    if (name.equals(EntityWireProperties.OUTCOME)) {
+      return name
+          + " is not written at create: it is stated with a move into DROPPED, through POST"
+          + " /projects/api/work/{qualifiedId}/status";
+    }
     Optional<EntityWireProperties.Slot> slot = EntityWireProperties.byWire(name);
     if (slot.isEmpty()) {
       return "unknown property: " + name;
@@ -340,6 +355,10 @@ public final class EntitySchemas {
           "status is not written at create: a new "
               + archetype
               + " is REPORTED, and moves through POST /projects/api/work/{qualifiedId}/status";
+      case SUPERSEDED_BY ->
+          name
+              + " is not written at create: it is stated with a move into DROPPED, through POST"
+              + " /projects/api/work/{qualifiedId}/status";
       case IMPLEMENTED_AT, IMPLEMENTING_AT ->
           name
               + " is not written at create: the marker moves only while the epic is READY_FOR_DEV"

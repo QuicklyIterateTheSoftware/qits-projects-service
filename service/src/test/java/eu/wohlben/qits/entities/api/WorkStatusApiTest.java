@@ -25,7 +25,10 @@ class WorkStatusApiTest {
 
   private static ValidatableResponse move(RequestSpecification as, String id, Object target) {
     return as.contentType(ContentType.JSON)
-        .body(map("target", target))
+        .body(
+            "DROPPED".equals(target)
+                ? WorkRequests.statusBody("DROPPED")
+                : WorkRequests.map("target", target))
         .when()
         .post("/projects/api/work/" + id + "/status")
         .then();

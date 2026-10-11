@@ -144,7 +144,7 @@ class ScheduleNeedsAPersonDoorTest {
 
   private static ValidatableResponse status(RequestSpecification caller, String id, String target) {
     return caller
-        .body(Map.of("target", target))
+        .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))
         .when()
         .post("/projects/api/work/" + id + "/status")
         .then();

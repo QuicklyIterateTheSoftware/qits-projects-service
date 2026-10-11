@@ -341,8 +341,12 @@ class EntityAgentBoundsTest {
     return JsonNodeFactory.instance.objectNode().put("title", title).put("repositoryId", OWN_REPO);
   }
 
+  /** The move to {@code target}; a drop says why (qits-248), as a decision against. */
   private static WorkController.WorkStatusMove to(String target) {
-    return new WorkController.WorkStatusMove(target);
+    return new WorkController.WorkStatusMove(
+        target,
+        "DROPPED".equals(target) ? eu.wohlben.qits.entities.entity.WorkOutcome.WONT_DO : null,
+        null);
   }
 
   private static WorkDossierController.WorkDossierPageWrite pageWrite(String body, long version) {
@@ -898,7 +902,7 @@ class EntityAgentBoundsTest {
         .statusCode(200)
         .body("title", org.hamcrest.Matchers.equalTo("Still stuck over HTTP"));
     asForwardedMachine()
-        .body(Map.of("target", "DROPPED"))
+        .body(Map.of("target", "DROPPED", "outcome", "OBSOLETE"))
         .post("/projects/api/work/" + id + "/status")
         .then()
         .statusCode(200)

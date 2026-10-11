@@ -1819,6 +1819,24 @@ and each one is a decision rather than a simplification:
   an entity that is DONE keeps status DONE and its archetype there, while its plain fields and its
   place in the tree stay writable. No migration came with this — existing DONE rows simply stay DONE.
 
+  **A drop says why (qits-248, epics V30).** Every move into DROPPED carries an `outcome`
+  (`entities/entity/WorkOutcome`): `DUPLICATE`, `RESOLVED_ELSEWHERE` and `SUPERSEDED` name the item
+  that answers for it in `supersededBy` (required — a qualified id or a UUID of the same project,
+  never the item itself), `OBSOLETE`, `INVALID` and `WONT_DO` name nothing (refused). An outcome or a
+  `supersededBy` on any other move is a 400, and the reopen clears both. The rules are
+  `control/DropOutcome`'s, judged in `WorkEntityService.move` after the lifecycle's own 409s (never a
+  `TransitionGate`: a gate sees no request), and by `EntityTransitionService` for a stated DROPPED —
+  where a row already DROPPED with no outcome (the rows dropped before V30, never backfilled) may be
+  restated DROPPED without one. Every kind with a lifecycle carries `supersededBy` on a DROPPED row
+  (`Archetypes.isDropReference`, a status-conditioned slot), and the outcome is no registry property
+  at all: the served `permitted` lists did not move, because consumers pin them element for element
+  (the qits-platform-access-cli and qits-projects-frontend pacts). The epic's supersede is still the
+  one operation that spawns a successor, and it records `SUPERSEDED`. Every
+  machine drop states its outcome in the move: `TicketUnattendedGateTickets` drops a MAINTENANCE
+  ticket `OBSOLETE`. Readers: `outcome`/`supersededBy` on every answer, `GET
+  /projects/{project}/work?outcome=&supersededBy=` (the second is the reverse link), and
+  `get_ticket`'s `supersedes`. The `EntityTransitioned` event does not carry the outcome.
+
   **`impetus` is the intake field and `description` is the refinement's output.** A REPORTED ticket
   has an impetus and nothing else. The impetus takes one of two shapes — *"{some error} occurs {in
   some context}"* or *"{an existing part} should be {something to introduce or improve}"* — and is

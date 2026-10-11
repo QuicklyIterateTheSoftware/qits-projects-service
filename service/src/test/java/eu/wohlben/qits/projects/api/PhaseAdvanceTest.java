@@ -374,7 +374,7 @@ public class PhaseAdvanceTest {
         WorkRequests.feature(() -> asAdmin("setup"), epic, "The part");
     for (String target : List.of("REFINED", "READY_FOR_DEV", "IMPLEMENTED")) {
       asAdmin("dana")
-          .body(Map.of("target", target))
+          .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))
           .post("/projects/api/work/" + epic + "/status")
           .then()
           .statusCode(200);

@@ -5,6 +5,7 @@ import eu.wohlben.qits.entities.control.EntityProperty;
 import eu.wohlben.qits.entities.control.EntityStateMachine;
 import eu.wohlben.qits.entities.control.EntityTransitionService;
 import eu.wohlben.qits.entities.entity.TicketType;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -52,8 +53,8 @@ import java.util.Optional;
  *       because it is history — kept once the work is implemented, never taken back.
  * </ul>
  *
- * <p>Which of these a door takes is the door's: the status and a supersede are moves ({@link
- * #MOVES}), and the create door leaves out what the writer mints. Those are decisions about doors,
+ * <p>Which of these a door takes is the door's: the status and a drop's supersededBy are moves
+ * ({@link #MOVES}), and the create door leaves out what the writer mints. Those are decisions about doors,
  * made in {@link EntitySchemas}; this table only says what each property <em>is</em>.
  */
 public final class EntityWireProperties {
@@ -69,9 +70,30 @@ public final class EntityWireProperties {
   public record Slot(
       EntityProperty property, String wire, boolean clearable, Map<String, Object> schema) {}
 
-  /** The status and the supersede: stated by a move, never by an edit. */
+  /**
+   * The status, and what a drop names as answering for it (qits-248): stated by a move, never by an
+   * edit — the patch refuses both, and neither a create nor a patch schema lists them. The drop's
+   * outcome is the third such value and no registry property ({@link #OUTCOME}).
+   */
   public static final List<EntityProperty> MOVES =
       List.of(EntityProperty.STATUS, EntityProperty.SUPERSEDED_BY);
+
+  /** The wire name of a drop's outcome (qits-248) — stated on a move and a transition, never edited. */
+  public static final String OUTCOME = "outcome";
+
+  /**
+   * The JSON Schema fragment of a drop's outcome: the six words. Served on the transition door's
+   * schema of every kind with a lifecycle ({@code EntitySchemas}); it is not a registry property, so
+   * it is not a row of this table.
+   */
+  public static Map<String, Object> outcomeSchema() {
+    return oneOf(
+        "Why a DROPPED entity was closed: DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED (naming the"
+            + " item in supersededBy), OBSOLETE, INVALID or WONT_DO (naming none). Stated with"
+            + " status DROPPED alone, which requires one — except on a row already DROPPED with"
+            + " none, from before outcomes were recorded.",
+        WorkOutcome.words());
+  }
 
   private static final Map<EntityProperty, Slot> TABLE = declare();
 
@@ -104,7 +126,11 @@ public final class EntityWireProperties {
         table,
         EntityProperty.SUPERSEDED_BY,
         true,
-        text("The id of the successor draft a superseded epic points at."));
+        text(
+            "The id of the item a DROPPED entity names as what answers for it: the duplicate it"
+                + " repeats, the item whose change resolved it, or the successor that replaced it."
+                + " Required with outcome DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED, refused with"
+                + " the other three; an item of the same project, never the entity itself."));
     row(
         table,
         EntityProperty.REPOSITORY_ID,

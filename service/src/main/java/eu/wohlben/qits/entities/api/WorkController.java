@@ -5,6 +5,8 @@ import eu.wohlben.qits.entities.control.AcceptanceCriteria;
 import eu.wohlben.qits.entities.control.EntityTransition;
 import eu.wohlben.qits.entities.control.TransitionedEntity;
 import eu.wohlben.qits.entities.entity.Archetype;
+import eu.wohlben.qits.entities.entity.WorkEntity;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
 import eu.wohlben.qits.projects.api.EntityBlocks;
 import eu.wohlben.qits.projects.entitieshost.EntityIdResolver;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -175,7 +177,11 @@ public class WorkController {
                       + " on a changed list is a 409, and restating the same list passes.")
           List<String> acceptanceCriteria) {}
 
-  @Schema(name = "WorkStatusMove", description = "A lifecycle move: the status to move to.")
+  @Schema(
+      name = "WorkStatusMove",
+      description =
+          "A lifecycle move: the status to move to, and — for a move into DROPPED — why the work"
+              + " is closed and what answers for it.")
   public record WorkStatusMove(
       @Schema(
               required = true,
@@ -186,7 +192,27 @@ public class WorkController {
                       + " none to REPORTED), or IMPLEMENTED from READY_FOR_DEV or VERIFIED from"
                       + " IMPLEMENTED (the skips)."
                       + " A campaign never moves to IMPLEMENTING or VERIFYING.")
-          String target) {}
+          String target,
+      @Schema(
+              nullable = true,
+              description =
+                  "Why the work is closed: required with a move into DROPPED and refused with any"
+                      + " other move. DUPLICATE — another item asks for the same thing;"
+                      + " RESOLVED_ELSEWHERE — another item's change resolved it; SUPERSEDED —"
+                      + " replaced by a successor; OBSOLETE — the subject went away by itself;"
+                      + " INVALID — it never was a problem; WONT_DO — a decision was taken not to do"
+                      + " it (scratch and probe items too). Reopening (DROPPED to REPORTED) clears"
+                      + " it.")
+          WorkOutcome outcome,
+      @Schema(
+              nullable = true,
+              description =
+                  "The item that answers for the drop, by qualified id (<projectSlug>-<n>) or"
+                      + " UUID: required with outcome DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED,"
+                      + " refused with OBSOLETE, INVALID or WONT_DO and with any move not into"
+                      + " DROPPED. It must name an item of the same project, never the item itself."
+                      + " Reopening clears it.")
+          String supersededBy) {}
 
   /** {@code reason} is required when blocking and optional when unblocking. */
   @Schema(name = "WorkBlockRequest", description = "What the block flag should become, and why.")
@@ -444,7 +470,13 @@ public class WorkController {
           @Content(
               mediaType = MediaType.APPLICATION_JSON,
               schema = @Schema(implementation = TransitionedEntity.class)))
-  @APIResponse(responseCode = "400", description = "No target")
+  @APIResponse(
+      responseCode = "400",
+      description =
+          "No target; a move into DROPPED without an outcome; an outcome or a supersededBy on a"
+              + " move not into DROPPED; DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED without"
+              + " supersededBy; OBSOLETE, INVALID or WONT_DO with one; or a supersededBy naming no"
+              + " item, an item of another project, or the item itself. Each names the rule")
   @APIResponse(
       responseCode = "403",
       description =
@@ -461,7 +493,11 @@ public class WorkController {
               + " this service did not verify as a person")
   public TransitionedEntity setStatus(
       @PathParam("qualifiedId") String qualifiedId, WorkStatusMove request) {
-    return doors.move(identity, ids.resolve(qualifiedId), request == null ? null : request.target());
+    WorkEntity row = ids.resolve(qualifiedId);
+    if (request == null) {
+      return doors.move(identity, row, null, null, null);
+    }
+    return doors.move(identity, row, request.target(), request.outcome(), request.supersededBy());
   }
 
   @POST

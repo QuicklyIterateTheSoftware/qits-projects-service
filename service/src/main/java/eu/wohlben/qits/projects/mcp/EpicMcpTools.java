@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
@@ -147,6 +148,8 @@ public class EpicMcpTools {
       String slug,
       String title,
       String status,
+      String outcome,
+      String supersededBy,
       boolean blocked,
       String description,
       List<String> acceptanceCriteria,
@@ -193,6 +196,7 @@ public class EpicMcpTools {
       String slug,
       String title,
       String status,
+      String outcome,
       boolean blocked,
       String description,
       List<String> acceptanceCriteria,
@@ -268,7 +272,9 @@ public class EpicMcpTools {
       String slug,
       String title,
       String statusBefore,
-      String status) {}
+      String status,
+      String outcome,
+      String supersededBy) {}
 
   // --- Epics ----------------------------------------------------------------
 
@@ -353,6 +359,7 @@ public class EpicMcpTools {
         epic.slug,
         epic.title,
         epic.status,
+        epic.outcome == null ? null : epic.outcome.name(),
         block.blocked(),
         epic.description,
         List.copyOf(epic.acceptanceCriteria),
@@ -460,8 +467,8 @@ public class EpicMcpTools {
               + " deployed (moving here carries every feature and task still short of IMPLEMENTED"
               + " there and stamps its marker, so never make it with work outstanding); VERIFYING — the verification was started (a dispatch press moves the"
               + " epic here for you); VERIFIED — you confirmed on the platform that what the epic promised"
-              + " holds; DONE — closed, which is a person's call; DROPPED — a decision was taken not"
-              + " to do this work at all. Features and tasks hold statuses of their own: moving the"
+              + " holds; DONE — closed, which is a person's call; DROPPED — this work will not be"
+              + " done, for the outcome it states. Features and tasks hold statuses of their own: moving the"
               + " epic to REFINED refines its REPORTED ones, moving it back to REPORTED returns its"
               + " REFINED ones, scheduling it (READY_FOR_DEV) schedules its REFINED ones and"
               + " unscheduling it returns those not yet started, and moving it to IMPLEMENTED carries"
@@ -476,7 +483,11 @@ public class EpicMcpTools {
               + " epic (propose_epic). Reopening a frozen scope is the move back from REFINED to"
               + " REPORTED. Moving back corrects a claim that turned out wrong. It is not how a phase"
               + " reports failure: a phase that cannot finish, or a verification that fails, is"
-              + " block_entity. Do NOT drop an epic merely because it is hard or you could not"
+              + " block_entity. DROP AN EPIC WHEN ITS WORK SHOULD NOT BE DONE, and say why in"
+              + " outcome — a move to DROPPED without one is refused: "
+              + TicketMcpTools.DROP_OUTCOMES
+              + " The outcome is the record; a comment on the thread stays welcome for the"
+              + " narrative. Do NOT drop an epic merely because it is hard or you could not"
               + " finish it: block_entity with what is missing instead.")
   public EpicSummary transitionEpic(
       @ToolArg(description = EPIC_ID) String id,
@@ -488,16 +499,20 @@ public class EpicMcpTools {
                       + " current status, or IMPLEMENTED from READY_FOR_DEV or VERIFIED from"
                       + " IMPLEMENTED"
                       + " (the skips); DONE is final and moves nowhere")
-          String target) {
+          String target,
+      @ToolArg(required = false, description = TicketMcpTools.OUTCOME_ARG) String outcome,
+      @ToolArg(required = false, description = TicketMcpTools.SUPERSEDED_BY_ARG)
+          String supersededBy) {
     WorkEntity named = requireEpicInProject(id);
     if (target != null && WorkEntityService.SUPERSEDE.equals(target)) {
       throw new eu.wohlben.qits.entities.error.ConflictException(
           "SUPERSEDED is an operation on a plan, not a status an agent claims — a person"
               + " supersedes an epic from the board.");
     }
+    DropOutcome drop = TicketMcpTools.dropOf(ids, outcome, supersededBy);
     String changedBy = changedBy();
     WorkEntityService.Transition moved =
-        resolutions.transition(Archetype.EPIC, named.id, target, Mover.machine(changedBy));
+        resolutions.transition(Archetype.EPIC, named.id, target, Mover.machine(changedBy), drop);
     WorkEntity epic = moved.entity();
     announce();
     // The agent's claim IS the trigger for the next phase: after the move, outside its transaction.
@@ -782,8 +797,10 @@ public class EpicMcpTools {
               + " (mark_task_implementing moves a task here for you); IMPLEMENTED — its work is"
               + " released AND deployed (mark_task_implemented moves a task here for you); VERIFYING"
               + " — you started checking it on the platform; VERIFIED — you confirmed on the platform"
-              + " that what it promised holds; DONE — closed, which is a person's call; DROPPED — a"
-              + " decision was taken not to do this piece at all. A TASK IS VERIFIED ON ITS OWN:"
+              + " that what it promised holds; DONE — closed, which is a person's call; DROPPED —"
+              + " this piece will not be done, for the outcome it states ("
+              + TicketMcpTools.DROP_OUTCOMES
+              + "). A TASK IS VERIFIED ON ITS OWN:"
               + " verify each one as you confirm it, without waiting for its siblings or its epic —"
               + " moving the epic does not move its tasks past IMPLEMENTED. ALONG THE PIPELINE MOVES"
               + " ARE ADJACENT ONLY, forward or back: REPORTED <-> REFINED <-> READY_FOR_DEV ->"
@@ -808,11 +825,16 @@ public class EpicMcpTools {
                       + " VERIFIED from IMPLEMENTED"
                       + " (the skips); DROPPED is reachable from any status that is not DONE, and"
                       + " reopens only to REPORTED; DONE is final and moves nowhere")
-          String target) {
+          String target,
+      @ToolArg(required = false, description = TicketMcpTools.OUTCOME_ARG) String outcome,
+      @ToolArg(required = false, description = TicketMcpTools.SUPERSEDED_BY_ARG)
+          String supersededBy) {
     WorkEntity piece = requirePieceInProject(id);
+    DropOutcome drop = TicketMcpTools.dropOf(ids, outcome, supersededBy);
     String changedBy = changedBy();
     WorkEntityService.Transition moved =
-        resolutions.transition(piece.archetype, piece.id, target, Mover.machine(changedBy));
+        resolutions.transition(
+            piece.archetype, piece.id, target, Mover.machine(changedBy), drop);
     WorkEntity row = moved.entity();
     announce();
     try {
@@ -827,7 +849,9 @@ public class EpicMcpTools {
         row.slug,
         row.title,
         moved.statusBefore(),
-        row.status);
+        row.status,
+        row.outcome == null ? null : row.outcome.name(),
+        row.supersededByEntityId);
   }
 
   @McpServer("repository")
@@ -972,6 +996,8 @@ public class EpicMcpTools {
         epic.title,
         // The merged column holds the enum's own name(), which is what the old status.name() was.
         epic.status,
+        epic.outcome == null ? null : epic.outcome.name(),
+        epic.supersededByEntityId,
         block.blocked(),
         epic.description,
         List.copyOf(epic.acceptanceCriteria),

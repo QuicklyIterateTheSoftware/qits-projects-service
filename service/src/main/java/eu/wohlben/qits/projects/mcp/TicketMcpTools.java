@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.EntityBlockState;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.control.EntityWrite;
@@ -9,6 +10,8 @@ import eu.wohlben.qits.entities.control.WorkEntityService;
 import eu.wohlben.qits.entities.entity.Archetype;
 import eu.wohlben.qits.entities.entity.WorkEntity;
 import eu.wohlben.qits.entities.entity.EntityComment;
+import eu.wohlben.qits.entities.entity.WorkOutcome;
+import eu.wohlben.qits.entities.error.BadRequestException;
 import eu.wohlben.qits.entities.error.NotFoundException;
 import eu.wohlben.qits.projects.api.ProjectChangeHint;
 import eu.wohlben.qits.projects.api.ProjectChangePublisher;
@@ -92,6 +95,31 @@ public class TicketMcpTools {
   private static final String TICKET_ID =
       "id of a ticket in this project: its UUID or its qualified id (<project-slug>-<n>)";
 
+  /**
+   * The six drop outcomes with their one-line meanings (qits-248), shared by every transition
+   * tool's description so the model reads them in one wording wherever it drops something.
+   */
+  static final String DROP_OUTCOMES =
+      "DUPLICATE — another item asks for the same thing; RESOLVED_ELSEWHERE — another item's change"
+          + " already resolved it; SUPERSEDED — a successor replaced it; OBSOLETE — the subject went"
+          + " away by itself and nothing is left to do; INVALID — it never was a problem (a"
+          + " misreport, a stale environment); WONT_DO — a decision was taken not to do it (scratch"
+          + " and probe items too). DUPLICATE, RESOLVED_ELSEWHERE and SUPERSEDED REQUIRE supersededBy,"
+          + " the item that answers for it (its qualified id or UUID, in this project, never the"
+          + " item itself); OBSOLETE, INVALID and WONT_DO REFUSE it. A move that is not to DROPPED"
+          + " takes neither, and reopening (DROPPED -> REPORTED) clears both.";
+
+  /** The {@code outcome} argument's description, on every transition tool. */
+  static final String OUTCOME_ARG =
+      "required when target is DROPPED, refused otherwise: why the work is closed — DUPLICATE,"
+          + " RESOLVED_ELSEWHERE, SUPERSEDED, OBSOLETE, INVALID or WONT_DO";
+
+  /** The {@code supersededBy} argument's description, on every transition tool. */
+  static final String SUPERSEDED_BY_ARG =
+      "with target DROPPED and outcome DUPLICATE, RESOLVED_ELSEWHERE or SUPERSEDED (required"
+          + " there, refused everywhere else): the item that answers for it — its qualified id"
+          + " (<project-slug>-<n>) or UUID, in this project";
+
   @Inject ProjectScope scope;
 
   /** The session's project slug, which is the qualifier in {@code <project-slug>-<number>}. */
@@ -144,6 +172,10 @@ public class TicketMcpTools {
    * the ticket waiting for a person past the debounce — with {@code blockSource}, {@code
    * blockReason} and {@code blockedBy} beside it, absent while it is not blocked. The same holds for
    * {@link TicketDetail} and for the epic records.
+   *
+   * <p>{@code outcome} and {@code supersededBy} (qits-248) say why a DROPPED ticket was closed and
+   * the UUID of the item that answers for it; both null on every other status, and the outcome null
+   * on a ticket dropped before it was recorded.
    */
   public record TicketSummary(
       String id,
@@ -152,6 +184,8 @@ public class TicketMcpTools {
       String title,
       String type,
       String status,
+      String outcome,
+      String supersededBy,
       boolean blocked,
       String assignee,
       String createdBy,
@@ -165,7 +199,16 @@ public class TicketMcpTools {
   /** One remark inside {@link TicketDetail}. */
   public record CommentDetail(String id, String author, String body, Instant createdAt) {}
 
-  /** One ticket with its whole thread, oldest first. */
+  /**
+   * One item naming a ticket as its {@code supersededBy} (qits-248) — the reverse link, inside
+   * {@link TicketDetail#supersedes}.
+   */
+  public record Superseded(String qualifiedId, String title, String status, String outcome) {}
+
+  /**
+   * One ticket with its whole thread, oldest first, and {@code supersedes}: every item naming it as
+   * its {@code supersededBy} — what it closed as a duplicate, resolved elsewhere or superseded.
+   */
   public record TicketDetail(
       String id,
       String qualifiedId,
@@ -173,12 +216,15 @@ public class TicketMcpTools {
       String title,
       String type,
       String status,
+      String outcome,
+      String supersededBy,
       boolean blocked,
       String assignee,
       String createdBy,
       String impetus,
       String description,
       List<String> acceptanceCriteria,
+      List<Superseded> supersedes,
       List<CommentDetail> comments,
       @JsonInclude(JsonInclude.Include.NON_NULL) String blockSource,
       @JsonInclude(JsonInclude.Include.NON_NULL) String blockReason,
@@ -207,16 +253,27 @@ public class TicketMcpTools {
               + " status=\"REPORTED\" to find what still needs refining. Read `blocked` beside the"
               + " status: it is a flag and not a status, and a blocked ticket is one somebody"
               + " already found something in the way of — its thread says what — so it is the wrong"
-              + " one to pick up even where its status says otherwise.")
+              + " one to pick up even where its status says otherwise. A DROPPED ticket carries"
+              + " its outcome — why it was closed — and, for a duplicate, one resolved elsewhere or"
+              + " one superseded, the supersededBy item that answers for it.")
   public List<TicketSummary> listTickets(
       @ToolArg(
               required = false,
               description =
                   "exact status to filter by: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTING,"
                       + " IMPLEMENTED, VERIFYING, VERIFIED, DONE or DROPPED. Omit for every ticket.")
-          String status) {
+          String status,
+      @ToolArg(
+              required = false,
+              description =
+                  "only the DROPPED tickets closed with this outcome: DUPLICATE,"
+                      + " RESOLVED_ELSEWHERE, SUPERSEDED, OBSOLETE, INVALID or WONT_DO. Omit for"
+                      + " every ticket.")
+          String outcome) {
+    WorkOutcome closedAs = parseOutcome(outcome);
     String projectSlug = projectSlug(); // once for the listing, never once per row
     return entities.listByProject(Archetype.TICKET, scope.requireProjectId(), status).stream()
+        .filter(ticket -> closedAs == null || closedAs == ticket.outcome)
         .map(ticket -> summarize(ticket, projectSlug))
         .toList();
   }
@@ -227,27 +284,44 @@ public class TicketMcpTools {
       description =
           "Read one ticket of this project in full: its description plus every comment on it,"
               + " oldest first. Read it before working on a ticket — the thread is usually where"
-              + " the reproduction and the decisions are.")
+              + " the reproduction and the decisions are. A DROPPED ticket says why it was closed"
+              + " (outcome) and what answers for it (supersededBy); supersedes lists every item that"
+              + " names THIS ticket as its supersededBy — what it closed as a duplicate, resolved"
+              + " elsewhere or superseded.")
   public TicketDetail getTicket(@ToolArg(description = TICKET_ID) String id) {
     WorkEntity ticket = requireTicketInProject(id);
     List<CommentDetail> comments =
         thread.listComments(ticket.id).stream()
             .map(c -> new CommentDetail(c.id, c.author, c.body, c.createdAt))
             .toList();
+    String projectSlug = projectSlug();
+    List<Superseded> supersedes =
+        entities.listSupersededBy(ticket.id).stream()
+            .map(
+                closed ->
+                    new Superseded(
+                        QualifiedEntityIds.render(projectSlug, closed.number),
+                        closed.title,
+                        closed.status,
+                        closed.outcome == null ? null : closed.outcome.name()))
+            .toList();
     EntityBlockState block = EntityBlockState.of(ticket);
     return new TicketDetail(
         ticket.id,
-        QualifiedEntityIds.render(projectSlug(), ticket.number),
+        QualifiedEntityIds.render(projectSlug, ticket.number),
         ticket.slug,
         ticket.title,
         ticket.ticketType.name(),
         ticket.status,
+        ticket.outcome == null ? null : ticket.outcome.name(),
+        ticket.supersededByEntityId,
         block.blocked(),
         ticket.assignee,
         ticket.createdBy,
         ticket.impetus,
         ticket.description,
         List.copyOf(ticket.acceptanceCriteria),
+        supersedes,
         comments,
         block.source(),
         block.reason(),
@@ -322,10 +396,11 @@ public class TicketMcpTools {
               + " because a report filed in haste is often the wrong words for the right problem —"
               + " but never rewrite it to say what you decided: it is the record of what was"
               + " originally asked for, and the description is where a decision goes. That includes"
-              + " a decision not to do the work at all: say why here or on the thread, then move"
-              + " the ticket to DROPPED — a dropped ticket whose description still reads as a plan"
-              + " tells the next reader nothing about why it stopped. The status is not editable"
-              + " here — use transition_ticket, which is the only thing that moves it.")
+              + " a decision not to do the work at all: move the ticket to DROPPED with"
+              + " transition_ticket and its outcome, which is the record of why; the description or"
+              + " the thread may carry the narrative — a dropped ticket whose description still reads"
+              + " as a plan tells the next reader nothing about why it stopped. The status is not"
+              + " editable here — use transition_ticket, which is the only thing that moves it.")
   public TicketSummary updateTicket(
       @ToolArg(description = TICKET_ID) String id,
       @ToolArg(required = false, description = "new title; omit to keep it") String title,
@@ -403,8 +478,8 @@ public class TicketMcpTools {
               + " started (a dispatch moves the ticket here for you); IMPLEMENTED — the change is"
               + " released AND deployed, not merely merged; VERIFYING — the verification was started"
               + " (a dispatch moves the ticket here for you); VERIFIED — you checked the platform and it no"
-              + " longer occurs; DONE — closed, which is a person's call; DROPPED — a decision was"
-              + " taken not to do this work at all. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY,"
+              + " longer occurs; DONE — closed, which is a person's call; DROPPED — this work will"
+              + " not be done, for the outcome it states. ALONG THE PIPELINE MOVES ARE ADJACENT ONLY,"
               + " forward or back: REPORTED <-> REFINED <-> READY_FOR_DEV -> IMPLEMENTING <->"
               + " IMPLEMENTED <-> VERIFYING <-> VERIFIED -> DONE, one step at a time (IMPLEMENTING"
               + " has no move back: the way out of started work is DROPPED), with TWO SKIPS:"
@@ -416,10 +491,11 @@ public class TicketMcpTools {
               + " DROPPED is off that line: it is reachable from REPORTED, REFINED, READY_FOR_DEV,"
               + " IMPLEMENTING,"
               + " IMPLEMENTED, VERIFYING and VERIFIED — any status that is not already closed — and it goes back only to"
-              + " REPORTED. DROP A TICKET WHEN THE WORK IT ASKS FOR SHOULD NOT BE DONE: it"
-              + " describes something that turned out not to be a problem, or that the platform"
-              + " has since made meaningless, or that was deliberately decided against — say which"
-              + " on the thread before you move it. Do NOT drop a ticket merely because it is hard,"
+              + " REPORTED. DROP A TICKET WHEN THE WORK IT ASKS FOR SHOULD NOT BE DONE, and say why"
+              + " in outcome — a move to DROPPED without one is refused: "
+              + DROP_OUTCOMES
+              + " The outcome is the record; a comment on the thread stays welcome for the"
+              + " narrative. Do NOT drop a ticket merely because it is hard,"
               + " stale or you could not finish it: block_entity with what is missing instead, and"
               + " DROPPED claims a decision that nobody took. Do not drop one that is DONE either;"
               + " that move does not exist, because DONE is final. Moving back corrects a claim"
@@ -436,12 +512,16 @@ public class TicketMcpTools {
                       + " be a neighbour of the ticket's current status, or IMPLEMENTED from"
                       + " READY_FOR_DEV or VERIFIED from IMPLEMENTED (the skips); DROPPED is reachable from any status that is not DONE, and"
                       + " reopens only to REPORTED; DONE is final and moves nowhere")
-          String target) {
+          String target,
+      @ToolArg(required = false, description = OUTCOME_ARG) String outcome,
+      @ToolArg(required = false, description = SUPERSEDED_BY_ARG) String supersededBy) {
     WorkEntity named = requireTicketInProject(id);
+    DropOutcome drop = dropOf(ids, outcome, supersededBy);
     String changedBy = changedBy();
     // Through EntityResolutions (qits-395): a resolving move discards the ticket's refinement first.
     WorkEntityService.Transition moved =
-        resolutions.transition(Archetype.TICKET, named.id, target, Mover.machine(changedBy));
+        resolutions.transition(
+            Archetype.TICKET, named.id, target, Mover.machine(changedBy), drop);
     WorkEntity ticket = moved.entity();
     announce();
     // The agent's claim IS the trigger for the next phase, and this is where it lands: after the
@@ -477,7 +557,8 @@ public class TicketMcpTools {
           "Block this ticket when you are stopping and cannot take the phase further: say what is in"
               + " the way or what is missing. The status stays where it is, because that is the"
               + " phase to resume, and the next transition clears the block. A ticket that should"
-              + " not be done at all is transition_ticket to DROPPED instead. Refused (409) on a"
+              + " not be done at all is transition_ticket to DROPPED, with the outcome that says"
+              + " why, instead. Refused (409) on a"
               + " ticket that is VERIFIED, DONE or DROPPED. block_entity does the same for an epic"
               + " or a campaign.")
   public TicketSummary blockTicket(
@@ -633,6 +714,42 @@ public class TicketMcpTools {
     return scopeGuard.scopedProjectSlug();
   }
 
+  /**
+   * The outcome word as the enum, or null when omitted — a 400 naming the six for a word naming
+   * none (qits-248).
+   */
+  static WorkOutcome parseOutcome(String word) {
+    if (word == null || word.isBlank()) {
+      return null;
+    }
+    return WorkOutcome.parse(word)
+        .orElseThrow(
+            () ->
+                new BadRequestException(
+                    "Unknown outcome: "
+                        + word
+                        + " — one of "
+                        + String.join(", ", WorkOutcome.words())));
+  }
+
+  /**
+   * What a transition tool's two drop arguments state (qits-248): the outcome parsed, and the
+   * supersededBy resolved from a qualified id or a UUID — one naming nothing handed on unchanged, for
+   * the move's own 400 about it. The rules themselves are the move's ({@link DropOutcome}).
+   */
+  static DropOutcome dropOf(EntityIdResolver ids, String outcome, String supersededBy) {
+    WorkOutcome parsed = parseOutcome(outcome);
+    String named = supersededBy == null || supersededBy.isBlank() ? null : supersededBy.trim();
+    if (named != null) {
+      try {
+        named = ids.resolve(named).id;
+      } catch (NotFoundException unknown) {
+        // handed on unchanged: the move answers "supersededBy names no work item"
+      }
+    }
+    return DropOutcome.of(parsed, named);
+  }
+
   private static TicketSummary summarize(WorkEntity ticket, String projectSlug) {
     EntityBlockState block = EntityBlockState.of(ticket);
     return new TicketSummary(
@@ -642,6 +759,8 @@ public class TicketMcpTools {
         ticket.title,
         ticket.ticketType.name(),
         ticket.status,
+        ticket.outcome == null ? null : ticket.outcome.name(),
+        ticket.supersededByEntityId,
         block.blocked(),
         ticket.assignee,
         ticket.createdBy,

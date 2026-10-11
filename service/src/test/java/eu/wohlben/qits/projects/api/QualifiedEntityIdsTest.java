@@ -61,7 +61,7 @@ class QualifiedEntityIdsTest {
       String id, Archetype archetype, String projectId, long number) {
     return new TransitionedEntity(
         id, archetype, projectId, number, null, "T", "t", projectId, null, "REPORTED", null, null,
-        null, null, null, null, null, null, null, null, null, null, null, null, null, false,
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, false,
         List.of(), null, null, null, null);
   }
 

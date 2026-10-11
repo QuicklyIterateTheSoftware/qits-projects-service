@@ -1,6 +1,7 @@
 package eu.wohlben.qits.projects.mcp;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import eu.wohlben.qits.entities.control.DropOutcome;
 import eu.wohlben.qits.entities.control.Mover;
 import eu.wohlben.qits.entities.api.CampaignDoors;
 import eu.wohlben.qits.entities.api.CampaignDtos.CampaignDto;
@@ -245,7 +246,9 @@ public class CampaignMcpTools {
               + " READY_FOR_DEV. A started campaign runs at REFINED and at READY_FOR_DEV alike: moving"
               + " between the two neither starts nor pauses it, and moving out of both pauses it."
               + " Starting a REFINED or READY_FOR_DEV campaign, and approving an APPROVAL criterion,"
-              + " are both a person's press and are not reachable from this server.")
+              + " are both a person's press and are not reachable from this server. A move to"
+              + " DROPPED states why in outcome, and is refused without one: "
+              + TicketMcpTools.DROP_OUTCOMES)
   public CampaignDto transitionCampaign(
       @ToolArg(description = CAMPAIGN_ID) String id,
       @ToolArg(
@@ -253,11 +256,16 @@ public class CampaignMcpTools {
                   "the status to move to: REPORTED, REFINED, READY_FOR_DEV, IMPLEMENTED, VERIFIED,"
                       + " DONE or DROPPED (never IMPLEMENTING or VERIFYING). It must be a neighbour of the campaign's"
                       + " current status on that walk; DONE is final and moves nowhere")
-          String target) {
+          String target,
+      @ToolArg(required = false, description = TicketMcpTools.OUTCOME_ARG) String outcome,
+      @ToolArg(required = false, description = TicketMcpTools.SUPERSEDED_BY_ARG)
+          String supersededBy) {
     String campaignId = requireCampaignInProject(id).id;
     String projectId = scope.requireProjectId();
+    DropOutcome drop = TicketMcpTools.dropOf(ids, outcome, supersededBy);
     // The agent surface: a machine, whatever the session says (qits-887).
-    resolutions.transition(Archetype.CAMPAIGN, campaignId, target, Mover.machine(changedBy()));
+    resolutions.transition(
+        Archetype.CAMPAIGN, campaignId, target, Mover.machine(changedBy()), drop);
     announce(projectId);
     return views.campaign(campaigns.get(campaignId));
   }

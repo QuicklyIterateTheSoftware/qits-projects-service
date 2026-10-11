@@ -878,7 +878,7 @@ public class TicketMcpToolsTest {
     call(
         projectId,
         "transition_ticket",
-        Map.of("id", dropped, "target", "DROPPED"),
+        Map.of("id", dropped, "target", "DROPPED", "outcome", "WONT_DO"),
         response -> assertFalse(response.isError(), text(response)));
     call(
         projectId,
@@ -890,6 +890,188 @@ public class TicketMcpToolsTest {
               text(response).contains("no phase is running and there is nothing to block"),
               text(response));
         });
+  }
+
+  // --- Why a drop closes the work (qits-248) --------------------------------
+
+  @Test
+  public void aDropWithoutAnOutcomeIsAReadableRefusalAndMovesNothing() {
+    String projectId = createProject("Ticket Drop Refused");
+    String ticketId = createTicket(projectId, "Not worth doing", "BUG");
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "DROPPED"),
+        response -> {
+          assertTrue(response.isError(), "a drop must say why");
+          assertTrue(text(response).contains("requires an outcome"), text(response));
+        });
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "DROPPED", "outcome", "NOT_A_WORD"),
+        response -> {
+          assertTrue(response.isError(), "an unknown outcome is refused");
+          assertTrue(text(response).contains("Unknown outcome"), text(response));
+        });
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", ticketId, "target", "REFINED", "outcome", "OBSOLETE"),
+        response -> {
+          assertTrue(response.isError(), "an outcome on any other move is refused");
+          assertTrue(text(response).contains("only with a move into DROPPED"), text(response));
+        });
+    call(
+        projectId,
+        "get_ticket",
+        Map.of("id", ticketId),
+        response -> assertTrue(text(response).contains("\"REPORTED\""), text(response)));
+  }
+
+  @Test
+  public void aDuplicateNamesItsOriginalAndTheOriginalListsWhatItSupersedes() {
+    String projectId = createProject("Ticket Duplicates");
+    String original = createTicket(projectId, "Export rounds the totals", "BUG");
+    String duplicate = createTicket(projectId, "Totals are off by a cent", "BUG");
+    String obsolete = createTicket(projectId, "Gone by itself", "BUG");
+    String originalQualified = qualifiedIdOf(projectId, original);
+    String duplicateQualified = qualifiedIdOf(projectId, duplicate);
+
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", duplicate, "target", "DROPPED", "outcome", "DUPLICATE"),
+        response -> {
+          assertTrue(response.isError(), "DUPLICATE names the original");
+          assertTrue(text(response).contains("requires supersededBy"), text(response));
+        });
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of(
+            "id",
+            duplicate,
+            "target",
+            "DROPPED",
+            "outcome",
+            "DUPLICATE",
+            "supersededBy",
+            originalQualified),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          assertTrue(text(response).contains("\"outcome\":\"DUPLICATE\""), text(response));
+          assertTrue(
+              text(response).contains("\"supersededBy\":\"" + original + "\""), text(response));
+        });
+    call(
+        projectId,
+        "transition_ticket",
+        Map.of("id", obsolete, "target", "DROPPED", "outcome", "OBSOLETE"),
+        response -> assertFalse(response.isError(), text(response)));
+
+    call(
+        projectId,
+        "get_ticket",
+        Map.of("id", original),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains("\"supersedes\""), body);
+          assertTrue(body.contains(duplicateQualified), "the reverse link names it: " + body);
+          assertTrue(body.contains("Totals are off by a cent"), body);
+        });
+    call(
+        projectId,
+        "get_ticket",
+        Map.of("id", duplicate),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains("\"outcome\":\"DUPLICATE\""), body);
+          assertTrue(body.contains("\"supersededBy\":\"" + original + "\""), body);
+        });
+
+    call(
+        projectId,
+        "list_tickets",
+        Map.of("outcome", "DUPLICATE"),
+        response -> {
+          assertFalse(response.isError(), text(response));
+          String body = text(response);
+          assertTrue(body.contains(duplicate), body);
+          assertFalse(body.contains(obsolete), body);
+          assertFalse(body.contains("\"id\":\"" + original + "\""), body);
+        });
+    call(
+        projectId,
+        "list_tickets",
+        Map.of("status", "DROPPED", "outcome", "OBSOLETE"),
+        response -> {
+          String body = text(response);
+          assertTrue(body.contains(obsolete), body);
+          assertFalse(body.contains(duplicate), body);
+        });
+    call(
+        projectId,
+        "list_tickets",
+        Map.of("outcome", "NOPE"),
+        response -> assertTrue(response.isError(), "an unknown outcome filter is refused"));
+  }
+
+  @Test
+  public void theTransitionToolsNameTheSixOutcomesAndTakeBothArguments() {
+    String projectId = createProject("Ticket Drop Surface");
+    client(projectId)
+        .when()
+        .toolsList(
+            page -> {
+              for (String name :
+                  List.of(
+                      "transition_ticket",
+                      "transition_epic",
+                      "transition_task",
+                      "transition_campaign")) {
+                var tool =
+                    page.tools().stream().filter(t -> t.name().equals(name)).findFirst().orElseThrow();
+                for (String outcome :
+                    List.of(
+                        "DUPLICATE",
+                        "RESOLVED_ELSEWHERE",
+                        "SUPERSEDED",
+                        "OBSOLETE",
+                        "INVALID",
+                        "WONT_DO")) {
+                  assertTrue(
+                      tool.description().contains(outcome), name + " names " + outcome);
+                }
+                assertTrue(
+                    tool.description().contains("REQUIRE supersededBy"),
+                    name + " says the reference is required for the first three");
+                assertTrue(
+                    tool.description().contains("REFUSE it"),
+                    name + " says the reference is refused for the other three");
+                assertTrue(
+                    tool.inputSchema().toString().contains("outcome"), name + " takes outcome");
+                assertTrue(
+                    tool.inputSchema().toString().contains("supersededBy"),
+                    name + " takes supersededBy");
+              }
+              var transition =
+                  page.tools().stream()
+                      .filter(t -> t.name().equals("transition_ticket"))
+                      .findFirst()
+                      .orElseThrow();
+              assertFalse(
+                  transition.description().contains("say which on the thread"),
+                  "the thread is no longer the mechanism: " + transition.description());
+              var entities =
+                  page.tools().stream()
+                      .filter(t -> t.name().equals("transition_entities"))
+                      .findFirst()
+                      .orElseThrow();
+              assertTrue(entities.description().contains("WONT_DO"), entities.description());
+            })
+        .thenAssertResults();
   }
 
   // --- The surface ----------------------------------------------------------

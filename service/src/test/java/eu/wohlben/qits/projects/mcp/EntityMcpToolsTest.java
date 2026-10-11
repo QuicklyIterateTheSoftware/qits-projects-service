@@ -428,7 +428,7 @@ public class EntityMcpToolsTest {
       authenticated()
           .cookie(PersonCheck.SESSION_COOKIE, FakeSessionIntrospection.admin("mcp-test"))
           .contentType(ContentType.JSON)
-          .body(Map.of("target", target))
+          .body(eu.wohlben.qits.entities.api.WorkRequests.statusBody(target))
           .when()
           .post("/projects/api/work/" + epicId + "/status")
           .then()

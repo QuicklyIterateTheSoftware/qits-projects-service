@@ -236,7 +236,14 @@ public class EntityMcpTools {
               + "DONE IS FINAL, HERE AS EVERYWHERE. An entity that is DONE keeps status DONE and its"
               + " archetype: restate both unchanged. Its title, description and other plain fields"
               + " may still be edited, but a different status or archetype for it is refused — a"
-              + " follow-up to done work is a new ticket or epic.")
+              + " follow-up to done work is a new ticket or epic.\n"
+              + "\n"
+              + "A DROPPED ENTITY STATES WHY. An entry stating status DROPPED must carry outcome,"
+              + " the record of why the work is closed: "
+              + TicketMcpTools.DROP_OUTCOMES
+              + " Restate the outcome and supersededBy a DROPPED entity already holds; the one"
+              + " exception is an entity dropped before outcomes were recorded (outcome null), which"
+              + " may be restated DROPPED without one. Any other status with an outcome is refused.")
   public Map<String, TransitionedEntity> transitionEntities(
       @ToolArg(
               description =
@@ -257,17 +264,66 @@ public class EntityMcpTools {
                       + " assignee; repositoryId (a TASK's repository); implementedAt; dependsOn (a"
                       + " sibling to do first, never nesting); acceptanceCriteria (an EPIC's or a"
                       + " TICKET's list of short statements, restated whole — unchanged from"
-                      + " READY_FOR_DEV on). Position is clamped to the legal"
+                      + " READY_FOR_DEV on); outcome (with status DROPPED only: DUPLICATE,"
+                      + " RESOLVED_ELSEWHERE, SUPERSEDED, OBSOLETE, INVALID or WONT_DO); supersededBy"
+                      + " (the item a DROPPED entity names as what answers for it — a qualified id or"
+                      + " UUID in this project; required with DUPLICATE, RESOLVED_ELSEWHERE or"
+                      + " SUPERSEDED, refused with the other three). Position is clamped to the legal"
                       + " range rather than refused, and an entry with a parent and no position is"
                       + " appended.")
           Map<String, EntityTransition> entities) {
     String projectId = scope.requireProjectId();
     requireEveryNamedEntityInProject(projectId, entities);
 
-    Map<String, TransitionedEntity> written = transitions.transition(entities, changedBy());
+    Map<String, TransitionedEntity> written =
+        transitions.transition(withResolvedSuccessors(entities), changedBy());
     announce(projectId);
     // The map keeps its keys; one slug lookup for the whole batch.
     return qualifiedIds.qualifyEntities(written);
+  }
+
+  /**
+   * Each entry's {@code supersededBy} as the UUID the transition compares (qits-248): a qualified id
+   * resolved, a value naming nothing handed on unchanged for the transition's own 400 about it.
+   */
+  private Map<String, EntityTransition> withResolvedSuccessors(
+      Map<String, EntityTransition> requested) {
+    if (requested == null) {
+      return null;
+    }
+    Map<String, EntityTransition> out = new java.util.LinkedHashMap<>();
+    for (Map.Entry<String, EntityTransition> entry : requested.entrySet()) {
+      EntityTransition value = entry.getValue();
+      String named = value == null ? null : value.supersededBy();
+      if (named == null || named.isBlank()) {
+        out.put(entry.getKey(), value);
+        continue;
+      }
+      String resolved;
+      try {
+        resolved = ids.resolve(named.trim()).id;
+      } catch (NotFoundException unknown) {
+        resolved = named;
+      }
+      out.put(
+          entry.getKey(),
+          new EntityTransition(
+              value.archetype(),
+              value.membership(),
+              value.title(),
+              value.description(),
+              value.status(),
+              value.ticketType(),
+              value.impetus(),
+              value.assignee(),
+              resolved,
+              value.repositoryId(),
+              value.implementedAt(),
+              value.dependsOn(),
+              value.acceptanceCriteria(),
+              value.outcome()));
+    }
+    return out;
   }
 
   // --- Scoping --------------------------------------------------------------
