@@ -392,7 +392,7 @@
       ],
       "automations": null,
       "conflict": {
-        "target": null,
+        "target": "release/contract-frontend-rr-3",
         "conflicts": [
           {
             "path": "src/theme.css",

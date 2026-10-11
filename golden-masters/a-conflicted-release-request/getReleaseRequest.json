@@ -63,7 +63,7 @@
     ],
     "automations": null,
     "conflict": {
-      "target": null,
+      "target": "release/contract-service-rr-1",
       "conflicts": [
         {
           "path": "src/invoice.txt",
